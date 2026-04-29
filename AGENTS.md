@@ -1,3 +1,15 @@
+# FM ValueScout
+
+A companion app for Football Manager players applying moneyball-style scouting. Users import CSV data exports from their FM save; the app accumulates seasonal snapshots, computes 80+ statistical metrics across 8 categories (attacking, creativity, progression, defending, aerial, goalkeeping, discipline, match impact), and scores players against position-specific archetypes. Core features: squad tactics board with lineup suggestions, moneyball scouting with Top 3 podium and filtered role search, per-player profiles with percentile rankings and career timeline. All data persisted locally, offline-only.
+
+## Tech Stack
+
+- **Shell:** Tauri v2 (Rust backend, native desktop window)
+- **Frontend:** Svelte 5 + SvelteKit (adapter-static) + TypeScript + Vite
+- **Backend:** Rust (`fm_valuescout_lib`) via Tauri commands
+- **Package manager:** Bun
+- **Key deps:** `@tauri-apps/api` v2, `tauri-plugin-opener`, `serde`/`serde_json`
+
 # Global Instructions
 
 Applies across projects. More local instructions override these defaults when they conflict.
