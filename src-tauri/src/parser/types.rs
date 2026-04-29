@@ -1,415 +1,407 @@
 use serde::{Deserialize, Serialize};
 
-/// Player role (e.g., ST, CM, CB, GK)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "lowercase")]
+// ── Enums ──────────────────────────────────────────────────────────────
+
+/// Position role from FM position string.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Role {
-    ST,
-    CF,
-    AM,
-    W,
-    CM,
-    DM,
-    CB,
-    FB,
     GK,
+    D,
+    WB,
+    DM,
+    M,
+    AM,
+    ST,
 }
 
-/// Side modifier for position
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "lowercase")]
+/// Side qualifier from FM position string.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Side {
-    Left,
-    Center,
-    Right,
+    L,
+    C,
+    R,
 }
 
-/// Position combining role and optional side
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// A single parsed position entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Position {
     pub role: Role,
-    pub side: Option<Side>,
+    pub sides: Vec<Side>,
 }
 
-impl Position {
-    pub fn new(role: Role, side: Option<Side>) -> Self {
-        Self { role, side }
-    }
-}
-
-/// Footedness with label and optional score (1-5)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Footedness label and numeric score (1-5).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Footedness {
     pub label: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub score: Option<u8>,
+    pub score: u8,
 }
 
-impl Footedness {
-    pub fn new(label: String, score: Option<u8>) -> Self {
-        Self { label, score }
-    }
-}
-
-/// Nationality with name and optional code
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Nationality with optional 3-letter code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Nationality {
-    pub name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
+    pub name: String,
 }
 
-impl Nationality {
-    pub fn new(name: String, code: Option<String>) -> Self {
-        Self { name, code }
-    }
-}
+// ── Error / warning types ──────────────────────────────────────────────
 
-/// Transfer value with low and high range (in GBP)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TransferValue {
-    pub low: Option<f64>,
-    pub high: Option<f64>,
-}
-
-impl TransferValue {
-    pub fn new(low: Option<f64>, high: Option<f64>) -> Self {
-        Self { low, high }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.low.is_none() && self.high.is_none()
-    }
-}
-
-impl Default for TransferValue {
-    fn default() -> Self {
-        Self {
-            low: None,
-            high: None,
-        }
-    }
-}
-
-/// Wage normalized to per-week (in GBP)
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Wage {
-    pub per_week: Option<f64>,
-}
-
-impl Wage {
-    pub fn new(per_week: Option<f64>) -> Self {
-        Self { per_week }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.per_week.is_none()
-    }
-}
-
-impl Default for Wage {
-    fn default() -> Self {
-        Self { per_week: None }
-    }
-}
-
-/// Attacking statistics
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct AttackingStats {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub goals: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub goals_per_90: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shots_total: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shots_on_target: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub shot_accuracy_pct: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pens_scored: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pens_missed: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub free_kicks_scored: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub headers_scored: Option<u16>,
-}
-
-/// Chance creation statistics
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct ChanceCreationStats {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub assists: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub assists_per_90: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_passes: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub chances_created: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub crosses: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cross_accuracy_pct: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub through_balls: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub final_third_entries: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub penalty_area_entries: Option<u16>,
-}
-
-/// Movement statistics
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct MovementStats {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub touches: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub touches_per_90: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub passes: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub passes_per_90: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pass_accuracy_pct: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub forward_passes: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub backward_passes: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dribbles: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dribble_success_pct: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ball_recoveries: Option<u16>,
-}
-
-/// Defending statistics
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct DefendingStats {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tackles: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tackle_success_pct: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub interceptions: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub blocks: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub clearances: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub headers_won: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub headers_lost: Option<u16>,
-}
-
-/// Aerial duel statistics
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct AerialStats {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub aerial_duels_won: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub aerial_duels_lost: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub aerial_win_pct: Option<f64>,
-}
-
-/// Goalkeeping statistics
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct GoalkeepingStats {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub saves: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub save_pct: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub goals_conceded: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub clean_sheets: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub punches: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub high_claims: Option<u16>,
-}
-
-/// Discipline statistics
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct DisciplineStats {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fouls_conceded: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fouls_won: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub yellow_cards: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub red_cards: Option<u16>,
-}
-
-/// Match outcome statistics
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
-pub struct MatchOutcomeStats {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub matches_played: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub minutes: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub starts: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bench: Option<u16>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub avg_rating: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub motm_awards: Option<u16>,
-}
-
-/// Column mapping status during parsing
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ColumnStatus {
-    pub total_columns: usize,
-    pub mapped_columns: usize,
-    pub unmapped_columns: Vec<String>,
-}
-
-impl ColumnStatus {
-    pub fn new(total_columns: usize, mapped_columns: usize, unmapped_columns: Vec<String>) -> Self {
-        Self {
-            total_columns,
-            mapped_columns,
-            unmapped_columns,
-        }
-    }
-}
-
-/// Information about a skipped row
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkippedRow {
     pub row_number: usize,
     pub reason: String,
 }
 
-impl SkippedRow {
-    pub fn new(row_number: usize, reason: String) -> Self {
-        Self { row_number, reason }
-    }
-}
-
-/// Parse warning with metadata
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParseWarning {
     pub row_number: usize,
     pub field: String,
     pub message: String,
 }
 
-impl ParseWarning {
-    pub fn new(row_number: usize, field: String, message: String) -> Self {
-        Self {
-            row_number,
-            field,
-            message,
-        }
-    }
+// ── Stat category structs ─────────────────────────────────────────────
+
+/// Attacking stats (goals, shots, xG variants).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttackingStats {
+    pub goals: Option<f64>,
+    pub goals_from_outside_box: Option<f64>,
+    pub xg: Option<f64>,
+    pub np_xg: Option<f64>,
+    pub xg_overperformance: Option<f64>,
+    pub xg_per_shot: Option<f64>,
+    pub shots: Option<f64>,
+    pub shots_from_outside_box_per_90: Option<f64>,
+    pub shots_on_target: Option<f64>,
+    pub penalties_taken: Option<f64>,
+    pub penalties_scored: Option<f64>,
+    pub free_kick_shots: Option<f64>,
+    // Per-90 computed
+    pub goals_per_90: Option<f64>,
+    pub xg_per_90: Option<f64>,
+    pub np_xg_per_90: Option<f64>,
+    pub shots_per_90: Option<f64>,
+    pub shots_on_target_per_90: Option<f64>,
 }
 
-/// Complete result of parsing a CSV file
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// Chance creation / passing stats.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChanceCreationStats {
+    pub assists: Option<f64>,
+    pub xa: Option<f64>,
+    pub chances_created_per_90: Option<f64>,
+    pub clear_cut_chances: Option<f64>,
+    pub key_passes: Option<f64>,
+    pub open_play_key_passes_per_90: Option<f64>,
+    pub crosses_attempted: Option<f64>,
+    pub crosses_completed: Option<f64>,
+    pub open_play_crosses_attempted: Option<f64>,
+    pub open_play_crosses_completed: Option<f64>,
+    pub passes_attempted: Option<f64>,
+    pub passes_completed: Option<f64>,
+    pub progressive_passes: Option<f64>,
+    pub pass_completion_rate: Option<f64>,
+    // Per-90 computed
+    pub assists_per_90: Option<f64>,
+    pub xa_per_90: Option<f64>,
+    pub key_passes_per_90: Option<f64>,
+    pub progressive_passes_per_90: Option<f64>,
+}
+
+/// Movement / physical stats.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MovementStats {
+    pub dribbles: Option<f64>,
+    pub distance_km: Option<f64>,
+    pub sprints_per_90: Option<f64>,
+    pub possession_lost_per_90: Option<f64>,
+    // Per-90 computed
+    pub dribbles_per_90: Option<f64>,
+    pub distance_per_90: Option<f64>,
+}
+
+/// Defending stats.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefendingStats {
+    pub tackles_attempted: Option<f64>,
+    pub tackles_completed: Option<f64>,
+    pub key_tackles: Option<f64>,
+    pub interceptions: Option<f64>,
+    pub possession_won_per_90: Option<f64>,
+    pub pressures_attempted: Option<f64>,
+    pub pressures_completed: Option<f64>,
+    pub blocks: Option<f64>,
+    pub shots_blocked: Option<f64>,
+    pub clearances: Option<f64>,
+    // Per-90 computed
+    pub tackles_per_90: Option<f64>,
+    pub interceptions_per_90: Option<f64>,
+    pub pressures_per_90: Option<f64>,
+    pub clearances_per_90: Option<f64>,
+    pub tackle_completion_rate: Option<f64>,
+    pub pressure_completion_rate: Option<f64>,
+}
+
+/// Aerial / heading stats.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AerialStats {
+    pub aerial_challenges_attempted: Option<f64>,
+    pub aerial_challenges_won: Option<f64>,
+    pub aerial_challenges_lost_per_90: Option<f64>,
+    pub key_headers_per_90: Option<f64>,
+    // Per-90 computed
+    pub aerial_challenge_rate: Option<f64>,
+    pub aerial_duels_per_90: Option<f64>,
+}
+
+/// Goalkeeping stats.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoalkeepingStats {
+    pub clean_sheets: Option<f64>,
+    pub goals_conceded: Option<f64>,
+    pub saves_per_90: Option<f64>,
+    pub expected_save_pct: Option<f64>,
+    pub expected_goals_prevented: Option<f64>,
+    pub saves_held: Option<f64>,
+    pub saves_parried: Option<f64>,
+    pub saves_tipped: Option<f64>,
+    pub penalties_faced: Option<f64>,
+    pub penalties_saved: Option<f64>,
+}
+
+/// Discipline stats.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisciplineStats {
+    pub fouls_made: Option<f64>,
+    pub fouls_against: Option<f64>,
+    pub yellow_cards: Option<f64>,
+    pub red_cards: Option<f64>,
+    pub offsides: Option<f64>,
+    pub mistakes_leading_to_goal: Option<f64>,
+    // Per-90 computed
+    pub fouls_made_per_90: Option<f64>,
+    pub fouls_against_per_90: Option<f64>,
+}
+
+/// Match outcome / general stats.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatchOutcomeStats {
+    pub average_rating: Option<f64>,
+    pub player_of_the_match: Option<f64>,
+    pub games_won: Option<f64>,
+    pub games_drawn: Option<f64>,
+    pub games_lost: Option<f64>,
+    pub team_goals: Option<f64>,
+    // Per-90 computed
+    pub win_rate: Option<f64>,
+}
+
+// ── Financial types ────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransferValue {
+    pub currency_symbol: Option<String>,
+    pub low: Option<f64>,
+    pub high: Option<f64>,
+    pub raw: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Wage {
+    pub currency_symbol: Option<String>,
+    pub raw_value: Option<f64>,
+    pub wage_per_week: Option<f64>,
+    pub denomination: Option<String>,
+    pub raw: Option<String>,
+}
+
+// ── Core player record ────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParsedPlayer {
+    pub uid: u32,
+    pub name: String,
+    pub nationality: Option<Nationality>,
+    pub second_nationality: Option<Nationality>,
+    pub club: Option<String>,
+    pub age: Option<u16>,
+    pub positions: Vec<Position>,
+    pub height: Option<u16>,
+    pub left_foot: Option<Footedness>,
+    pub right_foot: Option<Footedness>,
+    pub ca: Option<u16>,
+    pub pa: Option<u16>,
+    pub transfer_value: TransferValue,
+    pub wage: Wage,
+    pub contract_expires: Option<String>, // ISO date string
+    pub appearances_started: Option<u16>,
+    pub appearances_sub: Option<u16>,
+    pub minutes: Option<u16>,
+    pub attacking: AttackingStats,
+    pub chance_creation: ChanceCreationStats,
+    pub movement: MovementStats,
+    pub defending: DefendingStats,
+    pub aerial: AerialStats,
+    pub goalkeeping: GoalkeepingStats,
+    pub discipline: DisciplineStats,
+    pub match_outcome: MatchOutcomeStats,
+}
+
+// ── Result type ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ColumnStatus {
+    pub name: String,
+    pub index: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParseResult {
     pub players: Vec<ParsedPlayer>,
     pub skipped_rows: Vec<SkippedRow>,
     pub warnings: Vec<ParseWarning>,
-    pub column_status: ColumnStatus,
-}
-
-impl ParseResult {
-    pub fn new(
-        players: Vec<ParsedPlayer>,
-        skipped_rows: Vec<SkippedRow>,
-        warnings: Vec<ParseWarning>,
-        column_status: ColumnStatus,
-    ) -> Self {
-        Self {
-            players,
-            skipped_rows,
-            warnings,
-            column_status,
-        }
-    }
-
-    pub fn success_count(&self) -> usize {
-        self.players.len()
-    }
-
-    pub fn skip_count(&self) -> usize {
-        self.skipped_rows.len()
-    }
-
-    pub fn warning_count(&self) -> usize {
-        self.warnings.len()
-    }
-}
-
-/// Complete parsed player data
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct ParsedPlayer {
-    // Identity fields
-    pub uid: String,
-    pub name: String,
-    pub nationalities: Vec<Nationality>,
-
-    // Position and role
-    pub position: Position,
-    pub footedness: Footedness,
-
-    // Match outcomes
-    pub match_outcomes: MatchOutcomeStats,
-
-    // Attacking stats
-    pub attacking: AttackingStats,
-
-    // Chance creation stats
-    pub chance_creation: ChanceCreationStats,
-
-    // Movement stats
-    pub movement: MovementStats,
-
-    // Defending stats
-    pub defending: DefendingStats,
-
-    // Aerial stats
-    pub aerial: AerialStats,
-
-    // Goalkeeping stats (only for GKs)
-    pub goalkeeping: GoalkeepingStats,
-
-    // Discipline stats
-    pub discipline: DisciplineStats,
-
-    // Financial info
-    pub transfer_value: TransferValue,
-    pub wage: Wage,
-
-    // In-game date snapshot
-    pub snapshot_date: Option<String>,
+    pub columns_found: Vec<ColumnStatus>,
+    pub columns_missing: Vec<String>,
+    pub total_rows: usize,
 }
 
 impl ParsedPlayer {
-    pub fn empty() -> Self {
+    /// Create a ParsedPlayer with all optional fields set to None/empty.
+    /// Used as a builder base during row parsing.
+    pub fn empty(uid: u32, name: String, positions: Vec<Position>) -> Self {
         Self {
-            uid: String::new(),
-            name: String::new(),
-            nationalities: Vec::new(),
-            position: Position::new(Role::GK, None),
-            footedness: Footedness::new(String::new(), None),
-            match_outcomes: MatchOutcomeStats::default(),
-            attacking: AttackingStats::default(),
-            chance_creation: ChanceCreationStats::default(),
-            movement: MovementStats::default(),
-            defending: DefendingStats::default(),
-            aerial: AerialStats::default(),
-            goalkeeping: GoalkeepingStats::default(),
-            discipline: DisciplineStats::default(),
-            transfer_value: TransferValue::default(),
-            wage: Wage::default(),
-            snapshot_date: None,
+            uid,
+            name,
+            nationality: None,
+            second_nationality: None,
+            club: None,
+            age: None,
+            positions,
+            height: None,
+            left_foot: None,
+            right_foot: None,
+            ca: None,
+            pa: None,
+            transfer_value: TransferValue {
+                currency_symbol: None,
+                low: None,
+                high: None,
+                raw: None,
+            },
+            wage: Wage {
+                currency_symbol: None,
+                raw_value: None,
+                wage_per_week: None,
+                denomination: None,
+                raw: None,
+            },
+            contract_expires: None,
+            appearances_started: None,
+            appearances_sub: None,
+            minutes: None,
+            attacking: AttackingStats {
+                goals: None,
+                goals_from_outside_box: None,
+                xg: None,
+                np_xg: None,
+                xg_overperformance: None,
+                xg_per_shot: None,
+                shots: None,
+                shots_from_outside_box_per_90: None,
+                shots_on_target: None,
+                penalties_taken: None,
+                penalties_scored: None,
+                free_kick_shots: None,
+                goals_per_90: None,
+                xg_per_90: None,
+                np_xg_per_90: None,
+                shots_per_90: None,
+                shots_on_target_per_90: None,
+            },
+            chance_creation: ChanceCreationStats {
+                assists: None,
+                xa: None,
+                chances_created_per_90: None,
+                clear_cut_chances: None,
+                key_passes: None,
+                open_play_key_passes_per_90: None,
+                crosses_attempted: None,
+                crosses_completed: None,
+                open_play_crosses_attempted: None,
+                open_play_crosses_completed: None,
+                passes_attempted: None,
+                passes_completed: None,
+                progressive_passes: None,
+                pass_completion_rate: None,
+                assists_per_90: None,
+                xa_per_90: None,
+                key_passes_per_90: None,
+                progressive_passes_per_90: None,
+            },
+            movement: MovementStats {
+                dribbles: None,
+                distance_km: None,
+                sprints_per_90: None,
+                possession_lost_per_90: None,
+                dribbles_per_90: None,
+                distance_per_90: None,
+            },
+            defending: DefendingStats {
+                tackles_attempted: None,
+                tackles_completed: None,
+                key_tackles: None,
+                interceptions: None,
+                possession_won_per_90: None,
+                pressures_attempted: None,
+                pressures_completed: None,
+                blocks: None,
+                shots_blocked: None,
+                clearances: None,
+                tackles_per_90: None,
+                interceptions_per_90: None,
+                pressures_per_90: None,
+                clearances_per_90: None,
+                tackle_completion_rate: None,
+                pressure_completion_rate: None,
+            },
+            aerial: AerialStats {
+                aerial_challenges_attempted: None,
+                aerial_challenges_won: None,
+                aerial_challenges_lost_per_90: None,
+                key_headers_per_90: None,
+                aerial_challenge_rate: None,
+                aerial_duels_per_90: None,
+            },
+            goalkeeping: GoalkeepingStats {
+                clean_sheets: None,
+                goals_conceded: None,
+                saves_per_90: None,
+                expected_save_pct: None,
+                expected_goals_prevented: None,
+                saves_held: None,
+                saves_parried: None,
+                saves_tipped: None,
+                penalties_faced: None,
+                penalties_saved: None,
+            },
+            discipline: DisciplineStats {
+                fouls_made: None,
+                fouls_against: None,
+                yellow_cards: None,
+                red_cards: None,
+                offsides: None,
+                mistakes_leading_to_goal: None,
+                fouls_made_per_90: None,
+                fouls_against_per_90: None,
+            },
+            match_outcome: MatchOutcomeStats {
+                average_rating: None,
+                player_of_the_match: None,
+                games_won: None,
+                games_drawn: None,
+                games_lost: None,
+                team_goals: None,
+                win_rate: None,
+            },
         }
     }
 }
@@ -419,80 +411,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_position_footedness_serde_round_trip() {
-        let pos = Position::new(Role::ST, Some(Side::Center));
-        let serialized = serde_json::to_string(&pos).unwrap();
-        let deserialized: Position = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(pos, deserialized);
-
-        let footedness = Footedness::new("Right".to_string(), Some(5));
-        let serialized = serde_json::to_string(&footedness).unwrap();
-        let deserialized: Footedness = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(footedness, deserialized);
+    fn serde_position_roundtrip() {
+        let pos = Position {
+            role: Role::AM,
+            sides: vec![Side::L, Side::C],
+        };
+        let json = serde_json::to_string(&pos).unwrap();
+        let back: Position = serde_json::from_str(&json).unwrap();
+        assert_eq!(pos, back);
     }
 
     #[test]
-    fn test_parsed_player_empty_skeleton() {
-        let player = ParsedPlayer::empty();
-        assert!(player.uid.is_empty());
-        assert!(player.name.is_empty());
-        assert!(player.nationalities.is_empty());
-        assert_eq!(player.position.role, Role::GK);
-        assert!(player.footedness.label.is_empty());
-        assert!(player.match_outcomes.matches_played.is_none());
-        assert!(player.attacking.goals.is_none());
-        assert!(player.transfer_value.is_empty());
-        assert!(player.wage.is_empty());
+    fn serde_footedness_roundtrip() {
+        let f = Footedness {
+            label: "Very Strong".to_string(),
+            score: 5,
+        };
+        let json = serde_json::to_string(&f).unwrap();
+        let back: Footedness = serde_json::from_str(&json).unwrap();
+        assert_eq!(f, back);
     }
 
     #[test]
-    fn test_parse_result_serialization() {
-        let result = ParseResult::new(
-            vec![],
-            vec![SkippedRow::new(1, "Missing UID".to_string())],
-            vec![ParseWarning::new(2, "Position".to_string(), "Unknown role".to_string())],
-            ColumnStatus::new(80, 75, vec!["unknown_col".to_string()]),
-        );
-
-        let serialized = serde_json::to_string(&result).unwrap();
-        let deserialized: ParseResult = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(result, deserialized);
+    fn empty_player_has_required_fields() {
+        let p = ParsedPlayer::empty(12345, "Test Player".to_string(), vec![Position {
+            role: Role::ST,
+            sides: vec![Side::C],
+        }]);
+        assert_eq!(p.uid, 12345);
+        assert_eq!(p.name, "Test Player");
+        assert_eq!(p.positions.len(), 1);
+        assert!(p.age.is_none());
+        assert!(p.minutes.is_none());
     }
 
     #[test]
-    fn test_nationality_with_and_without_code() {
-        let with_code = Nationality::new("England".to_string(), Some("ENG".to_string()));
-        let without_code = Nationality::new("England".to_string(), None);
-
-        assert_eq!(with_code.code, Some("ENG".to_string()));
-        assert_eq!(without_code.code, None);
-
-        // Both should serialize/deserialize correctly
-        let serialized = serde_json::to_string(&with_code).unwrap();
-        let deserialized: Nationality = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(with_code, deserialized);
-
-        let serialized = serde_json::to_string(&without_code).unwrap();
-        let deserialized: Nationality = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(without_code, deserialized);
-    }
-
-    #[test]
-    fn test_transfer_value_and_wage_defaults() {
-        let transfer_value = TransferValue::default();
-        assert!(transfer_value.is_empty());
-        assert!(transfer_value.low.is_none());
-        assert!(transfer_value.high.is_none());
-
-        let wage = Wage::default();
-        assert!(wage.is_empty());
-        assert!(wage.per_week.is_none());
-
-        // Test with values
-        let transfer_value = TransferValue::new(Some(1000.0), Some(5000.0));
-        assert!(!transfer_value.is_empty());
-
-        let wage = Wage::new(Some(500.0));
-        assert!(!wage.is_empty());
+    fn parse_result_serializable() {
+        let result = ParseResult {
+            players: vec![],
+            skipped_rows: vec![SkippedRow {
+                row_number: 5,
+                reason: "Missing UID".to_string(),
+            }],
+            warnings: vec![],
+            columns_found: vec![],
+            columns_missing: vec![],
+            total_rows: 10,
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        let back: ParseResult = serde_json::from_str(&json).unwrap();
+        assert_eq!(result.total_rows, back.total_rows);
     }
 }
