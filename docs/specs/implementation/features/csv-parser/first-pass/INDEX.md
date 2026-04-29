@@ -42,22 +42,22 @@ graph TD
 
 ## Task List
 
-| Task | Name                         | Complexity | Dependencies          |
-| ---- | ---------------------------- | ---------- | --------------------- |
-| 01   | Core Types & Stat Structs    | Medium     | None                  |
-| 02   | Country Code Lookup Table    | Low        | None                  |
-| 03   | Position String Parser       | Medium     | Task 01               |
-| 04   | Header Parser                | Medium     | Task 01               |
-| 05   | Field Parsers                | High       | Task 01, 02, 03, 04   |
-| 06   | Computed Metrics             | Medium     | Task 01               |
-| 07   | Parser Orchestration         | Medium     | Task 05, 06           |
-| 08   | Tauri Commands & Wiring      | Medium     | Task 07               |
-| 09   | Integration Test — Sample CSV| Medium     | Task 08               |
-| 10   | Edge Case Tests              | Medium     | Task 08               |
+| Task | Name                          | Complexity | Dependencies        |
+| ---- | ----------------------------- | ---------- | ------------------- |
+| 01   | Core Types & Stat Structs     | Medium     | None                |
+| 02   | Country Code Lookup Table     | Low        | None                |
+| 03   | Position String Parser        | Medium     | Task 01             |
+| 04   | Header Parser                 | Medium     | Task 01             |
+| 05   | Field Parsers                 | High       | Task 01, 02, 03, 04 |
+| 06   | Computed Metrics              | Medium     | Task 01             |
+| 07   | Parser Orchestration          | Medium     | Task 05, 06         |
+| 08   | Tauri Commands & Wiring       | Medium     | Task 07             |
+| 09   | Integration Test — Sample CSV | Medium     | Task 08             |
+| 10   | Edge Case Tests               | Medium     | Task 08             |
 
 ## Progress Tracking
 
-- [ ] Task 01: Core Types & Stat Structs
+- [x] Task 01: Core Types & Stat Structs
 - [ ] Task 02: Country Code Lookup Table
 - [ ] Task 03: Position String Parser
 - [ ] Task 04: Header Parser
