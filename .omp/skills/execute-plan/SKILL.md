@@ -5,7 +5,7 @@ description: Use when executing implementation plans with independent tasks in t
 
 # Execute Implementation Plan
 
-Execute plan by dispatching fresh subagent per task, with two-stage review after each: spec compliance review first, then code quality review.
+Execute plan by dispatching fresh subagent per task, with two-stage review after each (spec compliance then code quality), followed by a per-task commit once both reviews pass.
 
 **Why subagents:** You delegate tasks to specialized agents with isolated context. By precisely crafting their instructions and context, you ensure they stay focused and succeed at their task. They should never inherit your session's context or history — you construct exactly what they need. This also preserves your own context for coordination work.
 
@@ -53,13 +53,14 @@ digraph process {
         "Dispatch code quality reviewer subagent (.omp/agents/code-reviewer.md)" [shape=box];
         "Code quality reviewer subagent approves?" [shape=diamond];
         "Implementer subagent fixes quality issues" [shape=box];
+        "Commit task changes using commit skill (.omp/skills/commit/SKILL.md)" [shape=box style=filled fillcolor=lightgreen];
         "Mark task complete in TodoWrite" [shape=box];
     }
 
     "Read plan, extract all tasks with full text, note context, create TodoWrite" [shape=box];
     "More tasks remain?" [shape=diamond];
     "Dispatch final code reviewer subagent for entire implementation" [shape=box];
-    "Ask whether user wishes to invoke /commit" [shape=box style=filled fillcolor=lightgreen];
+    "Ask whether user wishes to run final review" [shape=box style=filled fillcolor=lightgreen];
 
     "Read plan, extract all tasks with full text, note context, create TodoWrite" -> "Dispatch implementer subagent (.omp/agents/implementer.md)";
     "Dispatch implementer subagent (.omp/agents/implementer.md)" -> "Implementer subagent asks questions?";
@@ -74,11 +75,12 @@ digraph process {
     "Dispatch code quality reviewer subagent (.omp/agents/code-reviewer.md)" -> "Code quality reviewer subagent approves?";
     "Code quality reviewer subagent approves?" -> "Implementer subagent fixes quality issues" [label="no"];
     "Implementer subagent fixes quality issues" -> "Dispatch code quality reviewer subagent (.omp/agents/code-reviewer.md)" [label="re-review"];
-    "Code quality reviewer subagent approves?" -> "Mark task complete in TodoWrite" [label="yes"];
+    "Code quality reviewer subagent approves?" -> "Commit task changes using commit skill (.omp/skills/commit/SKILL.md)" [label="yes"];
+    "Commit task changes using commit skill (.omp/skills/commit/SKILL.md)" -> "Mark task complete in TodoWrite";
     "Mark task complete in TodoWrite" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (.omp/agents/implementer.md)" [label="yes"];
     "More tasks remain?" -> "Dispatch final code reviewer subagent for entire implementation" [label="no"];
-    "Dispatch final code reviewer subagent for entire implementation" -> "Ask whether user wishes to invoke /commit";
+    "Dispatch final code reviewer subagent for entire implementation" -> "Ask whether user wishes to run final review";
 }
 ```
 
@@ -124,6 +126,25 @@ Implementer subagents report one of four statuses. Handle each appropriately:
 - `.omp/agents/spec-compliance-reviewer.md` - Dispatch spec compliance reviewer subagent
 - `.omp/agents/code-reviewer.md` - Dispatch code quality reviewer subagent
 
+## Per-Task Commit Workflow
+
+After both spec compliance AND code quality reviews have approved a task's implementation, commit the changes before moving to the next task.
+
+**Prerequisites (ALL must be met before committing):**
+1. ✅ Spec compliance reviewer approved (no issues)
+2. ✅ Code quality reviewer approved (no critical or important issues)
+
+**Commit process:**
+Follow the commit skill (`.omp/skills/commit/SKILL.md`) three-phase workflow:
+1. **Analyze** — `git status`, `git diff` to inspect changes
+2. **Propose** — Present commit plan to user for approval
+3. **Execute** — Stage and commit after user approval
+
+**NEVER:**
+- Commit before both reviews pass
+- Skip the commit skill's user-approval step
+- Combine multiple tasks into one commit (one commit per task)
+
 ## Example Workflow
 
 **Plan locations:** Implementation plans can be in one of four locations depending on category:
@@ -164,6 +185,9 @@ Spec reviewer: ✅ Spec compliant - all requirements met, nothing extra
 [Get git SHAs, dispatch code quality reviewer]
 Code reviewer: Strengths: Good test coverage, clean. Issues: None. Approved.
 
+[Invoke commit skill to commit Task 1 changes]
+Commit: feat(scope): install-hook command with --force flag
+
 [Mark Task 1 complete]
 
 Task 2: Recovery modes
@@ -197,6 +221,9 @@ Implementer: Extracted PROGRESS_INTERVAL constant
 [Code reviewer reviews again]
 Code reviewer: ✅ Approved
 
+[Invoke commit skill to commit Task 2 changes]
+Commit: feat(scope): verify/repair recovery modes
+
 [Mark Task 2 complete]
 
 ...
@@ -205,7 +232,7 @@ Code reviewer: ✅ Approved
 [Dispatch final code-reviewer]
 Final reviewer: All requirements met, ready to merge
 
-Done!
+Done! All tasks have been individually committed after passing both reviews, so no final /commit step is needed.
 ```
 
 ## Advantages
@@ -266,6 +293,7 @@ When hitting limits, provide clear summary of what's blocking and ask user for g
 - Let implementer self-review replace actual review (both are needed)
 - **Start code quality review before spec compliance is ✅** (wrong order)
 - Move to next task while either review has open issues
+- **Commit before both reviews have approved** (spec compliance AND code quality must both pass before committing)
 
 **If subagent asks questions:**
 
@@ -291,3 +319,4 @@ When hitting limits, provide clear summary of what's blocking and ask user for g
 
 - **test-driven-development (`.omp/skills/test-driven-development/SKILL.md`)** - Subagents follow TDD for each task
 - **clean-code-rules (`.omp/skills/execute-plan/clean-code-rules.md`)** - Subagents follow these clean code guidelines for all implementation
+- **commit (`.omp/skills/commit/SKILL.md`)** - Commit each task's changes after both reviews pass
