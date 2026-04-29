@@ -1,0 +1,5 @@
+# Player Profile
+
+The player profile is a page focusing on the metrics of a specific player. On this page, in the upper left corner, will be a section containing all the basic information about then player - An image, nationality, club, height, wage, transfer value, etc. The rest of the page is dedicated to statistics, both in terms of percentiles, but also various forms of charts and diagrams, with a large degree of customizability by the user. Every player will have every metric available, so a striker will still have access to tackling and marking metrics, for instance. In the upper right corner, will be a pitch akin to the one shown when entering the scouting feature, where, if the user has filled out their squad page, the "rating" for the given player in each role is shown.
+
+Each player will also have a timeline (a vertical timeline to the left of the page, with dots for each season), where the user can scroll back through the players career, seeing how their metrics have evolved over time.
