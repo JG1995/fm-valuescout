@@ -1,0 +1,26 @@
+# OS files
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
+
+# Environment / secrets
+.env
+.env.*
+*.secret
+*.key
+*.pem
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OMP local state
+.omp/local/

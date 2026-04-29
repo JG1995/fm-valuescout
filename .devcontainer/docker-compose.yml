@@ -1,0 +1,23 @@
+services:
+  omp-sandbox:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    container_name: fm-valuescout
+    volumes:
+      - ..:/workspace:cached
+
+      # Shadow Home Mounts for oh-my-pi
+      - ~/.config/omp_container/.omp:/root/.omp
+      - ~/.config/omp_container/.env:/root/.env
+      - ~/.config/omp_container/.ssh:/root/.ssh
+
+    env_file:
+      - ~/.config/omp_container/.env
+    working_dir: /workspace
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    command: /bin/sh -c "while sleep 1000; do :; done"
+    init: true
