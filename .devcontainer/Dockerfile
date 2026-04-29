@@ -37,6 +37,25 @@ RUN uv python install && uv tool install pre-commit
 RUN /root/.bun/bin/bun install -g @oh-my-pi/pi-coding-agent
 
 # ==============================================================================
+# Rust toolchain (required by Tauri v2)
+# ==============================================================================
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# ==============================================================================
+# Tauri v2 system dependencies (Linux/Debian)
+# ==============================================================================
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libwebkit2gtk-4.1-dev \
+    build-essential \
+    file \
+    libxdo-dev \
+    libssl-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ==============================================================================
 # Project-specific runtimes — add yours below this line
 # Examples:
 #   RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y

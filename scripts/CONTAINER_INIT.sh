@@ -29,5 +29,4 @@ bash "$SCRIPTS_DIR/FIX_PERMISSIONS.sh"
 # copied from Windows. These show up as separate files in Linux and
 # can confuse tooling. Remove them on container creation.
 bash "$SCRIPTS_DIR/DELETE_ZONE_IDENTIFIER.sh"
-
 echo "Container initialization complete."
