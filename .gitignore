@@ -18,6 +18,12 @@ dist/
 build/
 out/
 
+# Tauri + SvelteKit specific
+/.svelte-kit
+/package
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
 # IDE
 .vscode/settings.json
 .idea/
