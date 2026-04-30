@@ -1,9 +1,8 @@
 use crate::parser::countries::lookup_country;
 use crate::parser::positions::parse_positions;
 use crate::parser::types::{
-    Footedness, Nationality, ParseWarning, Position, Wage, TransferValue,
+    Footedness, Nationality, Position, Wage, TransferValue,
 };
-use crate::parser::headers::HeaderMap;
 
 // ── Helper ─────────────────────────────────────────────────────────────
 

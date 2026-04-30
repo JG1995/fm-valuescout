@@ -1,4 +1,4 @@
-use crate::parser::types::{ColumnStatus, ParseWarning};
+use crate::parser::types::ColumnStatus;
 
 /// Result of header parsing.
 #[derive(Debug)]

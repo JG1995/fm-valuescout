@@ -5,7 +5,7 @@ pub mod headers;
 pub mod fields;
 pub mod metrics;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 
 use types::{ParseResult, ParsedPlayer, ParseWarning, SkippedRow};

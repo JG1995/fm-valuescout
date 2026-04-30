@@ -24,12 +24,6 @@ fn create_test_csv(content: &str) -> String {
     path.to_string_lossy().to_string()
 }
 
-// Standard minimal headers for most tests
-const MIN_HEADERS: &str = "Unique ID;Player;Position;Minutes";
-
-// Full headers with optional columns
-const FULL_HEADERS: &str = "Unique ID;Player;Nation;2nd Nat;Club;Age;Height;Left Foot;Right Foot;CA;PA;Transfer Value;Wage;Expires;Appearances;Minutes;Goals;Shots;xG;xA;Drb;Distance;Tck A;Itc;Hdrs;Clean Sheets;Goals Conceded;Saves/90;Fouls Made;Yel;Red cards;Off;Rating";
-
 // ── File Format Tests ────────────────────────────────────────────────────
 
 #[test]
