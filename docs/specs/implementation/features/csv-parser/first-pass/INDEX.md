@@ -58,12 +58,12 @@ graph TD
 ## Progress Tracking
 
 - [x] Task 01: Core Types & Stat Structs
-- [ ] Task 02: Country Code Lookup Table
-- [ ] Task 03: Position String Parser
-- [ ] Task 04: Header Parser
-- [ ] Task 05: Field Parsers
-- [ ] Task 06: Computed Metrics
-- [ ] Task 07: Parser Orchestration
-- [ ] Task 08: Tauri Commands & Wiring
-- [ ] Task 09: Integration Test — Sample CSV
-- [ ] Task 10: Edge Case Tests
+- [x] Task 02: Country Code Lookup Table
+- [x] Task 03: Position String Parser
+- [x] Task 04: Header Parser
+- [x] Task 05: Field Parsers
+- [x] Task 06: Computed Metrics
+- [x] Task 07: Parser Orchestration
+- [x] Task 08: Tauri Commands & Wiring
+- [x] Task 09: Integration Test — Sample CSV
+- [x] Task 10: Edge Case Tests

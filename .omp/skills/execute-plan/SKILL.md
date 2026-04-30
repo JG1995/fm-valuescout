@@ -55,6 +55,7 @@ digraph process {
         "Implementer subagent fixes quality issues" [shape=box];
         "Commit task changes using commit skill (.omp/skills/commit/SKILL.md)" [shape=box style=filled fillcolor=lightgreen];
         "Mark task complete in TodoWrite" [shape=box];
+        "Update INDEX.md Progress Tracking for completed task" [shape=box];
     }
 
     "Read plan, extract all tasks with full text, note context, create TodoWrite" [shape=box];
@@ -77,7 +78,8 @@ digraph process {
     "Implementer subagent fixes quality issues" -> "Dispatch code quality reviewer subagent (.omp/agents/code-reviewer.md)" [label="re-review"];
     "Code quality reviewer subagent approves?" -> "Commit task changes using commit skill (.omp/skills/commit/SKILL.md)" [label="yes"];
     "Commit task changes using commit skill (.omp/skills/commit/SKILL.md)" -> "Mark task complete in TodoWrite";
-    "Mark task complete in TodoWrite" -> "More tasks remain?";
+    "Mark task complete in TodoWrite" -> "Update INDEX.md Progress Tracking for completed task";
+    "Update INDEX.md Progress Tracking for completed task" -> "More tasks remain?";
     "More tasks remain?" -> "Dispatch implementer subagent (.omp/agents/implementer.md)" [label="yes"];
     "More tasks remain?" -> "Dispatch final code reviewer subagent for entire implementation" [label="no"];
     "Dispatch final code reviewer subagent for entire implementation" -> "Ask whether user wishes to run final review";
@@ -189,6 +191,7 @@ Code reviewer: Strengths: Good test coverage, clean. Issues: None. Approved.
 Commit: feat(scope): install-hook command with --force flag
 
 [Mark Task 1 complete]
+[Update INDEX.md Progress Tracking: mark Task 1 complete]
 
 Task 2: Recovery modes
 
@@ -225,6 +228,7 @@ Code reviewer: ✅ Approved
 Commit: feat(scope): verify/repair recovery modes
 
 [Mark Task 2 complete]
+[Update INDEX.md Progress Tracking: mark Task 2 complete]
 
 ...
 
@@ -294,6 +298,7 @@ When hitting limits, provide clear summary of what's blocking and ask user for g
 - **Start code quality review before spec compliance is ✅** (wrong order)
 - Move to next task while either review has open issues
 - **Commit before both reviews have approved** (spec compliance AND code quality must both pass before committing)
+- **Forget to update INDEX.md Progress Tracking** after committing and marking a task complete (keeps the plan's canonical status accurate)
 
 **If subagent asks questions:**
 
