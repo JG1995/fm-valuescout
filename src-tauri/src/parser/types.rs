@@ -197,7 +197,7 @@ pub struct MatchOutcomeStats {
 
 // ── Financial types ────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TransferValue {
     pub currency_symbol: Option<String>,
     pub low: Option<f64>,
@@ -205,7 +205,7 @@ pub struct TransferValue {
     pub raw: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Wage {
     pub currency_symbol: Option<String>,
     pub raw_value: Option<f64>,

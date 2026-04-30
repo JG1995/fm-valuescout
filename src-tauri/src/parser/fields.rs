@@ -13,6 +13,58 @@ pub fn get_field(record: &csv::StringRecord, index: usize) -> Option<String> {
     record.get(index).map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
+/// Extract a field from a CSV record by optional column index, apply a parser.
+/// Returns None if the column is missing (index is None), out of bounds, or the
+/// field is empty.
+pub fn extract_field<U>(
+    record: &csv::StringRecord,
+    col_index: Option<usize>,
+    parse: impl Fn(&str) -> Option<U>,
+) -> Option<U> {
+    col_index.and_then(|i| record.get(i).and_then(|s| parse(s)))
+}
+
+
+/// Wrapper for parse_appearances to convert to Option for use with extract_field.
+pub fn parse_appearances_option(raw: &str) -> Option<(Option<u16>, Option<u16>)> {
+    let (started, sub) = parse_appearances(raw);
+    if started.is_none() && sub.is_none() {
+        None
+    } else {
+        Some((started, sub))
+    }
+}
+
+/// Extract a field from a CSV record where the parser also returns an optional warning.
+/// Pushes any warning into the warnings vector with the given row_number and field name.
+pub fn extract_field_with_warning<T>(
+    record: &csv::StringRecord,
+    col_index: Option<usize>,
+    row_number: usize,
+    field_name: &str,
+    parse: impl Fn(&str) -> (T, Option<String>),
+    warnings: &mut Vec<crate::parser::types::ParseWarning>,
+) -> Option<T> {
+    let idx = match col_index {
+        Some(i) => i,
+        None => return None,
+    };
+    let raw = match record.get(idx) {
+        Some(r) => r,
+        None => return None,
+    };
+    let (value, warning) = parse(raw);
+    if let Some(msg) = warning {
+        warnings.push(crate::parser::types::ParseWarning {
+            row_number,
+            field: field_name.to_string(),
+            message: msg,
+        });
+    }
+    Some(value)
+}
+
+
 /// Parse an optional f64 from a CSV field. Returns None + warning on failure.
 pub fn parse_f64(raw: &str, allow_negative: bool) -> Result<Option<f64>, String> {
     let raw = raw.trim();
@@ -604,4 +656,59 @@ mod tests {
     fn parse_minutes_zero() {
         assert_eq!(parse_minutes("0"), Some(0));
     }
+
+    #[test]
+    fn extract_field_some_returns_parsed_value() {
+        let record = csv::StringRecord::from(vec!["42", "hello", ""]);
+        let result = extract_field(&record, Some(0), |s| s.trim().parse::<u32>().ok());
+        assert_eq!(result, Some(42u32));
+    }
+
+    #[test]
+    fn extract_field_none_index_returns_none() {
+        let record = csv::StringRecord::from(vec!["42"]);
+        let result: Option<u32> = extract_field(&record, None, |s| s.trim().parse().ok());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn extract_field_out_of_bounds_returns_none() {
+        let record = csv::StringRecord::from(vec!["42"]);
+        let result: Option<u32> = extract_field(&record, Some(5), |s| s.trim().parse().ok());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn extract_field_with_warning_returns_value_and_no_warning() {
+        let record = csv::StringRecord::from(vec!["Very Strong"]);
+        let mut warnings: Vec<crate::parser::types::ParseWarning> = vec![];
+        let result = extract_field_with_warning(
+            &record,
+            Some(0),
+            1,
+            "Left Foot",
+            crate::parser::fields::parse_footedness,
+            &mut warnings,
+        );
+        assert!(result.is_some());
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn extract_field_with_warning_none_index_no_warning() {
+        let record = csv::StringRecord::from(vec!["Very Strong"]);
+        let mut warnings: Vec<crate::parser::types::ParseWarning> = vec![];
+        let result = extract_field_with_warning(
+            &record,
+            None,
+            1,
+            "Left Foot",
+            crate::parser::fields::parse_footedness,
+            &mut warnings,
+        );
+        assert!(result.is_none());
+        assert!(warnings.is_empty());
+    }
+
+
 }

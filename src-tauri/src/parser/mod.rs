@@ -244,122 +244,44 @@ pub fn parse_csv(path: &str) -> Result<ParseResult, String> {
         // Build base player
         let mut player = ParsedPlayer::empty(uid, name, positions);
 
-        // ── Soft fields: nationality ────────────────────────────────────
-        if let Some(idx) = col_nation {
-            if let Some(raw) = record.get(idx) {
-                player.nationality = parse_nationality(raw);
-            }
-        }
+        // ── Soft fields ────────────────────────────────────────────────
+        player.nationality = extract_field(&record, col_nation, parse_nationality);
+        player.second_nationality = extract_field(&record, col_2nd_nat, parse_second_nationality);
+        player.club = extract_field(&record, col_club, parse_club);
+        player.age = extract_field(&record, col_age, parse_age);
+        player.height = extract_field(&record, col_height, parse_height);
 
-        if let Some(idx) = col_2nd_nat {
-            if let Some(raw) = record.get(idx) {
-                player.second_nationality = parse_second_nationality(raw);
-            }
-        }
+        // ── Soft fields with warnings ──────────────────────────────────
+        player.left_foot = extract_field_with_warning(
+            &record, col_left_foot, row_number, "Left Foot", parse_footedness, &mut warnings,
+        );
+        player.right_foot = extract_field_with_warning(
+            &record, col_right_foot, row_number, "Right Foot", parse_footedness, &mut warnings,
+        );
 
-        // ── Soft fields: club, age, height ─────────────────────────────
-        if let Some(idx) = col_club {
-            if let Some(raw) = record.get(idx) {
-                player.club = parse_club(raw);
-            }
-        }
-        if let Some(idx) = col_age {
-            if let Some(raw) = record.get(idx) {
-                player.age = parse_age(raw);
-            }
-        }
-        if let Some(idx) = col_height {
-            if let Some(raw) = record.get(idx) {
-                player.height = parse_height(raw);
-            }
-        }
+        // ── Optional columns ───────────────────────────────────────────
+        player.ca = extract_field(&record, col_ca, parse_ability);
+        player.pa = extract_field(&record, col_pa, parse_ability);
 
-        // ── Soft fields: footedness ────────────────────────────────────
-        if let Some(idx) = col_left_foot {
-            if let Some(raw) = record.get(idx) {
-                let (f, w) = parse_footedness(raw);
-                player.left_foot = Some(f);
-                if let Some(msg) = w {
-                    warnings.push(ParseWarning {
-                        row_number,
-                        field: "Left Foot".to_string(),
-                        message: msg,
-                    });
-                }
-            }
-        }
-        if let Some(idx) = col_right_foot {
-            if let Some(raw) = record.get(idx) {
-                let (f, w) = parse_footedness(raw);
-                player.right_foot = Some(f);
-                if let Some(msg) = w {
-                    warnings.push(ParseWarning {
-                        row_number,
-                        field: "Right Foot".to_string(),
-                        message: msg,
-                    });
-                }
-            }
-        }
-
-        // ── Optional columns: CA, PA ───────────────────────────────────
-        if let Some(idx) = col_ca {
-            if let Some(raw) = record.get(idx) {
-                player.ca = parse_ability(raw);
-            }
-        }
-        if let Some(idx) = col_pa {
-            if let Some(raw) = record.get(idx) {
-                player.pa = parse_ability(raw);
-            }
-        }
-
-        // ── Financial fields ───────────────────────────────────────────
-        if let Some(idx) = col_transfer_value {
-            if let Some(raw) = record.get(idx) {
-                let (tv, w) = parse_transfer_value(raw);
-                player.transfer_value = tv;
-                if let Some(msg) = w {
-                    warnings.push(ParseWarning {
-                        row_number,
-                        field: "Transfer Value".to_string(),
-                        message: msg,
-                    });
-                }
-            }
-        }
-        if let Some(idx) = col_wage {
-            if let Some(raw) = record.get(idx) {
-                let (wage, w) = parse_wage(raw);
-                player.wage = wage;
-                if let Some(msg) = w {
-                    warnings.push(ParseWarning {
-                        row_number,
-                        field: "Wage".to_string(),
-                        message: msg,
-                    });
-                }
-            }
-        }
+        // ── Financial fields ────────────────────────────────────────────
+        player.transfer_value = extract_field_with_warning(
+            &record, col_transfer_value, row_number, "Transfer Value",
+            parse_transfer_value, &mut warnings,
+        )
+        .unwrap_or_default();
+        player.wage = extract_field_with_warning(
+            &record, col_wage, row_number, "Wage", parse_wage, &mut warnings,
+        )
+        .unwrap_or_default();
 
         // ── Date / playing time ─────────────────────────────────────────
-        if let Some(idx) = col_expires {
-            if let Some(raw) = record.get(idx) {
-                player.contract_expires = parse_date(raw);
-            }
-        }
-        if let Some(idx) = col_appearances {
-            if let Some(raw) = record.get(idx) {
-                let (started, sub) = parse_appearances(raw);
-                player.appearances_started = started;
-                player.appearances_sub = sub;
-            }
-        }
-        if let Some(idx) = col_minutes {
-            if let Some(raw) = record.get(idx) {
-                player.minutes = parse_minutes(raw);
-            }
-        }
+        player.contract_expires = extract_field(&record, col_expires, parse_date);
+        let (started, sub) = extract_field(&record, col_appearances, parse_appearances_option)
+            .unwrap_or((None, None));
+        player.appearances_started = started;
+        player.appearances_sub = sub;
+        player.minutes = extract_field(&record, col_minutes, parse_minutes);
+
 
         // ── Stat fields ────────────────────────────────────────────────
         for &(field_name, ref col_def) in STAT_COLUMNS {
