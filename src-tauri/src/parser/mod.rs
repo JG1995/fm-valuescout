@@ -13,102 +13,108 @@ use headers::{parse_headers, get_column_index, has_column};
 use fields::*;
 use metrics::compute_metrics;
 
-/// Column name constants for all stat fields.
-
-/// Maps internal field name → CSV header name (for lookup).
-
+/// Column definition for stat column lookup.
 struct ColumnDef {
-
     csv_name: &'static str,
-
     allow_negative: bool,
-
 }
 
+/// Adding a new stat requires one line here + the field in the stat struct in types.rs.
+macro_rules! define_stats {
+    ($($field:literal => { csv: $csv:literal, neg: $neg:expr, access: $($access:ident).+ }),* $(,)?) => {
+        const STAT_COLUMNS: &[(&str, ColumnDef)] = &[
+            $(
+                ($field, ColumnDef { csv_name: $csv, allow_negative: $neg }),
+            )*
+        ];
 
+        fn assign_stat(player: &mut ParsedPlayer, field_name: &str, value: Option<f64>) {
+            match field_name {
+                $(
+                    $field => player.$($access).+ = value,
+                )*
+                _ => {} // Unknown stat name, skip
+            }
+        }
+    };
+}
 
-// ── Stat column definitions ────────────────────────────────────────────
-
-// Each stat has a CSV header name and whether negative values are allowed.
-
-// ── Stat column definitions ────────────────────────────────────────────
-// Each stat has a CSV header name and whether negative values are allowed.
-
-const STAT_COLUMNS: &[(&str, ColumnDef)] = &[
+define_stats! {
     // Attacking
-    ("goals", ColumnDef { csv_name: "Goals", allow_negative: false }),
-    ("goals_from_outside_box", ColumnDef { csv_name: "Goals From Outside The Box", allow_negative: false }),
-    ("xg", ColumnDef { csv_name: "xG", allow_negative: false }),
-    ("np_xg", ColumnDef { csv_name: "NP-xG", allow_negative: false }),
-    ("xg_overperformance", ColumnDef { csv_name: "xG-OP", allow_negative: true }),
-    ("xg_per_shot", ColumnDef { csv_name: "xG/shot", allow_negative: false }),
-    ("shots", ColumnDef { csv_name: "Shots", allow_negative: false }),
-    ("shots_from_outside_box_per_90", ColumnDef { csv_name: "Shots From Outside The Box Per 90 minutes", allow_negative: false }),
-    ("shots_on_target", ColumnDef { csv_name: "ShT", allow_negative: false }),
-    ("penalties_taken", ColumnDef { csv_name: "Pens", allow_negative: false }),
-    ("penalties_scored", ColumnDef { csv_name: "Pens S", allow_negative: false }),
-    ("free_kick_shots", ColumnDef { csv_name: "Free Kick Shots", allow_negative: false }),
+    "goals" => { csv: "Goals", neg: false, access: attacking.goals },
+    "goals_from_outside_box" => { csv: "Goals From Outside The Box", neg: false, access: attacking.goals_from_outside_box },
+    "xg" => { csv: "xG", neg: false, access: attacking.xg },
+    "np_xg" => { csv: "NP-xG", neg: false, access: attacking.np_xg },
+    "xg_overperformance" => { csv: "xG-OP", neg: true, access: attacking.xg_overperformance },
+    "xg_per_shot" => { csv: "xG/shot", neg: false, access: attacking.xg_per_shot },
+    "shots" => { csv: "Shots", neg: false, access: attacking.shots },
+    "shots_from_outside_box_per_90" => { csv: "Shots From Outside The Box Per 90 minutes", neg: false, access: attacking.shots_from_outside_box_per_90 },
+    "shots_on_target" => { csv: "ShT", neg: false, access: attacking.shots_on_target },
+    "penalties_taken" => { csv: "Pens", neg: false, access: attacking.penalties_taken },
+    "penalties_scored" => { csv: "Pens S", neg: false, access: attacking.penalties_scored },
+    "free_kick_shots" => { csv: "Free Kick Shots", neg: false, access: attacking.free_kick_shots },
     // Chance creation
-    ("assists", ColumnDef { csv_name: "Assists", allow_negative: false }),
-    ("xa", ColumnDef { csv_name: "xA", allow_negative: false }),
-    ("chances_created_per_90", ColumnDef { csv_name: "Ch C/90", allow_negative: false }),
-    ("clear_cut_chances", ColumnDef { csv_name: "CCC", allow_negative: false }),
-    ("key_passes", ColumnDef { csv_name: "Key", allow_negative: false }),
-    ("open_play_key_passes_per_90", ColumnDef { csv_name: "OP-KP/90", allow_negative: false }),
-    ("crosses_attempted", ColumnDef { csv_name: "Cr A", allow_negative: false }),
-    ("crosses_completed", ColumnDef { csv_name: "Cr C", allow_negative: false }),
-    ("open_play_crosses_attempted", ColumnDef { csv_name: "OP-Crs A", allow_negative: false }),
-    ("open_play_crosses_completed", ColumnDef { csv_name: "OP-Crs C", allow_negative: false }),
-    ("passes_attempted", ColumnDef { csv_name: "Pas A", allow_negative: false }),
-    ("passes_completed", ColumnDef { csv_name: "Pas C", allow_negative: false }),
-    ("progressive_passes", ColumnDef { csv_name: "PsP", allow_negative: false }),
+    "assists" => { csv: "Assists", neg: false, access: chance_creation.assists },
+    "xa" => { csv: "xA", neg: false, access: chance_creation.xa },
+    "chances_created_per_90" => { csv: "Ch C/90", neg: false, access: chance_creation.chances_created_per_90 },
+    "clear_cut_chances" => { csv: "CCC", neg: false, access: chance_creation.clear_cut_chances },
+    "key_passes" => { csv: "Key", neg: false, access: chance_creation.key_passes },
+    "open_play_key_passes_per_90" => { csv: "OP-KP/90", neg: false, access: chance_creation.open_play_key_passes_per_90 },
+    "crosses_attempted" => { csv: "Cr A", neg: false, access: chance_creation.crosses_attempted },
+    "crosses_completed" => { csv: "Cr C", neg: false, access: chance_creation.crosses_completed },
+    "open_play_crosses_attempted" => { csv: "OP-Crs A", neg: false, access: chance_creation.open_play_crosses_attempted },
+    "open_play_crosses_completed" => { csv: "OP-Crs C", neg: false, access: chance_creation.open_play_crosses_completed },
+    "passes_attempted" => { csv: "Pas A", neg: false, access: chance_creation.passes_attempted },
+    "passes_completed" => { csv: "Pas C", neg: false, access: chance_creation.passes_completed },
+    "progressive_passes" => { csv: "PsP", neg: false, access: chance_creation.progressive_passes },
     // Movement
-    ("dribbles", ColumnDef { csv_name: "Drb", allow_negative: false }),
-    ("distance_km", ColumnDef { csv_name: "Distance", allow_negative: false }), // has "km" suffix
-    ("sprints_per_90", ColumnDef { csv_name: "Sprints/90", allow_negative: false }),
-    ("possession_lost_per_90", ColumnDef { csv_name: "Poss Lost/90", allow_negative: false }),
+    "dribbles" => { csv: "Drb", neg: false, access: movement.dribbles },
+    "distance_km" => { csv: "Distance", neg: false, access: movement.distance_km },
+    "sprints_per_90" => { csv: "Sprints/90", neg: false, access: movement.sprints_per_90 },
+    "possession_lost_per_90" => { csv: "Poss Lost/90", neg: false, access: movement.possession_lost_per_90 },
     // Defending
-    ("tackles_attempted", ColumnDef { csv_name: "Tck A", allow_negative: false }),
-    ("tackles_completed", ColumnDef { csv_name: "Tck C", allow_negative: false }),
-    ("key_tackles", ColumnDef { csv_name: "K Tck", allow_negative: false }),
-    ("interceptions", ColumnDef { csv_name: "Itc", allow_negative: false }),
-    ("possession_won_per_90", ColumnDef { csv_name: "Poss Won/90", allow_negative: false }),
-    ("pressures_attempted", ColumnDef { csv_name: "Pres A", allow_negative: false }),
-    ("pressures_completed", ColumnDef { csv_name: "Pres C", allow_negative: false }),
-    ("blocks", ColumnDef { csv_name: "Blk", allow_negative: false }),
-    ("shots_blocked", ColumnDef { csv_name: "Shts Blckd", allow_negative: false }),
-    ("clearances", ColumnDef { csv_name: "Clearances", allow_negative: false }),
+    "tackles_attempted" => { csv: "Tck A", neg: false, access: defending.tackles_attempted },
+    "tackles_completed" => { csv: "Tck C", neg: false, access: defending.tackles_completed },
+    "key_tackles" => { csv: "K Tck", neg: false, access: defending.key_tackles },
+    "interceptions" => { csv: "Itc", neg: false, access: defending.interceptions },
+    "possession_won_per_90" => { csv: "Poss Won/90", neg: false, access: defending.possession_won_per_90 },
+    "pressures_attempted" => { csv: "Pres A", neg: false, access: defending.pressures_attempted },
+    "pressures_completed" => { csv: "Pres C", neg: false, access: defending.pressures_completed },
+    "blocks" => { csv: "Blk", neg: false, access: defending.blocks },
+    "shots_blocked" => { csv: "Shts Blckd", neg: false, access: defending.shots_blocked },
+    "clearances" => { csv: "Clearances", neg: false, access: defending.clearances },
     // Aerial
-    ("aerial_challenges_attempted", ColumnDef { csv_name: "Hdrs A", allow_negative: false }),
-    ("aerial_challenges_won", ColumnDef { csv_name: "Hdrs", allow_negative: false }),
-    ("aerial_challenges_lost_per_90", ColumnDef { csv_name: "Hdrs L/90", allow_negative: false }),
-    ("key_headers_per_90", ColumnDef { csv_name: "K Hdrs/90", allow_negative: false }),
+    "aerial_challenges_attempted" => { csv: "Hdrs A", neg: false, access: aerial.aerial_challenges_attempted },
+    "aerial_challenges_won" => { csv: "Hdrs", neg: false, access: aerial.aerial_challenges_won },
+    "aerial_challenges_lost_per_90" => { csv: "Hdrs L/90", neg: false, access: aerial.aerial_challenges_lost_per_90 },
+    "key_headers_per_90" => { csv: "K Hdrs/90", neg: false, access: aerial.key_headers_per_90 },
     // Goalkeeping
-    ("clean_sheets", ColumnDef { csv_name: "Clean Sheets", allow_negative: false }),
-    ("goals_conceded", ColumnDef { csv_name: "Goals Conceded", allow_negative: false }),
-    ("saves_per_90", ColumnDef { csv_name: "Saves/90", allow_negative: false }),
-    ("expected_save_pct", ColumnDef { csv_name: "xSv %", allow_negative: false }),
-    ("expected_goals_prevented", ColumnDef { csv_name: "xGP", allow_negative: true }),
-    ("saves_held", ColumnDef { csv_name: "Svh", allow_negative: false }),
-    ("saves_parried", ColumnDef { csv_name: "Svp", allow_negative: false }),
-    ("saves_tipped", ColumnDef { csv_name: "Svt", allow_negative: false }),
-    ("penalties_faced", ColumnDef { csv_name: "Pens Faced", allow_negative: false }),
-    ("penalties_saved", ColumnDef { csv_name: "Pens Saved", allow_negative: false }),
+    "clean_sheets" => { csv: "Clean Sheets", neg: false, access: goalkeeping.clean_sheets },
+    "goals_conceded" => { csv: "Goals Conceded", neg: false, access: goalkeeping.goals_conceded },
+    "saves_per_90" => { csv: "Saves/90", neg: false, access: goalkeeping.saves_per_90 },
+    "expected_save_pct" => { csv: "xSv %", neg: false, access: goalkeeping.expected_save_pct },
+    "expected_goals_prevented" => { csv: "xGP", neg: true, access: goalkeeping.expected_goals_prevented },
+    "saves_held" => { csv: "Svh", neg: false, access: goalkeeping.saves_held },
+    "saves_parried" => { csv: "Svp", neg: false, access: goalkeeping.saves_parried },
+    "saves_tipped" => { csv: "Svt", neg: false, access: goalkeeping.saves_tipped },
+    "penalties_faced" => { csv: "Pens Faced", neg: false, access: goalkeeping.penalties_faced },
+    "penalties_saved" => { csv: "Pens Saved", neg: false, access: goalkeeping.penalties_saved },
     // Discipline
-    ("fouls_made", ColumnDef { csv_name: "Fouls Made", allow_negative: false }),
-    ("fouls_against", ColumnDef { csv_name: "Fouls Against", allow_negative: false }),
-    ("yellow_cards", ColumnDef { csv_name: "Yel", allow_negative: false }),
-    ("red_cards", ColumnDef { csv_name: "Red cards", allow_negative: false }),
-    ("offsides", ColumnDef { csv_name: "Off", allow_negative: false }),
-    ("mistakes_leading_to_goal", ColumnDef { csv_name: "MLG", allow_negative: false }),
+    "fouls_made" => { csv: "Fouls Made", neg: false, access: discipline.fouls_made },
+    "fouls_against" => { csv: "Fouls Against", neg: false, access: discipline.fouls_against },
+    "yellow_cards" => { csv: "Yel", neg: false, access: discipline.yellow_cards },
+    "red_cards" => { csv: "Red cards", neg: false, access: discipline.red_cards },
+    "offsides" => { csv: "Off", neg: false, access: discipline.offsides },
+    "mistakes_leading_to_goal" => { csv: "MLG", neg: false, access: discipline.mistakes_leading_to_goal },
     // Match outcome
-    ("average_rating", ColumnDef { csv_name: "Rating", allow_negative: false }),
-    ("player_of_the_match", ColumnDef { csv_name: "PoM", allow_negative: false }),
-    ("games_won", ColumnDef { csv_name: "Games Won", allow_negative: false }),
-    ("games_drawn", ColumnDef { csv_name: "Games Drawn", allow_negative: false }),
-    ("games_lost", ColumnDef { csv_name: "Games Lost", allow_negative: false }),
-    ("team_goals", ColumnDef { csv_name: "Team Goals", allow_negative: false }),
-];
+    "average_rating" => { csv: "Rating", neg: false, access: match_outcome.average_rating },
+    "player_of_the_match" => { csv: "PoM", neg: false, access: match_outcome.player_of_the_match },
+    "games_won" => { csv: "Games Won", neg: false, access: match_outcome.games_won },
+    "games_drawn" => { csv: "Games Drawn", neg: false, access: match_outcome.games_drawn },
+    "games_lost" => { csv: "Games Lost", neg: false, access: match_outcome.games_lost },
+    "team_goals" => { csv: "Team Goals", neg: false, access: match_outcome.team_goals },
+}
+
 
 /// Main entry point: parse a CSV file and return structured results.
 /// This is a pure function — no side effects, no database writes.
@@ -336,77 +342,6 @@ fn parse_uid_safe(record: &csv::StringRecord, index: Option<usize>) -> Option<Re
     }
 }
 
-/// Assign a stat value to the correct field on a ParsedPlayer.
-fn assign_stat(player: &mut ParsedPlayer, field_name: &str, value: Option<f64>) {
-    match field_name {
-        "goals" => player.attacking.goals = value,
-        "goals_from_outside_box" => player.attacking.goals_from_outside_box = value,
-        "xg" => player.attacking.xg = value,
-        "np_xg" => player.attacking.np_xg = value,
-        "xg_overperformance" => player.attacking.xg_overperformance = value,
-        "xg_per_shot" => player.attacking.xg_per_shot = value,
-        "shots" => player.attacking.shots = value,
-        "shots_from_outside_box_per_90" => player.attacking.shots_from_outside_box_per_90 = value,
-        "shots_on_target" => player.attacking.shots_on_target = value,
-        "penalties_taken" => player.attacking.penalties_taken = value,
-        "penalties_scored" => player.attacking.penalties_scored = value,
-        "free_kick_shots" => player.attacking.free_kick_shots = value,
-        "assists" => player.chance_creation.assists = value,
-        "xa" => player.chance_creation.xa = value,
-        "chances_created_per_90" => player.chance_creation.chances_created_per_90 = value,
-        "clear_cut_chances" => player.chance_creation.clear_cut_chances = value,
-        "key_passes" => player.chance_creation.key_passes = value,
-        "open_play_key_passes_per_90" => player.chance_creation.open_play_key_passes_per_90 = value,
-        "crosses_attempted" => player.chance_creation.crosses_attempted = value,
-        "crosses_completed" => player.chance_creation.crosses_completed = value,
-        "open_play_crosses_attempted" => player.chance_creation.open_play_crosses_attempted = value,
-        "open_play_crosses_completed" => player.chance_creation.open_play_crosses_completed = value,
-        "passes_attempted" => player.chance_creation.passes_attempted = value,
-        "passes_completed" => player.chance_creation.passes_completed = value,
-        "progressive_passes" => player.chance_creation.progressive_passes = value,
-        "dribbles" => player.movement.dribbles = value,
-        "distance_km" => player.movement.distance_km = value,
-        "sprints_per_90" => player.movement.sprints_per_90 = value,
-        "possession_lost_per_90" => player.movement.possession_lost_per_90 = value,
-        "tackles_attempted" => player.defending.tackles_attempted = value,
-        "tackles_completed" => player.defending.tackles_completed = value,
-        "key_tackles" => player.defending.key_tackles = value,
-        "interceptions" => player.defending.interceptions = value,
-        "possession_won_per_90" => player.defending.possession_won_per_90 = value,
-        "pressures_attempted" => player.defending.pressures_attempted = value,
-        "pressures_completed" => player.defending.pressures_completed = value,
-        "blocks" => player.defending.blocks = value,
-        "shots_blocked" => player.defending.shots_blocked = value,
-        "clearances" => player.defending.clearances = value,
-        "aerial_challenges_attempted" => player.aerial.aerial_challenges_attempted = value,
-        "aerial_challenges_won" => player.aerial.aerial_challenges_won = value,
-        "aerial_challenges_lost_per_90" => player.aerial.aerial_challenges_lost_per_90 = value,
-        "key_headers_per_90" => player.aerial.key_headers_per_90 = value,
-        "clean_sheets" => player.goalkeeping.clean_sheets = value,
-        "goals_conceded" => player.goalkeeping.goals_conceded = value,
-        "saves_per_90" => player.goalkeeping.saves_per_90 = value,
-        "expected_save_pct" => player.goalkeeping.expected_save_pct = value,
-        "expected_goals_prevented" => player.goalkeeping.expected_goals_prevented = value,
-        "saves_held" => player.goalkeeping.saves_held = value,
-        "saves_parried" => player.goalkeeping.saves_parried = value,
-        "saves_tipped" => player.goalkeeping.saves_tipped = value,
-        "penalties_faced" => player.goalkeeping.penalties_faced = value,
-        "penalties_saved" => player.goalkeeping.penalties_saved = value,
-        "fouls_made" => player.discipline.fouls_made = value,
-        "fouls_against" => player.discipline.fouls_against = value,
-        "yellow_cards" => player.discipline.yellow_cards = value,
-        "red_cards" => player.discipline.red_cards = value,
-        "offsides" => player.discipline.offsides = value,
-        "mistakes_leading_to_goal" => player.discipline.mistakes_leading_to_goal = value,
-        "average_rating" => player.match_outcome.average_rating = value,
-        "player_of_the_match" => player.match_outcome.player_of_the_match = value,
-        "games_won" => player.match_outcome.games_won = value,
-        "games_drawn" => player.match_outcome.games_drawn = value,
-        "games_lost" => player.match_outcome.games_lost = value,
-        "team_goals" => player.match_outcome.team_goals = value,
-        _ => {} // Unknown stat name, skip
-    }
-}
 
 #[cfg(test)]
 mod tests {
