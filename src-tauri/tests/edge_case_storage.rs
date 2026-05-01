@@ -2,10 +2,7 @@
 // Tests boundary conditions, error paths, and unusual scenarios
 
 use fm_valuescout_lib::storage;
-use fm_valuescout_lib::parser::types::{
-    AttackingStats, ParsedPlayer, Position, Role, Side, Nationality,
-    TransferValue, Wage,
-};
+use fm_valuescout_lib::parser::types::{ParsedPlayer, Position, Role, Side};
 use rusqlite::Connection;
 
 // ── Test helpers ───────────────────────────────────────────────────────
@@ -313,7 +310,7 @@ fn save_name_whitespace_only_rejected() {
 #[test]
 fn save_name_trimmed() {
     let conn = setup_db();
-    let save = storage::create_save(&conn, "  Trimmed Name  ").unwrap();
+    let _save = storage::create_save(&conn, "  Trimmed Name  ").unwrap();
 
     let saves = storage::list_saves(&conn).unwrap();
     let found = saves.iter().find(|s| s.name == "Trimmed Name");

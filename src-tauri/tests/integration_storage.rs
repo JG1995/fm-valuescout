@@ -106,13 +106,13 @@ fn career_timeline_across_seasons() {
     ).unwrap();
 
     // Season 2
-    let season2 = storage::import_season(
+    let _season2 = storage::import_season(
         &conn, save.id, "2029-11-15",
         vec![make_detailed_player(2001, "Pedri", "Barcelona", 22)],
     ).unwrap();
 
     // Season 3
-    let season3 = storage::import_season(
+    let _season3 = storage::import_season(
         &conn, save.id, "2030-11-15",
         vec![make_detailed_player(2001, "Pedri", "Barcelona", 23)],
     ).unwrap();
