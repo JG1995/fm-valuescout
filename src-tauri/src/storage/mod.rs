@@ -263,7 +263,7 @@ pub fn list_saves(conn: &Connection) -> Result<Vec<Save>, StorageError> {
          ORDER BY s.created_at DESC"
     )?;
 
-    let saves = stmt.query_map([], |row| {
+    let saves: Vec<Save> = stmt.query_map([], |row| {
         Ok(Save {
             id: row.get(0)?,
             name: row.get(1)?,
@@ -272,7 +272,7 @@ pub fn list_saves(conn: &Connection) -> Result<Vec<Save>, StorageError> {
             season_count: row.get(4)?,
             player_count: row.get(5)?,
         })
-    })?.filter_map(|r| r.ok()).collect();
+    })?.collect::<Result<Vec<_>, _>>()?;
 
     Ok(saves)
 }
@@ -571,7 +571,7 @@ pub fn list_seasons(conn: &Connection, save_id: i64) -> Result<Vec<Season>, Stor
          FROM seasons WHERE save_id = ?1
          ORDER BY in_game_date ASC"
     )?;
-    let seasons = stmt.query_map(rusqlite::params![save_id], |row| {
+    let seasons: Vec<Season> = stmt.query_map(rusqlite::params![save_id], |row| {
         Ok(Season {
             id: row.get(0)?,
             save_id: row.get(1)?,
@@ -579,7 +579,7 @@ pub fn list_seasons(conn: &Connection, save_id: i64) -> Result<Vec<Season>, Stor
             label: row.get(3)?,
             imported_at: row.get(4)?,
         })
-    })?.filter_map(|r| r.ok()).collect();
+    })?.collect::<Result<Vec<_>, _>>()?;
     Ok(seasons)
 }
 
@@ -689,11 +689,10 @@ pub fn get_players_for_season(
          ORDER BY p.name ASC",
     )?;
 
-    let players = stmt
-        .query_map(rusqlite::params![season_id], |row| row_to_player_season(row))
-        .map_err(|e| StorageError::Database(e.to_string()))?
-        .filter_map(|r| r.ok())
-        .collect();
+    let players: Vec<PlayerSeasonData> = stmt
+        .query_map(rusqlite::params![season_id], |row| row_to_player_season(row))?
+        .collect::<Result<Vec<_>, _>>()?;
+
     Ok(players)
 }
 
@@ -718,11 +717,9 @@ pub fn get_player_career(
     )?;
 
 
-    let career = stmt
-        .query_map(rusqlite::params![save_id, player_id], |row| row_to_player_season(row))
-        .map_err(|e| StorageError::Database(e.to_string()))?
-        .filter_map(|r| r.ok())
-        .collect();
+    let career: Vec<PlayerSeasonData> = stmt
+        .query_map(rusqlite::params![save_id, player_id], |row| row_to_player_season(row))?
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(career)
 }
 
