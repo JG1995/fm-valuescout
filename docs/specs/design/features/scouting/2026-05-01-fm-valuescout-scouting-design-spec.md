@@ -5,6 +5,7 @@
 FM ValueScout is a moneyball-style scouting tool for Football Manager players. The core feature is "Moneyball Scouting" — analyzing player data from CSV imports to rank suitability for positions based on configurable archetypes.
 
 **Relationship to existing features:**
+
 - Depends on: CSV Parser (already implemented, parses FM exports into `ParsedPlayer`)
 - Depends on: Database Integration (already implemented, stores saves/seasons/players)
 - Informs: Player Profile (displays detailed metrics for a selected player)
@@ -13,6 +14,7 @@ FM ValueScout is a moneyball-style scouting tool for Football Manager players. T
 ## Problem Statement
 
 Currently, FM moneyball players manually export data to Excel, format it, and calculate scores themselves. The scouting feature automates this by:
+
 1. Loading player data from imported CSVs
 2. Scoring players against position-specific archetypes using weighted metrics
 3. Presenting results in an intuitive pitch-based UI with a top-3 podium
@@ -44,6 +46,7 @@ Currently, FM moneyball players manually export data to Excel, format it, and ca
 ### Must-haves (Phase 1 MVP)
 
 #### 1. Pitch View UI
+
 - **Purpose**: Interactive football pitch showing all 11 position slots
 - **Behavior**:
   - Displays a stylized pitch (4-4-2 or similar standard formation)
@@ -56,6 +59,7 @@ Currently, FM moneyball players manually export data to Excel, format it, and ca
 - **Decisions made**: Click on position → opens selector with available archetypes for that role
 
 #### 2. Archetype Management
+
 - **Purpose**: Define and persist scoring configurations per position
 - **Behavior**:
   - Pre-populated with default archetypes from metrics.md (loaded from embedded defaults)
@@ -78,6 +82,7 @@ Currently, FM moneyball players manually export data to Excel, format it, and ca
 - **Decisions made**: Archetype selection is single (not separate in/out possession); each archetype contains both
 
 #### 3. Scoring Algorithm
+
 - **Purpose**: Score each player against the selected archetype
 - **Algorithm**:
   1. For each metric in archetype: compute percentile within loaded dataset (0-100)
@@ -93,6 +98,7 @@ Currently, FM moneyball players manually export data to Excel, format it, and ca
 - **Decisions made**: Percentile-based normalization; combined in/out possession in single archetype
 
 #### 4. Results Podium (Top 3)
+
 - **Purpose**: Highlight the best-scoring players for the selected role
 - **Behavior**:
   - Classic 3-2-1 podium layout: 1st center (tallest), 2nd left, 3rd right
@@ -101,6 +107,7 @@ Currently, FM moneyball players manually export data to Excel, format it, and ca
 - **Decisions made**: Podium style with 1st tallest center
 
 #### 5. Results Table
+
 - **Purpose**: Full unranked list of players for the selected archetype
 - **Behavior**:
   - Shows: name, club, all positions, age, transfer value, raw score, value-adjusted score, key metrics for archetype
@@ -112,6 +119,7 @@ Currently, FM moneyball players manually export data to Excel, format it, and ca
   - Very long player lists: virtualized scroll
 
 #### 6. Full Database View (No Role Selected)
+
 - **Purpose**: Browse all players when no archetype is selected
 - **Behavior**:
   - Table shows: name, club, all positions, age, nationality, transfer value
@@ -255,14 +263,17 @@ CSV Import → parse_csv → ParsedPlayer[]
 ## Testing Strategy
 
 ### Unit Tests
+
 - Scoring algorithm: percentile calculation, weight normalization, inverted metrics
 - Archetype validation: weights sum, required fields
 
 ### Integration Tests
+
 - Tauri commands for archetype CRUD
 - Full scoring pipeline: load players → compute scores → verify podium
 
 ### E2E Tests
+
 - CSV import → select archetype → verify podium updates
 - Create custom archetype → verify it appears in selector
 - Delete archetype → verify UI updates
@@ -279,23 +290,23 @@ CSV Import → parse_csv → ParsedPlayer[]
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
+| Risk                                          | Mitigation                               |
+| --------------------------------------------- | ---------------------------------------- |
 | Percentile computation slow on large datasets | Pre-compute once on load, cache in store |
-| Many archetypes cause UI clutter | Group by position in selector |
-| Score ties cause inconsistent results | Secondary sort by name |
+| Many archetypes cause UI clutter              | Group by position in selector            |
+| Score ties cause inconsistent results         | Secondary sort by name                   |
 
 ## Decision Log
 
-| Decision | Options Considered | Chosen | Rationale |
-|----------|-------------------|--------|-----------|
-| Data source | CSV + PC memory | CSV only | PC memory reading not feasible Phase 1 |
-| DB vs Role view | Two tabs vs unified | Unified (no role = full DB) | Simpler UX |
-| Archetype structure | Separate in/out vs combined | Combined (single archetype has both) | Simpler selection |
-| Scoring normalization | Raw values vs percentiles | Percentiles | Fair comparison across different scales |
-| Value-adjusted formula | Various | score / (value / median) | Intuitive: "score per unit cost" |
-| Missing value fallback | Error vs default | Median fallback | Graceful degradation |
-| Multi-position handling | Best only vs all | Score all positions | More information for user |
-| Podium layout | Various | 3-2-1 style | Recognizable pattern |
-| Archetype storage | LocalStorage vs SQLite | SQLite | Consistent with existing data model |
-| Row click behavior | Preview vs navigate | Navigate to profile | Cleaner flow |
+| Decision                | Options Considered          | Chosen                               | Rationale                               |
+| ----------------------- | --------------------------- | ------------------------------------ | --------------------------------------- |
+| Data source             | CSV + PC memory             | CSV only                             | PC memory reading not feasible Phase 1  |
+| DB vs Role view         | Two tabs vs unified         | Unified (no role = full DB)          | Simpler UX                              |
+| Archetype structure     | Separate in/out vs combined | Combined (single archetype has both) | Simpler selection                       |
+| Scoring normalization   | Raw values vs percentiles   | Percentiles                          | Fair comparison across different scales |
+| Value-adjusted formula  | Various                     | score / (value / median)             | Intuitive: "score per unit cost"        |
+| Missing value fallback  | Error vs default            | Median fallback                      | Graceful degradation                    |
+| Multi-position handling | Best only vs all            | Score all positions                  | More information for user               |
+| Podium layout           | Various                     | 3-2-1 style                          | Recognizable pattern                    |
+| Archetype storage       | LocalStorage vs SQLite      | SQLite                               | Consistent with existing data model     |
+| Row click behavior      | Preview vs navigate         | Navigate to profile                  | Cleaner flow                            |
