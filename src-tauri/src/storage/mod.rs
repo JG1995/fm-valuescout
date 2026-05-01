@@ -350,7 +350,7 @@ fn format_positions(positions: &[crate::parser::types::Position]) -> String {
 /// Create a season within an existing transaction.
 /// Does NOT commit — caller must commit or rollback.
 /// Checks for duplicate season; if found, returns Duplicate error with player count.
-fn create_season_tx(
+pub(crate) fn create_season_tx(
     tx: &rusqlite::Transaction,
     save_id: i64,
     in_game_date: &str,
@@ -506,14 +506,17 @@ pub fn import_season(
 
 
 /// Create a season record with auto-derived label.
-/// Internal helper used by import_season.
+/// Opens its own transaction and delegates to `create_season_tx`.
 pub fn create_season(
     conn: &Connection,
     save_id: i64,
     in_game_date: &str,
 ) -> Result<Season, StorageError> {
+    let tx = conn.unchecked_transaction()?;
+
+
     // Verify save exists
-    let save_exists: bool = conn.query_row(
+    let save_exists: bool = tx.query_row(
         "SELECT EXISTS(SELECT 1 FROM saves WHERE id = ?1)",
         rusqlite::params![save_id],
         |row| row.get(0),
@@ -522,46 +525,9 @@ pub fn create_season(
         return Err(StorageError::NotFound("Save not found.".to_string()));
     }
 
-    let label = derive_season_label(in_game_date)?;
-
-    // Check for duplicate season in this save
-    let exists: bool = conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM seasons WHERE save_id = ?1 AND in_game_date = ?2)",
-        rusqlite::params![save_id, in_game_date],
-        |row| row.get(0),
-    )?;
-    if exists {
-        let player_count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM player_seasons WHERE season_id = \
-             (SELECT id FROM seasons WHERE save_id = ?1 AND in_game_date = ?2)",
-            rusqlite::params![save_id, in_game_date],
-            |row| row.get(0),
-        ).unwrap_or(0);
-        return Err(StorageError::Duplicate(format!(
-            "Season for {} already exists ({} players). Delete it first to re-import.",
-            in_game_date, player_count
-        )));
-    }
-
-
-    conn.execute(
-        "INSERT INTO seasons (save_id, in_game_date, label) VALUES (?1, ?2, ?3)",
-        rusqlite::params![save_id, in_game_date, label],
-    )?;
-    let id = conn.last_insert_rowid();
-    let imported_at: String = conn.query_row(
-        "SELECT imported_at FROM seasons WHERE id = ?1",
-        rusqlite::params![id],
-        |row| row.get(0),
-    )?;
-
-    Ok(Season {
-        id,
-        save_id,
-        in_game_date: in_game_date.to_string(),
-        label,
-        imported_at,
-    })
+    let season = create_season_tx(&tx, save_id, in_game_date)?;
+    tx.commit()?;
+    Ok(season)
 }
 
 /// List all seasons for a save, ordered by in_game_date ascending.
