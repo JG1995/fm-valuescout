@@ -58,6 +58,6 @@ graph TD
 - [x] Task 04: Season CRUD
 - [x] Task 05: Import Season
 - [x] Task 06: Data Retrieval
-- [ ] Task 07: Command Wiring
+- [x] Task 07: Command Wiring
 - [ ] Task 08: Integration Tests
 - [ ] Task 09: Edge Case Tests
