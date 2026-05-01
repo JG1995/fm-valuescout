@@ -331,6 +331,176 @@ pub fn delete_save(conn: &Connection, save_id: i64) -> Result<(), StorageError> 
     Ok(())
 }
 
+// ── Season import (core persistence) ──────────────────────────────────
+
+/// Format positions for storage as a readable string.
+/// e.g. "AM (L, C), ST (C)"
+fn format_positions(positions: &[crate::parser::types::Position]) -> String {
+    positions.iter().map(|p| {
+        let sides = p.sides.iter().map(|s| match s {
+            crate::parser::types::Side::L => "L",
+            crate::parser::types::Side::C => "C",
+            crate::parser::types::Side::R => "R",
+        }).collect::<Vec<_>>().join(", ");
+        format!("{:?} ({})", p.role, sides)
+    }).collect::<Vec<_>>().join(", ")
+}
+
+/// Create a season within an existing transaction.
+/// Does NOT commit — caller must commit or rollback.
+/// Checks for duplicate season; if found, returns Duplicate error with player count.
+fn create_season_tx(
+    tx: &rusqlite::Transaction,
+    save_id: i64,
+    in_game_date: &str,
+) -> Result<Season, StorageError> {
+    let label = derive_season_label(in_game_date)?;
+
+    // Check for duplicate season in this save
+    let exists: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM seasons WHERE save_id = ?1 AND in_game_date = ?2)",
+        rusqlite::params![save_id, in_game_date],
+        |row| row.get(0),
+    )?;
+    if exists {
+        let player_count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM player_seasons WHERE season_id = \
+             (SELECT id FROM seasons WHERE save_id = ?1 AND in_game_date = ?2)",
+            rusqlite::params![save_id, in_game_date],
+            |row| row.get(0),
+        ).unwrap_or(0);
+        return Err(StorageError::Duplicate(format!(
+            "Season for {} already exists ({} players). Delete it first to re-import.",
+            in_game_date, player_count
+        )));
+    }
+
+    tx.execute(
+        "INSERT INTO seasons (save_id, in_game_date, label) VALUES (?1, ?2, ?3)",
+        rusqlite::params![save_id, in_game_date, label],
+    )?;
+    let id = tx.last_insert_rowid();
+    let imported_at: String = tx.query_row(
+        "SELECT imported_at FROM seasons WHERE id = ?1",
+        rusqlite::params![id],
+        |row| row.get(0),
+    )?;
+
+    Ok(Season {
+        id,
+        save_id,
+        in_game_date: in_game_date.to_string(),
+        label,
+        imported_at,
+    })
+}
+
+/// Import a season: creates season record, matches/inserts players, stores JSON blobs.
+///
+/// Player matching: `(save_id, fm_uid, LOWER(name))` — case-insensitive name.
+/// If a player with same UID+name exists, reuse the record (different season = same player).
+/// If same UID but different name, create a new player record.
+///
+/// Returns `ImportResult` with season and player counts.
+/// All work happens in a single transaction — rollback on any failure.
+pub fn import_season(
+    conn: &Connection,
+    save_id: i64,
+    in_game_date: &str,
+    players: Vec<ParsedPlayer>,
+) -> Result<ImportResult, StorageError> {
+    // Validate non-empty
+    if players.is_empty() {
+        return Err(StorageError::Validation(
+            "Cannot import a season with no players.".to_string(),
+        ));
+    }
+
+    // Verify save exists
+    let save_exists: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM saves WHERE id = ?1)",
+        rusqlite::params![save_id],
+        |row| row.get(0),
+    )?;
+    if !save_exists {
+        return Err(StorageError::NotFound("Save not found.".to_string()));
+    }
+
+    // Begin transaction
+    let tx = conn.unchecked_transaction()?;
+
+    // Create season (checks for duplicates internally)
+    let season = match create_season_tx(&tx, save_id, in_game_date) {
+        Ok(s) => s,
+        Err(e) => return Err(e), // No commit, no rollback needed on failure
+    };
+
+    let mut new_players = 0usize;
+    let mut matched_players = 0usize;
+
+    for player in players {
+        // Look up existing player by (save_id, fm_uid, LOWER(name))
+        let existing_player_id: Option<i64> = tx.query_row(
+            "SELECT id FROM players WHERE save_id = ?1 AND fm_uid = ?2 AND LOWER(name) = LOWER(?3)",
+            rusqlite::params![save_id, player.uid as i64, player.name],
+            |row| row.get(0),
+        ).ok();
+
+        let player_id = if let Some(pid) = existing_player_id {
+            matched_players += 1;
+            pid
+        } else {
+            // Insert new player record
+            tx.execute(
+                "INSERT INTO players (save_id, fm_uid, name) VALUES (?1, ?2, ?3)",
+                rusqlite::params![save_id, player.uid as i64, player.name],
+            )?;
+            new_players += 1;
+            tx.last_insert_rowid()
+        };
+
+        // Extract queryable columns
+        let position_str = format_positions(&player.positions);
+        let club = player.club.clone();
+        let age = player.age.map(|a| a as i64);
+        let nationality = player.nationality.as_ref().map(|n| n.name.clone());
+        let minutes = player.minutes.map(|m| m as i64);
+        let appearances_started = player.appearances_started.map(|a| a as i64);
+        let appearances_sub = player.appearances_sub.map(|a| a as i64);
+        let wage_per_week = player.wage.wage_per_week;
+        let transfer_value_high = player.transfer_value.high;
+        let contract_expires = player.contract_expires.clone();
+
+        // Serialize full ParsedPlayer as JSON blob
+        let data_json = serde_json::to_string(&player)
+            .map_err(|_| StorageError::Validation("Failed to serialize player data.".to_string()))?;
+
+        // Insert player_season record
+        tx.execute(
+            "INSERT INTO player_seasons \
+             (player_id, season_id, club, age, nationality, position, \
+              minutes, appearances_started, appearances_sub, \
+              wage_per_week, transfer_value_high, contract_expires, data) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            rusqlite::params![
+                player_id, season.id, club, age, nationality, position_str,
+                minutes, appearances_started, appearances_sub,
+                wage_per_week, transfer_value_high, contract_expires, data_json,
+            ],
+        )?;
+    }
+
+    // Commit transaction
+    tx.commit()?;
+
+    Ok(ImportResult {
+        season,
+        total_players: new_players + matched_players,
+        new_players,
+        matched_players,
+    })
+}
+
 // ── Season CRUD ────────────────────────────────────────────────────────
 
 
@@ -468,6 +638,118 @@ pub fn delete_season(conn: &Connection, season_id: i64) -> Result<(), StorageErr
     Ok(())
 }
 
+
+// ── Data retrieval ────────────────────────────────────────────────────
+
+/// Deserialize a database row into PlayerSeasonData.
+/// Handles JSON blob deserialization with graceful degradation (None on failure).
+fn row_to_player_season(row: &rusqlite::Row) -> rusqlite::Result<PlayerSeasonData> {
+    // Index 14 is the JSON data blob — extract first for graceful deserialization
+    let data_json: String = row.get(14)?;
+    let data = serde_json::from_str::<ParsedPlayer>(&data_json).ok();
+
+    Ok(PlayerSeasonData {
+        id: row.get(0)?,
+        player_id: row.get(1)?,
+        season_id: row.get(2)?,
+        fm_uid: row.get(3)?,
+        player_name: row.get(4)?,
+        club: row.get(5)?,
+        age: row.get(6)?,
+        nationality: row.get(7)?,
+        position: row.get(8)?,
+        minutes: row.get(9)?,
+        appearances_started: row.get(10)?,
+        appearances_sub: row.get(11)?,
+        wage_per_week: row.get(12)?,
+        transfer_value_high: row.get(13)?,
+        contract_expires: row.get(15)?,
+        data,
+    })
+}
+
+
+/// Get all players for a season, ordered by name ascending.
+/// JSON blobs are deserialized with graceful degradation — rows with invalid JSON
+/// are skipped (data field will be None for those rows).
+/// Returns an empty Vec for non-existent seasons.
+pub fn get_players_for_season(
+    conn: &Connection,
+    season_id: i64,
+) -> Result<Vec<PlayerSeasonData>, StorageError> {
+    let mut stmt = conn.prepare(
+        "SELECT ps.id, ps.player_id, ps.season_id, p.fm_uid, p.name,
+                ps.club, ps.age, ps.nationality, ps.position, ps.minutes,
+                ps.appearances_started, ps.appearances_sub, ps.wage_per_week,
+                ps.transfer_value_high, ps.data, ps.contract_expires
+         FROM player_seasons ps
+         JOIN players p ON ps.player_id = p.id
+         WHERE ps.season_id = ?1
+         ORDER BY p.name ASC",
+    )?;
+
+    let players = stmt
+        .query_map(rusqlite::params![season_id], |row| row_to_player_season(row))
+        .map_err(|e| StorageError::Database(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(players)
+}
+
+/// Get a player's entire career across all seasons in a save, ordered by
+/// in_game_date ascending (earliest season first).
+/// Returns an empty Vec for non-existent player or save.
+pub fn get_player_career(
+    conn: &Connection,
+    save_id: i64,
+    player_id: i64,
+) -> Result<Vec<PlayerSeasonData>, StorageError> {
+    let mut stmt = conn.prepare(
+        "SELECT ps.id, ps.player_id, ps.season_id, p.fm_uid, p.name,
+                ps.club, ps.age, ps.nationality, ps.position, ps.minutes,
+                ps.appearances_started, ps.appearances_sub, ps.wage_per_week,
+                ps.transfer_value_high, ps.data, ps.contract_expires
+         FROM player_seasons ps
+         JOIN players p ON ps.player_id = p.id
+         JOIN seasons s ON ps.season_id = s.id
+         WHERE p.save_id = ?1 AND ps.player_id = ?2
+         ORDER BY s.in_game_date ASC",
+    )?;
+
+
+    let career = stmt
+        .query_map(rusqlite::params![save_id, player_id], |row| row_to_player_season(row))
+        .map_err(|e| StorageError::Database(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(career)
+}
+
+/// Get the most recent season for a save (by in_game_date descending).
+/// Returns None if no seasons exist for the save.
+pub fn get_latest_season(conn: &Connection, save_id: i64) -> Result<Option<Season>, StorageError> {
+    let result = conn.query_row(
+        "SELECT id, save_id, in_game_date, label, imported_at
+         FROM seasons WHERE save_id = ?1
+         ORDER BY in_game_date DESC LIMIT 1",
+        rusqlite::params![save_id],
+        |row| {
+            Ok(Season {
+                id: row.get(0)?,
+                save_id: row.get(1)?,
+                in_game_date: row.get(2)?,
+                label: row.get(3)?,
+                imported_at: row.get(4)?,
+            })
+        },
+    );
+
+    match result {
+        Ok(season) => Ok(Some(season)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(StorageError::Database(e.to_string())),
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -976,7 +1258,6 @@ mod tests {
         ).unwrap();
         assert_eq!(player_count, 1);
 
-
         // Delete s2 — player is now orphaned, should be removed
         delete_season(&conn, s2.id).unwrap();
         let player_count: i64 = conn.query_row(
@@ -985,5 +1266,433 @@ mod tests {
             |r| r.get(0),
         ).unwrap();
         assert_eq!(player_count, 0);
+    }
+
+    // ── import_season tests ─────────────────────────────────────────────
+
+    /// Test helper: create a minimal ParsedPlayer.
+    fn make_player(uid: u32, name: &str) -> ParsedPlayer {
+        ParsedPlayer {
+            uid,
+            name: name.to_string(),
+            positions: vec![crate::parser::types::Position {
+                role: crate::parser::types::Role::ST,
+                sides: vec![crate::parser::types::Side::C],
+            }],
+            ..Default::default()
+        }
+    }
+
+    /// Test helper: create a ParsedPlayer with club set.
+    fn make_player_with_club(uid: u32, name: &str, club: &str) -> ParsedPlayer {
+        let mut p = make_player(uid, name);
+        p.club = Some(club.to_string());
+        p
+    }
+
+    #[test]
+    fn import_season_basic() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+
+        let players = vec![
+            make_player(111, "Alice Smith"),
+            make_player(222, "Bob Jones"),
+        ];
+
+        let result = import_season(&conn, save.id, "2030-11-15", players).unwrap();
+
+        assert_eq!(result.total_players, 2);
+        assert_eq!(result.new_players, 2);
+        assert_eq!(result.matched_players, 0);
+        assert_eq!(result.season.in_game_date, "2030-11-15");
+        assert_eq!(result.season.label, "2030/31");
+    }
+
+    #[test]
+    fn import_season_empty_players_rejected() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+
+        let result = import_season(&conn, save.id, "2030-11-15", vec![]);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("no players"));
+    }
+
+    #[test]
+    fn import_season_save_not_found() {
+        let conn = setup_test_db();
+
+        let players = vec![make_player(111, "Alice")];
+        let result = import_season(&conn, 9999, "2030-11-15", players);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn import_season_invalid_date_rejected() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+
+        let players = vec![make_player(111, "Alice")];
+        let result = import_season(&conn, save.id, "not-a-date", players);
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid date format"));
+    }
+
+    #[test]
+    fn import_season_duplicate_rejected() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+
+        let players = vec![make_player(111, "Alice")];
+        import_season(&conn, save.id, "2030-11-15", players).unwrap();
+
+        let players2 = vec![make_player(111, "Alice")];
+        let result = import_season(&conn, save.id, "2030-11-15", players2);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("already exists"));
+        assert!(err.to_string().contains("1 players"));
+    }
+
+    #[test]
+    fn import_season_matches_existing_player() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+
+        // First season
+        let p1 = make_player(111, "Alice Smith");
+        import_season(&conn, save.id, "2030-11-15", vec![p1]).unwrap();
+
+        // Second season with same player
+        let p2 = make_player(111, "Alice Smith");
+        let result = import_season(&conn, save.id, "2031-11-15", vec![p2]).unwrap();
+
+        assert_eq!(result.total_players, 1);
+        assert_eq!(result.new_players, 0);
+        assert_eq!(result.matched_players, 1);
+
+        // Verify only 1 player record exists
+        let player_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM players WHERE save_id = ?1",
+            rusqlite::params![save.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(player_count, 1);
+
+        // Verify 2 season records
+        let season_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM seasons WHERE save_id = ?1",
+            rusqlite::params![save.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(season_count, 2);
+    }
+
+    #[test]
+    fn import_season_uid_reuse_different_name_creates_new() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+
+        // Player A with UID 111
+        let p1 = make_player(111, "Alice Smith");
+        import_season(&conn, save.id, "2030-11-15", vec![p1]).unwrap();
+
+        // Player B with same UID but different name
+        let p2 = make_player(111, "Alicia Smythe");
+        let result = import_season(&conn, save.id, "2031-11-15", vec![p2]).unwrap();
+
+        assert_eq!(result.total_players, 1);
+        assert_eq!(result.new_players, 1);
+        assert_eq!(result.matched_players, 0);
+
+        // Verify 2 player records exist (different names = different players)
+        let player_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM players WHERE save_id = ?1",
+            rusqlite::params![save.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(player_count, 2);
+    }
+
+    #[test]
+    fn import_season_json_blob_stores_full_data() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+
+        let mut player = make_player(111, "Alice Smith");
+        player.age = Some(24);
+        player.club = Some("Arsenal".to_string());
+        player.appearances_started = Some(15);
+        player.appearances_sub = Some(5);
+        player.minutes = Some(1380);
+        player.wage.wage_per_week = Some(45000.0);
+        player.transfer_value.high = Some(12000000.0);
+        player.contract_expires = Some("2028-06-30".to_string());
+
+        import_season(&conn, save.id, "2030-11-15", vec![player]).unwrap();
+
+        // Read back JSON blob
+        let stored: String = conn.query_row(
+            "SELECT data FROM player_seasons WHERE season_id IN \
+             (SELECT id FROM seasons WHERE save_id = ?1)",
+            rusqlite::params![save.id],
+            |row| row.get(0),
+        ).unwrap();
+
+        let back: ParsedPlayer = serde_json::from_str(&stored).unwrap();
+        assert_eq!(back.name, "Alice Smith");
+        assert_eq!(back.uid, 111);
+        assert_eq!(back.age, Some(24));
+        assert_eq!(back.club, Some("Arsenal".to_string()));
+        assert_eq!(back.appearances_started, Some(15));
+        assert_eq!(back.appearances_sub, Some(5));
+        assert_eq!(back.minutes, Some(1380));
+        assert_eq!(back.wage.wage_per_week, Some(45000.0));
+        assert_eq!(back.transfer_value.high, Some(12000000.0));
+        assert_eq!(back.contract_expires, Some("2028-06-30".to_string()));
+    }
+
+    #[test]
+    fn import_season_extracts_queryable_columns() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+
+        let mut player = make_player_with_club(111, "Alice Smith", "AC Milan");
+        player.age = Some(27);
+        player.nationality = Some(crate::parser::types::Nationality {
+            code: Some("ITA".to_string()),
+            name: "Italian".to_string(),
+        });
+        player.positions = vec![
+            crate::parser::types::Position {
+                role: crate::parser::types::Role::AM,
+                sides: vec![crate::parser::types::Side::L, crate::parser::types::Side::C],
+            },
+            crate::parser::types::Position {
+                role: crate::parser::types::Role::ST,
+                sides: vec![crate::parser::types::Side::C],
+            },
+        ];
+        player.appearances_started = Some(20);
+        player.appearances_sub = Some(8);
+        player.minutes = Some(1800);
+        player.wage.wage_per_week = Some(85000.0);
+        player.transfer_value.high = Some(25000000.0);
+        player.contract_expires = Some("2027-05-31".to_string());
+
+        import_season(&conn, save.id, "2030-11-15", vec![player]).unwrap();
+
+        let row: (String, i64, String, String, i64, i64, i64, Option<f64>, Option<f64>, Option<String>) = conn.query_row(
+            "SELECT club, age, nationality, position, minutes,
+                    appearances_started, appearances_sub,
+                    wage_per_week, transfer_value_high, contract_expires
+             FROM player_seasons WHERE season_id IN \
+             (SELECT id FROM seasons WHERE save_id = ?1)",
+            rusqlite::params![save.id],
+            |row| Ok((
+                row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?,
+                row.get(4)?, row.get(5)?, row.get(6)?,
+                row.get(7)?, row.get(8)?, row.get(9)?,
+            )),
+        ).unwrap();
+
+        assert_eq!(row.0, "AC Milan");
+        assert_eq!(row.1, 27);
+        assert_eq!(row.2, "Italian");
+        assert_eq!(row.3, "AM (L, C), ST (C)");
+        assert_eq!(row.4, 1800);
+        assert_eq!(row.5, 20);
+        assert_eq!(row.6, 8);
+        assert!(row.7.is_some());
+        assert!(row.8.is_some());
+        assert_eq!(row.9, Some("2027-05-31".to_string()));
+    }
+
+    #[test]
+    fn import_season_rollback_on_failure() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+
+        // First import succeeds
+        let p1 = make_player(111, "Alice");
+        import_season(&conn, save.id, "2030-11-15", vec![p1]).unwrap();
+
+        // Second import with duplicate date fails
+        let p2 = make_player(222, "Bob");
+        let result = import_season(&conn, save.id, "2030-11-15", vec![p2]);
+        assert!(result.is_err());
+
+        // Verify no partial data was written (only the first season exists)
+        let season_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM seasons WHERE save_id = ?1",
+            rusqlite::params![save.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(season_count, 1);
+
+        let player_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM players WHERE save_id = ?1",
+            rusqlite::params![save.id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(player_count, 1); // Only Alice, not Bob
+    }
+
+    // ── retrieval tests ──────────────────────────────────────────────────
+    #[test]
+    fn get_players_for_season_basic() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+        let season = import_season(&conn, save.id, "2030-11-15", vec![
+            make_player_with_club(111, "Charlie Brown", "Man Utd"),
+            make_player_with_club(222, "Alice Smith", "Arsenal"),
+            make_player_with_club(333, "Bob Jones", "Chelsea"),
+        ]).unwrap().season;
+        let players = get_players_for_season(&conn, season.id).unwrap();
+        assert_eq!(players.len(), 3);
+        assert_eq!(players[0].player_name, "Alice Smith");
+        assert_eq!(players[1].player_name, "Bob Jones");
+        assert_eq!(players[2].player_name, "Charlie Brown");
+        assert_eq!(players[0].fm_uid, 222);
+        assert_eq!(players[0].club, Some("Arsenal".to_string()));
+        assert!(players[0].data.as_ref().is_some());
+        let data = players[0].data.as_ref().unwrap();
+        assert_eq!(data.name, "Alice Smith");
+        assert_eq!(data.uid, 222);
+    }
+    #[test]
+    fn get_players_for_season_empty() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+        let season = create_season(&conn, save.id, "2030-11-15").unwrap();
+        let players = get_players_for_season(&conn, season.id).unwrap();
+        assert!(players.is_empty());
+    }
+    #[test]
+    fn get_players_for_season_nonexistent_season() {
+        let conn = setup_test_db();
+        let players = get_players_for_season(&conn, 9999).unwrap();
+        assert!(players.is_empty());
+    }
+    #[test]
+    fn get_player_career_basic() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+        let mut p1 = make_player_with_club(111, "Dani", "Real Madrid");
+        p1.age = Some(22);
+        import_season(&conn, save.id, "2029-11-15", vec![p1]).unwrap();
+        let mut p2 = make_player_with_club(111, "Dani", "Real Madrid");
+        p2.age = Some(23);
+        import_season(&conn, save.id, "2030-11-15", vec![p2]).unwrap();
+        let mut p3 = make_player_with_club(111, "Dani", "Real Madrid");
+        p3.age = Some(21);
+        import_season(&conn, save.id, "2028-06-01", vec![p3]).unwrap();
+        let player_id: i64 = conn.query_row(
+            "SELECT player_id FROM player_seasons LIMIT 1", [], |r| r.get(0),
+        ).unwrap();
+        let career = get_player_career(&conn, save.id, player_id).unwrap();
+        assert_eq!(career.len(), 3);
+        // verify chronological order via re-query
+        let career_seasons: Vec<String> = {
+            let mut stmt = conn.prepare(
+                "SELECT s.in_game_date FROM player_seasons ps \
+                 JOIN seasons s ON ps.season_id = s.id \
+                 WHERE ps.player_id = ?1 ORDER BY s.in_game_date ASC"
+            ).unwrap();
+            stmt.query_map(rusqlite::params![player_id], |r| r.get(0))
+                .unwrap().filter_map(|r| r.ok()).collect()
+        };
+        assert_eq!(career_seasons[0], "2028-06-01");
+        assert_eq!(career_seasons[1], "2029-11-15");
+        assert_eq!(career_seasons[2], "2030-11-15");
+    }
+    #[test]
+    fn get_player_career_nonexistent_player() {
+        let conn = setup_test_db();
+        let career = get_player_career(&conn, 1, 9999).unwrap();
+        assert!(career.is_empty());
+    }
+    #[test]
+    fn get_player_career_nonexistent_save() {
+        let conn = setup_test_db();
+        let career = get_player_career(&conn, 9999, 1).unwrap();
+        assert!(career.is_empty());
+    }
+    #[test]
+    fn get_latest_season_basic() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+        create_season(&conn, save.id, "2028-06-01").unwrap();
+        create_season(&conn, save.id, "2029-11-15").unwrap();
+        create_season(&conn, save.id, "2030-11-15").unwrap();
+        let latest = get_latest_season(&conn, save.id).unwrap().unwrap();
+        assert_eq!(latest.in_game_date, "2030-11-15");
+    }
+    #[test]
+    fn get_latest_season_empty() {
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+        let latest = get_latest_season(&conn, save.id).unwrap();
+        assert!(latest.is_none());
+    }
+    #[test]
+    fn get_latest_season_nonexistent_save() {
+        let conn = setup_test_db();
+        let latest = get_latest_season(&conn, 9999).unwrap();
+        assert!(latest.is_none());
+    }
+    #[test]
+    fn get_players_for_season_json_failure_graceful() {
+        use serde_json;
+
+        let conn = setup_test_db();
+        let save = create_test_save(&conn);
+        let season = create_season(&conn, save.id, "2030-11-15").unwrap();
+        // Bad player: invalid JSON blob
+        conn.execute(
+            "INSERT INTO players (save_id, fm_uid, name) VALUES (?1, ?2, ?3)",
+            rusqlite::params![save.id, 111, "Bad Player"],
+        ).unwrap();
+        let player_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO player_seasons (player_id, season_id, position, club, age, data)              VALUES (?1, ?2, 'ST', 'Bad Club', 25, 'not valid json {')",
+            rusqlite::params![player_id, season.id],
+        ).unwrap();
+        // Good player: construct valid ParsedPlayer JSON and bind as parameter
+        let good_player = ParsedPlayer {
+            uid: 222,
+            name: "Good Player".to_string(),
+            positions: vec![],
+            ..Default::default()
+        };
+        let good_json = serde_json::to_string(&good_player).unwrap();
+        conn.execute(
+            "INSERT INTO players (save_id, fm_uid, name) VALUES (?1, ?2, ?3)",
+            rusqlite::params![save.id, 222, "Good Player"],
+        ).unwrap();
+        let player_id2 = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO player_seasons (player_id, season_id, position, club, age, data)              VALUES (?1, ?2, 'AM', 'Good Club', 28, ?3)",
+            rusqlite::params![player_id2, season.id, &good_json],
+        ).unwrap();
+
+        let players = get_players_for_season(&conn, season.id).unwrap();
+        assert_eq!(players.len(), 2);
+        let bad = players.iter().find(|p| p.player_name == "Bad Player").unwrap();
+        assert!(bad.data.is_none());
+        assert_eq!(bad.club, Some("Bad Club".to_string()));
+        assert_eq!(bad.age, Some(25));
+        assert_eq!(bad.position, "ST");
+        assert_eq!(bad.fm_uid, 111);
+        let good = players.iter().find(|p| p.player_name == "Good Player").unwrap();
+        assert!(good.data.is_some());
+        assert_eq!(good.club, Some("Good Club".to_string()));
+        assert_eq!(good.age, Some(28));
     }
 }

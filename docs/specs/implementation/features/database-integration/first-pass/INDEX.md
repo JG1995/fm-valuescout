@@ -56,8 +56,8 @@ graph TD
 - [x] Task 02: DB Init & Schema
 - [x] Task 03: Save CRUD
 - [x] Task 04: Season CRUD
-- [ ] Task 05: Import Season
-- [ ] Task 06: Data Retrieval
+- [x] Task 05: Import Season
+- [x] Task 06: Data Retrieval
 - [ ] Task 07: Command Wiring
 - [ ] Task 08: Integration Tests
 - [ ] Task 09: Edge Case Tests
