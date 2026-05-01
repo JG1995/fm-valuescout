@@ -4,9 +4,13 @@
 
 Create the virtualized, sortable results table that shows all scored players for the selected archetype. Supports column hiding, sorting by any column, and row click navigation to player profiles.
 
+Uses TDD: extract pure logic into testable helpers, write failing tests first, then implement.
+
 ## Files to Create/Modify
 
-- Create: `src/lib/components/scouting/ResultsTable.svelte` — Main table component
+- Create: `src/lib/components/scouting/table-helpers.test.ts` — Unit tests for table helper functions
+- Create: `src/lib/components/scouting/table-helpers.ts` — Extracted pure helper functions
+- Create: `src/lib/components/scouting/ResultsTable.svelte` — Main table component (imports helpers)
 
 ## Context
 
@@ -31,13 +35,197 @@ Columns can be hidden (not removed) via a column visibility toggle.
 - **Row click**: Navigate to Player Profile (for MVP, this can just log/select — Player Profile page is separate)
 - **Hidden columns**: Toggle visibility, not remove
 
-### Virtualization Note
+### Pure Logic to Extract
 
-For MVP, virtualized scroll can be achieved with CSS `overflow-y: auto` and a max-height. True virtualization (rendering only visible rows) can be deferred if performance is acceptable with 500-1000 players. The design spec says "virtualized scroll" but this can start as a simple scrollable table and be optimized later if needed.
+The component contains pure functions that are easily testable:
+- `getSortValue(score, key)` — returns numeric sort value for any sort key
+- `formatMetricLabel(key)` — converts metric keys to human-readable labels
+- `formatValue(value)` — formats numbers for display (M/K suffixes)
 
 ## Steps
 
-- [ ] **Step 1: Create ResultsTable component**
+- [ ] **Step 1: Write failing tests for table helpers**
+
+Create `src/lib/components/scouting/table-helpers.test.ts`:
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { getSortValue, formatMetricLabel, formatValue } from "./table-helpers";
+import type { PlayerScore } from "$lib/scoring/types";
+
+function makeScore(overrides: Partial<PlayerScore> = {}): PlayerScore {
+    return {
+        playerId: 1,
+        fmUid: 12345,
+        name: "Test Player",
+        club: "Test FC",
+        positions: "ST",
+        age: 25,
+        transferValue: 10_000_000,
+        role: "ST",
+        rawScore: 85.5,
+        valueAdjustedScore: 92.0,
+        metricPercentiles: {
+            "attacking.goals_per_90": 75,
+            "attacking.assists": 60,
+            "defending.tackles": 30,
+        },
+        ...overrides,
+    };
+}
+
+describe("getSortValue", () => {
+    it("returns rawScore for 'rawScore' key", () => {
+        const score = makeScore({ rawScore: 85.5 });
+        expect(getSortValue(score, "rawScore")).toBe(85.5);
+    });
+
+    it("returns valueAdjustedScore for 'valueAdjustedScore' key", () => {
+        const score = makeScore({ valueAdjustedScore: 92.0 });
+        expect(getSortValue(score, "valueAdjustedScore")).toBe(92.0);
+    });
+
+    it("returns age for 'age' key", () => {
+        const score = makeScore({ age: 28 });
+        expect(getSortValue(score, "age")).toBe(28);
+    });
+
+    it("returns transferValue for 'transferValue' key", () => {
+        const score = makeScore({ transferValue: 15_000_000 });
+        expect(getSortValue(score, "transferValue")).toBe(15_000_000);
+    });
+
+    it("returns null as 0 for 'age'", () => {
+        const score = makeScore({ age: null });
+        expect(getSortValue(score, "age")).toBe(0);
+    });
+
+    it("returns null as 0 for 'transferValue'", () => {
+        const score = makeScore({ transferValue: null });
+        expect(getSortValue(score, "transferValue")).toBe(0);
+    });
+
+    it("returns metric percentile for 'metric.*' keys", () => {
+        const score = makeScore();
+        expect(getSortValue(score, "metric.attacking.goals_per_90")).toBe(75);
+    });
+
+    it("returns 0 for unknown metric keys", () => {
+        const score = makeScore();
+        expect(getSortValue(score, "metric.unknown_metric")).toBe(0);
+    });
+
+    it("returns 0 for unknown sort keys", () => {
+        const score = makeScore();
+        expect(getSortValue(score, "unknownField")).toBe(0);
+    });
+});
+
+describe("formatMetricLabel", () => {
+    it("converts snake_case dot-paths to Title Case", () => {
+        expect(formatMetricLabel("attacking.goals_per_90")).toBe("Goals Per 90");
+    });
+
+    it("handles keys without dots", () => {
+        expect(formatMetricLabel("minutes_played")).toBe("Minutes Played");
+    });
+
+    it("uses only the last segment after the dot", () => {
+        expect(formatMetricLabel("attacking.crosses")).toBe("Crosses");
+    });
+
+    it("handles multiple underscores in a segment", () => {
+        expect(formatMetricLabel("a.b_c_d")).toBe("C D");
+    });
+});
+
+describe("formatValue", () => {
+    it("formats millions as 'X.XM'", () => {
+        expect(formatValue(10_000_000)).toBe("10.0M");
+        expect(formatValue(15_500_000)).toBe("15.5M");
+        expect(formatValue(1_000_000)).toBe("1.0M");
+    });
+
+    it("formats thousands as 'XK'", () => {
+        expect(formatValue(50_000)).toBe("50K");
+        expect(formatValue(999_999)).toBe("999K");
+    });
+
+    it("returns '—' for null", () => {
+        expect(formatValue(null)).toBe("—");
+    });
+
+    it("returns plain number for small values", () => {
+        expect(formatValue(500)).toBe("500");
+        expect(formatValue(999)).toBe("999");
+    });
+});
+```
+
+Run: `npx vitest run`
+Expected: FAIL — file does not exist yet.
+
+- [ ] **Step 2: Create table helper functions**
+
+Create `src/lib/components/scouting/table-helpers.ts`:
+
+```typescript
+import type { PlayerScore } from "$lib/scoring/types";
+
+/**
+ * Returns the numeric sort value for a given sort key on a PlayerScore.
+ * Used by the ResultsTable sortable columns.
+ */
+export function getSortValue(score: PlayerScore, key: string): number {
+    if (key.startsWith("metric.")) {
+        const metricKey = key.slice(7);
+        return score.metricPercentiles[metricKey] ?? 0;
+    }
+    switch (key) {
+        case "name": return score.name.charCodeAt(0);
+        case "rawScore": return score.rawScore;
+        case "valueAdjustedScore": return score.valueAdjustedScore;
+        case "age": return score.age ?? 0;
+        case "transferValue": return score.transferValue ?? 0;
+        default: return 0;
+    }
+}
+
+/**
+ * Converts a metric key (e.g., "attacking.goals_per_90") to a human-readable
+ * label (e.g., "Goals Per 90").
+ * Takes the last segment after the dot and converts snake_case to Title Case.
+ */
+export function formatMetricLabel(key: string): string {
+    const parts = key.split(".");
+    const field = parts[parts.length - 1];
+    return field
+        .split("_")
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+}
+
+/**
+ * Formats a numeric value for display in the results table.
+ * - null → "—"
+ * - >= 1,000,000 → "X.XM"
+ * - >= 1,000 → "XK"
+ * - otherwise → plain integer
+ */
+export function formatValue(value: number | null): string {
+    if (value === null) return "—";
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+    if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
+    return value.toFixed(0);
+}
+```
+
+- [ ] **Step 3: Run tests to verify they pass**
+
+Run: `npx vitest run`
+Expected: ALL PASS.
+
+- [ ] **Step 4: Create ResultsTable component**
 
 Create `src/lib/components/scouting/ResultsTable.svelte`:
 
@@ -45,6 +233,7 @@ Create `src/lib/components/scouting/ResultsTable.svelte`:
 <script lang="ts">
     import type { PlayerScore } from "$lib/scoring/types";
     import type { Archetype } from "$lib/types/archetype";
+    import { getSortValue, formatMetricLabel, formatValue } from "./table-helpers";
 
     interface Props {
         scores: PlayerScore[];
@@ -80,31 +269,6 @@ Create `src/lib/components/scouting/ResultsTable.svelte`:
         }));
     });
 
-    function getSortValue(score: PlayerScore, key: string): number {
-        if (key.startsWith("metric.")) {
-            const metricKey = key.slice(7);
-            return score.metricPercentiles[metricKey] ?? 0;
-        }
-        switch (key) {
-            case "name": return score.name.charCodeAt(0);
-            case "rawScore": return score.rawScore;
-            case "valueAdjustedScore": return score.valueAdjustedScore;
-            case "age": return score.age ?? 0;
-            case "transferValue": return score.transferValue ?? 0;
-            default: return 0;
-        }
-    }
-
-    function formatMetricLabel(key: string): string {
-        // Take the last part after the dot, convert snake_case to Title Case
-        const parts = key.split(".");
-        const field = parts[parts.length - 1];
-        return field
-            .split("_")
-            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(" ");
-    }
-
     function toggleSort(key: string) {
         if (sortKey === key) {
             sortDir = sortDir === "asc" ? "desc" : "asc";
@@ -122,13 +286,6 @@ Create `src/lib/components/scouting/ResultsTable.svelte`:
             next.add(key);
         }
         hiddenColumns = next;
-    }
-
-    function formatValue(value: number | null): string {
-        if (value === null) return "—";
-        if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-        if (value >= 1_000) return `${(value / 1_000).toFixed(0)}K`;
-        return value.toFixed(0);
     }
 </script>
 
@@ -339,13 +496,14 @@ Create `src/lib/components/scouting/ResultsTable.svelte`:
 </style>
 ```
 
-- [ ] **Step 2: Verify TypeScript compilation**
+- [ ] **Step 5: Verify TypeScript compilation**
 
 Run: `bun run check`
 Expected: SUCCESS.
 
 ## Dependencies
 
+- Task 06 (vitest setup) — `table-helpers.test.ts`
 - Task 07 (scoring engine) — `PlayerScore` type
 - Task 06 (frontend types) — `Archetype` type
 
@@ -359,15 +517,23 @@ Expected: SUCCESS.
 - Table has scrollable body with sticky header
 - Dark theme styling consistent with the app
 - `bun run check` passes
+- All helper function tests pass
 
 ## Tests
 
-### Test 1: TypeScript compilation
+### Test 1: Table helper functions
 
-**What to test:** Component compiles.
+**What to test:** Pure functions: `getSortValue`, `formatMetricLabel`, `formatValue` produce correct outputs for all input cases.
+**Command:** `npx vitest run src/lib/components/scouting/table-helpers.test.ts`
+**Feasibility:** ✅ Unit tests — pure TypeScript functions.
+
+### Test 2: TypeScript compilation
+
+**What to test:** All components compile without errors.
+**Command:** `bun run check`
 **Feasibility:** ✅ Can be tested — `bun run check`.
 
-### Test 2: Visual verification
+### Test 3: Visual verification
 
 **What to test:** Table renders, sorting works, column toggle works.
-**Feasibility:** ⚠️ Dependent on running the app — verify in dev mode.
+**Feasibility:** ⚠️ Dependent on running the app — verify in dev mode (`bun run tauri dev`).

@@ -4,11 +4,14 @@
 
 Create the interactive football pitch SVG component showing all 11 position slots in a standard 4-4-2 formation. Each slot is clickable and displays the selected archetype name (or a placeholder).
 
+Uses TDD: write failing tests first, then implement to make them pass.
+
 ## Files to Create/Modify
 
-- Create: `src/lib/components/pitch/PitchView.svelte` — Main pitch component
-- Create: `src/lib/components/pitch/PositionSlot.svelte` — Individual position slot
+- Create: `src/lib/components/pitch/pitch-positions.test.ts` — Unit tests for position data
 - Create: `src/lib/components/pitch/pitch-positions.ts` — Position configuration data
+- Create: `src/lib/components/pitch/PositionSlot.svelte` — Individual position slot
+- Create: `src/lib/components/pitch/PitchView.svelte` — Main pitch component
 - Create: `src/lib/components/pitch/pitch.css` — Pitch and slot styling
 
 ## Context
@@ -39,7 +42,71 @@ Clicking a slot dispatches an event to the parent with the `slotId`. The parent 
 
 ## Steps
 
-- [ ] **Step 1: Create position configuration**
+- [ ] **Step 1: Write failing tests for pitch positions data**
+
+Create `src/lib/components/pitch/pitch-positions.test.ts`:
+
+```typescript
+import { describe, it, expect } from "vitest";
+import { PITCH_POSITIONS } from "./pitch-positions";
+import type { ArchetypeRole } from "$lib/types/archetype";
+
+// Valid roles from the Archetype type
+const VALID_ROLES: ArchetypeRole[] = ["GK", "CB", "FB", "CM", "W", "ST"];
+
+describe("PITCH_POSITIONS", () => {
+    it("has exactly 11 positions", () => {
+        expect(PITCH_POSITIONS).toHaveLength(11);
+    });
+
+    it("all slotIds are unique", () => {
+        const ids = PITCH_POSITIONS.map(p => p.slotId);
+        const unique = new Set(ids);
+        expect(unique.size).toBe(ids.length);
+    });
+
+    it("all roles are valid ArchetypeRole values", () => {
+        for (const pos of PITCH_POSITIONS) {
+            expect(VALID_ROLES).toContain(pos.role);
+        }
+    });
+
+    it("all x/y coordinates are in 0-100 range", () => {
+        for (const pos of PITCH_POSITIONS) {
+            expect(pos.x).toBeGreaterThanOrEqual(0);
+            expect(pos.x).toBeLessThanOrEqual(100);
+            expect(pos.y).toBeGreaterThanOrEqual(0);
+            expect(pos.y).toBeLessThanOrEqual(100);
+        }
+    });
+
+    it("no duplicate slotIds", () => {
+        const ids = PITCH_POSITIONS.map(p => p.slotId);
+        const seen = new Set<string>();
+        for (const id of ids) {
+            expect(seen.has(id)).toBe(false);
+            seen.add(id);
+        }
+    });
+
+    it("positions form a valid 4-4-2 formation", () => {
+        const byRole: Record<string, number> = {};
+        for (const pos of PITCH_POSITIONS) {
+            byRole[pos.role] = (byRole[pos.role] ?? 0) + 1;
+        }
+        // 4-4-2: 2 ST, 4 midfield (2 CM + 2 W), 4 defenders (2 CB + 2 FB), 1 GK
+        expect(byRole["ST"]).toBe(2);
+        expect(byRole["CM"] + (byRole["W"] ?? 0)).toBe(4);
+        expect((byRole["CB"] ?? 0) + (byRole["FB"] ?? 0)).toBe(4);
+        expect(byRole["GK"]).toBe(1);
+    });
+});
+```
+
+Run: `npx vitest run`
+Expected: FAIL — file does not exist yet.
+
+- [ ] **Step 2: Create position configuration**
 
 Create directory `src/lib/components/pitch/` and file `src/lib/components/pitch/pitch-positions.ts`:
 
@@ -86,7 +153,12 @@ export const PITCH_POSITIONS: PitchPosition[] = [
 ];
 ```
 
-- [ ] **Step 2: Create PositionSlot component**
+- [ ] **Step 3: Run tests to verify they pass**
+
+Run: `npx vitest run`
+Expected: ALL PASS.
+
+- [ ] **Step 4: Create PositionSlot component**
 
 Create `src/lib/components/pitch/PositionSlot.svelte`:
 
@@ -168,7 +240,7 @@ Create `src/lib/components/pitch/PositionSlot.svelte`:
 </style>
 ```
 
-- [ ] **Step 3: Create PitchView component**
+- [ ] **Step 5: Create PitchView component**
 
 Create `src/lib/components/pitch/PitchView.svelte`:
 
@@ -269,7 +341,7 @@ Create `src/lib/components/pitch/PitchView.svelte`:
 </style>
 ```
 
-- [ ] **Step 4: Verify TypeScript compilation**
+- [ ] **Step 6: Verify TypeScript compilation**
 
 Run: `bun run check`
 Expected: SUCCESS — no errors.
@@ -277,6 +349,7 @@ Expected: SUCCESS — no errors.
 ## Dependencies
 
 - Task 06 (frontend types) — `Archetype`, `ArchetypeRole` types
+- Task 06 (vitest setup) — `pitch-positions.test.ts`
 
 ## Success Criteria
 
@@ -287,20 +360,23 @@ Expected: SUCCESS — no errors.
 - Slots with a selected archetype have a green border highlight
 - Pitch has visual markings (center circle, center line, goal areas)
 - `bun run check` passes
+- All unit tests pass
 
 ## Tests
 
-### Test 1: Component renders
+### Test 1: Pitch positions data
 
-**What to test:** Pitch component renders 11 position slots.
-**Feasibility:** ⚠️ Dependent on Svelte testing setup — verify manually in dev mode for now. TypeScript compilation is the automated check.
+**What to test:** `PITCH_POSITIONS` has exactly 11 positions, unique slotIds, valid ArchetypeRole values, x/y in 0–100 range, and correct 4-4-2 formation.
+**Command:** `npx vitest run src/lib/components/pitch/pitch-positions.test.ts`
+**Feasibility:** ✅ Unit test — pure data validation.
 
-### Test 2: TypeScript compilation
+### Test 2: Component renders
+
+**What to test:** PitchView renders 11 position slots with correct labels.
+**Feasibility:** ⚠️ Svelte component testing — verify in dev mode (`bun run tauri dev`).
+
+### Test 3: TypeScript compilation
 
 **What to test:** All components compile without errors.
+**Command:** `bun run check`
 **Feasibility:** ✅ Can be tested — `bun run check`.
-
-### Test 3: Position configuration
-
-**What to test:** Exactly 11 positions, each with unique slotId, valid role, and x/y in 0-100 range.
-**Feasibility:** ✅ Can be tested — pure data validation. Add a unit test for `pitch-positions.ts` if desired.

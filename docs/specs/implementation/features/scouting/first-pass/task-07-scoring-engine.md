@@ -4,13 +4,20 @@
 
 Implement the player scoring algorithm in TypeScript. This is a pure computation module that scores players against archetypes using weighted percentiles. All scoring happens client-side per the design spec.
 
+Uses TDD for all steps. Vitest is installed in Task 06 — this task only writes tests and implementation.
+
 ## Files to Create/Modify
 
-- Create: `src/lib/scoring/percentiles.ts` — Percentile computation
-- Create: `src/lib/scoring/score.ts` — Archetype scoring and value-adjusted scoring
 - Create: `src/lib/scoring/types.ts` — Scoring-specific types
+- Create: `src/lib/scoring/types.test.ts` — Type shape validation tests
 - Create: `src/lib/scoring/metric-accessor.ts` — Extract metric values from ParsedPlayer data
+- Create: `src/lib/scoring/metric-accessor.test.ts` — Metric accessor tests
+- Create: `src/lib/scoring/percentiles.ts` — Percentile computation
+- Create: `src/lib/scoring/percentiles.test.ts` — Percentile tests
+- Create: `src/lib/scoring/score.ts` — Archetype scoring and value-adjusted scoring
+- Create: `src/lib/scoring/score.test.ts` — Scoring tests
 - Create: `src/lib/scoring/index.ts` — Public API barrel export
+- Create: `src/lib/scoring/index.test.ts` — Barrel export resolution test
 
 ## Context
 
@@ -55,11 +62,106 @@ For a player with value `v` in a dataset of `n` values:
 
 When a player has `null`/`undefined` for a metric, they get percentile 0 (worst case).
 
+### Prerequisite
+
+Vitest is installed and configured in Task 06. This task uses `bun run test` (i.e., `vitest run`) for all test steps.
+
 ## Steps
 
-- [ ] **Step 1: Create scoring types**
+- [ ] **Step 1: Write failing test for scoring types**
 
-Create directory `src/lib/scoring/` and file `src/lib/scoring/types.ts`:
+Create directory `src/lib/scoring/` and file `src/lib/scoring/types.test.ts`:
+
+```typescript
+import { describe, it, expect } from "vitest";
+import type { PlayerScore, ScorablePlayer, PercentileCache } from "./types";
+
+describe("PlayerScore interface shape", () => {
+    it("constructs a valid PlayerScore with all required fields", () => {
+        const score: PlayerScore = {
+            playerId: 1,
+            fmUid: 12345,
+            name: "Test Player",
+            club: "Test FC",
+            positions: "ST",
+            age: 25,
+            transferValue: 10_000_000,
+            role: "ST",
+            rawScore: 85.5,
+            valueAdjustedScore: 92.0,
+            metricPercentiles: { "attacking.goals_per_90": 75 },
+        };
+        expect(score.playerId).toBe(1);
+        expect(score.rawScore).toBe(85.5);
+        expect(score.valueAdjustedScore).toBe(92.0);
+        expect(score.metricPercentiles["attacking.goals_per_90"]).toBe(75);
+    });
+
+    it("allows null club, age, and transferValue", () => {
+        const score: PlayerScore = {
+            playerId: 2,
+            fmUid: 99,
+            name: "Minimal",
+            club: null,
+            positions: "GK",
+            age: null,
+            transferValue: null,
+            role: "GK",
+            rawScore: 0,
+            valueAdjustedScore: 0,
+            metricPercentiles: {},
+        };
+        expect(score.club).toBeNull();
+        expect(score.age).toBeNull();
+        expect(score.transferValue).toBeNull();
+    });
+});
+
+describe("ScorablePlayer interface shape", () => {
+    it("constructs a valid ScorablePlayer", () => {
+        const player: ScorablePlayer = {
+            playerId: 1,
+            fmUid: 123,
+            name: "Player",
+            club: null,
+            positions: "CB",
+            age: 28,
+            transferValueHigh: 5_000_000,
+            data: { defending: { tackles_per_90: 3.2 } },
+        };
+        expect(player.data).not.toBeNull();
+    });
+
+    it("allows null data", () => {
+        const player: ScorablePlayer = {
+            playerId: 2,
+            fmUid: 456,
+            name: "No Data",
+            club: null,
+            positions: "ST",
+            age: null,
+            transferValueHigh: null,
+            data: null,
+        };
+        expect(player.data).toBeNull();
+    });
+});
+
+describe("PercentileCache construction", () => {
+    it("constructs with Maps", () => {
+        const cache: PercentileCache = {
+            metricValues: new Map([["attacking.goals_per_90", [0.1, 0.5, 0.8]]]),
+            metricCounts: new Map([["attacking.goals_per_90", 3]]),
+        };
+        expect(cache.metricValues.get("attacking.goals_per_90")).toHaveLength(3);
+        expect(cache.metricCounts.get("attacking.goals_per_90")).toBe(3);
+    });
+});
+```
+
+- [ ] **Step 2: Create scoring types**
+
+Create `src/lib/scoring/types.ts`:
 
 ```typescript
 import type { MetricWeight } from "$lib/types/archetype";
@@ -111,12 +213,17 @@ export interface ScorablePlayer {
 }
 ```
 
-- [ ] **Step 2: Write the failing tests for metric accessor**
+- [ ] **Step 3: Run types test**
+
+Run: `bun run test`
+Expected: PASS — types test validates interface shapes.
+
+- [ ] **Step 4: Write the failing tests for metric accessor**
 
 Create `src/lib/scoring/metric-accessor.test.ts`:
 
 ```typescript
-import { describe, it, expect } from "vitest"; // Or the project's test runner
+import { describe, it, expect } from "vitest";
 import { getMetricValue } from "./metric-accessor";
 
 describe("getMetricValue", () => {
@@ -157,7 +264,7 @@ describe("getMetricValue", () => {
 });
 ```
 
-- [ ] **Step 3: Implement metric accessor**
+- [ ] **Step 5: Implement metric accessor**
 
 Create `src/lib/scoring/metric-accessor.ts`:
 
@@ -188,9 +295,9 @@ export function getMetricValue(
 }
 ```
 
-- [ ] **Step 4: Write the failing tests for percentile computation**
+- [ ] **Step 6: Write the failing tests for percentile computation**
 
-Append to `src/lib/scoring/metric-accessor.test.ts` or create a new test file `src/lib/scoring/percentiles.test.ts`:
+Create `src/lib/scoring/percentiles.test.ts`:
 
 ```typescript
 import { describe, it, expect } from "vitest";
@@ -260,7 +367,7 @@ describe("buildPercentileCache", () => {
 });
 ```
 
-- [ ] **Step 5: Implement percentile computation**
+- [ ] **Step 7: Implement percentile computation**
 
 Create `src/lib/scoring/percentiles.ts`:
 
@@ -345,7 +452,7 @@ export function buildPercentileCache(
 }
 ```
 
-- [ ] **Step 6: Write the failing tests for scoring**
+- [ ] **Step 8: Write the failing tests for scoring**
 
 Create `src/lib/scoring/score.test.ts`:
 
@@ -456,7 +563,7 @@ describe("scorePlayer", () => {
 });
 ```
 
-- [ ] **Step 7: Implement the scoring function**
+- [ ] **Step 9: Implement the scoring function**
 
 Create `src/lib/scoring/score.ts`:
 
@@ -569,14 +676,51 @@ export function scoreAllPlayers(
 }
 ```
 
-- [ ] **Step 8: Create barrel export**
+- [ ] **Step 10: Write test for barrel export**
+
+Create `src/lib/scoring/index.test.ts`:
+
+```typescript
+import { describe, it, expect } from "vitest";
+
+describe("Scoring barrel export", () => {
+    it("exports getMetricValue from metric-accessor", async () => {
+        const mod = await import("./index");
+        expect(typeof mod.getMetricValue).toBe("function");
+    });
+
+    it("exports computePercentile and buildPercentileCache from percentiles", async () => {
+        const mod = await import("./index");
+        expect(typeof mod.computePercentile).toBe("function");
+        expect(typeof mod.buildPercentileCache).toBe("function");
+    });
+
+    it("exports scoring functions from score", async () => {
+        const mod = await import("./index");
+        expect(typeof mod.scorePlayer).toBe("function");
+        expect(typeof mod.scoreAllPlayers).toBe("function");
+        expect(typeof mod.computeMedianTransferValue).toBe("function");
+    });
+});
+```
+
+- [ ] **Step 11: Create barrel export**
 
 Create `src/lib/scoring/index.ts`:
 
 ```typescript
 export { getMetricValue } from "./metric-accessor";
 export { computePercentile, buildPercentileCache } from "./percentiles";
+export { scorePlayer, scoreAllPlayers, computeMedianTransferValue } from "./score";
 ```
+
+- [ ] **Step 12: Run all tests**
+
+Run: `bun run test`
+Expected: ALL PASS.
+
+Run: `bun run check`
+Expected: SUCCESS — TypeScript compilation passes.
 
 ### Multi-Position Scoring Note
 
@@ -593,17 +737,10 @@ scoring, the calling code (scouting page / store) should:
 For MVP, the page scores against the single user-selected archetype. Multi-position
 best-fit scoring (showing all scores in the full database view) is a future enhancement.
 
-- [ ] **Step 9: Run tests**
-
-Run: `bun test` (or `vitest run` depending on project setup)
-Expected: ALL PASS.
-
-Run: `bun run check`
-Expected: SUCCESS — TypeScript compilation passes.
-
 ## Dependencies
 
 - Task 06 (frontend types) — `Archetype`, `MetricWeight` types
+- Task 06 (vitest setup) — vitest is installed and configured
 
 ## Success Criteria
 
@@ -613,21 +750,37 @@ Expected: SUCCESS — TypeScript compilation passes.
 - Missing metrics produce 0 percentile
 - Inverted metrics correctly flip the score direction
 - Value-adjusted scoring uses median fallback for null transfer values
+- Barrel export resolves all named exports
 - All tests pass
 
 ## Tests
 
-### Test 1: Metric accessor
+### Test 1: Scoring types
+
+**What to test:** PlayerScore, ScorablePlayer, PercentileCache interface shapes are constructible with valid data.
+**Command:** `bun run test`
+**Feasibility:** ✅ Interface shape validation — pure TypeScript.
+
+### Test 2: Metric accessor
 
 **What to test:** Dot-path access to nested fields, null handling, malformed keys.
-**Feasibility:** ✅ Can be tested — pure function.
+**Command:** `bun run test`
+**Feasibility:** ✅ Pure function.
 
-### Test 2: Percentile computation
+### Test 3: Percentile computation
 
 **What to test:** Edge cases (empty, single, min, max, median, duplicates).
-**Feasibility:** ✅ Can be tested — pure function.
+**Command:** `bun run test`
+**Feasibility:** ✅ Pure function.
 
-### Test 3: Scoring
+### Test 4: Scoring
 
 **What to test:** Perfect score, worst score, missing data, inverted metrics, value-adjusted calculation.
-**Feasibility:** ✅ Can be tested — pure function with constructed test data.
+**Command:** `bun run test`
+**Feasibility:** ✅ Pure function with constructed test data.
+
+### Test 5: Barrel export
+
+**What to test:** All named exports resolve (getMetricValue, computePercentile, buildPercentileCache, scorePlayer, scoreAllPlayers, computeMedianTransferValue).
+**Command:** `bun run test`
+**Feasibility:** ✅ Dynamic import verification.

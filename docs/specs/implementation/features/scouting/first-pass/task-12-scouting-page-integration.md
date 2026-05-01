@@ -4,10 +4,13 @@
 
 Wire all components together into the main scouting page. Replace the existing placeholder `+page.svelte` with the full scouting view that includes pitch, archetype selector, podium, results table, and the state management to connect them.
 
+Uses TDD: write failing tests for the scouting store, then implement to make them pass.
+
 ## Files to Create/Modify
 
-- Modify: `src/routes/+page.svelte` — Replace Tauri template with scouting UI
+- Create: `src/lib/stores/scouting-store.test.ts` — Unit tests for scouting store logic
 - Create: `src/lib/stores/scouting-store.svelte.ts` — Scoring state management
+- Modify: `src/routes/+page.svelte` — Replace Tauri template with scouting UI
 
 ## Context
 
@@ -48,9 +51,332 @@ The scouting store holds:
 - Computed scores per selected position
 - Loading/error state
 
+### Pure Logic to Test
+
+The store module exports functions that contain testable pure logic:
+- `toScorable(psd)` — converts `PlayerSeasonData` to `ScorablePlayer`
+- `selectArchetype(archetype, players)` — computes `PlayerScore[]` or returns `[]`
+- `loadPlayers(seasonId)` — orchestrates invoke + toScorable + selectArchetype
+
 ## Steps
 
-- [ ] **Step 1: Create the scouting store**
+- [ ] **Step 1: Write failing tests for scouting store**
+
+Create `src/lib/stores/scouting-store.test.ts`:
+
+```typescript
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Archetype, MetricWeight } from "$lib/types/archetype";
+
+// Mock the Tauri invoke function
+vi.mock("@tauri-apps/api/core", () => ({
+    invoke: vi.fn(),
+}));
+
+// Mock the scoring module
+vi.mock("$lib/scoring", () => ({
+    scoreAllPlayers: vi.fn(),
+}));
+
+// Mock $lib/scoring/types
+vi.mock("$lib/scoring/types", () => ({}));
+
+// We need to import the module under test AFTER mocks are set up.
+// We'll test the exported functions by re-importing with fresh modules.
+import { invoke } from "@tauri-apps/api/core";
+import { scoreAllPlayers } from "$lib/scoring";
+
+// Re-import to get fresh module-scope state
+vi.resetModules();
+
+// Helper: make a valid Archetype
+function makeArchetype(overrides: Partial<Archetype> = {}): Archetype {
+    return {
+        id: 1,
+        name: "Test Archetype",
+        role: "ST",
+        metrics: [
+            { metric_key: "attacking.goals", weight: 0.6 },
+            { metric_key: "attacking.assists", weight: 0.4 },
+        ] as MetricWeight[],
+        created_at: "2024-01-01",
+        ...overrides,
+    };
+}
+
+// Helper: make a valid PlayerSeasonData (as returned from Rust)
+function makePlayerData(overrides: Partial<{
+    id: number;
+    player_id: number;
+    season_id: number;
+    fm_uid: number;
+    player_name: string;
+    club: string | null;
+    age: number | null;
+    nationality: string | null;
+    position: string;
+    minutes: number | null;
+    transfer_value_high: number | null;
+    data: Record<string, unknown> | null;
+}> = {}): {
+    id: number;
+    player_id: number;
+    season_id: number;
+    fm_uid: number;
+    player_name: string;
+    club: string | null;
+    age: number | null;
+    nationality: string | null;
+    position: string;
+    minutes: number | null;
+    transfer_value_high: number | null;
+    data: Record<string, unknown> | null;
+} {
+    return {
+        id: 1,
+        player_id: 100,
+        season_id: 1,
+        fm_uid: 12345,
+        player_name: "Test Player",
+        club: "Test FC",
+        age: 25,
+        nationality: "England",
+        position: "ST",
+        minutes: 2000,
+        transfer_value_high: 10_000_000,
+        data: { goals: 15, assists: 5 },
+        ...overrides,
+    };
+}
+
+// Helper: make a ScorablePlayer
+function makeScorable(overrides: Partial<{
+    playerId: number;
+    fmUid: number;
+    name: string;
+    club: string | null;
+    positions: string;
+    age: number | null;
+    transferValueHigh: number | null;
+    data: Record<string, unknown> | null;
+}> = {}): {
+    playerId: number;
+    fmUid: number;
+    name: string;
+    club: string | null;
+    positions: string;
+    age: number | null;
+    transferValueHigh: number | null;
+    data: Record<string, unknown> | null;
+} {
+    return {
+        playerId: 1,
+        fmUid: 12345,
+        name: "Test Player",
+        club: "Test FC",
+        positions: "ST",
+        age: 25,
+        transferValueHigh: 10_000_000,
+        data: { goals: 15, assists: 5 },
+        ...overrides,
+    };
+}
+
+// Helper: make a PlayerScore
+function makePlayerScore(overrides: Partial<{
+    playerId: number;
+    fmUid: number;
+    name: string;
+    club: string | null;
+    positions: string;
+    age: number | null;
+    transferValue: number | null;
+    role: string;
+    rawScore: number;
+    valueAdjustedScore: number;
+    metricPercentiles: Record<string, number>;
+}> = {}): {
+    playerId: number;
+    fmUid: number;
+    name: string;
+    club: string | null;
+    positions: string;
+    age: number | null;
+    transferValue: number | null;
+    role: string;
+    rawScore: number;
+    valueAdjustedScore: number;
+    metricPercentiles: Record<string, number>;
+} {
+    return {
+        playerId: 1,
+        fmUid: 12345,
+        name: "Test Player",
+        club: "Test FC",
+        positions: "ST",
+        age: 25,
+        transferValue: 10_000_000,
+        role: "ST",
+        rawScore: 85.0,
+        valueAdjustedScore: 90.0,
+        metricPercentiles: { "attacking.goals": 80, "attacking.assists": 60 },
+        ...overrides,
+    };
+}
+
+describe("Scouting Store — toScorable", () => {
+    it("correctly maps PlayerSeasonData fields to ScorablePlayer", async () => {
+        vi.resetModules();
+        vi.mocked(invoke).mockResolvedValue([]);
+        vi.mocked(scoreAllPlayers).mockReturnValue([]);
+
+        // Import the module
+        const { getScoutingStore } = await import("./scouting-store.svelte");
+
+        // Test the toScorable logic by checking the conversion in loadPlayers
+        // We verify the output by checking what gets stored in players
+        const pd = makePlayerData({
+            id: 42,
+            fm_uid: 99999,
+            player_name: "Marcus Rashford",
+            club: "Manchester United",
+            age: 26,
+            transfer_value_high: 55_000_000,
+            position: "ST",
+            data: { goals: 30 },
+        });
+
+        vi.mocked(invoke).mockResolvedValue([pd]);
+        const store = getScoutingStore();
+
+        await store.loadPlayers(1);
+
+        const player = store.players[0];
+        expect(player.playerId).toBe(42);
+        expect(player.fmUid).toBe(99999);
+        expect(player.name).toBe("Marcus Rashford");
+        expect(player.club).toBe("Manchester United");
+        expect(player.age).toBe(26);
+        expect(player.transferValueHigh).toBe(55_000_000);
+        expect(player.data).toEqual({ goals: 30 });
+    });
+});
+
+describe("Scouting Store — selectArchetype", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        vi.mocked(invoke).mockResolvedValue([]);
+        vi.mocked(scoreAllPlayers).mockReturnValue([]);
+    });
+
+    it("with null archetype clears scores", async () => {
+        const { getScoutingStore } = await import("./scouting-store.svelte");
+        const store = getScoutingStore();
+
+        // First select an archetype to set scores
+        const archetype = makeArchetype({ id: 1, name: "Poacher" });
+        vi.mocked(scoreAllPlayers).mockReturnValue([
+            makePlayerScore({ playerId: 1, rawScore: 90 }),
+        ]);
+
+        store.selectArchetype(archetype);
+        expect(store.scores.length).toBe(1);
+
+        // Null archetype should clear
+        store.selectArchetype(null);
+        expect(store.scores.length).toBe(0);
+    });
+
+    it("with archetype and empty players produces empty scores", async () => {
+        const { getScoutingStore } = await import("./scouting-store.svelte");
+        const store = getScoutingStore();
+
+        const archetype = makeArchetype({ id: 1 });
+        vi.mocked(scoreAllPlayers).mockReturnValue([]);
+
+        store.selectArchetype(archetype);
+        expect(store.scores).toEqual([]);
+    });
+
+    it("with archetype and players produces scores", async () => {
+        const { getScoutingStore } = await import("./scouting-store.svelte");
+        const store = getScoutingStore();
+
+        const archetype = makeArchetype({ id: 1 });
+        const scores = [
+            makePlayerScore({ playerId: 1, rawScore: 90 }),
+            makePlayerScore({ playerId: 2, rawScore: 85 }),
+        ];
+        vi.mocked(scoreAllPlayers).mockReturnValue(scores);
+
+        store.selectArchetype(archetype);
+        expect(store.scores.length).toBe(2);
+        expect(store.scores[0].rawScore).toBe(90);
+    });
+});
+
+describe("Scouting Store — loadPlayers", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        vi.mocked(invoke).mockResolvedValue([]);
+        vi.mocked(scoreAllPlayers).mockReturnValue([]);
+    });
+
+    it("invokes get_players_for_season with correct seasonId", async () => {
+        const { getScoutingStore } = await import("./scouting-store.svelte");
+        const store = getScoutingStore();
+
+        vi.mocked(invoke).mockResolvedValue([]);
+
+        await store.loadPlayers(42);
+
+        expect(invoke).toHaveBeenCalledWith("get_players_for_season", {
+            seasonId: 42,
+        });
+    });
+
+    it("converts response to ScorablePlayer array", async () => {
+        const { getScoutingStore } = await import("./scouting-store.svelte");
+        const store = getScoutingStore();
+
+        const pd1 = makePlayerData({ id: 10, player_name: "Player A" });
+        const pd2 = makePlayerData({ id: 20, player_name: "Player B" });
+        vi.mocked(invoke).mockResolvedValue([pd1, pd2]);
+
+        await store.loadPlayers(1);
+
+        expect(store.players.length).toBe(2);
+        expect(store.players[0].playerId).toBe(10);
+        expect(store.players[1].playerId).toBe(20);
+    });
+
+    it("re-scores if archetype is already selected", async () => {
+        const { getScoutingStore } = await import("./scouting-store.svelte");
+        const store = getScoutingStore();
+
+        const archetype = makeArchetype({ id: 5 });
+        const scores = [makePlayerScore({ playerId: 1 })];
+
+        vi.mocked(scoreAllPlayers).mockReturnValue(scores);
+        store.selectArchetype(archetype);
+        expect(store.scores.length).toBe(1);
+
+        // Now load players — should re-score
+        const pd = makePlayerData({ id: 99 });
+        vi.mocked(invoke).mockResolvedValue([pd]);
+
+        await store.loadPlayers(1);
+
+        // scoreAllPlayers should have been called again with the new players
+        expect(scoreAllPlayers).toHaveBeenCalledTimes(2);
+    });
+});
+```
+
+Run: `npx vitest run`
+Expected: FAIL — `scouting-store.svelte.ts` does not exist yet.
+
+- [ ] **Step 2: Create the scouting store**
 
 Create `src/lib/stores/scouting-store.svelte.ts`:
 
@@ -85,7 +411,7 @@ let error = $state<string | null>(null);
 let seasonId = $state<number | null>(null);
 
 /** Convert PlayerSeasonData to ScorablePlayer. */
-function toScorable(psd: PlayerSeasonData): ScorablePlayer {
+export function toScorable(psd: PlayerSeasonData): ScorablePlayer {
     return {
         playerId: psd.id,
         fmUid: psd.fm_uid,
@@ -151,7 +477,12 @@ export function getScoutingStore() {
 }
 ```
 
-- [ ] **Step 2: Replace +page.svelte**
+- [ ] **Step 3: Run tests to verify they pass**
+
+Run: `npx vitest run`
+Expected: ALL PASS.
+
+- [ ] **Step 4: Replace +page.svelte**
 
 Replace `src/routes/+page.svelte` entirely:
 
@@ -443,17 +774,17 @@ Replace `src/routes/+page.svelte` entirely:
 </style>
 ```
 
-- [ ] **Step 3: Verify TypeScript compilation**
+- [ ] **Step 5: Verify TypeScript compilation**
 
 Run: `bun run check`
 Expected: SUCCESS — all components and stores resolve correctly.
 
-- [ ] **Step 4: Verify Rust compilation**
+- [ ] **Step 6: Verify Rust compilation**
 
 Run: `cd src-tauri && cargo check`
 Expected: SUCCESS.
 
-- [ ] **Step 5: Run full test suite**
+- [ ] **Step 7: Run full test suite**
 
 Run: `cd src-tauri && cargo test --lib`
 Expected: ALL PASS.
@@ -465,6 +796,7 @@ Expected: SUCCESS.
 
 - Task 05 (Tauri commands) — `list_saves`, `get_latest_season`, `get_players_for_season`
 - Task 06 (frontend archetype store) — `getArchetypeStore()`
+- Task 06 (vitest setup) — `scouting-store.test.ts`
 - Task 07 (scoring engine) — `scoreAllPlayers`
 - Task 08 (pitch view) — `PitchView` component
 - Task 09 (archetype selector) — `ArchetypeSelector`, `ArchetypeEditor`
@@ -480,20 +812,30 @@ Expected: SUCCESS.
 - All TypeScript compiles without errors
 - All Rust tests pass
 - Dark theme consistent throughout
+- All store unit tests pass
 
 ## Tests
 
-### Test 1: TypeScript compilation
+### Test 1: Scouting store unit tests
+
+**What to test:** Pure logic: `toScorable` field mapping, `selectArchetype` scoring, `loadPlayers` Tauri invoke + conversion + re-scoring.
+**Command:** `npx vitest run src/lib/stores/scouting-store.test.ts`
+**Feasibility:** ✅ Unit tests — mock `invoke` and `scoreAllPlayers`.
+
+### Test 2: TypeScript compilation
 
 **What to test:** All components and stores compile.
+**Command:** `bun run check`
 **Feasibility:** ✅ Can be tested — `bun run check`.
 
-### Test 2: Rust compilation
+### Test 3: Rust compilation
 
 **What to test:** All Tauri commands compile and register.
+**Command:** `cd src-tauri && cargo check`
 **Feasibility:** ✅ Can be tested — `cargo check`.
 
-### Test 3: End-to-end smoke test
+### Test 4: End-to-end smoke test
 
 **What to test:** Launch app, verify scouting page renders.
-**Feasibility:** ⚠️ Dependent on running the Tauri app — `bun run tauri dev`.
+**Command:** `bun run tauri dev`
+**Feasibility:** ⚠️ Dependent on running the Tauri app — verify manually.

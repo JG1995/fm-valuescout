@@ -286,10 +286,15 @@ Expected: SUCCESS.
 
 ### Test 1: TypeScript compilation
 
-**What to test:** Components compile.
+**What to test:** Components compile without errors.
+**Command:** `bun run check`
 **Feasibility:** ✅ Can be tested — `bun run check`.
 
 ### Test 2: Visual verification
 
-**What to test:** Podium renders correctly with gold/silver/bronze platforms.
-**Feasibility:** ⚠️ Dependent on running the app — verify in dev mode.
+**What to test:** Podium renders correctly with gold/silver/bronze platforms, 3-2-1 layout, empty placeholders.
+**Feasibility:** ⚠️ No Svelte testing library installed. Svelte component rendering tests require `@testing-library/svelte` (not in scope for this plan). Verify in dev mode (`bun run tauri dev`).
+
+### Rationale
+
+Both components in this task (`PodiumView.svelte`, `PodiumPosition.svelte`) are pure Svelte UI — conditional rendering, derived sorting, CSS styling. The `top3` derived computation is a one-liner `[...scores].sort(...).slice(0, 3)` tightly coupled to `$derived.by`. No extractable pure logic functions. The automated gate is `bun run check` (type safety).

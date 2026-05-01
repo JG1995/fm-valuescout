@@ -4,11 +4,14 @@
 
 Create the TypeScript type definitions, Tauri invoke wrappers, and Svelte 5 store for archetypes. The store manages archetype state using runes (`$state`, `$derived`) and provides methods for CRUD operations.
 
+Uses TDD: install vitest, write failing store tests, then implement to make them pass.
+
 ## Files to Create/Modify
 
 - Create: `src/lib/types/archetype.ts` — TypeScript interfaces matching Rust types
 - Create: `src/lib/api/archetypes.ts` — Tauri invoke wrappers
 - Create: `src/lib/stores/archetype-store.svelte.ts` — Svelte 5 rune-based store
+- Create: `src/lib/stores/archetype-store.test.ts` — Unit tests for store logic
 
 ## Context
 
@@ -58,7 +61,42 @@ From Task 04's seed data, the role strings are:
 
 ## Steps
 
-- [ ] **Step 1: Create TypeScript type definitions**
+- [ ] **Step 1: Install and configure vitest**
+
+Add vitest and required plugins as devDependencies:
+
+```bash
+bun add -d vitest @vitest/coverage-v8 vite-tsconfig-paths
+```
+
+Add a `test` script to `package.json`:
+
+```json
+{
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  }
+}
+```
+
+Create or update `vitest.config.ts`:
+
+```typescript
+import { defineConfig } from "vitest/config";
+import tsconfigPaths from "vite-tsconfig-paths";
+
+export default defineConfig({
+    test: {
+        include: ["src/**/*.test.ts"],
+    },
+    plugins: [tsconfigPaths()],
+});
+```
+
+This configures vitest to resolve `$lib` path aliases via tsconfig and finds all test files under `src/`.
+
+- [ ] **Step 2: Create TypeScript type definitions**
 
 Create `src/lib/types/archetype.ts`:
 
@@ -118,7 +156,196 @@ export const PARSER_ROLE_TO_ARCHETYPE_ROLES: Record<string, ArchetypeRole[]> = {
 };
 ```
 
-- [ ] **Step 2: Create the API layer**
+- [ ] **Step 3: Write failing tests for the archetype store**
+
+Create `src/lib/stores/archetype-store.test.ts`:
+
+```typescript
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Archetype, ArchetypeRole, MetricWeight } from "$lib/types/archetype";
+
+// Mock the Tauri invoke — the API layer calls this
+vi.mock("@tauri-apps/api/core", () => ({
+    invoke: vi.fn(),
+}));
+
+import { invoke } from "@tauri-apps/api/core";
+
+// Helper to make a valid Archetype
+function makeArchetype(overrides: Partial<Archetype> = {}): Archetype {
+    return {
+        id: 1,
+        name: "Test Archetype",
+        role: "ST",
+        metrics: [
+            { metric_key: "attacking.goals_per_90", weight: 0.6, inverted: false },
+            { metric_key: "chance_creation.assists_per_90", weight: 0.4, inverted: false }, // gitleaks:allow
+        ],
+        is_default: true,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+        ...overrides,
+    };
+}
+
+describe("Archetype Store", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        vi.mocked(invoke).mockReset();
+    });
+
+    describe("loadAll", () => {
+        it("populates archetypes array", async () => {
+            const archetypes = [
+                makeArchetype({ id: 1, name: "Poacher", role: "ST" }),
+                makeArchetype({ id: 2, name: "Anchor", role: "DM" }),
+            ];
+            vi.mocked(invoke).mockResolvedValue(archetypes);
+
+            const { getArchetypeStore } = await import("./archetype-store.svelte");
+            const store = getArchetypeStore();
+
+            await store.loadAll();
+
+            expect(store.archetypes).toHaveLength(2);
+            expect(store.archetypes[0].name).toBe("Poacher");
+            expect(store.archetypes[1].name).toBe("Anchor");
+            expect(store.loading).toBe(false);
+        });
+
+        it("sets error on failure", async () => {
+            vi.mocked(invoke).mockRejectedValue(new Error("DB error"));
+
+            const { getArchetypeStore } = await import("./archetype-store.svelte");
+            const store = getArchetypeStore();
+
+            await store.loadAll();
+
+            expect(store.error).toBe("DB error");
+            expect(store.loading).toBe(false);
+        });
+    });
+
+    describe("loadByRole", () => {
+        it("replaces only that role's archetypes in the cache", async () => {
+            // First, loadAll returns ST + DM
+            vi.mocked(invoke).mockResolvedValue([
+                makeArchetype({ id: 1, role: "ST", name: "Striker A" }),
+                makeArchetype({ id: 2, role: "DM", name: "Defender A" }),
+            ]);
+
+            const { getArchetypeStore } = await import("./archetype-store.svelte");
+            const store = getArchetypeStore();
+            await store.loadAll();
+
+            // Now loadByRole returns new ST archetypes
+            vi.mocked(invoke).mockResolvedValue([
+                makeArchetype({ id: 3, role: "ST", name: "Striker B" }),
+            ]);
+
+            await store.loadByRole("ST" as ArchetypeRole);
+
+            expect(store.archetypes).toHaveLength(2);
+            // DM archetype should remain
+            expect(store.archetypes.find(a => a.role === "DM")?.name).toBe("Defender A");
+            // ST should be replaced
+            expect(store.archetypes.find(a => a.role === "ST")?.name).toBe("Striker B");
+        });
+    });
+
+    describe("create", () => {
+        it("adds new archetype to list", async () => {
+            vi.mocked(invoke).mockResolvedValue([]);
+
+            const { getArchetypeStore } = await import("./archetype-store.svelte");
+            const store = getArchetypeStore();
+            await store.loadAll();
+
+            const newArch = makeArchetype({ id: 10, name: "New Arch" });
+            vi.mocked(invoke).mockResolvedValue(newArch);
+
+            const result = await store.create("New Arch", "ST" as ArchetypeRole, newArch.metrics);
+
+            expect(result).not.toBeNull();
+            expect(result!.name).toBe("New Arch");
+            expect(store.archetypes).toHaveLength(1);
+        });
+    });
+
+    describe("update", () => {
+        it("replaces archetype in list and updates selected references", async () => {
+            const original = makeArchetype({ id: 5, name: "Old Name" });
+            vi.mocked(invoke).mockResolvedValue([original]);
+
+            const { getArchetypeStore } = await import("./archetype-store.svelte");
+            const store = getArchetypeStore();
+            await store.loadAll();
+
+            // Select it
+            store.selectArchetype("GK", original);
+            expect(store.getSelectedForSlot("GK")?.name).toBe("Old Name");
+
+            // Update it
+            const updated = makeArchetype({ id: 5, name: "New Name" });
+            vi.mocked(invoke).mockResolvedValue(updated);
+
+            await store.update(5, "New Name", updated.metrics);
+
+            expect(store.archetypes[0].name).toBe("New Name");
+            // Selected reference should also be updated
+            expect(store.getSelectedForSlot("GK")?.name).toBe("New Name");
+        });
+    });
+
+    describe("remove", () => {
+        it("deletes from list and clears selected references", async () => {
+            const arch = makeArchetype({ id: 7, name: "To Delete" });
+            vi.mocked(invoke).mockResolvedValue([arch]);
+
+            const { getArchetypeStore } = await import("./archetype-store.svelte");
+            const store = getArchetypeStore();
+            await store.loadAll();
+
+            // Select it
+            store.selectArchetype("CB-L", arch);
+            expect(store.getSelectedForSlot("CB-L")?.name).toBe("To Delete");
+
+            // Delete it
+            vi.mocked(invoke).mockResolvedValue(undefined);
+            const success = await store.remove(7);
+
+            expect(success).toBe(true);
+            expect(store.archetypes).toHaveLength(0);
+            expect(store.getSelectedForSlot("CB-L")).toBeNull();
+        });
+    });
+
+    describe("archetypesByRole", () => {
+        it("groups archetypes by role", async () => {
+            const archetypes = [
+                makeArchetype({ id: 1, role: "ST", name: "Poacher" }),
+                makeArchetype({ id: 2, role: "ST", name: "Complete Forward" }),
+                makeArchetype({ id: 3, role: "CB", name: "Ball Playing Defender" }),
+            ];
+            vi.mocked(invoke).mockResolvedValue(archetypes);
+
+            const { getArchetypeStore } = await import("./archetype-store.svelte");
+            const store = getArchetypeStore();
+            await store.loadAll();
+
+            const byRole = store.archetypesByRole;
+            expect(byRole["ST"]).toHaveLength(2);
+            expect(byRole["CB"]).toHaveLength(1);
+            expect(byRole["DM"]).toBeUndefined();
+        });
+    });
+});
+```
+
+Run: `bun run test`
+Expected: FAIL — `archetype-store.svelte.ts` does not exist yet.
+
+- [ ] **Step 4: Create the API layer**
 
 Create directory `src/lib/api/` and file `src/lib/api/archetypes.ts`:
 
@@ -159,7 +386,7 @@ export async function deleteArchetype(id: number): Promise<void> {
 }
 ```
 
-- [ ] **Step 3: Create the archetype store**
+- [ ] **Step 5: Create the archetype store**
 
 Create directory `src/lib/stores/` and file `src/lib/stores/archetype-store.svelte.ts`:
 
@@ -292,9 +519,14 @@ export function getArchetypeStore() {
 }
 ```
 
-- [ ] **Step 4: Verify TypeScript compilation**
+- [ ] **Step 6: Run tests to verify they pass**
 
-Run: `cd /workspace && bun run check`
+Run: `bun run test`
+Expected: ALL PASS — all store unit tests pass.
+
+- [ ] **Step 7: Verify TypeScript compilation**
+
+Run: `bun run check`
 Expected: SUCCESS — no TypeScript errors.
 
 ## Dependencies
@@ -304,20 +536,29 @@ Expected: SUCCESS — no TypeScript errors.
 
 ## Success Criteria
 
+- Vitest is installed and configured for SvelteKit path aliases
 - TypeScript types match the Rust `Archetype` and `MetricWeight` shapes
 - API layer wraps all 6 Tauri commands
 - Store provides reactive state with load, CRUD, and selection management
+- All store unit tests pass (`loadAll`, `loadByRole`, `create`, `update`, `remove`, `archetypesByRole`)
 - `bun run check` passes with no errors
 - No imports from non-existent modules
 
 ## Tests
 
-### Test 1: TypeScript compilation
+### Test 1: Store unit tests
+
+**What to test:** Store state transformations — loadAll, loadByRole, create, update, remove, archetypesByRole derived grouping.
+**Command:** `bun run test`
+**Feasibility:** ✅ Unit tests with mocked `@tauri-apps/api/core` invoke.
+
+### Test 2: TypeScript compilation
 
 **What to test:** All new TypeScript files compile without errors.
+**Command:** `bun run check`
 **Feasibility:** ✅ Can be tested — `bun run check`.
 
-### Test 2: Type shape consistency
+### Test 3: Type shape consistency
 
 **What to test:** TypeScript `Archetype` interface fields match Rust `Archetype` struct fields.
 **Feasibility:** ✅ Can be verified by manual comparison — both use the same JSON serialization.

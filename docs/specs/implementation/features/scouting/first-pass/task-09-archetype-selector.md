@@ -596,10 +596,15 @@ Expected: SUCCESS.
 
 ### Test 1: TypeScript compilation
 
-**What to test:** Components compile.
+**What to test:** Components compile without errors.
+**Command:** `bun run check`
 **Feasibility:** ✅ Can be tested — `bun run check`.
 
 ### Test 2: Visual verification
 
-**What to test:** Selector opens, lists archetypes, editor modal works.
-**Feasibility:** ⚠️ Dependent on running the app — verify in dev mode.
+**What to test:** Selector opens, lists archetypes by role, edit/delete actions work, editor modal validates inputs.
+**Feasibility:** ⚠️ No Svelte testing library installed. Svelte component rendering tests require `@testing-library/svelte` (not in scope for this plan). Verify in dev mode (`bun run tauri dev`).
+
+### Rationale
+
+Both components in this task (`ArchetypeSelector.svelte`, `ArchetypeEditor.svelte`) are pure Svelte UI — event handlers, conditional rendering, and form state. No extractable pure logic functions. The `handleSave` validation in `ArchetypeEditor` (empty name, empty keys, negative weights) is tightly coupled to Svelte `$state` and the form lifecycle. The automated gate is `bun run check` (type safety).

@@ -69,7 +69,11 @@ graph TD
 - **Tasks 10, 11** can be done in parallel after Task 07
 - **Task 12** is the integration point — must be done last
 
-## Progress Tracking
+## Prerequisites
+
+- **Vitest**: Installed and configured in Task 06. All frontend tasks (07–12) use `bun run test` (i.e., `vitest run`) for unit tests.
+- **Rust toolchain**: Required for Tasks 01–05. Tests use `cargo test`.
+
 
 - [ ] Task 01: Schema Migration
 - [ ] Task 02: Archetype Types
