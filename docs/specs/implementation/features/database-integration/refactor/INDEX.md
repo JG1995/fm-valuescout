@@ -45,9 +45,9 @@ Tasks 01-05 are independent of each other and can be done in any order. Task 06 
 
 ## Progress Tracking
 
-- [ ] Task 01: Quick Fixes: Delete Dead Code & Fix created_at
-- [ ] Task 02: Fix Silent Error Swallowing
-- [ ] Task 03: Deduplicate Season Creation
-- [ ] Task 04: Harden Delete Operations
-- [ ] Task 05: Replace Column Indices
-- [ ] Task 06: Split Storage Module
+- [x] Task 01: Quick Fixes: Delete Dead Code & Fix created_at
+- [x] Task 02: Fix Silent Error Swallowing
+- [x] Task 03: Deduplicate Season Creation
+- [x] Task 04: Harden Delete Operations
+- [x] Task 05: Replace Column Indices
+- [x] Task 06: Split Storage Module
