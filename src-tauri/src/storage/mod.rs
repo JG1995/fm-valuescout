@@ -193,16 +193,6 @@ pub struct PlayerSeasonData {
     pub data: Option<ParsedPlayer>,
 }
 
-// ── Placeholder for future tasks ───────────────────────────────────────
-
-/// Persist imported players to the database.
-/// Currently an honest stub — returns an error until implemented.
-/// Idempotent: skips players with same UID + in_game_date.
-/// Will be implemented in a future task (DB write layer).
-pub fn save_import(_players: Vec<ParsedPlayer>, _in_game_date: &str) -> Result<(), String> {
-    Err("Storage is not yet implemented. Your data has not been saved.".to_string())
-}
-
 // ── Save CRUD ──────────────────────────────────────────────────────────
 
 /// Validate a save name: non-empty after trimming, max 100 chars.
@@ -244,11 +234,17 @@ pub fn create_save(conn: &Connection, name: &str) -> Result<Save, StorageError> 
     )?;
     let id = conn.last_insert_rowid();
 
+    let created_at: String = conn.query_row(
+        "SELECT created_at FROM saves WHERE id = ?1",
+        rusqlite::params![id],
+        |row| row.get(0),
+    )?;
+
     Ok(Save {
         id,
         name,
         managed_club: None,
-        created_at: String::new(), // Will be populated by list_saves
+        created_at,
         season_count: 0,
         player_count: 0,
     })
