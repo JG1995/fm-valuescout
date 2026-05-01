@@ -73,6 +73,11 @@ fn init_schema(conn: &Connection) -> Result<(), StorageError> {
     Ok(())
 }
 
+/// Initialize schema on an existing connection. Used for testing.
+pub fn init_db_test(conn: &Connection) -> Result<(), StorageError> {
+    init_schema(conn)
+}
+
 /// Open (or create) the SQLite database at the given path and initialize schema.
 pub fn init_db(db_path: &str) -> Result<Connection, StorageError> {
     let conn = Connection::open(db_path)?;
