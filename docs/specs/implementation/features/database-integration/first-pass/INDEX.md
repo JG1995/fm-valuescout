@@ -52,8 +52,8 @@ graph TD
 
 ## Progress Tracking
 
-- [ ] Task 01: Foundation Types & Dependencies
-- [ ] Task 02: DB Init & Schema
+- [x] Task 01: Foundation Types & Dependencies
+- [x] Task 02: DB Init & Schema
 - [ ] Task 03: Save CRUD
 - [ ] Task 04: Season CRUD
 - [ ] Task 05: Import Season
