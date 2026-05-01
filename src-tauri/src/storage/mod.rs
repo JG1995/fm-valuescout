@@ -306,22 +306,6 @@ pub fn rename_save(conn: &Connection, save_id: i64, new_name: &str) -> Result<()
 
 /// Delete a save and all associated data (cascade: seasons, player_seasons, players).
 pub fn delete_save(conn: &Connection, save_id: i64) -> Result<(), StorageError> {
-    // Delete player_seasons first (no cascade from saves → player_seasons directly)
-    conn.execute(
-        "DELETE FROM player_seasons WHERE player_id IN (SELECT id FROM players WHERE save_id = ?1)",
-        rusqlite::params![save_id],
-    )?;
-    // Delete players
-    conn.execute(
-        "DELETE FROM players WHERE save_id = ?1",
-        rusqlite::params![save_id],
-    )?;
-    // Delete seasons
-    conn.execute(
-        "DELETE FROM seasons WHERE save_id = ?1",
-        rusqlite::params![save_id],
-    )?;
-    // Delete save
     let rows = conn.execute(
         "DELETE FROM saves WHERE id = ?1",
         rusqlite::params![save_id],
@@ -568,8 +552,11 @@ pub fn rename_season(conn: &Connection, season_id: i64, new_label: &str) -> Resu
 }
 
 /// Delete a season, all associated player_seasons, and orphaned players.
+/// All operations are atomic within a single transaction.
 pub fn delete_season(conn: &Connection, season_id: i64) -> Result<(), StorageError> {
-    let save_id: Option<i64> = conn.query_row(
+    let tx = conn.unchecked_transaction()?;
+
+    let save_id: Option<i64> = tx.query_row(
         "SELECT save_id FROM seasons WHERE id = ?1",
         rusqlite::params![season_id],
         |row| row.get(0),
@@ -581,20 +568,19 @@ pub fn delete_season(conn: &Connection, season_id: i64) -> Result<(), StorageErr
     };
 
     // Delete player_seasons for this season
-    conn.execute(
+    tx.execute(
         "DELETE FROM player_seasons WHERE season_id = ?1",
         rusqlite::params![season_id],
     )?;
 
     // Delete the season
-    conn.execute(
+    tx.execute(
         "DELETE FROM seasons WHERE id = ?1",
         rusqlite::params![season_id],
     )?;
 
-
     // Clean up orphaned players (players with no remaining seasons in this save)
-    conn.execute(
+    tx.execute(
         "DELETE FROM players WHERE save_id = :save_id AND id NOT IN \
          (SELECT DISTINCT player_id FROM player_seasons \
           JOIN seasons ON player_seasons.season_id = seasons.id \
@@ -602,6 +588,7 @@ pub fn delete_season(conn: &Connection, season_id: i64) -> Result<(), StorageErr
         rusqlite::named_params!{":save_id": save_id},
     )?;
 
+    tx.commit()?;
     Ok(())
 }
 
