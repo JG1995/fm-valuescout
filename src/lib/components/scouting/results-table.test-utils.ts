@@ -78,7 +78,7 @@ export function createMockScoredPlayers(): ScoredPlayer[] {
 				name: "Young Prospect",
 				age: 18,
 				transfer_value: 5000000,
-				club: " youth team",
+				club: "Youth Team",
 			}),
 			rawScore: 70.0,
 			valueAdjustedScore: 98.0,

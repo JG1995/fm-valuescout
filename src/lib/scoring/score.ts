@@ -23,6 +23,10 @@ export interface ParsedPlayer {
 	age: number;
 	/** Transfer market value in currency units */
 	transfer_value: number;
+	/** Player's club/team (optional) */
+	club?: string;
+	/** Player's nationality (optional) */
+	nationality?: string;
 	/** Additional dynamic metric fields accessed via bracket notation */
 	[key: string]: unknown;
 }

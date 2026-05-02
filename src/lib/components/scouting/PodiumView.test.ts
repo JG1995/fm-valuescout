@@ -40,7 +40,7 @@ describe("PodiumView", () => {
 				archetypeName: "Goal Poacher",
 			});
 
-			expect(screen.getByText("Goal Poacher")).toBeTruthy();
+			expect(screen.getByText(/Goal Poacher/)).toBeTruthy();
 		});
 	});
 
