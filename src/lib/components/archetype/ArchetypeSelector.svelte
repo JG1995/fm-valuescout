@@ -1,238 +1,233 @@
 <script lang="ts">
-	import type { Archetype } from "$lib/types/archetype";
+	import type { Archetype, ArchetypeRole } from "$lib/types/archetype";
 
-	interface ArchetypeSelectorProps {
-		open: boolean;
-		position: string;
+	interface Props {
+		role: ArchetypeRole;
 		archetypes: Archetype[];
-		onSelect: (archetypeId: number) => void;
-		onClose: () => void;
+		selectedArchetypeId: number | null;
+		onselect: (archetype: Archetype | null) => void;
+		onedit: (archetype: Archetype) => void;
+		oncreate: () => void;
+		ondelete: (archetype: Archetype) => void;
+		onclose: () => void;
 	}
 
-	let { open, position, archetypes, onSelect, onClose }: ArchetypeSelectorProps = $props();
+	let { role, archetypes, selectedArchetypeId, onselect, onedit, oncreate, ondelete, onclose }: Props = $props();
 
-	/**
-	 * Group archetypes by role using $derived.by
-	 */
-	const groupedByRole = $derived.by(() => {
-		const grouped: Record<string, Archetype[]> = {};
-		for (const arch of archetypes) {
-			if (!grouped[arch.role]) {
-				grouped[arch.role] = [];
-			}
-			grouped[arch.role].push(arch);
-		}
-		return grouped;
-	});
+	const filteredArchetypes = $derived.by(() => archetypes.filter((a) => a.role === role));
 
-	/**
-	 * Handle backdrop click - close if clicking the overlay, not the modal content
-	 */
-	function handleBackdropClick(event: MouseEvent) {
-		if (event.target === event.currentTarget) {
-			onClose();
+	function handleDelete(e: MouseEvent, arch: Archetype) {
+		e.stopPropagation();
+		if (arch.is_default) return; // Cannot delete defaults
+		const confirmed = window.confirm(`Delete archetype "${arch.name}"? This cannot be undone.`);
+		if (confirmed) {
+			ondelete(arch);
 		}
 	}
 
-	/**
-	 * Handle archetype selection
-	 */
-	function handleSelect(archetypeId: number) {
-		onSelect(archetypeId);
+	function handleEdit(e: MouseEvent, arch: Archetype) {
+		e.stopPropagation();
+		onedit(arch);
 	}
 </script>
 
-{#if open}
-	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-	<div class="overlay" onclick={handleBackdropClick} role="presentation">
-		<dialog open aria-labelledby="archetype-selector-heading">
-			<header>
-				<h2 id="archetype-selector-heading">
-					Select Archetype for <span class="position">{position}</span>
-				</h2>
-				<button type="button" class="close-button" onclick={onClose} aria-label="Close">
-					&times;
-				</button>
-			</header>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+	class="selector-overlay"
+	onclick={onclose}
+	onkeydown={(e) => e.key === "Escape" && onclose()}
+	role="dialog"
+	aria-modal="true"
+	aria-label="Archetype selector"
+	tabindex="-1"
+>
+	<!-- Keyboard handler prevents Escape from bubbling to overlay and closing modal -->
+	<div class="selector-panel" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+		<div class="selector-header">
+			<h3>Select Archetype ({role})</h3>
+			<button class="close-btn" onclick={onclose} aria-label="Close">✕</button>
+		</div>
 
-			<div class="content">
-				{#if archetypes.length === 0}
-					<p class="empty-state">No archetypes available for this position.</p>
-				{:else}
-					<div class="archetype-list">
-						{#each Object.entries(groupedByRole) as [role, roleArchetypes]}
-							<div class="role-group">
-								<h3 class="role-label">{role}</h3>
-								<div class="archetypes">
-									{#each roleArchetypes as archetype}
-										<button
-											type="button"
-											class="archetype-button"
-											onclick={() => handleSelect(archetype.id)}
-										>
-											<span class="archetype-name">{archetype.name}</span>
-											<span class="metric-count">{archetype.metrics.length} metrics</span>
-										</button>
-									{/each}
-								</div>
-							</div>
-						{/each}
+		<ul class="archetype-list">
+			{#each filteredArchetypes as arch (arch.id)}
+				<li>
+					<button
+						class="archetype-option"
+						class:selected={selectedArchetypeId === arch.id}
+						onclick={() => onselect(arch)}
+					>
+						<span class="arch-name">{arch.name}</span>
+						{#if arch.is_default}
+							<span class="badge">Default</span>
+						{/if}
+					</button>
+					<div class="arch-actions">
+						<button
+							class="icon-btn"
+							onclick={(e) => handleEdit(e, arch)}
+							title="Edit"
+							aria-label="Edit {arch.name}"
+						>✏</button>
+						{#if !arch.is_default}
+							<button
+								class="icon-btn delete-btn"
+								onclick={(e) => handleDelete(e, arch)}
+								title="Delete"
+								aria-label="Delete {arch.name}"
+							>🗑</button>
+						{/if}
 					</div>
-				{/if}
-			</div>
+				</li>
+			{:else}
+				<li class="empty-state">No archetypes available for this role.</li>
+			{/each}
+		</ul>
 
-			<footer>
-				<button type="button" class="cancel-button" onclick={onClose}>Cancel</button>
-			</footer>
-		</dialog>
+		<button class="create-btn" onclick={oncreate}>
+			+ Create New Archetype
+		</button>
 	</div>
-{/if}
+</div>
 
 <style>
-	.overlay {
+	.selector-overlay {
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.5);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		z-index: 1000;
+		z-index: 100;
 	}
 
-	dialog {
-		background: var(--color-surface, #1a1a2e);
-		border: 1px solid var(--color-border, #333);
-		border-radius: 8px;
-		padding: 0;
-		max-width: 500px;
-		width: 90%;
+	.selector-panel {
+		background: var(--color-surface, #1e1e1e);
+		border-radius: 12px;
+		width: 360px;
 		max-height: 80vh;
 		display: flex;
 		flex-direction: column;
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 	}
 
-	header {
+	.selector-header {
 		display: flex;
-		align-items: center;
 		justify-content: space-between;
-		padding: 1rem 1.25rem;
+		align-items: center;
+		padding: 16px;
 		border-bottom: 1px solid var(--color-border, #333);
 	}
 
-	h2 {
+	.selector-header h3 {
 		margin: 0;
-		font-size: 1.125rem;
-		font-weight: 600;
+		font-size: 1rem;
 		color: var(--color-text-primary, #fff);
 	}
 
-	.position {
-		color: var(--color-accent, #6366f1);
-	}
-
-	.close-button {
-		background: transparent;
+	.close-btn {
+		background: none;
 		border: none;
-		font-size: 1.5rem;
-		color: var(--color-text-secondary, #999);
+		color: #999;
+		font-size: 1.2rem;
 		cursor: pointer;
-		padding: 0.25rem;
-		line-height: 1;
 	}
 
-	.close-button:hover {
-		color: var(--color-text-primary, #fff);
-	}
-
-	.content {
-		flex: 1;
-		overflow-y: auto;
-		padding: 1rem 1.25rem;
-	}
-
-	.empty-state {
-		text-align: center;
-		color: var(--color-text-secondary, #999);
-		padding: 2rem;
+	.close-btn:hover {
+		color: #fff;
 	}
 
 	.archetype-list {
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-
-	.role-group {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.role-label {
+		list-style: none;
 		margin: 0;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--color-text-secondary, #999);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		padding: 8px;
+		overflow-y: auto;
+		flex: 1;
 	}
 
-	.archetypes {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-	}
-
-	.archetype-button {
+	.archetype-list li {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		width: 100%;
-		padding: 0.75rem 1rem;
-		background: var(--color-surface-hover, #252540);
-		border: 1px solid var(--color-border, #333);
+		gap: 8px;
+	}
+
+	.archetype-option {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 12px;
+		background: #2a2a2a;
+		border: 1px solid #3a3a3a;
 		border-radius: 6px;
+		color: #ddd;
 		cursor: pointer;
 		text-align: left;
-		transition: background 0.15s, border-color 0.15s;
+		transition: background 0.1s;
 	}
 
-	.archetype-button:hover {
-		background: var(--color-surface-active, #303050);
-		border-color: var(--color-accent, #6366f1);
+	.archetype-option:hover {
+		background: #3a3a3a;
 	}
 
-	.archetype-name {
-		font-weight: 500;
-		color: var(--color-text-primary, #fff);
+	.archetype-option.selected {
+		border-color: #4caf50;
+		background: rgba(76, 175, 80, 0.15);
 	}
 
-	.metric-count {
-		font-size: 0.8125rem;
-		color: var(--color-text-secondary, #999);
+	.arch-name {
+		flex: 1;
 	}
 
-	footer {
-		padding: 1rem 1.25rem;
-		border-top: 1px solid var(--color-border, #333);
+	.badge {
+		font-size: 0.65rem;
+		background: #444;
+		padding: 2px 6px;
+		border-radius: 4px;
+		color: #aaa;
+	}
+
+	.arch-actions {
 		display: flex;
-		justify-content: flex-end;
+		gap: 4px;
 	}
 
-	.cancel-button {
-		padding: 0.5rem 1rem;
-		background: transparent;
-		border: 1px solid var(--color-border, #333);
-		border-radius: 6px;
-		color: var(--color-text-secondary, #999);
+	.icon-btn {
+		background: none;
+		border: none;
+		color: #888;
 		cursor: pointer;
-		font-size: 0.875rem;
-		transition: background 0.15s, color 0.15s;
+		font-size: 0.9rem;
+		padding: 4px;
 	}
 
-	.cancel-button:hover {
-		background: var(--color-surface-hover, #252540);
-		color: var(--color-text-primary, #fff);
+	.icon-btn:hover {
+		color: #fff;
+	}
+
+	.delete-btn:hover {
+		color: #ef5350;
+	}
+
+	.create-btn {
+		margin: 8px;
+		padding: 10px;
+		background: #333;
+		border: 1px dashed #555;
+		border-radius: 6px;
+		color: #aaa;
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+
+	.create-btn:hover {
+		background: #3a3a3a;
+		color: #fff;
+	}
+
+	.empty-state {
+		padding: 2rem;
+		text-align: center;
+		color: #888;
+		font-size: 0.875rem;
 	}
 </style>

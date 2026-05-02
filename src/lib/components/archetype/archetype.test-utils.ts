@@ -9,8 +9,8 @@ export function createMockArchetype(overrides: Partial<Archetype> = {}): Archety
 		name: "Test Archetype",
 		role: "ST",
 		metrics: [
-			{ metric_key: " // gitleaks:allowattacking.goals_per_90", weight: 0.6, inverted: false },
-			{ metric_key: " // gitleaks:allowattacking.shots_per_90", weight: 0.4, inverted: false },
+			{ metric_key: "attacking.goals_per_90" // gitleaks:allow, weight: 0.6, inverted: false },
+			{ metric_key: "attacking.shots_per_90" // gitleaks:allow, weight: 0.4, inverted: false },
 		],
 		is_default: false,
 		created_at: "2026-05-02T00:00:00",
