@@ -3,7 +3,7 @@ pub mod parser;
 pub mod storage;
 pub use parser::parse_csv;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::Manager;
 use storage::DbState;
 
@@ -29,7 +29,7 @@ pub fn run() {
                 .map_err(|e| format!("Unable to seed default archetypes: {}", e))?;
 
             app.manage(DbState {
-                conn: Mutex::new(conn),
+                conn: Arc::new(Mutex::new(conn)),
             });
 
             Ok(())

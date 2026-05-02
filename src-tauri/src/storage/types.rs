@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
@@ -7,8 +7,9 @@ use crate::parser::types::ParsedPlayer;
 // DbState struct
 /// Tauri-managed state wrapping a single SQLite connection.
 /// Single-user app; Mutex prevents concurrent access within the app.
+#[derive(Clone)]
 pub struct DbState {
-    pub conn: Mutex<Connection>,
+    pub conn: Arc<Mutex<Connection>>,
 }
 
 /// A save-game record.
