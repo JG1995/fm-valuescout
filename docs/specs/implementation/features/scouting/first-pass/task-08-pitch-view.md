@@ -19,24 +19,27 @@ Uses TDD: write failing tests first, then implement to make them pass.
 ### Pitch Layout
 
 The pitch uses a standard 4-4-2 formation with these positions:
+
 - GK (1)
-- LB, CB-L, CB-R, RB (4)
-- LM, CM-L, CM-R, RM (4)
-- LS, RS (2)
+- DL, DC, DC, DR (4)
+- ML, MC, MC, MR (4)
+- STC, STC (2)
 
 Total: 11 slots.
 
 ### Slot Data Model
 
 Each position slot needs:
+
 - A unique `slotId` (e.g., "GK", "CB-L", "CB-R", "LB", "RB", "LM", "CM-L", "CM-R", "RM", "LS", "RS")
 - A display label
-- The archetype `role` it maps to (e.g., "GK" for GK, "CB" for CB-L/CB-R, "FB" for LB/RB, "CM" for CM-L/CM-R, "W" for LM/RM, "ST" for LS/RS)
+- The archetype `role` it maps to (coarse roles: GK for GK, D for CB-L/CB-R/LB/RB, M for CM-L/CM-R, AM for LM/RM, ST for LS/RS)
 - X/Y coordinates for positioning on the pitch (percentage-based)
 
 ### Interaction
 
 Clicking a slot dispatches an event to the parent with the `slotId`. The parent (ScoutingPage) handles opening the archetype selector. The slot displays:
+
 - Selected archetype name (if one is selected)
 - "Select archetype" placeholder (if none selected)
 
@@ -52,54 +55,54 @@ import { PITCH_POSITIONS } from "./pitch-positions";
 import type { ArchetypeRole } from "$lib/types/archetype";
 
 // Valid roles from the Archetype type
-const VALID_ROLES: ArchetypeRole[] = ["GK", "CB", "FB", "CM", "W", "ST"];
+const VALID_ROLES: ArchetypeRole[] = ["GK", "D", "M", "AM", "ST"];
 
 describe("PITCH_POSITIONS", () => {
-    it("has exactly 11 positions", () => {
-        expect(PITCH_POSITIONS).toHaveLength(11);
-    });
+	it("has exactly 11 positions", () => {
+		expect(PITCH_POSITIONS).toHaveLength(11);
+	});
 
-    it("all slotIds are unique", () => {
-        const ids = PITCH_POSITIONS.map(p => p.slotId);
-        const unique = new Set(ids);
-        expect(unique.size).toBe(ids.length);
-    });
+	it("all slotIds are unique", () => {
+		const ids = PITCH_POSITIONS.map((p) => p.slotId);
+		const unique = new Set(ids);
+		expect(unique.size).toBe(ids.length);
+	});
 
-    it("all roles are valid ArchetypeRole values", () => {
-        for (const pos of PITCH_POSITIONS) {
-            expect(VALID_ROLES).toContain(pos.role);
-        }
-    });
+	it("all roles are valid ArchetypeRole values", () => {
+		for (const pos of PITCH_POSITIONS) {
+			expect(VALID_ROLES).toContain(pos.role);
+		}
+	});
 
-    it("all x/y coordinates are in 0-100 range", () => {
-        for (const pos of PITCH_POSITIONS) {
-            expect(pos.x).toBeGreaterThanOrEqual(0);
-            expect(pos.x).toBeLessThanOrEqual(100);
-            expect(pos.y).toBeGreaterThanOrEqual(0);
-            expect(pos.y).toBeLessThanOrEqual(100);
-        }
-    });
+	it("all x/y coordinates are in 0-100 range", () => {
+		for (const pos of PITCH_POSITIONS) {
+			expect(pos.x).toBeGreaterThanOrEqual(0);
+			expect(pos.x).toBeLessThanOrEqual(100);
+			expect(pos.y).toBeGreaterThanOrEqual(0);
+			expect(pos.y).toBeLessThanOrEqual(100);
+		}
+	});
 
-    it("no duplicate slotIds", () => {
-        const ids = PITCH_POSITIONS.map(p => p.slotId);
-        const seen = new Set<string>();
-        for (const id of ids) {
-            expect(seen.has(id)).toBe(false);
-            seen.add(id);
-        }
-    });
+	it("no duplicate slotIds", () => {
+		const ids = PITCH_POSITIONS.map((p) => p.slotId);
+		const seen = new Set<string>();
+		for (const id of ids) {
+			expect(seen.has(id)).toBe(false);
+			seen.add(id);
+		}
+	});
 
-    it("positions form a valid 4-4-2 formation", () => {
-        const byRole: Record<string, number> = {};
-        for (const pos of PITCH_POSITIONS) {
-            byRole[pos.role] = (byRole[pos.role] ?? 0) + 1;
-        }
-        // 4-4-2: 2 ST, 4 midfield (2 CM + 2 W), 4 defenders (2 CB + 2 FB), 1 GK
-        expect(byRole["ST"]).toBe(2);
-        expect(byRole["CM"] + (byRole["W"] ?? 0)).toBe(4);
-        expect((byRole["CB"] ?? 0) + (byRole["FB"] ?? 0)).toBe(4);
-        expect(byRole["GK"]).toBe(1);
-    });
+	it("positions form a valid 4-4-2 formation", () => {
+		const byRole: Record<string, number> = {};
+		for (const pos of PITCH_POSITIONS) {
+			byRole[pos.role] = (byRole[pos.role] ?? 0) + 1;
+		}
+		// 4-4-2: 2 ST, 4 midfield (2 M + 2 AM), 4 defenders (all D), 1 GK
+		expect(byRole["ST"]).toBe(2);
+		expect(byRole["M"] + (byRole["AM"] ?? 0)).toBe(4);
+		expect(byRole["D"]).toBe(4);
+		expect(byRole["GK"]).toBe(1);
+	});
 });
 ```
 
@@ -114,16 +117,16 @@ Create directory `src/lib/components/pitch/` and file `src/lib/components/pitch/
 import type { ArchetypeRole } from "$lib/types/archetype";
 
 export interface PitchPosition {
-    /** Unique slot identifier. */
-    slotId: string;
-    /** Display label on the pitch. */
-    label: string;
-    /** Archetype role this slot maps to. */
-    role: ArchetypeRole;
-    /** X position as percentage (0 = left, 100 = right). */
-    x: number;
-    /** Y position as percentage (0 = top/goal, 100 = bottom/own goal). */
-    y: number;
+	/** Unique slot identifier. */
+	slotId: string;
+	/** Display label on the pitch. */
+	label: string;
+	/** Archetype role this slot maps to. */
+	role: ArchetypeRole;
+	/** X position as percentage (0 = left, 100 = right). */
+	x: number;
+	/** Y position as percentage (0 = top/goal, 100 = bottom/own goal). */
+	y: number;
 }
 
 /**
@@ -132,24 +135,24 @@ export interface PitchPosition {
  * X axis: 0 = left, 100 = right.
  */
 export const PITCH_POSITIONS: PitchPosition[] = [
-    // Strikers (top)
-    { slotId: "LS", label: "LS", role: "ST", x: 35, y: 8 },
-    { slotId: "RS", label: "RS", role: "ST", x: 65, y: 8 },
+	// Strikers (top)
+	{ slotId: "LS", label: "LS", role: "ST", x: 35, y: 8 },
+	{ slotId: "RS", label: "RS", role: "ST", x: 65, y: 8 },
 
-    // Midfielders
-    { slotId: "LM", label: "LM", role: "W", x: 12, y: 32 },
-    { slotId: "CM-L", label: "CM-L", role: "CM", x: 37, y: 32 },
-    { slotId: "CM-R", label: "CM-R", role: "CM", x: 63, y: 32 },
-    { slotId: "RM", label: "RM", role: "W", x: 88, y: 32 },
+	// Midfielders
+	{ slotId: "LM", label: "LM", role: "AM", x: 12, y: 32 },
+	{ slotId: "CM-L", label: "CM-L", role: "M", x: 37, y: 32 },
+	{ slotId: "CM-R", label: "CM-R", role: "M", x: 63, y: 32 },
+	{ slotId: "RM", label: "RM", role: "AM", x: 88, y: 32 },
 
-    // Defenders
-    { slotId: "LB", label: "LB", role: "FB", x: 12, y: 58 },
-    { slotId: "CB-L", label: "CB-L", role: "CB", x: 37, y: 58 },
-    { slotId: "CB-R", label: "CB-R", role: "CB", x: 63, y: 58 },
-    { slotId: "RB", label: "RB", role: "FB", x: 88, y: 58 },
+	// Defenders
+	{ slotId: "LB", label: "LB", role: "D", x: 12, y: 58 },
+	{ slotId: "CB-L", label: "CB-L", role: "D", x: 37, y: 58 },
+	{ slotId: "CB-R", label: "CB-R", role: "D", x: 63, y: 58 },
+	{ slotId: "RB", label: "RB", role: "D", x: 88, y: 58 },
 
-    // Goalkeeper
-    { slotId: "GK", label: "GK", role: "GK", x: 50, y: 82 },
+	// Goalkeeper
+	{ slotId: "GK", label: "GK", role: "GK", x: 50, y: 82 },
 ];
 ```
 

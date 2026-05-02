@@ -56,8 +56,7 @@ Commands defined in Task 05:
 
 ### Role String Values
 
-From Task 04's seed data, the role strings are:
-`"GK"`, `"CB"`, `"FB"`, `"DM"`, `"WB"`, `"CM"`, `"W"`, `"AM"`, `"ST"`
+From the parser coarse role system: `GK`, `D`, `WB`, `DM`, `M`, `AM`, `ST`.
 
 ## Steps
 
@@ -115,7 +114,7 @@ export interface MetricWeight {
 export interface Archetype {
     id: number;
     name: string;
-    /** Position role: "GK" | "CB" | "FB" | "DM" | "WB" | "CM" | "W" | "AM" | "ST" */
+    /** Position role (coarse): "GK" | "D" | "WB" | "DM" | "M" | "AM" | "ST" */
     role: string;
     metrics: MetricWeight[];
     is_default: boolean;
@@ -123,37 +122,22 @@ export interface Archetype {
     updated_at: string;
 }
 
-/** All valid archetype role strings. */
-export type ArchetypeRole = "GK" | "CB" | "FB" | "DM" | "WB" | "CM" | "W" | "AM" | "ST";
+/** All valid archetype role strings (coarse system). */
+export type ArchetypeRole = "GK" | "D" | "WB" | "DM" | "M" | "AM" | "ST";
 
 /** Role display names for UI. */
 export const ROLE_LABELS: Record<ArchetypeRole, string> = {
-    GK: "Goalkeeper",
-    CB: "Center Back",
-    FB: "Full Back",
-    DM: "Defensive Midfielder",
-    WB: "Wing Back",
-    CM: "Central Midfielder",
-    W: "Winger",
-    AM: "Attacking Midfielder",
-    ST: "Striker",
+	GK: "Goalkeeper",
+	D: "Defender",
+	WB: "Wing Back",
+	DM: "Defensive Midfielder",
+	M: "Midfielder",
+	AM: "Attacking Midfielder / Winger",
+	ST: "Striker",
 };
 
-/**
- * Map FM parser Role enum values to archetype roles.
- * The parser uses: GK, D, WB, DM, M, AM, ST
- * Archetypes use: GK, CB, FB, DM, WB, CM, W, AM, ST
- * This mapping is used when scoring a player against archetypes.
- */
-export const PARSER_ROLE_TO_ARCHETYPE_ROLES: Record<string, ArchetypeRole[]> = {
-    GK: ["GK"],
-    D: ["CB", "FB"],  // Defenders can be CB or FB
-    WB: ["WB"],
-    DM: ["DM"],
-    M: ["CM"],
-    AM: ["AM", "W"],  // AM can be AM or Winger
-    ST: ["ST"],
-};
+// Coarse roles match parser::types::Role exactly: GK, D, WB, DM, M, AM, ST
+// No mapping needed — PARSER_ROLE_TO_ARCHETYPE_ROLES was removed (identity mapping)
 ```
 
 - [ ] **Step 3: Write failing tests for the archetype store**
@@ -325,7 +309,7 @@ describe("Archetype Store", () => {
             const archetypes = [
                 makeArchetype({ id: 1, role: "ST", name: "Poacher" }),
                 makeArchetype({ id: 2, role: "ST", name: "Complete Forward" }),
-                makeArchetype({ id: 3, role: "CB", name: "Ball Playing Defender" }),
+                makeArchetype({ id: 3, role: "D", name: "Ball Playing Defender" }),
             ];
             vi.mocked(invoke).mockResolvedValue(archetypes);
 
@@ -335,7 +319,7 @@ describe("Archetype Store", () => {
 
             const byRole = store.archetypesByRole;
             expect(byRole["ST"]).toHaveLength(2);
-            expect(byRole["CB"]).toHaveLength(1);
+            expect(byRole["D"]).toHaveLength(1);
             expect(byRole["DM"]).toBeUndefined();
         });
     });
