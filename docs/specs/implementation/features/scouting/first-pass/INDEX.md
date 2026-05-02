@@ -74,18 +74,19 @@ graph TD
 - **Vitest**: Installed and configured in Task 06. All frontend tasks (07–12) use `bun run test` (i.e., `vitest run`) for unit tests.
 - **Rust toolchain**: Required for Tasks 01–05. Tests use `cargo test`.
 
+## Progress Tracking
 
-- [ ] Task 01: Schema Migration
-- [ ] Task 02: Archetype Types
-- [ ] Task 03: Archetype CRUD Storage Layer
-- [ ] Task 04: Default Archetypes Seed
-- [ ] Task 05: Tauri Archetype Commands
-- [ ] Task 06: Frontend Store + API
-- [ ] Task 07: Scoring Engine (TypeScript)
-- [ ] Task 08: Pitch View Component
-- [ ] Task 09: Archetype Selector Component
-- [ ] Task 10: Podium View Component
-- [ ] Task 11: Results Table Component
+- [x] Task 01: Schema Migration
+- [x] Task 02: Archetype Types
+- [x] Task 03: Archetype CRUD Storage Layer
+- [x] Task 04: Default Archetypes Seed
+- [x] Task 05: Tauri Archetype Commands
+- [x] Task 06: Frontend Store + API
+- [x] Task 07: Scoring Engine (TypeScript)
+- [x] Task 08: Pitch View Component
+- [x] Task 09: Archetype Selector Component
+- [x] Task 10: Podium View Component
+- [x] Task 11: Results Table Component
 - [ ] Task 12: Scouting Page Integration
 
 # Note: This plan has been reviewed and corrected.
