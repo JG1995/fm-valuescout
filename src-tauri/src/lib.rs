@@ -24,6 +24,10 @@ pub fn run() {
             let conn = storage::init_db(&db_path_str)
                 .map_err(|e| format!("Unable to initialize database: {}", e))?;
 
+            // Seed default archetypes if table is empty
+            storage::seed_default_archetypes(&conn)
+                .map_err(|e| format!("Unable to seed default archetypes: {}", e))?;
+
             app.manage(DbState {
                 conn: Mutex::new(conn),
             });
@@ -43,6 +47,12 @@ pub fn run() {
             commands::storage::get_players_for_season,
             commands::storage::get_player_career,
             commands::storage::get_latest_season,
+            commands::archetypes::create_archetype_cmd,
+            commands::archetypes::list_archetypes_by_role,
+            commands::archetypes::list_all_archetypes_cmd,
+            commands::archetypes::get_archetype_cmd,
+            commands::archetypes::update_archetype_cmd,
+            commands::archetypes::delete_archetype_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
