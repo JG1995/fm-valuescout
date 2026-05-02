@@ -5,6 +5,7 @@ mod saves;
 mod seasons;
 mod import;
 mod retrieval;
+mod archetypes;
 
 // Re-exports — public API unchanged for command wrappers
 pub use error::StorageError;
@@ -17,6 +18,12 @@ pub use seasons::{
 };
 pub use import::import_season;
 pub use retrieval::{get_players_for_season, get_player_career, get_latest_season};
+pub use archetypes::{
+    Archetype, MetricWeight,
+    validate_metrics, normalize_weights, validate_archetype_name, validate_role,
+    create_archetype, list_archetypes, list_all_archetypes,
+    get_archetype, update_archetype, delete_archetype,
+};
 
 #[cfg(test)]
 mod tests {
