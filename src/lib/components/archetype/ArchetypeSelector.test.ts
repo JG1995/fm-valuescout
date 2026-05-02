@@ -83,9 +83,9 @@ describe("ArchetypeSelector", () => {
 			}
 
 			expect(grouped["ST"]).toHaveLength(2);
-			expect(grouped["CM"]).toHaveLength(1);
+			expect(grouped["M"]).toHaveLength(1);
 			expect(grouped["GK"]).toHaveLength(1);
-			expect(grouped["CB"]).toHaveLength(1);
+			expect(grouped["D"]).toHaveLength(1);
 		});
 
 		it("includes all archetypes in grouped output", () => {
@@ -204,7 +204,7 @@ describe("ArchetypeSelector", () => {
 		it("correctly identifies roles from archetype data", () => {
 			const uniqueRoles = [...new Set(archetypes.map((a) => a.role))].sort();
 
-			expect(uniqueRoles).toEqual(["CB", "CM", "GK", "ST"]);
+			expect(uniqueRoles).toEqual(["D", "GK", "M", "ST"]);
 		});
 
 		it("each archetype has a valid role", () => {

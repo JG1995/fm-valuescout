@@ -26,8 +26,8 @@ export function createMockArchetypes(): Archetype[] {
 	return [
 		createMockArchetype({ id: 1, name: "Goal Poacher", role: "ST" }),
 		createMockArchetype({ id: 2, name: "Target Man", role: "ST" }),
-		createMockArchetype({ id: 3, name: "Deep Playmaker", role: "CM" }),
+		createMockArchetype({ id: 3, name: "Deep Playmaker", role: "M" }),
 		createMockArchetype({ id: 4, name: "Sweeper Keeper", role: "GK" }),
-		createMockArchetype({ id: 5, name: "Ball Playing CB", role: "CB" }),
+		createMockArchetype({ id: 5, name: "Ball Playing CB", role: "D" }),
 	];
 }

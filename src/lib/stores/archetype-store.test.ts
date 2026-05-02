@@ -131,7 +131,7 @@ describe("ArchetypeStore", () => {
 				createMockArchetype({ id: 2, role: "ST", name: "ST 2" }),
 			];
 			const cbArchetypes = [
-				createMockArchetype({ id: 3, role: "CB", name: "CB 1" }),
+				createMockArchetype({ id: 3, role: "D", name: "D 1" }),
 			];
 
 			// Load all archetypes and check filtering
@@ -142,7 +142,7 @@ describe("ArchetypeStore", () => {
 			await store.loadAll();
 
 			expect(store.getArchetypesForRole("ST")).toEqual(stArchetypes);
-			expect(store.getArchetypesForRole("CB")).toEqual(cbArchetypes);
+			expect(store.getArchetypesForRole("D")).toEqual(cbArchetypes);
 			expect(store.getArchetypesForRole("GK")).toEqual([]);
 		});
 

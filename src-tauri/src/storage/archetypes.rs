@@ -19,6 +19,10 @@ pub struct MetricWeight {
 
 /// A scoring archetype for a position role.
 /// Contains a set of weighted metrics used to score players against this profile.
+///
+/// Role uses COARSE system: "GK", "D", "WB", "DM", "M", "AM", "ST"
+/// This aligns with parser::types::Role enum and validate_role().
+/// Side (R/L/C) is not stored — used only for player-to-archetype matching.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Archetype {
     pub id: i64,
@@ -410,6 +414,7 @@ mod tests {
 
     #[test]
     fn validate_role_valid() {
+        // Test all COARSE roles (aligns with parser::types::Role)
         assert!(validate_role("GK").is_ok());
         assert!(validate_role("D").is_ok());
         assert!(validate_role("WB").is_ok());
@@ -417,10 +422,18 @@ mod tests {
         assert!(validate_role("M").is_ok());
         assert!(validate_role("AM").is_ok());
         assert!(validate_role("ST").is_ok());
+        // Trimmed whitespace
+        assert!(validate_role(" GK ").is_ok());
     }
 
     #[test]
     fn validate_role_invalid() {
+        // Fine-grained roles should be rejected (they're not in VALID_ROLES)
+        assert!(validate_role("CB").is_err());
+        assert!(validate_role("FB").is_err());
+        assert!(validate_role("CM").is_err());
+        assert!(validate_role("W").is_err());
+        // Other invalid
         assert!(validate_role("XYZ").is_err());
         assert!(validate_role("").is_err());
         assert!(validate_role("   ").is_err());

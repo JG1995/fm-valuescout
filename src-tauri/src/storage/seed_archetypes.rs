@@ -66,12 +66,17 @@ pub fn metric_key_for_name(name: &str) -> Option<&'static str> {
         // Match Impact
         "Average Rating" => Some("match_outcome.average_rating"),
 
+        // Additional metrics
+        "xG per Shot" => Some("attacking.xg_per_shot"),
+
         _ => None,
     }
 }
 
 /// Returns all default archetypes with their metrics.
-/// Roles use the seed data format: "GK", "CB", "FB", "DM", "WB", "CM", "W", "AM", "ST"
+/// Roles use the COARSE role system: "GK", "D", "WB", "DM", "M", "AM", "ST"
+/// This aligns with the parser::types::Role enum and validate_role().
+/// Side (R/L/C) is not stored in archetypes — used only for player matching.
 pub fn default_archetypes() -> Vec<DefaultArchetype> {
     vec![
         // === GOALKEEPER ===
@@ -115,10 +120,10 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
             ],
         },
 
-        // === CENTER BACK ===
+        // === CENTER BACK (role: D) ===
         DefaultArchetype {
             name: "Traditional Center Back".to_string(),
-            role: "CB".to_string(),
+            role: "D".to_string(),
             metrics: vec![
                 // In Possession
                 ("Pass Completion Ratio", 0.60, false),
@@ -127,7 +132,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Ball-Playing Center Back".to_string(),
-            role: "CB".to_string(),
+            role: "D".to_string(),
             metrics: vec![
                 ("Progressive Passes per 90", 0.45, false),
                 ("Pass Completion Ratio", 0.25, false),
@@ -137,7 +142,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Defensive Center Back".to_string(),
-            role: "CB".to_string(),
+            role: "D".to_string(),
             metrics: vec![
                 // Out of Possession
                 ("Headers Won Ratio", 0.30, false),
@@ -148,10 +153,10 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
             ],
         },
 
-        // === FULL BACK ===
+        // === FULL BACK (role: D) ===
         DefaultArchetype {
             name: "Full Back".to_string(),
-            role: "FB".to_string(),
+            role: "D".to_string(),
             metrics: vec![
                 // In Possession
                 ("Pass Completion Ratio", 0.40, false),
@@ -162,7 +167,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Offensive Full Back".to_string(),
-            role: "FB".to_string(),
+            role: "D".to_string(),
             metrics: vec![
                 ("xA per 90", 0.35, false),
                 ("Open Play Crosses Completed per 90", 0.25, false),
@@ -172,7 +177,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Pressing Full Back".to_string(),
-            role: "FB".to_string(),
+            role: "D".to_string(),
             metrics: vec![
                 // Out of Possession
                 ("Pressures Completed per 90", 0.35, false),
@@ -183,7 +188,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Defensive Full Back".to_string(),
-            role: "FB".to_string(),
+            role: "D".to_string(),
             metrics: vec![
                 ("Tackle Completion Ratio", 0.35, false),
                 ("Interceptions per 90", 0.25, false),
@@ -280,10 +285,10 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
             ],
         },
 
-        // === CENTRAL MIDFIELDER ===
+        // === CENTRAL MIDFIELDER (role: M) ===
         DefaultArchetype {
             name: "All-Rounder Midfielder".to_string(),
-            role: "CM".to_string(),
+            role: "M".to_string(),
             metrics: vec![
                 // In Possession
                 ("Pass Completion Ratio", 0.30, false),
@@ -294,7 +299,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Box-to-Box Midfielder".to_string(),
-            role: "CM".to_string(),
+            role: "M".to_string(),
             metrics: vec![
                 ("xG per 90", 0.30, false),
                 ("Distance Covered per 90", 0.25, false),
@@ -304,7 +309,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Advanced Playmaker".to_string(),
-            role: "CM".to_string(),
+            role: "M".to_string(),
             metrics: vec![
                 ("xA per 90", 0.35, false),
                 ("Progressive Passes per 90", 0.30, false),
@@ -314,7 +319,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Covering Midfielder".to_string(),
-            role: "CM".to_string(),
+            role: "M".to_string(),
             metrics: vec![
                 // Out of Possession
                 ("Interceptions per 90", 0.40, false),
@@ -324,10 +329,10 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
             ],
         },
 
-        // === WINGER ===
+        // === WINGER (role: AM - wingers map to attacking midfielder role) ===
         DefaultArchetype {
             name: "Traditional Winger".to_string(),
-            role: "W".to_string(),
+            role: "AM".to_string(),
             metrics: vec![
                 // In Possession
                 ("Crosses Completed per 90", 0.40, false),
@@ -338,7 +343,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Goalscoring Winger".to_string(),
-            role: "W".to_string(),
+            role: "AM".to_string(),
             metrics: vec![
                 ("NPxG per 90", 0.45, false),
                 ("Shots on Target Ratio", 0.25, false),
@@ -348,7 +353,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Inside Forward".to_string(),
-            role: "W".to_string(),
+            role: "AM".to_string(),
             metrics: vec![
                 ("xG per 90", 0.30, false),
                 ("xA per 90", 0.25, false),
@@ -358,7 +363,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Offensive Winger".to_string(),
-            role: "W".to_string(),
+            role: "AM".to_string(),
             metrics: vec![
                 // Out of Possession
                 ("High Intensity Sprints per 90", 0.40, false),
@@ -369,7 +374,7 @@ pub fn default_archetypes() -> Vec<DefaultArchetype> {
         },
         DefaultArchetype {
             name: "Tracking Winger".to_string(),
-            role: "W".to_string(),
+            role: "AM".to_string(),
             metrics: vec![
                 ("Distance Covered per 90", 0.35, false),
                 ("Pressures Completed per 90", 0.30, false),
@@ -478,17 +483,18 @@ pub struct DefaultArchetype {
     pub metrics: Vec<(&'static str, f64, bool)>, // (metric_name, weight, inverted)
 }
 
-/// Seeds the database with default archetypes if the table is empty.
+/// Seeds the database with default archetypes if no defaults exist.
 /// This function is idempotent - safe to call multiple times.
 pub fn seed_default_archetypes(conn: &Connection) -> Result<(), StorageError> {
-    // Check if archetypes table already has data
+    // Check if default archetypes already exist (not just any archetypes)
+    // This allows custom archetypes to be seeded alongside defaults
     let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM archetypes",
+        "SELECT COUNT(*) FROM archetypes WHERE is_default = 1",
         [],
         |row| row.get(0),
     )?;
 
-    // If table already has archetypes, skip seeding
+    // If defaults already exist, skip seeding
     if count > 0 {
         return Ok(());
     }
@@ -496,7 +502,9 @@ pub fn seed_default_archetypes(conn: &Connection) -> Result<(), StorageError> {
     // Seed all default archetypes
     for default_arch in default_archetypes() {
         // Convert metric names to keys
+        // For compiled-in seed data, unmapped metrics are programming errors
         let mut metrics = Vec::new();
+        let mut unknown_metrics = Vec::<&str>::new();
         for (metric_name, weight, inverted) in default_arch.metrics {
             if let Some(metric_key) = metric_key_for_name(metric_name) {
                 metrics.push(MetricWeight {
@@ -504,10 +512,22 @@ pub fn seed_default_archetypes(conn: &Connection) -> Result<(), StorageError> {
                     weight,
                     inverted,
                 });
+            } else {
+                unknown_metrics.push(metric_name);
             }
         }
 
-        // Skip if no valid metrics were found
+        // Fail if any metrics couldn't be mapped — this is a programming error
+        // in the seed data, not a recoverable runtime error
+        if !unknown_metrics.is_empty() {
+            return Err(StorageError::Database(format!(
+                "Unknown metric names in default archetype '{}': {}",
+                default_arch.name,
+                unknown_metrics.join(", ")
+            )));
+        }
+
+        // Skip if somehow no metrics (shouldn't happen with valid seed data)
         if metrics.is_empty() {
             continue;
         }
@@ -570,7 +590,8 @@ mod tests {
     #[test]
     fn default_archetypes_have_valid_roles() {
         let archetypes = default_archetypes();
-        let valid_roles = ["GK", "CB", "FB", "DM", "WB", "CM", "W", "AM", "ST"];
+        // Use the same VALID_ROLES as archetypes.rs validation
+        let valid_roles = ["GK", "D", "WB", "DM", "M", "AM", "ST"];
 
         for arch in &archetypes {
             assert!(
@@ -580,6 +601,12 @@ mod tests {
                 arch.name
             );
         }
+    }
+
+    #[test]
+    fn metric_key_mapping_xg_per_shot() {
+        // Regression test: xG per Shot was silently dropped due to missing mapping
+        assert_eq!(metric_key_for_name("xG per Shot"), Some("attacking.xg_per_shot"));
     }
 
     #[test]
@@ -649,26 +676,26 @@ mod tests {
     }
 
     #[test]
-    fn seed_default_archetypes_skips_if_data_exists() {
+    fn seed_default_archetypes_skips_if_defaults_exist() {
         let conn = setup_test_db();
 
-        // Manually insert an archetype first
+        // Manually insert a custom (non-default) archetype
         conn.execute(
             "INSERT INTO archetypes (name, role, metrics_json, is_default) VALUES (?1, ?2, ?3, 0)",
             rusqlite::params!["Manual Arch", "ST", "[]"],
         ).unwrap();
 
-        // Try to seed
+        // Seed should proceed (custom arch exists but no defaults)
         seed_default_archetypes(&conn).unwrap();
 
-        // Count - should only have the manual one
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM archetypes",
+        // Count defaults - should have been seeded
+        let default_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM archetypes WHERE is_default = 1",
             [],
             |row| row.get(0),
         ).unwrap();
 
-        assert_eq!(count, 1, "Should not seed when data already exists");
+        assert!(default_count > 0, "Should seed defaults when only custom archetypes exist");
     }
 
     #[test]
@@ -716,5 +743,38 @@ mod tests {
                 total
             );
         }
+    }
+
+    #[test]
+    fn seed_idempotent_with_custom_archetypes() {
+        // Test that seeding is idempotent even when custom archetypes exist
+        let conn = setup_test_db();
+
+        // Add a custom archetype (is_default = 0)
+        conn.execute(
+            "INSERT INTO archetypes (name, role, metrics_json, is_default) VALUES (?1, ?2, ?3, 0)",
+            rusqlite::params!["My Custom Arch", "ST", "[]"],
+        ).unwrap();
+
+        // Seed should succeed and add defaults
+        seed_default_archetypes(&conn).unwrap();
+
+        // Seed again - should be idempotent
+        seed_default_archetypes(&conn).unwrap();
+
+        // Should have 1 custom + all defaults
+        let custom_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM archetypes WHERE is_default = 0",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        let default_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM archetypes WHERE is_default = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+
+        assert_eq!(custom_count, 1);
+        assert_eq!(default_count, default_archetypes().len() as i64);
     }
 }

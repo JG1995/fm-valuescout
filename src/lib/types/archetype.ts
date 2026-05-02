@@ -12,7 +12,7 @@ export interface MetricWeight {
 export interface Archetype {
 	id: number;
 	name: string;
-	/** Position role: "GK" | "CB" | "FB" | "DM" | "WB" | "CM" | "W" | "AM" | "ST" */
+	/** Position role (coarse): "GK" | "D" | "WB" | "DM" | "M" | "AM" | "ST" */
 	role: string;
 	metrics: MetricWeight[];
 	is_default: boolean;
@@ -20,34 +20,19 @@ export interface Archetype {
 	updated_at: string;
 }
 
-/** All valid archetype role strings. */
-export type ArchetypeRole = "GK" | "CB" | "FB" | "DM" | "WB" | "CM" | "W" | "AM" | "ST";
+/** All valid archetype role strings (coarse system). */
+export type ArchetypeRole = "GK" | "D" | "WB" | "DM" | "M" | "AM" | "ST";
 
 /** Role display names for UI. */
 export const ROLE_LABELS: Record<ArchetypeRole, string> = {
 	GK: "Goalkeeper",
-	CB: "Center Back",
-	FB: "Full Back",
-	DM: "Defensive Midfielder",
+	D: "Defender",
 	WB: "Wing Back",
-	CM: "Central Midfielder",
-	W: "Winger",
-	AM: "Attacking Midfielder",
+	DM: "Defensive Midfielder",
+	M: "Midfielder",
+	AM: "Attacking Midfielder / Winger",
 	ST: "Striker",
 };
 
-/**
- * Map FM parser Role enum values to archetype roles.
- * The parser uses: GK, D, WB, DM, M, AM, ST
- * Archetypes use: GK, CB, FB, DM, WB, CM, W, AM, ST
- * This mapping is used when scoring a player against archetypes.
- */
-export const PARSER_ROLE_TO_ARCHETYPE_ROLES: Record<string, ArchetypeRole[]> = {
-	GK: ["GK"],
-	D: ["CB", "FB"], // Defenders can be CB or FB
-	WB: ["WB"],
-	DM: ["DM"],
-	M: ["CM"],
-	AM: ["AM", "W"], // AM can be AM or Winger
-	ST: ["ST"],
-};
+// Coarse roles match parser::types::Role exactly: GK, D, WB, DM, M, AM, ST
+// No mapping needed — PARSER_ROLE_TO_ARCHETYPE_ROLES was removed (identity mapping)
