@@ -1,176 +1,175 @@
 <script lang="ts">
-	import type { PlayerScore } from "$lib/scoring";
+	import type { PlayerScore } from "$lib/scoring/types";
+	import type { Archetype } from "$lib/types/archetype";
+	import { getSortValue, formatMetricLabel, formatValue } from "./table-helpers";
 
-	interface ResultsTableProps {
-		scoredPlayers: PlayerScore[];
-		onPlayerClick: (playerId: number) => void;
+	interface Props {
+		scores: PlayerScore[];
+		archetype: Archetype | null;
+		onrowclick: (score: PlayerScore) => void;
 	}
 
-	let { scoredPlayers, onPlayerClick }: ResultsTableProps = $props();
+	let { scores, archetype, onrowclick }: Props = $props();
 
 	// Sort state
-	let sortColumn = $state<'name' | 'club' | 'age' | 'value' | 'rawScore' | 'valueAdjScore'>('valueAdjScore');
-	let sortDirection = $state<'asc' | 'desc'>('desc');
+	type SortColumn = "name" | "age" | "transferValue" | "rawScore" | "valueAdjustedScore" | `metric.${string}`;
+	let sortColumn = $state<SortColumn>("valueAdjustedScore");
+	let sortDirection = $state<"asc" | "desc">("desc");
 
-	/**
-	 * Sorted players based on current sort column and direction.
-	 * Uses $derived.by for complex derived state.
-	 */
-	const sortedPlayers = $derived.by(() => {
-		const sorted = [...scoredPlayers].sort((a, b) => {
-			let aVal: number | string;
-			let bVal: number | string;
+	// Column visibility state (for metric columns only)
+	let visibleMetricKeys = $state<Set<string>>(new Set());
 
-			switch (sortColumn) {
-				case 'name':
-					aVal = String(a.name);
-					bVal = String(b.name);
-					break;
-				case 'club':
-					aVal = String(a.club ?? '');
-					bVal = String(b.club ?? '');
-					break;
-				case 'age':
-					aVal = a.age ?? 0;
-					bVal = b.age ?? 0;
-					break;
-				case 'value':
-					aVal = a.transferValue ?? 0;
-					bVal = b.transferValue ?? 0;
-					break;
-				case 'rawScore':
-					aVal = a.rawScore;
-					bVal = b.rawScore;
-					break;
-				case 'valueAdjScore':
-					aVal = a.valueAdjustedScore;
-					bVal = b.valueAdjustedScore;
-					break;
-				default:
-					aVal = a.valueAdjustedScore;
-					bVal = b.valueAdjustedScore;
-			}
-
-			// Handle string vs number comparison
-			if (typeof aVal === 'string' && typeof bVal === 'string') {
-				return aVal.localeCompare(bVal);
-			}
-			return (aVal as number) - (bVal as number);
-		});
-
-		return sortDirection === 'desc' ? sorted : sorted.reverse();
+	// Initialize visible metrics when archetype changes
+	$effect(() => {
+		if (archetype) {
+			visibleMetricKeys = new Set(archetype.metrics.map((m) => m.metric_key));
+		}
 	});
 
 	/**
-	 * Handle column header click - toggle sort direction or change column
+	 * Sorted scores based on current sort column and direction.
 	 */
-	function handleHeaderClick(column: 'name' | 'club' | 'age' | 'value' | 'rawScore' | 'valueAdjScore') {
-		if (sortColumn === column) {
-			// Toggle direction if same column
-			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+	const sortedScores = $derived.by(() => {
+		const sorted = [...scores].sort((a, b) => {
+			const aVal = getSortValue(a, sortColumn);
+			const bVal = getSortValue(b, sortColumn);
+			return aVal - bVal;
+		});
+		return sortDirection === "desc" ? sorted : sorted.reverse();
+	});
+
+	/**
+	 * All metric keys from archetype (for column rendering).
+	 */
+	const metricKeys = $derived(archetype?.metrics.map((m) => m.metric_key) ?? []);
+
+	/**
+	 * Visible metric keys (sorted by archetype order).
+	 */
+	const displayedMetricKeys = $derived(
+		metricKeys.filter((key) => visibleMetricKeys.has(key))
+	);
+
+	/**
+	 * Toggle visibility of a metric column.
+	 */
+	function toggleMetricColumn(key: string) {
+		if (visibleMetricKeys.has(key)) {
+			visibleMetricKeys.delete(key);
 		} else {
-			// Switch to new column, default to descending
+			visibleMetricKeys.add(key);
+		}
+		visibleMetricKeys = new Set(visibleMetricKeys);
+	}
+
+	/**
+	 * Handle column header click - toggle sort direction or change column.
+	 */
+	function handleHeaderClick(column: SortColumn) {
+		if (sortColumn === column) {
+			sortDirection = sortDirection === "asc" ? "desc" : "asc";
+		} else {
 			sortColumn = column;
-			sortDirection = 'desc';
+			sortDirection = "desc";
 		}
 	}
 
 	/**
-	 * Handle row click - notify parent with player id
-	 */
-	function handleRowClick(playerId: number) {
-		onPlayerClick(playerId);
-	}
-
-	/**
-	 * Format transfer value as currency string
-	 */
-	function formatCurrency(value: number | null): string {
-		if (value === null) return '-';
-		if (value >= 1000000) {
-			return `€${(value / 1000000).toFixed(1)}M`;
-		} else if (value >= 1000) {
-			return `€${(value / 1000).toFixed(0)}K`;
-		}
-		return `€${value}`;
-	}
-
-	/**
-	 * Format score to 1 decimal place
-	 */
-	function formatScore(score: number): string {
-		return score.toFixed(1);
-	}
-
-	/**
-	 * Get sort indicator for a column
+	 * Get sort indicator for a column.
 	 */
 	function getSortIndicator(column: string): string {
-		if (sortColumn !== column) return '';
-		return sortDirection === 'asc' ? ' ▲' : ' ▼';
+		if (sortColumn !== column) return "";
+		return sortDirection === "asc" ? " \u25B2" : " \u25BC";
 	}
 </script>
 
 <div class="results-table-container">
-	{#if scoredPlayers.length === 0}
+	{#if scores.length === 0}
 		<div class="empty-state">
 			<p>No players to display</p>
 		</div>
 	{:else}
+		<!-- Column visibility toggle panel -->
+		{#if archetype && metricKeys.length > 0}
+			<div class="column-toggles">
+				<span class="toggle-label">Columns:</span>
+				{#each metricKeys as key}
+					<button
+						type="button"
+						class="toggle-btn"
+						class:active={visibleMetricKeys.has(key)}
+						onclick={() => toggleMetricColumn(key)}
+					>
+						{formatMetricLabel(key)}
+					</button>
+				{/each}
+			</div>
+		{/if}
+
 		<table class="results-table">
 			<thead>
 				<tr>
+						<th>
+							<button type="button" class="sort-header" onclick={() => handleHeaderClick("name")}>
+								Name{getSortIndicator("name")}
+							</button>
+						</th>
+						<th>Club</th>
+						<th>
+							<button type="button" class="sort-header" onclick={() => handleHeaderClick("age")}>
+								Age{getSortIndicator("age")}
+							</button>
+						</th>
 					<th>
-						<button type="button" class="sort-header" onclick={() => handleHeaderClick('name')}>
-							Name{getSortIndicator('name')}
+						<button type="button" class="sort-header" onclick={() => handleHeaderClick("transferValue")}>
+							Value{getSortIndicator("transferValue")}
+						</button>
+					</th>
+					<th>Positions</th>
+					{#each displayedMetricKeys as key}
+						<th>
+							<button type="button" class="sort-header" onclick={() => handleHeaderClick(`metric.${key}`)}>
+								{formatMetricLabel(key)}{getSortIndicator(`metric.${key}`)}
+							</button>
+						</th>
+					{/each}
+					<th>
+						<button type="button" class="sort-header" onclick={() => handleHeaderClick("rawScore")}>
+							Raw Score{getSortIndicator("rawScore")}
 						</button>
 					</th>
 					<th>
-						<button type="button" class="sort-header" onclick={() => handleHeaderClick('club')}>
-							Club{getSortIndicator('club')}
-						</button>
-					</th>
-					<th>
-						<button type="button" class="sort-header" onclick={() => handleHeaderClick('age')}>
-							Age{getSortIndicator('age')}
-						</button>
-					</th>
-					<th>
-						<button type="button" class="sort-header" onclick={() => handleHeaderClick('value')}>
-							Value{getSortIndicator('value')}
-						</button>
-					</th>
-					<th>
-						<button type="button" class="sort-header" onclick={() => handleHeaderClick('rawScore')}>
-							Raw Score{getSortIndicator('rawScore')}
-						</button>
-					</th>
-					<th>
-						<button type="button" class="sort-header" onclick={() => handleHeaderClick('valueAdjScore')}>
-							Value-Adj Score{getSortIndicator('valueAdjScore')}
+						<button type="button" class="sort-header" onclick={() => handleHeaderClick("valueAdjustedScore")}>
+							Value-Adj Score{getSortIndicator("valueAdjustedScore")}
 						</button>
 					</th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each sortedPlayers as scoredPlayer (scoredPlayer.playerId)}
+				{#each sortedScores as score (score.playerId)}
 					<tr
 						class="player-row"
-						onclick={() => handleRowClick(scoredPlayer.playerId)}
+						onclick={() => onrowclick(score)}
 						role="button"
 						tabindex="0"
 						onkeydown={(e) => {
-							if (e.key === 'Enter' || e.key === ' ') {
-								handleRowClick(scoredPlayer.playerId);
+							if (e.key === "Enter" || e.key === " ") {
+								onrowclick(score);
 							}
 						}}
 					>
-						<td class="name-cell">{scoredPlayer.name}</td>
-						<td class="club-cell">{scoredPlayer.club ?? '-'}</td>
-						<td class="age-cell">{scoredPlayer.age ?? '-'}</td>
-						<td class="value-cell">{formatCurrency(scoredPlayer.transferValue)}</td>
-						<td class="score-cell">{formatScore(scoredPlayer.rawScore)}</td>
-						<td class="adj-score-cell">{formatScore(scoredPlayer.valueAdjustedScore)}</td>
+						<td class="name-cell">{score.name}</td>
+						<td class="club-cell">{score.club ?? "\u2014"}</td>
+						<td class="age-cell">{score.age ?? "\u2014"}</td>
+						<td class="value-cell">{formatValue(score.transferValue)}</td>
+						<td class="positions-cell">{score.positions}</td>
+						{#each displayedMetricKeys as key}
+							<td class="metric-cell">
+								{score.metricPercentiles[key]?.toFixed(0) ?? "\u2014"}
+							</td>
+						{/each}
+						<td class="score-cell">{score.rawScore.toFixed(1)}</td>
+						<td class="adj-score-cell">{score.valueAdjustedScore.toFixed(1)}</td>
 					</tr>
 				{/each}
 			</tbody>
@@ -195,6 +194,46 @@
 	.empty-state p {
 		margin: 0;
 		font-size: 1rem;
+	}
+
+	.column-toggles {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		padding: 0.75rem;
+		background: var(--color-surface-secondary, #1a1a2e);
+		border-bottom: 1px solid var(--color-border, #333);
+	}
+
+	.toggle-label {
+		display: flex;
+		align-items: center;
+		font-size: 0.75rem;
+		color: var(--color-text-secondary, #999);
+		margin-right: 0.25rem;
+	}
+
+	.toggle-btn {
+		background: transparent;
+		border: 1px solid var(--color-border, #333);
+		color: var(--color-text-secondary, #999);
+		font: inherit;
+		font-size: 0.75rem;
+		padding: 0.25rem 0.5rem;
+		border-radius: 4px;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.toggle-btn:hover {
+		border-color: var(--color-accent, #6366f1);
+		color: var(--color-text-primary, #fff);
+	}
+
+	.toggle-btn.active {
+		background: var(--color-accent, #6366f1);
+		border-color: var(--color-accent, #6366f1);
+		color: #fff;
 	}
 
 	.results-table {
@@ -265,22 +304,33 @@
 		color: var(--color-text-secondary, #999);
 	}
 
+	.positions-cell {
+		color: var(--color-text-secondary, #999);
+		font-size: 0.8rem;
+	}
+
 	.age-cell {
 		color: var(--color-text-secondary, #999);
 	}
 
 	.value-cell {
-		font-family: 'SF Mono', 'Fira Code', monospace;
+		font-family: "SF Mono", "Fira Code", monospace;
+	}
+
+	.metric-cell {
+		text-align: right;
+		font-family: "SF Mono", "Fira Code", monospace;
+		color: var(--color-text-secondary, #999);
 	}
 
 	.score-cell {
 		text-align: right;
-		font-family: 'SF Mono', 'Fira Code', monospace;
+		font-family: "SF Mono", "Fira Code", monospace;
 	}
 
 	.adj-score-cell {
 		text-align: right;
-		font-family: 'SF Mono', 'Fira Code', monospace;
+		font-family: "SF Mono", "Fira Code", monospace;
 		font-weight: 600;
 		color: var(--color-accent, #6366f1);
 	}
