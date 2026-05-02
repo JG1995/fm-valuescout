@@ -224,10 +224,10 @@ describe("ArchetypeEditor", () => {
 				id: 42,
 				name: "Target Man",
 				role: "ST",
-		metrics: [
-						{ metric_key: "attacking.heading_accuracy", // gitleaks:allow weight: 0.7, inverted: false },
-						{ metric_key: "attacking.shots_per_90", // gitleaks:allow weight: 0.3, inverted: true },
-					],
+				metrics: [
+					{ metric_key: "attacking.heading_accuracy", weight: 0.7, inverted: false },
+					{ metric_key: "attacking.shots_per_90", weight: 0.3, inverted: true },
+				],
 			});
 			render(ArchetypeEditor, {
 				role: "ST",
