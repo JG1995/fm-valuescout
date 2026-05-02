@@ -50,6 +50,19 @@ CREATE INDEX IF NOT EXISTS idx_seasons_save_id ON seasons(save_id);
 CREATE INDEX IF NOT EXISTS idx_players_save_uid ON players(save_id, fm_uid);
 CREATE INDEX IF NOT EXISTS idx_player_seasons_player ON player_seasons(player_id);
 CREATE INDEX IF NOT EXISTS idx_player_seasons_season ON player_seasons(season_id);
+
+ CREATE TABLE IF NOT EXISTS archetypes (
+     id           INTEGER PRIMARY KEY AUTOINCREMENT,
+     name         TEXT    NOT NULL,
+     role         TEXT    NOT NULL,
+     metrics_json TEXT    NOT NULL,
+     is_default   INTEGER NOT NULL DEFAULT 0,
+     created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+     updated_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+     UNIQUE(name, role)
+ );
+
+ CREATE INDEX IF NOT EXISTS idx_archetypes_role ON archetypes(role);
 ";
 
 /// Create all tables and indexes. Idempotent.

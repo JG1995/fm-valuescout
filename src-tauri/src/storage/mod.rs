@@ -179,6 +179,46 @@ mod tests {
         init_schema(&conn).unwrap(); // Second call should not fail
     }
 
+    // ── archetypes schema tests ───────────────────────────────────────
+
+    #[test]
+    fn schema_creates_archetypes_table() {
+        let conn = setup_test_db();
+        let tables: Vec<String> = conn.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        ).unwrap()
+            .query_map([], |row| row.get(0)).unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(tables.contains(&"archetypes".to_string()));
+    }
+
+    #[test]
+    fn schema_creates_archetypes_indexes() {
+        let conn = setup_test_db();
+        let indexes: Vec<String> = conn.prepare(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%' ORDER BY name"
+        ).unwrap()
+            .query_map([], |row| row.get(0)).unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(indexes.contains(&"idx_archetypes_role".to_string()));
+    }
+
+    #[test]
+    fn archetypes_unique_name_role_constraint() {
+        let conn = setup_test_db();
+        conn.execute(
+            "INSERT INTO archetypes (name, role, metrics_json, is_default) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params!["Test Arch", "GK", "[]", true],
+        ).unwrap();
+        let result = conn.execute(
+            "INSERT INTO archetypes (name, role, metrics_json, is_default) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params!["Test Arch", "GK", "[]", false],
+        );
+        assert!(result.is_err());
+    }
+
     #[test]
     fn init_db_creates_file_and_schema() {
         let dir = std::env::temp_dir().join("fm_valuescout_test_init_db");
