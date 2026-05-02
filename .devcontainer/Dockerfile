@@ -34,7 +34,7 @@ RUN uv python install && uv tool install pre-commit
 # ==============================================================================
 # oh-my-pi coding agent
 # ==============================================================================
-RUN /root/.bun/bin/bun install -g @oh-my-pi/pi-coding-agent
+RUN /root/.bun/bin/bun install -g @oh-my-pi/pi-coding-agent@14.5.11
 
 # ==============================================================================
 # Rust toolchain (required by Tauri v2)
