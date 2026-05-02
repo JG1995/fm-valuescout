@@ -6,6 +6,7 @@ mod seasons;
 mod import;
 mod retrieval;
 mod archetypes;
+mod seed_archetypes;
 
 // Re-exports — public API unchanged for command wrappers
 pub use error::StorageError;
@@ -24,6 +25,7 @@ pub use archetypes::{
     create_archetype, list_archetypes, list_all_archetypes,
     get_archetype, update_archetype, delete_archetype,
 };
+pub use seed_archetypes::{seed_default_archetypes, default_archetypes, metric_key_for_name};
 
 #[cfg(test)]
 mod tests {
