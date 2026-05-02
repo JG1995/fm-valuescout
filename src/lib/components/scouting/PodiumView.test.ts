@@ -23,7 +23,7 @@ function createMockPlayerScore(overrides: Partial<PlayerScore> = {}): PlayerScor
 
 describe("PodiumView", () => {
 	describe("heading", () => {
-		it("renders heading with archetype name", () => {
+		it("renders heading with 'Top 3'", () => {
 			const players = [
 				createMockPlayerScore({ name: "First" }),
 				createMockPlayerScore({ name: "Second" }),
@@ -31,11 +31,30 @@ describe("PodiumView", () => {
 			];
 
 			render(PodiumView, {
-				scoredPlayers: players,
-				archetypeName: "Goal Poacher",
+				scores: players,
 			});
 
-			expect(screen.getByText(/Goal Poacher/)).toBeTruthy();
+			expect(screen.getByText("Top 3")).toBeTruthy();
+		});
+
+		it("renders heading with 'Top 3' regardless of input", () => {
+			const players = [
+				createMockPlayerScore({ name: "Player A" }),
+			];
+
+			render(PodiumView, {
+				scores: players,
+			});
+
+			expect(screen.getByText("Top 3")).toBeTruthy();
+		});
+
+		it("renders heading even with empty array", () => {
+			render(PodiumView, {
+				scores: [],
+			});
+
+			expect(screen.getByText("Top 3")).toBeTruthy();
 		});
 	});
 
@@ -48,28 +67,26 @@ describe("PodiumView", () => {
 			];
 
 			render(PodiumView, {
-				scoredPlayers: players,
-				archetypeName: "Test Archetype",
+				scores: players,
 			});
 
-			const podiumItems = document.querySelectorAll(".podium-item");
-			expect(podiumItems).toHaveLength(3);
+			const podiumPositions = document.querySelectorAll(".podium-position");
+			expect(podiumPositions).toHaveLength(3);
 		});
 
-		it("shows correct players in correct positions (2nd, 1st, 3rd)", () => {
-			// Position 0 = 2nd place, Position 1 = 1st place, Position 2 = 3rd place
+		it("shows correct players sorted by value-adjusted score", () => {
+			// Players provided in random order, should be sorted by valueAdjustedScore
 			const players = [
-				createMockPlayerScore({ name: "Second Place", valueAdjustedScore: 85 }),
-				createMockPlayerScore({ name: "First Place", valueAdjustedScore: 95 }),
 				createMockPlayerScore({ name: "Third Place", valueAdjustedScore: 75 }),
+				createMockPlayerScore({ name: "First Place", valueAdjustedScore: 95 }),
+				createMockPlayerScore({ name: "Second Place", valueAdjustedScore: 85 }),
 			];
 
 			render(PodiumView, {
-				scoredPlayers: players,
-				archetypeName: "Test",
+				scores: players,
 			});
 
-			// Check that all player names are displayed somewhere
+			// All player names should be displayed
 			expect(screen.getByText("First Place")).toBeTruthy();
 			expect(screen.getByText("Second Place")).toBeTruthy();
 			expect(screen.getByText("Third Place")).toBeTruthy();
@@ -84,21 +101,37 @@ describe("PodiumView", () => {
 
 			expect(() => {
 				render(PodiumView, {
-					scoredPlayers: players,
-					archetypeName: "Test",
+					scores: players,
 				});
 			}).not.toThrow();
 		});
 
-		it("shows empty state when no players provided", () => {
+		it("renders 3 podium positions even with fewer players", () => {
+			const players = [
+				createMockPlayerScore({ name: "Only Player", valueAdjustedScore: 90 }),
+			];
+
 			render(PodiumView, {
-				scoredPlayers: [],
-				archetypeName: "Test",
+				scores: players,
 			});
 
-			// Should still render the component without crashing
-			const podiumItems = document.querySelectorAll(".podium-item");
-			expect(podiumItems).toHaveLength(0);
+			// All 3 positions should exist (empty ones show placeholder)
+			const podiumPositions = document.querySelectorAll(".podium-position");
+			expect(podiumPositions).toHaveLength(3);
+		});
+
+		it("shows placeholder for empty positions", () => {
+			const players = [
+				createMockPlayerScore({ name: "Top Player", valueAdjustedScore: 95 }),
+			];
+
+			render(PodiumView, {
+				scores: players,
+			});
+
+			// Empty positions should show placeholder text
+			const placeholder = document.querySelector(".placeholder-text");
+			expect(placeholder).toBeTruthy();
 		});
 
 		it("handles empty player names gracefully", () => {
@@ -110,8 +143,7 @@ describe("PodiumView", () => {
 
 			expect(() => {
 				render(PodiumView, {
-					scoredPlayers: players,
-					archetypeName: "Test",
+					scores: players,
 				});
 			}).not.toThrow();
 		});
@@ -126,8 +158,7 @@ describe("PodiumView", () => {
 			];
 
 			render(PodiumView, {
-				scoredPlayers: players,
-				archetypeName: "Test",
+				scores: players,
 			});
 
 			// Should show scores formatted to 1 decimal
@@ -144,8 +175,7 @@ describe("PodiumView", () => {
 			];
 
 			render(PodiumView, {
-				scoredPlayers: players,
-				archetypeName: "Test",
+				scores: players,
 			});
 
 			// Value-adjusted scores formatted to 1 decimal
@@ -164,12 +194,11 @@ describe("PodiumView", () => {
 			];
 
 			render(PodiumView, {
-				scoredPlayers: players,
-				archetypeName: "Test",
+				scores: players,
 			});
 
-			// Check for gold medal class/indicator
-			const goldElement = document.querySelector(".medal-gold, .position-1, [data-position=\"1\"]");
+			// Check for gold medal class on position badge
+			const goldElement = document.querySelector(".medal-gold");
 			expect(goldElement).toBeTruthy();
 		});
 
@@ -181,12 +210,11 @@ describe("PodiumView", () => {
 			];
 
 			render(PodiumView, {
-				scoredPlayers: players,
-				archetypeName: "Test",
+				scores: players,
 			});
 
-			// Check for silver medal class/indicator
-			const silverElement = document.querySelector(".medal-silver, .position-2, [data-position=\"2\"]");
+			// Check for silver medal class on position badge
+			const silverElement = document.querySelector(".medal-silver");
 			expect(silverElement).toBeTruthy();
 		});
 
@@ -198,12 +226,11 @@ describe("PodiumView", () => {
 			];
 
 			render(PodiumView, {
-				scoredPlayers: players,
-				archetypeName: "Test",
+				scores: players,
 			});
 
-			// Check for bronze medal class/indicator
-			const bronzeElement = document.querySelector(".medal-bronze, .position-3, [data-position=\"3\"]");
+			// Check for bronze medal class on position badge
+			const bronzeElement = document.querySelector(".medal-bronze");
 			expect(bronzeElement).toBeTruthy();
 		});
 	});
@@ -218,21 +245,97 @@ describe("PodiumView", () => {
 				}),
 				createMockPlayerScore({
 					name: "Another Player",
+					club: "Another FC",
 					valueAdjustedScore: 85,
 				}),
 				createMockPlayerScore({
 					name: "Third Player",
+					club: "Third FC",
 					valueAdjustedScore: 75,
 				}),
 			];
 
 			render(PodiumView, {
-				scoredPlayers: players,
-				archetypeName: "Test",
+				scores: players,
 			});
 
-			// Component should render without error when club is not available
-			expect(screen.getByText("Star Player")).toBeTruthy();
+			expect(screen.getByText("Star FC")).toBeTruthy();
+			expect(screen.getByText("Another FC")).toBeTruthy();
+			expect(screen.getByText("Third FC")).toBeTruthy();
+		});
+
+		it("shows '—' when club is null", () => {
+			const players = [
+				createMockPlayerScore({
+					name: "Free Agent",
+					club: null,
+					valueAdjustedScore: 90,
+				}),
+			];
+
+			render(PodiumView, {
+				scores: players,
+			});
+
+			// The first position should show "—" for null club
+			expect(screen.getByText("—")).toBeTruthy();
+		});
+	});
+
+	describe("platform heights", () => {
+		it("applies tallest height to first place platform", () => {
+			const players = [
+				createMockPlayerScore({ name: "First" }),
+				createMockPlayerScore({ name: "Second" }),
+				createMockPlayerScore({ name: "Third" }),
+			];
+
+			render(PodiumView, {
+				scores: players,
+			});
+
+			const tallestPlatform = document.querySelector(".podium-platform.tallest");
+			expect(tallestPlatform).toBeTruthy();
+		});
+
+		it("applies medium height to second place platform", () => {
+			const players = [
+				createMockPlayerScore({ name: "First" }),
+				createMockPlayerScore({ name: "Second" }),
+				createMockPlayerScore({ name: "Third" }),
+			];
+
+			render(PodiumView, {
+				scores: players,
+			});
+
+			const mediumPlatform = document.querySelector(".podium-platform.medium");
+			expect(mediumPlatform).toBeTruthy();
+		});
+
+		it("applies short height to third place platform", () => {
+			const players = [
+				createMockPlayerScore({ name: "First" }),
+				createMockPlayerScore({ name: "Second" }),
+				createMockPlayerScore({ name: "Third" }),
+			];
+
+			render(PodiumView, {
+				scores: players,
+			});
+
+			const shortPlatform = document.querySelector(".podium-platform.short");
+			expect(shortPlatform).toBeTruthy();
+		});
+
+		it("renders platform even for empty positions", () => {
+			render(PodiumView, {
+				scores: [],
+			});
+
+			// All 3 positions should have platforms
+			const platforms = document.querySelectorAll(".podium-platform");
+			expect(platforms).toHaveLength(3);
 		});
 	});
 });
