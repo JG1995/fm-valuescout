@@ -48,20 +48,20 @@ graph TD
 
 ## Task List
 
-| Task | Name                          | Complexity | Dependencies          |
-| ---- | ----------------------------- | ---------- | --------------------- |
-| 01   | Schema Migration              | Low        | None                  |
-| 02   | Archetype Types               | Low        | Task 01               |
-| 03   | Archetype CRUD Storage Layer  | Medium     | Task 01, Task 02      |
-| 04   | Default Archetypes Seed       | Medium     | Task 01, Task 02, Task 03 |
-| 05   | Tauri Archetype Commands      | Low        | Task 02, Task 03      |
-| 06   | Frontend Store + API          | Medium     | Task 05               |
-| 07   | Scoring Engine (TypeScript)   | High       | Task 06 (types only)  |
-| 08   | Pitch View Component          | Medium     | Task 06 (types only)  |
-| 09   | Archetype Selector Component  | Medium     | Task 06 (types only)  |
-| 10   | Podium View Component         | Low        | Task 07 (types only)  |
-| 11   | Results Table Component       | Medium     | Task 07 (types only)  |
-| 12   | Scouting Page Integration     | Medium     | All previous          |
+| Task | Name                         | Complexity | Dependencies              |
+| ---- | ---------------------------- | ---------- | ------------------------- |
+| 01   | Schema Migration             | Low        | None                      |
+| 02   | Archetype Types              | Low        | Task 01                   |
+| 03   | Archetype CRUD Storage Layer | Medium     | Task 01, Task 02          |
+| 04   | Default Archetypes Seed      | Medium     | Task 01, Task 02, Task 03 |
+| 05   | Tauri Archetype Commands     | Low        | Task 02, Task 03          |
+| 06   | Frontend Store + API         | Medium     | Task 05                   |
+| 07   | Scoring Engine (TypeScript)  | High       | Task 06 (types only)      |
+| 08   | Pitch View Component         | Medium     | Task 06 (types only)      |
+| 09   | Archetype Selector Component | Medium     | Task 06 (types only)      |
+| 10   | Podium View Component        | Low        | Task 07 (types only)      |
+| 11   | Results Table Component      | Medium     | Task 07 (types only)      |
+| 12   | Scouting Page Integration    | Medium     | All previous              |
 
 ## Parallelization Opportunities
 
@@ -81,17 +81,22 @@ graph TD
 - [x] Task 03: Archetype CRUD Storage Layer
 - [x] Task 04: Default Archetypes Seed
 - [x] Task 05: Tauri Archetype Commands
-- [x] Task 06: Frontend Store + API
-- [x] Task 07: Scoring Engine (TypeScript)
-- [x] Task 08: Pitch View Component
-- [x] Task 09: Archetype Selector Component
-- [x] Task 10: Podium View Component
-- [x] Task 11: Results Table Component
+- [ ] Task 06: Frontend Store + API
+- [ ] Task 07: Scoring Engine (TypeScript)
+- [ ] Task 08: Pitch View Component
+- [ ] Task 09: Archetype Selector Component
+- [ ] Task 10: Podium View Component
+- [ ] Task 11: Results Table Component
 - [ ] Task 12: Scouting Page Integration
 
 # Note: This plan has been reviewed and corrected.
+
 # Key fixes applied:
+
 # - P0: $derived(() => ...) → $derived.by(() => ...) in Tasks 06, 10, 11, 12
+
 # - P0: Metric key mappings corrected to match actual ParsedPlayer fields
+
 # - P1: Full Database View added to Task 12
+
 # - P1: Multi-position scoring addressed in Task 07

@@ -1,274 +1,106 @@
-/**
- * Scoring Engine for FM ValueScout's moneyball scouting feature.
- *
- * Pure TypeScript functions for computing player scores against archetypes.
- * No dependencies on Tauri or browser APIs.
- */
-
-import type { Archetype } from "$lib/types/archetype";
+import { getMetricValue } from "./metric-accessor";
+import { computePercentile, buildPercentileCache } from "./percentiles";
+import type { ScorablePlayer, PlayerScore, PercentileCache } from "./types";
+import type { Archetype, MetricWeight } from "$lib/types/archetype";
 
 /**
- * Parsed player data from FM CSV import.
- * This interface represents the structure of player data after being parsed.
- * Individual fields are accessed via dot notation (e.g., player["attacking.goals_per_90"]).
+ * Compute the median transfer value from a list of players.
+ * Uses only non-null values. Returns 1 if no values exist (prevents division by zero).
  */
-export interface ParsedPlayer {
-	/** Unique player identifier */
-	id: string;
-	/** Player display name */
-	name: string;
-	/** Player's position/role */
-	position: string;
-	/** Player age */
-	age: number;
-	/** Transfer market value in currency units */
-	transfer_value: number;
-	/** Player's club/team (optional) */
-	club?: string;
-	/** Player's nationality (optional) */
-	nationality?: string;
-	/** Additional dynamic metric fields accessed via bracket notation */
-	[key: string]: unknown;
+export function computeMedianTransferValue(players: ScorablePlayer[]): number {
+	const values = players
+		.map(p => p.transferValueHigh)
+		.filter((v): v is number => v !== null && v > 0)
+		.sort((a, b) => a - b);
+
+	if (values.length === 0) return 1;
+
+	const mid = Math.floor(values.length / 2);
+	return values.length % 2 !== 0
+		? values[mid]
+		: (values[mid - 1] + values[mid]) / 2;
 }
 
 /**
- * A player with computed scoring data.
- */
-export interface ScoredPlayer {
-	/** The player's parsed data */
-	player: ParsedPlayer;
-	/** The archetype this score was computed against */
-	archetypeId: number;
-	/** Raw weighted score (0-100) before value adjustment */
-	rawScore: number;
-	/** Value-adjusted score (rewards cheap high-performers) */
-	valueAdjustedScore: number;
-	/** Per-metric percentile values for display */
-	percentileByMetric: Map<string, number>;
-}
-
-/**
- * Computes the percentile rank of a value within a dataset.
+ * Score a single player against an archetype.
  *
- * @param value - The value to compute percentile for
- * @param allValues - Array of all values in the dataset
- * @returns Percentile rank from 0-100
+ * For each metric:
+ * 1. Get the player's value
+ * 2. Compute percentile within the dataset
+ * 3. If inverted: use (100 - percentile)
+ * 4. Multiply by weight
+ * 5. Sum all weighted percentiles → raw score (0-100)
  *
- * Edge cases:
- * - Empty array: returns 50 (neutral fallback)
- * - Single value: returns 50 (neutral fallback)
- * - All same values: returns 50 (neutral fallback)
- * - Value equals min: returns 0
- * - Value equals max: returns 100
+ * Value-adjusted score = rawScore / (transferValue / medianValue)
  */
-export function computePercentile(value: number, allValues: number[]): number {
-	// Edge case: empty array
-	if (allValues.length === 0) {
-		return 50;
-	}
-
-	// Edge case: single value or all same values
-	const uniqueValues = [...new Set(allValues)];
-	if (uniqueValues.length <= 1) {
-		return 50;
-	}
-
-	// Sort values for percentile calculation
-	const sorted = [...allValues].sort((a, b) => a - b);
-	const min = sorted[0];
-	const max = sorted[sorted.length - 1];
-
-	// Edge case: value equals minimum
-	if (value <= min) {
-		return 0;
-	}
-
-	// Edge case: value equals or exceeds maximum
-	if (value >= max) {
-		return 100;
-	}
-
-	// Count values strictly less than the given value
-	const countLess = sorted.filter((v) => v < value).length;
-	const total = sorted.length;
-
-	// Percentile formula: (count less than value / (total - 1)) * 100
-	// We use total - 1 to normalize the range since min and max are extremes
-	const percentile = (countLess / (total - 1)) * 100;
-
-	return percentile;
-}
-
-/**
- * Gets the percentile rank for a player's value within the percentile distribution.
- *
- * @param value - The player's metric value
- * @param percentileValues - Sorted array of all percentile boundary values
- * @returns Percentile rank from 0-100
- */
-function getPercentileFromDistribution(
-	value: number,
-	percentileValues: number[]
-): number {
-	// Handle empty distribution
-	if (percentileValues.length === 0) {
-		return 50;
-	}
-
-	// Handle single value distribution
-	if (percentileValues.length === 1) {
-		return 50;
-	}
-
-	const sorted = [...percentileValues].sort((a, b) => a - b);
-	const min = sorted[0];
-	const max = sorted[sorted.length - 1];
-
-	// Value below minimum
-	if (value <= min) {
-		return 0;
-	}
-
-	// Value at or above maximum
-	if (value >= max) {
-		return 100;
-	}
-
-	// Find position in distribution
-	const countLess = sorted.filter((v) => v < value).length;
-	const total = sorted.length;
-
-	return (countLess / (total - 1)) * 100;
-}
-
-/**
- * Computes a player's raw score against an archetype.
- *
- * @param player - Parsed player data
- * @param archetype - Archetype with metric weights
- * @param percentiles - Pre-computed percentile distributions per metric key
- * @returns Weighted score from 0-100
- */
-export function computePlayerScore(
-	player: ParsedPlayer,
+export function scorePlayer(
+	player: ScorablePlayer,
 	archetype: Archetype,
-	percentiles: Map<string, number[]>
-): number {
-	let totalScore = 0;
+	allMetricValues: Record<string, number[]>,
+	medianTransferValue: number,
+): PlayerScore {
+	let rawScore = 0;
+	const metricPercentiles: Record<string, number> = {};
 
 	for (const metric of archetype.metrics) {
-		const metricKey = metric.metric_key;
-		const weight = metric.weight;
+		const playerValue = getMetricValue(player.data, metric.metric_key);
+		const sortedValues = allMetricValues[metric.metric_key] ?? [];
 
-		// Get player's value for this metric (default to 0 if missing)
-		const playerValue = (player[metricKey] as number) ?? 0;
-
-		// Get percentile distribution for this metric
-		const distribution = percentiles.get(metricKey);
-
-		// Compute percentile (use 0 if distribution not available)
 		let percentile: number;
-		if (distribution) {
-			percentile = getPercentileFromDistribution(playerValue, distribution);
+		if (playerValue === null) {
+			percentile = 0; // Worst case for missing data
 		} else {
-			// Missing metric data = 0 percentile (worst score)
-			percentile = 0;
+			percentile = computePercentile(playerValue, sortedValues);
 		}
 
-		// Apply inversion for metrics where lower is better
 		if (metric.inverted) {
 			percentile = 100 - percentile;
 		}
 
-		// Add weighted contribution to total score
-		totalScore += percentile * weight;
+		metricPercentiles[metric.metric_key] = percentile;
+		rawScore += percentile * metric.weight;
 	}
 
-	return totalScore;
-}
-
-/**
- * Computes a value-adjusted score that rewards cost-efficient players.
- *
- * The value adjustment divides the raw score by the ratio of player transfer
- * value to median transfer value. This means:
- * - A player costing half the median with the same raw score gets 2x the adjusted score
- * - A player costing double the median with the same raw score gets 0.5x the adjusted score
- *
- * @param rawScore - Raw weighted score (0-100)
- * @param transferValue - Player's transfer market value
- * @param medianTransferValue - Median transfer value of the dataset
- * @returns Value-adjusted score (can exceed 100 for cheap high-performers)
- */
-export function computeValueAdjustedScore(
-	rawScore: number,
-	transferValue: number,
-	medianTransferValue: number
-): number {
-	// Handle invalid transfer values
-	if (transferValue <= 0) {
-		return rawScore;
-	}
-
-	if (medianTransferValue <= 0) {
-		return rawScore;
-	}
-
-	// Value adjustment formula: rawScore / (transferValue / medianTransferValue)
+	// Value-adjusted score
+	const transferValue = player.transferValueHigh ?? medianTransferValue;
 	const valueRatio = transferValue / medianTransferValue;
-	const adjustedScore = rawScore / valueRatio;
-
-	return adjustedScore;
-}
-
-/**
- * Scores a player against an archetype with full scoring pipeline.
- *
- * @param player - Parsed player data
- * @param archetype - Archetype with metric weights
- * @param percentiles - Pre-computed percentile distributions per metric key
- * @param medianTransferValue - Median transfer value for value adjustment
- * @returns Complete scored player data
- */
-export function scorePlayer(
-	player: ParsedPlayer,
-	archetype: Archetype,
-	percentiles: Map<string, number[]>,
-	medianTransferValue: number
-): ScoredPlayer {
-	// Compute raw score
-	const rawScore = computePlayerScore(player, archetype, percentiles);
-
-	// Compute value-adjusted score
-	const valueAdjustedScore = computeValueAdjustedScore(
-		rawScore,
-		player.transfer_value,
-		medianTransferValue
-	);
-
-	// Build per-metric percentile map for display
-	const percentileByMetric = new Map<string, number>();
-	for (const metric of archetype.metrics) {
-		const metricKey = metric.metric_key;
-		const playerValue = (player[metricKey] as number) ?? 0;
-		const distribution = percentiles.get(metricKey);
-
-		if (distribution) {
-			let percentile = getPercentileFromDistribution(playerValue, distribution);
-			if (metric.inverted) {
-				percentile = 100 - percentile;
-			}
-			percentileByMetric.set(metricKey, percentile);
-		} else {
-			percentileByMetric.set(metricKey, 0);
-		}
-	}
+	const valueAdjustedScore = valueRatio > 0 ? rawScore / valueRatio : rawScore;
 
 	return {
-		player,
-		archetypeId: archetype.id,
+		playerId: player.playerId,
+		fmUid: player.fmUid,
+		name: player.name,
+		club: player.club,
+		positions: player.positions,
+		age: player.age,
+		transferValue: player.transferValueHigh,
+		role: archetype.role,
 		rawScore,
 		valueAdjustedScore,
-		percentileByMetric,
+		metricPercentiles,
 	};
+}
+
+/**
+ * Score all players against a specific archetype.
+ * Builds the percentile cache from the player data and the archetype's metrics.
+ */
+export function scoreAllPlayers(
+	players: ScorablePlayer[],
+	archetype: Archetype,
+): PlayerScore[] {
+	const metricKeys = archetype.metrics.map(m => m.metric_key);
+	const cache = buildPercentileCache(players, metricKeys);
+
+	// Convert cache to plain record for scoring
+	const allMetricValues: Record<string, number[]> = {};
+	for (const [key, values] of cache.metricValues) {
+		allMetricValues[key] = values;
+	}
+
+	const medianTransferValue = computeMedianTransferValue(players);
+
+	return players.map(player =>
+		scorePlayer(player, archetype, allMetricValues, medianTransferValue)
+	);
 }

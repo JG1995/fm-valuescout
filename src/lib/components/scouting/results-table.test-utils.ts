@@ -1,85 +1,70 @@
-import type { ScoredPlayer } from "$lib/scoring/score";
-import type { ParsedPlayer } from "$lib/scoring/score";
+import type { PlayerScore } from "$lib/scoring";
 
 /**
- * Create a mock parsed player for testing.
+ * Create a mock player score for testing.
  */
-export function createMockParsedPlayer(overrides: Partial<ParsedPlayer> = {}): ParsedPlayer {
+export function createMockPlayerScore(overrides: Partial<PlayerScore> = {}): PlayerScore {
 	return {
-		id: "1",
+		playerId: 1,
+		fmUid: 12345,
 		name: "Test Player",
-		position: "ST",
-		age: 25,
-		transfer_value: 10000000,
 		club: "Test Club",
-		...overrides,
-	};
-}
-
-/**
- * Create a mock scored player for testing.
- */
-export function createMockScoredPlayer(overrides: Partial<ScoredPlayer> = {}): ScoredPlayer {
-	const player = createMockParsedPlayer(overrides.player as Partial<ParsedPlayer> || {});
-	return {
-		player,
-		archetypeId: 1,
+		positions: "ST",
+		age: 25,
+		transferValue: 10_000_000,
+		role: "ST",
 		rawScore: 75.5,
 		valueAdjustedScore: 85.2,
-		percentileByMetric: new Map([
-			["attacking.goals_per_90", 80],
-			["attacking.shots_per_90", 70],
-		]),
+		metricPercentiles: {
+			"attacking.goals_per_90": 80,
+			"attacking.shots_per_90": 70,
+		},
 		...overrides,
 	};
 }
 
 /**
- * Create a list of mock scored players for testing.
+ * Create a list of mock player scores for testing.
  */
-export function createMockScoredPlayers(): ScoredPlayer[] {
+export function createMockScoredPlayers(): PlayerScore[] {
 	return [
-		createMockScoredPlayer({
-			player: createMockParsedPlayer({
-				id: "1",
-				name: "Lionel Messi",
-				age: 36,
-				transfer_value: 15000000,
-				club: "Inter Miami",
-			}),
+		createMockPlayerScore({
+			playerId: 1,
+			fmUid: 1001,
+			name: "Lionel Messi",
+			age: 36,
+			transferValue: 15_000_000,
+			club: "Inter Miami",
 			rawScore: 92.5,
 			valueAdjustedScore: 88.3,
 		}),
-		createMockScoredPlayer({
-			player: createMockParsedPlayer({
-				id: "2",
-				name: "Erling Haaland",
-				age: 24,
-				transfer_value: 200000000,
-				club: "Manchester City",
-			}),
+		createMockPlayerScore({
+			playerId: 2,
+			fmUid: 1002,
+			name: "Erling Haaland",
+			age: 24,
+			transferValue: 200_000_000,
+			club: "Manchester City",
 			rawScore: 95.0,
 			valueAdjustedScore: 45.0,
 		}),
-		createMockScoredPlayer({
-			player: createMockParsedPlayer({
-				id: "3",
-				name: "Jude Bellingham",
-				age: 20,
-				transfer_value: 120000000,
-				club: "Real Madrid",
-			}),
+		createMockPlayerScore({
+			playerId: 3,
+			fmUid: 1003,
+			name: "Jude Bellingham",
+			age: 20,
+			transferValue: 120_000_000,
+			club: "Real Madrid",
 			rawScore: 88.0,
 			valueAdjustedScore: 52.8,
 		}),
-		createMockScoredPlayer({
-			player: createMockParsedPlayer({
-				id: "4",
-				name: "Young Prospect",
-				age: 18,
-				transfer_value: 5000000,
-				club: "Youth Team",
-			}),
+		createMockPlayerScore({
+			playerId: 4,
+			fmUid: 1004,
+			name: "Young Prospect",
+			age: 18,
+			transferValue: 5_000_000,
+			club: "Youth Team",
 			rawScore: 70.0,
 			valueAdjustedScore: 98.0,
 		}),

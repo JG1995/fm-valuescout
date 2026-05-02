@@ -1,9 +1,9 @@
 <script lang="ts">
-	import type { ScoredPlayer } from "$lib/scoring/score";
+	import type { PlayerScore } from "$lib/scoring";
 
 	interface PodiumViewProps {
 		/** Pre-sorted scored players, top 3 (already sorted by value-adjusted score) */
-		scoredPlayers: ScoredPlayer[];
+		scoredPlayers: PlayerScore[];
 		/** Name of the archetype for the heading */
 		archetypeName: string;
 	}
@@ -32,8 +32,8 @@
 	/**
 	 * Get the player's club if available
 	 */
-	function getClub(player: ScoredPlayer): string | undefined {
-		return player.player["club"] as string | undefined;
+	function getClub(player: PlayerScore): string | null {
+		return player.club;
 	}
 </script>
 
@@ -74,7 +74,7 @@
 
 						<!-- Player info -->
 						<div class="player-card">
-							<h3 class="player-name">{player.player.name}</h3>
+							<h3 class="player-name">{player.name}</h3>
 							{#if getClub(player)}
 								<p class="player-club">{getClub(player)}</p>
 							{/if}

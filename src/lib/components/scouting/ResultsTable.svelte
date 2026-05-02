@@ -1,9 +1,9 @@
 <script lang="ts">
-	import type { ScoredPlayer } from "$lib/scoring/score";
+	import type { PlayerScore } from "$lib/scoring";
 
 	interface ResultsTableProps {
-		scoredPlayers: ScoredPlayer[];
-		onPlayerClick: (playerId: string) => void;
+		scoredPlayers: PlayerScore[];
+		onPlayerClick: (playerId: number) => void;
 	}
 
 	let { scoredPlayers, onPlayerClick }: ResultsTableProps = $props();
@@ -23,20 +23,20 @@
 
 			switch (sortColumn) {
 				case 'name':
-					aVal = String(a.player.name);
-					bVal = String(b.player.name);
+					aVal = String(a.name);
+					bVal = String(b.name);
 					break;
 				case 'club':
-					aVal = String(a.player.club);
-					bVal = String(b.player.club);
+					aVal = String(a.club ?? '');
+					bVal = String(b.club ?? '');
 					break;
 				case 'age':
-					aVal = a.player.age;
-					bVal = b.player.age;
+					aVal = a.age ?? 0;
+					bVal = b.age ?? 0;
 					break;
 				case 'value':
-					aVal = a.player.transfer_value;
-					bVal = b.player.transfer_value;
+					aVal = a.transferValue ?? 0;
+					bVal = b.transferValue ?? 0;
 					break;
 				case 'rawScore':
 					aVal = a.rawScore;
@@ -78,14 +78,15 @@
 	/**
 	 * Handle row click - notify parent with player id
 	 */
-	function handleRowClick(playerId: string) {
+	function handleRowClick(playerId: number) {
 		onPlayerClick(playerId);
 	}
 
 	/**
 	 * Format transfer value as currency string
 	 */
-	function formatCurrency(value: number): string {
+	function formatCurrency(value: number | null): string {
+		if (value === null) return '-';
 		if (value >= 1000000) {
 			return `€${(value / 1000000).toFixed(1)}M`;
 		} else if (value >= 1000) {
@@ -152,22 +153,22 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each sortedPlayers as scoredPlayer (scoredPlayer.player.id)}
+				{#each sortedPlayers as scoredPlayer (scoredPlayer.playerId)}
 					<tr
 						class="player-row"
-						onclick={() => handleRowClick(scoredPlayer.player.id)}
+						onclick={() => handleRowClick(scoredPlayer.playerId)}
 						role="button"
 						tabindex="0"
 						onkeydown={(e) => {
 							if (e.key === 'Enter' || e.key === ' ') {
-								handleRowClick(scoredPlayer.player.id);
+								handleRowClick(scoredPlayer.playerId);
 							}
 						}}
 					>
-						<td class="name-cell">{scoredPlayer.player.name}</td>
-						<td class="club-cell">{scoredPlayer.player.club}</td>
-						<td class="age-cell">{scoredPlayer.player.age}</td>
-						<td class="value-cell">{formatCurrency(scoredPlayer.player.transfer_value)}</td>
+						<td class="name-cell">{scoredPlayer.name}</td>
+						<td class="club-cell">{scoredPlayer.club ?? '-'}</td>
+						<td class="age-cell">{scoredPlayer.age ?? '-'}</td>
+						<td class="value-cell">{formatCurrency(scoredPlayer.transferValue)}</td>
 						<td class="score-cell">{formatScore(scoredPlayer.rawScore)}</td>
 						<td class="adj-score-cell">{formatScore(scoredPlayer.valueAdjustedScore)}</td>
 					</tr>

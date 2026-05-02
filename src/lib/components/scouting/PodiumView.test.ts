@@ -1,27 +1,22 @@
 import { describe, it, expect } from "vitest";
 import "@testing-library/svelte/vitest";
 import { render, screen } from "@testing-library/svelte";
-import type { ScoredPlayer, ParsedPlayer } from "$lib/scoring/score";
+import type { PlayerScore } from "$lib/scoring";
 import PodiumView from "./PodiumView.svelte";
 
-function createMockParsedPlayer(overrides: Partial<ParsedPlayer> = {}): ParsedPlayer {
+function createMockPlayerScore(overrides: Partial<PlayerScore> = {}): PlayerScore {
 	return {
-		id: "player-1",
+		playerId: 1,
+		fmUid: 12345,
 		name: "Test Player",
-		position: "ST",
+		club: "Test FC",
+		positions: "ST",
 		age: 25,
-		transfer_value: 10000000,
-		...overrides,
-	};
-}
-
-function createMockScoredPlayer(overrides: Partial<ScoredPlayer> = {}): ScoredPlayer {
-	return {
-		player: createMockParsedPlayer(),
-		archetypeId: 1,
+		transferValue: 10_000_000,
+		role: "ST",
 		rawScore: 75.5,
 		valueAdjustedScore: 82.3,
-		percentileByMetric: new Map(),
+		metricPercentiles: {},
 		...overrides,
 	};
 }
@@ -30,9 +25,9 @@ describe("PodiumView", () => {
 	describe("heading", () => {
 		it("renders heading with archetype name", () => {
 			const players = [
-				createMockScoredPlayer({ player: createMockParsedPlayer({ id: "p1", name: "First" }) }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ id: "p2", name: "Second" }) }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ id: "p3", name: "Third" }) }),
+				createMockPlayerScore({ name: "First" }),
+				createMockPlayerScore({ name: "Second" }),
+				createMockPlayerScore({ name: "Third" }),
 			];
 
 			render(PodiumView, {
@@ -47,9 +42,9 @@ describe("PodiumView", () => {
 	describe("podium layout", () => {
 		it("renders 3 podium positions when given 3 players", () => {
 			const players = [
-				createMockScoredPlayer({ player: createMockParsedPlayer({ id: "p1", name: "First" }) }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ id: "p2", name: "Second" }) }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ id: "p3", name: "Third" }) }),
+				createMockPlayerScore({ name: "First" }),
+				createMockPlayerScore({ name: "Second" }),
+				createMockPlayerScore({ name: "Third" }),
 			];
 
 			render(PodiumView, {
@@ -64,9 +59,9 @@ describe("PodiumView", () => {
 		it("shows correct players in correct positions (2nd, 1st, 3rd)", () => {
 			// Position 0 = 2nd place, Position 1 = 1st place, Position 2 = 3rd place
 			const players = [
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Second Place" }), valueAdjustedScore: 85 }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "First Place" }), valueAdjustedScore: 95 }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Third Place" }), valueAdjustedScore: 75 }),
+				createMockPlayerScore({ name: "Second Place", valueAdjustedScore: 85 }),
+				createMockPlayerScore({ name: "First Place", valueAdjustedScore: 95 }),
+				createMockPlayerScore({ name: "Third Place", valueAdjustedScore: 75 }),
 			];
 
 			render(PodiumView, {
@@ -84,7 +79,7 @@ describe("PodiumView", () => {
 	describe("handles edge cases", () => {
 		it("does not crash when fewer than 3 players provided", () => {
 			const players = [
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Only Player" }) }),
+				createMockPlayerScore({ name: "Only Player" }),
 			];
 
 			expect(() => {
@@ -108,9 +103,9 @@ describe("PodiumView", () => {
 
 		it("handles empty player names gracefully", () => {
 			const players = [
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "" }), valueAdjustedScore: 90 }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "" }), valueAdjustedScore: 80 }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "" }), valueAdjustedScore: 70 }),
+				createMockPlayerScore({ name: "", valueAdjustedScore: 90 }),
+				createMockPlayerScore({ name: "", valueAdjustedScore: 80 }),
+				createMockPlayerScore({ name: "", valueAdjustedScore: 70 }),
 			];
 
 			expect(() => {
@@ -125,9 +120,9 @@ describe("PodiumView", () => {
 	describe("score formatting", () => {
 		it("formats raw scores to 1 decimal place", () => {
 			const players = [
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Player One" }), rawScore: 75.56, valueAdjustedScore: 82.1 }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Player Two" }), rawScore: 65.123, valueAdjustedScore: 71.2 }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Player Three" }), rawScore: 55, valueAdjustedScore: 60.0 }),
+				createMockPlayerScore({ name: "Player One", rawScore: 75.56, valueAdjustedScore: 82.1 }),
+				createMockPlayerScore({ name: "Player Two", rawScore: 65.123, valueAdjustedScore: 71.2 }),
+				createMockPlayerScore({ name: "Player Three", rawScore: 55, valueAdjustedScore: 60.0 }),
 			];
 
 			render(PodiumView, {
@@ -143,9 +138,9 @@ describe("PodiumView", () => {
 
 		it("formats value-adjusted scores to 1 decimal place", () => {
 			const players = [
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "P1" }), rawScore: 70, valueAdjustedScore: 95.87 }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "P2" }), rawScore: 60, valueAdjustedScore: 82.44 }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "P3" }), rawScore: 50, valueAdjustedScore: 71.12 }),
+				createMockPlayerScore({ name: "P1", rawScore: 70, valueAdjustedScore: 95.87 }),
+				createMockPlayerScore({ name: "P2", rawScore: 60, valueAdjustedScore: 82.44 }),
+				createMockPlayerScore({ name: "P3", rawScore: 50, valueAdjustedScore: 71.12 }),
 			];
 
 			render(PodiumView, {
@@ -163,9 +158,9 @@ describe("PodiumView", () => {
 	describe("medal styling", () => {
 		it("applies gold styling to first place (center)", () => {
 			const players = [
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Gold" }) }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Silver" }) }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Bronze" }) }),
+				createMockPlayerScore({ name: "Gold" }),
+				createMockPlayerScore({ name: "Silver" }),
+				createMockPlayerScore({ name: "Bronze" }),
 			];
 
 			render(PodiumView, {
@@ -180,9 +175,9 @@ describe("PodiumView", () => {
 
 		it("applies silver styling to second place (left)", () => {
 			const players = [
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Gold" }) }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Silver" }) }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Bronze" }) }),
+				createMockPlayerScore({ name: "Gold" }),
+				createMockPlayerScore({ name: "Silver" }),
+				createMockPlayerScore({ name: "Bronze" }),
 			];
 
 			render(PodiumView, {
@@ -197,9 +192,9 @@ describe("PodiumView", () => {
 
 		it("applies bronze styling to third place (right)", () => {
 			const players = [
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Gold" }) }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Silver" }) }),
-				createMockScoredPlayer({ player: createMockParsedPlayer({ name: "Bronze" }) }),
+				createMockPlayerScore({ name: "Gold" }),
+				createMockPlayerScore({ name: "Silver" }),
+				createMockPlayerScore({ name: "Bronze" }),
 			];
 
 			render(PodiumView, {
@@ -216,16 +211,17 @@ describe("PodiumView", () => {
 	describe("club display", () => {
 		it("shows club when available in player data", () => {
 			const players = [
-				createMockScoredPlayer({
-					player: createMockParsedPlayer({ name: "Star Player" }),
+				createMockPlayerScore({
+					name: "Star Player",
+					club: "Star FC",
 					valueAdjustedScore: 95,
 				}),
-				createMockScoredPlayer({
-					player: createMockParsedPlayer({ name: "Another Player" }),
+				createMockPlayerScore({
+					name: "Another Player",
 					valueAdjustedScore: 85,
 				}),
-				createMockScoredPlayer({
-					player: createMockParsedPlayer({ name: "Third Player" }),
+				createMockPlayerScore({
+					name: "Third Player",
 					valueAdjustedScore: 75,
 				}),
 			];
