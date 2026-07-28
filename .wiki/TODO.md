@@ -6,14 +6,14 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Development sequence (approved proposal)
 
-> **Lifecycle:** Approved 2026-07-28 from [CONCEPT.md](./CONCEPT.md) MVP scope. Ordering is **provisional — revisit after speccing** individual features. No planned specs yet; confidence is mostly inferred from CONCEPT bullets.
+> **Lifecycle:** Approved 2026-07-28 from [CONCEPT.md](./CONCEPT.md) MVP scope. Ordering is **provisional — revisit after speccing** individual features.
 >
-> **Gating context:** FM26 memory read is unproven in this repo (notes from a working third-party plugin; implementation approach TBD). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm.
+> **Gating context:** FM26 memory read uses a C# BepInEx IL2CPP bridge + Rust file protocol (Windows Steam only); approach locked in [features/active/fm26-memory-read.md](./features/active/fm26-memory-read.md). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm.
 
 | Order | Feature | Spec | Confidence | Why this position |
 | --- | --- | --- | --- | --- |
-| 1 | FM26 memory read | CONCEPT | medium | Foundation — no other MVP feature works without live game data; highest technical risk |
-| 2 | Snapshot ingest + Load Data | CONCEPT | high | Persist memory reads to SQLite; explicit refresh workflow |
+| 1 | FM26 memory read | Active ledger | medium | Foundation — live dump from FM; in progress |
+| 2 | Snapshot ingest + Load Data | CONCEPT | high | Persist memory dumps to SQLite; explicit refresh workflow |
 | 3 | Role scoring engine | CONCEPT | medium | One scoring model on ingest; FM role-relevant attributes + custom algorithm |
 | 4 | Player search | CONCEPT | high | First full UI value path after Load Data; validates DB and scores |
 | 5 | Player profiles | CONCEPT | high | Detail view from search; traditional scouting path |
@@ -46,15 +46,15 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-_(none)_
+- [FM26 memory read](./features/active/fm26-memory-read.md) — PR 1 / commit 1 Active: bridge toolchain prerequisites and ignores
 
 ## Plan next
 
-Run `/plan-feature` on **FM26 memory read** (order 1). Start from CONCEPT bullet; consider optional `/spike` first to prove attach + minimal player read on current FM26 build before multi-commit feature work.
+After FM26 memory read finishes: `/plan-feature` on **Snapshot ingest + Load Data** (order 2), against the frozen dump schema from memory-read PR 4.
 
 ## Next
 
-_(filled by Plan next above — first feature after roadmap approval)_
+Snapshot ingest + Load Data (order 2)
 
 ## Completed
 
