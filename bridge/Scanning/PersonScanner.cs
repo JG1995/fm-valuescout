@@ -9,22 +9,32 @@ public static class PersonScanner
     public const int MinAbility = 1;
     public const int MaxAbility = 200;
 
+    // ponytail: hard cap so live Load Data tests finish in seconds, not minutes
+    // Upgrade to unlimited (or request-driven maxPlayers) when full-DB dumps are required — see BACKLOG High "Bridge scan performance"
+    public const int DefaultMaxAccepted = 10_000;
+
     public static IReadOnlyList<PersonCandidate> Scan(
         IMemoryReader reader,
         IFmMemoryLayout layout,
         ModuleBounds gameAssembly,
         ModuleBounds? gamePlugin,
         IReadOnlyList<MemoryRegion> candidateRegions,
-        ScanDiagnostics diagnostics)
+        ScanDiagnostics diagnostics,
+        int? maxAccepted = DefaultMaxAccepted)
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(candidateRegions);
         ArgumentNullException.ThrowIfNull(diagnostics);
+        if (maxAccepted is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxAccepted), maxAccepted, "maxAccepted must be null or positive.");
+        }
 
         diagnostics.RegionCount = candidateRegions.Count;
         diagnostics.LayoutVersionKey = layout.VersionKey;
         diagnostics.LayoutProvisional = layout.IsProvisional;
+        diagnostics.MaxAccepted = maxAccepted;
         diagnostics.GameAssembly = new ModuleBoundsSnapshot(
             gameAssembly.BaseAddress,
             gameAssembly.EndAddress);
@@ -35,9 +45,15 @@ public static class PersonScanner
 
         var playerOffsets = new HashSet<int>(layout.PlayerClassOffsets);
         var accepted = new Dictionary<uint, PersonCandidate>();
+        var stopEarly = false;
 
         foreach (var region in candidateRegions)
         {
+            if (stopEarly)
+            {
+                break;
+            }
+
             if (region.Size < 0x10)
             {
                 continue;
@@ -118,6 +134,13 @@ public static class PersonScanner
                 if (diagnostics.SampleUids.Count < 16)
                 {
                     diagnostics.SampleUids.Add(uid);
+                }
+
+                if (maxAccepted is { } limit && accepted.Count >= limit)
+                {
+                    diagnostics.StoppedEarly = true;
+                    stopEarly = true;
+                    break;
                 }
             }
         }

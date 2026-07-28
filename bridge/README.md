@@ -23,7 +23,7 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 
 - `Layouts/` — versioned pins keyed by FM major.minor (`26.3`). Unsupported versions fail closed and write diagnostics without touching a prior good `dump.json`.
 - `Fm263Layout` ports FMSuperScout’s 26.3 field pins (author permission — see `.wiki/notes/superscout-permission.md`). Confirm CA/PA against known players after first live dump; still marked provisional until then.
-- `Scanning/PersonScanner` — aligned heap walk, vtable in GameAssembly/game_plugin, Il2Cpp dynamic class offset, UID/CA/PA sanity (`1..200`), UID dedupe.
+- `Scanning/PersonScanner` — aligned heap walk, vtable in GameAssembly/game_plugin, Il2Cpp dynamic class offset, UID/CA/PA sanity (`1..200`), UID dedupe. **Temporary testing cap:** stops after `DefaultMaxAccepted` (10 000) accepted players so Load Data finishes quickly; set `maxAccepted: null` for a full walk. Full-scan optimization is tracked in `.wiki/BACKLOG.md` (High).
 - Dump schema v1 players: `{ uid, ca, pa }` only.
 
 ### In-app request protocol

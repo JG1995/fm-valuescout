@@ -24,6 +24,12 @@ public sealed class ScanDiagnostics
 
     public int DuplicatesSkipped { get; set; }
 
+    /// <summary>Accepted-player ceiling for this run; null means unlimited.</summary>
+    public int? MaxAccepted { get; set; }
+
+    /// <summary>True when the scanner stopped because <see cref="MaxAccepted"/> was reached.</summary>
+    public bool StoppedEarly { get; set; }
+
     public Dictionary<int, int> ClassOffsetHistogram { get; } = new();
 
     public List<uint> SampleUids { get; } = new();

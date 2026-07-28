@@ -235,6 +235,45 @@ public sealed class CapADumpTests
     }
 
     [Fact]
+    public void Person_scanner_stops_when_max_accepted_reached()
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        PlacePlayerFixture(reader, layout, PersonAddress, uid: 101, ca: 100, pa: 110);
+        PlacePlayerFixture(
+            reader,
+            layout,
+            PersonAddress + 0x100,
+            uid: 102,
+            ca: 120,
+            pa: 130,
+            playerBlockBase: PlayerBlockBase + 0x100);
+        PlacePlayerFixture(
+            reader,
+            layout,
+            PersonAddress + 0x200,
+            uid: 103,
+            ca: 140,
+            pa: 150,
+            playerBlockBase: PlayerBlockBase + 0x200);
+
+        var diagnostics = new ScanDiagnostics();
+        var candidates = PersonScanner.Scan(
+            reader,
+            layout,
+            new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+            gamePlugin: null,
+            RegionEnumerator.GetCandidateRegions(reader),
+            diagnostics,
+            maxAccepted: 2);
+
+        Assert.Equal(2, candidates.Count);
+        Assert.True(diagnostics.StoppedEarly);
+        Assert.Equal(2, diagnostics.MaxAccepted);
+        Assert.Equal(2, diagnostics.CandidatesAccepted);
+    }
+
+    [Fact]
     public void Pipeline_writes_dump_when_fake_memory_has_players()
     {
         var bridgeDir = CreateTempBridgeDir();

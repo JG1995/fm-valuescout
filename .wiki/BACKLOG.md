@@ -8,7 +8,7 @@ This is the parking lot — aspirational work, deferred features, technical debt
 
 ## High
 
-[Feasible and valuable, but not yet planned. These would move to TODO.md Next if priorities shift or capacity opens up.]
+- **Bridge scan performance (full player dump)** — First live Cap A dump on FM 26.3.2 scanned ~4.1 GB / ~7.5M vtable hits and took ~3m 47s for ~184k accepted rows, longer than the app’s 120s request wait. Temporary early-stop cap (`PersonScanner.DefaultMaxAccepted`) keeps manual testing usable. **Trigger:** need complete dumps for ingest, or Load Data must finish a full DB inside a bounded UI wait. **Directions:** tighter region filters, better person/player discrimination before CA/PA reads, streaming dump write, progress in `status.json`, longer/adaptive wait, request-driven `maxPlayers`. **Completion:** full-DB dump finishes reliably within an agreed budget; remove or raise the testing cap; document expected scan time on a reference save.
 
 ## Medium
 

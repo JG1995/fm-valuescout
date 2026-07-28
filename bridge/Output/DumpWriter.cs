@@ -77,6 +77,12 @@ public static class DiagnosticsWriter
         sb.AppendLine($"candidatesAccepted={diagnostics.CandidatesAccepted}");
         sb.AppendLine($"candidatesRejected={diagnostics.CandidatesRejected}");
         sb.AppendLine($"duplicatesSkipped={diagnostics.DuplicatesSkipped}");
+        if (diagnostics.MaxAccepted is { } maxAccepted)
+        {
+            sb.AppendLine($"maxAccepted={maxAccepted}");
+        }
+
+        sb.AppendLine($"stoppedEarly={diagnostics.StoppedEarly}");
 
         if (diagnostics.GameAssembly is { } ga)
         {
