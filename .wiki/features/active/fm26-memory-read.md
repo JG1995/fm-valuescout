@@ -165,7 +165,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 3 — Rust bridge paths and status IPC
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:**
 - Add backend feature module `src-tauri/src/features/memory-read/` following existing `health` layout (`commands.rs` / `service.rs` / types as needed). Register commands in `lib.rs` and ACL capabilities only for what this commit exposes.
@@ -399,6 +399,7 @@ No request-file writing or dump watching. No frontend UI (types-only share OK). 
 - 2026-07-28: Inserted PR 1 commit 1 as toolchain/repo prerequisites (`chore(bridge)`); scaffold status writer is now commit 2. BepInEx/FM interop remain machine-local — not vendored.
 - 2026-07-28: Recorded [ADR-0016](../../decisions/0016-csharp-bepinex-fm26-bridge.md); deferred in-app install to [BACKLOG.md](../../BACKLOG.md).
 - 2026-07-28 (Commit 2 build): Plugin host APIs use NuGet `BepInEx.Unity.IL2CPP` (official template feed) instead of local `BepInExCore` HintPaths, so `dotnet build` / `dotnet test` work without a Steam tree. `InteropDir` in `Directory.Build.user.props` remains for later FM type references. Locked bridge dir: `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`. Status wire shape (camelCase JSON): `protocolVersion`, `pluginVersion`, `state`, `updatedAtUtc`, `gamePluginModulePresent`, `gameAssemblyModulePresent`.
+- 2026-07-28 (Commit 3 build): Rust feature module is `src-tauri/src/features/memory_read/` (snake_case — Rust module rules; frontend folder stays `memory-read` in Commit 4). IPC `get_bridge_status` returns camelCase `BridgeStatus` or tagged `BridgeStatusError` (`unsupportedPlatform` | `missing` | `corrupt` | `unsupportedVersion`). Windows path via `LOCALAPPDATA`; non-Windows always `unsupportedPlatform`. No new crates; no capability ACL change beyond registering the command (`core:default` already covers custom commands). Outcome matches plan — pending checkpoint hash.
 
 ## Completed work
 
