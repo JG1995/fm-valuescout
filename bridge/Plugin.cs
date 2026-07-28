@@ -27,18 +27,16 @@ public class Plugin : BasePlugin
     {
         Log = base.Log;
 
-        var modules = DetectModulesBestEffort();
-
         try
         {
             var bridgeDirectory = BridgePaths.EnsureBridgeDirectory();
-            WriteIdleStatus(bridgeDirectory, modules);
+            WriteIdleStatus(bridgeDirectory, DetectModulesBestEffort());
             Log.LogInfo(
                 $"FM Data Bridge {MyPluginInfo.PLUGIN_VERSION} loaded; wrote {BridgePaths.GetStatusPath(bridgeDirectory)}");
 
             _pollCts = new CancellationTokenSource();
             var token = _pollCts.Token;
-            var thread = new Thread(() => PollRequests(bridgeDirectory, modules, token))
+            var thread = new Thread(() => PollRequests(bridgeDirectory, token))
             {
                 IsBackground = true,
                 Name = "FmBridge-RequestPoll",
@@ -65,16 +63,14 @@ public class Plugin : BasePlugin
         return true;
     }
 
-    private static void PollRequests(
-        string bridgeDirectory,
-        ModulePresenceSignals modules,
-        CancellationToken token)
+    private static void PollRequests(string bridgeDirectory, CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
             try
             {
-                TryStartScanFromRequestOrForceFlag(bridgeDirectory, modules);
+                TryStartScanFromRequestOrForceFlag(bridgeDirectory);
+                TryRefreshStaleModuleFlags(bridgeDirectory);
             }
             catch (Exception ex)
             {
@@ -85,9 +81,7 @@ public class Plugin : BasePlugin
         }
     }
 
-    private static void TryStartScanFromRequestOrForceFlag(
-        string bridgeDirectory,
-        ModulePresenceSignals modules)
+    private static void TryStartScanFromRequestOrForceFlag(string bridgeDirectory)
     {
         string? requestId = null;
 
@@ -119,7 +113,7 @@ public class Plugin : BasePlugin
                         WriteStatus(
                             bridgeDirectory,
                             BridgeProtocol.StateFailed,
-                            modules,
+                            DetectModulesBestEffort(),
                             requestId: observedRequestId,
                             playersFound: null,
                             error: rejectReason);
@@ -145,7 +139,7 @@ public class Plugin : BasePlugin
 
         try
         {
-            RunDumpScan(bridgeDirectory, modules, requestId!);
+            RunDumpScan(bridgeDirectory, requestId!);
         }
         finally
         {
@@ -156,13 +150,15 @@ public class Plugin : BasePlugin
         }
     }
 
-    private static void RunDumpScan(
-        string bridgeDirectory,
-        ModulePresenceSignals modules,
-        string requestId)
+    private static void RunDumpScan(string bridgeDirectory, string requestId)
     {
         try
         {
+            var reader = new WindowsMemoryReader();
+            var known = reader.LocateKnownModules();
+            // game_plugin.dll often loads after BepInEx plugin Load — use live bounds, not a Load-time snapshot.
+            var modules = ModulePresence.FromBounds(known);
+
             WriteStatus(
                 bridgeDirectory,
                 BridgeProtocol.StateScanning,
@@ -180,8 +176,6 @@ public class Plugin : BasePlugin
                     $"Could not read game_plugin.dll version; using fallback '{gameVersion}' for layout resolve");
             }
 
-            var reader = new WindowsMemoryReader();
-            var known = reader.LocateKnownModules();
             if (known.GameAssembly is not { } gameAssembly)
             {
                 var message = "GameAssembly.dll bounds not found; cannot scan";
@@ -240,7 +234,7 @@ public class Plugin : BasePlugin
                 WriteStatus(
                     bridgeDirectory,
                     BridgeProtocol.StateFailed,
-                    modules,
+                    DetectModulesBestEffort(),
                     requestId: requestId,
                     playersFound: null,
                     error: ex.Message);
@@ -250,6 +244,48 @@ public class Plugin : BasePlugin
                 // ignored — status best-effort
             }
         }
+    }
+
+    /// <summary>
+    /// game_plugin.dll may appear after plugin Load; rewrite status module flags without changing state.
+    /// </summary>
+    private static void TryRefreshStaleModuleFlags(string bridgeDirectory)
+    {
+        lock (ScanGate)
+        {
+            if (_scanInProgress)
+            {
+                return;
+            }
+        }
+
+        var modules = DetectModulesBestEffort();
+        if (!StatusWriter.TryRead(bridgeDirectory, out var current) || current is null)
+        {
+            return;
+        }
+
+        if (current.GamePluginModulePresent == modules.GamePluginModulePresent
+            && current.GameAssemblyModulePresent == modules.GameAssemblyModulePresent)
+        {
+            return;
+        }
+
+        lock (ScanGate)
+        {
+            if (_scanInProgress)
+            {
+                return;
+            }
+        }
+
+        WriteStatus(
+            bridgeDirectory,
+            current.State,
+            modules,
+            requestId: current.RequestId,
+            playersFound: current.PlayersFound,
+            error: current.Error);
     }
 
     private const string Fm263FallbackVersion = "26.3.0";

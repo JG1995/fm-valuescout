@@ -30,4 +30,10 @@ public static class ModulePresence
             set.Contains(ModuleLocator.GamePluginModuleName),
             set.Contains(ModuleLocator.GameAssemblyModuleName));
     }
+
+    /// <summary>
+    /// Presence flags from the same locator used during a scan (authoritative once modules are loaded).
+    /// </summary>
+    public static ModulePresenceSignals FromBounds(ModulePresenceBounds known) =>
+        new(known.GamePlugin is not null, known.GameAssembly is not null);
 }
