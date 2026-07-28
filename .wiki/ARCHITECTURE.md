@@ -472,8 +472,9 @@ Each item links to an ADR with alternatives and consequences.
 | Tauri v2 desktop shell | [0013](./decisions/0013-tauri-v2-desktop-shell.md) |
 | Rust backend and IPC boundary | [0014](./decisions/0014-rust-backend-ipc-boundary.md) |
 | SQLite (Rust-owned) | [0015](./decisions/0015-sqlite-rust-owned.md) |
+| C# BepInEx FM26 bridge | [0016](./decisions/0016-csharp-bepinex-fm26-bridge.md) |
 
-TanStack Table, Form, Virtual, and TanStack Start are intentionally **not** in the default stack — add per feature when needed.
+TanStack Table, Form, Virtual, and TanStack Start are intentionally **not** in the default stack — add per feature when needed. The FM26 bridge is an accepted product decision; describe it under current-state sections only after the implementation lands.
 
 ---
 

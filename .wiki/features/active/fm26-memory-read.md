@@ -397,6 +397,7 @@ No plugin project yet, no status writer, no vendored BepInEx/FM DLLs, no Rust/UI
 - Planning answers (2026-07-28): C# + Rust protocol confirmed; skip spike; Windows Steam only; full CONCEPT fields; in-app trigger only; manual install OK; feature ends at dump/protocol before ingest.
 - 2026-07-28: Expanded each delivery-plan commit’s Work/Validation detail for clearer `/build` handoff (still high-level; no implementation code in the ledger).
 - 2026-07-28: Inserted PR 1 commit 1 as toolchain/repo prerequisites (`chore(bridge)`); scaffold status writer is now commit 2. BepInEx/FM interop remain machine-local — not vendored.
+- 2026-07-28: Recorded [ADR-0016](../../decisions/0016-csharp-bepinex-fm26-bridge.md); deferred in-app install to [BACKLOG.md](../../BACKLOG.md).
 
 ## Completed work
 
@@ -412,7 +413,7 @@ No plugin project yet, no status writer, no vendored BepInEx/FM DLLs, no Rust/UI
 
 ## Documentation impact
 
-- Update [ARCHITECTURE.md](../../ARCHITECTURE.md) when bridge + protocol are implemented (current-state only after code lands)
-- ADR only if the C# bridge is treated as a consequential stack addition beyond the feature ledger
+- Accepted stack decision: [ADR-0016](../../decisions/0016-csharp-bepinex-fm26-bridge.md)
+- Update [ARCHITECTURE.md](../../ARCHITECTURE.md) current-state sections when bridge + protocol are implemented (ADR link already recorded in §9)
 - Feature 2 plans against the frozen dump schema from PR 4
-- Optional backlog entry for in-app BepInEx/plugin install/remove
+- Deferred install UX: [BACKLOG.md](../../BACKLOG.md) — in-app BepInEx / FM bridge install and remove

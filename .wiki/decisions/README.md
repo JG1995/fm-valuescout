@@ -29,6 +29,7 @@ Use a short, numbered filename such as `0001-decision-title.md`.
 | [0013](./0013-tauri-v2-desktop-shell.md) | Tauri v2 desktop shell |
 | [0014](./0014-rust-backend-ipc-boundary.md) | Rust backend and IPC trust boundary |
 | [0015](./0015-sqlite-rust-owned.md) | SQLite — Rust-owned migrations and queries |
+| [0016](./0016-csharp-bepinex-fm26-bridge.md) | C# BepInEx bridge for FM26 memory read |
 
 ## ADR format
 
