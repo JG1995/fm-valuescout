@@ -7,7 +7,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-fast|check-rust|format|secrets|smoke|mutate} [args...]
+Usage: ./scripts/dev {test|check|check-fast|check-rust|format|secrets|smoke|mutate|bridge-install} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
@@ -20,6 +20,9 @@ Commands:
   secrets [--staged] Scan for secrets with secretlint (full tree or staged files only).
   smoke             Run Playwright smoke tests (e2e/smoke.spec.ts).
   mutate <target...>  Run configured mutation checks (not configured yet).
+  bridge-install    Build bridge/ with dotnet and copy FmDataBridge.dll into FM BepInEx/plugins.
+                    Path: FM_BRIDGE_PLUGINS, or FM_STEAM_ROOT/BepInEx/plugins, or the default
+                    Steam FM26 path under /mnt/c (WSL).
 
 Unsupported mutation checks exit with status 69.
 EOF
@@ -232,6 +235,69 @@ run_test() {
   )
 }
 
+ensure_dotnet() {
+  if command -v dotnet >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ -x "${HOME}/.dotnet/dotnet" ]]; then
+    export DOTNET_ROOT="${HOME}/.dotnet"
+    export PATH="$PATH:$DOTNET_ROOT:$DOTNET_ROOT/tools"
+    return 0
+  fi
+
+  printf 'dotnet not found — install the .NET 6 SDK (see bridge/README.md).\n' >&2
+  exit 66
+}
+
+resolve_bridge_plugins_dir() {
+  if [[ -n "${FM_BRIDGE_PLUGINS:-}" ]]; then
+    printf '%s\n' "$FM_BRIDGE_PLUGINS"
+    return 0
+  fi
+
+  if [[ -n "${FM_STEAM_ROOT:-}" ]]; then
+    printf '%s/BepInEx/plugins\n' "${FM_STEAM_ROOT%/}"
+    return 0
+  fi
+
+  local default_wsl
+  default_wsl="/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26/BepInEx/plugins"
+  if [[ -d "$default_wsl" ]]; then
+    printf '%s\n' "$default_wsl"
+    return 0
+  fi
+
+  printf 'Could not resolve BepInEx plugins directory.\n' >&2
+  printf 'Set FM_BRIDGE_PLUGINS to the plugins folder, or FM_STEAM_ROOT to the FM26 install.\n' >&2
+  printf 'Example (WSL):\n' >&2
+  printf '  export FM_STEAM_ROOT="/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26"\n' >&2
+  exit 66
+}
+
+run_bridge_install() {
+  require_no_arguments bridge-install "$@"
+  ensure_dotnet
+
+  local plugins_dir dll_path
+  plugins_dir="$(resolve_bridge_plugins_dir)"
+  mkdir -p -- "$plugins_dir"
+
+  (
+    cd "$repo_root/bridge"
+    dotnet build
+  )
+
+  dll_path="$repo_root/bridge/bin/Debug/net6.0/FmDataBridge.dll"
+  if [[ ! -f "$dll_path" ]]; then
+    printf 'Build succeeded but DLL missing: %s\n' "$dll_path" >&2
+    exit 66
+  fi
+
+  cp -- "$dll_path" "$plugins_dir/FmDataBridge.dll"
+  printf 'Installed %s\n' "$plugins_dir/FmDataBridge.dll"
+}
+
 command="${1:-}"
 if [[ -z "$command" ]]; then
   usage
@@ -268,6 +334,9 @@ case "$command" in
       exit 2
     fi
     unsupported "Mutation testing"
+    ;;
+  bridge-install)
+    run_bridge_install "$@"
     ;;
   *)
     printf 'Unknown command: %s\n' "$command" >&2

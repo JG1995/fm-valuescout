@@ -103,10 +103,33 @@ On first FM launch with BepInEx installed, BepInEx generates Il2CppInterop assem
 
 Linux `./scripts/dev check` does not require the .NET SDK and does not build this tree. Validate the bridge with:
 
-```powershell
+```bash
 cd bridge
 dotnet test
 dotnet build
 ```
 
 on a machine with the .NET 6 SDK (Windows for FM attach; Linux/WSL is enough for unit tests).
+
+### Install into FM (WSL → Steam)
+
+From the repo root:
+
+```bash
+./scripts/dev bridge-install
+```
+
+Builds `FmDataBridge.dll` and copies it to `BepInEx/plugins`. Path resolution:
+
+1. `FM_BRIDGE_PLUGINS` — explicit plugins directory
+2. `FM_STEAM_ROOT/BepInEx/plugins` — if `FM_STEAM_ROOT` is set
+3. Default WSL Steam path: `/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26/BepInEx/plugins`
+
+Example override:
+
+```bash
+export FM_STEAM_ROOT="/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26"
+./scripts/dev bridge-install
+```
+
+Then restart FM26 so BepInEx loads the new DLL.

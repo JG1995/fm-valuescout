@@ -173,6 +173,19 @@ run "$dev" unknown
 assert_status 2 "unknown commands fail"
 assert_output_contains "Usage:" "unknown commands show usage"
 
+run "$dev"
+assert_status 2 "missing command shows usage"
+assert_output_contains "bridge-install" "usage documents bridge-install"
+
+# Without a resolvable plugins dir (and no default Steam mount), fail closed with guidance.
+# Skip when the developer's WSL Steam path exists — that is a valid default destination.
+unset FM_BRIDGE_PLUGINS FM_STEAM_ROOT || true
+if [[ ! -d "/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26/BepInEx/plugins" ]]; then
+  run "$dev" bridge-install
+  assert_status 66 "bridge-install fails when plugins path is unresolved"
+  assert_output_contains "FM_STEAM_ROOT" "bridge-install explains how to set the path"
+fi
+
 if [[ "$failures" -ne 0 ]]; then
   printf '%s dispatcher contract test(s) failed.\n' "$failures" >&2
   exit 1
