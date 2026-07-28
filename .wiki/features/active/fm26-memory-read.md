@@ -112,7 +112,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ### PR 1 — Bridge bootstrap and status protocol
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional PR title:** `feat(memory-read): add BepInEx bridge bootstrap and status protocol`
 
@@ -185,7 +185,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 4 — UI bridge status panel
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `527380a`
 
 **Work:**
 - Add `src/features/memory-read/` with `api/` query options calling `get_bridge_status` through `tauri-client`, plus a small presentational panel (ready / missing / error / unsupported platform).
@@ -203,7 +203,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ### PR 2 — Request protocol and CA/PA dump
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional PR title:** `feat(memory-read): request scans and dump player CA PA`
 
@@ -213,7 +213,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Safe memory reader and region scan
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Introduce a memory-access abstraction (`IMemoryReader` or equivalent) with a production Windows implementation that uses `ReadProcessMemory` / `VirtualQuery` against the current process (same safety model as SuperScout: bad addresses fail the read, they do not hard-crash via raw pointer deref).
@@ -376,17 +376,21 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ## Active work
 
-**PR:** PR 1 — Bridge bootstrap and status protocol
+**PR:** PR 2 — Request protocol and CA/PA dump
 
-**Commit:** None — PR 1 complete pending checkpoint; next work is PR 2 after merge.
+**Commit:** Commit 1 — Safe memory reader and region scan
 
-### Build progress (Commit 4)
+### RED test (active commit)
 
-- `src/features/memory-read/` — api (fetch, query options, keys, ipc mock), types, panel + error boundary components
-- Home route (`src/app/routes/index.tsx`) — bridge panel in Suspense above health
-- `src/testing/setup.ts` + `e2e/tauri-ipc-stub.ts` — `get_bridge_status` stub
-- Vitest: 5 tests (ready, missing, unsupported platform, unsupported version, corrupt + retry)
-- Gate: `./scripts/dev test` (14 passed), `./scripts/dev check` green
+`dotnet test` with fake/in-memory reader — region filters, read edge cases (short read, out-of-range).
+
+### Expected outcome
+
+`bridge/Memory/` (or equivalent) with `IMemoryReader`, Windows production reader (`ReadProcessMemory` / `VirtualQuery`), heap region enumeration, `game_plugin.dll` / `GameAssembly.dll` bounds recorded; fake reader for tests; no player decoding or Tauri changes.
+
+### Explicit exclusions
+
+No player decoding, dump format, request polling, or Tauri/UI changes.
 
 ## Discoveries and replanning
 
@@ -405,6 +409,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 | 1 | Commit 1 — Bridge toolchain and repo prerequisites | `31b7670` | Docs, ignores, `global.json`, example props; Linux gate skips `bridge/` |
 | 1 | Commit 2 — Scaffold C# bridge and status writer | `21c2e67` | BepInEx plugin, status.json writer, NuGet host refs, xUnit shape tests |
 | 1 | Commit 3 — Rust bridge paths and status IPC | `0a8278f` | `get_bridge_status`, path resolve, fixture parse/error tests |
+| 1 | Commit 4 — UI bridge status panel | `527380a` | Home panel, mockIPC + Playwright stub, kind-specific error copy |
 
 ## Final validation
 
