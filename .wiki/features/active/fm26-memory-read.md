@@ -231,7 +231,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Versioned layout stub and CA/PA candidate dump
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `2f8490c`
 
 **Work:**
 - Add a versioned memory-layout registry keyed by FM major/minor (or build string from `game_plugin` / status). Unsupported versions refuse to scan and write a clear status error + diagnostics hint.
@@ -250,7 +250,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 3 — In-app scan request and completion watch
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Bridge: background poll for a request file in the bridge directory (ignore stale requests older than a short TTL, same class of bug SuperScout fixed). On valid request, run the CA/PA dump path off the Unity main thread; update `status.json` through phases (`idle` → `scanning` → `ready` / `failed`) with progress fields if cheap (candidates found, elapsed).
@@ -378,30 +378,19 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 2 — Request protocol and CA/PA dump
 
-**Commit:** Commit 2 — Versioned layout stub and CA/PA candidate dump
+**Commit:** Commit 3 — In-app scan request and completion watch
 
 ### RED test (active commit)
 
-Unit tests for dump metadata and “do not clobber good dump on failure”; diagnostics readable after a failed version check. Manual FM verify deferred to validation.
+Rust tests with temp dirs simulating status transitions and stale requests; Vitest for trigger + busy/error.
 
 ### Expected outcome
 
-Versioned layout registry + initial FM26 pin; person-candidate discovery (UID/CA/PA); streamed `dump.json` replace-only-on-success; basic `diagnostics.txt`. No names/attributes/contracts; no Rust request writer / UI trigger yet (temporary bridge-side trigger OK for manual test).
+Bridge polls `request.json` (TTL for stale); runs CA/PA dump off main thread; status phases idle → scanning → ready/failed. Rust writes request via IPC and watches status/dump; UI trigger (no player table). Force-scan can be retired or kept as fallback.
 
 ### Explicit exclusions
 
-Names, attributes, contracts, clubs; Rust request writer / UI trigger (Commit 3).
-
-### Build progress (Commit 2 — pending checkpoint)
-
-- `Layouts/`: `IFmMemoryLayout`, `LayoutRegistry` (major.minor from full version string), `Fm263Layout` pin from SuperScout `Fields.cs` (26.3; author permission) — UID `0x0C`, class `0x288`/`0x380`, CA/PA u16 `0x264`/`0x266`. Still `IsProvisional` until live known-player check.
-- `Scanning/`: `PersonScanner` (vtable in GameAssembly or game_plugin, Il2Cpp dynamic class offset, UID/CA/PA sanity, UID dedupe, class-offset histogram), `CapADumpPipeline`, `GameVersionDetector`, `ScanDiagnostics`.
-- `Output/`: `DumpWriter` replace-only-on-success (never clobber with zero players); `DiagnosticsWriter` always on attempt.
-- Dump schema v1: metadata + `{ uid, ca, pa }` players. Protocol adds `dump.json` / `diagnostics.txt` / `force-scan` / scan states.
-- Temp trigger: empty `force-scan` file checked once at plugin `Load` → background scan.
-- Tests: CapA/dump/layout/scanner cases with fake Il2Cpp meta chain. No Tauri/UI; no names/attrs/contracts.
-- Provenance: [.wiki/notes/superscout-permission.md](../../notes/superscout-permission.md).
-- Review fix: unsigned underflow guard for 64-bit person addresses; `force-scan` polled every ~2s (not Load-only) so a save can be loaded first.
+Full field extraction beyond UID/CA/PA; SQLite import / snapshot retention beyond dump files.
 
 ## Discoveries and replanning
 
@@ -414,8 +403,7 @@ Names, attributes, contracts, clubs; Rust request writer / UI trigger (Commit 3)
 - 2026-07-28 (Commit 4 build): Frontend feature at `src/features/memory-read/` with `bridgeStatusQueryOptions`, `BridgeStatusPanel` + localized `BridgeStatusError` (kind-specific copy for missing / unsupported platform / version mismatch). Home route shows bridge panel above health; bridge not prefetched in route loader so expected IPC errors reach the panel error boundary. Vitest mock via `bridge-status-ipc-mock.ts`; Playwright stub returns ready status. No scan trigger, SQLite, or dump UI.
 - 2026-07-28 (manual PR 1 verify): Live `status.json` had `gameAssemblyModulePresent: true` but `gamePluginModulePresent: false` on the developer’s FM26 install. Treat `game_plugin.dll` name as provisional until memory-scan work confirms the real native module; `GameAssembly.dll` remains the IL2CPP signal that mattered for PR 1.
 - 2026-07-28 (PR 2 Commit 1 build): `ModuleImageCache` deferred. Region filter accepts `PAGE_READWRITE` / write-copy / execute-readwrite variants; default max region size 512 MiB.
-- 2026-07-28 (PR 2 Commit 2 build): No live offset set available — shipped provisional `Fm263Layout` placeholders + full dump/diagnostics pipeline proven with fakes. First successful live dump requires offset repin (expected per uncertainty register). Force-scan file is temporary until Commit 3 request protocol.
-- 2026-07-28: SuperScout author permission recorded ([superscout-permission.md](../../notes/superscout-permission.md)). Ported FM 26.3 field pins from SuperScout `Fields.cs` into `Fm263Layout` (UID `0x0C`, player class `0x288`/`0x380`, CA/PA u16 at `0x264`/`0x266`). Scanner updated to Il2Cpp dynamic class-offset resolution (`*(vtable-8)` → meta, `*(meta+4)` → offset) and player-base = person − classOffset. Still confirm on known players after first live dump.
+- 2026-07-28 (PR 2 Commit 2): SuperScout permission ([superscout-permission.md](../../notes/superscout-permission.md)); `Fm263Layout` pins from SuperScout `Fields.cs`; Il2Cpp dynamic class-offset scan; dump replace-only-on-success; `force-scan` polled ~2s (not Load-only); 64-bit underflow guard fixed. Still confirm known-player CA/PA on live FM. Undelegated MEDIUM: version fallback when `game_plugin` missing; unsupported-version diagnostics omit GameAssembly bounds.
 
 ## Completed work
 
@@ -426,6 +414,7 @@ Names, attributes, contracts, clubs; Rust request writer / UI trigger (Commit 3)
 | 1 | Commit 3 — Rust bridge paths and status IPC | `0a8278f` | `get_bridge_status`, path resolve, fixture parse/error tests |
 | 1 | Commit 4 — UI bridge status panel | `527380a` | Home panel, mockIPC + Playwright stub, kind-specific error copy |
 | 2 | Commit 1 — Safe memory reader and region scan | `9c80753` | `IMemoryReader`, Windows RPM/VQ, region filter, module bounds, fake tests |
+| 2 | Commit 2 — Versioned layout stub and CA/PA candidate dump | `2f8490c` | Layout registry, Il2Cpp scan, dump/diagnostics, force-scan poll, SuperScout pins |
 
 ## Final validation
 
