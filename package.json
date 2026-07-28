@@ -1,0 +1,52 @@
+{
+  "name": "cursor-react-tauri-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "React + Tauri desktop development template with a Cursor-based test-driven AI workflow.",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.17.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "prepare": "husky",
+    "check": "./scripts/dev check",
+    "test": "./scripts/dev test"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.2",
+    "@tanstack/react-router": "^1.132.31",
+    "@tauri-apps/api": "^2.11.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwindcss": "^4.1.13",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.4",
+    "@playwright/test": "^1.62.0",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.4",
+    "@tailwindcss/vite": "^4.1.13",
+    "@tanstack/react-query-devtools": "^5.101.4",
+    "@tanstack/react-router-devtools": "^1.167.0",
+    "@tanstack/router-plugin": "^1.132.31",
+    "@tauri-apps/cli": "^2.11.4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^6.0.4",
+    "husky": "^9.1.7",
+    "jsdom": "^27.0.0",
+    "secretlint": "^13.0.4",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  }
+}

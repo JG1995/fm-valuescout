@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: oklch(0 0 0);
+  --color-on-background: oklch(0.92 0 0);
+  --color-surface: oklch(0.1 0 0);
+  --color-on-surface: oklch(0.92 0 0);
+  --color-primary: oklch(0.63 0.14 256);
+  --color-on-primary: oklch(0.09 0 0);
+  --color-outline: oklch(0.35 0 0);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--color-background);
+  color: var(--color-on-background);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}

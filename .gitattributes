@@ -1,0 +1,48 @@
+# Line-ending normalization. Run `git add --renormalize .` after edits.
+* text=auto
+
+# ---- Shell, configs, manifests ----------------------------------------
+.sh text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+Dockerfile text eol=lf
+.env.example text eol=lf
+Makefile text eol=lf
+scripts/dev text eol=lf
+
+# ---- Serialization ----------------------------------------------------
+.yml text eol=lf
+.yaml text eol=lf
+.json text eol=lf
+.jsonc text eol=lf
+.toml text eol=lf
+
+# ---- Docs / Cursor ----------------------------------------------------
+.md text eol=lf
+.mdc text eol=lf
+
+# ---- JavaScript / TypeScript ------------------------------------------
+.ts text eol=lf
+.mts text eol=lf
+.cts text eol=lf
+.js text eol=lf
+.mjs text eol=lf
+.cjs text eol=lf
+
+# ---- Web --------------------------------------------------------------
+.css text eol=lf
+.html text eol=lf
+
+# ---- Rust -----------------------------------------------------------
+.rs text eol=lf
+
+# ---- Binary assets ----------------------------------------------------
+.png binary
+.jpg binary
+.jpeg binary
+.gif binary
+.ico binary
+.icns binary
+.webp binary
+.avif binary
+.bmp binary

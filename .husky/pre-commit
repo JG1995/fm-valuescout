@@ -1,0 +1,5 @@
+./scripts/dev check-fast
+
+if git diff --cached --name-only --diff-filter=ACMR | grep -q '^src-tauri/'; then
+  ./scripts/dev check-rust
+fi

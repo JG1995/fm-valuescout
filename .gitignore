@@ -1,0 +1,58 @@
+# Cursor — disposable agent scratch (workflow config in .cursor/ is committed)
+.cursor/work/
+
+# Dependencies (pnpm)
+node_modules/
+.pnpm-store/
+
+# Build output (Vite)
+dist/
+dist-ssr/
+
+# Rust (Tauri)
+src-tauri/target/
+
+# TanStack Router plugin cache (routeTree.gen.ts stays tracked in src/)
+.tanstack/
+
+# Unit and component tests (Vitest)
+coverage/
+.vitest-reports/
+
+# Browser smoke (Playwright)
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Vite dev cache (when not under node_modules)
+.vite/
+
+# TypeScript incremental build info (safety net if tsBuildInfoFile moves)
+*.tsbuildinfo
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+*.swp
+*~
+
+# Editor workspace settings (shared recommendations only)
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

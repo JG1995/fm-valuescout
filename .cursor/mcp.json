@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "recallium": {
+      "url": "http://10.189.1.195:8001/mcp"
+    },
+    "context7": {
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}

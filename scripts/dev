@@ -1,0 +1,277 @@
+#!/usr/bin/env bash
+# Stable, one-shot development command surface for this React + Tauri template.
+set -euo pipefail
+
+readonly unsupported_status=69
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: ./scripts/dev {test|check|check-fast|check-rust|format|secrets|smoke|mutate} [args...]
+
+Commands:
+  test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
+                    Override with DEV_TEST_COMMAND for contract tests.
+  check             Run Biome, TypeScript, secretlint, Rust (fmt/clippy/test), and repository contract checks.
+  check-fast        Run Biome, TypeScript, and secretlint on staged files (pre-commit fast path).
+  check-rust        Run cargo fmt --check, clippy, and test in src-tauri/.
+  format [paths...] Apply Biome lint/format fixes, then cargo fmt in src-tauri/.
+                    Optional paths forward to Biome only; cargo fmt always runs.
+  secrets [--staged] Scan for secrets with secretlint (full tree or staged files only).
+  smoke             Run Playwright smoke tests (e2e/smoke.spec.ts).
+  mutate <target...>  Run configured mutation checks (not configured yet).
+
+Unsupported mutation checks exit with status 69.
+EOF
+}
+
+unsupported() {
+  local capability="$1"
+
+  printf '%s is not configured yet. ' "$capability" >&2
+  printf 'Wire Playwright or mutation tooling in scripts/dev when you need it.\n' >&2
+  exit "$unsupported_status"
+}
+
+require_no_arguments() {
+  local command="$1"
+  shift
+
+  if [[ "$#" -ne 0 ]]; then
+    printf '%s does not accept arguments.\n' "$command" >&2
+    usage
+    exit 2
+  fi
+}
+
+require_node_deps() {
+  if [[ ! -f "$repo_root/package.json" ]]; then
+    printf 'package.json not found — cannot run application quality gates.\n' >&2
+    exit 66
+  fi
+
+  if [[ ! -d "$repo_root/node_modules" ]]; then
+    printf 'node_modules missing — run pnpm install before ./scripts/dev %s.\n' \
+      "${DEV_COMMAND_LABEL:-check}" >&2
+    exit 66
+  fi
+}
+
+run_secretlint_full_tree() {
+  pnpm exec secretlint "**/*"
+}
+
+run_secretlint_staged() {
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # ponytail: skip staged secretlint outside a Git work tree (contract-test sandboxes)
+    # Upgrade to require Git for check-fast if a future workflow needs it without Husky
+    return 0
+  fi
+
+  if git diff --cached --quiet; then
+    return 0
+  fi
+
+  # ponytail: xargs -r is GNU-specific (Linux/WSL/CI); macOS forks may need alternate empty-input handling
+  # Upgrade to a portable staged-file loop if macOS pre-commit support is required
+  git diff --cached --name-only --diff-filter=ACMR -z | \
+    xargs -0 -r pnpm exec secretlint --no-glob || exit 1
+}
+
+require_rust_toolchain() {
+  if [[ ! -f "$repo_root/src-tauri/Cargo.toml" ]]; then
+    printf 'src-tauri/Cargo.toml not found — cannot run Rust quality gates.\n' >&2
+    exit 66
+  fi
+
+  if ! command -v cargo >/dev/null 2>&1; then
+    printf 'cargo not found — install the Rust toolchain before ./scripts/dev %s.\n' \
+      "${DEV_COMMAND_LABEL:-check}" >&2
+    exit 66
+  fi
+}
+
+run_rust_quality_gates() {
+  require_rust_toolchain
+  (
+    cd "$repo_root/src-tauri"
+    export CARGO_TARGET_DIR="$repo_root/src-tauri/target"
+    cargo fmt --check
+    cargo clippy --all-targets --all-features -- -D warnings
+    cargo test
+  )
+}
+
+run_app_quality_gates() {
+  require_node_deps
+  (
+    cd "$repo_root"
+    pnpm exec biome check
+    pnpm exec tsc -b
+    run_secretlint_full_tree
+  )
+}
+
+run_secrets() {
+  local staged=false
+
+  if [[ "${1:-}" == "--staged" ]]; then
+    staged=true
+    shift
+  fi
+
+  if [[ "$#" -ne 0 ]]; then
+    printf 'secrets accepts only optional --staged.\n' >&2
+    usage
+    exit 2
+  fi
+
+  DEV_COMMAND_LABEL=secrets
+  require_node_deps
+
+  (
+    cd "$repo_root"
+
+    if [[ "$staged" == true ]]; then
+      run_secretlint_staged
+    else
+      run_secretlint_full_tree
+    fi
+  )
+}
+
+run_check_fast() {
+  require_no_arguments check-fast "$@"
+
+  DEV_COMMAND_LABEL=check-fast
+  require_node_deps
+  (
+    cd "$repo_root"
+    pnpm exec biome check
+    pnpm exec tsc -b
+    run_secretlint_staged
+  )
+
+  printf 'Fast quality checks passed.\n'
+}
+
+run_check_rust() {
+  require_no_arguments check-rust "$@"
+
+  DEV_COMMAND_LABEL=check-rust
+  run_rust_quality_gates
+
+  printf 'Rust quality checks passed.\n'
+}
+
+run_check() {
+  require_no_arguments check "$@"
+
+  bash -n "$repo_root/scripts/dev"
+  bash -n "$repo_root/scripts/test-dev.sh"
+  bash -n "$repo_root/scripts/test-agent-definitions.sh"
+  bash -n "$repo_root/scripts/test-cursor-config.sh"
+  bash -n "$repo_root/scripts/test-ci-workflow.sh"
+  bash -n "$repo_root/scripts/test-release-workflow.sh"
+
+  run_app_quality_gates
+
+  "$repo_root/scripts/test-agent-definitions.sh"
+  "$repo_root/scripts/test-cursor-config.sh"
+  "$repo_root/scripts/test-ci-workflow.sh"
+  "$repo_root/scripts/test-release-workflow.sh"
+  "$repo_root/scripts/test-dev.sh"
+
+  run_rust_quality_gates
+
+  printf 'Repository quality checks passed.\n'
+}
+
+run_format() {
+  DEV_COMMAND_LABEL=format
+  require_node_deps
+  require_rust_toolchain
+  (
+    cd "$repo_root"
+    pnpm exec biome check --write "$@"
+  )
+  (
+    cd "$repo_root/src-tauri"
+    export CARGO_TARGET_DIR="$repo_root/src-tauri/target"
+    cargo fmt
+  )
+}
+
+run_smoke() {
+  require_no_arguments smoke "$@"
+
+  DEV_COMMAND_LABEL=smoke
+  require_node_deps
+  (
+    cd "$repo_root"
+    pnpm exec playwright test
+  )
+}
+
+run_test() {
+  if [[ -n "${DEV_TEST_COMMAND:-}" ]]; then
+    if [[ ! -x "$DEV_TEST_COMMAND" ]]; then
+      printf 'DEV_TEST_COMMAND must name an executable; got %q.\n' \
+        "$DEV_TEST_COMMAND" >&2
+      exit 66
+    fi
+    "$DEV_TEST_COMMAND" "$@"
+    return
+  fi
+
+  DEV_COMMAND_LABEL=test
+  require_node_deps
+  (
+    cd "$repo_root"
+    pnpm exec vitest run "$@"
+  )
+}
+
+command="${1:-}"
+if [[ -z "$command" ]]; then
+  usage
+  exit 2
+fi
+shift
+
+case "$command" in
+  test)
+    run_test "$@"
+    ;;
+  check)
+    run_check "$@"
+    ;;
+  check-fast)
+    run_check_fast "$@"
+    ;;
+  check-rust)
+    run_check_rust "$@"
+    ;;
+  format)
+    run_format "$@"
+    ;;
+  secrets)
+    run_secrets "$@"
+    ;;
+  smoke)
+    run_smoke "$@"
+    ;;
+  mutate)
+    if [[ "$#" -eq 0 ]]; then
+      printf 'mutate requires a target.\n' >&2
+      usage
+      exit 2
+    fi
+    unsupported "Mutation testing"
+    ;;
+  *)
+    printf 'Unknown command: %s\n' "$command" >&2
+    usage
+    exit 2
+    ;;
+esac

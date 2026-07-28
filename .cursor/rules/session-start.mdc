@@ -1,0 +1,24 @@
+---
+description: Mandatory read order before any task in this repository
+alwaysApply: true
+---
+
+Before starting any task:
+
+1. Read `AGENTS.md` — the standing development contract.
+2. Read `.wiki/INDEX.md` — the document map for durable project knowledge.
+3. Read `.wiki/CONCEPT.md` — what the project is and what it is for.
+4. Read `.wiki/ARCHITECTURE.md` — current stack, boundaries, and implemented system shape.
+5. **Workflow state** — read one of:
+   - An active feature ledger in `.wiki/features/active/` (any `.md` except `README.md`), when one exists. Internalize feature status, the single `Active` commit, provisional commit message, RED test, expected outcome, and explicit exclusions from **Active work**. Note recent **Discoveries and replanning** entries.
+   - Otherwise read `.wiki/TODO.md` — **Plan next** and the development sequence when present. Do not invent a feature; wait for `/plan-feature` or explicit developer direction.
+6. Check `.cursor/skills/` for a skill whose description matches your task. If one does, read its `SKILL.md` and follow its guidance.
+7. **Recallium** — read `.cursor/skills/recallium-usage/SKILL.md` when the task uses a workflow command (`/stack`, `/roadmap`, `/plan-feature`, `/build`, `/checkpoint`, `/fix`, `/finish-feature`, `/docs-review`, `/spike`, `/review`, `/security-audit`), depends on prior project decisions, or investigates unfamiliar conventions. Search Recallium before non-obvious decisions per `.cursor/rules/recallium.mdc`.
+
+## Re-read triggers
+
+Re-read `.wiki/ARCHITECTURE.md` when starting planning, implementation, review, documentation reconciliation, or any substantive workflow step — not only on the first turn of a chat.
+
+Also re-read `.wiki/ARCHITECTURE.md`, the active feature ledger (when one exists), and `.wiki/CONCEPT.md` after `/summarize`, auto context compaction, or whenever wiki facts may have dropped out of the conversation. Summaries compress chat history; they do not replace durable wiki truth.
+
+These are not optional. Do them first, before inspecting code or writing anything.

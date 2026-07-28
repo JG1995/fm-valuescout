@@ -1,0 +1,111 @@
+---
+description: Phase discipline for plan-feature, build, and checkpoint — enforce read-only planning and isolated review
+alwaysApply: true
+---
+
+# Workflow phase discipline
+
+This repository uses explicit phases. Respect the active phase unless the developer explicitly overrides it.
+
+## Recallium per phase
+
+Follow `.cursor/rules/recallium.mdc` and the **## Recallium** section in the active command file:
+
+| Phase | Search before | Save after (if not already in wiki/Git/ledger) |
+| --- | --- | --- |
+| `/stack` | Prior stack or architecture decisions | Approved stack choices |
+| `/roadmap` | Prior sequencing or dependency decisions | Approved sequence rationale |
+| `/plan-feature` | Prior work on this feature or area | Durable planning context not in ledger |
+| `/build` | Unfamiliar conventions for this commit | Durable progress or constraints from the commit |
+| `/fix` | Prior decisions behind delegated findings | Durable remediation context |
+| `/checkpoint` | Before presenting checkpoint package | Useful institutional context from the commit |
+| `/finish-feature` | Feature decisions and constraints | Completion context not in wiki/Git |
+| `/spike` | Prior experiments on the question | Spike conclusion not in ledger/wiki |
+| `/docs-review` | Prior decisions affecting reconciliation | Rare — prefer wiki; only non-duplicative context |
+| `/review` | Context behind findings not in wiki/Git | Do not save — report only |
+| `/security-audit` | Prior security decisions or incidents not in wiki/Git | Do not save — report only |
+
+## Stack phase (`/stack`)
+
+Read-only until the developer approves the recommendation:
+
+- Do not edit production code, tests, executable scripts, CI, or `.cursor/` configuration.
+- Do not stage, commit, push, or rewrite Git history.
+- Allowed: read wiki and repo evidence, external research, present the project-strategy output in chat.
+- Write `.wiki/ARCHITECTURE.md` or ADRs only after explicit approval of the proposed stack.
+
+## Roadmap phase (`/roadmap`)
+
+Read-only until the developer approves the sequence:
+
+- Do not edit production code, tests, executable scripts, CI, or `.cursor/` configuration.
+- Do not stage, commit, push, or rewrite Git history.
+- Allowed: read CONCEPT, planned feature specs, architecture target, present dependency-aware order in chat.
+- Write `.wiki/TODO.md` development sequence only after explicit approval. Do not create active feature ledgers.
+
+## Plan-feature phase (`/plan-feature`, or explicit per-feature planning)
+
+Read-only on implementation artifacts:
+
+- Do not edit production code, tests, executable scripts, CI, or `.cursor/` configuration.
+- Do not stage, commit, push, or rewrite Git history.
+- Allowed: read wiki and repo, create or update active feature ledgers and proportional TODO updates, write scratch notes in `.cursor/work/`.
+- Stop after planning. Present the delivery plan (PRs and commits) with exactly one commit marked `Active`.
+
+Cursor's native **Plan mode** (`/plan`) is separate — it does not replace `/plan-feature` for this repository's PR/commit ledgers.
+
+When structural questions arise during planning: read `.wiki/ARCHITECTURE.md`, scan `.cursor/skills/` for matching skills, and search Recallium. If docs and inspection are insufficient and the question needs a **runtime probe**, use optional **`/spike`** — otherwise **ask the developer**. Do not guess and do not implement.
+
+## Build phase (`/build` or implementing the active commit)
+
+- Default: implement **one active commit**, update the ledger (including plan deviations), stop for **`/checkpoint`** and review.
+- Opt-in only: full-feature mode still one commit at a time with checkpoint/review between commits.
+- Do not stage, commit, push, or run `/checkpoint` unless the developer asks.
+- Broad documentation reconciliation belongs to `/finish-feature`, not each `/build`.
+
+## Fix phase (`/fix`)
+
+- Address **only** review findings the developer delegated — same project skills and architecture rules as `/build`.
+- Do not advance the delivery plan or mark the next commit active.
+- Stop for **`/checkpoint`** again. Do not commit or auto-fix inside `/fix`.
+
+## Checkpoint phase (`/checkpoint`)
+
+- Stage exact hunks, run the gate, dispatch the `reviewer` subagent for non-trivial work.
+- Present the full **Review verdict** to the developer. Do **not** automatically fix review findings — the developer delegates fixes or approves commit.
+- Present evidence and wait for explicit approval before committing locally.
+- Do not start new feature work or expand scope beyond the staged outcome.
+
+## Review isolation
+
+Non-trivial staged diffs require a separate `reviewer` subagent (Task) or a new chat with `/review`. The reviewer **reports only** — never fixes findings. Do not self-review implementation you just wrote in the same turn without a reviewer pass.
+
+## Finish-feature phase (`/finish-feature`)
+
+Feature is implementation-complete (all delivery-plan commits done):
+
+1. **Validate first** — full `./scripts/dev test` suite, `./scripts/dev check`, configured smoke/mutate.
+2. **Feature-complete review** — reviewer judges the whole feature diff (not `git diff --cached`); present verdict; do not auto-fix.
+3. **Docs only after review clears** — `/docs-review` / documentation-steward when Blocking: No or explicitly approved with findings recorded.
+4. Do not commit — developer runs `/checkpoint` for documentation reconciliation.
+
+## Security-audit phase (`/security-audit` — optional)
+
+Not part of the core loop. Use for a read-only security pass before deploy, after auth or payment work, or on developer request.
+
+- Do not edit, write, stage, unstage, commit, or push.
+- Report only — developer delegates fixes via `/fix` or manual edits.
+- `/review` and `reviewer` do not replace this pass.
+
+## Spike phase (`/spike` — optional)
+
+Not part of the core loop. Use when planning or build is blocked until a **runtime experiment** answers one testable question.
+
+- Prefer `.cursor/work/spikes/` or a disposable branch — not production commits on trunk.
+- Do not stage, commit, push, or merge spike artifacts by default.
+- Record verdict and plan impact; resume with `/plan-feature`, `/roadmap`, or `/build`.
+- Research and option comparison belong to wiki, skills, Context7, and `/stack` — not `/spike` unless a small run is still required.
+
+## Trivial work
+
+For trivial changes, the developer may describe the fix directly. Follow the full loop internally without invoking each slash command, but still run the gate before commit.
