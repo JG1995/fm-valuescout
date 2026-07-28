@@ -124,7 +124,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Bridge toolchain and repo prerequisites
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `31b7670`
 
 **Work:**
 - Document machine prerequisites for building the bridge: .NET 6 SDK, Windows host, Steam FM26, BepInEx 6 IL2CPP installed into the FM folder, and that interop assemblies are generated on first FM launch with BepInEx (not vendored in git).
@@ -146,7 +146,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Scaffold C# bridge and status writer
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Add a top-level `bridge/` .NET 6 class-library project targeting BepInEx 6 Unity IL2CPP (same plugin host SuperScout uses). Wire project references to BepInEx core + FM interop assemblies via the local override pattern from commit 1.
@@ -378,21 +378,19 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 1 — Bridge bootstrap and status protocol
 
-**Commit:** Commit 1 — Bridge toolchain and repo prerequisites
+**Commit:** Commit 2 — Scaffold C# bridge and status writer
 
 ### RED test (active commit)
 
-Prefer a small contract assertion where practical (e.g. example props file exists and documents required properties, or a script/check that Biome does not include `bridge/**/*.cs`). If the commit is pure gitignore + docs with no executable contract, treat it as trivial per testing guidance — the next commit’s status serialization test is the first behavioral RED.
+Status serialization unit test (or equivalent) covering the versioned `status.json` shape — protocol/schema version, plugin version, process/load state (`idle`), timestamps, and cheap module presence signals.
 
 ### Expected outcome
 
-Repo is ready for a C# bridge project: .NET/BepInEx prerequisites documented, local path overrides exemplified, build artifacts and user props ignored, Linux gate does not require `dotnet` or FM assemblies.
-
-**Build progress (2026-07-28):** Implemented on `feat/memory-read-bridge-bootstrap` — staged for checkpoint. Files: `bridge/README.md`, `bridge/global.json`, `bridge/Directory.Build.props.example`, ignore/tooling updates, README/CONTRIBUTING pointers. No plugin project yet.
+Minimal BepInEx `BasePlugin` builds on Windows with local props; creates `%LOCALAPPDATA%\fm-valuescout\fm-bridge\` and writes a versioned `status.json` on load; `bridge/README.md` covers build → copy DLL → confirm status file; Linux check stays green.
 
 ### Explicit exclusions
 
-No plugin project yet, no status writer, no vendored BepInEx/FM DLLs, no Rust/UI, no memory scan.
+No memory scanning, dumps, or request polling. No Rust/UI integration. No in-app installer.
 
 ## Discoveries and replanning
 
@@ -405,7 +403,7 @@ No plugin project yet, no status writer, no vendored BepInEx/FM DLLs, no Rust/UI
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
-| — | — | — | — |
+| 1 | Commit 1 — Bridge toolchain and repo prerequisites | `31b7670` | Docs, ignores, `global.json`, example props; Linux gate skips `bridge/` |
 
 ## Final validation
 
