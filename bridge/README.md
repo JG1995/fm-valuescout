@@ -2,39 +2,80 @@
 
 C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2CPP. It owns memory layouts and dump files. The Tauri Rust backend talks to it through a LocalAppData file protocol ([ADR-0016](../.wiki/decisions/0016-csharp-bepinex-fm26-bridge.md)).
 
-The plugin project lands in a later commit. This directory starts with toolchain docs and path overrides only.
+## Bridge data directory (locked)
+
+```text
+%LOCALAPPDATA%\fm-valuescout\fm-bridge\
+  └── status.json    ← plugin writes on load (this commit)
+```
+
+Exact folder names: `fm-valuescout` / `fm-bridge`.
 
 ## Prerequisites (Windows host)
 
 | Requirement | Notes |
 | --- | --- |
 | **.NET 6 SDK** | Feature band pinned in [`global.json`](./global.json). Install from [dotnet.microsoft.com](https://dotnet.microsoft.com/download/dotnet/6.0). |
-| **Windows host** | Build and run the plugin on Windows. Day-to-day app work can stay on WSL; `dotnet build` for the bridge does not run in Linux CI. |
+| **Windows host** | Build and run the plugin on Windows for FM attach. Unit tests (`dotnet test`) can run on Linux/WSL with the SDK. |
 | **Football Manager 26 (Steam)** | Memory reading targets Windows Steam FM26 only. |
-| **BepInEx 6 IL2CPP** | Install into the FM26 game folder per [BepInEx docs](https://docs.bepinex.dev/). Use a known-compatible IL2CPP build for Unity games. |
+| **BepInEx 6 IL2CPP** | Install into the FM26 game folder per [BepInEx docs](https://docs.bepinex.dev/). Use a known-compatible Unity IL2CPP build (bleeding-edge / `be` line). |
+
+## Build
+
+Plugin host APIs come from the **BepInEx NuGet** feed (`BepInEx.Unity.IL2CPP`). FM Il2CppInterop assemblies stay machine-local and are **not** needed for the status scaffold.
+
+```powershell
+cd bridge
+dotnet restore
+dotnet build
+dotnet test
+```
+
+Output DLL: `bin/Debug/net6.0/FmDataBridge.dll` (or `Release`).
+
+### Optional local Interop paths
+
+For later memory-scan commits that reference FM types, copy [`Directory.Build.props.example`](./Directory.Build.props.example) to `Directory.Build.user.props` and set `InteropDir` to your Steam `BepInEx/interop` folder. Keep that file untracked.
+
+```powershell
+Copy-Item Directory.Build.props.example Directory.Build.user.props
+# Edit InteropDir (and optional BepInExCore) for your Steam install
+```
+
+## Manual install and first status check
+
+1. Install BepInEx 6 IL2CPP into the FM26 Steam folder.
+2. Launch FM once so BepInEx generates interop under `BepInEx/interop/` (needed for later scan work; status writer does not require those DLLs at build time).
+3. Build this project (`dotnet build`).
+4. Copy `FmDataBridge.dll` into `Football Manager 26/BepInEx/plugins/`.
+5. Launch FM26. Check the BepInEx log for `FM Data Bridge ... loaded`.
+6. Confirm `%LOCALAPPDATA%\fm-valuescout\fm-bridge\status.json` exists and looks like:
+
+```json
+{
+  "protocolVersion": 1,
+  "pluginVersion": "0.1.0",
+  "state": "idle",
+  "updatedAtUtc": "2026-07-28T15:00:00+00:00",
+  "gamePluginModulePresent": true,
+  "gameAssemblyModulePresent": true
+}
+```
+
+`gamePluginModulePresent` / `gameAssemblyModulePresent` are cheap process-module checks (no memory scan).
 
 ## Interop assemblies (not in git)
 
 On first FM launch with BepInEx installed, BepInEx generates Il2CppInterop assemblies under the game tree (typically `BepInEx/interop/`). Those DLLs are **machine-local**. Do not vendor them, BepInEx core, or `fm.exe` assemblies in this repository.
 
-## Local path overrides
+## Tooling boundary
 
-1. Copy [`Directory.Build.props.example`](./Directory.Build.props.example) to `Directory.Build.user.props` in this folder (or set the same properties in a user props file MSBuild will load).
-2. Point `BepInExCore` and `InteropDir` at your Steam FM26 install.
-3. Keep `Directory.Build.user.props` untracked — it is gitignored.
+Linux `./scripts/dev check` does not require the .NET SDK and does not build this tree. Validate the bridge with:
 
 ```powershell
-Copy-Item Directory.Build.props.example Directory.Build.user.props
-# Edit Directory.Build.user.props with your Steam paths, then:
+cd bridge
+dotnet test
 dotnet build
 ```
 
-`dotnet build` succeeds only after the plugin project exists (next commit) and local paths are set.
-
-## Manual install (preview)
-
-Full copy-DLL / first-launch steps land with the plugin scaffold. Until then: install BepInEx into FM26, confirm interop generation on first launch, then return here when the project files exist.
-
-## Tooling boundary
-
-Linux `./scripts/dev check` does not require the .NET SDK and does not build this tree. Validate the bridge with `dotnet build` / `dotnet test` on a Windows machine that has local props configured.
+on a machine with the .NET 6 SDK (Windows for FM attach; Linux/WSL is enough for unit tests).

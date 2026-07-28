@@ -1,8 +1,10 @@
 <!--
-  Copy to Directory.Build.user.props (gitignored) and set paths for your machine.
+  Optional. Copy to Directory.Build.user.props (gitignored) for machine-local paths.
 
-  BepInExCore  — folder with BepInEx.Core.dll (and related BepInEx / Harmony refs)
-  InteropDir   — folder with Il2CppInterop-generated assemblies (first FM launch with BepInEx)
+  InteropDir   — folder with Il2CppInterop-generated assemblies (first FM launch with BepInEx).
+                 Used by later memory-scan commits that reference FM types.
+  BepInExCore  — optional local BepInEx core folder. Plugin host compile refs use NuGet
+                 (BepInEx.Unity.IL2CPP); keep this only if you need local DLL HintPaths.
 
   Do not commit Directory.Build.user.props. Do not vendor these DLLs into git.
 -->

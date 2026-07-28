@@ -146,7 +146,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Scaffold C# bridge and status writer
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:**
 - Add a top-level `bridge/` .NET 6 class-library project targeting BepInEx 6 Unity IL2CPP (same plugin host SuperScout uses). Wire project references to BepInEx core + FM interop assemblies via the local override pattern from commit 1.
@@ -398,6 +398,7 @@ No memory scanning, dumps, or request polling. No Rust/UI integration. No in-app
 - 2026-07-28: Expanded each delivery-plan commit’s Work/Validation detail for clearer `/build` handoff (still high-level; no implementation code in the ledger).
 - 2026-07-28: Inserted PR 1 commit 1 as toolchain/repo prerequisites (`chore(bridge)`); scaffold status writer is now commit 2. BepInEx/FM interop remain machine-local — not vendored.
 - 2026-07-28: Recorded [ADR-0016](../../decisions/0016-csharp-bepinex-fm26-bridge.md); deferred in-app install to [BACKLOG.md](../../BACKLOG.md).
+- 2026-07-28 (Commit 2 build): Plugin host APIs use NuGet `BepInEx.Unity.IL2CPP` (official template feed) instead of local `BepInExCore` HintPaths, so `dotnet build` / `dotnet test` work without a Steam tree. `InteropDir` in `Directory.Build.user.props` remains for later FM type references. Locked bridge dir: `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`. Status wire shape (camelCase JSON): `protocolVersion`, `pluginVersion`, `state`, `updatedAtUtc`, `gamePluginModulePresent`, `gameAssemblyModulePresent`.
 
 ## Completed work
 
