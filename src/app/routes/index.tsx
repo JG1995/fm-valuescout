@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { demoValueQueryOptions } from "@/features/health/api/demo-value-query-options";
 import { healthQueryOptions } from "@/features/health/api/health-query-options";
 import { HealthStatusPanelWithErrorBoundary } from "@/features/health/components/health-status-panel-with-error-boundary";
+import { BridgeStatusPanelWithErrorBoundary } from "@/features/memory-read/components/bridge-status-panel-with-error-boundary";
 
 export const Route = createFileRoute("/")({
   loader: ({ context: { queryClient } }) =>
@@ -19,6 +20,13 @@ function IndexPage() {
       <h1 className="text-2xl font-semibold text-on-background">
         FM ValueScout
       </h1>
+      <Suspense
+        fallback={
+          <p className="text-on-background/80">Loading bridge status…</p>
+        }
+      >
+        <BridgeStatusPanelWithErrorBoundary />
+      </Suspense>
       <Suspense
         fallback={
           <p className="text-on-background/80">Loading health status…</p>

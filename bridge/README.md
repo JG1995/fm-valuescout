@@ -1,0 +1,81 @@
+# FM26 BepInEx bridge
+
+C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2CPP. It owns memory layouts and dump files. The Tauri Rust backend talks to it through a LocalAppData file protocol ([ADR-0016](../.wiki/decisions/0016-csharp-bepinex-fm26-bridge.md)).
+
+## Bridge data directory (locked)
+
+```text
+%LOCALAPPDATA%\fm-valuescout\fm-bridge\
+  └── status.json    ← plugin writes on load (this commit)
+```
+
+Exact folder names: `fm-valuescout` / `fm-bridge`.
+
+## Prerequisites (Windows host)
+
+| Requirement | Notes |
+| --- | --- |
+| **.NET 6 SDK** | Feature band pinned in [`global.json`](./global.json). Install from [dotnet.microsoft.com](https://dotnet.microsoft.com/download/dotnet/6.0). |
+| **Windows host** | Build and run the plugin on Windows for FM attach. Unit tests (`dotnet test`) can run on Linux/WSL with the SDK. |
+| **Football Manager 26 (Steam)** | Memory reading targets Windows Steam FM26 only. |
+| **BepInEx 6 IL2CPP** | Install into the FM26 game folder per [BepInEx docs](https://docs.bepinex.dev/). Use a known-compatible Unity IL2CPP build (bleeding-edge / `be` line). |
+
+## Build
+
+Plugin host APIs come from the **BepInEx NuGet** feed (`BepInEx.Unity.IL2CPP`). FM Il2CppInterop assemblies stay machine-local and are **not** needed for the status scaffold.
+
+```powershell
+cd bridge
+dotnet restore
+dotnet build
+dotnet test
+```
+
+Output DLL: `bin/Debug/net6.0/FmDataBridge.dll` (or `Release`).
+
+### Optional local Interop paths
+
+For later memory-scan commits that reference FM types, copy [`Directory.Build.props.example`](./Directory.Build.props.example) to `Directory.Build.user.props` and set `InteropDir` to your Steam `BepInEx/interop` folder. Keep that file untracked.
+
+```powershell
+Copy-Item Directory.Build.props.example Directory.Build.user.props
+# Edit InteropDir (and optional BepInExCore) for your Steam install
+```
+
+## Manual install and first status check
+
+1. Install BepInEx 6 IL2CPP into the FM26 Steam folder.
+2. Launch FM once so BepInEx generates interop under `BepInEx/interop/` (needed for later scan work; status writer does not require those DLLs at build time).
+3. Build this project (`dotnet build`).
+4. Copy `FmDataBridge.dll` into `Football Manager 26/BepInEx/plugins/`.
+5. Launch FM26. Check the BepInEx log for `FM Data Bridge ... loaded`.
+6. Confirm `%LOCALAPPDATA%\fm-valuescout\fm-bridge\status.json` exists and looks like:
+
+```json
+{
+  "protocolVersion": 1,
+  "pluginVersion": "0.1.0",
+  "state": "idle",
+  "updatedAtUtc": "2026-07-28T15:00:00+00:00",
+  "gamePluginModulePresent": true,
+  "gameAssemblyModulePresent": true
+}
+```
+
+`gamePluginModulePresent` / `gameAssemblyModulePresent` are cheap process-module checks (no memory scan).
+
+## Interop assemblies (not in git)
+
+On first FM launch with BepInEx installed, BepInEx generates Il2CppInterop assemblies under the game tree (typically `BepInEx/interop/`). Those DLLs are **machine-local**. Do not vendor them, BepInEx core, or `fm.exe` assemblies in this repository.
+
+## Tooling boundary
+
+Linux `./scripts/dev check` does not require the .NET SDK and does not build this tree. Validate the bridge with:
+
+```powershell
+cd bridge
+dotnet test
+dotnet build
+```
+
+on a machine with the .NET 6 SDK (Windows for FM attach; Linux/WSL is enough for unit tests).

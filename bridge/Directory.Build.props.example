@@ -1,0 +1,18 @@
+<!--
+  Optional. Copy to Directory.Build.user.props (gitignored) for machine-local paths.
+
+  InteropDir   — folder with Il2CppInterop-generated assemblies (first FM launch with BepInEx).
+                 Used by later memory-scan commits that reference FM types.
+  BepInExCore  — optional local BepInEx core folder. Plugin host compile refs use NuGet
+                 (BepInEx.Unity.IL2CPP); keep this only if you need local DLL HintPaths.
+
+  Do not commit Directory.Build.user.props. Do not vendor these DLLs into git.
+-->
+<Project>
+  <PropertyGroup>
+    <!-- Example Steam layout — replace with your install -->
+    <FmSteamRoot>C:\Program Files (x86)\Steam\steamapps\common\Football Manager 26</FmSteamRoot>
+    <BepInExCore>$(FmSteamRoot)\BepInEx\core</BepInExCore>
+    <InteropDir>$(FmSteamRoot)\BepInEx\interop</InteropDir>
+  </PropertyGroup>
+</Project>

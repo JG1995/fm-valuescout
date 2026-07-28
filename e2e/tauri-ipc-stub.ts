@@ -20,6 +20,17 @@ export async function stubTauriIpc(page: Page) {
             return { value: demoValue };
           }
 
+          if (cmd === "get_bridge_status") {
+            return {
+              protocolVersion: 1,
+              pluginVersion: "0.1.0",
+              state: "idle",
+              updatedAtUtc: "2026-07-28T15:00:00+00:00",
+              gamePluginModulePresent: true,
+              gameAssemblyModulePresent: true,
+            };
+          }
+
           throw new Error("Unhandled IPC: " + cmd);
         },
         transformCallback: (callback) => callback,

@@ -112,7 +112,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ### PR 1 — Bridge bootstrap and status protocol
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional PR title:** `feat(memory-read): add BepInEx bridge bootstrap and status protocol`
 
@@ -124,7 +124,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Bridge toolchain and repo prerequisites
 
-**Status:** Active
+**Status:** Completed — `31b7670`
 
 **Work:**
 - Document machine prerequisites for building the bridge: .NET 6 SDK, Windows host, Steam FM26, BepInEx 6 IL2CPP installed into the FM folder, and that interop assemblies are generated on first FM launch with BepInEx (not vendored in git).
@@ -146,7 +146,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Scaffold C# bridge and status writer
 
-**Status:** Pending
+**Status:** Completed — `21c2e67`
 
 **Work:**
 - Add a top-level `bridge/` .NET 6 class-library project targeting BepInEx 6 Unity IL2CPP (same plugin host SuperScout uses). Wire project references to BepInEx core + FM interop assemblies via the local override pattern from commit 1.
@@ -165,7 +165,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 3 — Rust bridge paths and status IPC
 
-**Status:** Pending
+**Status:** Completed — `0a8278f`
 
 **Work:**
 - Add backend feature module `src-tauri/src/features/memory-read/` following existing `health` layout (`commands.rs` / `service.rs` / types as needed). Register commands in `lib.rs` and ACL capabilities only for what this commit exposes.
@@ -185,7 +185,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 4 — UI bridge status panel
 
-**Status:** Pending
+**Status:** Completed — `527380a`
 
 **Work:**
 - Add `src/features/memory-read/` with `api/` query options calling `get_bridge_status` through `tauri-client`, plus a small presentational panel (ready / missing / error / unsupported platform).
@@ -203,7 +203,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ### PR 2 — Request protocol and CA/PA dump
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional PR title:** `feat(memory-read): request scans and dump player CA PA`
 
@@ -213,7 +213,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Safe memory reader and region scan
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Introduce a memory-access abstraction (`IMemoryReader` or equivalent) with a production Windows implementation that uses `ReadProcessMemory` / `VirtualQuery` against the current process (same safety model as SuperScout: bad addresses fail the read, they do not hard-crash via raw pointer deref).
@@ -376,21 +376,21 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ## Active work
 
-**PR:** PR 1 — Bridge bootstrap and status protocol
+**PR:** PR 2 — Request protocol and CA/PA dump
 
-**Commit:** Commit 1 — Bridge toolchain and repo prerequisites
+**Commit:** Commit 1 — Safe memory reader and region scan
 
 ### RED test (active commit)
 
-Prefer a small contract assertion where practical (e.g. example props file exists and documents required properties, or a script/check that Biome does not include `bridge/**/*.cs`). If the commit is pure gitignore + docs with no executable contract, treat it as trivial per testing guidance — the next commit’s status serialization test is the first behavioral RED.
+`dotnet test` with fake/in-memory reader — region filters, read edge cases (short read, out-of-range).
 
 ### Expected outcome
 
-Repo is ready for a C# bridge project: .NET/BepInEx prerequisites documented, local path overrides exemplified, build artifacts and user props ignored, Linux gate does not require `dotnet` or FM assemblies.
+`bridge/Memory/` (or equivalent) with `IMemoryReader`, Windows production reader (`ReadProcessMemory` / `VirtualQuery`), heap region enumeration, `game_plugin.dll` / `GameAssembly.dll` bounds recorded; fake reader for tests; no player decoding or Tauri changes.
 
 ### Explicit exclusions
 
-No plugin project yet, no status writer, no vendored BepInEx/FM DLLs, no Rust/UI, no memory scan.
+No player decoding, dump format, request polling, or Tauri/UI changes.
 
 ## Discoveries and replanning
 
@@ -398,12 +398,18 @@ No plugin project yet, no status writer, no vendored BepInEx/FM DLLs, no Rust/UI
 - 2026-07-28: Expanded each delivery-plan commit’s Work/Validation detail for clearer `/build` handoff (still high-level; no implementation code in the ledger).
 - 2026-07-28: Inserted PR 1 commit 1 as toolchain/repo prerequisites (`chore(bridge)`); scaffold status writer is now commit 2. BepInEx/FM interop remain machine-local — not vendored.
 - 2026-07-28: Recorded [ADR-0016](../../decisions/0016-csharp-bepinex-fm26-bridge.md); deferred in-app install to [BACKLOG.md](../../BACKLOG.md).
+- 2026-07-28 (Commit 2 build): Plugin host APIs use NuGet `BepInEx.Unity.IL2CPP` (official template feed) instead of local `BepInExCore` HintPaths, so `dotnet build` / `dotnet test` work without a Steam tree. `InteropDir` in `Directory.Build.user.props` remains for later FM type references. Locked bridge dir: `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`. Status wire shape (camelCase JSON): `protocolVersion`, `pluginVersion`, `state`, `updatedAtUtc`, `gamePluginModulePresent`, `gameAssemblyModulePresent`.
+- 2026-07-28 (Commit 3 build): Rust feature module is `src-tauri/src/features/memory_read/` (snake_case — Rust module rules; frontend folder stays `memory-read` in Commit 4). IPC `get_bridge_status` returns camelCase `BridgeStatus` or tagged `BridgeStatusError` (`unsupportedPlatform` | `missing` | `corrupt` | `unsupportedVersion`). Windows path via `LOCALAPPDATA`; non-Windows always `unsupportedPlatform`. No new crates; no capability ACL change beyond registering the command (`core:default` already covers custom commands). `NotFound` I/O → `Missing`; other read failures → `Corrupt`.
+- 2026-07-28 (Commit 4 build): Frontend feature at `src/features/memory-read/` with `bridgeStatusQueryOptions`, `BridgeStatusPanel` + localized `BridgeStatusError` (kind-specific copy for missing / unsupported platform / version mismatch). Home route shows bridge panel above health; bridge not prefetched in route loader so expected IPC errors reach the panel error boundary. Vitest mock via `bridge-status-ipc-mock.ts`; Playwright stub returns ready status. No scan trigger, SQLite, or dump UI.
 
 ## Completed work
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
-| — | — | — | — |
+| 1 | Commit 1 — Bridge toolchain and repo prerequisites | `31b7670` | Docs, ignores, `global.json`, example props; Linux gate skips `bridge/` |
+| 1 | Commit 2 — Scaffold C# bridge and status writer | `21c2e67` | BepInEx plugin, status.json writer, NuGet host refs, xUnit shape tests |
+| 1 | Commit 3 — Rust bridge paths and status IPC | `0a8278f` | `get_bridge_status`, path resolve, fixture parse/error tests |
+| 1 | Commit 4 — UI bridge status panel | `527380a` | Home panel, mockIPC + Playwright stub, kind-specific error copy |
 
 ## Final validation
 

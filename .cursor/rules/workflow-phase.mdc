@@ -74,6 +74,7 @@ When structural questions arise during planning: read `.wiki/ARCHITECTURE.md`, s
 - Stage exact hunks, run the gate, dispatch the `reviewer` subagent for non-trivial work.
 - Present the full **Review verdict** to the developer. Do **not** automatically fix review findings — the developer delegates fixes or approves commit.
 - Present evidence and wait for explicit approval before committing locally.
+- After the content commit succeeds, **immediately** update the active feature ledger (real hash, next commit `Active`) and commit that ledger-only advancement — do not leave it unstaged for a separate ask. See `.cursor/commands/checkpoint.md` steps 14–15.
 - Do not start new feature work or expand scope beyond the staged outcome.
 
 ## Review isolation
