@@ -146,7 +146,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Scaffold C# bridge and status writer
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `21c2e67`
 
 **Work:**
 - Add a top-level `bridge/` .NET 6 class-library project targeting BepInEx 6 Unity IL2CPP (same plugin host SuperScout uses). Wire project references to BepInEx core + FM interop assemblies via the local override pattern from commit 1.
@@ -165,7 +165,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 3 — Rust bridge paths and status IPC
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Add backend feature module `src-tauri/src/features/memory-read/` following existing `health` layout (`commands.rs` / `service.rs` / types as needed). Register commands in `lib.rs` and ACL capabilities only for what this commit exposes.
@@ -378,19 +378,19 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 1 — Bridge bootstrap and status protocol
 
-**Commit:** Commit 2 — Scaffold C# bridge and status writer
+**Commit:** Commit 3 — Rust bridge paths and status IPC
 
 ### RED test (active commit)
 
-Status serialization unit test (or equivalent) covering the versioned `status.json` shape — protocol/schema version, plugin version, process/load state (`idle`), timestamps, and cheap module presence signals.
+Rust unit tests with temp directories and fixture `status.json` files — happy path, missing file, corrupt/unsupported schema version — for parse + `get_bridge_status` IPC mapping.
 
 ### Expected outcome
 
-Minimal BepInEx `BasePlugin` builds on Windows with local props; creates `%LOCALAPPDATA%\fm-valuescout\fm-bridge\` and writes a versioned `status.json` on load; `bridge/README.md` covers build → copy DLL → confirm status file; Linux check stays green.
+Backend `memory-read` feature resolves `%LOCALAPPDATA%\fm-valuescout\fm-bridge\` on Windows (clear unsupported/missing on non-Windows), parses versioned status into a bounded DTO, exposes `get_bridge_status` over IPC; `cargo test` covers fixtures; Linux check stays green.
 
 ### Explicit exclusions
 
-No memory scanning, dumps, or request polling. No Rust/UI integration. No in-app installer.
+No request-file writing or dump watching. No frontend UI (types-only share OK). No plugin install detection beyond status file readable.
 
 ## Discoveries and replanning
 
@@ -405,6 +405,7 @@ No memory scanning, dumps, or request polling. No Rust/UI integration. No in-app
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
 | 1 | Commit 1 — Bridge toolchain and repo prerequisites | `31b7670` | Docs, ignores, `global.json`, example props; Linux gate skips `bridge/` |
+| 1 | Commit 2 — Scaffold C# bridge and status writer | `21c2e67` | BepInEx plugin, status.json writer, NuGet host refs, xUnit shape tests |
 
 ## Final validation
 

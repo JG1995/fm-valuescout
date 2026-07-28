@@ -77,9 +77,15 @@ Do not mirror the feature ledger or staged diff. Skip when unsure.
 
 13. Only after explicit developer approval, commit locally with the approved message. Never push, amend, rebase, squash, or rewrite history.
 
-14. Report the resulting hash. Record it in the ledger or get it from Git history during reconciliation.
+14. Report the resulting hash.
 
-15. Reassess the delivery plan — mark the next commit `Active`, or close the PR and activate the next PR when appropriate — only after a successful commit in this checkpoint.
+15. **Ledger advancement (immediate follow-up commit).** When an active feature ledger tracks this work, update it right after the content commit succeeds — do not leave the update unstaged for a later ask:
+    - Replace `Completed — hash pending checkpoint commit` with `Completed — \`<hash>\``.
+    - Add the row to **Completed work**.
+    - Mark the next planned commit `Active` (or close the PR / activate the next PR when appropriate).
+    - Refresh **Active work** (RED test, expected outcome, exclusions) for that next commit.
+    - Stage **only** the ledger file(s), commit immediately with a short `docs(…)` message (e.g. `docs(memory-read): record commit N hash and activate commit N+1`).
+    - This second commit does **not** need a new reviewer pass or a second approval when it is ledger-only advancement from the just-approved checkpoint. Report both hashes when done.
 
 ## Fixing review findings
 
