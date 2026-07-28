@@ -22,7 +22,7 @@ Exact folder names: `fm-valuescout` / `fm-bridge`.
 
 ## Build
 
-Plugin host APIs come from the **BepInEx NuGet** feed (`BepInEx.Unity.IL2CPP`). FM Il2CppInterop assemblies stay machine-local and are **not** needed for the status scaffold.
+Plugin host APIs come from the **BepInEx NuGet** feed (`BepInEx.Unity.IL2CPP`). FM Il2CppInterop assemblies stay machine-local and are **not** needed for the status scaffold or the safe memory-reader unit tests.
 
 ```powershell
 cd bridge
@@ -32,6 +32,10 @@ dotnet test
 ```
 
 Output DLL: `bin/Debug/net6.0/FmDataBridge.dll` (or `Release`).
+
+### Memory access (`Memory/`)
+
+Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
 
 ### Optional local Interop paths
 

@@ -213,7 +213,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Safe memory reader and region scan
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:**
 - Introduce a memory-access abstraction (`IMemoryReader` or equivalent) with a production Windows implementation that uses `ReadProcessMemory` / `VirtualQuery` against the current process (same safety model as SuperScout: bad addresses fail the read, they do not hard-crash via raw pointer deref).
@@ -392,6 +392,15 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 No player decoding, dump format, request polling, or Tauri/UI changes.
 
+### Build progress (Commit 1 — pending checkpoint)
+
+- Added `bridge/Memory/`: `IMemoryReader`, `MemoryRegion`, `MemoryConstants`, `RegionEnumerator` (committed private writable pages, exclude guard/no-access, max-size cap), `ModuleLocator` / `ModuleBounds`, `WindowsMemoryReader` (RPM + VirtualQuery + current-process module snapshot), typed read helpers (`TryReadUInt32` / `Int32` / `UInt64`).
+- Fake reader at `bridge/Tests/Fakes/FakeMemoryReader.cs`; 10 new xUnit tests (region filter, short/out-of-range/full read, module bounds). Full bridge suite: 14 passed.
+- Skipped `ModuleImageCache` (YAGNI — optional in ledger; defer to CA/PA dump commit if needed).
+- `ModulePresence` now reuses `ModuleLocator` module name constants.
+- Intrinsic README note under Build → Memory access.
+- No Tauri/UI/player decode/dump/request changes.
+
 ## Discoveries and replanning
 
 - Planning answers (2026-07-28): C# + Rust protocol confirmed; skip spike; Windows Steam only; full CONCEPT fields; in-app trigger only; manual install OK; feature ends at dump/protocol before ingest.
@@ -401,6 +410,8 @@ No player decoding, dump format, request polling, or Tauri/UI changes.
 - 2026-07-28 (Commit 2 build): Plugin host APIs use NuGet `BepInEx.Unity.IL2CPP` (official template feed) instead of local `BepInExCore` HintPaths, so `dotnet build` / `dotnet test` work without a Steam tree. `InteropDir` in `Directory.Build.user.props` remains for later FM type references. Locked bridge dir: `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`. Status wire shape (camelCase JSON): `protocolVersion`, `pluginVersion`, `state`, `updatedAtUtc`, `gamePluginModulePresent`, `gameAssemblyModulePresent`.
 - 2026-07-28 (Commit 3 build): Rust feature module is `src-tauri/src/features/memory_read/` (snake_case — Rust module rules; frontend folder stays `memory-read` in Commit 4). IPC `get_bridge_status` returns camelCase `BridgeStatus` or tagged `BridgeStatusError` (`unsupportedPlatform` | `missing` | `corrupt` | `unsupportedVersion`). Windows path via `LOCALAPPDATA`; non-Windows always `unsupportedPlatform`. No new crates; no capability ACL change beyond registering the command (`core:default` already covers custom commands). `NotFound` I/O → `Missing`; other read failures → `Corrupt`.
 - 2026-07-28 (Commit 4 build): Frontend feature at `src/features/memory-read/` with `bridgeStatusQueryOptions`, `BridgeStatusPanel` + localized `BridgeStatusError` (kind-specific copy for missing / unsupported platform / version mismatch). Home route shows bridge panel above health; bridge not prefetched in route loader so expected IPC errors reach the panel error boundary. Vitest mock via `bridge-status-ipc-mock.ts`; Playwright stub returns ready status. No scan trigger, SQLite, or dump UI.
+- 2026-07-28 (manual PR 1 verify): Live `status.json` had `gameAssemblyModulePresent: true` but `gamePluginModulePresent: false` on the developer’s FM26 install. Treat `game_plugin.dll` name as provisional until memory-scan work confirms the real native module; `GameAssembly.dll` remains the IL2CPP signal that mattered for PR 1.
+- 2026-07-28 (PR 2 Commit 1 build): `ModuleImageCache` deferred. Region filter accepts `PAGE_READWRITE` / write-copy / execute-readwrite variants; default max region size 512 MiB.
 
 ## Completed work
 

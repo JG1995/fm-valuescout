@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using FmDataBridge.Memory;
 
 namespace FmDataBridge.Output;
 
@@ -8,9 +9,6 @@ public readonly record struct ModulePresenceSignals(
 
 public static class ModulePresence
 {
-    public const string GamePluginModuleName = "game_plugin.dll";
-    public const string GameAssemblyModuleName = "GameAssembly.dll";
-
     public static ModulePresenceSignals Detect()
     {
         var names = new List<string>();
@@ -29,7 +27,7 @@ public static class ModulePresence
     {
         var set = new HashSet<string>(moduleNames, StringComparer.OrdinalIgnoreCase);
         return new ModulePresenceSignals(
-            set.Contains(GamePluginModuleName),
-            set.Contains(GameAssemblyModuleName));
+            set.Contains(ModuleLocator.GamePluginModuleName),
+            set.Contains(ModuleLocator.GameAssemblyModuleName));
     }
 }
