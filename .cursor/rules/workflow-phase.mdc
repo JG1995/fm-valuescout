@@ -18,8 +18,8 @@ Follow `.cursor/rules/recallium.mdc` and the **## Recallium** section in the act
 | `/plan-feature` | Prior work on this feature or area | Durable planning context not in ledger |
 | `/build` | Unfamiliar conventions for this commit | Durable progress or constraints from the commit |
 | `/fix` | Prior decisions behind delegated findings | Durable remediation context |
-| `/checkpoint` | Before presenting checkpoint package | Useful institutional context from the commit |
-| `/finish-feature` | Feature decisions and constraints | Completion context not in wiki/Git |
+| `/checkpoint` | Before presenting checkpoint package | New snapshot memories when constraints, roadmap, or non-obvious learnings changed — not ledger mirrors |
+| `/finish-feature` | Feature decisions and constraints | New close-out snapshots when final constraints, roadmap, or feature-wide learnings changed — not ledger mirrors |
 | `/spike` | Prior experiments on the question | Spike conclusion not in ledger/wiki |
 | `/docs-review` | Prior decisions affecting reconciliation | Rare — prefer wiki; only non-duplicative context |
 | `/review` | Context behind findings not in wiki/Git | Do not save — report only |
