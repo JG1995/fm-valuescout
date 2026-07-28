@@ -1,5 +1,5 @@
 ---
-name: [Product Name]
+name: FM ValueScout
 colors:
     # Foundation — background & surface elevation layers
     background: "oklch(0 0 0)"

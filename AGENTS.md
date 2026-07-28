@@ -189,7 +189,7 @@ Exceptions: commit messages (Conventional Commits per `.cursor/skills/convention
 
 Use this exact Recallium project name for all Recallium operations:
 
-`[REPLACE_WITH_RECALLIUM_PROJECT_NAME]`
+`fm-valuescout`
 
 ## Recallium memory
 

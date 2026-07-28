@@ -1,4 +1,4 @@
-# Product Concept Document: [Product Name]
+# Product Concept Document: FM ValueScout
 
 > Authority: This document owns product purpose, users, principles, and boundaries. It does not own the implementation backlog or current architecture.
 

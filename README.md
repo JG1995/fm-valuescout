@@ -1,6 +1,6 @@
-# Cursor React Tauri Template
+# FM ValueScout
 
-A repository template for React + Tauri desktop projects. It supports a test-driven, AI-assisted development workflow in Cursor.
+A React + Tauri desktop application with a test-driven, AI-assisted development workflow in Cursor.
 
 The template ships a React + Tauri v2 walking skeleton (thin frontend, thick Rust backend, SQLite via IPC) with TanStack Router/Query, Zustand, Tailwind v4, Vitest with `mockIPC`, Playwright smoke, Biome, and Rust `cargo fmt/clippy/test` in the gate — plus `./scripts/dev` wiring, durable documentation, and Cursor commands, agents, skills, and MCP configuration.
 
@@ -27,10 +27,10 @@ The walking skeleton is already implemented — IPC health demo, SQLite persiste
 1. Install prerequisites — Node 24, pnpm, Rust, and Linux/WSL system packages ([ARCHITECTURE §11](.wiki/ARCHITECTURE.md)).
 2. `pnpm install` — installs Node packages and Husky hooks.
 3. `pnpm exec playwright install chromium` — once, so smoke and `./scripts/dev check` can run.
-4. `./scripts/dev check` and `./scripts/dev test` — confirm the gate is green before you rename or build features.
+4. `./scripts/dev check` and `./scripts/dev test` — confirm the gate is green before you build features.
 5. Install recommended editor extensions from [.vscode/extensions.json](.vscode/extensions.json) — Biome, rust-analyzer, Even Better TOML.
-6. Rename the template identity when this is no longer a demo repo (table below).
-7. In `AGENTS.md` § Recallium project, set your `project_name` if you use Recallium (see [.cursor/README.md](.cursor/README.md)).
+6. ~~Rename the template identity~~ — done (`FM ValueScout` / `fm-valuescout`).
+7. ~~Recallium `project_name` in `AGENTS.md`~~ — done (`fm-valuescout`).
 8. Fill [.wiki/CONCEPT.md](.wiki/CONCEPT.md) — especially MVP scope and boundaries.
 9. Run `/roadmap` when CONCEPT has real bullets — approve the sequence in [.wiki/TODO.md](.wiki/TODO.md).
 10. Run `/plan-feature` on **Plan next** (or the first sequence row), then the build loop below.
@@ -39,9 +39,9 @@ Skip `/stack` when you keep this template's defaults. Run `/stack` only when you
 
 Optional before `/roadmap`: add feature specs in `.wiki/features/planned/<slug>.md` when you can describe user-visible behavior — CONCEPT bullets alone suffice for a provisional sequence.
 
-### Rename checklist
+### Rename checklist (completed)
 
-Update these when the product is no longer "Cursor React Tauri Template":
+Identity set to **FM ValueScout** (`fm-valuescout`, Tauri identifier `app.fmvaluescout`). Reference for future renames:
 
 | What | File(s) |
 | --- | --- |
