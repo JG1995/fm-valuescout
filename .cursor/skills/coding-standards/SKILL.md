@@ -19,12 +19,15 @@ This skill defines **how code should look and behave**. `.wiki/ARCHITECTURE.md` 
 | `references/vite.md` | `vite.config.ts`, Vitest, TS config, env vars, `package.json` scripts |
 | `references/rust.md` | Rust code under `src-tauri/` — module layout, errors, clippy, tests |
 | `references/tauri.md` | Tauri config, capabilities, IPC commands, plugins (when present) |
+| `references/csharp.md` | C# under `bridge/` — BepInEx IL2CPP plugin, file protocol, memory scan |
 | `references/<stack>.md` | Other stacks when `.wiki/ARCHITECTURE.md` names them (e.g. `nextjs.md`) |
 | `references/<project>.md` | When present — project-specific conventions not covered elsewhere |
 
-Load `react.md` and `vite.md` for this template when `src/` exists or the diff touches the application toolchain. Load `rust.md` when `src-tauri/` exists or the diff touches the Rust crate; load `tauri.md` when IPC, capabilities, or Tauri config are in scope.
+Load `react.md` and `vite.md` for this template when `src/` exists or the diff touches the application toolchain. Load `rust.md` when `src-tauri/` exists or the diff touches the Rust crate; load `tauri.md` when IPC, capabilities, or Tauri config are in scope. Load `csharp.md` when `bridge/` exists or the diff touches the BepInEx FM26 plugin.
 
 **Cross-boundary decisions** (where computation runs, SQL execution, file I/O, validation at trust boundaries, IPC payload size): load **`react.md` + `tauri.md` + `rust.md`** together — not only the file that matches the diff path. The thin-thick split and database rules span all three.
+
+**FM bridge decisions** (memory read, file protocol, layout pins, dump output): load **`csharp.md` + `rust.md`** together — C# owns in-process scan; Rust owns orchestration and ingest validation.
 
 Do not load stack refs when recon shows the technology is not in use.
 
