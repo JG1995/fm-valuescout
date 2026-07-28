@@ -203,7 +203,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ### PR 2 — Request protocol and CA/PA dump
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional PR title:** `feat(memory-read): request scans and dump player CA PA`
 
@@ -250,7 +250,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 3 — In-app scan request and completion watch
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `3b1e6c2`
 
 **Work:**
 - Bridge: background poll for a request file in the bridge directory (ignore stale requests older than a short TTL, same class of bug SuperScout fixed). On valid request, run the CA/PA dump path off the Unity main thread; update `status.json` through phases (`idle` → `scanning` → `ready` / `failed`) with progress fields if cheap (candidates found, elapsed).
@@ -275,7 +275,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ### PR 3 — Player identity and attributes
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional PR title:** `feat(memory-read): extract player identity and attributes`
 
@@ -285,7 +285,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Names, DOB, nationality, height, foot, positions
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Extend player extraction beyond UID/CA/PA: display name (handle non-ASCII), date of birth / age inputs as present in memory, nationality (single or multi if the layout exposes it), height, preferred foot, and natural positions.
@@ -383,21 +383,21 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ## Active work
 
-**PR:** PR 2 — Request protocol and CA/PA dump
+**PR:** PR 3 — Player identity and attributes
 
-**Commit:** Commit 3 — In-app scan request and completion watch (staging for checkpoint)
+**Commit:** Commit 1 — Names, DOB, nationality, height, foot, positions
 
 ### RED test (active commit)
 
-Rust tests with temp dirs simulating status transitions and stale requests; Vitest for trigger + busy/error.
+Decoder unit tests with byte fixtures where practical; schema bump covered if dump shape is parsed.
 
 ### Expected outcome
 
-Bridge polls `request.json` (TTL for stale); runs CA/PA dump off main thread; status phases idle → scanning → ready/failed. Rust writes request via IPC and watches status/dump; UI trigger (no player table). Force-scan kept as fallback.
+Dump expands beyond UID/CA/PA with display name (incl. non-ASCII), DOB/age inputs, nationality, height, preferred foot, and natural positions. Identity sanity rejects garbage rows; diagnostics count skips.
 
 ### Explicit exclusions
 
-Full field extraction beyond UID/CA/PA; SQLite import / snapshot retention beyond dump files.
+Visible/hidden/personality attribute blocks; contracts, clubs, loans.
 
 ## Discoveries and replanning
 
@@ -423,6 +423,7 @@ Full field extraction beyond UID/CA/PA; SQLite import / snapshot retention beyon
 | 1 | Commit 4 — UI bridge status panel | `527380a` | Home panel, mockIPC + Playwright stub, kind-specific error copy |
 | 2 | Commit 1 — Safe memory reader and region scan | `9c80753` | `IMemoryReader`, Windows RPM/VQ, region filter, module bounds, fake tests |
 | 2 | Commit 2 — Versioned layout stub and CA/PA candidate dump | `2f8490c` | Layout registry, Il2Cpp scan, dump/diagnostics, force-scan poll, SuperScout pins |
+| 2 | Commit 3 — In-app scan request and completion watch | `3b1e6c2` | request.json TTL, Rust watch IPC, Load Data UI, force-scan fallback |
 
 ## Final validation
 
