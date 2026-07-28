@@ -1,0 +1,42 @@
+namespace FmDataBridge.Scanning;
+
+public readonly record struct PersonCandidate(ulong ObjectAddress, uint Uid, int Ca, int Pa, int ClassOffset);
+
+public sealed class ScanDiagnostics
+{
+    public string GameVersion { get; set; } = "";
+
+    public string? LayoutVersionKey { get; set; }
+
+    public bool LayoutProvisional { get; set; }
+
+    public string? FailureReason { get; set; }
+
+    public int RegionCount { get; set; }
+
+    public long BytesScanned { get; set; }
+
+    public int VtableHits { get; set; }
+
+    public int CandidatesAccepted { get; set; }
+
+    public int CandidatesRejected { get; set; }
+
+    public int DuplicatesSkipped { get; set; }
+
+    public Dictionary<int, int> ClassOffsetHistogram { get; } = new();
+
+    public List<uint> SampleUids { get; } = new();
+
+    public ModuleBoundsSnapshot? GamePlugin { get; set; }
+
+    public ModuleBoundsSnapshot? GameAssembly { get; set; }
+
+    public void RecordClassOffsetHit(int classOffset)
+    {
+        ClassOffsetHistogram.TryGetValue(classOffset, out var count);
+        ClassOffsetHistogram[classOffset] = count + 1;
+    }
+}
+
+public readonly record struct ModuleBoundsSnapshot(ulong BaseAddress, ulong EndAddress);

@@ -6,11 +6,34 @@ C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2
 
 ```text
 %LOCALAPPDATA%\fm-valuescout\fm-bridge\
-  └── status.json    ← plugin writes on load (this commit)
+  ├── status.json       ← plugin writes on load / scan phases
+  ├── dump.json         ← successful CA/PA candidate dump (replace-only-on-success)
+  ├── diagnostics.txt   ← every scan attempt (including failures)
+  └── force-scan        ← temporary manual trigger (empty file; deleted after run)
 ```
 
 Exact folder names: `fm-valuescout` / `fm-bridge`.
 
+### Memory access (`Memory/`)
+
+Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
+
+### Layouts and CA/PA dump
+
+- `Layouts/` — versioned pins keyed by FM major.minor (`26.3`). Unsupported versions fail closed and write diagnostics without touching a prior good `dump.json`.
+- `Fm263Layout` ports FMSuperScout’s 26.3 field pins (author permission — see `.wiki/notes/superscout-permission.md`). Confirm CA/PA against known players after first live dump; still marked provisional until then.
+- `Scanning/PersonScanner` — aligned heap walk, vtable in GameAssembly/game_plugin, Il2Cpp dynamic class offset, UID/CA/PA sanity (`1..200`), UID dedupe.
+- Dump schema v1 players: `{ uid, ca, pa }` only.
+
+### Manual force-scan (until in-app request protocol)
+
+1. Build and install the plugin as usual.
+2. Launch FM26 and load a save (person objects must exist in memory).
+3. Create an empty file:
+   `%LOCALAPPDATA%\fm-valuescout\fm-bridge\force-scan`
+4. The plugin polls every ~2s; it runs one scan, then deletes `force-scan`.
+5. Inspect `dump.json` / `diagnostics.txt` and `status.json` (`scanning` → `ready` / `failed`).
+6. Spot-check several known players’ UID/CA/PA. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs) to adjust `Fm263Layout`.
 ## Prerequisites (Windows host)
 
 | Requirement | Notes |
@@ -32,10 +55,6 @@ dotnet test
 ```
 
 Output DLL: `bin/Debug/net6.0/FmDataBridge.dll` (or `Release`).
-
-### Memory access (`Memory/`)
-
-Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
 
 ### Optional local Interop paths
 

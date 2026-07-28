@@ -2,6 +2,21 @@ namespace FmDataBridge.Memory;
 
 public static class MemoryReaderExtensions
 {
+    public static bool TryReadUInt16(this IMemoryReader reader, ulong address, out ushort value)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+
+        Span<byte> buffer = stackalloc byte[sizeof(ushort)];
+        if (!reader.TryRead(address, buffer, out _))
+        {
+            value = 0;
+            return false;
+        }
+
+        value = BitConverter.ToUInt16(buffer);
+        return true;
+    }
+
     public static bool TryReadUInt32(this IMemoryReader reader, ulong address, out uint value)
     {
         ArgumentNullException.ThrowIfNull(reader);

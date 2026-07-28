@@ -20,4 +20,13 @@ public static class BridgePaths
 
     public static string GetStatusPath(string bridgeDirectory) =>
         Path.Combine(bridgeDirectory, BridgeProtocol.StatusFileName);
+
+    public static string GetDumpPath(string bridgeDirectory) =>
+        Path.Combine(bridgeDirectory, BridgeProtocol.DumpFileName);
+
+    public static string GetDiagnosticsPath(string bridgeDirectory) =>
+        Path.Combine(bridgeDirectory, BridgeProtocol.DiagnosticsFileName);
+
+    public static string GetForceScanPath(string bridgeDirectory) =>
+        Path.Combine(bridgeDirectory, BridgeProtocol.ForceScanFileName);
 }
