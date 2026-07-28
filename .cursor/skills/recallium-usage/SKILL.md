@@ -44,7 +44,7 @@ Optional at session start (after `AGENTS.md` and `.wiki/INDEX.md`): `recallium` 
 | Decisions or learnings not captured in wiki/Git | Facts obvious from code, docs, or commit history |
 | Useful planning/build/checkpoint context for this commit | Duplicate of active feature ledger or wiki |
 
-Search first; **update** an existing memory when one already covers the topic.
+Search first. **Prefer new memories** when context evolves (constraints, roadmap, progress) — Recallium is temporal; fresh snapshots beat rewriting history. Note what changed and optionally which earlier memory is superseded. Use `modify_memory` only to fix mistakes or when the developer explicitly asks to correct or inactivate an entry.
 
 ## Workflow command hooks
 
@@ -57,8 +57,8 @@ Each command defines a **## Recallium** section — follow it for the active pha
 | `/plan-feature` | Prior work on this feature or area | Durable planning context |
 | `/build` | Unfamiliar conventions for the commit | Durable progress or constraints |
 | `/fix` | Prior decisions behind findings | Durable remediation context |
-| `/checkpoint` | Before presenting checkpoint | Useful institutional context from commit |
-| `/finish-feature` | Feature decisions and constraints | Completion context |
+| `/checkpoint` | Before presenting checkpoint | New snapshot memories when constraints, roadmap, or non-obvious learnings changed — not ledger mirrors |
+| `/finish-feature` | Feature decisions and constraints | New close-out snapshots when final constraints, roadmap, or feature-wide learnings changed — not ledger mirrors |
 | `/spike` | Prior experiments on the question | Spike conclusion |
 | `/docs-review` | Prior decisions affecting reconciliation | Rare — prefer wiki |
 | `/review` | Context behind findings | Do not save |

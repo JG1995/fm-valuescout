@@ -28,10 +28,26 @@ Read `.cursor/skills/recallium-usage/SKILL.md`. Use `project_name` from `AGENTS.
 **Search before:** establishing scope and plan verification — prior decisions, constraints, and feature context not in wiki or ledger.
 **Search with:** `search_memories` → `expand_memories` as needed; `recallium` / `session_recap` when resuming feature close-out across sessions.
 
-**Save after:** close-out report — only when completion leaves useful context not already in wiki or Git.
-**Save with:** `store_memory` — one concise memory; update existing when possible.
+**Reconcile after documentation reconciliation, before the close-out report** — non-blocking if Recallium is unavailable; report failures and continue.
 
-Skip save when unsure.
+1. Search memories for this feature (constraints, roadmap, learnings, prior progress snapshots).
+2. Compare the implemented feature, archived ledger, and updated wiki against what Recallium already holds.
+3. Decide and report one of:
+   - **No update** — completion context is already in wiki, Git, or the archived ledger
+   - **New memory** — see triggers below
+4. **Prefer new memories over editing old ones.** Recallium is temporal — store a fresh close-out snapshot; note what changed and optionally which earlier memory it supersedes. Do not rewrite prior entries in place.
+5. Use `modify_memory` only to fix a mistake in a memory created this session, or when the developer explicitly asks to correct or inactivate an entry.
+
+**New memory at finish-feature** — only when not already in wiki, Git, or the archived ledger:
+
+| Trigger | Type | Example |
+| --- | --- | --- |
+| Feature complete — final constraints or boundaries settled | `feature` | Close-out constraints snapshot |
+| Roadmap or plan-next changed after this feature | `progress` | MVP sequence after ledger archived |
+| Non-obvious learnings from the feature as a whole | `learning` or `debug` | Cross-commit gotcha not in ledger |
+| Completion summary worth resuming later | `progress` | What shipped, what was deferred, key risks |
+
+Do not mirror the archived ledger or full feature diff. Skip when unsure.
 
 ## 1. Establish scope
 
@@ -110,6 +126,7 @@ If documentation reconciliation introduces blocking issues (contradictions, miss
    - **Validation** — test suite, gate, smoke/mutate, migration checks
    - **Review verdict** — summary and blocking status
    - **Documentation** — steward changes, ledger archival, remaining doc risks
+   - **Recallium** — `no update` / `new #… (type, one-line why)` / `skipped — Recallium unavailable`
    - **Commit history** — atomic outcomes, Conventional Commits quality on the feature branch
    - **Remaining risks** — follow-ups, MEDIUM/NITPICK backlog, merge readiness
 

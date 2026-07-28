@@ -19,10 +19,26 @@ Read `.cursor/skills/recallium-usage/SKILL.md`. Use `project_name` from `AGENTS.
 **Search before:** presenting the checkpoint package — refresh context on decisions or constraints relevant to this commit.
 **Search with:** `search_memories` → `expand_memories` as needed.
 
-**Save after:** checkpoint presentation — only when this commit left useful institutional context not already in wiki, Git, or the ledger.
-**Save with:** `store_memory` — one concise memory; update existing when possible.
+**Reconcile after gate, before the checkpoint package** — non-blocking if Recallium is unavailable; report failures and continue.
 
-Skip save when unsure.
+1. Search recent memories for this feature or area (constraints, roadmap, learnings).
+2. Compare the staged outcome and any ledger updates against what Recallium already holds.
+3. Decide and report one of:
+   - **No update** — nothing durable beyond wiki, Git, or the ledger
+   - **New memory** — see triggers below
+4. **Prefer new memories over editing old ones.** Recallium is temporal — when constraints or roadmap change, `store_memory` a fresh snapshot and note what changed (and optionally which earlier memory it supersedes). Do not rewrite prior entries in place.
+5. Use `modify_memory` only to fix a mistake in a memory created this session, or when the developer explicitly asks to correct or inactivate an entry.
+
+**New memory at checkpoint** — only when not already in wiki, Git, or the ledger:
+
+| Trigger | Type | Example |
+| --- | --- | --- |
+| Invariants or non-goals changed | `feature` | New constraints snapshot after replanning |
+| Active work or plan-next changed | `progress` | Roadmap snapshot after commit lands |
+| Non-obvious gotcha from this commit | `learning` or `debug` | CI flake, offset pin, protocol quirk |
+| Durable choice not warranting an ADR | `decision` | Small boundary call |
+
+Do not mirror the feature ledger or staged diff. Skip when unsure.
 
 ## Checkpoint steps
 
@@ -55,7 +71,7 @@ Skip save when unsure.
     - If no (plan divergence, scope shift, wrong type/scope, or message no longer matches staged work): present a **revised** message and state briefly why the provisional no longer fits. Update the ledger **Provisional commit** when the revision reflects plan change, not mere wording polish.
     - If there is no ledger or no provisional for this commit: derive one message from the staged outcome using the conventional-commits skill.
 
-11. Present the complete checkpoint package: outcome, staged files, RED/GREEN evidence, gate results, the **Review verdict** (verbatim), documentation impact, risks, and the **commit message assessment** (provisional, unchanged or revised with reason). If the plan diverged, summarize the deviation.
+11. Present the complete checkpoint package: outcome, staged files, RED/GREEN evidence, gate results, the **Review verdict** (verbatim), documentation impact, risks, the **commit message assessment** (provisional, unchanged or revised with reason), and **Recallium** (`no update` / `new #… (type, one-line why)` / `skipped — Recallium unavailable`). If the plan diverged, summarize the deviation.
 
 12. **Stop and wait for explicit developer approval.** If **Blocking: Yes** and the developer has not explicitly approved proceeding with blocking findings recorded, do not commit. Unstaging or editing code to address review findings without developer direction is not part of this command.
 
