@@ -21,9 +21,10 @@ This skill runs a **defensive** audit of code the developer controls. Report fin
 | `references/vite.md` | `vite.config.ts`, Vitest config, `index.html`, `.env*`, build output, Playwright `webServer` |
 | `references/rust.md` | Rust under `src-tauri/` — SQL, fs, process, Serde, deps (pair with `tauri.md` for IPC ACL) |
 | `references/tauri.md` | Tauri desktop — `src-tauri/`, IPC, capabilities, `tauri.conf.json`, `@tauri-apps/*` |
+| `references/csharp.md` | C# under `bridge/` — BepInEx plugin, file protocol, memory interop, diagnostics |
 | Other `.cursor/skills/` whose description matches security, the stack, auth, payments, database, or mobile | When recon finds matching technology |
 
-Load `react.md` and `vite.md` for this template when `src/` or the Vite toolchain is in scope. Load `rust.md` and `tauri.md` together when `src-tauri/` or IPC is in scope — Rust sinks and capability ACL are one story. Load `testing.md` when the scoped diff touches test setup, mocks, or e2e stubs.
+Load `react.md` and `vite.md` for this template when `src/` or the Vite toolchain is in scope. Load `rust.md` and `tauri.md` together when `src-tauri/` or IPC is in scope — Rust sinks and capability ACL are one story. Load `csharp.md` when `bridge/` or the FM file protocol is in scope — pair with `rust.md` for the full request → scan → dump path. Load `testing.md` when the scoped diff touches test setup, mocks, or e2e stubs.
 
 Derived stack templates may add `security-*` skills or framework reference files. Load them during recon when the stack matches. Do not load stack refs when recon shows the technology is not in use.
 
@@ -51,7 +52,7 @@ Map the attack surface before hunting. Keep recon read-mostly. Determine:
 - **Data stores and platforms** — SQL, NoSQL, managed auth or database platforms
 - **Config and secrets** — env handling, CORS, security headers, debug flags
 
-Read `references/universal.md`, `references/testing.md` when test infrastructure is in scope, `references/react.md` when the surface map includes React or this template's Vite SPA stack, `references/vite.md` when Vite config, env files, or build artifacts are in scope, `references/rust.md` and `references/tauri.md` when recon finds `src-tauri/`, Tauri config, capabilities, or IPC, and any matching stack or security skills from `.cursor/skills/`.
+Read `references/universal.md`, `references/testing.md` when test infrastructure is in scope, `references/react.md` when the surface map includes React or this template's Vite SPA stack, `references/vite.md` when Vite config, env files, or build artifacts are in scope, `references/rust.md` and `references/tauri.md` when recon finds `src-tauri/`, Tauri config, capabilities, or IPC, `references/csharp.md` when recon finds `bridge/` or BepInEx plugin code, and any matching stack or security skills from `.cursor/skills/`.
 
 Produce a short **surface map**: stack, concrete entry points with file paths, platforms in play, and conspicuously unguarded areas. Show it to the developer before the deep pass when the scope is larger than a single file.
 
@@ -77,6 +78,7 @@ Load vulnerability depth only when recon gives a foothold. Examples:
 | `vite.config.ts`, `.env*`, `dist/` | Env prefix gate, `define` leaks, source maps, dev server bind, `public/` dumps |
 | `src-tauri/` Rust without new IPC | SQLi, path traversal, `Command`, Serde, `cargo audit` gap |
 | `mockIPC`, Playwright stubs, fixtures | Committed secrets, permissive mocks, test code in prod bundle |
+| `bridge/`, BepInEx plugin, file protocol | Read-only memory violations, `request.json` deserialization, path traversal on dump writes, `unsafe`/P/Invoke, diagnostics PII |
 
 Skip classes with no foothold. List skipped classes in the report so the developer sees audit edges.
 
@@ -145,7 +147,7 @@ Use read-only inspection commands only. Do not edit, write, stage, unstage, comm
 
 ## When generating code
 
-Consult `references/universal.md`, `references/react.md` when touching `src/`, `references/vite.md` when touching Vite config or client env, `references/rust.md` and `references/tauri.md` when touching `src-tauri/` or Tauri config, `references/testing.md` when adding mocks or fixtures, and matching stack skills before writing auth, payments, database access, API keys, or user data handling. Prevention is cheaper than audit.
+Consult `references/universal.md`, `references/react.md` when touching `src/`, `references/vite.md` when touching Vite config or client env, `references/rust.md` and `references/tauri.md` when touching `src-tauri/` or Tauri config, `references/csharp.md` when touching `bridge/` or the FM file protocol, `references/testing.md` when adding mocks or fixtures, and matching stack skills before writing auth, payments, database access, API keys, or user data handling. Prevention is cheaper than audit.
 
 ## Recallium
 
