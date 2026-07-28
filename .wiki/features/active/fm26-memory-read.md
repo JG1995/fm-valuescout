@@ -165,7 +165,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 3 — Rust bridge paths and status IPC
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `0a8278f`
 
 **Work:**
 - Add backend feature module `src-tauri/src/features/memory-read/` following existing `health` layout (`commands.rs` / `service.rs` / types as needed). Register commands in `lib.rs` and ACL capabilities only for what this commit exposes.
@@ -185,7 +185,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 4 — UI bridge status panel
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Add `src/features/memory-read/` with `api/` query options calling `get_bridge_status` through `tauri-client`, plus a small presentational panel (ready / missing / error / unsupported platform).
@@ -378,19 +378,19 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 1 — Bridge bootstrap and status protocol
 
-**Commit:** Commit 3 — Rust bridge paths and status IPC
+**Commit:** Commit 4 — UI bridge status panel
 
 ### RED test (active commit)
 
-Rust unit tests with temp directories and fixture `status.json` files — happy path, missing file, corrupt/unsupported schema version — for parse + `get_bridge_status` IPC mapping.
+Vitest + mockIPC for bridge status panel — ready / missing / error / unsupported platform states.
 
 ### Expected outcome
 
-Backend `memory-read` feature resolves `%LOCALAPPDATA%\fm-valuescout\fm-bridge\` on Windows (clear unsupported/missing on non-Windows), parses versioned status into a bounded DTO, exposes `get_bridge_status` over IPC; `cargo test` covers fixtures; Linux check stays green.
+`src/features/memory-read/` with query options calling `get_bridge_status`, presentational panel wired into an existing route; Playwright smoke stubbed if home loads the command; smoke green.
 
 ### Explicit exclusions
 
-No request-file writing or dump watching. No frontend UI (types-only share OK). No plugin install detection beyond status file readable.
+No scan / Load Data trigger. No SQLite or search UI. No dump progress UI.
 
 ## Discoveries and replanning
 
@@ -399,7 +399,7 @@ No request-file writing or dump watching. No frontend UI (types-only share OK). 
 - 2026-07-28: Inserted PR 1 commit 1 as toolchain/repo prerequisites (`chore(bridge)`); scaffold status writer is now commit 2. BepInEx/FM interop remain machine-local — not vendored.
 - 2026-07-28: Recorded [ADR-0016](../../decisions/0016-csharp-bepinex-fm26-bridge.md); deferred in-app install to [BACKLOG.md](../../BACKLOG.md).
 - 2026-07-28 (Commit 2 build): Plugin host APIs use NuGet `BepInEx.Unity.IL2CPP` (official template feed) instead of local `BepInExCore` HintPaths, so `dotnet build` / `dotnet test` work without a Steam tree. `InteropDir` in `Directory.Build.user.props` remains for later FM type references. Locked bridge dir: `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`. Status wire shape (camelCase JSON): `protocolVersion`, `pluginVersion`, `state`, `updatedAtUtc`, `gamePluginModulePresent`, `gameAssemblyModulePresent`.
-- 2026-07-28 (Commit 3 build): Rust feature module is `src-tauri/src/features/memory_read/` (snake_case — Rust module rules; frontend folder stays `memory-read` in Commit 4). IPC `get_bridge_status` returns camelCase `BridgeStatus` or tagged `BridgeStatusError` (`unsupportedPlatform` | `missing` | `corrupt` | `unsupportedVersion`). Windows path via `LOCALAPPDATA`; non-Windows always `unsupportedPlatform`. No new crates; no capability ACL change beyond registering the command (`core:default` already covers custom commands). Outcome matches plan — pending checkpoint hash.
+- 2026-07-28 (Commit 3 build): Rust feature module is `src-tauri/src/features/memory_read/` (snake_case — Rust module rules; frontend folder stays `memory-read` in Commit 4). IPC `get_bridge_status` returns camelCase `BridgeStatus` or tagged `BridgeStatusError` (`unsupportedPlatform` | `missing` | `corrupt` | `unsupportedVersion`). Windows path via `LOCALAPPDATA`; non-Windows always `unsupportedPlatform`. No new crates; no capability ACL change beyond registering the command (`core:default` already covers custom commands). `NotFound` I/O → `Missing`; other read failures → `Corrupt`.
 
 ## Completed work
 
@@ -407,6 +407,7 @@ No request-file writing or dump watching. No frontend UI (types-only share OK). 
 | --- | --- | --- | --- |
 | 1 | Commit 1 — Bridge toolchain and repo prerequisites | `31b7670` | Docs, ignores, `global.json`, example props; Linux gate skips `bridge/` |
 | 1 | Commit 2 — Scaffold C# bridge and status writer | `21c2e67` | BepInEx plugin, status.json writer, NuGet host refs, xUnit shape tests |
+| 1 | Commit 3 — Rust bridge paths and status IPC | `0a8278f` | `get_bridge_status`, path resolve, fixture parse/error tests |
 
 ## Final validation
 
