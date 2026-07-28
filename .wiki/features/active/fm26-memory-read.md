@@ -124,7 +124,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Bridge toolchain and repo prerequisites
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:**
 - Document machine prerequisites for building the bridge: .NET 6 SDK, Windows host, Steam FM26, BepInEx 6 IL2CPP installed into the FM folder, and that interop assemblies are generated on first FM launch with BepInEx (not vendored in git).
@@ -387,6 +387,8 @@ Prefer a small contract assertion where practical (e.g. example props file exist
 ### Expected outcome
 
 Repo is ready for a C# bridge project: .NET/BepInEx prerequisites documented, local path overrides exemplified, build artifacts and user props ignored, Linux gate does not require `dotnet` or FM assemblies.
+
+**Build progress (2026-07-28):** Implemented on `feat/memory-read-bridge-bootstrap` — staged for checkpoint. Files: `bridge/README.md`, `bridge/global.json`, `bridge/Directory.Build.props.example`, ignore/tooling updates, README/CONTRIBUTING pointers. No plugin project yet.
 
 ### Explicit exclusions
 

@@ -70,6 +70,8 @@ See [README — Forking this template](README.md#forking-this-template) for prer
 5. `/roadmap` — approve development sequence in `TODO.md` (CONCEPT bullets alone suffice for a provisional sequence).
 6. `/plan-feature` on the feature named in **Plan next**.
 
+Building the FM26 BepInEx plugin (Windows host, .NET 6) is separate from the Linux gate — see [bridge/README.md](bridge/README.md).
+
 ### Per-feature loop
 
 1. `/plan-feature` — plan one feature (PRs and commits). Trivial changes skip the ledger.

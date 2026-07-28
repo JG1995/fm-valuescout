@@ -16,6 +16,8 @@ pnpm tauri dev
 
 Install the [Rust toolchain](https://rustup.rs/) and Tauri Linux system packages before `pnpm tauri dev` on Linux/WSL (see [.wiki/ARCHITECTURE.md](.wiki/ARCHITECTURE.md) §11). WSLg or an X server is required for the native window on WSL.
 
+Building the FM26 BepInEx plugin (Windows/.NET) is documented in [bridge/README.md](bridge/README.md).
+
 `pnpm tauri dev` is the default dev loop — WebView + Rust IPC with real SQLite persistence. `pnpm dev` serves the frontend only; IPC calls fail unless stubbed (tests and Playwright smoke use stubs). `./scripts/dev check` runs Biome, TypeScript, secretlint, repository contract tests, Playwright smoke, and `cargo fmt/clippy/test`. Run `pnpm exec playwright install chromium` once after install so smoke can run.
 
 ## Forking this template

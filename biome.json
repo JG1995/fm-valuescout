@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!src/routeTree.gen.ts"]
+    "includes": ["**", "!src/routeTree.gen.ts", "!bridge"]
   },
   "css": {
     "parser": {

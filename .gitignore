@@ -12,6 +12,13 @@ dist-ssr/
 # Rust (Tauri)
 src-tauri/target/
 
+# C# BepInEx bridge (FM26 plugin)
+bridge/**/bin/
+bridge/**/obj/
+bridge/Directory.Build.user.props
+**/Directory.Build.user.props
+*.user.props
+
 # TanStack Router plugin cache (routeTree.gen.ts stays tracked in src/)
 .tanstack/
 

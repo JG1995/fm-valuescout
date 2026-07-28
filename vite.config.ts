@@ -37,7 +37,7 @@ export default defineConfig(({ command }) => ({
         }
       : undefined,
     watch: {
-      ignored: ["**/src-tauri/**"],
+      ignored: ["**/src-tauri/**", "**/bridge/**"],
     },
   },
   build:
@@ -61,7 +61,7 @@ export default defineConfig(({ command }) => ({
     setupFiles: ["src/testing/setup.ts"],
     globals: false,
     css: true,
-    exclude: ["**/node_modules/**", "**/e2e/**"],
+    exclude: ["**/node_modules/**", "**/e2e/**", "**/bridge/**"],
     coverage: {
       include: ["src/**"],
       exclude: ["src/routeTree.gen.ts", "**/*.d.ts"],
