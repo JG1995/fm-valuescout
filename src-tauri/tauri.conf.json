@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Cursor React Tauri Template",
+  "productName": "FM ValueScout",
   "version": "0.1.0",
-  "identifier": "com.cursor.react-tauri-template",
+  "identifier": "app.fmvaluescout",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Cursor React Tauri Template",
+        "title": "FM ValueScout",
         "width": 800,
         "height": 600,
         "resizable": true,

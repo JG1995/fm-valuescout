@@ -12,7 +12,7 @@ test.describe("walking skeleton smoke", () => {
     await page.goto("/");
 
     await expect(
-      page.getByRole("heading", { name: "Cursor React Tauri Template" }),
+      page.getByRole("heading", { name: "FM ValueScout" }),
     ).toBeVisible();
     await expect(page.getByText("Status:")).toContainText("ok");
     await expect(page.getByText("Stored value:")).toBeVisible();

@@ -1,9 +1,9 @@
 {
-  "name": "cursor-react-tauri-template",
+  "name": "fm-valuescout",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "React + Tauri desktop development template with a Cursor-based test-driven AI workflow.",
+  "description": "FM ValueScout desktop application.",
   "engines": {
     "node": ">=24"
   },
