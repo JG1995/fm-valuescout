@@ -213,7 +213,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Safe memory reader and region scan
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `9c80753`
 
 **Work:**
 - Introduce a memory-access abstraction (`IMemoryReader` or equivalent) with a production Windows implementation that uses `ReadProcessMemory` / `VirtualQuery` against the current process (same safety model as SuperScout: bad addresses fail the read, they do not hard-crash via raw pointer deref).
@@ -231,7 +231,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Versioned layout stub and CA/PA candidate dump
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Add a versioned memory-layout registry keyed by FM major/minor (or build string from `game_plugin` / status). Unsupported versions refuse to scan and write a clear status error + diagnostics hint.
@@ -378,28 +378,19 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 2 — Request protocol and CA/PA dump
 
-**Commit:** Commit 1 — Safe memory reader and region scan
+**Commit:** Commit 2 — Versioned layout stub and CA/PA candidate dump
 
 ### RED test (active commit)
 
-`dotnet test` with fake/in-memory reader — region filters, read edge cases (short read, out-of-range).
+Unit tests for dump metadata and “do not clobber good dump on failure”; diagnostics readable after a failed version check. Manual FM verify deferred to validation.
 
 ### Expected outcome
 
-`bridge/Memory/` (or equivalent) with `IMemoryReader`, Windows production reader (`ReadProcessMemory` / `VirtualQuery`), heap region enumeration, `game_plugin.dll` / `GameAssembly.dll` bounds recorded; fake reader for tests; no player decoding or Tauri changes.
+Versioned layout registry + initial FM26 pin; person-candidate discovery (UID/CA/PA); streamed `dump.json` replace-only-on-success; basic `diagnostics.txt`. No names/attributes/contracts; no Rust request writer / UI trigger yet (temporary bridge-side trigger OK for manual test).
 
 ### Explicit exclusions
 
-No player decoding, dump format, request polling, or Tauri/UI changes.
-
-### Build progress (Commit 1 — pending checkpoint)
-
-- Added `bridge/Memory/`: `IMemoryReader`, `MemoryRegion`, `MemoryConstants`, `RegionEnumerator` (committed private writable pages, exclude guard/no-access, max-size cap), `ModuleLocator` / `ModuleBounds`, `WindowsMemoryReader` (RPM + VirtualQuery + current-process module snapshot), typed read helpers (`TryReadUInt32` / `Int32` / `UInt64`).
-- Fake reader at `bridge/Tests/Fakes/FakeMemoryReader.cs`; 10 new xUnit tests (region filter, short/out-of-range/full read, module bounds). Full bridge suite: 14 passed.
-- Skipped `ModuleImageCache` (YAGNI — optional in ledger; defer to CA/PA dump commit if needed).
-- `ModulePresence` now reuses `ModuleLocator` module name constants.
-- Intrinsic README note under Build → Memory access.
-- No Tauri/UI/player decode/dump/request changes.
+Names, attributes, contracts, clubs; Rust request writer / UI trigger (Commit 3).
 
 ## Discoveries and replanning
 
@@ -421,6 +412,7 @@ No player decoding, dump format, request polling, or Tauri/UI changes.
 | 1 | Commit 2 — Scaffold C# bridge and status writer | `21c2e67` | BepInEx plugin, status.json writer, NuGet host refs, xUnit shape tests |
 | 1 | Commit 3 — Rust bridge paths and status IPC | `0a8278f` | `get_bridge_status`, path resolve, fixture parse/error tests |
 | 1 | Commit 4 — UI bridge status panel | `527380a` | Home panel, mockIPC + Playwright stub, kind-specific error copy |
+| 2 | Commit 1 — Safe memory reader and region scan | `9c80753` | `IMemoryReader`, Windows RPM/VQ, region filter, module bounds, fake tests |
 
 ## Final validation
 
