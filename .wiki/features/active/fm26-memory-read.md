@@ -203,7 +203,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ### PR 2 — Request protocol and CA/PA dump
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional PR title:** `feat(memory-read): request scans and dump player CA PA`
 
@@ -213,7 +213,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Safe memory reader and region scan
 
-**Status:** Active
+**Status:** Completed — `9c80753`
 
 **Work:**
 - Introduce a memory-access abstraction (`IMemoryReader` or equivalent) with a production Windows implementation that uses `ReadProcessMemory` / `VirtualQuery` against the current process (same safety model as SuperScout: bad addresses fail the read, they do not hard-crash via raw pointer deref).
@@ -231,7 +231,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Versioned layout stub and CA/PA candidate dump
 
-**Status:** Pending
+**Status:** Completed — `2f8490c`
 
 **Work:**
 - Add a versioned memory-layout registry keyed by FM major/minor (or build string from `game_plugin` / status). Unsupported versions refuse to scan and write a clear status error + diagnostics hint.
@@ -250,7 +250,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 3 — In-app scan request and completion watch
 
-**Status:** Pending
+**Status:** Completed — `3b1e6c2`
 
 **Work:**
 - Bridge: background poll for a request file in the bridge directory (ignore stale requests older than a short TTL, same class of bug SuperScout fixed). On valid request, run the CA/PA dump path off the Unity main thread; update `status.json` through phases (`idle` → `scanning` → `ready` / `failed`) with progress fields if cheap (candidates found, elapsed).
@@ -266,9 +266,16 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **Provisional commit:** `feat(memory-read): trigger dump from app via file protocol`
 
+##### Build progress (Commit 3)
+
+- C#: `BridgeRequest`, `RequestAcceptance` (30s TTL, delete on accept/reject), plugin polls `request.json` then `force-scan` fallback; single-scan gate; status carries optional `requestId` / `playersFound` / `error`.
+- Rust: `request_player_dump` IPC writes versioned request, waits for matching terminal status (120s default), returns `DumpRequestResult` (no dump body).
+- UI: **Load Data** mutation on bridge panel — busy / success / IPC error; Playwright stub covers new command.
+- Tests: 4 xUnit request protocol; +4 Rust watch/write/timeout; +4 Vitest trigger cases. `./scripts/dev check` green.
+
 ### PR 3 — Player identity and attributes
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional PR title:** `feat(memory-read): extract player identity and attributes`
 
@@ -278,7 +285,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Names, DOB, nationality, height, foot, positions
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Extend player extraction beyond UID/CA/PA: display name (handle non-ASCII), date of birth / age inputs as present in memory, nationality (single or multi if the layout exposes it), height, preferred foot, and natural positions.
@@ -376,21 +383,21 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ## Active work
 
-**PR:** PR 2 — Request protocol and CA/PA dump
+**PR:** PR 3 — Player identity and attributes
 
-**Commit:** Commit 1 — Safe memory reader and region scan
+**Commit:** Commit 1 — Names, DOB, nationality, height, foot, positions
 
 ### RED test (active commit)
 
-`dotnet test` with fake/in-memory reader — region filters, read edge cases (short read, out-of-range).
+Decoder unit tests with byte fixtures where practical; schema bump covered if dump shape is parsed.
 
 ### Expected outcome
 
-`bridge/Memory/` (or equivalent) with `IMemoryReader`, Windows production reader (`ReadProcessMemory` / `VirtualQuery`), heap region enumeration, `game_plugin.dll` / `GameAssembly.dll` bounds recorded; fake reader for tests; no player decoding or Tauri changes.
+Dump expands beyond UID/CA/PA with display name (incl. non-ASCII), DOB/age inputs, nationality, height, preferred foot, and natural positions. Identity sanity rejects garbage rows; diagnostics count skips.
 
 ### Explicit exclusions
 
-No player decoding, dump format, request polling, or Tauri/UI changes.
+Visible/hidden/personality attribute blocks; contracts, clubs, loans.
 
 ## Discoveries and replanning
 
@@ -401,6 +408,11 @@ No player decoding, dump format, request polling, or Tauri/UI changes.
 - 2026-07-28 (Commit 2 build): Plugin host APIs use NuGet `BepInEx.Unity.IL2CPP` (official template feed) instead of local `BepInExCore` HintPaths, so `dotnet build` / `dotnet test` work without a Steam tree. `InteropDir` in `Directory.Build.user.props` remains for later FM type references. Locked bridge dir: `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`. Status wire shape (camelCase JSON): `protocolVersion`, `pluginVersion`, `state`, `updatedAtUtc`, `gamePluginModulePresent`, `gameAssemblyModulePresent`.
 - 2026-07-28 (Commit 3 build): Rust feature module is `src-tauri/src/features/memory_read/` (snake_case — Rust module rules; frontend folder stays `memory-read` in Commit 4). IPC `get_bridge_status` returns camelCase `BridgeStatus` or tagged `BridgeStatusError` (`unsupportedPlatform` | `missing` | `corrupt` | `unsupportedVersion`). Windows path via `LOCALAPPDATA`; non-Windows always `unsupportedPlatform`. No new crates; no capability ACL change beyond registering the command (`core:default` already covers custom commands). `NotFound` I/O → `Missing`; other read failures → `Corrupt`.
 - 2026-07-28 (Commit 4 build): Frontend feature at `src/features/memory-read/` with `bridgeStatusQueryOptions`, `BridgeStatusPanel` + localized `BridgeStatusError` (kind-specific copy for missing / unsupported platform / version mismatch). Home route shows bridge panel above health; bridge not prefetched in route loader so expected IPC errors reach the panel error boundary. Vitest mock via `bridge-status-ipc-mock.ts`; Playwright stub returns ready status. No scan trigger, SQLite, or dump UI.
+- 2026-07-28 (manual PR 1 verify): Live `status.json` had `gameAssemblyModulePresent: true` but `gamePluginModulePresent: false` on the developer’s FM26 install. Treat `game_plugin.dll` name as provisional until memory-scan work confirms the real native module; `GameAssembly.dll` remains the IL2CPP signal that mattered for PR 1.
+- 2026-07-28 (PR 2 Commit 1 build): `ModuleImageCache` deferred. Region filter accepts `PAGE_READWRITE` / write-copy / execute-readwrite variants; default max region size 512 MiB.
+- 2026-07-28 (PR 2 Commit 2): SuperScout permission ([superscout-permission.md](../../notes/superscout-permission.md)); `Fm263Layout` pins from SuperScout `Fields.cs`; Il2Cpp dynamic class-offset scan; dump replace-only-on-success; `force-scan` polled ~2s (not Load-only); 64-bit underflow guard fixed. Still confirm known-player CA/PA on live FM. Undelegated MEDIUM: version fallback when `game_plugin` missing; unsupported-version diagnostics omit GameAssembly bounds.
+- 2026-07-28 (PR 2 Commit 3): In-app `request.json` protocol (30s TTL); Rust `request_player_dump` waits for matching `requestId` terminal status; UI **Load Data** button; `force-scan` retained as fallback. Status optional fields: `requestId`, `playersFound`, `error`. Hand-rolled UTC RFC3339 in Rust (no chrono). Blocking sync IPC wait (120s) — upgrade to async/events if UX needs mid-scan progress streaming. Review MEDIUM fixes: refresh waiting request `createdAtUtc` while scan in progress; write `failed` status with `requestId` on reject; busy Vitest mock uses deferred Promise.
+- 2026-07-28 (PR 2 follow-up after Commit 3): Live Cap A dump on FM 26.3.2 took ~3m 47s (~184k accepted, ~4.1 GB scanned) and outran the 120s app wait. Temporary `PersonScanner.DefaultMaxAccepted` (10 000) keeps Load Data testable (`e638383`); full-scan performance is [BACKLOG.md](../../BACKLOG.md) High. UI “FM modules: not fully loaded” was a stale Load-time snapshot — `game_plugin.dll` often loads after BepInEx plugin `Load`; status now uses live `LocateKnownModules` and idle poll refresh (`8a50cc8`). `scripts/dev bridge-install` (`62ddfc9`) builds the bridge in WSL and copies `FmDataBridge.dll` into Steam `BepInEx/plugins`.
 
 ## Completed work
 
@@ -410,6 +422,10 @@ No player decoding, dump format, request polling, or Tauri/UI changes.
 | 1 | Commit 2 — Scaffold C# bridge and status writer | `21c2e67` | BepInEx plugin, status.json writer, NuGet host refs, xUnit shape tests |
 | 1 | Commit 3 — Rust bridge paths and status IPC | `0a8278f` | `get_bridge_status`, path resolve, fixture parse/error tests |
 | 1 | Commit 4 — UI bridge status panel | `527380a` | Home panel, mockIPC + Playwright stub, kind-specific error copy |
+| 2 | Commit 1 — Safe memory reader and region scan | `9c80753` | `IMemoryReader`, Windows RPM/VQ, region filter, module bounds, fake tests |
+| 2 | Commit 2 — Versioned layout stub and CA/PA candidate dump | `2f8490c` | Layout registry, Il2Cpp scan, dump/diagnostics, force-scan poll, SuperScout pins |
+| 2 | Commit 3 — In-app scan request and completion watch | `3b1e6c2` | request.json TTL, Rust watch IPC, Load Data UI, force-scan fallback |
+| 2 | Follow-up — live-test ops (not a planned commit) | `62ddfc9`, `e638383`, `8a50cc8` | bridge-install; 10k scan cap + BACKLOG; refresh module flags after lazy load |
 
 ## Final validation
 
@@ -423,3 +439,4 @@ No player decoding, dump format, request polling, or Tauri/UI changes.
 - Update [ARCHITECTURE.md](../../ARCHITECTURE.md) current-state sections when bridge + protocol are implemented (ADR link already recorded in §9)
 - Feature 2 plans against the frozen dump schema from PR 4
 - Deferred install UX: [BACKLOG.md](../../BACKLOG.md) — in-app BepInEx / FM bridge install and remove
+- Deferred full-dump performance: [BACKLOG.md](../../BACKLOG.md) High — Bridge scan performance (full player dump)

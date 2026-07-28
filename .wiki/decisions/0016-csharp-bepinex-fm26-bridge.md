@@ -20,7 +20,8 @@ Boundaries:
 - Rust owns IPC to the WebView, path resolution, request/status orchestration, and dump validation for ingest — not offset tables in the frontend.
 - Memory reading targets **Windows Steam FM26 only** for now.
 - Scans are triggered **from the app** (file protocol), not by an in-game hotkey in the first delivery.
-- Do **not** vendor BepInEx or FM interop assemblies in git; use local path overrides. Do **not** copy SuperScout source or ship their DLL (that repo has no license — study publicly, reimplement independently).
+- Do **not** vendor BepInEx or FM interop assemblies in git; use local path overrides.
+- Do **not** ship SuperScout’s DLL as our product binary. Layout offsets and algorithms may be ported into our `bridge/` structure: the SuperScout author ([mark17072](https://github.com/mavarobli)) granted explicit permission (“do whatever you like”) — see [superscout-permission.md](../notes/superscout-permission.md). Prefer independent module layout; record provenance when pins stabilize.
 
 Delivery plan: [features/active/fm26-memory-read.md](../features/active/fm26-memory-read.md).
 
@@ -62,6 +63,7 @@ CONCEPT explicitly keeps save-file import out of MVP. Rejected for this decision
 ## Related work
 
 - Feature plan: [features/active/fm26-memory-read.md](../features/active/fm26-memory-read.md)
+- Related notes: [superscout-permission.md](../notes/superscout-permission.md)
 - Planning notes: [notes/memory-read-initial-notes.md](../notes/memory-read-initial-notes.md)
 - Rust IPC boundary: [0014](./0014-rust-backend-ipc-boundary.md)
 - Tauri shell: [0013](./0013-tauri-v2-desktop-shell.md)

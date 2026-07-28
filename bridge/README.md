@@ -6,10 +6,41 @@ C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2
 
 ```text
 %LOCALAPPDATA%\fm-valuescout\fm-bridge\
-  └── status.json    ← plugin writes on load (this commit)
+  ├── request.json      ← Tauri writes to request a dump (30s TTL)
+  ├── status.json       ← plugin writes on load / scan phases
+  ├── dump.json         ← successful CA/PA candidate dump (replace-only-on-success)
+  ├── diagnostics.txt   ← every scan attempt (including failures)
+  └── force-scan        ← optional manual fallback (empty file; deleted after run)
 ```
 
 Exact folder names: `fm-valuescout` / `fm-bridge`.
+
+### Memory access (`Memory/`)
+
+Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
+
+### Layouts and CA/PA dump
+
+- `Layouts/` — versioned pins keyed by FM major.minor (`26.3`). Unsupported versions fail closed and write diagnostics without touching a prior good `dump.json`.
+- `Fm263Layout` ports FMSuperScout’s 26.3 field pins (author permission — see `.wiki/notes/superscout-permission.md`). Confirm CA/PA against known players after first live dump; still marked provisional until then.
+- `Scanning/PersonScanner` — aligned heap walk, vtable in GameAssembly/game_plugin, Il2Cpp dynamic class offset, UID/CA/PA sanity (`1..200`), UID dedupe. **Temporary testing cap:** stops after `DefaultMaxAccepted` (10 000) accepted players so Load Data finishes quickly; set `maxAccepted: null` for a full walk. Full-scan optimization is tracked in `.wiki/BACKLOG.md` (High).
+- Dump schema v1 players: `{ uid, ca, pa }` only.
+
+### In-app request protocol
+
+1. Build and install the plugin; launch FM26 and load a save.
+2. In the Tauri app, open the home bridge panel and click **Load Data**.
+3. Rust writes `request.json` (`protocolVersion`, `requestId`, `createdAtUtc`, `operation: "full-dump"`).
+4. The plugin polls every ~2s, rejects requests older than **30 seconds**, runs the dump off the Unity main thread, and updates `status.json` (`idle` → `scanning` → `ready` / `failed`).
+5. The app waits for a terminal status matching the request id (default timeout 120s) and shows success or error — it never loads the full dump over IPC.
+
+### Manual force-scan fallback
+
+1. With FM26 running and a save loaded, create an empty file:
+   `%LOCALAPPDATA%\fm-valuescout\fm-bridge\force-scan`
+2. The plugin treats it like a request (`requestId: force-scan`), then deletes the file.
+3. Inspect `dump.json` / `diagnostics.txt` and `status.json` (`scanning` → `ready` / `failed`).
+4. Spot-check several known players’ UID/CA/PA. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs) to adjust `Fm263Layout`.
 
 ## Prerequisites (Windows host)
 
@@ -22,7 +53,7 @@ Exact folder names: `fm-valuescout` / `fm-bridge`.
 
 ## Build
 
-Plugin host APIs come from the **BepInEx NuGet** feed (`BepInEx.Unity.IL2CPP`). FM Il2CppInterop assemblies stay machine-local and are **not** needed for the status scaffold.
+Plugin host APIs come from the **BepInEx NuGet** feed (`BepInEx.Unity.IL2CPP`). FM Il2CppInterop assemblies stay machine-local and are **not** needed for the status scaffold or the safe memory-reader unit tests.
 
 ```powershell
 cd bridge
@@ -72,10 +103,33 @@ On first FM launch with BepInEx installed, BepInEx generates Il2CppInterop assem
 
 Linux `./scripts/dev check` does not require the .NET SDK and does not build this tree. Validate the bridge with:
 
-```powershell
+```bash
 cd bridge
 dotnet test
 dotnet build
 ```
 
 on a machine with the .NET 6 SDK (Windows for FM attach; Linux/WSL is enough for unit tests).
+
+### Install into FM (WSL → Steam)
+
+From the repo root:
+
+```bash
+./scripts/dev bridge-install
+```
+
+Builds `FmDataBridge.dll` and copies it to `BepInEx/plugins`. Path resolution:
+
+1. `FM_BRIDGE_PLUGINS` — explicit plugins directory
+2. `FM_STEAM_ROOT/BepInEx/plugins` — if `FM_STEAM_ROOT` is set
+3. Default WSL Steam path: `/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26/BepInEx/plugins`
+
+Example override:
+
+```bash
+export FM_STEAM_ROOT="/mnt/c/Program Files (x86)/Steam/steamapps/common/Football Manager 26"
+./scripts/dev bridge-install
+```
+
+Then restart FM26 so BepInEx loads the new DLL.

@@ -78,9 +78,10 @@ For broad features, `/plan-feature` produces a delivery plan (PRs and commits) b
 ./scripts/dev secrets [--staged]
 ./scripts/dev smoke
 ./scripts/dev mutate <target...>
+./scripts/dev bridge-install
 ```
 
-`check` is the commit gate: Biome verify (`biome check`), TypeScript, secretlint, repository contract checks, and the `scripts/dev` dispatcher contract (which runs Playwright smoke). Run `pnpm exec playwright install chromium` once after install so check can pass locally. `format` applies Biome lint and format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/` — run before staging at `/build` and `/checkpoint`; it is not part of the gate. Optional path args forward to Biome only. `secrets` runs secretlint on the full tree, or on staged files with `--staged` (no lint-staged). `smoke` runs the same Playwright suite directly (`e2e/smoke.spec.ts`). `mutate` is unsupported until mutation tooling is wired into `scripts/dev`. Never report an unsupported command as passed.
+`check` is the commit gate: Biome verify (`biome check`), TypeScript, secretlint, repository contract checks, and the `scripts/dev` dispatcher contract (which runs Playwright smoke). Run `pnpm exec playwright install chromium` once after install so check can pass locally. `format` applies Biome lint and format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/` — run before staging at `/build` and `/checkpoint`; it is not part of the gate. Optional path args forward to Biome only. `secrets` runs secretlint on the full tree, or on staged files with `--staged` (no lint-staged). `smoke` runs the same Playwright suite directly (`e2e/smoke.spec.ts`). `mutate` is unsupported until mutation tooling is wired into `scripts/dev`. Never report an unsupported command as passed. `bridge-install` builds the C# FM plugin and copies `FmDataBridge.dll` into BepInEx plugins (see `bridge/README.md`; path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL Steam default).
 
 `test` runs `vitest run` (full suite or forwarded args). Override with `DEV_TEST_COMMAND` for contract tests. `check` runs Biome, TypeScript, secretlint, repository scripts, Cursor agents, CI workflow contract, and dispatcher smoke.
 

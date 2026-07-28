@@ -14,6 +14,26 @@ public static class StatusWriter
     public static string Serialize(BridgeStatus status) =>
         JsonSerializer.Serialize(status, SerializerOptions);
 
+    public static bool TryRead(string bridgeDirectory, out BridgeStatus? status)
+    {
+        status = null;
+        var path = BridgePaths.GetStatusPath(bridgeDirectory);
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            status = JsonSerializer.Deserialize<BridgeStatus>(File.ReadAllText(path), SerializerOptions);
+            return status is not null;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
     public static void Write(string bridgeDirectory, BridgeStatus status)
     {
         Directory.CreateDirectory(bridgeDirectory);

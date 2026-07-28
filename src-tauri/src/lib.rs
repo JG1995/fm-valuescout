@@ -26,6 +26,7 @@ pub fn run() {
             features::health::commands::get_demo_value,
             features::health::commands::set_demo_value,
             features::memory_read::commands::get_bridge_status,
+            features::memory_read::commands::request_player_dump,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

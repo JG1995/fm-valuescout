@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FmDataBridge.Memory;
 using FmDataBridge.Output;
 using FmDataBridge.Protocol;
 using Xunit;
@@ -88,5 +89,55 @@ public sealed class BridgeStatusSerializationTests
 
         Assert.True(signals.GamePluginModulePresent);
         Assert.False(signals.GameAssemblyModulePresent);
+    }
+
+    [Fact]
+    public void Module_presence_from_bounds_matches_locator_results()
+    {
+        var both = new ModulePresenceBounds(
+            new ModuleBounds("game_plugin.dll", 0x1000, 0x2000),
+            new ModuleBounds("GameAssembly.dll", 0x3000, 0x4000));
+        var signals = ModulePresence.FromBounds(both);
+        Assert.True(signals.GamePluginModulePresent);
+        Assert.True(signals.GameAssemblyModulePresent);
+
+        var assemblyOnly = ModulePresence.FromBounds(
+            new ModulePresenceBounds(null, new ModuleBounds("GameAssembly.dll", 0x3000, 0x4000)));
+        Assert.False(assemblyOnly.GamePluginModulePresent);
+        Assert.True(assemblyOnly.GameAssemblyModulePresent);
+    }
+
+    [Fact]
+    public void Status_writer_round_trips_module_flags()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            StatusWriter.Write(
+                dir,
+                new BridgeStatus
+                {
+                    ProtocolVersion = 1,
+                    PluginVersion = "0.1.0",
+                    State = "ready",
+                    UpdatedAtUtc = DateTimeOffset.Parse("2026-07-28T19:00:00Z"),
+                    GamePluginModulePresent = true,
+                    GameAssemblyModulePresent = true,
+                    RequestId = "req-1",
+                    PlayersFound = 10,
+                });
+
+            Assert.True(StatusWriter.TryRead(dir, out var status));
+            Assert.NotNull(status);
+            Assert.True(status!.GamePluginModulePresent);
+            Assert.True(status.GameAssemblyModulePresent);
+            Assert.Equal("ready", status.State);
+            Assert.Equal("req-1", status.RequestId);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 }
