@@ -16,6 +16,7 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       main.getByRole("heading", { name: "FM ValueScout" }),
     ).toBeVisible();
+    await expect(main.getByText(/^Bridge:/i)).toContainText("ready");
     await expect(main.getByText("Status:")).toContainText("ok");
     await expect(main.getByText("Stored value:")).toBeVisible();
   });

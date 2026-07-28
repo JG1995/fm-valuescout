@@ -2,10 +2,14 @@ import "@testing-library/jest-dom/vitest";
 import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
+import {
+  resolveBridgeStatusIpcMock,
+  setBridgeStatusIpcMockMode,
+} from "@/features/memory-read/api/bridge-status-ipc-mock";
 
 let demoValue = "";
 
-function registerHealthIpcMock() {
+function registerIpcMocks() {
   mockIPC((cmd, args) => {
     if (cmd === "get_status") {
       return { status: "ok" };
@@ -27,15 +31,20 @@ function registerHealthIpcMock() {
       return { value: demoValue };
     }
 
+    if (cmd === "get_bridge_status") {
+      return resolveBridgeStatusIpcMock();
+    }
+
     throw new Error(`Unhandled IPC command: ${cmd}`);
   });
 }
 
-registerHealthIpcMock();
+registerIpcMocks();
 
 afterEach(() => {
   cleanup();
   clearMocks();
   demoValue = "";
-  registerHealthIpcMock();
+  setBridgeStatusIpcMockMode("ready");
+  registerIpcMocks();
 });

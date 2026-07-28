@@ -185,7 +185,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 4 — UI bridge status panel
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:**
 - Add `src/features/memory-read/` with `api/` query options calling `get_bridge_status` through `tauri-client`, plus a small presentational panel (ready / missing / error / unsupported platform).
@@ -378,19 +378,15 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 1 — Bridge bootstrap and status protocol
 
-**Commit:** Commit 4 — UI bridge status panel
+**Commit:** None — PR 1 complete pending checkpoint; next work is PR 2 after merge.
 
-### RED test (active commit)
+### Build progress (Commit 4)
 
-Vitest + mockIPC for bridge status panel — ready / missing / error / unsupported platform states.
-
-### Expected outcome
-
-`src/features/memory-read/` with query options calling `get_bridge_status`, presentational panel wired into an existing route; Playwright smoke stubbed if home loads the command; smoke green.
-
-### Explicit exclusions
-
-No scan / Load Data trigger. No SQLite or search UI. No dump progress UI.
+- `src/features/memory-read/` — api (fetch, query options, keys, ipc mock), types, panel + error boundary components
+- Home route (`src/app/routes/index.tsx`) — bridge panel in Suspense above health
+- `src/testing/setup.ts` + `e2e/tauri-ipc-stub.ts` — `get_bridge_status` stub
+- Vitest: 5 tests (ready, missing, unsupported platform, unsupported version, corrupt + retry)
+- Gate: `./scripts/dev test` (14 passed), `./scripts/dev check` green
 
 ## Discoveries and replanning
 
@@ -400,6 +396,7 @@ No scan / Load Data trigger. No SQLite or search UI. No dump progress UI.
 - 2026-07-28: Recorded [ADR-0016](../../decisions/0016-csharp-bepinex-fm26-bridge.md); deferred in-app install to [BACKLOG.md](../../BACKLOG.md).
 - 2026-07-28 (Commit 2 build): Plugin host APIs use NuGet `BepInEx.Unity.IL2CPP` (official template feed) instead of local `BepInExCore` HintPaths, so `dotnet build` / `dotnet test` work without a Steam tree. `InteropDir` in `Directory.Build.user.props` remains for later FM type references. Locked bridge dir: `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`. Status wire shape (camelCase JSON): `protocolVersion`, `pluginVersion`, `state`, `updatedAtUtc`, `gamePluginModulePresent`, `gameAssemblyModulePresent`.
 - 2026-07-28 (Commit 3 build): Rust feature module is `src-tauri/src/features/memory_read/` (snake_case — Rust module rules; frontend folder stays `memory-read` in Commit 4). IPC `get_bridge_status` returns camelCase `BridgeStatus` or tagged `BridgeStatusError` (`unsupportedPlatform` | `missing` | `corrupt` | `unsupportedVersion`). Windows path via `LOCALAPPDATA`; non-Windows always `unsupportedPlatform`. No new crates; no capability ACL change beyond registering the command (`core:default` already covers custom commands). `NotFound` I/O → `Missing`; other read failures → `Corrupt`.
+- 2026-07-28 (Commit 4 build): Frontend feature at `src/features/memory-read/` with `bridgeStatusQueryOptions`, `BridgeStatusPanel` + localized `BridgeStatusError` (kind-specific copy for missing / unsupported platform / version mismatch). Home route shows bridge panel above health; bridge not prefetched in route loader so expected IPC errors reach the panel error boundary. Vitest mock via `bridge-status-ipc-mock.ts`; Playwright stub returns ready status. No scan trigger, SQLite, or dump UI.
 
 ## Completed work
 
