@@ -11,11 +11,13 @@ test.describe("walking skeleton smoke", () => {
   test("home route shows health status from stubbed IPC", async ({ page }) => {
     await page.goto("/");
 
+    const main = page.getByRole("main");
+
     await expect(
-      page.getByRole("heading", { name: "Cursor React Tauri Template" }),
+      main.getByRole("heading", { name: "FM ValueScout" }),
     ).toBeVisible();
-    await expect(page.getByText("Status:")).toContainText("ok");
-    await expect(page.getByText("Stored value:")).toBeVisible();
+    await expect(main.getByText("Status:")).toContainText("ok");
+    await expect(main.getByText("Stored value:")).toBeVisible();
   });
 
   test("home route saves demo value through stubbed IPC", async ({ page }) => {
@@ -24,7 +26,9 @@ test.describe("walking skeleton smoke", () => {
     await page.getByLabel("Demo value (SQLite):").fill("smoke-value");
     await page.getByRole("button", { name: "Save demo value" }).click();
 
-    await expect(page.getByText("Stored value:")).toContainText("smoke-value");
+    await expect(
+      page.getByRole("main").getByText("Stored value:"),
+    ).toContainText("smoke-value");
   });
 
   test("layout sidebar toggles from the header control", async ({ page }) => {

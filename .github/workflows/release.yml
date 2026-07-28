@@ -63,7 +63,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
-          releaseName: "Cursor React Tauri Template v__VERSION__"
+          releaseName: "FM ValueScout v__VERSION__"
           releaseBody: "Draft release with unsigned installers. Code signing and notarization are not configured."
           releaseDraft: true
           prerelease: false

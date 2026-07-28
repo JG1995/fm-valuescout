@@ -17,7 +17,7 @@ function IndexPage() {
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-semibold text-on-background">
-        Cursor React Tauri Template
+        FM ValueScout
       </h1>
       <Suspense
         fallback={

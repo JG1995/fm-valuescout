@@ -1,18 +1,18 @@
-# Architecture — Cursor React Tauri Template
+# Architecture — FM ValueScout
 
-> Authority: This document describes the template repository — implemented stack, application layout, and tooling. Forked projects replace the title, §1, and product-specific sections after `/stack` when they diverge.
+> Authority: This document describes the implemented stack, application layout, and tooling for FM ValueScout.
 
-This document describes how the **Cursor React Tauri Template** is constructed: default stack, thin-frontend / thick-backend boundaries, build and test pipeline, and conventions enforced by tooling.
+This document describes how **FM ValueScout** is constructed: stack, thin-frontend / thick-backend boundaries, build and test pipeline, and conventions enforced by tooling.
 
 Application layout follows [Bulletproof React](https://github.com/alan2207/bulletproof-react) adapted for TanStack Router and Query on the frontend, and feature modules under `src-tauri/src/features/` on the backend. Line-level rules live in `.cursor/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, and `vite.md`.
 
-For forked product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each default choice, see [.wiki/decisions/](./decisions/README.md).
+For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each default choice, see [.wiki/decisions/](./decisions/README.md).
 
 ---
 
 ## 1. Top-Level Shape
 
-This repository is a **template**, not a shipped product. It ships a Cursor workflow (commands, skills, wiki, `./scripts/dev`) and a **runnable React + Tauri v2 walking skeleton** with the pre-selected stack below.
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`) and a **walking skeleton** (health IPC demo, SQLite persistence) until product features land.
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 

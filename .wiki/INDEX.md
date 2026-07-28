@@ -16,7 +16,7 @@ This directory contains durable, version-controlled knowledge about this reposit
 
 ## Documentation lifecycle
 
-1. **New project bootstrap** — see [README — Forking this template](../README.md#forking-this-template); replace the Recallium `project_name` placeholder in `AGENTS.md`, fill `CONCEPT.md`, run `/roadmap` when MVP direction is set (`/stack` only when changing defaults); approve wiki updates before building.
+1. **New project bootstrap** — fill `CONCEPT.md`, run `/roadmap` when MVP direction is set (`/stack` only when changing defaults); approve wiki updates before building.
 2. **Per-feature planning** — create one active feature ledger with `/plan-feature` and mark exactly one commit `Active`.
 3. **Per commit** — update documentation intrinsic to the atomic outcome during `/build` and `/checkpoint`.
 4. **Feature completion** — run `/finish-feature` (tests, feature-complete review, then documentation reconciliation).

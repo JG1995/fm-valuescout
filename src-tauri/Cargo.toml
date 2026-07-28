@@ -1,8 +1,8 @@
 [package]
 name = "app"
 version = "0.1.0"
-description = "Cursor React Tauri Template"
-authors = ["Cursor Template"]
+description = "FM ValueScout"
+authors = ["FM ValueScout"]
 license = ""
 repository = ""
 edition = "2021"
