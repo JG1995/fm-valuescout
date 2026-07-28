@@ -412,6 +412,7 @@ Visible/hidden/personality attribute blocks; contracts, clubs, loans.
 - 2026-07-28 (PR 2 Commit 1 build): `ModuleImageCache` deferred. Region filter accepts `PAGE_READWRITE` / write-copy / execute-readwrite variants; default max region size 512 MiB.
 - 2026-07-28 (PR 2 Commit 2): SuperScout permission ([superscout-permission.md](../../notes/superscout-permission.md)); `Fm263Layout` pins from SuperScout `Fields.cs`; Il2Cpp dynamic class-offset scan; dump replace-only-on-success; `force-scan` polled ~2s (not Load-only); 64-bit underflow guard fixed. Still confirm known-player CA/PA on live FM. Undelegated MEDIUM: version fallback when `game_plugin` missing; unsupported-version diagnostics omit GameAssembly bounds.
 - 2026-07-28 (PR 2 Commit 3): In-app `request.json` protocol (30s TTL); Rust `request_player_dump` waits for matching `requestId` terminal status; UI **Load Data** button; `force-scan` retained as fallback. Status optional fields: `requestId`, `playersFound`, `error`. Hand-rolled UTC RFC3339 in Rust (no chrono). Blocking sync IPC wait (120s) — upgrade to async/events if UX needs mid-scan progress streaming. Review MEDIUM fixes: refresh waiting request `createdAtUtc` while scan in progress; write `failed` status with `requestId` on reject; busy Vitest mock uses deferred Promise.
+- 2026-07-28 (PR 2 follow-up after Commit 3): Live Cap A dump on FM 26.3.2 took ~3m 47s (~184k accepted, ~4.1 GB scanned) and outran the 120s app wait. Temporary `PersonScanner.DefaultMaxAccepted` (10 000) keeps Load Data testable (`e638383`); full-scan performance is [BACKLOG.md](../../BACKLOG.md) High. UI “FM modules: not fully loaded” was a stale Load-time snapshot — `game_plugin.dll` often loads after BepInEx plugin `Load`; status now uses live `LocateKnownModules` and idle poll refresh (`8a50cc8`). `scripts/dev bridge-install` (`62ddfc9`) builds the bridge in WSL and copies `FmDataBridge.dll` into Steam `BepInEx/plugins`.
 
 ## Completed work
 
@@ -424,6 +425,7 @@ Visible/hidden/personality attribute blocks; contracts, clubs, loans.
 | 2 | Commit 1 — Safe memory reader and region scan | `9c80753` | `IMemoryReader`, Windows RPM/VQ, region filter, module bounds, fake tests |
 | 2 | Commit 2 — Versioned layout stub and CA/PA candidate dump | `2f8490c` | Layout registry, Il2Cpp scan, dump/diagnostics, force-scan poll, SuperScout pins |
 | 2 | Commit 3 — In-app scan request and completion watch | `3b1e6c2` | request.json TTL, Rust watch IPC, Load Data UI, force-scan fallback |
+| 2 | Follow-up — live-test ops (not a planned commit) | `62ddfc9`, `e638383`, `8a50cc8` | bridge-install; 10k scan cap + BACKLOG; refresh module flags after lazy load |
 
 ## Final validation
 
@@ -437,3 +439,4 @@ Visible/hidden/personality attribute blocks; contracts, clubs, loans.
 - Update [ARCHITECTURE.md](../../ARCHITECTURE.md) current-state sections when bridge + protocol are implemented (ADR link already recorded in §9)
 - Feature 2 plans against the frozen dump schema from PR 4
 - Deferred install UX: [BACKLOG.md](../../BACKLOG.md) — in-app BepInEx / FM bridge install and remove
+- Deferred full-dump performance: [BACKLOG.md](../../BACKLOG.md) High — Bridge scan performance (full player dump)
