@@ -6,10 +6,11 @@ C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2
 
 ```text
 %LOCALAPPDATA%\fm-valuescout\fm-bridge\
+  ├── request.json      ← Tauri writes to request a dump (30s TTL)
   ├── status.json       ← plugin writes on load / scan phases
   ├── dump.json         ← successful CA/PA candidate dump (replace-only-on-success)
   ├── diagnostics.txt   ← every scan attempt (including failures)
-  └── force-scan        ← temporary manual trigger (empty file; deleted after run)
+  └── force-scan        ← optional manual fallback (empty file; deleted after run)
 ```
 
 Exact folder names: `fm-valuescout` / `fm-bridge`.
@@ -25,15 +26,22 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 - `Scanning/PersonScanner` — aligned heap walk, vtable in GameAssembly/game_plugin, Il2Cpp dynamic class offset, UID/CA/PA sanity (`1..200`), UID dedupe.
 - Dump schema v1 players: `{ uid, ca, pa }` only.
 
-### Manual force-scan (until in-app request protocol)
+### In-app request protocol
 
-1. Build and install the plugin as usual.
-2. Launch FM26 and load a save (person objects must exist in memory).
-3. Create an empty file:
+1. Build and install the plugin; launch FM26 and load a save.
+2. In the Tauri app, open the home bridge panel and click **Load Data**.
+3. Rust writes `request.json` (`protocolVersion`, `requestId`, `createdAtUtc`, `operation: "full-dump"`).
+4. The plugin polls every ~2s, rejects requests older than **30 seconds**, runs the dump off the Unity main thread, and updates `status.json` (`idle` → `scanning` → `ready` / `failed`).
+5. The app waits for a terminal status matching the request id (default timeout 120s) and shows success or error — it never loads the full dump over IPC.
+
+### Manual force-scan fallback
+
+1. With FM26 running and a save loaded, create an empty file:
    `%LOCALAPPDATA%\fm-valuescout\fm-bridge\force-scan`
-4. The plugin polls every ~2s; it runs one scan, then deletes `force-scan`.
-5. Inspect `dump.json` / `diagnostics.txt` and `status.json` (`scanning` → `ready` / `failed`).
-6. Spot-check several known players’ UID/CA/PA. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs) to adjust `Fm263Layout`.
+2. The plugin treats it like a request (`requestId: force-scan`), then deletes the file.
+3. Inspect `dump.json` / `diagnostics.txt` and `status.json` (`scanning` → `ready` / `failed`).
+4. Spot-check several known players’ UID/CA/PA. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs) to adjust `Fm263Layout`.
+
 ## Prerequisites (Windows host)
 
 | Requirement | Notes |

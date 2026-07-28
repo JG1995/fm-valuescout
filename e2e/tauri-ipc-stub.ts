@@ -31,6 +31,16 @@ export async function stubTauriIpc(page: Page) {
             };
           }
 
+          if (cmd === "request_player_dump") {
+            return {
+              requestId: "req-smoke",
+              state: "ready",
+              playersFound: 0,
+              dumpPresent: true,
+              error: null,
+            };
+          }
+
           throw new Error("Unhandled IPC: " + cmd);
         },
         transformCallback: (callback) => callback,

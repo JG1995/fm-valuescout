@@ -4,7 +4,10 @@ import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 import {
   resolveBridgeStatusIpcMock,
+  resolveBusyDumpRequest,
+  resolveDumpRequestIpcMock,
   setBridgeStatusIpcMockMode,
+  setDumpRequestIpcMockMode,
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
 
 let demoValue = "";
@@ -35,6 +38,10 @@ function registerIpcMocks() {
       return resolveBridgeStatusIpcMock();
     }
 
+    if (cmd === "request_player_dump") {
+      return resolveDumpRequestIpcMock();
+    }
+
     throw new Error(`Unhandled IPC command: ${cmd}`);
   });
 }
@@ -42,9 +49,11 @@ function registerIpcMocks() {
 registerIpcMocks();
 
 afterEach(() => {
+  resolveBusyDumpRequest();
   cleanup();
   clearMocks();
   demoValue = "";
   setBridgeStatusIpcMockMode("ready");
+  setDumpRequestIpcMockMode("success");
   registerIpcMocks();
 });

@@ -250,7 +250,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 3 — In-app scan request and completion watch
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:**
 - Bridge: background poll for a request file in the bridge directory (ignore stale requests older than a short TTL, same class of bug SuperScout fixed). On valid request, run the CA/PA dump path off the Unity main thread; update `status.json` through phases (`idle` → `scanning` → `ready` / `failed`) with progress fields if cheap (candidates found, elapsed).
@@ -265,6 +265,13 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 **Validation:** Rust tests with temp dirs simulating status transitions and stale requests; Vitest for trigger + busy/error; manual Windows E2E: click trigger → dump refreshes → status returns to ready.
 
 **Provisional commit:** `feat(memory-read): trigger dump from app via file protocol`
+
+##### Build progress (Commit 3)
+
+- C#: `BridgeRequest`, `RequestAcceptance` (30s TTL, delete on accept/reject), plugin polls `request.json` then `force-scan` fallback; single-scan gate; status carries optional `requestId` / `playersFound` / `error`.
+- Rust: `request_player_dump` IPC writes versioned request, waits for matching terminal status (120s default), returns `DumpRequestResult` (no dump body).
+- UI: **Load Data** mutation on bridge panel — busy / success / IPC error; Playwright stub covers new command.
+- Tests: 4 xUnit request protocol; +4 Rust watch/write/timeout; +4 Vitest trigger cases. `./scripts/dev check` green.
 
 ### PR 3 — Player identity and attributes
 
@@ -378,7 +385,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 2 — Request protocol and CA/PA dump
 
-**Commit:** Commit 3 — In-app scan request and completion watch
+**Commit:** Commit 3 — In-app scan request and completion watch (staging for checkpoint)
 
 ### RED test (active commit)
 
@@ -386,7 +393,7 @@ Rust tests with temp dirs simulating status transitions and stale requests; Vite
 
 ### Expected outcome
 
-Bridge polls `request.json` (TTL for stale); runs CA/PA dump off main thread; status phases idle → scanning → ready/failed. Rust writes request via IPC and watches status/dump; UI trigger (no player table). Force-scan can be retired or kept as fallback.
+Bridge polls `request.json` (TTL for stale); runs CA/PA dump off main thread; status phases idle → scanning → ready/failed. Rust writes request via IPC and watches status/dump; UI trigger (no player table). Force-scan kept as fallback.
 
 ### Explicit exclusions
 
@@ -404,6 +411,7 @@ Full field extraction beyond UID/CA/PA; SQLite import / snapshot retention beyon
 - 2026-07-28 (manual PR 1 verify): Live `status.json` had `gameAssemblyModulePresent: true` but `gamePluginModulePresent: false` on the developer’s FM26 install. Treat `game_plugin.dll` name as provisional until memory-scan work confirms the real native module; `GameAssembly.dll` remains the IL2CPP signal that mattered for PR 1.
 - 2026-07-28 (PR 2 Commit 1 build): `ModuleImageCache` deferred. Region filter accepts `PAGE_READWRITE` / write-copy / execute-readwrite variants; default max region size 512 MiB.
 - 2026-07-28 (PR 2 Commit 2): SuperScout permission ([superscout-permission.md](../../notes/superscout-permission.md)); `Fm263Layout` pins from SuperScout `Fields.cs`; Il2Cpp dynamic class-offset scan; dump replace-only-on-success; `force-scan` polled ~2s (not Load-only); 64-bit underflow guard fixed. Still confirm known-player CA/PA on live FM. Undelegated MEDIUM: version fallback when `game_plugin` missing; unsupported-version diagnostics omit GameAssembly bounds.
+- 2026-07-28 (PR 2 Commit 3): In-app `request.json` protocol (30s TTL); Rust `request_player_dump` waits for matching `requestId` terminal status; UI **Load Data** button; `force-scan` retained as fallback. Status optional fields: `requestId`, `playersFound`, `error`. Hand-rolled UTC RFC3339 in Rust (no chrono). Blocking sync IPC wait (120s) — upgrade to async/events if UX needs mid-scan progress streaming. Review MEDIUM fixes: refresh waiting request `createdAtUtc` while scan in progress; write `failed` status with `requestId` on reject; busy Vitest mock uses deferred Promise.
 
 ## Completed work
 

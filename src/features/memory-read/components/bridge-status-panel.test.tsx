@@ -1,12 +1,21 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderWithProviders } from "@/testing/render-with-providers";
-import { setBridgeStatusIpcMockMode } from "../api/bridge-status-ipc-mock";
+import {
+  resolveBusyDumpRequest,
+  setBridgeStatusIpcMockMode,
+  setDumpRequestIpcMockMode,
+} from "../api/bridge-status-ipc-mock";
 
 describe("bridge status panel", () => {
   beforeEach(() => {
     setBridgeStatusIpcMockMode("ready");
+    setDumpRequestIpcMockMode("success");
+  });
+
+  afterEach(() => {
+    resolveBusyDumpRequest();
   });
 
   it("renders ready state from mock IPC", async () => {
@@ -60,5 +69,60 @@ describe("bridge status panel", () => {
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByText(/^Bridge:/i)).toHaveTextContent("ready");
+  });
+
+  it("Load Data trigger shows success after dump request", async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await screen.findByText(/^Bridge:/i);
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+
+    expect(
+      await screen.findByText(/Dump ready \(12 players\)/i),
+    ).toBeInTheDocument();
+  });
+
+  it("Load Data trigger shows scan failure from bridge", async () => {
+    setDumpRequestIpcMockMode("failed");
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await screen.findByText(/^Bridge:/i);
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+
+    expect(
+      await screen.findByText(/Scan failed: scan produced zero player/i),
+    ).toBeInTheDocument();
+  });
+
+  it("Load Data trigger shows IPC timeout error", async () => {
+    setDumpRequestIpcMockMode("timeout");
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await screen.findByText(/^Bridge:/i);
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+
+    expect(
+      await screen.findByText(/Could not request dump/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/timed out waiting/i)).toBeInTheDocument();
+  });
+
+  it("Load Data button shows busy label while request is pending", async () => {
+    setDumpRequestIpcMockMode("busy");
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await screen.findByText(/^Bridge:/i);
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+
+    expect(
+      await screen.findByRole("button", { name: "Scanning…" }),
+    ).toBeDisabled();
+    expect(
+      await screen.findByText(/Waiting for the FM bridge dump/i),
+    ).toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import type { BridgeStatus } from "../types/bridge-status";
+import type { BridgeStatus, DumpRequestResult } from "../types/bridge-status";
 
 export type BridgeStatusIpcMockMode =
   | "ready"
@@ -6,6 +6,8 @@ export type BridgeStatusIpcMockMode =
   | "unsupportedPlatform"
   | "unsupportedVersion"
   | "corrupt";
+
+export type DumpRequestIpcMockMode = "success" | "failed" | "timeout" | "busy";
 
 const READY_STATUS: BridgeStatus = {
   protocolVersion: 1,
@@ -17,6 +19,11 @@ const READY_STATUS: BridgeStatus = {
 };
 
 let mockMode: BridgeStatusIpcMockMode = "ready";
+let dumpRequestMode: DumpRequestIpcMockMode = "success";
+let busyDeferred: {
+  promise: Promise<DumpRequestResult>;
+  resolve: (value: DumpRequestResult) => void;
+} | null = null;
 
 export function setBridgeStatusIpcMockMode(mode: BridgeStatusIpcMockMode) {
   mockMode = mode;
@@ -24,6 +31,27 @@ export function setBridgeStatusIpcMockMode(mode: BridgeStatusIpcMockMode) {
 
 export function getBridgeStatusIpcMockMode() {
   return mockMode;
+}
+
+export function setDumpRequestIpcMockMode(mode: DumpRequestIpcMockMode) {
+  dumpRequestMode = mode;
+  if (mode !== "busy") {
+    busyDeferred = null;
+  }
+}
+
+/** Resolves an in-flight busy dump request so tests can settle without afterEach races. */
+export function resolveBusyDumpRequest(result?: DumpRequestResult) {
+  busyDeferred?.resolve(
+    result ?? {
+      requestId: "req-mock",
+      state: "ready",
+      playersFound: 12,
+      dumpPresent: true,
+      error: null,
+    },
+  );
+  busyDeferred = null;
 }
 
 export function resolveBridgeStatusIpcMock() {
@@ -54,4 +82,42 @@ export function resolveBridgeStatusIpcMock() {
   };
 
   throw errors[mockMode];
+}
+
+export function resolveDumpRequestIpcMock(): Promise<DumpRequestResult> {
+  if (dumpRequestMode === "busy") {
+    if (!busyDeferred) {
+      let resolve!: (value: DumpRequestResult) => void;
+      const promise = new Promise<DumpRequestResult>((res) => {
+        resolve = res;
+      });
+      busyDeferred = { promise, resolve };
+    }
+    return busyDeferred.promise;
+  }
+
+  if (dumpRequestMode === "timeout") {
+    return Promise.reject({
+      kind: "timeout",
+      message: "timed out waiting for dump request req-mock",
+    });
+  }
+
+  if (dumpRequestMode === "failed") {
+    return Promise.resolve({
+      requestId: "req-mock",
+      state: "failed",
+      playersFound: null,
+      dumpPresent: false,
+      error: "scan produced zero player candidates",
+    });
+  }
+
+  return Promise.resolve({
+    requestId: "req-mock",
+    state: "ready",
+    playersFound: 12,
+    dumpPresent: true,
+    error: null,
+  });
 }

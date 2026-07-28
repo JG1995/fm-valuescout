@@ -13,9 +13,15 @@ public class Plugin : BasePlugin
 {
     internal static new ManualLogSource Log = null!;
 
-    private CancellationTokenSource? _forceScanCts;
+    private CancellationTokenSource? _pollCts;
 
-    private static readonly TimeSpan ForceScanPollInterval = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan RequestPollInterval = TimeSpan.FromSeconds(2);
+
+    private static readonly TimeSpan RequestTtl = TimeSpan.FromSeconds(BridgeProtocol.RequestTtlSeconds);
+
+    private static readonly object ScanGate = new();
+
+    private static bool _scanInProgress;
 
     public override void Load()
     {
@@ -30,14 +36,12 @@ public class Plugin : BasePlugin
             Log.LogInfo(
                 $"FM Data Bridge {MyPluginInfo.PLUGIN_VERSION} loaded; wrote {BridgePaths.GetStatusPath(bridgeDirectory)}");
 
-            // Temporary manual trigger until Commit 3 request polling lands.
-            // Poll so a save can be loaded first, then drop an empty force-scan file.
-            _forceScanCts = new CancellationTokenSource();
-            var token = _forceScanCts.Token;
-            var thread = new Thread(() => PollForceScan(bridgeDirectory, modules, token))
+            _pollCts = new CancellationTokenSource();
+            var token = _pollCts.Token;
+            var thread = new Thread(() => PollRequests(bridgeDirectory, modules, token))
             {
                 IsBackground = true,
-                Name = "FmBridge-ForceScanPoll",
+                Name = "FmBridge-RequestPoll",
             };
             thread.Start();
         }
@@ -51,17 +55,17 @@ public class Plugin : BasePlugin
     {
         try
         {
-            _forceScanCts?.Cancel();
+            _pollCts?.Cancel();
         }
         catch (Exception ex)
         {
-            Log.LogWarning($"Force-scan poll cancel failed: {ex.Message}");
+            Log.LogWarning($"Request poll cancel failed: {ex.Message}");
         }
 
         return true;
     }
 
-    private static void PollForceScan(
+    private static void PollRequests(
         string bridgeDirectory,
         ModulePresenceSignals modules,
         CancellationToken token)
@@ -70,29 +74,102 @@ public class Plugin : BasePlugin
         {
             try
             {
-                if (File.Exists(BridgePaths.GetForceScanPath(bridgeDirectory)))
-                {
-                    RunForcedScan(bridgeDirectory, modules);
-                }
+                TryStartScanFromRequestOrForceFlag(bridgeDirectory, modules);
             }
             catch (Exception ex)
             {
-                Log.LogError($"Force-scan poll iteration failed: {ex}");
+                Log.LogError($"Request poll iteration failed: {ex}");
             }
 
-            token.WaitHandle.WaitOne(ForceScanPollInterval);
+            token.WaitHandle.WaitOne(RequestPollInterval);
         }
     }
 
-    private static void RunForcedScan(string bridgeDirectory, ModulePresenceSignals modules)
+    private static void TryStartScanFromRequestOrForceFlag(
+        string bridgeDirectory,
+        ModulePresenceSignals modules)
+    {
+        string? requestId = null;
+
+        lock (ScanGate)
+        {
+            if (_scanInProgress)
+            {
+                // Keep a waiting request.json fresh so a long scan does not TTL-kill it.
+                RequestAcceptance.TryRefreshCreatedAtUtc(
+                    BridgePaths.GetRequestPath(bridgeDirectory),
+                    DateTimeOffset.UtcNow);
+                return;
+            }
+
+            var requestPath = BridgePaths.GetRequestPath(bridgeDirectory);
+            if (File.Exists(requestPath))
+            {
+                if (!RequestAcceptance.TryAccept(
+                        requestPath,
+                        DateTimeOffset.UtcNow,
+                        RequestTtl,
+                        out var request,
+                        out var rejectReason,
+                        out var observedRequestId))
+                {
+                    Log.LogWarning($"Ignored bridge request: {rejectReason}");
+                    if (!string.IsNullOrEmpty(observedRequestId))
+                    {
+                        WriteStatus(
+                            bridgeDirectory,
+                            BridgeProtocol.StateFailed,
+                            modules,
+                            requestId: observedRequestId,
+                            playersFound: null,
+                            error: rejectReason);
+                    }
+
+                    return;
+                }
+
+                requestId = request.RequestId;
+            }
+            else if (File.Exists(BridgePaths.GetForceScanPath(bridgeDirectory)))
+            {
+                // Manual fallback until operators prefer only the in-app request path.
+                requestId = "force-scan";
+            }
+            else
+            {
+                return;
+            }
+
+            _scanInProgress = true;
+        }
+
+        try
+        {
+            RunDumpScan(bridgeDirectory, modules, requestId!);
+        }
+        finally
+        {
+            lock (ScanGate)
+            {
+                _scanInProgress = false;
+            }
+        }
+    }
+
+    private static void RunDumpScan(
+        string bridgeDirectory,
+        ModulePresenceSignals modules,
+        string requestId)
     {
         try
         {
             WriteStatus(
                 bridgeDirectory,
                 BridgeProtocol.StateScanning,
-                modules.GamePluginModulePresent,
-                modules.GameAssemblyModulePresent);
+                modules,
+                requestId: requestId,
+                playersFound: null,
+                error: null);
 
             if (!GameVersionDetector.TryDetectFromCurrentProcess(out var gameVersion)
                 || string.IsNullOrWhiteSpace(gameVersion))
@@ -112,8 +189,10 @@ public class Plugin : BasePlugin
                 WriteStatus(
                     bridgeDirectory,
                     BridgeProtocol.StateFailed,
-                    modules.GamePluginModulePresent,
-                    modules.GameAssemblyModulePresent);
+                    modules,
+                    requestId: requestId,
+                    playersFound: null,
+                    error: message);
                 Log.LogError(message);
                 TryDeleteForceScanFlag(bridgeDirectory);
                 return;
@@ -129,32 +208,42 @@ public class Plugin : BasePlugin
 
             TryDeleteForceScanFlag(bridgeDirectory);
 
-            WriteStatus(
-                bridgeDirectory,
-                result.Success ? BridgeProtocol.StateReady : BridgeProtocol.StateFailed,
-                modules.GamePluginModulePresent,
-                modules.GameAssemblyModulePresent);
-
             if (result.Success)
             {
-                Log.LogInfo($"Force scan wrote dump with {result.PlayerCount} players");
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateReady,
+                    modules,
+                    requestId: requestId,
+                    playersFound: result.PlayerCount,
+                    error: null);
+                Log.LogInfo($"Dump request {requestId} wrote {result.PlayerCount} players");
             }
             else
             {
-                Log.LogWarning($"Force scan failed: {result.Error}");
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    modules,
+                    requestId: requestId,
+                    playersFound: null,
+                    error: result.Error);
+                Log.LogWarning($"Dump request {requestId} failed: {result.Error}");
             }
         }
         catch (Exception ex)
         {
-            Log.LogError($"Force scan crashed: {ex}");
+            Log.LogError($"Dump scan crashed: {ex}");
             TryDeleteForceScanFlag(bridgeDirectory);
             try
             {
                 WriteStatus(
                     bridgeDirectory,
                     BridgeProtocol.StateFailed,
-                    modules.GamePluginModulePresent,
-                    modules.GameAssemblyModulePresent);
+                    modules,
+                    requestId: requestId,
+                    playersFound: null,
+                    error: ex.Message);
             }
             catch
             {
@@ -185,14 +274,18 @@ public class Plugin : BasePlugin
         WriteStatus(
             bridgeDirectory,
             BridgeProtocol.StateIdle,
-            modules.GamePluginModulePresent,
-            modules.GameAssemblyModulePresent);
+            modules,
+            requestId: null,
+            playersFound: null,
+            error: null);
 
     private static void WriteStatus(
         string bridgeDirectory,
         string state,
-        bool gamePluginModulePresent,
-        bool gameAssemblyModulePresent)
+        ModulePresenceSignals modules,
+        string? requestId,
+        int? playersFound,
+        string? error)
     {
         var status = new BridgeStatus
         {
@@ -200,8 +293,11 @@ public class Plugin : BasePlugin
             PluginVersion = MyPluginInfo.PLUGIN_VERSION,
             State = state,
             UpdatedAtUtc = DateTimeOffset.UtcNow,
-            GamePluginModulePresent = gamePluginModulePresent,
-            GameAssemblyModulePresent = gameAssemblyModulePresent,
+            GamePluginModulePresent = modules.GamePluginModulePresent,
+            GameAssemblyModulePresent = modules.GameAssemblyModulePresent,
+            RequestId = requestId,
+            PlayersFound = playersFound,
+            Error = error,
         };
         StatusWriter.Write(bridgeDirectory, status);
     }
