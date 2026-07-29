@@ -34,6 +34,40 @@ public sealed class DumpPlayer
     /// <summary>Personality attrs on the 1–20 scale (raw in memory, not ×5); null = unread/invalid.</summary>
     public IReadOnlyDictionary<string, int?> Personality { get; init; } =
         new Dictionary<string, int?>();
+
+    /// <summary>Weekly wage in GBP as stored in memory; null = free agent / unread / unset sentinel.</summary>
+    public long? WeeklyWageGbp { get; init; }
+
+    /// <summary>Contract expiry year; null = free agent / unread / impossible date.</summary>
+    public int? ContractExpiryYear { get; init; }
+
+    /// <summary>Contract expiry day-of-year (1–366); null with <see cref="ContractExpiryYear"/>.</summary>
+    public int? ContractExpiryDayOfYear { get; init; }
+
+    /// <summary>Transfer-listed or listed-by-request; null = free agent / unread flags.</summary>
+    public bool? TransferListed { get; init; }
+
+    /// <summary>Loan-listed; null = free agent / unread flags.</summary>
+    public bool? LoanListed { get; init; }
+
+    /// <summary>Not-for-sale; null = free agent / unread flags.</summary>
+    public bool? NotForSale { get; init; }
+
+    /// <summary>Set for release; null = free agent / unread flags.</summary>
+    public bool? SetForRelease { get; init; }
+
+    /// <summary>FM market value in GBP; null = unread / unset / unfixed sentinel.</summary>
+    public long? MarketValueGbp { get; init; }
+
+    /// <summary>Player reputation (current / world); field nulls when unread.</summary>
+    public DumpReputation Reputation { get; init; } = new();
+}
+
+public sealed class DumpReputation
+{
+    public int? Current { get; init; }
+
+    public int? World { get; init; }
 }
 
 public sealed class DumpDocument

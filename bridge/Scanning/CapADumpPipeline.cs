@@ -91,6 +91,12 @@ public sealed class CapADumpPipeline
                 playerBase,
                 layout);
 
+            var contract = PlayerContractReader.Read(
+                reader,
+                candidate.ObjectAddress,
+                playerBase,
+                layout);
+
             players.Add(
                 new DumpPlayer
                 {
@@ -107,12 +113,27 @@ public sealed class CapADumpPipeline
                     Attributes = attrs.Attributes,
                     HiddenAttributes = attrs.HiddenAttributes,
                     Personality = attrs.Personality,
+                    WeeklyWageGbp = contract.WeeklyWageGbp,
+                    ContractExpiryYear = contract.ContractExpiryYear,
+                    ContractExpiryDayOfYear = contract.ContractExpiryDayOfYear,
+                    TransferListed = contract.TransferListed,
+                    LoanListed = contract.LoanListed,
+                    NotForSale = contract.NotForSale,
+                    SetForRelease = contract.SetForRelease,
+                    MarketValueGbp = contract.MarketValueGbp,
+                    Reputation = contract.Reputation,
                 });
 
             if (diagnostics.SampleAttributeSnapshots.Count < ScanDiagnostics.MaxSampleAttributeSnapshots)
             {
                 diagnostics.SampleAttributeSnapshots.Add(
                     FormatAttributeSample(candidate.Uid, identity.Name, attrs));
+            }
+
+            if (diagnostics.SampleContractSnapshots.Count < ScanDiagnostics.MaxSampleContractSnapshots)
+            {
+                diagnostics.SampleContractSnapshots.Add(
+                    FormatContractSample(candidate.Uid, identity.Name, contract));
             }
         }
 
@@ -153,6 +174,17 @@ public sealed class CapADumpPipeline
             $"uid={uid} name={name} Acceleration={Fmt(attrs.Attributes, "Acceleration")} " +
             $"Pace={Fmt(attrs.Attributes, "Pace")} Consistency={Fmt(attrs.HiddenAttributes, "Consistency")} " +
             $"Ambition={Fmt(attrs.Personality, "Ambition")}";
+    }
+
+    private static string FormatContractSample(uint uid, string name, PlayerContractFields contract)
+    {
+        static string FmtLong(long? v) => v is { } n ? n.ToString() : "null";
+        static string FmtBool(bool? v) => v is { } b ? (b ? "true" : "false") : "null";
+
+        return
+            $"uid={uid} name={name} wage={FmtLong(contract.WeeklyWageGbp)} " +
+            $"listed={FmtBool(contract.TransferListed)} value={FmtLong(contract.MarketValueGbp)} " +
+            $"curRep={contract.Reputation.Current?.ToString() ?? "null"}";
     }
 }
 

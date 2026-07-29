@@ -70,6 +70,27 @@ public interface IFmMemoryLayout
     /// <summary>Personality key → byte offset from person (raw 1–20).</summary>
     IReadOnlyList<AttributeLayoutEntry> PersonalityEntries { get; }
 
+    /// <summary>Pointer to full-contract object (relative to person).</summary>
+    int FullContractPtrOffset { get; }
+
+    /// <summary>Weekly wage (u32 GBP) relative to contract object.</summary>
+    int ContractWeeklyWageOffset { get; }
+
+    /// <summary>Contract expiry packed FM date (u32) relative to contract object.</summary>
+    int ContractExpiryOffset { get; }
+
+    /// <summary>Transfer-status bitfield (byte) relative to contract object.</summary>
+    int ContractStatusFlagsOffset { get; }
+
+    /// <summary>FM market / guide value (u32 GBP) relative to player block.</summary>
+    int MarketValueOffset { get; }
+
+    /// <summary>Current reputation (u16) relative to player block.</summary>
+    int CurrentReputationOffset { get; }
+
+    /// <summary>World reputation (u16) relative to player block.</summary>
+    int WorldReputationOffset { get; }
+
     /// <summary>
     /// True when offsets still need live confirmation on this machine's Steam build.
     /// </summary>

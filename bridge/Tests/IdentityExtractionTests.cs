@@ -247,7 +247,7 @@ public sealed class IdentityExtractionTests
             Assert.Equal(1, result.PlayerCount);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
-            Assert.Equal(3, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(4, doc.RootElement.GetProperty("schemaVersion").GetInt32());
             var player = doc.RootElement.GetProperty("players")[0];
             Assert.Equal(42u, player.GetProperty("uid").GetUInt32());
             Assert.Equal("Good Player", player.GetProperty("name").GetString());
@@ -260,6 +260,8 @@ public sealed class IdentityExtractionTests
             Assert.True(player.TryGetProperty("attributes", out _));
             Assert.True(player.TryGetProperty("hiddenAttributes", out _));
             Assert.True(player.TryGetProperty("personality", out _));
+            Assert.True(player.TryGetProperty("weeklyWageGbp", out var wage) && wage.ValueKind == JsonValueKind.Null);
+            Assert.True(player.TryGetProperty("reputation", out _));
 
             var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
             Assert.Contains("identitySkippedEmptyName=", diagnostics, StringComparison.Ordinal);

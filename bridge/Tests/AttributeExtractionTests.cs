@@ -148,12 +148,15 @@ public sealed class AttributeExtractionTests
             Assert.Equal(1, result.PlayerCount);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
-            Assert.Equal(3, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(4, doc.RootElement.GetProperty("schemaVersion").GetInt32());
             var player = doc.RootElement.GetProperty("players")[0];
             Assert.Equal(13, player.GetProperty("attributes").GetProperty("Acceleration").GetInt32());
             Assert.Equal(14, player.GetProperty("attributes").GetProperty("Pace").GetInt32());
             Assert.Equal(12, player.GetProperty("hiddenAttributes").GetProperty("Consistency").GetInt32());
             Assert.Equal(16, player.GetProperty("personality").GetProperty("Ambition").GetInt32());
+            Assert.True(player.TryGetProperty("weeklyWageGbp", out _));
+            Assert.True(player.TryGetProperty("marketValueGbp", out _));
+            Assert.True(player.TryGetProperty("reputation", out _));
 
             var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
             Assert.Contains("sampleAttributes:", diagnostics, StringComparison.Ordinal);

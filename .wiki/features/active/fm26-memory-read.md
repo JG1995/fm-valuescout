@@ -347,7 +347,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Contracts, wages, transfer status, value, reputation
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:**
 - Follow contract pointers from person objects; extract weekly wage, contract expiry, transfer status/listing flags, market value (FM’s value where readable), and player reputation into the dump.
@@ -361,6 +361,14 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 **Validation:** Manual checks on sample players (expiring contract, transfer-listed, high/low wage, free agent if available); fixture tests for contract decoder edge cases where bytes can be faked.
 
 **Provisional commit:** `feat(bridge): extract contracts wages and transfer fields`
+
+##### Build progress (Commit 1)
+
+- Layout: `FullContractPtrOffset` / contract wage·expiry·flags / `MarketValueOffset` / current+world reputation on `IFmMemoryLayout` + `Fm263Layout` (SuperScout Fields.cs).
+- `Extraction/`: `MoneyDecode` (GBP; `0xFFFFFFFF` and market `300M` → null), `PlayerContractReader` (null contract fields for free agents; listed = bit0|bit3).
+- Dump schema **v4** player shape: `weeklyWageGbp`, `contractExpiryYear`/`DayOfYear`, `transferListed`/`loanListed`/`notForSale`/`setForRelease`, `marketValueGbp`, `reputation.{current,world}`.
+- Diagnostics: null-rule line + up to 5 `sampleContracts` snapshots.
+- Tests: contract/money/free-agent + schema fixture updates. `dotnet test` 76 passed. `./scripts/dev check` green.
 
 #### Commit 2 — Clubs, loans, division, team level, game date
 
@@ -433,6 +441,7 @@ Club/loan/division resolution; SQLite.
 - 2026-07-29 (PR 3 Commit 1 build): Dump schema bumped to **v2** with identity fields. Age not computed yet (needs in-game date from PR 4). Preferred foot uses English `left`/`right`/`either` (not SuperScout Dutch labels). Nation dump is a single short-name when the nation pointer resolves (layout exposes one nation ptr). Natural positions filter matches SuperScout (≥ max(15, top−2)). Incidental Rust test flake: non-atomic status fixture write raced empty `status.json` — fixture now temp+rename.
 - 2026-07-29 (PR 3 Commit 2 build): Dump schema bumped to **v3** with `attributes` / `hiddenAttributes` / `personality`. Visible+hidden decode ÷5; personality is raw 1–20 on the person object (not ×5). Keys match SuperScout English PascalCase. Diagnostics document both encodings and emit sample attribute snapshots.
 - 2026-07-29 (PR 3 Commit 2 fix): Attribute maps use `int?` — unread or out-of-range values are JSON `null`, not `0` (ingest must not treat missing as a real score).
+- 2026-07-29 (PR 4 Commit 1 build): Dump schema bumped to **v4** with contract/wage/transfer flags, market value (PLAO_GUIDE_VALUE / GBP), and `reputation.current`/`world`. Free agent = null wage/expiry/flags (not false/0). Money nulls: `0xFFFFFFFF`; market also nulls FM's unfixed `300_000_000`. Asking-price slot (`0x238`) not dumped this commit. Loan-listed bit1 still provisional per SuperScout note — confirm on live dump.
 
 ## Completed work
 

@@ -183,6 +183,15 @@ public sealed class CapADumpTests
                     Attributes = new Dictionary<string, int?> { ["Acceleration"] = 13 },
                     HiddenAttributes = new Dictionary<string, int?> { ["Consistency"] = 12 },
                     Personality = new Dictionary<string, int?> { ["Ambition"] = 16 },
+                    WeeklyWageGbp = 50_000,
+                    ContractExpiryYear = 2028,
+                    ContractExpiryDayOfYear = 100,
+                    TransferListed = false,
+                    LoanListed = false,
+                    NotForSale = true,
+                    SetForRelease = false,
+                    MarketValueGbp = 8_000_000,
+                    Reputation = new DumpReputation { Current = 4000, World = 3500 },
                 },
             },
         };
@@ -190,7 +199,7 @@ public sealed class CapADumpTests
         var json = DumpWriter.Serialize(document);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        Assert.Equal(3, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(4, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("26.3.2.2329565", root.GetProperty("gameVersion").GetString());
         Assert.Equal("26.3", root.GetProperty("supportedGameVersion").GetString());
         Assert.Equal("0.1.0", root.GetProperty("bridgeVersion").GetString());
@@ -198,6 +207,9 @@ public sealed class CapADumpTests
         Assert.Equal(1, root.GetProperty("playerCount").GetInt32());
         Assert.Equal(7u, root.GetProperty("players")[0].GetProperty("uid").GetUInt32());
         Assert.Equal(120, root.GetProperty("players")[0].GetProperty("ca").GetInt32());
+        Assert.Equal(50_000, root.GetProperty("players")[0].GetProperty("weeklyWageGbp").GetInt64());
+        Assert.True(root.GetProperty("players")[0].GetProperty("notForSale").GetBoolean());
+        Assert.Equal(4000, root.GetProperty("players")[0].GetProperty("reputation").GetProperty("current").GetInt32());
         Assert.Equal(160, root.GetProperty("players")[0].GetProperty("pa").GetInt32());
         Assert.Equal("Meta Player", root.GetProperty("players")[0].GetProperty("name").GetString());
         Assert.Equal(2001, root.GetProperty("players")[0].GetProperty("birthYear").GetInt32());

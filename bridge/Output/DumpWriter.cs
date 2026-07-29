@@ -110,8 +110,15 @@ public static class DiagnosticsWriter
 
         sb.AppendLine("attrsStoredTimesFive=decode floor(raw/5+0.5); null if unread or outside 1..20");
         sb.AppendLine("personalityRaw=1..20 or null");
+        sb.AppendLine("contractNull=free agent or unread; money 0xFFFFFFFF/300M → null");
         sb.AppendLine("sampleAttributes:");
         foreach (var sample in diagnostics.SampleAttributeSnapshots)
+        {
+            sb.AppendLine($"  {sample}");
+        }
+
+        sb.AppendLine("sampleContracts:");
+        foreach (var sample in diagnostics.SampleContractSnapshots)
         {
             sb.AppendLine($"  {sample}");
         }

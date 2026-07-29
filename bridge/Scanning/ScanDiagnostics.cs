@@ -35,6 +35,11 @@ public sealed class ScanDiagnostics
     /// <summary>Short attribute snapshots for known-player patch verification.</summary>
     public List<string> SampleAttributeSnapshots { get; } = new();
 
+    public const int MaxSampleContractSnapshots = 5;
+
+    /// <summary>Short contract/value snapshots for known-player patch verification.</summary>
+    public List<string> SampleContractSnapshots { get; } = new();
+
     /// <summary>Accepted-player ceiling for this run; null means unlimited.</summary>
     public int? MaxAccepted { get; set; }
 

@@ -145,6 +145,21 @@ public sealed class Fm263Layout : IFmMemoryLayout
         new("Controversy", 0x77),
     };
 
+    public int FullContractPtrOffset => 0xA8;
+
+    public int ContractWeeklyWageOffset => 0x20;
+
+    public int ContractExpiryOffset => 0x48;
+
+    public int ContractStatusFlagsOffset => 0x57;
+
+    // PLAO_GUIDE_VALUE — SuperScout verified as FM's real transfer value (GBP).
+    public int MarketValueOffset => 0x234;
+
+    public int CurrentReputationOffset => 0x260;
+
+    public int WorldReputationOffset => 0x262;
+
     // Ported from a public pin; still confirm identity fields on 2–3 known players after first dump.
     public bool IsProvisional => true;
 }
