@@ -94,7 +94,7 @@ SQLite
 
 ### Unknowns
 
-- Exact column set for `players` beyond sanity + CONCEPT scalars — settle in PR 1 commit from DUMP_SCHEMA (no inventing fields)
+- None for the active migration commit.
 
 ### Risks
 
@@ -122,7 +122,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 1 — Migration for saves, snapshots, and players
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add migration v2: `saves`, `snapshots` (with current-pointer or `is_current` / `saves.current_snapshot_id`), `players` keyed by `snapshot_id`. Include dump metadata columns needed for UI (`scan_truncated`, `max_accepted`, `player_count`, game/bridge version fields, timestamps). Index what sanity list and later search will need (e.g. snapshot_id, name, ca). Keep attribute maps as JSON text for v1.
 
@@ -237,6 +237,7 @@ Ingest, IPC save commands, React, role scoring, history.
 ## Discoveries and replanning
 
 - Product decisions (2026-07-29): truncated ingest allowed with UI; Load Data = scan+ingest; sanity list in scope; multi-save M1; snapshot history deferred to backlog.
+- Migration v2 uses partial unique indexes for one active save and one current snapshot per save. Player scalars cover dump schema v5; arrays and attribute maps use JSON text. Foreign-key enforcement is enabled when the app opens SQLite.
 
 ## Completed work
 
