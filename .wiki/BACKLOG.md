@@ -12,6 +12,8 @@ This is the parking lot — aspirational work, deferred features, technical debt
 
 ## Medium
 
+- **Snapshot history per save** — MVP snapshot ingest keeps one **current** snapshot per save (replace-only-on-successful Load Data). Schema uses `snapshots` + players keyed by `snapshot_id` so history can be additive. **Trigger:** need to compare squads/attributes across game weeks or undo a bad load without rescanning FM. **Completion:** Load Data can retain prior snapshots; UI to browse/select a past snapshot for the active save; document retention limits if any.
+
 - **In-app BepInEx bootstrap** — Install BepInEx 6 IL2CPP into the Steam FM26 folder from the app, not only `FmDataBridge.dll`. DLL-only install is delivered ([bridge-plugin-install](./features/completed/bridge-plugin-install.md)); users without BepInEx still need a manual setup step. **Trigger:** onboarding friction or support burden from missing BepInEx. **Completion:** app bootstraps BepInEx (or equivalent guided install) on default Steam path; documented in bridge README; does not replace DLL-only remove/update semantics.
 
 - **Real WebView e2e (tauri-driver)** — Add [tauri-driver](https://v2.tauri.app/develop/tests/webdriver/) + WebdriverIO or Selenium when Playwright stub smoke hides real WebView integration bugs (IPC wiring, capabilities, platform WebView behaviour). **Trigger:** repeated regressions that Vitest + `cargo test` miss but manual `pnpm tauri dev` catches. **Not for template scaffold** — smoke scope is documented in [ARCHITECTURE.md](./ARCHITECTURE.md) §6.4; ponytail in `tauri.md` matches this trigger. **Completion:** optional CI job or documented fork path; template gate stays stub-smoke unless a product needs real-app automation.
