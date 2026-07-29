@@ -137,7 +137,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 2 — Save CRUD and active-save selection
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Service + Tauri commands to list/create/rename saves and set the active save. Ensure a default save exists when the DB has none. Active save is the only target for ingest and queries.
 
@@ -151,7 +151,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 3 — Transactional ingest from dump file
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Ingest a validated dump path into the active save: create new current snapshot, insert players, commit; on failure roll back and keep prior current snapshot. Persist `scanTruncated` / `maxAccepted`. Map dump player fields into columns/JSON. Hard-fail if validation fails. Unit-test with `golden_dump_v5.json` and a truncated fixture variant.
 
@@ -220,19 +220,19 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 **PR:** 1 — Saves schema and ingest engine
 
-**Commit:** Save CRUD and active-save selection
+**Commit:** Transactional ingest from dump file
 
 ### RED test (active commit)
 
-Assert an empty database gets one active default save, then prove create, rename, and set-active preserve exactly one active save.
+Ingest golden fixture into active save; assert player rows and snapshot metadata; failed validation leaves prior snapshot untouched.
 
 ### Expected outcome
 
-Save service and Tauri commands support list, create, rename, and set-active. An empty database gets one default active save.
+Validated dump path replaces the active save’s current snapshot in one transaction; truncated metadata persisted.
 
 ### Explicit exclusions
 
-Ingest, React UI, role scoring, history.
+Bridge scan, React sanity list UI.
 
 ## Discoveries and replanning
 
@@ -244,6 +244,7 @@ Ingest, React UI, role scoring, history.
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
 | 1 | Migration for saves, snapshots, and players | `86032cb` | Added migration v2, schema constraints and query indexes, foreign-key enforcement, and migration tests. |
+| 1 | Save CRUD and active-save selection | pending checkpoint | `features/snapshot` service + IPC: list/create/rename/set-active; default save on empty DB. |
 
 ## Final validation
 
