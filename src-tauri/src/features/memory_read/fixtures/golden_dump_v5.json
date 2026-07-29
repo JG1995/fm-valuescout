@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 5,
+  "generatedAtUtc": "2026-07-29T10:00:00.000Z",
+  "gameVersion": "26.3.2.2329565",
+  "supportedGameVersion": "26.3",
+  "bridgeVersion": "0.1.0",
+  "protocolVersion": 1,
+  "gameDate": "2026-08-14",
+  "gameDateSource": "memory",
+  "playerCount": 1,
+  "players": [
+    {
+      "uid": 77,
+      "ca": 150,
+      "pa": 170,
+      "name": "Golden Fixture Player",
+      "birthYear": 2000,
+      "birthDayOfYear": 100,
+      "age": 26,
+      "nationalities": ["ENG"],
+      "heightCm": 182,
+      "preferredFoot": "right",
+      "positions": { "AMR": 18, "MR": 16 },
+      "attributes": { "Acceleration": 14, "Pace": 15 },
+      "hiddenAttributes": { "Consistency": 12 },
+      "personality": { "Ambition": 14 },
+      "weeklyWageGbp": 25000,
+      "contractExpiryYear": 2028,
+      "contractExpiryDayOfYear": 180,
+      "transferListed": false,
+      "loanListed": false,
+      "notForSale": false,
+      "setForRelease": false,
+      "marketValueGbp": 5000000,
+      "reputation": { "current": 120, "world": 110 },
+      "currentClub": "Loan FC",
+      "parentClub": "Parent FC",
+      "onLoan": true,
+      "division": "Championship",
+      "teamLevel": "senior"
+    }
+  ]
+}

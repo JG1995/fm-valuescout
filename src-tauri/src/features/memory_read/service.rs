@@ -298,6 +298,11 @@ pub fn wait_for_request_terminal(
                     && is_terminal_state(&status.state) =>
             {
                 let dump_present = dump_path(bridge_directory).is_file();
+                if dump_present {
+                    if let Err(error) = validate_dump_at_bridge_directory(bridge_directory) {
+                        log::warn!("dump.json failed ingestibility validation: {error}");
+                    }
+                }
                 return Ok(DumpRequestResult {
                     request_id: request_id.to_string(),
                     state: status.state,
@@ -325,6 +330,13 @@ fn is_terminal_state(state: &str) -> bool {
     matches!(state, "ready" | "failed")
 }
 
+/// Validates `dump.json` under the bridge directory (ingest pre-check for feature 2).
+pub fn validate_dump_at_bridge_directory(
+    bridge_directory: &Path,
+) -> Result<(), super::dump_validation::DumpValidationError> {
+    super::dump_validation::validate_dump_file(&dump_path(bridge_directory))
+}
+
 /// Production IPC entry: resolve LocalAppData bridge dir, then request + wait.
 pub fn request_player_dump_from_local_app_data(
     wait: DumpWaitConfig,
@@ -337,6 +349,8 @@ pub fn request_player_dump_from_local_app_data(
 mod tests {
     use super::*;
     use std::sync::{Arc, Barrier};
+
+    const INGESTIBLE_DUMP_FIXTURE: &str = include_str!("fixtures/golden_dump_v5.json");
 
     const HAPPY_STATUS_JSON: &str = r#"{
   "protocolVersion": 1,
@@ -474,7 +488,7 @@ mod tests {
             }
             write_status_fixture(&writer_dir, "scanning", Some(&writer_id), None, None);
             thread::sleep(Duration::from_millis(30));
-            fs::write(dump_path(&writer_dir), r#"{"playerCount":1}"#).expect("dump");
+            fs::write(dump_path(&writer_dir), INGESTIBLE_DUMP_FIXTURE).expect("dump");
             write_status_fixture(&writer_dir, "ready", Some(&writer_id), Some(42), None);
         });
 
@@ -501,6 +515,7 @@ mod tests {
         assert_eq!(result.players_found, Some(42));
         assert!(result.dump_present);
         assert!(result.error.is_none());
+        validate_dump_at_bridge_directory(&bridge_dir).expect("dump ingestible after ready");
     }
 
     #[test]
@@ -570,8 +585,8 @@ mod tests {
         thread::spawn(move || {
             writer_barrier.wait();
             thread::sleep(Duration::from_millis(40));
+            fs::write(dump_path(&writer_dir), INGESTIBLE_DUMP_FIXTURE).expect("dump");
             write_status_fixture(&writer_dir, "ready", Some(&writer_id), Some(3), None);
-            fs::write(dump_path(&writer_dir), "{}").expect("dump");
         });
 
         barrier.wait();
@@ -587,6 +602,7 @@ mod tests {
 
         assert_eq!(result.request_id, "req-ours");
         assert_eq!(result.players_found, Some(3));
+        validate_dump_at_bridge_directory(&bridge_dir).expect("dump ingestible after ready");
     }
 
     fn write_status_fixture(

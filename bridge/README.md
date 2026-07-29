@@ -15,6 +15,8 @@ C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2
 
 Exact folder names: `fm-valuescout` / `fm-bridge`.
 
+**Dump contract:** frozen schema v5 field list, null rules, and ingestibility checks — [DUMP_SCHEMA.md](./DUMP_SCHEMA.md). Rust validates shape via `validate_dump_json` (see `src-tauri/src/features/memory_read/dump_validation.rs`).
+
 ### Memory access (`Memory/`)
 
 Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
