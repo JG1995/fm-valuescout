@@ -177,7 +177,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 1 — Load Data command composes scan and ingest
 
-**Status:** Active
+**Status:** Completed — `fc068b1`
 
 **Work:** Rust command used by the button runs bridge dump request then ingest for the active save. Typed errors distinguish scan failure vs ingest failure. Previous snapshot retained if ingest fails after a successful scan (dump may remain on disk). Prefer `spawn_blocking` for ingest if it can block the async runtime.
 
@@ -191,7 +191,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 2 — Snapshot status, sanity list, and save switcher UI
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** React: active-save switcher (create / rename / switch); after load (and on open) show snapshot metadata, truncated banner, and a short player sanity table (name, CA, club). Wire queries/mutations with TanStack Query; mockIPC tests. Soften/replace scan-only success copy so Load Data means “in database.”
 
@@ -220,25 +220,26 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 **PR:** 2 — Load Data UX, sanity list, save switcher
 
-**Commit:** Load Data command composes scan and ingest
+**Commit:** Snapshot status, sanity list, and save switcher UI
 
 ### RED test (active commit)
 
-Load Data IPC runs bridge dump request then ingest for active save; scan failure vs ingest failure return distinct errors; prior snapshot retained when ingest fails after successful scan.
+After load (and on open), UI shows snapshot metadata, truncated banner, and a short player sanity table (name, CA, club); save switcher supports create/rename/switch.
 
 ### Expected outcome
 
-One Rust command composes scan + ingest; typed errors distinguish failure modes; prior snapshot unchanged on ingest failure.
+React save switcher + post-load snapshot status, truncated banner, and sanity list wired via TanStack Query; Load Data copy reflects ingest not scan-only.
 
 ### Explicit exclusions
 
-Sanity list UI, save switcher UI.
+Full search/filter UI, snapshot history browser.
 
 ## Discoveries and replanning
 
 - Product decisions (2026-07-29): truncated ingest allowed with UI; Load Data = scan+ingest; sanity list in scope; multi-save M1; snapshot history deferred to backlog.
 - Migration v2 uses partial unique indexes for one active save and one current snapshot per save. Player scalars cover dump schema v5; arrays and attribute maps use JSON text. Foreign-key enforcement is enabled when the app opens SQLite.
 - Ingest (`features/snapshot/ingest.rs`) validates via `memory_read::dump_validation`, inserts snapshot+players with `is_current=0`, then promotes and deletes the prior current snapshot in one transaction so failures leave the old snapshot current. Single file read → `validate_dump_json` → parse (no validate-then-reread TOCTOU).
+- `load_data` IPC (`features/snapshot/load_data.rs`) scans via `memory_read::request_player_dump` without holding `Db`, then locks only for `ingest_dump_file`. `LoadDataError` uses `phase: scan | ingest` with scan `kind` for bridge/timeout/platform failures.
 
 ## Completed work
 
@@ -247,6 +248,7 @@ Sanity list UI, save switcher UI.
 | 1 | Migration for saves, snapshots, and players | `86032cb` | Added migration v2, schema constraints and query indexes, foreign-key enforcement, and migration tests. |
 | 1 | Save CRUD and active-save selection | `446913f` | `features/snapshot` service + IPC: list/create/rename/set-active; default save on empty DB; validate-before-ensure on create. |
 | 1 | Transactional ingest from dump file | `a77d744` | `ingest_dump_file` with single-read validation, staged transaction replace, golden/truncated/reject/rollback/re-ingest tests. |
+| 2 | Load Data command composes scan and ingest | `fc068b1` | `load_data` IPC scans without Db mutex, ingests via `load_data_after_scan`; `LoadDataError` phase scan/ingest; unit tests for success, scan fail, ingest rollback. |
 
 ## Final validation
 
