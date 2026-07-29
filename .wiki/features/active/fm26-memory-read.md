@@ -275,7 +275,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ### PR 3 — Player identity and attributes
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional PR title:** `feat(memory-read): extract player identity and attributes`
 
@@ -312,7 +312,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Visible, hidden, and personality attributes
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `3febd3b`
 
 **Work:**
 - Extract the three CONCEPT attribute groups into each dumped player: visible (technical/mental/physical as FM stores them), hidden, and personality. Document encoding quirks in bridge diagnostics or `bridge/` notes (e.g. attributes stored scaled ×5 — decode to the 1–20 scale the rest of the app will expect).
@@ -330,14 +330,14 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 ##### Build progress (Commit 2)
 
 - Layout: `AttributeEntries` / `HiddenAttributeEntries` / `PersonalityEntries` on `IFmMemoryLayout` + `Fm263Layout` (SuperScout Fields.cs keys/offsets).
-- `Extraction/`: `AttributeScale` (÷5 → 0–20; personality clamp 1–20), `PlayerAttributeReader` (three named maps).
-- Dump schema **v3** player shape: `attributes`, `hiddenAttributes`, `personality` (stable PascalCase keys). Foot decode now shares `AttributeScale`.
+- `Extraction/`: `AttributeScale` (÷5 → 1–20 or null; personality 1–20 or null), `PlayerAttributeReader` (three named `int?` maps).
+- Dump schema **v3** player shape: `attributes`, `hiddenAttributes`, `personality` (stable PascalCase keys; JSON `null` for unread/invalid). Foot decode still uses `DecodeScaled` (0 allowed for comparisons).
 - Diagnostics: encoding quirk lines + up to 5 `sampleAttributes` snapshots (Acceleration/Pace/Consistency/Ambition).
-- Tests: 15 new attribute cases (+ schema fixture updates). `dotnet test` 59 passed. `./scripts/dev check` green.
+- Tests: attribute decode + null-sentinel + schema fixture updates. `dotnet test` 65 passed. `./scripts/dev check` green.
 
 ### PR 4 — Contracts, clubs, loans, and dump contract freeze
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional PR title:** `feat(memory-read): extract contracts clubs and freeze dump contract`
 
@@ -347,7 +347,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Contracts, wages, transfer status, value, reputation
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Follow contract pointers from person objects; extract weekly wage, contract expiry, transfer status/listing flags, market value (FM’s value where readable), and player reputation into the dump.
@@ -400,21 +400,21 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ## Active work
 
-**PR:** PR 3 — Player identity and attributes
+**PR:** PR 4 — Contracts, clubs, loans, and dump contract freeze
 
-**Commit:** Commit 2 — Visible, hidden, and personality attributes
+**Commit:** Commit 1 — Contracts, wages, transfer status, value, reputation
 
 ### RED test (active commit)
 
-Attribute decoder fixtures for visible/hidden/personality (×5 decode to 1–20); dump shape/schema bump if player object gains attribute maps.
+Contract decoder fixtures for wage/expiry/transfer flags/value/reputation; null/missing free-agent behavior; dump schema bump for new fields.
 
 ### Expected outcome
 
-Each dumped player includes visible, hidden, and personality attribute groups with stable named keys on the 1–20 scale. Diagnostics include a few sample attribute snapshots.
+Each dumped player includes contract wage, expiry, transfer status, market value, and reputation with documented null rules for free agents / incomplete blocks. Schema version bumped; replace-only-on-success preserved.
 
 ### Explicit exclusions
 
-Contracts and clubs; role score computation.
+Club/loan/division resolution; SQLite.
 
 ## Discoveries and replanning
 
@@ -447,6 +447,7 @@ Contracts and clubs; role score computation.
 | 2 | Commit 3 — In-app scan request and completion watch | `3b1e6c2` | request.json TTL, Rust watch IPC, Load Data UI, force-scan fallback |
 | 2 | Follow-up — live-test ops (not a planned commit) | `62ddfc9`, `e638383`, `8a50cc8` | bridge-install; 10k scan cap + BACKLOG; refresh module flags after lazy load |
 | 3 | Commit 1 — Names, DOB, nationality, height, foot, positions | `b564143` | Dump schema v2; Extraction readers; identity sanity skips |
+| 3 | Commit 2 — Visible, hidden, and personality attributes | `3febd3b` | Dump schema v3; attr maps with JSON null for invalid |
 
 ## Final validation
 
