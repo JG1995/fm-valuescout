@@ -137,7 +137,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 2 — Save CRUD and active-save selection
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `446913f`
 
 **Work:** Service + Tauri commands to list/create/rename saves and set the active save. Ensure a default save exists when the DB has none. Active save is the only target for ingest and queries.
 
@@ -244,7 +244,7 @@ Bridge scan, React sanity list UI.
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
 | 1 | Migration for saves, snapshots, and players | `86032cb` | Added migration v2, schema constraints and query indexes, foreign-key enforcement, and migration tests. |
-| 1 | Save CRUD and active-save selection | pending checkpoint | `features/snapshot` service + IPC: list/create/rename/set-active; default save on empty DB. |
+| 1 | Save CRUD and active-save selection | `446913f` | `features/snapshot` service + IPC: list/create/rename/set-active; default save on empty DB; validate-before-ensure on create. |
 
 ## Final validation
 
