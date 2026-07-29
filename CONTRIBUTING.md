@@ -77,10 +77,12 @@ Building the FM26 BepInEx plugin (Windows host, .NET 6) is separate from the Lin
 1. `/plan-feature` — plan one feature (PRs and commits). Trivial changes skip the ledger.
 2. `/build` — write a failing test, implement the smallest passing change, refactor while green (default: one active commit, then stop).
 3. `/checkpoint` — stage exact files, run the gate, dispatch the reviewer, present evidence.
-4. `/fix` — when review blocks, address delegated findings, then checkpoint again.
+4. `/fix` — when review blocks, address delegated findings (default: CRITICAL, HIGH, and MEDIUM), then checkpoint again.
 5. Approve the staged commit.
 6. Reassess remaining commits in the delivery plan.
 7. `/finish-feature` — when the delivery plan is complete: full tests, feature-complete review, then documentation reconciliation when review clears.
+
+**Optional:** `/build-loop` — manual opt-in only; automates build, checkpoint, and fix (up to three fix rounds) and commits when only NITPICK findings remain. See `.cursor/commands/build-loop.md`.
 
 Optional (not every feature): `/spike` when a runtime experiment is the only way to unblock planning or build; `/security-audit` before first deploy or after auth, payments, or sensitive data features.
 

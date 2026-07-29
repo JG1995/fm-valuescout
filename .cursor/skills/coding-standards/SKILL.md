@@ -14,7 +14,7 @@ This skill defines **how code should look and behave**. `.wiki/ARCHITECTURE.md` 
 | Path | When to load |
 | --- | --- |
 | `references/universal.md` | Every implementation and code review — read first |
-| `references/testing.md` | Every `/build`, `/fix`, `/checkpoint`, and code review that touches or adds tests |
+| `references/testing.md` | Every `/build`, `/build-loop`, `/fix`, `/checkpoint`, and code review that touches or adds tests |
 | `references/react.md` | App code under `src/` — Bulletproof React layout, TanStack Router, Query, Zustand, components |
 | `references/vite.md` | `vite.config.ts`, Vitest, TS config, env vars, `package.json` scripts |
 | `references/rust.md` | Rust code under `src-tauri/` — module layout, errors, clippy, tests |
@@ -37,7 +37,7 @@ Other skills in `.cursor/skills/` (e.g. `ui-design`) may add domain rules. When 
 
 | Phase | Requirement |
 | --- | --- |
-| `/build`, `/fix` | Read this skill + `universal.md` + `testing.md` when the commit adds or changes tests + matching refs before editing production code or tests |
+| `/build`, `/build-loop`, `/fix` | Read this skill + `universal.md` + `testing.md` when the commit adds or changes tests + matching refs before editing production code or tests |
 | `/checkpoint`, `/review`, `reviewer` | Read before judging conventions in the diff |
 | `/plan-feature` | Optional for delivery planning; required when the plan names concrete patterns |
 

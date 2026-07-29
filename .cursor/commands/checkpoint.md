@@ -89,10 +89,12 @@ Do not mirror the feature ledger or staged diff. Skip when unsure.
 
 ## Fixing review findings
 
-Addressing CRITICAL/HIGH (or any) findings is **not** automatic. Typical flow:
+Addressing CRITICAL/HIGH/MEDIUM (or any) findings is **not** automatic in manual `/checkpoint`. Typical flow:
 
 1. Developer reads the Review verdict.
 2. Developer runs **`/fix`** (or gives explicit fix instructions / edits manually).
 3. Developer runs **`/checkpoint`** again when ready.
+
+**`/build-loop`** automates this cycle (manual opt-in only) — see `.cursor/commands/build-loop.md`.
 
 Only fix review findings inside `/checkpoint` when the developer **explicitly asks** you to apply specific corrections in this turn.

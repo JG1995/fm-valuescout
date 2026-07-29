@@ -17,6 +17,7 @@ Follow `.cursor/rules/recallium.mdc` and the **## Recallium** section in the act
 | `/roadmap` | Prior sequencing or dependency decisions | Approved sequence rationale |
 | `/plan-feature` | Prior work on this feature or area | Durable planning context not in ledger |
 | `/build` | Unfamiliar conventions for this commit | Durable progress or constraints from the commit |
+| `/build-loop` | Same as `/build` for the commit; checkpoint context each loop pass | Durable progress or remediation not in ledger |
 | `/fix` | Prior decisions behind delegated findings | Durable remediation context |
 | `/checkpoint` | Before presenting checkpoint package | New snapshot memories when constraints, roadmap, or non-obvious learnings changed — not ledger mirrors |
 | `/finish-feature` | Feature decisions and constraints | New close-out snapshots when final constraints, roadmap, or feature-wide learnings changed — not ledger mirrors |
@@ -63,17 +64,24 @@ When structural questions arise during planning: read `.wiki/ARCHITECTURE.md`, s
 - Do not stage, commit, push, or run `/checkpoint` unless the developer asks.
 - Broad documentation reconciliation belongs to `/finish-feature`, not each `/build`.
 
+## Build-loop phase (`/build-loop` — manual opt-in only)
+
+- **Developer must type `/build-loop`.** Never suggest or run it automatically.
+- Same scope as `/build` (one active commit), then automated checkpoint → fix (CRITICAL/HIGH/MEDIUM) → checkpoint, up to **3** fix rounds.
+- On success: auto-commit content and ledger advancement (two commits). On failure after 3 rounds: report verdict; do not commit.
+- NITPICK findings do not block loop exit.
+
 ## Fix phase (`/fix`)
 
 - Address **only** review findings the developer delegated — same project skills and architecture rules as `/build`.
 - Do not advance the delivery plan or mark the next commit active.
-- Stop for **`/checkpoint`** again. Do not commit or auto-fix inside `/fix`.
+- Stop for **`/checkpoint`** again. Do not commit inside `/fix`. **Exception:** when `/fix` runs inside **`/build-loop`**, continue to the next automated checkpoint — do not stop for the developer.
 
 ## Checkpoint phase (`/checkpoint`)
 
 - Stage exact hunks, run the gate, dispatch the `reviewer` subagent for non-trivial work.
 - Present the full **Review verdict** to the developer. Do **not** automatically fix review findings — the developer delegates fixes or approves commit.
-- Present evidence and wait for explicit approval before committing locally.
+- Present evidence and wait for explicit approval before committing locally. **Exception:** **`/build-loop`** auto-commits on loop success without a separate approval step (see `.cursor/commands/build-loop.md` Phase 3).
 - After the content commit succeeds, **immediately** update the active feature ledger (real hash, next commit `Active`) and commit that ledger-only advancement — do not leave it unstaged for a separate ask. See `.cursor/commands/checkpoint.md` steps 14–15.
 - Do not start new feature work or expand scope beyond the staged outcome.
 

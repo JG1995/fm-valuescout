@@ -13,7 +13,7 @@ Before starting any task:
    - An active feature ledger in `.wiki/features/active/` (any `.md` except `README.md`), when one exists. Internalize feature status, the single `Active` commit, provisional commit message, RED test, expected outcome, and explicit exclusions from **Active work**. Note recent **Discoveries and replanning** entries.
    - Otherwise read `.wiki/TODO.md` — **Plan next** and the development sequence when present. Do not invent a feature; wait for `/plan-feature` or explicit developer direction.
 6. Check `.cursor/skills/` for a skill whose description matches your task. If one does, read its `SKILL.md` and follow its guidance.
-7. **Recallium** — read `.cursor/skills/recallium-usage/SKILL.md` when the task uses a workflow command (`/stack`, `/roadmap`, `/plan-feature`, `/build`, `/checkpoint`, `/fix`, `/finish-feature`, `/docs-review`, `/spike`, `/review`, `/security-audit`), depends on prior project decisions, or investigates unfamiliar conventions. Search Recallium before non-obvious decisions per `.cursor/rules/recallium.mdc`.
+7. **Recallium** — read `.cursor/skills/recallium-usage/SKILL.md` when the task uses a workflow command (`/stack`, `/roadmap`, `/plan-feature`, `/build`, `/build-loop`, `/checkpoint`, `/fix`, `/finish-feature`, `/docs-review`, `/spike`, `/review`, `/security-audit`), depends on prior project decisions, or investigates unfamiliar conventions. Search Recallium before non-obvious decisions per `.cursor/rules/recallium.mdc`.
 
 ## Re-read triggers
 

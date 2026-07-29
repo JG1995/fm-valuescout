@@ -1,14 +1,16 @@
 ---
-description: Address delegated review findings — same project skills and architecture rules as build; then checkpoint again
+description: Address delegated review findings — same project skills as build; then checkpoint again (or continue the loop under /build-loop)
 ---
 
 Fix **delegated review findings** on the current commit. This command does not advance the delivery plan to the next commit.
 
 ## What to fix
 
-${ARGUMENTS:-Address all **CRITICAL** and **HIGH** findings from the most recent **Review verdict** in this conversation. If no verdict exists, ask the developer what to fix.}
+${ARGUMENTS:-Address all **CRITICAL**, **HIGH**, and **MEDIUM** findings from the most recent **Review verdict** in this conversation. If no verdict exists, ask the developer what to fix.}
 
-The developer may delegate narrowly (e.g. one HIGH item, or specific MEDIUM findings). Fix **only** what is delegated — no drive-by cleanup, refactors, or scope expansion.
+The developer may delegate narrowly (e.g. one HIGH item, or CRITICAL/HIGH only). Fix **only** what is delegated — no drive-by cleanup, refactors, or scope expansion.
+
+**Default delegation** includes **MEDIUM** as well as CRITICAL and HIGH. MEDIUM does not make **Blocking: Yes** in manual `/checkpoint` — the developer may still approve a commit with MEDIUM findings. `/build-loop` auto-fixes MEDIUM before it commits.
 
 If a finding is incorrect or a NITPICK, say so and do not "fix" it by over-engineering.
 
@@ -38,8 +40,9 @@ Skip save when unsure.
 | Command | Scope |
 | --- | --- |
 | `/build` | Implement the **active commit** from the plan (new work) |
+| `/build-loop` | Same as `/build`, then automated checkpoint/fix (manual opt-in only) |
 | `/fix` | Correct **delegated review findings** on the current commit |
-| `/checkpoint` | Stage, review, present verdict, commit after approval |
+| `/checkpoint` | Stage, review, present; commit only when developer approves (unless `/build-loop` Phase 3) |
 
 Do not mark the active commit completed, activate the next commit, or implement planned work not required by the delegated findings.
 
@@ -61,6 +64,8 @@ Use Context7 MCP for library facts when a finding involves external APIs.
 
 1. Report what changed per finding — map each delegated item to the correction.
 2. Note any finding you did not fix and why (not delegated, invalid, or needs product decision).
-3. **Stop.** Tell the developer to run **`/checkpoint`** again. Do not stage, commit, or dispatch reviewer fixes automatically.
+3. **Stop** for manual workflow — tell the developer to run **`/checkpoint`** again. Do not stage, commit, or dispatch reviewer fixes automatically.
 
-Do not stage, commit, push, amend, rebase, squash, or rewrite history unless the developer explicitly asks.
+**When invoked under `/build-loop`:** do **not** stop or wait for the developer. Continue into the next automated `/checkpoint` pass in the same command invocation. `/build-loop` owns the loop; only exit when the loop contract says so (clean verdict, fix cap reached, or unrecoverable blocker).
+
+`/fix` never commits. Only **`/build-loop` Phase 3** auto-commits on loop success. Do not stage, commit, push, amend, rebase, squash, or rewrite history from `/fix` unless the developer explicitly asks outside an active `/build-loop` run.

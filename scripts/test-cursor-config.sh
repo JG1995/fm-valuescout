@@ -39,7 +39,7 @@ PY
 fi
 
 echo "=== Test: Workflow commands ==="
-for cmd in stack roadmap plan-feature build fix checkpoint review docs-review finish-feature spike security-audit; do
+for cmd in stack roadmap plan-feature build build-loop fix checkpoint review docs-review finish-feature spike security-audit; do
   if [[ ! -f "$commands_dir/$cmd.md" ]]; then
     fail "missing command: $cmd.md"
   fi
@@ -48,8 +48,8 @@ for cmd in stack roadmap plan-feature build fix checkpoint review docs-review fi
   fi
 done
 defined_count=$(find "$commands_dir" -maxdepth 1 -name '*.md' | wc -l)
-if [[ "$defined_count" -ne 11 ]]; then
-  fail "expected exactly 11 workflow commands, found $defined_count"
+if [[ "$defined_count" -ne 12 ]]; then
+  fail "expected exactly 12 workflow commands, found $defined_count"
 fi
 printf '  Found %d workflow command(s).\n' "$defined_count"
 

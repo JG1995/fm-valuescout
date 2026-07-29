@@ -27,10 +27,12 @@ Never put credentials in repository files — repository files must not contain 
 3. **Review the plan.** Adjust PR/commit boundaries if needed.
 4. **`/build`** — implement the active commit (default: one commit, then stop for checkpoint).
 5. **`/checkpoint`** — stage, gate, reviewer verdict, present for approval.
-6. **`/fix`** — when review blocks, address delegated findings, then checkpoint again.
+6. **`/fix`** — when review blocks, address delegated findings (default: CRITICAL, HIGH, and MEDIUM), then checkpoint again.
 7. **Approve.** Agent creates one atomic local commit after your approval.
 8. **Reassess.** Activate the next commit in the delivery plan.
 9. **`/finish-feature`** — when every commit in the delivery plan is done: full tests, feature-complete review, then documentation reconciliation.
+
+**Optional:** **`/build-loop`** — same as `/build` for one commit, then an automated checkpoint/fix loop (up to 3 fix rounds) and auto-commit when only NITPICK remains. Use only when you explicitly type the command; agents must not suggest or run it by default.
 
 For trivial changes (doc fix, rename), describe the change — the agent follows the loop internally without invoking each command.
 
@@ -57,7 +59,8 @@ Invoke these from the chat command palette in Cursor (type `/`):
 | `/roadmap` | Dependency-aware MVP build order (grounded in planned specs when present; inferred from CONCEPT when not); write TODO sequence only after approval |
 | `/plan-feature` | Next feature from the sequence — PR/commit plan (trunk-based, atomic commits, Conventional Commits) |
 | `/build` | Default: one active commit (RED/GREEN), ledger update, stop for `/checkpoint`. Opt-in: full feature one commit at a time |
-| `/fix` | Delegated CRITICAL/HIGH (or specified) findings — project skills apply; stop for `/checkpoint` |
+| `/build-loop` | **Manual opt-in:** `/build` + automated checkpoint/fix loop (max 3 fix rounds; fixes CRITICAL/HIGH/MEDIUM) + auto-commit when NITPICK-only |
+| `/fix` | Default: CRITICAL, HIGH, and MEDIUM (or narrowed delegation) — stop for `/checkpoint` unless running inside `/build-loop` |
 | `/checkpoint` | Stage, reviewer verdict, present for approval; commit only when approved |
 | `/review` | Read-only review — commit scope (staged) or feature-complete (whole feature diff) |
 | `/docs-review` | Reconcile durable documentation with implemented state |

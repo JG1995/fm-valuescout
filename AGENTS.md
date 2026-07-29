@@ -61,9 +61,11 @@ The development cycle follows a repeating loop. Invoke the Cursor commands from 
 1. **Feature plan** (`/plan-feature`) — plan one feature: PR and commit breakpoints, high-level work descriptions.
 2. **Build** (`/build`) — implement the active commit test-first (RED → GREEN → REFACTOR).
 3. **Checkpoint** (`/checkpoint`) — stage exact changes, run the gate, present evidence and review, wait for approval, commit locally.
-4. **Fix** (`/fix`) — when review blocks, address only the findings the developer delegated, then checkpoint again.
+4. **Fix** (`/fix`) — when review blocks, address delegated findings (default: CRITICAL, HIGH, and MEDIUM), then checkpoint again.
 5. **Reassess** — update the delivery plan and select the next commit; repeat from build until the plan is done.
 6. **Finish feature** (`/finish-feature`) — when every planned commit is done: full tests, feature-complete review, then documentation reconciliation.
+
+**Optional:** **`/build-loop`** — manual opt-in only; never suggest or run automatically. Same as `/build` for one commit, then an automated checkpoint/fix loop and auto-commit when only NITPICK remains. Typing `/build-loop` is explicit approval to commit on loop success without a separate checkpoint approval step.
 
 The user never invokes these commands directly on a trivial change — they just describe the fix and you follow the full loop internally.
 
@@ -183,7 +185,7 @@ Exceptions: commit messages (Conventional Commits per `.cursor/skills/convention
 - Do not perform unrelated cleanup.
 - Stage exact files or hunks. Never use `git add .` or `git commit -a`.
 - Before commit, inspect status and the complete diff, run `git diff --cached --check`, review the staged diff and stat, and report tests, gate results, documentation impact, reviewer findings, risks, and the proposed commit message.
-- Wait for explicit developer approval before committing locally.
+- Wait for explicit developer approval before committing locally — except when the developer invoked **`/build-loop`**, which auto-commits on loop success (content commit plus ledger advancement) without a separate approval step.
 - Never push, amend, rebase, squash, or otherwise rewrite history without explicit approval.
 
 ## Recallium project

@@ -56,6 +56,7 @@ Each command defines a **## Recallium** section — follow it for the active pha
 | `/roadmap` | Prior sequencing or dependency decisions | Approved sequence rationale |
 | `/plan-feature` | Prior work on this feature or area | Durable planning context |
 | `/build` | Unfamiliar conventions for the commit | Durable progress or constraints |
+| `/build-loop` | Same as `/build`; checkpoint context each loop pass | Durable progress or remediation not in ledger |
 | `/fix` | Prior decisions behind findings | Durable remediation context |
 | `/checkpoint` | Before presenting checkpoint | New snapshot memories when constraints, roadmap, or non-obvious learnings changed — not ledger mirrors |
 | `/finish-feature` | Feature decisions and constraints | New close-out snapshots when final constraints, roadmap, or feature-wide learnings changed — not ledger mirrors |

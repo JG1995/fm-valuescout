@@ -71,7 +71,7 @@ The workflow turns product notes into atomic, reviewed commits on trunk. After t
 - `./scripts/dev secrets [--staged]` — scan for secrets with secretlint (full tree or staged files only)
 - `./scripts/dev smoke` — Playwright smoke (`e2e/smoke.spec.ts`; stub IPC in Chromium, not real WebView or SQLite — see ARCHITECTURE §6.4; run `pnpm exec playwright install chromium` once after install)
 - `./scripts/dev mutate <target>` — scoped mutation tests (not configured yet)
-- `/stack`, `/roadmap`, `/plan-feature`, `/build`, `/fix`, `/checkpoint`, `/review`, `/docs-review`, `/finish-feature` — core workflow (see `.cursor/commands/`)
+- `/stack`, `/roadmap`, `/plan-feature`, `/build`, `/build-loop` (manual opt-in), `/fix`, `/checkpoint`, `/review`, `/docs-review`, `/finish-feature` — core workflow (see `.cursor/commands/`)
 - `/spike` — optional disposable experiment when a technical question needs runtime evidence (not in the main loop)
 - `/security-audit` — optional read-only security audit before deploy or after auth, payments, or sensitive data (not in the main loop)
 - Dispatch Reviewer or Documentation Steward via `.cursor/agents/`; use Cursor's built-in `explore` subagent for fast codebase search
