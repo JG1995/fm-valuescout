@@ -167,6 +167,9 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+    /* biome-ignore-start lint/complexity/noImportantStyles: a motion reset only
+       works if it cannot be overridden — Tailwind's transition utilities carry
+       higher specificity than this universal selector. */
     *,
     *::before,
     *::after {
@@ -175,5 +178,6 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
+    /* biome-ignore-end lint/complexity/noImportantStyles: end motion reset */
   }
 }
