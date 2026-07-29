@@ -347,7 +347,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Contracts, wages, transfer status, value, reputation
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `fe6ee98`
 
 **Work:**
 - Follow contract pointers from person objects; extract weekly wage, contract expiry, transfer status/listing flags, market value (FM’s value where readable), and player reputation into the dump.
@@ -372,7 +372,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Clubs, loans, division, team level, game date
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Resolve **current club** vs **parent club**, loan in/out, division, and team level (senior/reserve/youth as the layout allows). Apply deterministic rules when a player appears in multiple team structures so dumps are stable across scans.
@@ -410,19 +410,19 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 4 — Contracts, clubs, loans, and dump contract freeze
 
-**Commit:** Commit 1 — Contracts, wages, transfer status, value, reputation
+**Commit:** Commit 2 — Clubs, loans, division, team level, game date
 
 ### RED test (active commit)
 
-Contract decoder fixtures for wage/expiry/transfer flags/value/reputation; null/missing free-agent behavior; dump schema bump for new fields.
+Club/loan/division/team-level resolution fixtures; dump metadata game date (and source tag); multi-squad deterministic rules.
 
 ### Expected outcome
 
-Each dumped player includes contract wage, expiry, transfer status, market value, and reputation with documented null rules for free agents / incomplete blocks. Schema version bumped; replace-only-on-success preserved.
+Each dumped player has stable current vs parent club, loan in/out, division, and team level as the layout allows. Dump metadata includes in-game date. Diagnostics flag widespread club-resolution failures.
 
 ### Explicit exclusions
 
-Club/loan/division resolution; SQLite.
+SQLite ingest or search UI; asking-price heuristics or non-memory-derived estimates.
 
 ## Discoveries and replanning
 
@@ -457,6 +457,7 @@ Club/loan/division resolution; SQLite.
 | 2 | Follow-up — live-test ops (not a planned commit) | `62ddfc9`, `e638383`, `8a50cc8` | bridge-install; 10k scan cap + BACKLOG; refresh module flags after lazy load |
 | 3 | Commit 1 — Names, DOB, nationality, height, foot, positions | `b564143` | Dump schema v2; Extraction readers; identity sanity skips |
 | 3 | Commit 2 — Visible, hidden, and personality attributes | `3febd3b` | Dump schema v3; attr maps with JSON null for invalid |
+| 4 | Commit 1 — Contracts, wages, transfer status, value, reputation | `fe6ee98` | Dump schema v4; free-agent nulls; money sentinels |
 
 ## Final validation
 
