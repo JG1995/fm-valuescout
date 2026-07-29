@@ -15,7 +15,7 @@ test.describe("walking skeleton smoke", () => {
     const header = page.getByTestId("app-header");
 
     await expect(
-      main.getByRole("heading", { name: "FM ValueScout" }),
+      main.getByRole("heading", { level: 1, name: "Dashboard" }),
     ).toBeVisible();
     await expect(main.getByRole("heading", { name: "Saves" })).toBeVisible();
     await expect(

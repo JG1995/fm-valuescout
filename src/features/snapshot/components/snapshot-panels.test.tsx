@@ -55,7 +55,7 @@ describe("snapshot panels", () => {
 
     expect(
       await screen.findByText(
-        /Incomplete snapshot: scan was capped at 10000 players/i,
+        /Incomplete snapshot: scan was capped at 10,000 players/i,
       ),
     ).toBeInTheDocument();
     expect(

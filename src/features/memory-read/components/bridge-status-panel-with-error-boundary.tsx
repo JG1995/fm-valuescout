@@ -11,7 +11,7 @@ export function BridgeStatusPanelWithErrorBoundary() {
   const queryClient = useQueryClient();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-gutter">
       <ErrorBoundary
         fallback={({ error, reset }) => (
           <BridgePluginInstallError

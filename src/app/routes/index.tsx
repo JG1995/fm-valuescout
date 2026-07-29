@@ -21,33 +21,28 @@ export const Route = createFileRoute("/")({
   component: IndexPage,
 });
 
+/** Panels load independently so one slow or failing area cannot blank the page. */
+function PanelFallback({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
+      {label}
+    </div>
+  );
+}
+
 function IndexPage() {
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold text-on-background">
-        FM ValueScout
-      </h1>
-      <Suspense
-        fallback={
-          <p className="text-on-background/80">Loading snapshot data…</p>
-        }
-      >
+    <div className="space-y-gutter">
+      <h1 className="text-headline-lg text-on-surface">Dashboard</h1>
+      <Suspense fallback={<PanelFallback label="Loading snapshot data…" />}>
         <SnapshotPanelsWithErrorBoundary />
       </Suspense>
-      <Suspense
-        fallback={
-          <p className="text-on-background/80">Loading bridge status…</p>
-        }
-      >
+      <Suspense fallback={<PanelFallback label="Loading bridge status…" />}>
         <BridgeStatusPanelWithErrorBoundary />
       </Suspense>
-      <Suspense
-        fallback={
-          <p className="text-on-background/80">Loading health status…</p>
-        }
-      >
+      <Suspense fallback={<PanelFallback label="Loading health status…" />}>
         <HealthStatusPanelWithErrorBoundary />
       </Suspense>
-    </section>
+    </div>
   );
 }

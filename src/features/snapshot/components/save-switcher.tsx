@@ -4,6 +4,8 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button/button";
+import { TextField } from "@/components/ui/field/text-field";
+import { Panel } from "@/components/ui/panel/panel";
 import { createSave } from "../api/create-save";
 import { renameSave } from "../api/rename-save";
 import { savesQueryOptions } from "../api/saves-query-options";
@@ -37,62 +39,64 @@ export function SaveSwitcher() {
   });
 
   return (
-    <div className="space-y-3 rounded-md border border-on-background/20 p-4">
-      <h2 className="text-lg font-medium text-on-background">Saves</h2>
-      <form
-        className="space-y-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (activeSave) {
-            rename.mutate({
-              saveId: activeSave.id,
-              name: readName(event.currentTarget),
+    <Panel title="Saves">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <form
+          className="space-y-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (activeSave) {
+              rename.mutate({
+                saveId: activeSave.id,
+                name: readName(event.currentTarget),
+              });
+            }
+          }}
+        >
+          {/* Keyed to the save so a draft cannot survive a switch made from the
+              top bar and then rename whichever save became active. */}
+          <TextField
+            key={activeSave?.id}
+            label="Rename active save"
+            name="name"
+            defaultValue={activeSave?.name ?? ""}
+            error={rename.isError ? rename.error.message : undefined}
+          />
+          <Button
+            type="submit"
+            variant="secondary"
+            disabled={!activeSave}
+            loading={rename.isPending}
+            loadingLabel="Renaming…"
+          >
+            Rename save
+          </Button>
+        </form>
+        <form
+          className="space-y-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            create.mutate(readName(form), {
+              onSuccess: () => form.reset(),
             });
-          }
-        }}
-      >
-        <label className="block text-on-background/80" htmlFor="rename-save">
-          Rename active save
-        </label>
-        {/* Keyed to the save so a draft cannot survive a switch made from the top
-            bar and then rename whichever save became active. */}
-        <input
-          key={activeSave?.id}
-          id="rename-save"
-          name="name"
-          defaultValue={activeSave?.name ?? ""}
-          className="w-full rounded-md border border-on-background/20 bg-background px-3 py-2 text-on-background"
-        />
-        <Button type="submit" variant="secondary" disabled={!activeSave}>
-          Rename save
-        </Button>
-        {rename.isError && (
-          <p className="text-on-background/80">{rename.error.message}</p>
-        )}
-      </form>
-      <form
-        className="space-y-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const form = event.currentTarget;
-          create.mutate(readName(form), { onSuccess: () => form.reset() });
-        }}
-      >
-        <label className="block text-on-background/80" htmlFor="new-save">
-          New save
-        </label>
-        <input
-          id="new-save"
-          name="name"
-          className="w-full rounded-md border border-on-background/20 bg-background px-3 py-2 text-on-background"
-        />
-        <Button type="submit" variant="secondary">
-          Create save
-        </Button>
-        {create.isError && (
-          <p className="text-on-background/80">{create.error.message}</p>
-        )}
-      </form>
-    </div>
+          }}
+        >
+          <TextField
+            label="New save"
+            name="name"
+            error={create.isError ? create.error.message : undefined}
+          />
+          <Button
+            type="submit"
+            variant="secondary"
+            loading={create.isPending}
+            loadingLabel="Creating…"
+          >
+            Create save
+          </Button>
+        </form>
+      </div>
+    </Panel>
   );
 }

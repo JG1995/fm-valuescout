@@ -30,6 +30,17 @@ describe("bridge status panel", () => {
     expect(screen.getByText(/^FM modules:/i)).toHaveTextContent("detected");
   });
 
+  it("marks a failed scan with the error tone", async () => {
+    setBridgeStatusIpcMockMode("failed");
+    renderWithProviders();
+
+    const chip = await screen.findByText(/^Bridge:/i);
+
+    expect(chip).toHaveTextContent("failed");
+    // Tone as well as wording: a failed bridge must not wear a green tick.
+    expect(chip).toHaveClass("bg-error-container");
+  });
+
   it("shows missing bridge guidance when status file is absent", async () => {
     setBridgeStatusIpcMockMode("missing");
     renderWithProviders();

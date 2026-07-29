@@ -24,7 +24,7 @@ describe("app shell routing", () => {
 
     expect(await screen.findByTestId("app-header")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "FM ValueScout" }),
+      screen.getByRole("heading", { level: 1, name: "Dashboard" }),
     ).toBeInTheDocument();
   });
 

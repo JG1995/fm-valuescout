@@ -3,7 +3,10 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
+import { CircleCheck, CircleDashed, CircleX } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
+import { Panel } from "@/components/ui/panel/panel";
+import { StatusChip } from "@/components/ui/status-chip/status-chip";
 import { TauriCommandError } from "@/lib/tauri-client";
 import { bridgeInstallQueryOptions } from "../api/bridge-install-query-options";
 import { installBridgePlugin } from "../api/install-bridge-plugin";
@@ -54,82 +57,81 @@ export function BridgePluginInstallSection() {
     onSettled: invalidateInstallStatus,
   });
 
-  const installPending = install.isPending;
-  const removePending = remove.isPending;
-  const actionsDisabled = installPending || removePending;
+  const actionsDisabled = install.isPending || remove.isPending;
 
   return (
-    <div className="space-y-3 rounded-md border border-on-background/20 p-4">
-      <p className="font-medium text-on-background">Bridge plugin install</p>
-      <p className="text-on-background/80">
-        Plugin DLL:{" "}
-        <strong className="text-on-background">
-          {data.pluginPresent ? "installed" : "not installed"}
-        </strong>
+    <Panel title="Bridge plugin install">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusChip
+          tone={data.pluginPresent ? "success" : "neutral"}
+          icon={data.pluginPresent ? CircleCheck : CircleDashed}
+        >
+          {`Plugin DLL: ${data.pluginPresent ? "installed" : "not installed"}`}
+        </StatusChip>
+        <StatusChip
+          tone={data.bepinexPresent ? "success" : "error"}
+          icon={data.bepinexPresent ? CircleCheck : CircleX}
+        >
+          {`BepInEx: ${data.bepinexPresent ? "found" : "not found"}`}
+        </StatusChip>
+      </div>
+
+      <p className="mt-3 text-body-sm text-on-surface-variant">
+        Target:{" "}
+        <code className="font-mono text-mono-sm">{data.pluginsPath}</code>
       </p>
-      <p className="text-on-background/80">
-        BepInEx:{" "}
-        <strong className="text-on-background">
-          {data.bepinexPresent ? "found" : "not found"}
-        </strong>
+      <p className="mt-2 max-w-prose text-body-sm text-on-surface-variant">
+        Installs or updates{" "}
+        <code className="font-mono text-mono-sm">FmDataBridge.dll</code> in your
+        Steam FM26{" "}
+        <code className="font-mono text-mono-sm">BepInEx/plugins</code> folder.
+        Restart Football Manager after install so BepInEx loads the new DLL.
+        Windows may prompt for permission or antivirus approval when writing
+        into the game folder.
       </p>
-      <p className="text-sm text-on-background/60">
-        Target: <code>{data.pluginsPath}</code>
-      </p>
-      <p className="text-sm text-on-background/60">
-        Installs or updates <code>FmDataBridge.dll</code> in your Steam FM26{" "}
-        <code>BepInEx/plugins</code> folder. Restart Football Manager after
-        install so BepInEx loads the new DLL. Windows may prompt for permission
-        or antivirus approval when writing into the game folder.
-      </p>
-      <div className="flex flex-wrap gap-2">
+
+      <div className="mt-4 flex flex-wrap gap-2">
         <Button
-          type="button"
           variant="secondary"
           disabled={actionsDisabled || !data.bepinexPresent}
+          loading={install.isPending}
+          loadingLabel="Installing…"
           onClick={() => install.mutate()}
         >
-          {installPending
-            ? "Installing…"
-            : data.pluginPresent
-              ? "Update plugin"
-              : "Install plugin"}
+          {data.pluginPresent ? "Update plugin" : "Install plugin"}
         </Button>
         <Button
-          type="button"
           variant="secondary"
           disabled={actionsDisabled || !data.pluginPresent}
+          loading={remove.isPending}
+          loadingLabel="Removing…"
           onClick={() => remove.mutate()}
         >
-          {removePending ? "Removing…" : "Remove plugin"}
+          Remove plugin
         </Button>
       </div>
+
       {install.isSuccess && (
-        <p className="text-on-background/80">
+        <p className="mt-3 text-body-sm text-on-surface">
           Plugin installed. Restart Football Manager 26 to load it.
         </p>
       )}
       {remove.isSuccess && (
-        <p className="text-on-background/80">
-          Plugin removed from <code>BepInEx/plugins</code>.
+        <p className="mt-3 text-body-sm text-on-surface">
+          Plugin removed from{" "}
+          <code className="font-mono text-mono-sm">BepInEx/plugins</code>.
         </p>
       )}
       {install.isError && (
-        <p className="text-on-background/80">
-          Install failed.{" "}
-          <span className="text-on-background">
-            {installErrorCopy(install.error)}
-          </span>
+        <p className="mt-3 text-body-sm text-error">
+          Install failed. {installErrorCopy(install.error)}
         </p>
       )}
       {remove.isError && (
-        <p className="text-on-background/80">
-          Remove failed.{" "}
-          <span className="text-on-background">
-            {installErrorCopy(remove.error)}
-          </span>
+        <p className="mt-3 text-body-sm text-error">
+          Remove failed. {installErrorCopy(remove.error)}
         </p>
       )}
-    </div>
+    </Panel>
   );
 }

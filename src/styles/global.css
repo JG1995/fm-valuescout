@@ -151,6 +151,7 @@
   --spacing-header-height: 56px;
   --spacing-table-row-height: 36px;
   --spacing-table-header-height: 32px;
+  --spacing-gutter: 16px;
 }
 
 @layer base {
