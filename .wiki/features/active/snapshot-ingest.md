@@ -165,7 +165,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 ### PR 2 — Load Data UX, sanity list, save switcher
 
-**Status:** Active
+**Status:** Complete
 
 **Provisional PR title:** `feat(snapshot): wire Load Data ingest and save switcher`
 
@@ -205,7 +205,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 3 — Docs for snapshot data flow
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `b8540fa`
 
 **Work:** Update ARCHITECTURE (ingest path, saves model), bridge/README or feature notes as needed; point TODO/completed cross-links at finish time. No ADR unless schema policy proves consequential beyond this ledger.
 
@@ -218,21 +218,21 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 ## Active work
 
-**PR:** 2 — Load Data UX, sanity list, save switcher
+**PR:** None — all delivery-plan commits complete
 
-**Commit:** Docs for snapshot data flow
+**Commit:** None — run `/finish-feature` for validation, feature-complete review, and documentation reconciliation
 
 ### RED test (active commit)
 
-Doc links resolve; ARCHITECTURE describes ingest path and saves model.
+N/A — implementation complete.
 
 ### Expected outcome
 
-ARCHITECTURE and related docs updated for Load Data ingest and multi-save; no implementation changes unless doc fixes require them.
+`/finish-feature`: full test suite, feature-complete review, archive ledger to `features/completed/`, reconcile TODO/CONCEPT.
 
 ### Explicit exclusions
 
-Implementation changes beyond doc fixes discovered while writing.
+Do not start role scoring or other roadmap items until this feature is finished and archived.
 
 ## Discoveries and replanning
 
@@ -251,6 +251,7 @@ Implementation changes beyond doc fixes discovered while writing.
 | 1 | Transactional ingest from dump file | `a77d744` | `ingest_dump_file` with single-read validation, staged transaction replace, golden/truncated/reject/rollback/re-ingest tests. |
 | 2 | Load Data command composes scan and ingest | `fc068b1` | `load_data` IPC scans without Db mutex, ingests via `load_data_after_scan`; `LoadDataError` phase scan/ingest; unit tests for success, scan fail, ingest rollback. |
 | 2 | Snapshot status, sanity list, and save switcher UI | `98297c6` | `get_current_snapshot` / `list_sanity_players` IPC; React save switcher + overview + sanity table; Load Data ingest copy via `load_data`; Vitest + per-save mockIPC. |
+| 2 | Docs for snapshot data flow | `b8540fa` | ARCHITECTURE §5.5 Load Data + saves model; bridge README ingest step; fm26-memory-read validation cross-link; `.tmp/` gitignore gate fix. |
 
 ## Final validation
 
