@@ -12,7 +12,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 ## 1. Top-Level Shape
 
-**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), and **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [active ledger](./features/active/snapshot-ingest.md)).
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), and **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)).
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 
@@ -40,7 +40,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe scanning, `status.json` / `dump.json` / diagnostics. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls, bridge status, and the **Load Data** button. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md) and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
-**Snapshot ingest:** Rust `features/snapshot` owns save slots, transactional ingest from `dump.json`, and query IPC; React `features/snapshot` owns the save switcher, snapshot overview, and sanity list. `load_data` composes bridge scan (`memory_read`) and ingest without holding the DB mutex across the scan. See [snapshot-ingest](./features/active/snapshot-ingest.md).
+**Snapshot ingest:** Rust `features/snapshot` owns save slots, transactional ingest from `dump.json`, and query IPC; React `features/snapshot` owns the save switcher, snapshot overview, and sanity list. `load_data` captures `active_save_id` under a brief Db lock, runs the bridge scan without holding the Db mutex, then ingests via `ingest_dump_file_for_save` with the captured id. See [snapshot-ingest](./features/completed/snapshot-ingest.md).
 
 **Auth:** None in the template default — chosen per fork via `/stack`
 
@@ -386,12 +386,13 @@ Dump contract: bridge/DUMP_SCHEMA.md schema v5 (frozen). Scan writes dump.json o
 ```text
 User clicks Load Data (BridgeStatusPanel)
   → useMutation → invokeCommand("load_data")
-  → Rust snapshot/load_data (no Db lock yet):
-      memory_read::request_player_dump — writes request.json (30s TTL),
-      polls status.json until terminal state (120s default)
-      Bridge plugin (off Unity main thread): scan → dump.json + diagnostics.txt
+  → Rust snapshot/commands load_data:
+      Brief Db lock → active_save_id (target save for this load; released before scan)
+      memory_read::request_player_dump — no Db lock during scan:
+        writes request.json (30s TTL), polls status.json until terminal (120s default)
+        Bridge plugin (off Unity main thread): scan → dump.json + diagnostics.txt
   → On scan failure: LoadDataError { phase: "scan", kind, message }; prior snapshot unchanged
-  → On scan success: lock Db → ingest::ingest_dump_file(dump path)
+  → On scan success: lock Db → load_data_after_scan → ingest::ingest_dump_file_for_save(save_id, dump path)
       validate_dump_json (memory_read::dump_validation) — hard-fail before insert
       Transaction: insert new snapshot + players, promote to current, delete prior current
       On ingest failure: roll back; prior current snapshot remains
