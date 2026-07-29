@@ -132,11 +132,11 @@ export function resolveDumpRequestIpcMock(): Promise<DumpRequestResult> {
     return Promise.resolve({
       requestId: "req-mock",
       state: "ready",
-      playersFound: 10_000,
+      playersFound: 500,
       dumpPresent: true,
       error: null,
       scanTruncated: true,
-      maxAccepted: 10_000,
+      maxAccepted: 500,
     });
   }
 

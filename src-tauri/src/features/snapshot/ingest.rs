@@ -433,7 +433,7 @@ mod tests {
         assert_eq!(snapshot.game_date.as_deref(), Some("2026-08-14"));
         assert_eq!(snapshot.game_date_source, "memory");
         assert!(!snapshot.scan_truncated);
-        assert_eq!(snapshot.max_accepted, Some(10_000));
+        assert_eq!(snapshot.max_accepted, Some(500));
         assert_eq!(snapshot.player_count, 1);
 
         assert_eq!(
@@ -527,13 +527,13 @@ mod tests {
 
         let truncated_json = GOLDEN_FIXTURE
             .replace("\"scanTruncated\": false", "\"scanTruncated\": true")
-            .replace("\"maxAccepted\": 10000", "\"maxAccepted\": 5000");
+            .replace("\"maxAccepted\": 500", "\"maxAccepted\": 250");
         let dump_path = write_dump(&temp_dir, "truncated.json", &truncated_json);
 
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest truncated dump");
 
         assert!(snapshot.scan_truncated);
-        assert_eq!(snapshot.max_accepted, Some(5000));
+        assert_eq!(snapshot.max_accepted, Some(250));
     }
 
     #[test]

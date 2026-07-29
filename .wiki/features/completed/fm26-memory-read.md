@@ -12,7 +12,7 @@ Planning input (not authority): [memory-read-initial-notes.md](../../notes/memor
 - The app shows bridge readiness (plugin present, FM modules, scan phase) and surfaces structured status-read errors: missing bridge, unsupported platform, corrupt status, or unsupported bridge protocol (`unsupportedVersion` when `status.json` uses an unknown `protocolVersion`). Unsupported or undetectable FM builds fail closed at scan time (`status` `failed` with an error message — not the `unsupportedVersion` kind).
 - A successful scan writes `dump.json` under `%LOCALAPPDATA%\fm-valuescout\fm-bridge\` with the CONCEPT MVP player field set at dump schema **v5** (frozen in [bridge/DUMP_SCHEMA.md](../../../bridge/DUMP_SCHEMA.md)).
 - Unknown or unsupported FM builds **fail closed** — no layout fallback. A failed scan does not replace a prior good dump (replace-only-on-success in the bridge).
-- `scanTruncated` and `maxAccepted` on dump and ready `status.json` signal when the person scanner stopped at the testing cap (10 000 accepted players). Ingest must not treat truncated dumps as a complete world database.
+- `scanTruncated` and `maxAccepted` on dump and ready `status.json` signal when the person scanner stopped at the testing cap (500 accepted players). Ingest must not treat truncated dumps as a complete world database.
 - Plugin install at delivery: manual copy into `BepInEx/plugins` or `./scripts/dev bridge-install` from WSL. Superseded by in-app **Install / Update / Remove** in [bridge-plugin-install](./bridge-plugin-install.md); developers building from source still use `bridge-install` or manual copy.
 
 ## Final architecture
@@ -52,7 +52,7 @@ Tauri
 - Developers need a Windows host with .NET 6 SDK, BepInEx 6 IL2CPP on the Steam FM26 install, and the plugin DLL in `BepInEx/plugins`. See [bridge/README.md](../../../bridge/README.md).
 - Linux CI runs `./scripts/dev check` and `./scripts/dev test` (Rust protocol/validation, Vitest, Playwright stubs). Bridge `dotnet test` with fakes runs locally on a machine with .NET 6 — not on Linux CI. Full FM attach verification is manual on Windows.
 - Snapshot ingest hard-validates via `validate_dump_json` inside `ingest_dump_file_for_save` ([snapshot-ingest](./snapshot-ingest.md)). Scan-path `validate_dump_at_bridge_directory` in `request_player_dump` logs warnings only — it does not gate ingest.
-- Full unlimited scans are slow on large saves (~3m+ observed); a 10 000-player cap keeps Load Data testable until [BACKLOG.md](../../BACKLOG.md) High item is addressed.
+- Full unlimited scans are slow on large saves (~3m+ observed); a 500-player cap keeps Load Data testable until [BACKLOG.md](../../BACKLOG.md) High item is addressed.
 
 ## Validation
 

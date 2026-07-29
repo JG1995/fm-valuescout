@@ -781,7 +781,7 @@ mod tests {
     fn rejects_scan_truncated_true_without_max_accepted() {
         let json = GOLDEN_FIXTURE
             .replace("\"scanTruncated\": false", "\"scanTruncated\": true")
-            .replace("\"maxAccepted\": 10000", "\"maxAccepted\": null");
+            .replace("\"maxAccepted\": 500", "\"maxAccepted\": null");
 
         let error = validate_dump_json(&json).expect_err("truncated without cap");
 

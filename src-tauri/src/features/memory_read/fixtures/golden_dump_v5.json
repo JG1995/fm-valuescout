@@ -8,7 +8,7 @@
   "gameDate": "2026-08-14",
   "gameDateSource": "memory",
   "scanTruncated": false,
-  "maxAccepted": 10000,
+  "maxAccepted": 500,
   "playerCount": 1,
   "players": [
     {

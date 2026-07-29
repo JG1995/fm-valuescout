@@ -39,7 +39,7 @@ describe("app top bar", () => {
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
 
     expect(
-      await screen.findByText(/the scan was capped at 10,000 players/i),
+      await screen.findByText(/the scan was capped at 500 players/i),
     ).toBeInTheDocument();
   });
 

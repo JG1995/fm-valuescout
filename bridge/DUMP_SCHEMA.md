@@ -26,7 +26,7 @@ Top-level JSON object, camelCase keys, pretty-printed by the bridge.
 
 ### Scan truncation
 
-Production scans currently use `PersonScanner.DefaultMaxAccepted` (10 000). When the walk hits that cap, `scanTruncated` is `true` and `maxAccepted` is `10000`. Ingest must not treat a truncated dump as a complete world database. Full unlimited walks set `maxAccepted` to JSON `null` and `scanTruncated` to `false`.
+Production scans currently use `PersonScanner.DefaultMaxAccepted` (500). When the walk hits that cap, `scanTruncated` is `true` and `maxAccepted` is `500`. Ingest must not treat a truncated dump as a complete world database. Full unlimited walks set `maxAccepted` to JSON `null` and `scanTruncated` to `false`.
 
 `status.json` mirrors the same signals on a successful `ready` state (`scanTruncated`, `maxAccepted`).
 
