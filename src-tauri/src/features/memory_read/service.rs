@@ -55,6 +55,10 @@ pub struct DumpRequestResult {
     pub players_found: Option<i32>,
     pub dump_present: bool,
     pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scan_truncated: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_accepted: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -313,6 +317,8 @@ pub fn wait_for_request_terminal(
                     players_found: status.players_found,
                     dump_present,
                     error: status.error,
+                    scan_truncated: status.scan_truncated,
+                    max_accepted: status.max_accepted,
                 });
             }
             Ok(_) => {}
@@ -490,10 +496,26 @@ mod tests {
                 }
                 thread::sleep(Duration::from_millis(10));
             }
-            write_status_fixture(&writer_dir, "scanning", Some(&writer_id), None, None);
+            write_status_fixture(
+                &writer_dir,
+                "scanning",
+                Some(&writer_id),
+                None,
+                None,
+                None,
+                None,
+            );
             thread::sleep(Duration::from_millis(30));
             fs::write(dump_path(&writer_dir), INGESTIBLE_DUMP_FIXTURE).expect("dump");
-            write_status_fixture(&writer_dir, "ready", Some(&writer_id), Some(42), None);
+            write_status_fixture(
+                &writer_dir,
+                "ready",
+                Some(&writer_id),
+                Some(42),
+                None,
+                Some(false),
+                Some(10_000),
+            );
         });
 
         barrier.wait();
@@ -519,6 +541,8 @@ mod tests {
         assert_eq!(result.players_found, Some(42));
         assert!(result.dump_present);
         assert!(result.error.is_none());
+        assert_eq!(result.scan_truncated, Some(false));
+        assert_eq!(result.max_accepted, Some(10_000));
         validate_dump_at_bridge_directory(&bridge_dir).expect("dump ingestible after ready");
     }
 
@@ -534,6 +558,8 @@ mod tests {
             Some(request_id),
             None,
             Some("scan produced zero player candidates"),
+            None,
+            None,
         );
 
         let result = wait_for_request_terminal(
@@ -559,7 +585,7 @@ mod tests {
     fn wait_times_out_when_status_never_reaches_terminal() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let bridge_dir = temp_dir.path();
-        write_status_fixture(bridge_dir, "idle", None, None, None);
+        write_status_fixture(bridge_dir, "idle", None, None, None, None, None);
 
         let error = wait_for_request_terminal(
             bridge_dir,
@@ -581,7 +607,15 @@ mod tests {
         let ours = "req-ours".to_string();
         let barrier = Arc::new(Barrier::new(2));
 
-        write_status_fixture(&bridge_dir, "ready", Some("req-stale-other"), Some(9), None);
+        write_status_fixture(
+            &bridge_dir,
+            "ready",
+            Some("req-stale-other"),
+            Some(9),
+            None,
+            None,
+            None,
+        );
 
         let writer_dir = bridge_dir.clone();
         let writer_barrier = Arc::clone(&barrier);
@@ -590,7 +624,15 @@ mod tests {
             writer_barrier.wait();
             thread::sleep(Duration::from_millis(40));
             fs::write(dump_path(&writer_dir), INGESTIBLE_DUMP_FIXTURE).expect("dump");
-            write_status_fixture(&writer_dir, "ready", Some(&writer_id), Some(3), None);
+            write_status_fixture(
+                &writer_dir,
+                "ready",
+                Some(&writer_id),
+                Some(3),
+                None,
+                None,
+                None,
+            );
         });
 
         barrier.wait();
@@ -615,6 +657,8 @@ mod tests {
         request_id: Option<&str>,
         players_found: Option<i32>,
         error: Option<&str>,
+        scan_truncated: Option<bool>,
+        max_accepted: Option<i32>,
     ) {
         let status = BridgeStatus {
             protocol_version: 1,
@@ -626,8 +670,8 @@ mod tests {
             request_id: request_id.map(str::to_string),
             players_found,
             error: error.map(str::to_string),
-            scan_truncated: None,
-            max_accepted: None,
+            scan_truncated,
+            max_accepted,
         };
         let json = serde_json::to_string_pretty(&status).expect("serialize");
         let path = status_path(bridge_dir);

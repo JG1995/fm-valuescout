@@ -83,6 +83,19 @@ describe("bridge status panel", () => {
     ).toBeInTheDocument();
   });
 
+  it("Load Data trigger shows truncated dump warning", async () => {
+    setDumpRequestIpcMockMode("truncatedSuccess");
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await screen.findByText(/^Bridge:/i);
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+
+    expect(
+      await screen.findByText(/Partial dump \(capped at 10000 players\)/i),
+    ).toBeInTheDocument();
+  });
+
   it("Load Data trigger shows scan failure from bridge", async () => {
     setDumpRequestIpcMockMode("failed");
     const user = userEvent.setup();

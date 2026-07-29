@@ -18,4 +18,6 @@ export type DumpRequestResult = {
   playersFound?: number | null;
   dumpPresent: boolean;
   error?: string | null;
+  scanTruncated?: boolean | null;
+  maxAccepted?: number | null;
 };
