@@ -125,7 +125,7 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 #### Commit 2 — Install and remove plugin DLL
 
-**Status:** Active
+**Status:** Completed — `7a496bb`
 
 **Work:** Copy the source DLL (resource path in production; injectable path for tests) into the resolved plugins directory (create `plugins` only if BepInEx root exists — fail closed if BepInEx is missing). Remove deletes only `FmDataBridge.dll`. Map permission and missing-path errors to clear variants. Unit-test install/update/remove with temp dirs and a fixture file.
 
@@ -140,7 +140,7 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 #### Commit 3 — IPC, bridge panel actions, and docs
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Register Tauri commands; wire React API + bridge panel Install/Update and Remove actions with mockIPC tests; document in-app install in `bridge/README.md` and note AV/permission expectations; move packaging note for the bundled DLL (how Windows release/dev supplies the real binary vs test fixture). Soften manual-only copy language on the panel.
 
@@ -157,27 +157,29 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 **PR:** PR 1 — In-app plugin install and remove
 
-**Commit:** Install and remove plugin DLL
+**Commit:** IPC, bridge panel actions, and docs
 
 ### RED test (active commit)
 
-Assert that copying a fixture DLL into a temp plugins tree succeeds, remove deletes only `FmDataBridge.dll`, and install fails closed when the BepInEx parent folder is missing.
+Assert that Tauri commands expose install status, install, and remove; bridge panel renders Install/Update and Remove actions with mockIPC coverage.
 
 ### Expected outcome
 
-`install.rs` gains copy/remove helpers with clear error variants; unit tests cover success, missing BepInEx, and remove-when-absent.
+IPC commands registered; bridge panel wired with install/remove actions; Vitest mockIPC tests pass.
 
 ### Explicit exclusions
 
-No UI, no IPC registration, no Tauri resource bundling.
+No snapshot ingest; no BepInEx bootstrap; no change to `bridge-install` script beyond cross-links.
 
 ## Discoveries and replanning
 
 - Commit 1 landed in `memory_read/install.rs` with env overrides (`FM_BRIDGE_PLUGINS`, `FM_STEAM_ROOT`) matching `bridge-install`; `#![allow(dead_code)]` until commit 3 registers IPC.
+- Commit 2 added `install_bridge_plugin_at` / `remove_bridge_plugin_at` plus resolve wrappers; error variants `bepinexMissing`, `sourceMissing`, `writeFailed`, `removeFailed`.
 
 ## Completed work
 
 | PR 1 | Resolve Steam plugins path and install status | `ed47e1a` | `memory_read/install.rs` — path resolve + `BridgeInstallStatus` |
+| PR 1 | Install and remove plugin DLL | `7a496bb` | `install.rs` — copy/remove helpers + 7 new unit tests |
 
 ## Final validation
 
