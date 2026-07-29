@@ -13,7 +13,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 | Order | Feature | Spec | Confidence | Why this position |
 | --- | --- | --- | --- | --- |
 | 1 | FM26 memory read | [Completed](./features/completed/fm26-memory-read.md) | medium | Foundation — live dump from FM; **done** |
-| 2 | Snapshot ingest + Load Data | CONCEPT | high | Persist memory dumps to SQLite; explicit refresh workflow — **plan next** |
+| 2 | Snapshot ingest + Load Data | CONCEPT | high | Persist memory dumps to SQLite; explicit refresh workflow — **plan next** after current active feature |
 | 3 | Role scoring engine | CONCEPT | medium | One scoring model on ingest; FM role-relevant attributes + custom algorithm |
 | 4 | Player search | CONCEPT | high | First full UI value path after Load Data; validates DB and scores |
 | 5 | Player profiles | CONCEPT | high | Detail view from search; traditional scouting path |
@@ -44,17 +44,19 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 **Parallel tracks:** After player search (order 4), profiles (5) and squad planner shell (6, without optimizer) can overlap once tactic modeling is specced.
 
+**Off-sequence (active):** In-app bridge plugin install — promoted from backlog; does not block snapshot ingest.
+
 ## Active
 
-_(none — run `/plan-feature` on Snapshot ingest + Load Data)_
+- [In-app bridge plugin install](./features/active/bridge-plugin-install.md) — install / update / remove `FmDataBridge.dll` for default Steam FM26
 
 ## Plan next
 
-`/plan-feature` on **Snapshot ingest + Load Data** (order 2), against the frozen dump schema v5 from [fm26-memory-read](./features/completed/fm26-memory-read.md).
+`/plan-feature` on **Snapshot ingest + Load Data** (order 2) after the active bridge-install feature finishes, against the frozen dump schema v5 from [fm26-memory-read](./features/completed/fm26-memory-read.md).
 
 ## Next
 
-Snapshot ingest + Load Data (order 2)
+In-app bridge plugin install (active). Then Snapshot ingest + Load Data (order 2).
 
 ## Completed
 
