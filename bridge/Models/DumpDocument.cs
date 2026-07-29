@@ -7,6 +7,21 @@ public sealed class DumpPlayer
     public int Ca { get; init; }
 
     public int Pa { get; init; }
+
+    public string Name { get; init; } = "";
+
+    public int BirthYear { get; init; }
+
+    public int BirthDayOfYear { get; init; }
+
+    public IReadOnlyList<string> Nationalities { get; init; } = Array.Empty<string>();
+
+    public int? HeightCm { get; init; }
+
+    public string PreferredFoot { get; init; } = "";
+
+    public IReadOnlyDictionary<string, int> Positions { get; init; } =
+        new Dictionary<string, int>();
 }
 
 public sealed class DumpDocument

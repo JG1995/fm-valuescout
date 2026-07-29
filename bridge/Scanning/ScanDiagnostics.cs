@@ -24,6 +24,12 @@ public sealed class ScanDiagnostics
 
     public int DuplicatesSkipped { get; set; }
 
+    /// <summary>Candidates skipped because display name was empty.</summary>
+    public int IdentitySkippedEmptyName { get; set; }
+
+    /// <summary>Candidates skipped because DOB was missing or impossible.</summary>
+    public int IdentitySkippedImpossibleDob { get; set; }
+
     /// <summary>Accepted-player ceiling for this run; null means unlimited.</summary>
     public int? MaxAccepted { get; set; }
 

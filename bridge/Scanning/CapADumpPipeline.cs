@@ -1,9 +1,9 @@
+using FmDataBridge.Extraction;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
 using FmDataBridge.Models;
 using FmDataBridge.Output;
 using FmDataBridge.Protocol;
-using FmDataBridge.Scanning;
 
 namespace FmDataBridge.Scanning;
 
@@ -59,9 +59,55 @@ public sealed class CapADumpPipeline
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
 
-        var players = candidates
-            .Select(c => new DumpPlayer { Uid = c.Uid, Ca = c.Ca, Pa = c.Pa })
-            .ToList();
+        var players = new List<DumpPlayer>(candidates.Count);
+        foreach (var candidate in candidates)
+        {
+            var playerBase = candidate.ObjectAddress - (ulong)candidate.ClassOffset;
+            var identity = PlayerIdentityReader.TryRead(
+                reader,
+                candidate.ObjectAddress,
+                playerBase,
+                layout,
+                out var rejectReason);
+
+            if (identity is null)
+            {
+                switch (rejectReason)
+                {
+                    case IdentityRejectReason.EmptyName:
+                        diagnostics.IdentitySkippedEmptyName++;
+                        break;
+                    case IdentityRejectReason.ImpossibleDob:
+                        diagnostics.IdentitySkippedImpossibleDob++;
+                        break;
+                }
+
+                continue;
+            }
+
+            players.Add(
+                new DumpPlayer
+                {
+                    Uid = candidate.Uid,
+                    Ca = candidate.Ca,
+                    Pa = candidate.Pa,
+                    Name = identity.Name,
+                    BirthYear = identity.BirthYear,
+                    BirthDayOfYear = identity.BirthDayOfYear,
+                    Nationalities = identity.Nationalities,
+                    HeightCm = identity.HeightCm,
+                    PreferredFoot = identity.PreferredFoot,
+                    Positions = identity.Positions,
+                });
+        }
+
+        if (players.Count == 0)
+        {
+            diagnostics.FailureReason =
+                "scan produced candidates but none passed identity sanity (name/DOB)";
+            DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
+            return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+        }
 
         var document = new DumpDocument
         {

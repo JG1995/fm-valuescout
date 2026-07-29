@@ -285,7 +285,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Names, DOB, nationality, height, foot, positions
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:**
 - Extend player extraction beyond UID/CA/PA: display name (handle non-ASCII), date of birth / age inputs as present in memory, nationality (single or multi if the layout exposes it), height, preferred foot, and natural positions.
@@ -300,6 +300,15 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 **Validation:** Manual identity/position checks vs FM for the spot-check set; decoder unit tests with byte fixtures where practical; schema version bump covered by a Rust or bridge fixture if the dump shape is already parsed anywhere.
 
 **Provisional commit:** `feat(bridge): extract player identity and positions`
+
+##### Build progress (Commit 1)
+
+- Layout: `Fm263Layout` / `IFmMemoryLayout` gain person name/DOB/nation and player height/attrs/positions/foot pins (SuperScout Fields.cs provenance).
+- `Extraction/`: `FmStringReader` (nested + indirect UTF-8), `FmDateDecoder`, `NameReader`, `NationReader`, `PlayerIdentityReader` (natural positions ≥ max(15, top−2); foot from attrs ÷5 → `left`/`right`/`either`).
+- Dump schema **v2** player shape: `name`, `birthYear`, `birthDayOfYear`, `nationalities`, `heightCm`, `preferredFoot`, `positions`. Age deferred until game-date (PR 4).
+- Pipeline skips empty name / impossible DOB; diagnostics `identitySkippedEmptyName` / `identitySkippedImpossibleDob`.
+- Tests: 10 new identity cases (+ Cap A fixture updates). `dotnet test` 44 passed.
+- Incidental: atomic `write_status_fixture` in Rust wait tests (non-atomic `fs::write` raced empty `status.json`).
 
 #### Commit 2 — Visible, hidden, and personality attributes
 
@@ -385,19 +394,19 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 3 — Player identity and attributes
 
-**Commit:** Commit 1 — Names, DOB, nationality, height, foot, positions
+**Commit:** Commit 1 — Names, DOB, nationality, height, foot, positions — implementation done; awaiting `/checkpoint`
 
 ### RED test (active commit)
 
-Decoder unit tests with byte fixtures where practical; schema bump covered if dump shape is parsed.
+Covered: `IdentityExtractionTests` (date reject/accept, UTF-8 name, nation, identity reject paths, natural positions, pipeline schema v2 + skip counts).
 
 ### Expected outcome
 
-Dump expands beyond UID/CA/PA with display name (incl. non-ASCII), DOB/age inputs, nationality, height, preferred foot, and natural positions. Identity sanity rejects garbage rows; diagnostics count skips.
+Dump expands beyond UID/CA/PA with display name (incl. non-ASCII), DOB inputs, nationality, height, preferred foot, and natural positions. Identity sanity rejects garbage rows; diagnostics count skips. Schema v2.
 
 ### Explicit exclusions
 
-Visible/hidden/personality attribute blocks; contracts, clubs, loans.
+Visible/hidden/personality attribute blocks; contracts, clubs, loans; age (needs game date in PR 4).
 
 ## Discoveries and replanning
 
@@ -413,6 +422,7 @@ Visible/hidden/personality attribute blocks; contracts, clubs, loans.
 - 2026-07-28 (PR 2 Commit 2): SuperScout permission ([superscout-permission.md](../../notes/superscout-permission.md)); `Fm263Layout` pins from SuperScout `Fields.cs`; Il2Cpp dynamic class-offset scan; dump replace-only-on-success; `force-scan` polled ~2s (not Load-only); 64-bit underflow guard fixed. Still confirm known-player CA/PA on live FM. Undelegated MEDIUM: version fallback when `game_plugin` missing; unsupported-version diagnostics omit GameAssembly bounds.
 - 2026-07-28 (PR 2 Commit 3): In-app `request.json` protocol (30s TTL); Rust `request_player_dump` waits for matching `requestId` terminal status; UI **Load Data** button; `force-scan` retained as fallback. Status optional fields: `requestId`, `playersFound`, `error`. Hand-rolled UTC RFC3339 in Rust (no chrono). Blocking sync IPC wait (120s) — upgrade to async/events if UX needs mid-scan progress streaming. Review MEDIUM fixes: refresh waiting request `createdAtUtc` while scan in progress; write `failed` status with `requestId` on reject; busy Vitest mock uses deferred Promise.
 - 2026-07-28 (PR 2 follow-up after Commit 3): Live Cap A dump on FM 26.3.2 took ~3m 47s (~184k accepted, ~4.1 GB scanned) and outran the 120s app wait. Temporary `PersonScanner.DefaultMaxAccepted` (10 000) keeps Load Data testable (`e638383`); full-scan performance is [BACKLOG.md](../../BACKLOG.md) High. UI “FM modules: not fully loaded” was a stale Load-time snapshot — `game_plugin.dll` often loads after BepInEx plugin `Load`; status now uses live `LocateKnownModules` and idle poll refresh (`8a50cc8`). `scripts/dev bridge-install` (`62ddfc9`) builds the bridge in WSL and copies `FmDataBridge.dll` into Steam `BepInEx/plugins`.
+- 2026-07-29 (PR 3 Commit 1 build): Dump schema bumped to **v2** with identity fields. Age not computed yet (needs in-game date from PR 4). Preferred foot uses English `left`/`right`/`either` (not SuperScout Dutch labels). Nation dump is a single short-name when the nation pointer resolves (layout exposes one nation ptr). Natural positions filter matches SuperScout (≥ max(15, top−2)). Incidental Rust test flake: non-atomic status fixture write raced empty `status.json` — fixture now temp+rename.
 
 ## Completed work
 

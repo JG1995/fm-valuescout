@@ -77,6 +77,8 @@ public static class DiagnosticsWriter
         sb.AppendLine($"candidatesAccepted={diagnostics.CandidatesAccepted}");
         sb.AppendLine($"candidatesRejected={diagnostics.CandidatesRejected}");
         sb.AppendLine($"duplicatesSkipped={diagnostics.DuplicatesSkipped}");
+        sb.AppendLine($"identitySkippedEmptyName={diagnostics.IdentitySkippedEmptyName}");
+        sb.AppendLine($"identitySkippedImpossibleDob={diagnostics.IdentitySkippedImpossibleDob}");
         if (diagnostics.MaxAccepted is { } maxAccepted)
         {
             sb.AppendLine($"maxAccepted={maxAccepted}");

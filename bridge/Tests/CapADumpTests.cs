@@ -50,14 +50,26 @@ public sealed class CapADumpTests
         {
             var prior = new DumpDocument
             {
-                SchemaVersion = 1,
+                SchemaVersion = 2,
                 GeneratedAtUtc = "2026-07-28T00:00:00Z",
                 GameVersion = "26.3.0",
                 SupportedGameVersion = "26.3",
                 BridgeVersion = "0.1.0",
                 ProtocolVersion = 1,
                 PlayerCount = 1,
-                Players = new[] { new DumpPlayer { Uid = 1, Ca = 10, Pa = 20 } },
+                Players = new[]
+                {
+                    new DumpPlayer
+                    {
+                        Uid = 1,
+                        Ca = 10,
+                        Pa = 20,
+                        Name = "Prior Player",
+                        BirthYear = 2000,
+                        BirthDayOfYear = 1,
+                        PreferredFoot = "right",
+                    },
+                },
             };
             Assert.True(DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, prior));
 
@@ -96,20 +108,32 @@ public sealed class CapADumpTests
         {
             var prior = new DumpDocument
             {
-                SchemaVersion = 1,
+                SchemaVersion = 2,
                 GeneratedAtUtc = "2026-07-28T00:00:00Z",
                 GameVersion = "26.3.0",
                 SupportedGameVersion = "26.3",
                 BridgeVersion = "0.1.0",
                 ProtocolVersion = 1,
                 PlayerCount = 1,
-                Players = new[] { new DumpPlayer { Uid = 42, Ca = 100, Pa = 150 } },
+                Players = new[]
+                {
+                    new DumpPlayer
+                    {
+                        Uid = 42,
+                        Ca = 100,
+                        Pa = 150,
+                        Name = "Kept Player",
+                        BirthYear = 1995,
+                        BirthDayOfYear = 10,
+                        PreferredFoot = "left",
+                    },
+                },
             };
             Assert.True(DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, prior));
 
             var empty = new DumpDocument
             {
-                SchemaVersion = 1,
+                SchemaVersion = 2,
                 GeneratedAtUtc = "2026-07-28T01:00:00Z",
                 GameVersion = "26.3.0",
                 SupportedGameVersion = "26.3",
@@ -142,13 +166,28 @@ public sealed class CapADumpTests
             BridgeVersion = "0.1.0",
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
             PlayerCount = 1,
-            Players = new[] { new DumpPlayer { Uid = 7, Ca = 120, Pa = 160 } },
+            Players = new[]
+            {
+                new DumpPlayer
+                {
+                    Uid = 7,
+                    Ca = 120,
+                    Pa = 160,
+                    Name = "Meta Player",
+                    BirthYear = 2001,
+                    BirthDayOfYear = 33,
+                    Nationalities = new[] { "ENG" },
+                    HeightCm = 180,
+                    PreferredFoot = "right",
+                    Positions = new Dictionary<string, int> { ["ST"] = 20 },
+                },
+            },
         };
 
         var json = DumpWriter.Serialize(document);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        Assert.Equal(1, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(2, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("26.3.2.2329565", root.GetProperty("gameVersion").GetString());
         Assert.Equal("26.3", root.GetProperty("supportedGameVersion").GetString());
         Assert.Equal("0.1.0", root.GetProperty("bridgeVersion").GetString());
@@ -157,6 +196,13 @@ public sealed class CapADumpTests
         Assert.Equal(7u, root.GetProperty("players")[0].GetProperty("uid").GetUInt32());
         Assert.Equal(120, root.GetProperty("players")[0].GetProperty("ca").GetInt32());
         Assert.Equal(160, root.GetProperty("players")[0].GetProperty("pa").GetInt32());
+        Assert.Equal("Meta Player", root.GetProperty("players")[0].GetProperty("name").GetString());
+        Assert.Equal(2001, root.GetProperty("players")[0].GetProperty("birthYear").GetInt32());
+        Assert.Equal(33, root.GetProperty("players")[0].GetProperty("birthDayOfYear").GetInt32());
+        Assert.Equal("ENG", root.GetProperty("players")[0].GetProperty("nationalities")[0].GetString());
+        Assert.Equal(180, root.GetProperty("players")[0].GetProperty("heightCm").GetInt32());
+        Assert.Equal("right", root.GetProperty("players")[0].GetProperty("preferredFoot").GetString());
+        Assert.Equal(20, root.GetProperty("players")[0].GetProperty("positions").GetProperty("ST").GetInt32());
     }
 
     [Fact]
@@ -312,14 +358,26 @@ public sealed class CapADumpTests
         {
             var prior = new DumpDocument
             {
-                SchemaVersion = 1,
+                SchemaVersion = 2,
                 GeneratedAtUtc = "2026-07-28T00:00:00Z",
                 GameVersion = "26.3.0",
                 SupportedGameVersion = "26.3",
                 BridgeVersion = "0.1.0",
                 ProtocolVersion = 1,
                 PlayerCount = 1,
-                Players = new[] { new DumpPlayer { Uid = 9, Ca = 11, Pa = 12 } },
+                Players = new[]
+                {
+                    new DumpPlayer
+                    {
+                        Uid = 9,
+                        Ca = 11,
+                        Pa = 12,
+                        Name = "Prior Zero",
+                        BirthYear = 1990,
+                        BirthDayOfYear = 2,
+                        PreferredFoot = "either",
+                    },
+                },
             };
             Assert.True(DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, prior));
 
@@ -350,7 +408,16 @@ public sealed class CapADumpTests
     private static FakeMemoryReader BuildReaderWithTwoIdenticalPlayers(IFmMemoryLayout layout)
     {
         var reader = new FakeMemoryReader();
-        PlacePlayerFixture(reader, layout, PersonAddress, uid: 12345, ca: 150, pa: 170);
+        PlacePlayerFixture(
+            reader,
+            layout,
+            PersonAddress,
+            uid: 12345,
+            ca: 150,
+            pa: 170,
+            name: "Test Player",
+            birthYear: 2000,
+            birthDoy: 100);
         // Second person object with the same UID (dedupe).
         PlacePlayerFixture(
             reader,
@@ -359,7 +426,10 @@ public sealed class CapADumpTests
             uid: 12345,
             ca: 150,
             pa: 170,
-            playerBlockBase: PlayerBlockBase + 0x80);
+            playerBlockBase: PlayerBlockBase + 0x80,
+            name: "Test Player",
+            birthYear: 2000,
+            birthDoy: 100);
         return reader;
     }
 
@@ -370,11 +440,17 @@ public sealed class CapADumpTests
         uint uid,
         int ca,
         int pa,
-        ulong? playerBlockBase = null)
+        ulong? playerBlockBase = null,
+        string? name = "Fixture Player",
+        int birthYear = 1999,
+        int birthDoy = 50)
     {
         var playerBase = playerBlockBase ?? (personAddress - (ulong)PlayerClassOffset);
         var regionBase = Math.Min(playerBase, personAddress);
-        var regionEnd = Math.Max(personAddress + 0x10, playerBase + (ulong)layout.PotentialAbilityOffset + 2);
+        var regionEnd = Math.Max(
+            personAddress + 0xA0,
+            playerBase + (ulong)Math.Max(layout.PotentialAbilityOffset, layout.HeightOffset) + 2);
+        regionEnd = Math.Max(regionEnd, playerBase + (ulong)layout.AttrsOffset + 0x20);
         AddCandidateRegion(reader, regionBase, regionEnd - regionBase);
 
         // Il2Cpp meta: *(vtable - 8) → meta; *(int*)(meta + 4) → class offset.
@@ -391,11 +467,43 @@ public sealed class CapADumpTests
         WriteUInt32(personHeader, layout.ObjectUidOffset, uid);
         reader.AddBytes(personAddress, personHeader);
 
-        var abilitySpan = layout.PotentialAbilityOffset + sizeof(ushort);
+        var abilitySpan = Math.Max(layout.PotentialAbilityOffset, layout.HeightOffset) + sizeof(ushort);
+        abilitySpan = Math.Max(abilitySpan, layout.AttrsOffset + 0x20);
+        abilitySpan = Math.Max(abilitySpan, layout.PositionsOffset + 16);
         var playerBytes = new byte[abilitySpan];
         WriteUInt16(playerBytes, layout.CurrentAbilityOffset, (ushort)ca);
         WriteUInt16(playerBytes, layout.PotentialAbilityOffset, (ushort)pa);
+        WriteUInt16(playerBytes, layout.HeightOffset, 180);
+        playerBytes[layout.AttrsOffset + layout.FootLeftAttrOffset] = 25; // ≈5
+        playerBytes[layout.AttrsOffset + layout.FootRightAttrOffset] = 90; // ≈18
+        playerBytes[layout.PositionsOffset + 0x0C] = 20; // ST
         reader.AddBytes(playerBase, playerBytes);
+
+        if (!string.IsNullOrEmpty(name))
+        {
+            PlaceNestedName(reader, personAddress, layout, name);
+        }
+
+        uint dob = birthYear == 0 && birthDoy == 0
+            ? 0u
+            : ((uint)birthYear << 16) | (uint)birthDoy;
+        reader.AddBytes(personAddress + (ulong)layout.DobOffset, BitConverter.GetBytes(dob));
+    }
+
+    private static void PlaceNestedName(
+        FakeMemoryReader reader,
+        ulong personAddress,
+        IFmMemoryLayout layout,
+        string name)
+    {
+        var outer = personAddress + 0x10000;
+        var inner = outer + 0x40;
+        reader.AddBytes(personAddress + (ulong)layout.CommonNameOffset, BitConverter.GetBytes(outer));
+        reader.AddBytes(outer, BitConverter.GetBytes(inner));
+        var utf8 = System.Text.Encoding.UTF8.GetBytes(name + "\0");
+        var payload = new byte[4 + utf8.Length];
+        utf8.CopyTo(payload, 4);
+        reader.AddBytes(inner, payload);
     }
 
     private static void AddCandidateRegion(FakeMemoryReader reader, ulong baseAddress, ulong size)
