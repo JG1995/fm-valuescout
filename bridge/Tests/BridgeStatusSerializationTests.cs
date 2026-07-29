@@ -126,6 +126,8 @@ public sealed class BridgeStatusSerializationTests
                     GameAssemblyModulePresent = true,
                     RequestId = "req-1",
                     PlayersFound = 10,
+                    ScanTruncated = true,
+                    MaxAccepted = 10_000,
                 });
 
             Assert.True(StatusWriter.TryRead(dir, out var status));
@@ -134,6 +136,8 @@ public sealed class BridgeStatusSerializationTests
             Assert.True(status.GameAssemblyModulePresent);
             Assert.Equal("ready", status.State);
             Assert.Equal("req-1", status.RequestId);
+            Assert.True(status.ScanTruncated);
+            Assert.Equal(10_000, status.MaxAccepted);
         }
         finally
         {

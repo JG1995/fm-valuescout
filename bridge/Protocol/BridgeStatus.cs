@@ -22,4 +22,10 @@ public sealed class BridgeStatus
 
     /// <summary>Human-readable failure when <see cref="State"/> is failed.</summary>
     public string? Error { get; init; }
+
+    /// <summary>True when the last ready dump stopped at <see cref="MaxAccepted"/>.</summary>
+    public bool? ScanTruncated { get; init; }
+
+    /// <summary>Accepted-player cap used for the last ready dump; null when unlimited.</summary>
+    public int? MaxAccepted { get; init; }
 }

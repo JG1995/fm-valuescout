@@ -14,11 +14,27 @@ const REQUIRED_TOP_LEVEL_KEYS: &[&str] = &[
     "bridgeVersion",
     "protocolVersion",
     "gameDateSource",
+    "scanTruncated",
+    "maxAccepted",
     "playerCount",
     "players",
 ];
 
-const REQUIRED_PLAYER_KEYS: &[&str] = &["uid", "ca", "pa", "name"];
+const REQUIRED_PLAYER_KEYS: &[&str] = &[
+    "uid",
+    "ca",
+    "pa",
+    "name",
+    "birthYear",
+    "birthDayOfYear",
+    "nationalities",
+    "preferredFoot",
+    "positions",
+    "attributes",
+    "hiddenAttributes",
+    "personality",
+    "reputation",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DumpValidationError {
@@ -124,6 +140,8 @@ pub fn validate_dump_json(json: &str) -> Result<(), DumpValidationError> {
     require_string(object, "supportedGameVersion")?;
     require_string(object, "bridgeVersion")?;
     require_string(object, "gameDateSource")?;
+    require_bool(object, "scanTruncated")?;
+    require_nullable_non_negative_i64(object, "maxAccepted")?;
 
     let player_count = require_i64(object, "playerCount")?;
     if player_count < 0 {
@@ -199,6 +217,43 @@ fn validate_player_object(player: &Value, index: usize) -> Result<(), DumpValida
     require_i64_at(object, &format!("players[{index}].ca"), "ca")?;
     require_i64_at(object, &format!("players[{index}].pa"), "pa")?;
     require_string_at(object, &format!("players[{index}].name"), "name")?;
+    require_i64_at(object, &format!("players[{index}].birthYear"), "birthYear")?;
+    require_i64_at(
+        object,
+        &format!("players[{index}].birthDayOfYear"),
+        "birthDayOfYear",
+    )?;
+    require_array_at(
+        object,
+        &format!("players[{index}].nationalities"),
+        "nationalities",
+    )?;
+    require_string_at(
+        object,
+        &format!("players[{index}].preferredFoot"),
+        "preferredFoot",
+    )?;
+    require_object_at(object, &format!("players[{index}].positions"), "positions")?;
+    require_object_at(
+        object,
+        &format!("players[{index}].attributes"),
+        "attributes",
+    )?;
+    require_object_at(
+        object,
+        &format!("players[{index}].hiddenAttributes"),
+        "hiddenAttributes",
+    )?;
+    require_object_at(
+        object,
+        &format!("players[{index}].personality"),
+        "personality",
+    )?;
+    require_object_at(
+        object,
+        &format!("players[{index}].reputation"),
+        "reputation",
+    )?;
 
     Ok(())
 }
@@ -278,6 +333,75 @@ fn require_non_empty_string(
     }
 }
 
+fn require_bool(
+    object: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<(), DumpValidationError> {
+    match object.get(field) {
+        Some(Value::Bool(_)) => Ok(()),
+        Some(_) => Err(DumpValidationError::WrongType {
+            field: field.to_string(),
+            detail: "expected boolean".to_string(),
+        }),
+        None => Err(DumpValidationError::MissingField(field.to_string())),
+    }
+}
+
+fn require_nullable_non_negative_i64(
+    object: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<(), DumpValidationError> {
+    match object.get(field) {
+        Some(Value::Null) => Ok(()),
+        Some(value) => {
+            let number = value
+                .as_i64()
+                .ok_or_else(|| DumpValidationError::WrongType {
+                    field: field.to_string(),
+                    detail: "expected number or null".to_string(),
+                })?;
+            if number < 0 {
+                return Err(DumpValidationError::WrongType {
+                    field: field.to_string(),
+                    detail: "must be >= 0 or null".to_string(),
+                });
+            }
+            Ok(())
+        }
+        None => Err(DumpValidationError::MissingField(field.to_string())),
+    }
+}
+
+fn require_array_at(
+    object: &serde_json::Map<String, Value>,
+    display_field: &str,
+    key: &str,
+) -> Result<(), DumpValidationError> {
+    match object.get(key) {
+        Some(Value::Array(_)) => Ok(()),
+        Some(_) => Err(DumpValidationError::WrongType {
+            field: display_field.to_string(),
+            detail: "expected array".to_string(),
+        }),
+        None => Err(DumpValidationError::MissingField(display_field.to_string())),
+    }
+}
+
+fn require_object_at(
+    object: &serde_json::Map<String, Value>,
+    display_field: &str,
+    key: &str,
+) -> Result<(), DumpValidationError> {
+    match object.get(key) {
+        Some(Value::Object(_)) => Ok(()),
+        Some(_) => Err(DumpValidationError::WrongType {
+            field: display_field.to_string(),
+            detail: "expected object".to_string(),
+        }),
+        None => Err(DumpValidationError::MissingField(display_field.to_string())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,6 +440,17 @@ mod tests {
     }
 
     #[test]
+    fn rejects_missing_scan_truncated() {
+        let json = GOLDEN_FIXTURE.replace("\"scanTruncated\": false,\n  ", "");
+
+        let error = validate_dump_json(&json).expect_err("missing scanTruncated");
+
+        assert!(
+            matches!(error, DumpValidationError::MissingField(field) if field == "scanTruncated")
+        );
+    }
+
+    #[test]
     fn rejects_empty_players_without_empty_save_marker() {
         let json = r#"{
   "schemaVersion": 5,
@@ -325,6 +460,8 @@ mod tests {
   "bridgeVersion": "0.1.0",
   "protocolVersion": 1,
   "gameDateSource": "unknown",
+  "scanTruncated": false,
+  "maxAccepted": null,
   "playerCount": 0,
   "players": []
 }"#;
@@ -344,6 +481,8 @@ mod tests {
   "bridgeVersion": "0.1.0",
   "protocolVersion": 1,
   "gameDateSource": "unknown",
+  "scanTruncated": false,
+  "maxAccepted": null,
   "emptySave": true,
   "playerCount": 0,
   "players": []
@@ -376,6 +515,19 @@ mod tests {
         assert!(matches!(
             error,
             DumpValidationError::MissingField(field) if field == "players[0].uid"
+        ));
+    }
+
+    #[test]
+    fn rejects_player_missing_reputation_object() {
+        let json =
+            GOLDEN_FIXTURE.replace("\"reputation\": { \"current\": 120, \"world\": 110 },", "");
+
+        let error = validate_dump_json(&json).expect_err("missing reputation");
+
+        assert!(matches!(
+            error,
+            DumpValidationError::MissingField(field) if field == "players[0].reputation"
         ));
     }
 

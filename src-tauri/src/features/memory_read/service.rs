@@ -32,6 +32,10 @@ pub struct BridgeStatus {
     pub players_found: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scan_truncated: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_accepted: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -622,6 +626,8 @@ mod tests {
             request_id: request_id.map(str::to_string),
             players_found,
             error: error.map(str::to_string),
+            scan_truncated: None,
+            max_accepted: None,
         };
         let json = serde_json::to_string_pretty(&status).expect("serialize");
         let path = status_path(bridge_dir);

@@ -108,6 +108,12 @@ public sealed class DumpDocument
     /// <summary>memory | derived | unknown</summary>
     public string GameDateSource { get; init; } = "unknown";
 
+    /// <summary>True when the person scanner stopped because <see cref="MaxAccepted"/> was reached.</summary>
+    public bool ScanTruncated { get; init; }
+
+    /// <summary>Accepted-player cap used for this dump; null when the walk was unlimited.</summary>
+    public int? MaxAccepted { get; init; }
+
     public int PlayerCount { get; init; }
 
     public IReadOnlyList<DumpPlayer> Players { get; init; } = Array.Empty<DumpPlayer>();

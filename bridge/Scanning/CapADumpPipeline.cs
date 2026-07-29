@@ -269,6 +269,8 @@ public sealed class CapADumpPipeline
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
             GameDate = gameDate.GameDate,
             GameDateSource = gameDate.Source,
+            ScanTruncated = diagnostics.StoppedEarly,
+            MaxAccepted = diagnostics.MaxAccepted,
             PlayerCount = players.Count,
             Players = players,
         };
@@ -277,7 +279,10 @@ public sealed class CapADumpPipeline
         DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
 
         return replaced
-            ? CapADumpResult.Succeeded(players.Count)
+            ? CapADumpResult.Succeeded(
+                players.Count,
+                scanTruncated: diagnostics.StoppedEarly,
+                maxAccepted: diagnostics.MaxAccepted)
             : CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
     }
 
@@ -328,10 +333,19 @@ public sealed class CapADumpPipeline
         ContractClubLink? ParentLink);
 }
 
-public readonly record struct CapADumpResult(bool Success, string? Error, int PlayerCount, bool DumpReplaced)
+public readonly record struct CapADumpResult(
+    bool Success,
+    string? Error,
+    int PlayerCount,
+    bool DumpReplaced,
+    bool ScanTruncated = false,
+    int? MaxAccepted = null)
 {
-    public static CapADumpResult Succeeded(int playerCount) =>
-        new(true, null, playerCount, DumpReplaced: true);
+    public static CapADumpResult Succeeded(
+        int playerCount,
+        bool scanTruncated = false,
+        int? maxAccepted = null) =>
+        new(true, null, playerCount, DumpReplaced: true, scanTruncated, maxAccepted);
 
     public static CapADumpResult Failed(string error, bool dumpReplaced) =>
         new(false, error, 0, dumpReplaced);

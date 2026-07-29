@@ -167,6 +167,8 @@ public sealed class CapADumpTests
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
             GameDate = "2026-08-14",
             GameDateSource = "memory",
+            ScanTruncated = false,
+            MaxAccepted = PersonScanner.DefaultMaxAccepted,
             PlayerCount = 1,
             Players = new[]
             {
@@ -210,6 +212,10 @@ public sealed class CapADumpTests
         Assert.Equal(5, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("2026-08-14", root.GetProperty("gameDate").GetString());
         Assert.Equal("memory", root.GetProperty("gameDateSource").GetString());
+        Assert.False(root.GetProperty("scanTruncated").GetBoolean());
+        Assert.Equal(
+            PersonScanner.DefaultMaxAccepted,
+            root.GetProperty("maxAccepted").GetInt32());
         Assert.Equal("Example FC", root.GetProperty("players")[0].GetProperty("currentClub").GetString());
         Assert.Equal(25, root.GetProperty("players")[0].GetProperty("age").GetInt32());
         Assert.Equal("26.3.2.2329565", root.GetProperty("gameVersion").GetString());
@@ -369,9 +375,15 @@ public sealed class CapADumpTests
             Assert.True(result.Success);
             Assert.True(result.DumpReplaced);
             Assert.Equal(1, result.PlayerCount);
+            Assert.False(result.ScanTruncated);
+            Assert.Equal(PersonScanner.DefaultMaxAccepted, result.MaxAccepted);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
             Assert.Equal(1, doc.RootElement.GetProperty("playerCount").GetInt32());
+            Assert.False(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
+            Assert.Equal(
+                PersonScanner.DefaultMaxAccepted,
+                doc.RootElement.GetProperty("maxAccepted").GetInt32());
             Assert.True(File.Exists(BridgePaths.GetDiagnosticsPath(bridgeDir)));
         }
         finally

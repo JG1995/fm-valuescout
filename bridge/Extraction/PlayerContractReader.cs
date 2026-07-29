@@ -29,6 +29,8 @@ public static class PlayerContractReader
 {
     // Status flag bits on contract+ContractStatusFlagsOffset (SuperScout Fields.cs).
     private const byte FlagListed = 1 << 0;
+    // ponytail: loan-listed uses SuperScout bit1; confirm against a known loan-listed player on live FM
+    // Upgrade to a verified bit mask if live dump shows bit1 wrong
     private const byte FlagLoanListed = 1 << 1;
     private const byte FlagListedByRequest = 1 << 3;
     private const byte FlagNotForSale = 1 << 4;
