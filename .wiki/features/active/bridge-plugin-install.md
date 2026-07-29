@@ -110,7 +110,7 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 #### Commit 1 — Resolve Steam plugins path and install status
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add Rust helpers to resolve the default Windows Steam FM26 `BepInEx/plugins` path (mirror `bridge-install` defaults, Windows-native). Detect whether `FmDataBridge.dll` is present and whether the plugins directory / BepInEx tree exists. Expose a structured install-status result for IPC. Unit-test path joining and presence checks against temp directories.
 
@@ -125,7 +125,7 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 #### Commit 2 — Install and remove plugin DLL
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Copy the source DLL (resource path in production; injectable path for tests) into the resolved plugins directory (create `plugins` only if BepInEx root exists — fail closed if BepInEx is missing). Remove deletes only `FmDataBridge.dll`. Map permission and missing-path errors to clear variants. Unit-test install/update/remove with temp dirs and a fixture file.
 
@@ -157,29 +157,27 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 **PR:** PR 1 — In-app plugin install and remove
 
-**Commit:** Resolve Steam plugins path and install status
+**Commit:** Install and remove plugin DLL
 
 ### RED test (active commit)
 
-Assert that resolving the default Steam plugins path yields the expected Windows path join, and that install status reports `pluginPresent: false` when the DLL is absent in a temp tree (and `bepinexPresent: false` when the BepInEx folder is missing). Catches wrong path constants and false “installed” signals.
+Assert that copying a fixture DLL into a temp plugins tree succeeds, remove deletes only `FmDataBridge.dll`, and install fails closed when the BepInEx parent folder is missing.
 
 ### Expected outcome
 
-Rust module (under `memory_read` or a sibling install module) can resolve the default plugins directory and report presence without performing install I/O.
+`install.rs` gains copy/remove helpers with clear error variants; unit tests cover success, missing BepInEx, and remove-when-absent.
 
 ### Explicit exclusions
 
-No file copy/delete, no IPC commands, no UI.
+No UI, no IPC registration, no Tauri resource bundling.
 
 ## Discoveries and replanning
 
-- …
+- Commit 1 landed in `memory_read/install.rs` with env overrides (`FM_BRIDGE_PLUGINS`, `FM_STEAM_ROOT`) matching `bridge-install`; `#![allow(dead_code)]` until commit 3 registers IPC.
 
 ## Completed work
 
-| PR | Commit | Hash | Notes |
-| --- | --- | --- | --- |
-| | | | |
+| PR 1 | Resolve Steam plugins path and install status | pending | `memory_read/install.rs` — path resolve + `BridgeInstallStatus` |
 
 ## Final validation
 
