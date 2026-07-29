@@ -8,7 +8,7 @@ Planning input (not authority): [memory-read-initial-notes.md](../../notes/memor
 
 ## Delivered behavior
 
-- With FM26 running, a save loaded, and the bridge plugin installed, the user triggers a data scan from the app home bridge panel (**Load Data**). There is no in-game hotkey.
+- With FM26 running, a save loaded, and the bridge plugin installed, the user triggers a data scan from the app top bar (**Load Data**). There is no in-game hotkey.
 - The app shows bridge readiness (plugin present, FM modules, scan phase) and surfaces structured status-read errors: missing bridge, unsupported platform, corrupt status, or unsupported bridge protocol (`unsupportedVersion` when `status.json` uses an unknown `protocolVersion`). Unsupported or undetectable FM builds fail closed at scan time (`status` `failed` with an error message — not the `unsupportedVersion` kind).
 - A successful scan writes `dump.json` under `%LOCALAPPDATA%\fm-valuescout\fm-bridge\` with the CONCEPT MVP player field set at dump schema **v5** (frozen in [bridge/DUMP_SCHEMA.md](../../../bridge/DUMP_SCHEMA.md)).
 - Unknown or unsupported FM builds **fail closed** — no layout fallback. A failed scan does not replace a prior good dump (replace-only-on-success in the bridge).
@@ -31,7 +31,7 @@ FM26 (Windows, Steam) + BepInEx 6 IL2CPP
 Tauri
   ├── Rust features/memory_read — paths, get_bridge_status, request_player_dump,
   │   dump validation (validate_dump_json / validate_dump_at_bridge_directory)
-  └── React features/memory-read — BridgeStatusPanel + Load Data trigger
+  └── React features/memory-read — BridgeStatusPanel (status only); Load Data in AppTopBar
 ```
 
 - Memory layouts and offset pins live in `bridge/Layouts/` (versioned; initial pin `Fm263Layout` for FM 26.3.x).

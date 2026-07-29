@@ -8,7 +8,7 @@ Persist a validated FM26 `dump.json` into SQLite as the active app save's **curr
 
 - User can create, rename, and switch between **app save slots** (not FM save files). Exactly one save is active.
 - First launch creates a default save when the database has none.
-- **Load Data** on the bridge panel: bridge scan, schema v5 validation, then replace the **save that was active when Load Data started** with a new current snapshot in one SQLite transaction.
+- **Load Data** in the top bar (`AppTopBar`): bridge scan, schema v5 validation, then replace the **save that was active when Load Data started** with a new current snapshot in one SQLite transaction.
 - After a successful load, the UI shows snapshot metadata (player count, game date/version when present, loaded time) and a **truncated / incomplete** banner when `scanTruncated` is true.
 - A short **sanity list** (name, CA, club) from the current snapshot proves ingest without opening JSON files.
 - Failed scan or failed ingest leaves the previous snapshot untouched.
@@ -18,8 +18,8 @@ Persist a validated FM26 `dump.json` into SQLite as the active app save's **curr
 
 ```text
 React features/snapshot
-  → save switcher (create / rename / set active)
-  → Load Data → invokeCommand("load_data")
+  → save switcher panel (create / rename on home route)
+  → AppTopBar: ActiveSaveSelect, SnapshotFreshnessChip, Load Data → invokeCommand("load_data")
   → snapshot overview + sanity list (TanStack Query)
 
 Rust features/snapshot
@@ -35,7 +35,7 @@ SQLite (migration v2)
 ```
 
 - `memory_read` owns bridge protocol and dump validation; `snapshot` owns persistence and Load Data semantics. Dump body never crosses IPC — Rust reads `dump.json` from the bridge directory.
-- `request_player_dump` remains registered for tests; the home **Load Data** button calls `load_data`.
+- `request_player_dump` remains registered for tests; the **Load Data** button in `AppTopBar` calls `load_data`.
 
 ## Important decisions
 

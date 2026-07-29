@@ -180,7 +180,7 @@ spacing:
 
 > **Authority:** This document owns the visual language, design tokens, and UI decisions. It does not own product purpose ([CONCEPT.md](./CONCEPT.md)) or implemented system shape ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-> **Status:** This is the target visual language, not a description of shipped screens. The app currently renders a small subset of it. `src/styles/global.css` bridges a partial set of these tokens into Tailwind `@theme`; extend it as UI features land ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
+> **Status:** Tokens, shared primitives (`src/components/ui/`), and the app shell (nav rail, top bar) are implemented. Debug and dashboard panels use this spec today. Player search, profiles, squad planner, and optimizer surfaces are specced in deferred sections and land with their features. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 ## Brand & Style
 
@@ -537,7 +537,7 @@ Radar for role and attribute profiles; line or area for value and score trends.
 Cross-cutting rules rather than components.
 
 - **Scrollbars:** 10px, transparent track, `outline-variant` thumb with `full` radius, brightening to `outline` on hover. Applied via `scrollbar-color` and `scrollbar-width`. Never hide a scrollbar on a scrollable region — a dense table needs a visible position cue.
-- **Icons:** [Lucide](https://lucide.dev) via `lucide-react`, bundled — not yet a dependency; add it when the first icon lands. 16px in tables and chips, 20px in the rail and top bar, 24px in empty states. `strokeWidth` 1.5 and `currentColor` always, so an icon inherits its context. One icon set only, and no emoji as an icon anywhere.
+- **Icons:** [Lucide](https://lucide.dev) via `lucide-react`, bundled. 16px in tables and chips, 20px in the rail and top bar, 24px in empty states. `strokeWidth` 1.5 and `currentColor` always, so an icon inherits its context. One icon set only, and no emoji as an icon anywhere.
 - **Motion:** 150ms ease-out for colour and opacity on hover, focus, and active. 200ms ease-out for overlay entrance; 150ms for exit. Nothing animates longer than 200ms, and layout, size, and position never animate on hover. Under `prefers-reduced-motion: reduce`, drop every transform and entrance animation and keep colour changes instant.
 
 ### Deferred specs

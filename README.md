@@ -50,7 +50,7 @@ Identity set to **FM ValueScout** (`fm-valuescout`, Tauri identifier `app.fmvalu
 | npm package name | `package.json` → `name` |
 | Desktop app identity | `src-tauri/tauri.conf.json` → `productName`, `identifier`, window `title` |
 | Rust crate metadata | `src-tauri/Cargo.toml` → `description` (and `name` if you rename the crate) |
-| Home page heading | `src/app/routes/index.tsx` |
+| Home page heading | `src/app/routes/index.tsx` (`Dashboard`) |
 | Tests that assert the title | `e2e/smoke.spec.ts`, `src/app/app-shell-routing.test.tsx` |
 | Repo and architecture titles | `README.md`, [.wiki/ARCHITECTURE.md](.wiki/ARCHITECTURE.md) title and §1 |
 | Product wiki names | [.wiki/CONCEPT.md](.wiki/CONCEPT.md), [.wiki/DESIGN.md](.wiki/DESIGN.md) → `name` / title fields |

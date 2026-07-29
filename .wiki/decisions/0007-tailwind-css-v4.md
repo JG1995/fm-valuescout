@@ -47,6 +47,7 @@ Runtime CSS-in-JS adds bundle and runtime cost. Tailwind keeps styles static and
 ### Follow-up
 
 - Done at scaffold (`fc11b5a`) — `src/styles/global.css` with `@import "tailwindcss"` and minimal `@theme` tokens.
+- Done on `feat/design-system` — full [DESIGN.md](../DESIGN.md) token bridge, IBM Plex via `@fontsource`, Lucide icons, and shared UI primitives.
 - ui-design skill and DESIGN.md remain source for semantic color roles.
 
 ## Related work

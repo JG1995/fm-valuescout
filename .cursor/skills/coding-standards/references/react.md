@@ -85,7 +85,7 @@ src/
 │       ├── utils/
 │       └── assets/
 ├── components/             # Shared UI (design system / ui primitives)
-│   └── ui/                 # button/, dialog/, form/ — wrapped primitives
+│   └── ui/                 # button/, panel/, status-chip/, empty-state/, field/
 ├── hooks/                  # Shared hooks (UI behavior, not domain logic)
 ├── lib/                    # tauri-client.ts — sole IPC wrapper
 ├── config/                 # Env exports, app constants
@@ -125,7 +125,7 @@ Do not edit `src/routeTree.gen.ts`. The TanStack Router Vite plugin generates it
 | Widget-local | `useState` / `useReducer` | Open section, hover, single-field draft before submit |
 | URL-shareable | TanStack Router `params` / `search` | Tab, sort, filter — **send to Rust**, do not apply client-side on full datasets |
 | Domain / async | TanStack Query | IPC command results — lists, detail records, mutation outcomes |
-| Client shared UI | Zustand | Sidebar open, command palette, selection chrome — not entity maps |
+| Client shared UI | Zustand | Nav rail expansion, command palette, selection chrome — not entity maps |
 | Form | React Hook Form or local state | Multi-field forms with validation |
 | Low-velocity global | React Context | Theme snapshot — not high-frequency updates |
 
@@ -231,23 +231,28 @@ Fetch functions live in feature `api/`. They return typed data or throw. Validat
 - **Global UI:** `src/stores/` — one store per UI domain (`use-layout-store.ts` → `useLayoutStore`).
 - **Feature UI:** `features/<feature>/stores/` when only that feature needs the state.
 - Export a hook; avoid exporting the raw store unless tests need it.
-- Keep actions in the store object. Name actions as verbs (`toggleSidebar`, `setPanelOpen`).
-- Use selectors: `useLayoutStore((s) => s.sidebarOpen)` to limit re-renders.
+- Keep actions in the store object. Name actions as verbs (`toggleRail`, `setPanelOpen`).
+- Use selectors: `useLayoutStore((s) => s.railExpanded)` to limit re-renders.
 - **Persist** only when product needs it (`persist` middleware). Do not persist IPC/Query data or large collections.
 
 ```typescript
 // Pattern sketch
-export const useLayoutStore = create<LayoutState>((set) => ({
-  sidebarOpen: false,
-  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-}));
+export const useLayoutStore = create<LayoutState>()(
+  persist(
+    (set) => ({
+      railExpanded: false,
+      toggleRail: () => set((s) => ({ railExpanded: !s.railExpanded })),
+    }),
+    { name: "fm-valuescout-layout" },
+  ),
+);
 ```
 
 ## Forms
 
 - **Trivial forms** (one or two fields): controlled local state.
 - **Non-trivial forms:** React Hook Form + Zod validation.
-- Abstract shared field components in `components/ui/form/` (`form.tsx`, `input.tsx`, etc.).
+- Abstract shared field components in `components/ui/field/` (`text-field.tsx`, `select-field.tsx`, `field-styles.ts`).
 - Validate on the client for UX; Rust commands must still validate at trust boundaries.
 
 ## Components
@@ -266,7 +271,7 @@ export const useLayoutStore = create<LayoutState>((set) => ({
 
 ### Shared UI library
 
-- Put reusable primitives in `components/ui/` (`button/`, `dialog/`, `form/`).
+- Put reusable primitives in `components/ui/` (`button/`, `panel/`, `status-chip/`, `empty-state/`, `field/`).
 - **Wrap third-party components** (headless libraries, Router `Link`) so you can change the underlying implementation without touching feature code.
 - Identify repetition before abstracting — avoid wrong abstractions.
 - Headless libraries (Radix UI, Base UI, Headless UI) are optional; wrap them in `components/ui/` when you add them.

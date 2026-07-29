@@ -32,7 +32,7 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 ### In-app request protocol
 
 1. Build and install the plugin; launch FM26 and load a save.
-2. In the Tauri app, open the home bridge panel and click **Load Data**.
+2. In the Tauri app, click **Load Data** in the top bar.
 3. Rust writes `request.json` (`protocolVersion`, `requestId`, `createdAtUtc`, `operation: "full-dump"`).
 4. The plugin polls every ~2s, rejects requests older than **30 seconds**, runs the dump off the Unity main thread, and updates `status.json` (`idle` → `scanning` → `ready` / `failed`).
 5. The app waits for a terminal status matching the request id (default timeout 120s). On success, Rust reads `dump.json` from disk, validates schema v5, and ingests players into SQLite for the active app save (`load_data` IPC). The dump body never crosses IPC. Scan or ingest failure leaves the prior snapshot unchanged; the UI shows a typed error or ingest summary (player count, truncated banner when `scanTruncated`).
