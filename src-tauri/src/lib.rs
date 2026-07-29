@@ -34,6 +34,7 @@ pub fn run() {
             features::snapshot::commands::create_save,
             features::snapshot::commands::rename_save,
             features::snapshot::commands::set_active_save,
+            features::snapshot::commands::load_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

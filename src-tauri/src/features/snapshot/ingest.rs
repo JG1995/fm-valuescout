@@ -1,8 +1,4 @@
 //! Validates and ingests `dump.json` into the active save's current snapshot.
-//!
-//! # ponytail: module is not wired to IPC until PR2 Load Data commit
-//! Upgrade to a `load_data` command when scan+ingest composition lands.
-#![allow(dead_code)]
 
 use std::fs;
 use std::path::Path;
