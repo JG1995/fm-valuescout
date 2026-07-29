@@ -28,5 +28,5 @@ Still preferred:
 ## Related
 
 - [ADR-0016](../decisions/0016-csharp-bepinex-fm26-bridge.md)
-- Feature ledger: [fm26-memory-read](../features/active/fm26-memory-read.md)
+- Feature record: [fm26-memory-read](../features/completed/fm26-memory-read.md)
 - Upstream: https://github.com/mavarobli/FMSuperScout

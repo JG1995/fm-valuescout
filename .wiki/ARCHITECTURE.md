@@ -12,7 +12,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 ## 1. Top-Level Shape
 
-**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`) and a **walking skeleton** (health IPC demo, SQLite persistence) until product features land.
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), and an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)).
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 
@@ -36,7 +36,9 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
-**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly
+**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); snapshot ingest into SQLite is the next feature.
+
+**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe scanning, `status.json` / `dump.json` / diagnostics. Rust `features/memory_read` orchestrates requests and validates dump shape; React `features/memory-read` shows status and triggers scans. Windows Steam FM26 only.
 
 **Auth:** None in the template default — chosen per fork via `/stack`
 
@@ -105,8 +107,9 @@ your-repo/
 ├── .wiki/             # Durable docs (this file, ADRs, TODO)
 ├── .husky/            # Git hooks (pre-commit → check-fast + conditional check-rust)
 ├── scripts/
-│   ├── dev            # test | check | format | smoke | mutate
+│   ├── dev            # test | check | format | smoke | mutate | bridge-install
 │   └── test-*.sh      # Contract tests for template tooling
+├── bridge/            # C# BepInEx FM26 plugin (see bridge/README.md, DUMP_SCHEMA.md)
 ├── src/               # WebView frontend (see below)
 ├── src-tauri/         # Rust backend + Tauri config (see below)
 ├── public/            # Static assets served as-is
@@ -176,7 +179,8 @@ src-tauri/
         └── <feature>/
             ├── mod.rs
             ├── commands.rs # #[tauri::command] handlers
-            └── service.rs    # Business logic, rusqlite queries (when I/O appears)
+            ├── service.rs    # Business logic, rusqlite queries (when I/O appears)
+            └── …             # e.g. memory_read/dump_validation.rs for dump ingestibility checks
 ```
 
 **Import alias:** `@/` → `src/` (declared in `vite.config.ts` and `tsconfig.json`).
@@ -248,6 +252,7 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 | `./scripts/dev check-fast` | Fast pre-commit path — Biome + `tsc -b` + secretlint `--staged` |
 | `./scripts/dev check-rust` | `cargo fmt --check`, clippy, and test in `src-tauri/` |
 | `./scripts/dev smoke` | Playwright (`e2e/smoke.spec.ts`); starts Vite via `playwright.config.ts` when needed |
+| `./scripts/dev bridge-install` | Build `bridge/` and copy `FmDataBridge.dll` into Steam `BepInEx/plugins` (Windows path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL default) |
 
 ### 3.2 Validation gate
 
@@ -360,6 +365,27 @@ Migrations apply on open — there is no separate plugin preload step.
 
 If a mutation must clear more than one cache key, document the invalidation map in the feature ledger.
 
+### 5.4 Memory read path (FM26 bridge)
+
+```text
+User opens home route
+  → BridgeStatusPanel: useSuspenseQuery(bridgeStatusQueryOptions)
+  → invokeCommand("get_bridge_status")
+  → Rust memory_read: resolve %LOCALAPPDATA%\fm-valuescout\fm-bridge\, parse status.json
+  → Panel shows ready / missing / error / unsupported platform
+
+User clicks Load Data
+  → useMutation → invokeCommand("request_player_dump")
+  → Rust writes request.json (30s TTL), polls status.json until terminal state (120s default)
+  → Bridge plugin (off Unity main thread): scan → dump.json + diagnostics.txt
+  → Rust may call validate_dump_at_bridge_directory (logs validation failures; no dump body over IPC)
+  → UI shows busy / success / error from DumpRequestResult
+
+Dump contract: bridge/DUMP_SCHEMA.md schema v5 (frozen). Feature 2 ingests from dump.json on disk.
+```
+
+Non-Windows hosts return `unsupportedPlatform` for bridge commands. Full FM attach tests are manual on Windows. Linux CI runs Rust/Vitest/Playwright checks only; bridge `dotnet test` is local.
+
 ---
 
 ## 6. Testing Strategy
@@ -396,12 +422,14 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
 | Walking-skeleton UI with stubbed IPC: status panel, demo-value form flow, sidebar toggle | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
-| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value` | Capabilities ACL, plugin permissions, or menu/tray integration |
+| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `request_player_dump` | Capabilities ACL, plugin permissions, or menu/tray integration |
+| Bridge panel and Load Data button render with stubbed bridge IPC | Real BepInEx plugin, FM attach, or LocalAppData file protocol |
 
 | Concern | Owner in this template |
 | --- | --- |
 | Frontend IPC wiring and React UI around commands | Vitest + `mockIPC` (`./scripts/dev test`) |
 | Command validation, services, migrations, SQLite | `cargo test` in `./scripts/dev check` |
+| Bridge scan, dump writers, file protocol | `dotnet test` in `bridge/` (fakes; no FM in Linux CI) |
 | Full-stack manual verification | `pnpm tauri dev` |
 | Automated real WebView e2e | Deferred — see [BACKLOG.md](./BACKLOG.md) (tauri-driver) and ponytail in `tauri.md` |
 
@@ -474,7 +502,7 @@ Each item links to an ADR with alternatives and consequences.
 | SQLite (Rust-owned) | [0015](./decisions/0015-sqlite-rust-owned.md) |
 | C# BepInEx FM26 bridge | [0016](./decisions/0016-csharp-bepinex-fm26-bridge.md) |
 
-TanStack Table, Form, Virtual, and TanStack Start are intentionally **not** in the default stack — add per feature when needed. The FM26 bridge is an accepted product decision; describe it under current-state sections only after the implementation lands.
+TanStack Table, Form, Virtual, and TanStack Start are intentionally **not** in the default stack — add per feature when needed. The FM26 bridge is implemented per [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md) and [fm26-memory-read](./features/completed/fm26-memory-read.md); dump schema v5 is frozen in `bridge/DUMP_SCHEMA.md`.
 
 ---
 
@@ -520,6 +548,8 @@ On **WSL**, you also need a display server for the native window:
 - **X server** (older setups) — run an X server on Windows and set `DISPLAY` before `pnpm tauri dev`.
 
 Headless gate commands (`./scripts/dev check`, `cargo test`) do not require a display.
+
+**FM26 bridge:** Build and install the plugin on a **Windows** host with .NET 6 SDK and BepInEx 6 IL2CPP on the Steam FM26 folder. From WSL, `./scripts/dev bridge-install` can build and copy the DLL when `FM_STEAM_ROOT` or the default Windows Steam path is set. See `bridge/README.md`.
 
 ### What `pnpm install` does
 
