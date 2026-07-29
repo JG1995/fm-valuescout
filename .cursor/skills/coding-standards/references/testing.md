@@ -1,6 +1,6 @@
 # Testing and TDD
 
-Load this file on every `/build`, `/fix`, `/checkpoint`, and code review pass that touches or adds tests.
+Load this file on every `/build`, `/build-loop`, `/fix`, `/checkpoint`, and code review pass that touches or adds tests.
 
 Security risks in mocks, fixtures, and CI test artifacts live in `security-audit/references/testing.md` — complementary to this file (TDD quality vs test-infra exposure).
 

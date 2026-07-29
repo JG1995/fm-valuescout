@@ -39,7 +39,8 @@ Skip save when unsure.
 | `/roadmap` | Order of **features** across MVP |
 | `/plan-feature` | **One feature** — PRs and commits as breakpoints |
 | `/build` | **One active commit** — RED → GREEN → REFACTOR |
-| `/fix` | **Delegated review findings** on the current commit |
+| `/build-loop` | **Manual opt-in:** same as `/build`, then automated checkpoint/fix loop + auto-commit |
+| `/fix` | **Delegated review findings** on the current commit (default: CRITICAL, HIGH, MEDIUM) |
 | `/checkpoint` | Stage, review report, commit after approval |
 
 Do not implement, stage, commit, or push.
