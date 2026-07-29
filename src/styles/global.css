@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Self-hosted IBM Plex, bundled — the app renders identically with no network.
+   These per-weight entrypoints carry unicode-range per script; the per-subset
+   ones (latin-400.css) do not, so combining those would leave two identical
+   @font-face rules and silently drop one subset's glyphs. */
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
+
 /* Design tokens bridged from .wiki/DESIGN.md. Values there are authoritative —
    change the spec first, then mirror it here. */
 @theme {

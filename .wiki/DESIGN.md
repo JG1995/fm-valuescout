@@ -285,7 +285,9 @@ Numeric rules:
 - Never set body copy in all-caps. Uppercase is for `label-*` roles only, at 11–14px, always with the letterspacing from the token.
 - Use `text-wrap: pretty` on prose blocks. Truncate names in fixed-width cells with an ellipsis and a `title` attribute. Text must never wrap inside a table cell — the two-line table variant stacks two separate elements at a fixed row height, which is not the same thing as letting a value wrap.
 
-**Loading:** self-host both families as WOFF2 in the bundle and declare them with `@font-face` and `font-display: swap`. Subset to **latin + latin-extended**; FM player names include diacritics that basic latin drops (`Magalhães`, `Håland`, `Şahin`, `Naîmi`), and a missing glyph in a scouting database is a data error the user cannot distinguish from a bug. No Google Fonts link, no CDN — the app must render identically with no network, per the offline stance above.
+**Loading:** self-host both families in the bundle via `@fontsource/ibm-plex-sans` and `@fontsource/ibm-plex-mono`, importing the per-weight entrypoints (`400.css`, `500.css`, `600.css` for Sans; `500.css`, `600.css` for Mono). No Google Fonts link, no CDN — the app must render identically with no network, per the offline stance above.
+
+Ship **every latin, cyrillic, greek, and vietnamese subset**, not a latin-only cut. FM's playable leagues include Russia, Ukraine, Greece, Serbia, and Bulgaria, so names outside latin are ordinary data, and a missing glyph in a scouting database is a data error the user cannot distinguish from a bug (`Magalhães`, `Håland`, `Şahin`, `Дзюба`, `Παυλίδης`). Bundle weight is not a constraint for a local desktop app. Use the per-weight entrypoints rather than the per-subset ones (`latin-400.css`): only the per-weight files carry `unicode-range`, so combining per-subset files leaves two identical `@font-face` descriptors and the browser silently keeps one.
 
 Font stacks:
 
