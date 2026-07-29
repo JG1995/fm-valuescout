@@ -40,6 +40,26 @@ public sealed class ScanDiagnostics
     /// <summary>Short contract/value snapshots for known-player patch verification.</summary>
     public List<string> SampleContractSnapshots { get; } = new();
 
+    public const int MaxSampleClubSnapshots = 5;
+
+    /// <summary>Short club/loan snapshots for known-player patch verification.</summary>
+    public List<string> SampleClubSnapshots { get; } = new();
+
+    /// <summary>Multi-club (loan) conflict samples from squad walk.</summary>
+    public List<string> MultiClubSamples { get; } = new();
+
+    public int ClubsWalked { get; set; }
+
+    public int PlayersLinkedViaSquad { get; set; }
+
+    public int ClubUnresolved { get; set; }
+
+    public string? ClubResolutionWarning { get; set; }
+
+    public string? GameDate { get; set; }
+
+    public string? GameDateSource { get; set; }
+
     /// <summary>Accepted-player ceiling for this run; null means unlimited.</summary>
     public int? MaxAccepted { get; set; }
 

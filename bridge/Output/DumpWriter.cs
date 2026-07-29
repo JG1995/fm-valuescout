@@ -111,6 +111,18 @@ public static class DiagnosticsWriter
         sb.AppendLine("attrsStoredTimesFive=decode floor(raw/5+0.5); null if unread or outside 1..20");
         sb.AppendLine("personalityRaw=1..20 or null");
         sb.AppendLine("contractNull=free agent or unread; money 0xFFFFFFFF/300M → null");
+        sb.AppendLine(
+            "clubNull=unresolved/free agent; onLoan when current≠parent; teamLevel senior/reserve/youth");
+        sb.AppendLine($"clubsWalked={diagnostics.ClubsWalked}");
+        sb.AppendLine($"playersLinkedViaSquad={diagnostics.PlayersLinkedViaSquad}");
+        sb.AppendLine($"clubUnresolved={diagnostics.ClubUnresolved}");
+        if (!string.IsNullOrEmpty(diagnostics.ClubResolutionWarning))
+        {
+            sb.AppendLine($"clubResolutionWarning={diagnostics.ClubResolutionWarning}");
+        }
+
+        sb.AppendLine($"gameDate={diagnostics.GameDate ?? "(none)"}");
+        sb.AppendLine($"gameDateSource={diagnostics.GameDateSource ?? "unknown"}");
         sb.AppendLine("sampleAttributes:");
         foreach (var sample in diagnostics.SampleAttributeSnapshots)
         {
@@ -119,6 +131,18 @@ public static class DiagnosticsWriter
 
         sb.AppendLine("sampleContracts:");
         foreach (var sample in diagnostics.SampleContractSnapshots)
+        {
+            sb.AppendLine($"  {sample}");
+        }
+
+        sb.AppendLine("sampleClubs:");
+        foreach (var sample in diagnostics.SampleClubSnapshots)
+        {
+            sb.AppendLine($"  {sample}");
+        }
+
+        sb.AppendLine("multiClubSamples:");
+        foreach (var sample in diagnostics.MultiClubSamples)
         {
             sb.AppendLine($"  {sample}");
         }
@@ -133,6 +157,11 @@ public static class DiagnosticsWriter
         {
             sb.AppendLine(
                 "hint=Layout is provisional. Repin UID/CA/PA offsets using the class-offset histogram and known players.");
+        }
+        else if (!string.IsNullOrEmpty(diagnostics.ClubResolutionWarning))
+        {
+            sb.AppendLine(
+                "hint=Many players lack club links. Confirm contract→team→club offsets and squad-array pins.");
         }
 
         return sb.ToString();

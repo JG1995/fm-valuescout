@@ -61,6 +61,24 @@ public sealed class DumpPlayer
 
     /// <summary>Player reputation (current / world); field nulls when unread.</summary>
     public DumpReputation Reputation { get; init; } = new();
+
+    /// <summary>Club where the player currently appears in a squad; null = unresolved / free agent.</summary>
+    public string? CurrentClub { get; init; }
+
+    /// <summary>Parent / owning club from the full-contract chain; null = unresolved / free agent.</summary>
+    public string? ParentClub { get; init; }
+
+    /// <summary>True when current and parent clubs both resolve and differ (loan).</summary>
+    public bool? OnLoan { get; init; }
+
+    /// <summary>Competition / division name for the current team; null when unread.</summary>
+    public string? Division { get; init; }
+
+    /// <summary>senior / reserve / youth from FM team type; null when unknown.</summary>
+    public string? TeamLevel { get; init; }
+
+    /// <summary>Age at dump game date; null when DOB or game date missing.</summary>
+    public int? Age { get; init; }
 }
 
 public sealed class DumpReputation
@@ -83,6 +101,12 @@ public sealed class DumpDocument
     public string BridgeVersion { get; init; } = "";
 
     public int ProtocolVersion { get; init; }
+
+    /// <summary>In-game date as yyyy-MM-dd when known.</summary>
+    public string? GameDate { get; init; }
+
+    /// <summary>memory | derived | unknown</summary>
+    public string GameDateSource { get; init; } = "unknown";
 
     public int PlayerCount { get; init; }
 

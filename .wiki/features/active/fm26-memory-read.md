@@ -372,7 +372,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Clubs, loans, division, team level, game date
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:**
 - Resolve **current club** vs **parent club**, loan in/out, division, and team level (senior/reserve/youth as the layout allows). Apply deterministic rules when a player appears in multiple team structures so dumps are stable across scans.
@@ -386,6 +386,15 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 **Validation:** Manual loan/club cases above; dump metadata includes a plausible game date matching FM’s save date.
 
 **Provisional commit:** `feat(bridge): resolve clubs loans and game date`
+
+##### Build progress (Commit 2)
+
+- Layout: contract→team→club, team type/squad/comp/schedule, club name offsets on `IFmMemoryLayout` + `Fm263Layout` (SuperScout Dumper/Fields provenance).
+- `Extraction/`: `ContractClubReader` (parent), `SquadClubIndex` + `SquadPick` (current; non-parent wins on multi-club), `TeamLevelMap`, `GameDateResolver` (schedule votes → `memory`, else cohort-derived), `PlayerAge`.
+- Dump schema **v5**: player `currentClub`/`parentClub`/`onLoan`/`division`/`teamLevel`/`age`; document `gameDate`/`gameDateSource`.
+- Diagnostics: `clubUnresolved` warning when ≥50% lack clubs; `sampleClubs` / `multiClubSamples`.
+- Tests: club/loan/date/age + schema fixture updates. `dotnet test` 86 passed.
+- Managed-club / loaned-in vs loaned-out relative to the human manager not dumped this commit — `onLoan` is parent≠current only.
 
 #### Commit 3 — Dump schema freeze and handoff docs
 
@@ -414,7 +423,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ### RED test (active commit)
 
-Club/loan/division/team-level resolution fixtures; dump metadata game date (and source tag); multi-squad deterministic rules.
+Club/loan/division/team-level resolution fixtures; dump metadata game date (and source tag); multi-squad deterministic rules. *(implemented — awaiting checkpoint)*
 
 ### Expected outcome
 
@@ -442,6 +451,7 @@ SQLite ingest or search UI; asking-price heuristics or non-memory-derived estima
 - 2026-07-29 (PR 3 Commit 2 build): Dump schema bumped to **v3** with `attributes` / `hiddenAttributes` / `personality`. Visible+hidden decode ÷5; personality is raw 1–20 on the person object (not ×5). Keys match SuperScout English PascalCase. Diagnostics document both encodings and emit sample attribute snapshots.
 - 2026-07-29 (PR 3 Commit 2 fix): Attribute maps use `int?` — unread or out-of-range values are JSON `null`, not `0` (ingest must not treat missing as a real score).
 - 2026-07-29 (PR 4 Commit 1 build): Dump schema bumped to **v4** with contract/wage/transfer flags, market value (PLAO_GUIDE_VALUE / GBP), and `reputation.current`/`world`. Free agent = null wage/expiry/flags (not false/0). Money nulls: `0xFFFFFFFF`; market also nulls FM's unfixed `300_000_000`. Asking-price slot (`0x238`) not dumped this commit. Loan-listed bit1 still provisional per SuperScout note — confirm on live dump.
+- 2026-07-29 (PR 4 Commit 2 build): Dump schema bumped to **v5** with `currentClub`/`parentClub`/`onLoan`/`division`/`teamLevel`/`age` and document `gameDate`/`gameDateSource`. Parent from contract→team→club; current from squad walk (non-parent wins when multi-club). Team level: 0→senior, 1–9→reserve, ≥10→youth. Game date from team-schedule majority vote (`memory`) else youth-cohort+system day (`derived`). Managed club / explicit loaned-in vs loaned-out not in dump — ingest can derive later if managed club lands. No heap club-object scan (only clubs reached via player contract chains) — clubs with zero contracted players in the accepted set are invisible to the walk.
 
 ## Completed work
 

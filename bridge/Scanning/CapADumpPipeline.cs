@@ -59,7 +59,11 @@ public sealed class CapADumpPipeline
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
 
-        var players = new List<DumpPlayer>(candidates.Count);
+        var drafts = new List<PlayerDraft>(candidates.Count);
+        var personToUid = new Dictionary<ulong, uint>();
+        var parentClubByUid = new Dictionary<uint, string?>();
+        var clubAddresses = new HashSet<ulong>();
+
         foreach (var candidate in candidates)
         {
             var playerBase = candidate.ObjectAddress - (ulong)candidate.ClassOffset;
@@ -97,32 +101,22 @@ public sealed class CapADumpPipeline
                 playerBase,
                 layout);
 
-            players.Add(
-                new DumpPlayer
-                {
-                    Uid = candidate.Uid,
-                    Ca = candidate.Ca,
-                    Pa = candidate.Pa,
-                    Name = identity.Name,
-                    BirthYear = identity.BirthYear,
-                    BirthDayOfYear = identity.BirthDayOfYear,
-                    Nationalities = identity.Nationalities,
-                    HeightCm = identity.HeightCm,
-                    PreferredFoot = identity.PreferredFoot,
-                    Positions = identity.Positions,
-                    Attributes = attrs.Attributes,
-                    HiddenAttributes = attrs.HiddenAttributes,
-                    Personality = attrs.Personality,
-                    WeeklyWageGbp = contract.WeeklyWageGbp,
-                    ContractExpiryYear = contract.ContractExpiryYear,
-                    ContractExpiryDayOfYear = contract.ContractExpiryDayOfYear,
-                    TransferListed = contract.TransferListed,
-                    LoanListed = contract.LoanListed,
-                    NotForSale = contract.NotForSale,
-                    SetForRelease = contract.SetForRelease,
-                    MarketValueGbp = contract.MarketValueGbp,
-                    Reputation = contract.Reputation,
-                });
+            var parentLink = ContractClubReader.TryRead(reader, candidate.ObjectAddress, layout);
+            if (parentLink is { ClubAddress: not 0 })
+            {
+                clubAddresses.Add(parentLink.ClubAddress);
+            }
+
+            personToUid[candidate.ObjectAddress] = candidate.Uid;
+            parentClubByUid[candidate.Uid] = parentLink?.ClubName;
+
+            drafts.Add(
+                new PlayerDraft(
+                    candidate,
+                    identity,
+                    attrs,
+                    contract,
+                    parentLink));
 
             if (diagnostics.SampleAttributeSnapshots.Count < ScanDiagnostics.MaxSampleAttributeSnapshots)
             {
@@ -137,12 +131,132 @@ public sealed class CapADumpPipeline
             }
         }
 
-        if (players.Count == 0)
+        if (drafts.Count == 0)
         {
             diagnostics.FailureReason =
                 "scan produced candidates but none passed identity sanity (name/DOB)";
             DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+        }
+
+        var squadIndex = SquadClubIndex.Build(
+            reader,
+            layout,
+            personToUid,
+            parentClubByUid,
+            clubAddresses);
+
+        foreach (var sample in squadIndex.MultiClubSamples.Take(ScanDiagnostics.MaxSampleClubSnapshots))
+        {
+            diagnostics.MultiClubSamples.Add(sample);
+        }
+
+        diagnostics.ClubsWalked = squadIndex.ClubsWalked;
+        diagnostics.PlayersLinkedViaSquad = squadIndex.PlayersLinked;
+
+        var gameDate = GameDateResolver.Resolve(
+            squadIndex.DateVotes,
+            GameDateResolver.YoungestBirthCohortYear(
+                drafts.Select(d => d.Identity.BirthYear),
+                minCohortSize: Math.Min(30, Math.Max(1, drafts.Count))));
+
+        diagnostics.GameDateSource = gameDate.Source;
+        diagnostics.GameDate = gameDate.GameDate;
+
+        var players = new List<DumpPlayer>(drafts.Count);
+        foreach (var draft in drafts)
+        {
+            var parentName = draft.ParentLink?.ClubName;
+            string? currentName = null;
+            string? division = draft.ParentLink?.Division;
+            string? teamLevel = null;
+            int? teamType = null;
+
+            if (squadIndex.TryGet(draft.Candidate.Uid, out var squad))
+            {
+                currentName = squad.ClubName;
+                division = squad.Division ?? division;
+                teamType = squad.TeamType;
+                teamLevel = TeamLevelMap.FromTeamType(squad.TeamType);
+            }
+            else if (parentName is not null)
+            {
+                currentName = parentName;
+            }
+
+            bool? onLoan = null;
+            if (currentName is not null && parentName is not null)
+            {
+                onLoan = !string.Equals(currentName, parentName, StringComparison.Ordinal);
+            }
+
+            if (currentName is null && parentName is null)
+            {
+                diagnostics.ClubUnresolved++;
+            }
+
+            int? age = null;
+            if (gameDate.Year > 0 && gameDate.DayOfYear > 0)
+            {
+                age = PlayerAge.At(
+                    draft.Identity.BirthYear,
+                    draft.Identity.BirthDayOfYear,
+                    gameDate.Year,
+                    gameDate.DayOfYear);
+            }
+
+            players.Add(
+                new DumpPlayer
+                {
+                    Uid = draft.Candidate.Uid,
+                    Ca = draft.Candidate.Ca,
+                    Pa = draft.Candidate.Pa,
+                    Name = draft.Identity.Name,
+                    BirthYear = draft.Identity.BirthYear,
+                    BirthDayOfYear = draft.Identity.BirthDayOfYear,
+                    Nationalities = draft.Identity.Nationalities,
+                    HeightCm = draft.Identity.HeightCm,
+                    PreferredFoot = draft.Identity.PreferredFoot,
+                    Positions = draft.Identity.Positions,
+                    Attributes = draft.Attrs.Attributes,
+                    HiddenAttributes = draft.Attrs.HiddenAttributes,
+                    Personality = draft.Attrs.Personality,
+                    WeeklyWageGbp = draft.Contract.WeeklyWageGbp,
+                    ContractExpiryYear = draft.Contract.ContractExpiryYear,
+                    ContractExpiryDayOfYear = draft.Contract.ContractExpiryDayOfYear,
+                    TransferListed = draft.Contract.TransferListed,
+                    LoanListed = draft.Contract.LoanListed,
+                    NotForSale = draft.Contract.NotForSale,
+                    SetForRelease = draft.Contract.SetForRelease,
+                    MarketValueGbp = draft.Contract.MarketValueGbp,
+                    Reputation = draft.Contract.Reputation,
+                    CurrentClub = currentName,
+                    ParentClub = parentName,
+                    OnLoan = onLoan,
+                    Division = division,
+                    TeamLevel = teamLevel,
+                    Age = age,
+                });
+
+            if (diagnostics.SampleClubSnapshots.Count < ScanDiagnostics.MaxSampleClubSnapshots)
+            {
+                diagnostics.SampleClubSnapshots.Add(
+                    FormatClubSample(
+                        draft.Candidate.Uid,
+                        draft.Identity.Name,
+                        currentName,
+                        parentName,
+                        onLoan,
+                        teamLevel,
+                        teamType));
+            }
+        }
+
+        if (players.Count > 0
+            && diagnostics.ClubUnresolved * 2 >= players.Count)
+        {
+            diagnostics.ClubResolutionWarning =
+                $"club resolution failed for {diagnostics.ClubUnresolved}/{players.Count} players";
         }
 
         var document = new DumpDocument
@@ -153,6 +267,8 @@ public sealed class CapADumpPipeline
             SupportedGameVersion = layout.VersionKey,
             BridgeVersion = bridgeVersion,
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
+            GameDate = gameDate.GameDate,
+            GameDateSource = gameDate.Source,
             PlayerCount = players.Count,
             Players = players,
         };
@@ -186,6 +302,30 @@ public sealed class CapADumpPipeline
             $"listed={FmtBool(contract.TransferListed)} value={FmtLong(contract.MarketValueGbp)} " +
             $"curRep={contract.Reputation.Current?.ToString() ?? "null"}";
     }
+
+    private static string FormatClubSample(
+        uint uid,
+        string name,
+        string? current,
+        string? parent,
+        bool? onLoan,
+        string? teamLevel,
+        int? teamType)
+    {
+        static string Fmt(string? v) => v ?? "null";
+        static string FmtBool(bool? v) => v is { } b ? (b ? "true" : "false") : "null";
+
+        return
+            $"uid={uid} name={name} current={Fmt(current)} parent={Fmt(parent)} " +
+            $"onLoan={FmtBool(onLoan)} level={Fmt(teamLevel)} tt={teamType?.ToString() ?? "null"}";
+    }
+
+    private sealed record PlayerDraft(
+        PersonCandidate Candidate,
+        PlayerIdentity Identity,
+        PlayerAttributes Attrs,
+        PlayerContractFields Contract,
+        ContractClubLink? ParentLink);
 }
 
 public readonly record struct CapADumpResult(bool Success, string? Error, int PlayerCount, bool DumpReplaced)

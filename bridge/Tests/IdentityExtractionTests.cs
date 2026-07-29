@@ -247,7 +247,7 @@ public sealed class IdentityExtractionTests
             Assert.Equal(1, result.PlayerCount);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
-            Assert.Equal(4, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(5, doc.RootElement.GetProperty("schemaVersion").GetInt32());
             var player = doc.RootElement.GetProperty("players")[0];
             Assert.Equal(42u, player.GetProperty("uid").GetUInt32());
             Assert.Equal("Good Player", player.GetProperty("name").GetString());

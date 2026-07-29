@@ -165,6 +165,8 @@ public sealed class CapADumpTests
             SupportedGameVersion = "26.3",
             BridgeVersion = "0.1.0",
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
+            GameDate = "2026-08-14",
+            GameDateSource = "memory",
             PlayerCount = 1,
             Players = new[]
             {
@@ -192,6 +194,12 @@ public sealed class CapADumpTests
                     SetForRelease = false,
                     MarketValueGbp = 8_000_000,
                     Reputation = new DumpReputation { Current = 4000, World = 3500 },
+                    CurrentClub = "Example FC",
+                    ParentClub = "Example FC",
+                    OnLoan = false,
+                    Division = "Premier League",
+                    TeamLevel = "senior",
+                    Age = 25,
                 },
             },
         };
@@ -199,7 +207,11 @@ public sealed class CapADumpTests
         var json = DumpWriter.Serialize(document);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        Assert.Equal(4, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(5, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("2026-08-14", root.GetProperty("gameDate").GetString());
+        Assert.Equal("memory", root.GetProperty("gameDateSource").GetString());
+        Assert.Equal("Example FC", root.GetProperty("players")[0].GetProperty("currentClub").GetString());
+        Assert.Equal(25, root.GetProperty("players")[0].GetProperty("age").GetInt32());
         Assert.Equal("26.3.2.2329565", root.GetProperty("gameVersion").GetString());
         Assert.Equal("26.3", root.GetProperty("supportedGameVersion").GetString());
         Assert.Equal("0.1.0", root.GetProperty("bridgeVersion").GetString());
