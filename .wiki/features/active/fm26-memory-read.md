@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Implementation complete — pending `/finish-feature`
 
 ## Intent
 
@@ -337,7 +337,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 ### PR 4 — Contracts, clubs, loans, and dump contract freeze
 
-**Status:** Active
+**Status:** Completed (pending `/finish-feature`)
 
 **Provisional PR title:** `feat(memory-read): extract contracts clubs and freeze dump contract`
 
@@ -398,7 +398,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 3 — Dump schema freeze and handoff docs
 
-**Status:** Active
+**Status:** Completed — `147ed9a`
 
 **Work:**
 - Freeze a versioned dump document contract (required fields, types, null rules, schema version) that feature 2 will import. Prefer a short durable note under `.wiki/` or `bridge/` that describes the file layout and status/request protocol — not a second architecture essay.
@@ -415,23 +415,30 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **Provisional commit:** `feat(memory-read): freeze dump schema for snapshot ingest`
 
+##### Build progress (Commit 3)
+
+- `bridge/DUMP_SCHEMA.md` — frozen v5 contract (document + player fields, null rules, `emptySave` marker, intentional gaps).
+- Rust `dump_validation.rs`: `validate_dump_json` / `validate_dump_file`; golden fixture `fixtures/golden_dump_v5.json`; 9 unit tests; indexed player field errors.
+- `service::validate_dump_at_bridge_directory` for feature 2; warns on validation failure after successful scan wait (no IPC shape change).
+- CONCEPT MVP player-field coverage confirmed in Discoveries; in-app BepInEx install remains in BACKLOG.
+
 ## Active work
 
-**PR:** PR 4 — Contracts, clubs, loans, and dump contract freeze
+**PR:** PR 4 — Contracts, clubs, loans, and dump contract freeze (complete — pending `/finish-feature`)
 
-**Commit:** Commit 3 — Dump schema freeze and handoff docs
+**Commit:** none — all PR 4 commits done; run `/finish-feature` when ready
 
 ### RED test (active commit)
 
-Rust dump ingestibility validation (schema version, required keys, non-empty players or empty-save marker); golden fixture dump.
+(none)
 
 ### Expected outcome
 
-Frozen dump contract documented for feature 2; Rust helper validates dump shape without SQLite import; CONCEPT MVP field coverage confirmed (gaps noted); `./scripts/dev check` + test green.
+Feature-complete memory read: frozen dump contract, Rust ingestibility validation, handoff docs for snapshot ingest.
 
 ### Explicit exclusions
 
-SQLite migrations/importer (feature 2); in-app BepInEx installer (unless already trivial); player search UI.
+SQLite migrations/importer (feature 2); in-app BepInEx installer; player search UI.
 
 ## Discoveries and replanning
 
@@ -452,6 +459,7 @@ SQLite migrations/importer (feature 2); in-app BepInEx installer (unless already
 - 2026-07-29 (PR 3 Commit 2 fix): Attribute maps use `int?` — unread or out-of-range values are JSON `null`, not `0` (ingest must not treat missing as a real score).
 - 2026-07-29 (PR 4 Commit 1 build): Dump schema bumped to **v4** with contract/wage/transfer flags, market value (PLAO_GUIDE_VALUE / GBP), and `reputation.current`/`world`. Free agent = null wage/expiry/flags (not false/0). Money nulls: `0xFFFFFFFF`; market also nulls FM's unfixed `300_000_000`. Asking-price slot (`0x238`) not dumped this commit. Loan-listed bit1 still provisional per SuperScout note — confirm on live dump.
 - 2026-07-29 (PR 4 Commit 2 build): Dump schema bumped to **v5** with `currentClub`/`parentClub`/`onLoan`/`division`/`teamLevel`/`age` and document `gameDate`/`gameDateSource`. Parent from contract→team→club; current from squad walk (non-parent wins when multi-club). Team level: 0→senior, 1–9→reserve, ≥10→youth. Game date from team-schedule majority vote (`memory`) else youth-cohort+system day (`derived`). Managed club / explicit loaned-in vs loaned-out not in dump — ingest can derive later if managed club lands. No heap club-object scan (only clubs reached via player contract chains) — clubs with zero contracted players in the accepted set are invisible to the walk.
+- 2026-07-29 (PR 4 Commit 3 build): Frozen dump contract in `bridge/DUMP_SCHEMA.md` (schema v5). Rust `validate_dump_json` checks required top-level keys, schema/protocol versions, `playerCount` vs `players.length`, and non-empty players or `emptySave: true`. Golden fixture at `src-tauri/.../fixtures/golden_dump_v5.json`. `validate_dump_at_bridge_directory` for feature 2; post-scan wait logs validation failures without changing IPC. **CONCEPT MVP player-field coverage (memory-read scope):** in dump — identity, attrs, contract/wage/flags, value, reputation, club/loan/division/team level, age, game date; **intentional gaps** — manager/managed club, asking price, staff, world metadata beyond players, loan direction vs human manager, contract-seed-only club walk. In-app BepInEx install stays in BACKLOG.
 
 ## Completed work
 
@@ -469,6 +477,7 @@ SQLite migrations/importer (feature 2); in-app BepInEx installer (unless already
 | 3 | Commit 2 — Visible, hidden, and personality attributes | `3febd3b` | Dump schema v3; attr maps with JSON null for invalid |
 | 4 | Commit 1 — Contracts, wages, transfer status, value, reputation | `fe6ee98` | Dump schema v4; free-agent nulls; money sentinels |
 | 4 | Commit 2 — Clubs, loans, division, team level, game date | `00dbf02` | Dump schema v5; squad walk; game date + age |
+| 4 | Commit 3 — Dump schema freeze and handoff docs | `147ed9a` | DUMP_SCHEMA.md; Rust ingestibility validation |
 
 ## Final validation
 
