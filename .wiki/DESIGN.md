@@ -26,6 +26,9 @@ colors:
     primary-container: "oklch(0.34 0.07 82)"
     on-primary-container: "oklch(0.92 0.06 82)"
     inverse-primary: "oklch(0.52 0.1 82)"
+    # Filled-button states — the Button spec's 8% mixes, resolved in oklab
+    primary-hover: "oklch(0.812 0.133 82)"
+    primary-active: "oklch(0.748 0.133 82)"
     # Semantic — status indicators
     success: "oklch(0.76 0.16 150)"
     on-success: "oklch(0.16 0.03 150)"
@@ -228,6 +231,8 @@ Score tier 5 and `primary` both sit in the gold band. That is intentional, and t
 
 Warning sits at hue 55 (orange) rather than amber so it never reads as the gold accent. Success green appears only on status chrome, never as a score colour — the ramp owns "good" inside data.
 
+`primary-hover` and `primary-active` are the Button spec's hover and active mixes resolved once, in oklab, rather than recomputed per component. Both stay in sRGB gamut and hold an `on-primary` label above 8:1. Unfilled variants have no mix — they press to `surface-container-highest`, one tonal step above their hover fill.
+
 The template's `tertiary` role and the fixed tonal pairs (`primary-fixed`, `secondary-fixed`, `tertiary-fixed`, and their `on-*` partners) are removed on purpose. Nothing in this design needs a third accent or a tint that stays constant across themes, and there is only one theme. Do not restore them without a component that requires them.
 
 Borders come in two roles with different rules:
@@ -402,10 +407,10 @@ Each spec below is the contract for that component. Reference tokens by name; ne
 The action primitive. One primary action per screen region.
 
 - **Container:** `full` radius, `stack-sm` vertical and 16px horizontal padding, 32px height (36px for the top-bar Load Data button), `label-lg` text. Icon-only variant is a 32×32 square with `md` radius.
-- **States:** hover lightens a filled variant with an 8% `on-surface` mix and fills an unfilled variant with `surface-container-high`; active darkens a filled variant with an 8% `background` mix; `:focus-visible` adds the 2px gold ring; disabled drops opacity to 45% and sets `cursor: not-allowed`; loading disables the button, swaps the label for a phase-specific pending label ("Scanning…", "Saving…"), and shows a spinner in the leading icon slot. Transition `background-color 150ms ease-out`. Width never changes between states — reserve the loading label's width.
-- **Variants:** `primary` — `primary` fill, `on-primary` label; the one main action. `secondary` — transparent fill, `outline` border, `on-surface` label. `ghost` — no fill or border, `on-surface-variant` label, hover fills `surface-container-high`; for toolbar and icon actions. `destructive` — `error` fill, `on-error` label; requires a confirmation modal before it executes.
+- **States:** hover takes `primary-hover` on a filled variant and fills an unfilled variant with `surface-container-high`; active takes `primary-active` on a filled variant and `surface-container-highest` on an unfilled one; `:focus-visible` adds the 2px gold ring; disabled drops opacity to 45% and sets `cursor: not-allowed`; loading disables the button, swaps the label for a phase-specific pending label ("Scanning…", "Saving…"), and shows a spinner in the leading icon slot. Transition `background-color 150ms ease-out`. Width never changes between states — reserve the loading label's width, and keep the inactive label `aria-hidden` so it stays out of the accessible name.
+- **Variants:** `primary` — `primary` fill, `on-primary` label; the one main action. `secondary` — transparent fill, `outline` border, `on-surface` label. `ghost` — no fill or border, `on-surface-variant` label, hover fills `surface-container-high`; for toolbar and icon actions. `destructive` — `error` fill, `on-error` label; requires a confirmation modal before it executes. **Not implemented** — add it with the first destructive action, together with the Modal.
 - **Content / Anatomy:** optional 16px leading icon, label in `label-lg`, optional trailing chevron for menu buttons. Never icon-plus-text in the icon-only variant.
-- **Behaviour:** always a `<button>` with an explicit `type`. Icon-only buttons carry `aria-label` and a tooltip. A button that opens a menu sets `aria-expanded` and `aria-haspopup`.
+- **Behaviour:** always a `<button>` with an explicit `type`. Icon-only buttons carry `aria-label` and a tooltip — the props type requires both an icon and an `aria-label` for that size, so an unlabelled icon button does not compile. A button that opens a menu sets `aria-expanded` and `aria-haspopup`.
 
 ### Nav Rail
 
