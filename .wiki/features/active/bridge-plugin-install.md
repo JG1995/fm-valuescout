@@ -110,7 +110,7 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 #### Commit 1 — Resolve Steam plugins path and install status
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `ed47e1a`
 
 **Work:** Add Rust helpers to resolve the default Windows Steam FM26 `BepInEx/plugins` path (mirror `bridge-install` defaults, Windows-native). Detect whether `FmDataBridge.dll` is present and whether the plugins directory / BepInEx tree exists. Expose a structured install-status result for IPC. Unit-test path joining and presence checks against temp directories.
 
@@ -177,7 +177,7 @@ No UI, no IPC registration, no Tauri resource bundling.
 
 ## Completed work
 
-| PR 1 | Resolve Steam plugins path and install status | pending | `memory_read/install.rs` — path resolve + `BridgeInstallStatus` |
+| PR 1 | Resolve Steam plugins path and install status | `ed47e1a` | `memory_read/install.rs` — path resolve + `BridgeInstallStatus` |
 
 ## Final validation
 
