@@ -98,6 +98,33 @@ Copy-Item Directory.Build.props.example Directory.Build.user.props
 
 `gamePluginModulePresent` / `gameAssemblyModulePresent` are cheap process-module checks (no memory scan).
 
+## In-app install (Tauri)
+
+The desktop app can install, update, or remove `FmDataBridge.dll` into the default Steam FM26 `BepInEx/plugins` folder from the **Bridge plugin install** section on the home screen.
+
+1. Ensure BepInEx 6 IL2CPP is already installed in the FM26 Steam folder (the app does **not** install BepInEx itself).
+2. Click **Install plugin** (or **Update plugin** when a copy is already present).
+3. Restart Football Manager 26 so BepInEx loads the new DLL.
+4. Use **Remove plugin** to delete only `FmDataBridge.dll` — other plugins and BepInEx core are left untouched.
+
+Path resolution matches `./scripts/dev bridge-install`: `FM_BRIDGE_PLUGINS`, then `FM_STEAM_ROOT/BepInEx/plugins`, then the default Windows Steam path.
+
+### Permissions and antivirus
+
+Writing a DLL into `Program Files (x86)\Steam\…` may require administrator approval or trigger Windows Defender / third-party antivirus prompts. The app surfaces permission failures as install errors; it does not request elevation in v1. If install fails, use `./scripts/dev bridge-install` from an elevated shell or add a Steam-folder exclusion in your AV product.
+
+### Bundled DLL packaging
+
+Linux CI and local gates use a **placeholder** `src-tauri/resources/FmDataBridge.dll` so Tauri can bundle a file without a Windows `dotnet build`. Before Windows release builds or manual in-app install testing with a real plugin:
+
+```powershell
+cd bridge
+dotnet build -c Release
+Copy-Item bin/Release/net6.0/FmDataBridge.dll ../src-tauri/resources/FmDataBridge.dll
+```
+
+`./scripts/dev bridge-install` remains the developer path that builds from source and copies directly into the game folder (no Tauri resource step).
+
 ## Interop assemblies (not in git)
 
 On first FM launch with BepInEx installed, BepInEx generates Il2CppInterop assemblies under the game tree (typically `BepInEx/interop/`). Those DLLs are **machine-local**. Do not vendor them, BepInEx core, or `fm.exe` assemblies in this repository.

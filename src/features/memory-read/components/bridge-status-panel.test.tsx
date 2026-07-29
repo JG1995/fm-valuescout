@@ -2,6 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderWithProviders } from "@/testing/render-with-providers";
+import { setBridgeInstallIpcMockMode } from "../api/bridge-install-ipc-mock";
 import {
   resolveBusyDumpRequest,
   setBridgeStatusIpcMockMode,
@@ -12,6 +13,7 @@ describe("bridge status panel", () => {
   beforeEach(() => {
     setBridgeStatusIpcMockMode("ready");
     setDumpRequestIpcMockMode("success");
+    setBridgeInstallIpcMockMode("absent");
   });
 
   afterEach(() => {
@@ -31,7 +33,7 @@ describe("bridge status panel", () => {
     renderWithProviders();
 
     expect(await screen.findByText(/Bridge not detected/i)).toBeInTheDocument();
-    expect(screen.getByText(/BepInEx\/plugins/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/BepInEx\/plugins/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/bridge\/README\.md/i)).toBeInTheDocument();
   });
 
@@ -137,5 +139,93 @@ describe("bridge status panel", () => {
     expect(
       await screen.findByText(/Waiting for the FM bridge dump/i),
     ).toBeInTheDocument();
+  });
+
+  it("renders plugin install status from mock IPC", async () => {
+    renderWithProviders();
+
+    expect(
+      await screen.findByText(/^Bridge plugin install/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^Plugin DLL:/i)).toHaveTextContent(
+      "not installed",
+    );
+    expect(screen.getByText(/^BepInEx:/i)).toHaveTextContent("found");
+    expect(
+      screen.getByRole("button", { name: "Install plugin" }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Remove plugin" }),
+    ).toBeDisabled();
+  });
+
+  it("install plugin action updates install status", async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await screen.findByText(/^Bridge plugin install/i);
+    await user.click(screen.getByRole("button", { name: "Install plugin" }));
+
+    expect(
+      await screen.findByText(/Plugin installed\. Restart Football Manager/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/^Plugin DLL:/i)).toHaveTextContent("installed");
+    expect(screen.getByRole("button", { name: "Update plugin" })).toBeEnabled();
+  });
+
+  it("remove plugin action clears installed status", async () => {
+    setBridgeInstallIpcMockMode("installed");
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await screen.findByText(/^Plugin DLL:/i);
+    expect(screen.getByText(/^Plugin DLL:/i)).toHaveTextContent("installed");
+
+    await user.click(screen.getByRole("button", { name: "Remove plugin" }));
+
+    expect(await screen.findByText(/Plugin removed from/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Plugin DLL:/i)).toHaveTextContent(
+      "not installed",
+    );
+  });
+
+  it("shows install failure when BepInEx is missing", async () => {
+    setBridgeInstallIpcMockMode("bepinexMissing");
+    renderWithProviders();
+
+    await screen.findByText(/^Bridge plugin install/i);
+    expect(
+      screen.getByRole("button", { name: "Install plugin" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/^BepInEx:/i)).toHaveTextContent("not found");
+  });
+
+  it("shows Windows-only install error without crashing the home page", async () => {
+    setBridgeInstallIpcMockMode("unsupportedPlatform");
+    renderWithProviders();
+
+    expect(
+      await screen.findByText(/Windows required for plugin install/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/only supported on Windows/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^Bridge:/i)).toHaveTextContent("ready");
+  });
+
+  it("shows only remove success after install then remove", async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await screen.findByText(/^Bridge plugin install/i);
+    await user.click(screen.getByRole("button", { name: "Install plugin" }));
+    expect(
+      await screen.findByText(/Plugin installed\. Restart Football Manager/i),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Remove plugin" }));
+
+    expect(await screen.findByText(/Plugin removed from/i)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Plugin installed\. Restart Football Manager/i),
+    ).not.toBeInTheDocument();
   });
 });

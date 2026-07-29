@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Implementation complete — pending `/finish-feature` after checkpoint
 
 ## Intent
 
@@ -98,7 +98,7 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 ### PR 1 — In-app plugin install and remove
 
-**Status:** Active
+**Status:** Completed — pending checkpoint commit
 
 **Provisional PR title:** `feat(bridge-install): install and remove FmDataBridge from Steam plugins`
 
@@ -140,7 +140,7 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 #### Commit 3 — IPC, bridge panel actions, and docs
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Register Tauri commands; wire React API + bridge panel Install/Update and Remove actions with mockIPC tests; document in-app install in `bridge/README.md` and note AV/permission expectations; move packaging note for the bundled DLL (how Windows release/dev supplies the real binary vs test fixture). Soften manual-only copy language on the panel.
 
@@ -155,31 +155,20 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 ## Active work
 
-**PR:** PR 1 — In-app plugin install and remove
-
-**Commit:** IPC, bridge panel actions, and docs
-
-### RED test (active commit)
-
-Assert that Tauri commands expose install status, install, and remove; bridge panel renders Install/Update and Remove actions with mockIPC coverage.
-
-### Expected outcome
-
-IPC commands registered; bridge panel wired with install/remove actions; Vitest mockIPC tests pass.
-
-### Explicit exclusions
-
-No snapshot ingest; no BepInEx bootstrap; no change to `bridge-install` script beyond cross-links.
+None — all planned commits implemented; run `/checkpoint` then `/finish-feature`.
 
 ## Discoveries and replanning
 
 - Commit 1 landed in `memory_read/install.rs` with env overrides (`FM_BRIDGE_PLUGINS`, `FM_STEAM_ROOT`) matching `bridge-install`; `#![allow(dead_code)]` until commit 3 registers IPC.
 - Commit 2 added `install_bridge_plugin_at` / `remove_bridge_plugin_at` plus resolve wrappers; error variants `bepinexMissing`, `sourceMissing`, `writeFailed`, `removeFailed`.
+- Commit 3 registered `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`; bundled placeholder at `src-tauri/resources/FmDataBridge.dll`; `BridgePluginInstallSection` sits above bridge status error boundary so install works when `status.json` is missing; `#[cfg_attr(not(windows), allow(dead_code))]` on Windows-only path helpers for Linux CI `-D warnings`.
+- Review fix: resolve bundled DLL at `resources/FmDataBridge.dll` (matches `bundle.resources` path); install section wrapped in `BridgePluginInstallError` boundary; install/remove mutations reset each other on success.
 
 ## Completed work
 
 | PR 1 | Resolve Steam plugins path and install status | `ed47e1a` | `memory_read/install.rs` — path resolve + `BridgeInstallStatus` |
 | PR 1 | Install and remove plugin DLL | `7a496bb` | `install.rs` — copy/remove helpers + 7 new unit tests |
+| PR 1 | IPC, bridge panel actions, and docs | pending | Tauri commands + `BridgePluginInstallSection` + `bridge/README.md` in-app install |
 
 ## Final validation
 

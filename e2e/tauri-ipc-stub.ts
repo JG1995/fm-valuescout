@@ -41,6 +41,36 @@ export async function stubTauriIpc(page: Page) {
             };
           }
 
+          if (cmd === "get_bridge_install_status") {
+            return {
+              pluginsPath:
+                "C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Football Manager 26\\\\BepInEx\\\\plugins",
+              pluginPresent: false,
+              bepinexPresent: true,
+              pluginsDirPresent: true,
+            };
+          }
+
+          if (cmd === "install_bridge_plugin") {
+            return {
+              pluginsPath:
+                "C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Football Manager 26\\\\BepInEx\\\\plugins",
+              pluginPresent: true,
+              bepinexPresent: true,
+              pluginsDirPresent: true,
+            };
+          }
+
+          if (cmd === "remove_bridge_plugin") {
+            return {
+              pluginsPath:
+                "C:\\\\Program Files (x86)\\\\Steam\\\\steamapps\\\\common\\\\Football Manager 26\\\\BepInEx\\\\plugins",
+              pluginPresent: false,
+              bepinexPresent: true,
+              pluginsDirPresent: true,
+            };
+          }
+
           throw new Error("Unhandled IPC: " + cmd);
         },
         transformCallback: (callback) => callback,

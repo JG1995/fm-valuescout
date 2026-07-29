@@ -1,15 +1,15 @@
 //! Steam FM26 BepInEx plugin path resolution and install-status inspection.
-//!
-// ponytail: module is public API for bridge-plugin-install IPC in commit 3
-// Upgrade to wired commands when `get_bridge_install_status` is registered in commands.rs
-#![allow(dead_code)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 pub const PLUGIN_DLL_FILE_NAME: &str = "FmDataBridge.dll";
+/// Path under `bundle.resources` — must match `tauri.conf.json` entry.
+pub const BUNDLED_PLUGIN_DLL_RESOURCE: &str = "resources/FmDataBridge.dll";
+#[cfg_attr(not(windows), allow(dead_code))]
 pub const FM26_STEAM_FOLDER_NAME: &str = "Football Manager 26";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -46,6 +46,7 @@ impl std::fmt::Display for BridgeInstallError {
 impl std::error::Error for BridgeInstallError {}
 
 /// Join `…/steamapps/common/Football Manager 26/BepInEx/plugins`.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub fn plugins_path_from_steam_common(steam_common: &Path) -> PathBuf {
     steam_common
         .join(FM26_STEAM_FOLDER_NAME)
@@ -104,6 +105,27 @@ pub fn inspect_bridge_install_at(plugins_path: &Path) -> BridgeInstallStatus {
 pub fn get_bridge_install_status() -> Result<BridgeInstallStatus, BridgeInstallError> {
     let plugins_path = resolve_steam_plugins_path()?;
     Ok(inspect_bridge_install_at(&plugins_path))
+}
+
+/// Resolves the bundled `FmDataBridge.dll` shipped as a Tauri resource.
+pub fn resolve_bundled_plugin_dll(app: &AppHandle) -> Result<PathBuf, BridgeInstallError> {
+    let path = app
+        .path()
+        .resolve(BUNDLED_PLUGIN_DLL_RESOURCE, BaseDirectory::Resource)
+        .map_err(|error| {
+            BridgeInstallError::SourceMissing(format!(
+                "could not resolve bundled plugin DLL: {error}"
+            ))
+        })?;
+
+    if !path.is_file() {
+        return Err(BridgeInstallError::SourceMissing(format!(
+            "bundled plugin DLL not found at {}",
+            path.display()
+        )));
+    }
+
+    Ok(path)
 }
 
 fn ensure_plugins_dir(plugins_path: &Path) -> Result<(), BridgeInstallError> {

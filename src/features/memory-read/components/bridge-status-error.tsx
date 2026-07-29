@@ -15,10 +15,10 @@ function bridgeStatusErrorCopy(error: Error) {
           body: (
             <>
               Football Manager 26 must be running on Windows with the
-              FmDataBridge plugin installed. Copy <code>FmDataBridge.dll</code>{" "}
-              into your FM26 <code>BepInEx/plugins/</code> folder — see{" "}
-              <code>bridge/README.md</code> in the project for manual install
-              steps.
+              FmDataBridge plugin installed. Use <strong>Install plugin</strong>{" "}
+              above, or copy <code>FmDataBridge.dll</code> into your FM26{" "}
+              <code>BepInEx/plugins/</code> folder — see{" "}
+              <code>bridge/README.md</code> for manual steps.
             </>
           ),
         };

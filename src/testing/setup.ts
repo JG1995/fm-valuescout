@@ -3,6 +3,12 @@ import { clearMocks, mockIPC } from "@tauri-apps/api/mocks";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 import {
+  resetBridgeInstallIpcMock,
+  resolveBridgeInstallStatusIpcMock,
+  resolveInstallBridgePluginIpcMock,
+  resolveRemoveBridgePluginIpcMock,
+} from "@/features/memory-read/api/bridge-install-ipc-mock";
+import {
   resolveBridgeStatusIpcMock,
   resolveBusyDumpRequest,
   resolveDumpRequestIpcMock,
@@ -42,6 +48,18 @@ function registerIpcMocks() {
       return resolveDumpRequestIpcMock();
     }
 
+    if (cmd === "get_bridge_install_status") {
+      return resolveBridgeInstallStatusIpcMock();
+    }
+
+    if (cmd === "install_bridge_plugin") {
+      return resolveInstallBridgePluginIpcMock();
+    }
+
+    if (cmd === "remove_bridge_plugin") {
+      return resolveRemoveBridgePluginIpcMock();
+    }
+
     throw new Error(`Unhandled IPC command: ${cmd}`);
   });
 }
@@ -55,5 +73,6 @@ afterEach(() => {
   demoValue = "";
   setBridgeStatusIpcMockMode("ready");
   setDumpRequestIpcMockMode("success");
+  resetBridgeInstallIpcMock();
   registerIpcMocks();
 });
