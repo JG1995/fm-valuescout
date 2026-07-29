@@ -94,7 +94,7 @@ SQLite
 
 ### Unknowns
 
-- None for the active migration commit.
+- None for the active save CRUD commit.
 
 ### Risks
 
@@ -122,7 +122,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 1 — Migration for saves, snapshots, and players
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `86032cb`
 
 **Work:** Add migration v2: `saves`, `snapshots` (with current-pointer or `is_current` / `saves.current_snapshot_id`), `players` keyed by `snapshot_id`. Include dump metadata columns needed for UI (`scan_truncated`, `max_accepted`, `player_count`, game/bridge version fields, timestamps). Index what sanity list and later search will need (e.g. snapshot_id, name, ca). Keep attribute maps as JSON text for v1.
 
@@ -137,7 +137,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 2 — Save CRUD and active-save selection
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Service + Tauri commands to list/create/rename saves and set the active save. Ensure a default save exists when the DB has none. Active save is the only target for ingest and queries.
 
@@ -220,19 +220,19 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 **PR:** 1 — Saves schema and ingest engine
 
-**Commit:** Migration for saves, snapshots, and players
+**Commit:** Save CRUD and active-save selection
 
 ### RED test (active commit)
 
-Assert a fresh DB after migrations has `saves`, `snapshots`, and `players` tables (and `user_version` ≥ 2). Catches shipping ingest code against migration v1-only schema.
+Assert an empty database gets one active default save, then prove create, rename, and set-active preserve exactly one active save.
 
 ### Expected outcome
 
-Migration v2 applied on open; tables exist; no ingest/UI yet.
+Save service and Tauri commands support list, create, rename, and set-active. An empty database gets one default active save.
 
 ### Explicit exclusions
 
-Ingest, IPC save commands, React, role scoring, history.
+Ingest, React UI, role scoring, history.
 
 ## Discoveries and replanning
 
@@ -243,7 +243,7 @@ Ingest, IPC save commands, React, role scoring, history.
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
-| — | — | — | — |
+| 1 | Migration for saves, snapshots, and players | `86032cb` | Added migration v2, schema constraints and query indexes, foreign-key enforcement, and migration tests. |
 
 ## Final validation
 
