@@ -22,7 +22,9 @@ public sealed class CapADumpPipeline
         string gameVersion,
         string bridgeVersion,
         ModuleBounds gameAssembly,
-        ModuleBounds? gamePlugin = null)
+        ModuleBounds? gamePlugin = null,
+        int? maxAccepted = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reader);
         Directory.CreateDirectory(bridgeDirectory);
@@ -44,13 +46,23 @@ public sealed class CapADumpPipeline
         }
 
         var regions = RegionEnumerator.GetCandidateRegions(reader);
+        var scanCap = maxAccepted ?? PersonScanner.DefaultMaxAccepted;
         var candidates = PersonScanner.Scan(
             reader,
             layout,
             gameAssembly,
             gamePlugin,
             regions,
-            diagnostics);
+            diagnostics,
+            scanCap,
+            cancellationToken);
+
+        if (diagnostics.Cancelled)
+        {
+            diagnostics.FailureReason = "scan cancelled";
+            DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
+            return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+        }
 
         if (candidates.Count == 0)
         {

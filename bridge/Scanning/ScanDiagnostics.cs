@@ -66,6 +66,9 @@ public sealed class ScanDiagnostics
     /// <summary>True when the scanner stopped because <see cref="MaxAccepted"/> was reached.</summary>
     public bool StoppedEarly { get; set; }
 
+    /// <summary>True when the walk was cancelled via <see cref="CancellationToken"/>.</summary>
+    public bool Cancelled { get; set; }
+
     public Dictionary<int, int> ClassOffsetHistogram { get; } = new();
 
     public List<uint> SampleUids { get; } = new();

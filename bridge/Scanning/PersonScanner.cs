@@ -20,7 +20,8 @@ public static class PersonScanner
         ModuleBounds? gamePlugin,
         IReadOnlyList<MemoryRegion> candidateRegions,
         ScanDiagnostics diagnostics,
-        int? maxAccepted = DefaultMaxAccepted)
+        int? maxAccepted = DefaultMaxAccepted,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(layout);
@@ -45,12 +46,19 @@ public static class PersonScanner
 
         var playerOffsets = new HashSet<int>(layout.PlayerClassOffsets);
         var accepted = new Dictionary<uint, PersonCandidate>();
-        var stopEarly = false;
+        var atCap = false;
+        var stoppedDueToCap = false;
 
         foreach (var region in candidateRegions)
         {
-            if (stopEarly)
+            if (stoppedDueToCap)
             {
+                break;
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                diagnostics.Cancelled = true;
                 break;
             }
 
@@ -64,6 +72,12 @@ public static class PersonScanner
                  address + 0x10 <= end;
                  address += 8)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    diagnostics.Cancelled = true;
+                    return accepted.Values.OrderBy(c => c.Uid).ToList();
+                }
+
                 diagnostics.BytesScanned += 8;
 
                 if (!reader.TryReadUInt64(address, out var vtable))
@@ -129,6 +143,12 @@ public static class PersonScanner
                     continue;
                 }
 
+                if (atCap)
+                {
+                    stoppedDueToCap = true;
+                    break;
+                }
+
                 accepted[uid] = new PersonCandidate(address, uid, ca, pa, classOffset);
                 diagnostics.CandidatesAccepted++;
                 if (diagnostics.SampleUids.Count < 16)
@@ -138,13 +158,22 @@ public static class PersonScanner
 
                 if (maxAccepted is { } limit && accepted.Count >= limit)
                 {
-                    diagnostics.StoppedEarly = true;
-                    stopEarly = true;
-                    break;
+                    atCap = true;
                 }
+            }
+
+            if (stoppedDueToCap)
+            {
+                break;
             }
         }
 
+        if (diagnostics.Cancelled)
+        {
+            return accepted.Values.OrderBy(c => c.Uid).ToList();
+        }
+
+        diagnostics.StoppedEarly = stoppedDueToCap;
         return accepted.Values.OrderBy(c => c.Uid).ToList();
     }
 
