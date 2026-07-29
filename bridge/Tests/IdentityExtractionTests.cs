@@ -189,7 +189,7 @@ public sealed class IdentityExtractionTests
     }
 
     [Fact]
-    public void Pipeline_writes_schema_v2_identity_fields_and_skips_bad_identity()
+    public void Pipeline_writes_schema_v3_identity_fields_and_skips_bad_identity()
     {
         var bridgeDir = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(bridgeDir);
@@ -247,7 +247,7 @@ public sealed class IdentityExtractionTests
             Assert.Equal(1, result.PlayerCount);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
-            Assert.Equal(2, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(3, doc.RootElement.GetProperty("schemaVersion").GetInt32());
             var player = doc.RootElement.GetProperty("players")[0];
             Assert.Equal(42u, player.GetProperty("uid").GetUInt32());
             Assert.Equal("Good Player", player.GetProperty("name").GetString());
@@ -257,6 +257,9 @@ public sealed class IdentityExtractionTests
             Assert.Equal(182, player.GetProperty("heightCm").GetInt32());
             Assert.Equal("right", player.GetProperty("preferredFoot").GetString());
             Assert.Equal(20, player.GetProperty("positions").GetProperty("GK").GetInt32());
+            Assert.True(player.TryGetProperty("attributes", out _));
+            Assert.True(player.TryGetProperty("hiddenAttributes", out _));
+            Assert.True(player.TryGetProperty("personality", out _));
 
             var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
             Assert.Contains("identitySkippedEmptyName=", diagnostics, StringComparison.Ordinal);
@@ -312,7 +315,7 @@ public sealed class IdentityExtractionTests
 
         var abilitySpan = Math.Max(layout.PotentialAbilityOffset, layout.HeightOffset) + 2;
         abilitySpan = Math.Max(abilitySpan, layout.PositionsOffset + 16);
-        abilitySpan = Math.Max(abilitySpan, layout.AttrsOffset + 0x20);
+        abilitySpan = Math.Max(abilitySpan, layout.AttrsOffset + 0x40);
         var playerBytes = new byte[abilitySpan];
         BitConverter.TryWriteBytes(playerBytes.AsSpan(layout.CurrentAbilityOffset), (ushort)ca);
         BitConverter.TryWriteBytes(playerBytes.AsSpan(layout.PotentialAbilityOffset), (ushort)pa);
@@ -350,7 +353,7 @@ public sealed class IdentityExtractionTests
         string? nationality = "DEN")
     {
         var abilitySpan = Math.Max(layout.HeightOffset, layout.PositionsOffset + 16);
-        abilitySpan = Math.Max(abilitySpan, layout.AttrsOffset + 0x20) + 2;
+        abilitySpan = Math.Max(abilitySpan, layout.AttrsOffset + 0x40) + 2;
         var playerBytes = new byte[abilitySpan];
         BitConverter.TryWriteBytes(playerBytes.AsSpan(layout.HeightOffset), (ushort)heightCm);
         playerBytes[layout.AttrsOffset + layout.FootLeftAttrOffset] = (byte)(footLeft * 5);

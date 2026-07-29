@@ -312,7 +312,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Visible, hidden, and personality attributes
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:**
 - Extract the three CONCEPT attribute groups into each dumped player: visible (technical/mental/physical as FM stores them), hidden, and personality. Document encoding quirks in bridge diagnostics or `bridge/` notes (e.g. attributes stored scaled ×5 — decode to the 1–20 scale the rest of the app will expect).
@@ -326,6 +326,14 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 **Validation:** Manual attribute spot-checks vs FM UI (including a hidden/personality field the UI shows under attributes/personality); dump schema remains streamable and not enormous beyond necessity.
 
 **Provisional commit:** `feat(bridge): extract visible hidden and personality attributes`
+
+##### Build progress (Commit 2)
+
+- Layout: `AttributeEntries` / `HiddenAttributeEntries` / `PersonalityEntries` on `IFmMemoryLayout` + `Fm263Layout` (SuperScout Fields.cs keys/offsets).
+- `Extraction/`: `AttributeScale` (÷5 → 0–20; personality clamp 1–20), `PlayerAttributeReader` (three named maps).
+- Dump schema **v3** player shape: `attributes`, `hiddenAttributes`, `personality` (stable PascalCase keys). Foot decode now shares `AttributeScale`.
+- Diagnostics: encoding quirk lines + up to 5 `sampleAttributes` snapshots (Acceleration/Pace/Consistency/Ambition).
+- Tests: 15 new attribute cases (+ schema fixture updates). `dotnet test` 59 passed. `./scripts/dev check` green.
 
 ### PR 4 — Contracts, clubs, loans, and dump contract freeze
 
@@ -423,6 +431,8 @@ Contracts and clubs; role score computation.
 - 2026-07-28 (PR 2 Commit 3): In-app `request.json` protocol (30s TTL); Rust `request_player_dump` waits for matching `requestId` terminal status; UI **Load Data** button; `force-scan` retained as fallback. Status optional fields: `requestId`, `playersFound`, `error`. Hand-rolled UTC RFC3339 in Rust (no chrono). Blocking sync IPC wait (120s) — upgrade to async/events if UX needs mid-scan progress streaming. Review MEDIUM fixes: refresh waiting request `createdAtUtc` while scan in progress; write `failed` status with `requestId` on reject; busy Vitest mock uses deferred Promise.
 - 2026-07-28 (PR 2 follow-up after Commit 3): Live Cap A dump on FM 26.3.2 took ~3m 47s (~184k accepted, ~4.1 GB scanned) and outran the 120s app wait. Temporary `PersonScanner.DefaultMaxAccepted` (10 000) keeps Load Data testable (`e638383`); full-scan performance is [BACKLOG.md](../../BACKLOG.md) High. UI “FM modules: not fully loaded” was a stale Load-time snapshot — `game_plugin.dll` often loads after BepInEx plugin `Load`; status now uses live `LocateKnownModules` and idle poll refresh (`8a50cc8`). `scripts/dev bridge-install` (`62ddfc9`) builds the bridge in WSL and copies `FmDataBridge.dll` into Steam `BepInEx/plugins`.
 - 2026-07-29 (PR 3 Commit 1 build): Dump schema bumped to **v2** with identity fields. Age not computed yet (needs in-game date from PR 4). Preferred foot uses English `left`/`right`/`either` (not SuperScout Dutch labels). Nation dump is a single short-name when the nation pointer resolves (layout exposes one nation ptr). Natural positions filter matches SuperScout (≥ max(15, top−2)). Incidental Rust test flake: non-atomic status fixture write raced empty `status.json` — fixture now temp+rename.
+- 2026-07-29 (PR 3 Commit 2 build): Dump schema bumped to **v3** with `attributes` / `hiddenAttributes` / `personality`. Visible+hidden decode ÷5; personality is raw 1–20 on the person object (not ×5). Keys match SuperScout English PascalCase. Diagnostics document both encodings and emit sample attribute snapshots.
+- 2026-07-29 (PR 3 Commit 2 fix): Attribute maps use `int?` — unread or out-of-range values are JSON `null`, not `0` (ingest must not treat missing as a real score).
 
 ## Completed work
 

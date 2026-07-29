@@ -61,6 +61,15 @@ public interface IFmMemoryLayout
     /// <summary>Position key → byte offset from <see cref="PositionsOffset"/>.</summary>
     IReadOnlyList<PositionLayoutEntry> PositionEntries { get; }
 
+    /// <summary>Visible attribute key → byte offset from <see cref="AttrsOffset"/> (stored ×5).</summary>
+    IReadOnlyList<AttributeLayoutEntry> AttributeEntries { get; }
+
+    /// <summary>Hidden attribute key → byte offset from <see cref="AttrsOffset"/> (stored ×5).</summary>
+    IReadOnlyList<AttributeLayoutEntry> HiddenAttributeEntries { get; }
+
+    /// <summary>Personality key → byte offset from person (raw 1–20).</summary>
+    IReadOnlyList<AttributeLayoutEntry> PersonalityEntries { get; }
+
     /// <summary>
     /// True when offsets still need live confirmation on this machine's Steam build.
     /// </summary>
@@ -68,3 +77,6 @@ public interface IFmMemoryLayout
 }
 
 public readonly record struct PositionLayoutEntry(string Key, int Offset);
+
+/// <summary>Named attribute field offset (relative base depends on the owning list).</summary>
+public readonly record struct AttributeLayoutEntry(string Key, int Offset);

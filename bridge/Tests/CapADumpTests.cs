@@ -180,6 +180,9 @@ public sealed class CapADumpTests
                     HeightCm = 180,
                     PreferredFoot = "right",
                     Positions = new Dictionary<string, int> { ["ST"] = 20 },
+                    Attributes = new Dictionary<string, int?> { ["Acceleration"] = 13 },
+                    HiddenAttributes = new Dictionary<string, int?> { ["Consistency"] = 12 },
+                    Personality = new Dictionary<string, int?> { ["Ambition"] = 16 },
                 },
             },
         };
@@ -187,7 +190,7 @@ public sealed class CapADumpTests
         var json = DumpWriter.Serialize(document);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        Assert.Equal(2, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(3, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("26.3.2.2329565", root.GetProperty("gameVersion").GetString());
         Assert.Equal("26.3", root.GetProperty("supportedGameVersion").GetString());
         Assert.Equal("0.1.0", root.GetProperty("bridgeVersion").GetString());
@@ -203,6 +206,9 @@ public sealed class CapADumpTests
         Assert.Equal(180, root.GetProperty("players")[0].GetProperty("heightCm").GetInt32());
         Assert.Equal("right", root.GetProperty("players")[0].GetProperty("preferredFoot").GetString());
         Assert.Equal(20, root.GetProperty("players")[0].GetProperty("positions").GetProperty("ST").GetInt32());
+        Assert.Equal(13, root.GetProperty("players")[0].GetProperty("attributes").GetProperty("Acceleration").GetInt32());
+        Assert.Equal(12, root.GetProperty("players")[0].GetProperty("hiddenAttributes").GetProperty("Consistency").GetInt32());
+        Assert.Equal(16, root.GetProperty("players")[0].GetProperty("personality").GetProperty("Ambition").GetInt32());
     }
 
     [Fact]
@@ -450,7 +456,7 @@ public sealed class CapADumpTests
         var regionEnd = Math.Max(
             personAddress + 0xA0,
             playerBase + (ulong)Math.Max(layout.PotentialAbilityOffset, layout.HeightOffset) + 2);
-        regionEnd = Math.Max(regionEnd, playerBase + (ulong)layout.AttrsOffset + 0x20);
+        regionEnd = Math.Max(regionEnd, playerBase + (ulong)layout.AttrsOffset + 0x40);
         AddCandidateRegion(reader, regionBase, regionEnd - regionBase);
 
         // Il2Cpp meta: *(vtable - 8) → meta; *(int*)(meta + 4) → class offset.
@@ -468,7 +474,7 @@ public sealed class CapADumpTests
         reader.AddBytes(personAddress, personHeader);
 
         var abilitySpan = Math.Max(layout.PotentialAbilityOffset, layout.HeightOffset) + sizeof(ushort);
-        abilitySpan = Math.Max(abilitySpan, layout.AttrsOffset + 0x20);
+        abilitySpan = Math.Max(abilitySpan, layout.AttrsOffset + 0x40);
         abilitySpan = Math.Max(abilitySpan, layout.PositionsOffset + 16);
         var playerBytes = new byte[abilitySpan];
         WriteUInt16(playerBytes, layout.CurrentAbilityOffset, (ushort)ca);

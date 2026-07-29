@@ -85,6 +85,12 @@ public sealed class CapADumpPipeline
                 continue;
             }
 
+            var attrs = PlayerAttributeReader.Read(
+                reader,
+                candidate.ObjectAddress,
+                playerBase,
+                layout);
+
             players.Add(
                 new DumpPlayer
                 {
@@ -98,7 +104,16 @@ public sealed class CapADumpPipeline
                     HeightCm = identity.HeightCm,
                     PreferredFoot = identity.PreferredFoot,
                     Positions = identity.Positions,
+                    Attributes = attrs.Attributes,
+                    HiddenAttributes = attrs.HiddenAttributes,
+                    Personality = attrs.Personality,
                 });
+
+            if (diagnostics.SampleAttributeSnapshots.Count < ScanDiagnostics.MaxSampleAttributeSnapshots)
+            {
+                diagnostics.SampleAttributeSnapshots.Add(
+                    FormatAttributeSample(candidate.Uid, identity.Name, attrs));
+            }
         }
 
         if (players.Count == 0)
@@ -127,6 +142,17 @@ public sealed class CapADumpPipeline
         return replaced
             ? CapADumpResult.Succeeded(players.Count)
             : CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
+    }
+
+    private static string FormatAttributeSample(uint uid, string name, PlayerAttributes attrs)
+    {
+        static string Fmt(IReadOnlyDictionary<string, int?> map, string key) =>
+            map.TryGetValue(key, out var v) && v is { } n ? n.ToString() : "null";
+
+        return
+            $"uid={uid} name={name} Acceleration={Fmt(attrs.Attributes, "Acceleration")} " +
+            $"Pace={Fmt(attrs.Attributes, "Pace")} Consistency={Fmt(attrs.HiddenAttributes, "Consistency")} " +
+            $"Ambition={Fmt(attrs.Personality, "Ambition")}";
     }
 }
 

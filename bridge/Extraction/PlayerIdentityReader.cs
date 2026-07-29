@@ -96,12 +96,18 @@ public static class PlayerIdentityReader
         ulong playerBlockBase,
         IFmMemoryLayout layout)
     {
-        var left = ReadScaledAttr(
-            reader,
-            playerBlockBase + (ulong)layout.AttrsOffset + (ulong)layout.FootLeftAttrOffset);
-        var right = ReadScaledAttr(
-            reader,
-            playerBlockBase + (ulong)layout.AttrsOffset + (ulong)layout.FootRightAttrOffset);
+        var leftRaw = reader.TryReadByte(
+            playerBlockBase + (ulong)layout.AttrsOffset + (ulong)layout.FootLeftAttrOffset,
+            out var leftByte)
+            ? leftByte
+            : (byte)0;
+        var rightRaw = reader.TryReadByte(
+            playerBlockBase + (ulong)layout.AttrsOffset + (ulong)layout.FootRightAttrOffset,
+            out var rightByte)
+            ? rightByte
+            : (byte)0;
+        var left = AttributeScale.DecodeScaled(leftRaw);
+        var right = AttributeScale.DecodeScaled(rightRaw);
 
         if (right >= 14 && left >= 14)
         {
@@ -109,17 +115,6 @@ public static class PlayerIdentityReader
         }
 
         return right >= left ? "right" : "left";
-    }
-
-    private static int ReadScaledAttr(IMemoryReader reader, ulong address)
-    {
-        if (!reader.TryReadByte(address, out var raw))
-        {
-            return 0;
-        }
-
-        var value = (int)Math.Floor(raw / 5.0 + 0.5);
-        return Math.Clamp(value, 0, 20);
     }
 
     private static IReadOnlyDictionary<string, int> ReadNaturalPositions(

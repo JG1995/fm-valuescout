@@ -108,6 +108,14 @@ public static class DiagnosticsWriter
             sb.AppendLine($"  {uid}");
         }
 
+        sb.AppendLine("attrsStoredTimesFive=decode floor(raw/5+0.5); null if unread or outside 1..20");
+        sb.AppendLine("personalityRaw=1..20 or null");
+        sb.AppendLine("sampleAttributes:");
+        foreach (var sample in diagnostics.SampleAttributeSnapshots)
+        {
+            sb.AppendLine($"  {sample}");
+        }
+
         if (!string.IsNullOrEmpty(diagnostics.FailureReason)
             && diagnostics.FailureReason.Contains("unsupported", StringComparison.OrdinalIgnoreCase))
         {

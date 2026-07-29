@@ -30,6 +30,11 @@ public sealed class ScanDiagnostics
     /// <summary>Candidates skipped because DOB was missing or impossible.</summary>
     public int IdentitySkippedImpossibleDob { get; set; }
 
+    public const int MaxSampleAttributeSnapshots = 5;
+
+    /// <summary>Short attribute snapshots for known-player patch verification.</summary>
+    public List<string> SampleAttributeSnapshots { get; } = new();
+
     /// <summary>Accepted-player ceiling for this run; null means unlimited.</summary>
     public int? MaxAccepted { get; set; }
 
