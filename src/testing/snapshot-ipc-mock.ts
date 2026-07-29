@@ -258,13 +258,13 @@ export function resolveLoadDataIpcMock(): Promise<LoadDataResult> {
 
   const truncated = loadDataMode === "truncatedSuccess";
   const result = buildLoadDataResult({
-    playersFound: truncated ? 10_000 : SAMPLE_PLAYERS.length,
+    playersFound: truncated ? 500 : SAMPLE_PLAYERS.length,
     scanTruncated: truncated,
-    maxAccepted: truncated ? 10_000 : null,
+    maxAccepted: truncated ? 500 : null,
     snapshot: buildSnapshot({
       scanTruncated: truncated,
-      maxAccepted: truncated ? 10_000 : null,
-      playerCount: truncated ? 10_000 : SAMPLE_PLAYERS.length,
+      maxAccepted: truncated ? 500 : null,
+      playerCount: truncated ? 500 : SAMPLE_PLAYERS.length,
     }),
   });
 

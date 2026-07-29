@@ -3,130 +3,100 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { TextField } from "@/components/ui/field/text-field";
+import { Panel } from "@/components/ui/panel/panel";
 import { createSave } from "../api/create-save";
 import { renameSave } from "../api/rename-save";
 import { savesQueryOptions } from "../api/saves-query-options";
-import { setActiveSave } from "../api/set-active-save";
 import { snapshotKeys } from "../api/snapshot-keys";
 
+function readName(form: HTMLFormElement) {
+  const name = new FormData(form).get("name");
+  return typeof name === "string" ? name : "";
+}
+
+// Switching the active save lives in the top bar, where it stays reachable from
+// every screen. This panel keeps the rarer management actions.
 export function SaveSwitcher() {
   const queryClient = useQueryClient();
   const { data: saves } = useSuspenseQuery(savesQueryOptions);
   const activeSave = saves.find((save) => save.isActive) ?? saves[0];
-  const [newSaveName, setNewSaveName] = useState("");
-  const [renameDraft, setRenameDraft] = useState(() => activeSave?.name ?? "");
-
-  const invalidateSnapshotQueries = () => {
-    void queryClient.invalidateQueries({ queryKey: snapshotKeys.current() });
-    void queryClient.invalidateQueries({
-      queryKey: snapshotKeys.sanityPlayers(),
-    });
-  };
 
   const create = useMutation({
     mutationFn: createSave,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: snapshotKeys.saves() });
-      setNewSaveName("");
     },
   });
 
   const rename = useMutation({
     mutationFn: ({ saveId, name }: { saveId: number; name: string }) =>
       renameSave(saveId, name),
-    onSuccess: (save) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: snapshotKeys.saves() });
-      setRenameDraft(save.name);
-    },
-  });
-
-  const switchSave = useMutation({
-    mutationFn: setActiveSave,
-    onSuccess: (save) => {
-      void queryClient.invalidateQueries({ queryKey: snapshotKeys.saves() });
-      invalidateSnapshotQueries();
-      setRenameDraft(save.name);
     },
   });
 
   return (
-    <div className="space-y-3 rounded-md border border-on-background/20 p-4">
-      <h2 className="text-lg font-medium text-on-background">Saves</h2>
-      <label className="block text-on-background/80" htmlFor="active-save">
-        Active save
-      </label>
-      <select
-        id="active-save"
-        className="w-full rounded-md border border-on-background/20 bg-background px-3 py-2 text-on-background"
-        value={activeSave?.id ?? ""}
-        disabled={switchSave.isPending}
-        onChange={(event) => {
-          const saveId = Number(event.target.value);
-          if (!Number.isNaN(saveId) && saveId !== activeSave?.id) {
-            switchSave.mutate(saveId);
-          }
-        }}
-      >
-        {saves.map((save) => (
-          <option key={save.id} value={save.id}>
-            {save.name}
-          </option>
-        ))}
-      </select>
-      {switchSave.isError && (
-        <p className="text-on-background/80">{switchSave.error.message}</p>
-      )}
-      <div className="space-y-2">
-        <label className="block text-on-background/80" htmlFor="rename-save">
-          Rename active save
-        </label>
-        <input
-          id="rename-save"
-          className="w-full rounded-md border border-on-background/20 bg-background px-3 py-2 text-on-background"
-          value={renameDraft}
-          onChange={(event) => setRenameDraft(event.target.value)}
-        />
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={rename.isPending || !activeSave}
-          onClick={() => {
-            if (!activeSave) {
-              return;
+    <Panel title="Saves">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <form
+          className="space-y-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (activeSave) {
+              rename.mutate({
+                saveId: activeSave.id,
+                name: readName(event.currentTarget),
+              });
             }
-            rename.mutate({ saveId: activeSave.id, name: renameDraft });
           }}
         >
-          Rename save
-        </Button>
-        {rename.isError && (
-          <p className="text-on-background/80">{rename.error.message}</p>
-        )}
-      </div>
-      <div className="space-y-2">
-        <label className="block text-on-background/80" htmlFor="new-save">
-          New save
-        </label>
-        <input
-          id="new-save"
-          className="w-full rounded-md border border-on-background/20 bg-background px-3 py-2 text-on-background"
-          value={newSaveName}
-          onChange={(event) => setNewSaveName(event.target.value)}
-        />
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={create.isPending}
-          onClick={() => create.mutate(newSaveName)}
+          {/* Keyed to the save so a draft cannot survive a switch made from the
+              top bar and then rename whichever save became active. */}
+          <TextField
+            key={activeSave?.id}
+            label="Rename active save"
+            name="name"
+            defaultValue={activeSave?.name ?? ""}
+            error={rename.isError ? rename.error.message : undefined}
+          />
+          <Button
+            type="submit"
+            variant="secondary"
+            disabled={!activeSave}
+            loading={rename.isPending}
+            loadingLabel="Renaming…"
+          >
+            Rename save
+          </Button>
+        </form>
+        <form
+          className="space-y-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            create.mutate(readName(form), {
+              onSuccess: () => form.reset(),
+            });
+          }}
         >
-          Create save
-        </Button>
-        {create.isError && (
-          <p className="text-on-background/80">{create.error.message}</p>
-        )}
+          <TextField
+            label="New save"
+            name="name"
+            error={create.isError ? create.error.message : undefined}
+          />
+          <Button
+            type="submit"
+            variant="secondary"
+            loading={create.isPending}
+            loadingLabel="Creating…"
+          >
+            Create save
+          </Button>
+        </form>
       </div>
-    </div>
+    </Panel>
   );
 }

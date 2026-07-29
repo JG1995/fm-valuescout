@@ -236,7 +236,7 @@ mod tests {
                             Some(42),
                             None,
                             Some(false),
-                            Some(10_000),
+                            Some(500),
                         );
                     }
                     ScanSimulation::Failed { ref message } => {
@@ -357,7 +357,7 @@ mod tests {
             dump_present: true,
             error: None,
             scan_truncated: Some(false),
-            max_accepted: Some(10_000),
+            max_accepted: Some(500),
         };
         let error = load_data_after_scan(&mut conn, &bridge_dir, dump_result, active_save.id)
             .expect_err("ingest failure");
@@ -391,7 +391,7 @@ mod tests {
             dump_present: true,
             error: None,
             scan_truncated: Some(false),
-            max_accepted: Some(10_000),
+            max_accepted: Some(500),
         };
 
         let result = load_data_after_scan(&mut conn, &bridge_dir, dump_result, default_save.id)

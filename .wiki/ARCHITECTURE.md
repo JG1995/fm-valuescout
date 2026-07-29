@@ -24,7 +24,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Client UI state:** Zustand v5 (modals, layout chrome, selections not in the URL)
 
-**Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md)
+**Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md). IBM Plex Sans/Mono self-hosted via `@fontsource`; Lucide icons via `lucide-react`. Shared primitives in `src/components/ui/` (Button, Panel, StatusChip, EmptyState, TextField, SelectField). App shell: `AppNavRail` + `AppTopBar` (active save, snapshot freshness, **Load Data**); `useLayoutStore` persists nav-rail expansion.
 
 **Language:** TypeScript (strict) on the frontend; Rust on the backend
 
@@ -38,7 +38,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migration v2: `saves`, `snapshots`, `players`).
 
-**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe scanning, `status.json` / `dump.json` / diagnostics. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls, bridge status, and the **Load Data** button. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md) and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
+**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe scanning, `status.json` / `dump.json` / diagnostics. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md) and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
 **Snapshot ingest:** Rust `features/snapshot` owns save slots, transactional ingest from `dump.json`, and query IPC; React `features/snapshot` owns the save switcher, snapshot overview, and sanity list. `load_data` captures `active_save_id` under a brief Db lock, runs the bridge scan without holding the Db mutex, then ingests via `ingest_dump_file_for_save` with the captured id. See [snapshot-ingest](./features/completed/snapshot-ingest.md).
 
@@ -134,7 +134,7 @@ Frontend source follows Bulletproof React: features-first, unidirectional import
 src/
 ├── app/                    # Application shell — compose features here
 │   ├── routes/             # TanStack Router file routes (thin wiring)
-│   ├── components/         # App-shell UI (not-found page, layout)
+│   ├── components/         # App-shell UI (AppShellLayout, AppNavRail, AppTopBar, not-found)
 │   ├── provider.tsx        # Global providers (Query, Router)
 │   └── router.tsx          # Router factory when needed
 ├── features/               # Primary code home — one folder per feature
@@ -146,12 +146,12 @@ src/
 │       ├── types/
 │       ├── utils/
 │       └── assets/
-├── components/             # Shared UI — ui/, error-boundary/
+├── components/             # Shared UI — ui/ (Button, Panel, StatusChip, EmptyState, field/), error-boundary/
 ├── hooks/                  # Shared hooks
 ├── lib/                    # tauri-client.ts (sole invoke wrapper)
 ├── config/                 # Env exports, app constants
 ├── types/                  # Shared app types
-├── utils/                  # Shared pure helpers
+├── utils/                  # Shared presentation helpers (format.ts)
 ├── assets/                 # Static imports (images, fonts)
 ├── stores/                 # Global UI Zustand only
 ├── testing/                # Vitest setup, mockIPC helpers
@@ -216,7 +216,7 @@ src-tauri/
 - **Derived state** — compute in the component, or derive in a Zustand selector; do not duplicate Query cache in Zustand.
 - **URL / route state** — TanStack Router params and validated search params (filters, tabs, shareable view state).
 - **Server / remote state** — TanStack Query (`useQuery`, `useMutation`, query options). Route loaders call `queryClient.ensureQueryData` or `prefetchQuery` to seed the cache before render. Fetchers call `invokeCommand` — not HTTP.
-- **Client-only shared state** — Zustand (sidebar, command palette, ephemeral multi-step UI before submit).
+- **Client-only shared state** — Zustand (nav rail expansion, command palette, ephemeral multi-step UI before submit). `useLayoutStore` persists `railExpanded` across launches.
 - **Form state** — local state for trivial fields. Add React Hook Form + Zod when the first non-trivial form arrives (not shipped in the template).
 - **Low-velocity global** — React Context for theme or auth display snapshot; not high-frequency updates.
 - **Side effects** — React `useEffect` for non-data subscriptions; Query handles fetch lifecycle; Router loaders handle navigation-time prefetch.
@@ -324,6 +324,18 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 
 Examples use the scaffold **health** demo feature. Forked apps follow the same patterns with real commands and services.
 
+### 5.0 App shell (layout chrome)
+
+```text
+AppShellLayout (all routes via __root)
+  → AppNavRail — collapsible left rail; railExpanded persisted in useLayoutStore (localStorage)
+  → AppTopBar — ActiveSaveSelect, SnapshotFreshnessChip, Load Data + LoadDataOutcome banner
+  → Main content — route Outlet (Dashboard panels today)
+  → Skip link to #main-content on first Tab
+```
+
+Presentation formatters (`formatRelativeAge`, `formatAbsoluteUtc`, `formatCount`, `formatMissable`) live in `src/utils/format.ts` per [DESIGN.md](./DESIGN.md).
+
 ### 5.1 Read path (IPC + SQLite)
 
 ```text
@@ -384,8 +396,8 @@ Dump contract: bridge/DUMP_SCHEMA.md schema v5 (frozen). Scan writes dump.json o
 **Load Data** is one user action: bridge scan, then SQLite ingest for the **active app save**. The dump body never crosses IPC.
 
 ```text
-User clicks Load Data (BridgeStatusPanel)
-  → useMutation → invokeCommand("load_data")
+User clicks Load Data (AppTopBar)
+  → useLoadData mutation → invokeCommand("load_data")
   → Rust snapshot/commands load_data:
       Brief Db lock → active_save_id (target save for this load; released before scan)
       memory_read::request_player_dump — no Db lock during scan:
@@ -398,7 +410,8 @@ User clicks Load Data (BridgeStatusPanel)
       On ingest failure: roll back; prior current snapshot remains
   → Returns LoadDataResult { requestId, playersFound, scanTruncated, maxAccepted, snapshot }
   → onSettled: invalidate snapshot query keys (current snapshot, sanity list)
-  → UI shows ingest outcome (player count, truncated banner when scanTruncated)
+  → LoadDataOutcome banner in AppTopBar (aria-live; cleared when user switches save)
+  → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
 
 **Saves model** (migration v2, `src-tauri/src/db/migrations.rs`):
@@ -412,9 +425,15 @@ User clicks Load Data (BridgeStatusPanel)
 **Query and save-management IPC** (`features/snapshot/commands.rs`):
 
 ```text
-Save switcher (home route)
-  → list_saves / create_save / rename_save / set_active_save
+Active save (AppTopBar ActiveSaveSelect)
+  → list_saves / set_active_save
   → set_active_save switches which save’s current snapshot queries target
+
+Save switcher panel (home route)
+  → create_save / rename_save (create and rename only; switch is in the top bar)
+
+Snapshot freshness (AppTopBar SnapshotFreshnessChip)
+  → derives tone from get_current_snapshot age and scanTruncated
 
 Snapshot overview + sanity list
   → get_current_snapshot → active save’s current snapshot metadata (or null)
@@ -423,7 +442,7 @@ Snapshot overview + sanity list
 Route loader prefetches saves, current snapshot, and sanity list alongside health/demo queries.
 ```
 
-`request_player_dump` remains registered for tests and low-level scan-only use; the home **Load Data** button calls `load_data`.
+`request_player_dump` remains registered for tests and low-level scan-only use; the **Load Data** button in `AppTopBar` calls `load_data`.
 
 ### 5.6 Bridge plugin install path
 
@@ -482,10 +501,10 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Playwright smoke covers | Playwright smoke does not cover |
 | --- | --- |
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
-| Walking-skeleton UI with stubbed IPC: status panel, demo-value form flow, sidebar toggle | Real `#[tauri::command]` handlers in Rust |
+| Walking-skeleton UI with stubbed IPC: app shell (nav rail, top bar), status panels, demo-value form flow | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
 | Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `load_data` | Capabilities ACL, plugin permissions, or menu/tray integration |
-| Bridge panel, save switcher, snapshot overview, plugin install section, and Load Data button render with stubbed IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, SQLite ingest, or Steam-folder DLL install |
+| Bridge panel, save switcher, snapshot overview, plugin install section, top-bar save selector, and Load Data button render with stubbed IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, SQLite ingest, or Steam-folder DLL install |
 
 | Concern | Owner in this template |
 | --- | --- |
@@ -573,7 +592,8 @@ TanStack Table, Form, Virtual, and TanStack Start are intentionally **not** in t
 - **Add a feature:** Create `src/features/<feature>/` and `src-tauri/src/features/<feature>/` with the subfolders each side needs. Register commands in `lib.rs` via `.invoke_handler(tauri::generate_handler![...])`. Add route wiring in `src/app/routes/`.
 - **Add a page:** Create a file under `src/app/routes/`, add Query options in `features/<feature>/api/` if the page loads IPC data.
 - **Add client UI state:** Global store in `src/stores/`; feature-scoped store in `features/<feature>/stores/`. Do not store IPC responses in Zustand.
-- **Add shared UI:** `src/components/ui/` for primitives; wrap third-party components there.
+- **Add shared UI:** `src/components/ui/` for primitives (see [DESIGN.md](./DESIGN.md) component specs); wrap third-party components there.
+- **Change visual language:** update [DESIGN.md](./DESIGN.md) first, then mirror tokens in `src/styles/global.css` `@theme`.
 - **Add persistence:** Migration in `db/migrations.rs`, service in `features/<feature>/service.rs`, commands in `commands.rs`. Open path stays `app_data_dir` + `APP_DB_FILE` via `db::open`.
 - **Change stack defaults:** Read ADRs, update decisions, then reconcile this file and scaffold configs.
 - **Coding standards detail:** `.cursor/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, `vite.md`

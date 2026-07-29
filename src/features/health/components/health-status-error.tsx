@@ -1,4 +1,7 @@
+import { CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
+import { EmptyState } from "@/components/ui/empty-state/empty-state";
+import { Panel } from "@/components/ui/panel/panel";
 
 type HealthStatusErrorProps = {
   error: Error;
@@ -7,14 +10,18 @@ type HealthStatusErrorProps = {
 
 export function HealthStatusError({ error, onRetry }: HealthStatusErrorProps) {
   return (
-    <div className="space-y-3">
-      <p className="text-on-background/80">
-        Could not load health data.{" "}
-        <span className="text-on-background">{error.message}</span>
-      </p>
-      <Button type="button" variant="secondary" onClick={onRetry}>
-        Retry
-      </Button>
-    </div>
+    <Panel>
+      <EmptyState
+        icon={CircleAlert}
+        title="Could not load health data"
+        action={
+          <Button variant="secondary" onClick={onRetry}>
+            Retry
+          </Button>
+        }
+      >
+        {error.message}
+      </EmptyState>
+    </Panel>
   );
 }

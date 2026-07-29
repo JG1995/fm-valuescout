@@ -1,4 +1,7 @@
+import { CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
+import { EmptyState } from "@/components/ui/empty-state/empty-state";
+import { Panel } from "@/components/ui/panel/panel";
 import { TauriCommandError } from "@/lib/tauri-client";
 
 type BridgeStatusErrorProps = {
@@ -47,12 +50,18 @@ export function BridgeStatusError({ error, onRetry }: BridgeStatusErrorProps) {
   const copy = bridgeStatusErrorCopy(error);
 
   return (
-    <div className="space-y-3 rounded-md border border-error/40 bg-error-container/20 p-4">
-      <p className="font-medium text-on-background">{copy.title}</p>
-      <p className="text-on-background/80">{copy.body}</p>
-      <Button type="button" variant="secondary" onClick={onRetry}>
-        Retry
-      </Button>
-    </div>
+    <Panel>
+      <EmptyState
+        icon={CircleAlert}
+        title={copy.title}
+        action={
+          <Button variant="secondary" onClick={onRetry}>
+            Retry
+          </Button>
+        }
+      >
+        {copy.body}
+      </EmptyState>
+    </Panel>
   );
 }

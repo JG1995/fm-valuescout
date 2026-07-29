@@ -3,8 +3,13 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
+import { CircleCheck, CircleX, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { TextField } from "@/components/ui/field/text-field";
+import { Panel } from "@/components/ui/panel/panel";
+import { StatusChip } from "@/components/ui/status-chip/status-chip";
+import { formatMissable } from "@/utils/format";
 import { demoValueQueryOptions } from "../api/demo-value-query-options";
 import { healthQueryOptions } from "../api/health-query-options";
 import { setHealthSimulateError } from "../api/health-simulate-error";
@@ -25,66 +30,66 @@ export function HealthStatusPanel() {
   });
 
   return (
-    <div className="space-y-3">
-      <p className="text-on-background/80">
-        Status: <strong className="text-on-background">{data.status}</strong>
-      </p>
-      <div className="space-y-2">
-        <label className="block text-on-background/80" htmlFor="demo-value">
-          Demo value (SQLite):
-        </label>
-        <input
-          id="demo-value"
-          className="w-full rounded-md border border-on-background/20 bg-background px-3 py-2 text-on-background"
-          value={draftValue}
-          onChange={(event) => setDraftValue(event.target.value)}
-        />
-        <p className="text-on-background/80">
-          Stored value:{" "}
-          <strong className="text-on-background">{demoValue.value}</strong>
-        </p>
+    <Panel
+      title="Health"
+      actions={
         <Button
-          type="button"
-          variant="secondary"
-          disabled={saveDemoValue.isPending}
-          onClick={() => saveDemoValue.mutate(draftValue)}
-        >
-          Save demo value
-        </Button>
-        {saveDemoValue.isError && (
-          <p className="text-on-background/80">
-            Could not save demo value.{" "}
-            <span className="text-on-background">
-              {saveDemoValue.error.message}
-            </span>
-          </p>
-        )}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="secondary"
+          size="icon"
+          variant="ghost"
+          icon={RefreshCw}
+          aria-label="Refresh status"
           onClick={() =>
             queryClient.invalidateQueries({
               queryKey: healthQueryOptions.queryKey,
             })
           }
-        >
-          Refresh status
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={() => {
-            setHealthSimulateError(true);
-            queryClient.resetQueries({
-              queryKey: healthQueryOptions.queryKey,
-            });
-          }}
-        >
-          Simulate error
-        </Button>
+        />
+      }
+    >
+      <StatusChip
+        tone={data.status === "ok" ? "success" : "error"}
+        icon={data.status === "ok" ? CircleCheck : CircleX}
+      >
+        {`Status: ${data.status}`}
+      </StatusChip>
+
+      <div className="mt-4 max-w-sm space-y-2">
+        <TextField
+          label="Demo value (SQLite):"
+          value={draftValue}
+          onChange={(event) => setDraftValue(event.target.value)}
+          error={
+            saveDemoValue.isError ? saveDemoValue.error.message : undefined
+          }
+        />
+        <p className="text-body-sm text-on-surface-variant">
+          Stored value:{" "}
+          <span className="font-mono text-mono-sm text-on-surface">
+            {formatMissable(demoValue.value)}
+          </span>
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            loading={saveDemoValue.isPending}
+            loadingLabel="Saving…"
+            onClick={() => saveDemoValue.mutate(draftValue)}
+          >
+            Save demo value
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setHealthSimulateError(true);
+              queryClient.resetQueries({
+                queryKey: healthQueryOptions.queryKey,
+              });
+            }}
+          >
+            Simulate error
+          </Button>
+        </div>
       </div>
-    </div>
+    </Panel>
   );
 }

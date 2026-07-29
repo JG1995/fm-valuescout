@@ -514,7 +514,7 @@ mod tests {
                 Some(42),
                 None,
                 Some(false),
-                Some(10_000),
+                Some(500),
             );
         });
 
@@ -542,7 +542,7 @@ mod tests {
         assert!(result.dump_present);
         assert!(result.error.is_none());
         assert_eq!(result.scan_truncated, Some(false));
-        assert_eq!(result.max_accepted, Some(10_000));
+        assert_eq!(result.max_accepted, Some(500));
         validate_dump_at_bridge_directory(&bridge_dir).expect("dump ingestible after ready");
     }
 

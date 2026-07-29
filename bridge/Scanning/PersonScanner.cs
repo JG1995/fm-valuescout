@@ -11,7 +11,7 @@ public static class PersonScanner
 
     // ponytail: hard cap so live Load Data tests finish in seconds, not minutes
     // Upgrade to unlimited (or request-driven maxPlayers) when full-DB dumps are required — see BACKLOG High "Bridge scan performance"
-    public const int DefaultMaxAccepted = 10_000;
+    public const int DefaultMaxAccepted = 500;
 
     public static IReadOnlyList<PersonCandidate> Scan(
         IMemoryReader reader,

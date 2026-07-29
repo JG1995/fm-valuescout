@@ -7,17 +7,11 @@ import { BridgePluginInstallSection } from "./bridge-plugin-install-section";
 import { BridgeStatusError } from "./bridge-status-error";
 import { BridgeStatusPanel } from "./bridge-status-panel";
 
-export function BridgeStatusPanelWithErrorBoundary({
-  activeSaveId,
-  onLoadDataSettled,
-}: {
-  activeSaveId?: number;
-  onLoadDataSettled?: () => void;
-}) {
+export function BridgeStatusPanelWithErrorBoundary() {
   const queryClient = useQueryClient();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-gutter">
       <ErrorBoundary
         fallback={({ error, reset }) => (
           <BridgePluginInstallError
@@ -46,10 +40,7 @@ export function BridgeStatusPanelWithErrorBoundary({
           />
         )}
       >
-        <BridgeStatusPanel
-          activeSaveId={activeSaveId}
-          onLoadDataSettled={onLoadDataSettled}
-        />
+        <BridgeStatusPanel />
       </ErrorBoundary>
     </div>
   );

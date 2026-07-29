@@ -1,110 +1,83 @@
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import {
-  useMutation,
-  useQueryClient,
-  useSuspenseQuery,
-} from "@tanstack/react-query";
+  CircleCheck,
+  CircleDashed,
+  CircleX,
+  Radar,
+  RefreshCw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button/button";
+import { Panel } from "@/components/ui/panel/panel";
+import { StatusChip } from "@/components/ui/status-chip/status-chip";
+import {
+  formatAbsoluteUtc,
+  formatMissable,
+  formatRelativeAge,
+} from "@/utils/format";
 import { bridgeStatusQueryOptions } from "../api/bridge-status-query-options";
-import { loadData } from "../api/load-data";
-import type { LoadDataResult } from "../types/load-data";
-import { loadDataErrorCopy } from "./load-data-error";
 
-function formatLoadOutcome(result: LoadDataResult): string {
-  const count = result.snapshot.playerCount;
-  const truncatedNote =
-    result.snapshot.scanTruncated === true
-      ? ` Partial ingest (capped at ${result.snapshot.maxAccepted ?? "unknown"} players).`
-      : "";
-  return `Loaded ${count} players into the database.${truncatedNote}`;
-}
+/** The plugin's protocol states (`bridge/Protocol/BridgeProtocol.cs`). An
+ *  unknown state stays neutral rather than claiming health it cannot vouch for. */
+const stateChip = {
+  idle: { label: "ready", tone: "success", icon: CircleCheck },
+  ready: { label: "ready", tone: "success", icon: CircleCheck },
+  scanning: { label: "scanning", tone: "info", icon: Radar },
+  failed: { label: "failed", tone: "error", icon: CircleX },
+} as const;
 
-export function BridgeStatusPanel({
-  activeSaveId,
-  onLoadDataSettled,
-}: {
-  activeSaveId?: number;
-  onLoadDataSettled?: () => void;
-}) {
+export function BridgeStatusPanel() {
   const queryClient = useQueryClient();
   const { data } = useSuspenseQuery(bridgeStatusQueryOptions);
 
-  const scan = useMutation({
-    mutationFn: loadData,
-    onSettled: () => {
-      void queryClient.invalidateQueries({
-        queryKey: bridgeStatusQueryOptions.queryKey,
-      });
-      onLoadDataSettled?.();
-    },
-  });
-
-  const bridgeLabel =
-    data.state === "idle"
-      ? "ready"
-      : data.state === "scanning"
-        ? "scanning"
-        : data.state;
-
-  const loadDataError = scan.isError ? loadDataErrorCopy(scan.error) : null;
+  const chip = stateChip[data.state as keyof typeof stateChip] ?? {
+    label: data.state,
+    tone: "neutral",
+    icon: CircleDashed,
+  };
+  const modulesDetected =
+    data.gamePluginModulePresent && data.gameAssemblyModulePresent;
 
   return (
-    <div className="space-y-3 rounded-md border border-on-background/20 p-4">
-      <p className="text-on-background/80">
-        Bridge: <strong className="text-on-background">{bridgeLabel}</strong>
-      </p>
-      <p className="text-on-background/80">
-        Plugin version:{" "}
-        <strong className="text-on-background">{data.pluginVersion}</strong>
-      </p>
-      <p className="text-on-background/80">
-        FM modules:{" "}
-        <strong className="text-on-background">
-          {data.gamePluginModulePresent && data.gameAssemblyModulePresent
-            ? "detected"
-            : "not fully loaded"}
-        </strong>
-      </p>
-      <p className="text-sm text-on-background/60">
-        Keep Football Manager 26 running with the bridge plugin installed. Use
-        the install section above or see <code>bridge/README.md</code> for
-        manual steps.
-      </p>
-      <div className="flex flex-wrap gap-2">
+    <Panel
+      title="Bridge"
+      actions={
         <Button
-          type="button"
-          variant="secondary"
-          disabled={scan.isPending}
-          onClick={() => scan.mutate()}
-        >
-          {scan.isPending ? "Loading…" : "Load Data"}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={scan.isPending}
+          size="icon"
+          variant="ghost"
+          icon={RefreshCw}
+          aria-label="Refresh bridge status"
           onClick={() =>
             queryClient.invalidateQueries({
               queryKey: bridgeStatusQueryOptions.queryKey,
             })
           }
+        />
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusChip tone={chip.tone} icon={chip.icon}>
+          {`Bridge: ${chip.label}`}
+        </StatusChip>
+        <StatusChip
+          tone={modulesDetected ? "success" : "warning"}
+          icon={modulesDetected ? CircleCheck : CircleDashed}
         >
-          Refresh bridge status
-        </Button>
+          {`FM modules: ${modulesDetected ? "detected" : "not fully loaded"}`}
+        </StatusChip>
       </div>
-      {scan.isPending && (
-        <p className="text-on-background/80">Scanning and ingesting FM data…</p>
-      )}
-      {scan.isSuccess && scan.data.snapshot.saveId === activeSaveId && (
-        <p className="text-on-background/80">{formatLoadOutcome(scan.data)}</p>
-      )}
-      {loadDataError && (
-        <div className="space-y-1 text-on-background/80">
-          <p className="font-medium text-on-background">
-            {loadDataError.title}
-          </p>
-          <p>{loadDataError.body}</p>
-        </div>
-      )}
-    </div>
+      <p className="mt-3 text-body-sm text-on-surface-variant">
+        Plugin version: {formatMissable(data.pluginVersion)} · protocol{" "}
+        {data.protocolVersion} · updated{" "}
+        <span title={formatAbsoluteUtc(data.updatedAtUtc)}>
+          {formatRelativeAge(data.updatedAtUtc)}
+        </span>
+      </p>
+      <p className="mt-2 max-w-prose text-body-sm text-on-surface-variant">
+        Keep Football Manager 26 running with the bridge plugin installed. Use
+        the install section above or see{" "}
+        <code className="font-mono text-mono-sm">bridge/README.md</code> for
+        manual steps.
+      </p>
+    </Panel>
   );
 }

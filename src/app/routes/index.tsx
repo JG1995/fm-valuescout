@@ -1,4 +1,3 @@
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { demoValueQueryOptions } from "@/features/health/api/demo-value-query-options";
@@ -8,7 +7,6 @@ import { BridgeStatusPanelWithErrorBoundary } from "@/features/memory-read/compo
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { sanityPlayersQueryOptions } from "@/features/snapshot/api/sanity-players-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
-import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { SnapshotPanelsWithErrorBoundary } from "@/features/snapshot/components/snapshot-panels-with-error-boundary";
 
 export const Route = createFileRoute("/")({
@@ -23,47 +21,28 @@ export const Route = createFileRoute("/")({
   component: IndexPage,
 });
 
-function IndexPage() {
-  const queryClient = useQueryClient();
-  const { data: saves } = useSuspenseQuery(savesQueryOptions);
-  const activeSaveId = saves.find((save) => save.isActive)?.id;
-
-  const invalidateSnapshotData = () => {
-    void queryClient.invalidateQueries({ queryKey: snapshotKeys.current() });
-    void queryClient.invalidateQueries({
-      queryKey: snapshotKeys.sanityPlayers(),
-    });
-  };
-
+/** Panels load independently so one slow or failing area cannot blank the page. */
+function PanelFallback({ label }: { label: string }) {
   return (
-    <section className="space-y-4">
-      <h1 className="text-2xl font-semibold text-on-background">
-        FM ValueScout
-      </h1>
-      <Suspense
-        fallback={
-          <p className="text-on-background/80">Loading snapshot data…</p>
-        }
-      >
+    <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
+      {label}
+    </div>
+  );
+}
+
+function IndexPage() {
+  return (
+    <div className="space-y-gutter">
+      <h1 className="text-headline-lg text-on-surface">Dashboard</h1>
+      <Suspense fallback={<PanelFallback label="Loading snapshot data…" />}>
         <SnapshotPanelsWithErrorBoundary />
       </Suspense>
-      <Suspense
-        fallback={
-          <p className="text-on-background/80">Loading bridge status…</p>
-        }
-      >
-        <BridgeStatusPanelWithErrorBoundary
-          activeSaveId={activeSaveId}
-          onLoadDataSettled={invalidateSnapshotData}
-        />
+      <Suspense fallback={<PanelFallback label="Loading bridge status…" />}>
+        <BridgeStatusPanelWithErrorBoundary />
       </Suspense>
-      <Suspense
-        fallback={
-          <p className="text-on-background/80">Loading health status…</p>
-        }
-      >
+      <Suspense fallback={<PanelFallback label="Loading health status…" />}>
         <HealthStatusPanelWithErrorBoundary />
       </Suspense>
-    </section>
+    </div>
   );
 }

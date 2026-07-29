@@ -10,8 +10,8 @@ import type { RouterContext } from "@/app/router-context";
 
 function RootError({ error }: ErrorComponentProps) {
   return (
-    <div className="p-4 text-on-background">
-      <h1 className="text-lg font-semibold">Something went wrong</h1>
+    <div className="space-y-2 p-4 text-on-surface">
+      <h1 className="text-headline-lg">Something went wrong</h1>
       <ErrorComponent error={error} />
     </div>
   );
@@ -22,7 +22,12 @@ function RootComponent() {
     <>
       <AppShellLayout />
       {import.meta.env.DEV ? (
-        <TanStackRouterDevtools position="bottom-right" />
+        // Offset so this launcher sits beside the React Query one instead of
+        // under it — both share the only corner the app shell does not own.
+        <TanStackRouterDevtools
+          position="bottom-right"
+          toggleButtonProps={{ style: { right: "4rem" } }}
+        />
       ) : null}
     </>
   );

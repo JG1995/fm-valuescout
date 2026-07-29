@@ -2,6 +2,7 @@ import type { BridgeStatus, DumpRequestResult } from "../types/bridge-status";
 
 export type BridgeStatusIpcMockMode =
   | "ready"
+  | "failed"
   | "missing"
   | "unsupportedPlatform"
   | "unsupportedVersion"
@@ -64,8 +65,17 @@ export function resolveBridgeStatusIpcMock() {
     return READY_STATUS;
   }
 
+  // A reachable bridge that failed its last scan: a status, not a command error.
+  if (mockMode === "failed") {
+    return {
+      ...READY_STATUS,
+      state: "failed",
+      error: "scan produced zero player candidates",
+    };
+  }
+
   const errors: Record<
-    Exclude<BridgeStatusIpcMockMode, "ready">,
+    Exclude<BridgeStatusIpcMockMode, "ready" | "failed">,
     { kind: string; message: string }
   > = {
     missing: {
@@ -122,11 +132,11 @@ export function resolveDumpRequestIpcMock(): Promise<DumpRequestResult> {
     return Promise.resolve({
       requestId: "req-mock",
       state: "ready",
-      playersFound: 10_000,
+      playersFound: 500,
       dumpPresent: true,
       error: null,
       scanTruncated: true,
-      maxAccepted: 10_000,
+      maxAccepted: 500,
     });
   }
 

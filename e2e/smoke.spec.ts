@@ -12,16 +12,19 @@ test.describe("walking skeleton smoke", () => {
     await page.goto("/");
 
     const main = page.getByRole("main");
+    const header = page.getByTestId("app-header");
 
     await expect(
-      main.getByRole("heading", { name: "FM ValueScout" }),
+      main.getByRole("heading", { level: 1, name: "Dashboard" }),
     ).toBeVisible();
     await expect(main.getByRole("heading", { name: "Saves" })).toBeVisible();
     await expect(
-      main.getByRole("combobox", { name: "Active save" }),
+      header.getByRole("combobox", { name: "Active save" }),
     ).toBeVisible();
     await expect(main.getByRole("heading", { name: "Snapshot" })).toBeVisible();
-    await expect(main.getByRole("button", { name: "Load Data" })).toBeVisible();
+    await expect(
+      header.getByRole("button", { name: "Load Data" }),
+    ).toBeVisible();
     await expect(main.getByText(/^Bridge:/i)).toContainText("ready");
     await expect(main.getByText("Status:")).toContainText("ok");
     await expect(main.getByText("Stored value:")).toBeVisible();
@@ -38,18 +41,20 @@ test.describe("walking skeleton smoke", () => {
     ).toContainText("smoke-value");
   });
 
-  test("layout sidebar toggles from the header control", async ({ page }) => {
+  test("nav rail expands from its own toggle", async ({ page }) => {
     await page.goto("/");
 
-    const toggle = page.getByRole("button", { name: "Toggle sidebar" });
-    const sidebar = page.getByTestId("app-sidebar");
+    const toggle = page.getByRole("button", { name: "Toggle navigation" });
+    const rail = page.getByTestId("app-nav-rail");
 
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await expect(sidebar).toHaveAttribute("data-open", "false");
+    await expect(rail).toHaveAttribute("data-expanded", "false");
+    await expect(rail.getByText("Dashboard")).toBeHidden();
 
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(sidebar).toHaveAttribute("data-open", "true");
+    await expect(rail).toHaveAttribute("data-expanded", "true");
+    await expect(rail.getByText("Dashboard")).toBeVisible();
   });
 
   test("unknown routes render the not-found page", async ({ page }) => {

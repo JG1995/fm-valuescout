@@ -2,10 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderWithProviders } from "@/testing/render-with-providers";
-import {
-  resolveBusyLoadDataRequest,
-  setLoadDataIpcMockMode,
-} from "@/testing/snapshot-ipc-mock";
+import { setLoadDataIpcMockMode } from "@/testing/snapshot-ipc-mock";
 import { setBridgeInstallIpcMockMode } from "../api/bridge-install-ipc-mock";
 import {
   resolveBusyDumpRequest,
@@ -23,7 +20,6 @@ describe("bridge status panel", () => {
 
   afterEach(() => {
     resolveBusyDumpRequest();
-    resolveBusyLoadDataRequest();
   });
 
   it("renders ready state from mock IPC", async () => {
@@ -32,6 +28,17 @@ describe("bridge status panel", () => {
     expect(await screen.findByText(/^Bridge:/i)).toHaveTextContent("ready");
     expect(screen.getByText(/^Plugin version:/i)).toHaveTextContent("0.1.0");
     expect(screen.getByText(/^FM modules:/i)).toHaveTextContent("detected");
+  });
+
+  it("marks a failed scan with the error tone", async () => {
+    setBridgeStatusIpcMockMode("failed");
+    renderWithProviders();
+
+    const chip = await screen.findByText(/^Bridge:/i);
+
+    expect(chip).toHaveTextContent("failed");
+    // Tone as well as wording: a failed bridge must not wear a green tick.
+    expect(chip).toHaveClass("bg-error-container");
   });
 
   it("shows missing bridge guidance when status file is absent", async () => {
@@ -77,73 +84,6 @@ describe("bridge status panel", () => {
     await user.click(screen.getByRole("button", { name: "Retry" }));
 
     expect(await screen.findByText(/^Bridge:/i)).toHaveTextContent("ready");
-  });
-
-  it("Load Data trigger shows ingest success after load_data", async () => {
-    const user = userEvent.setup();
-    renderWithProviders();
-
-    await screen.findByText(/^Bridge:/i);
-    await user.click(screen.getByRole("button", { name: "Load Data" }));
-
-    expect(
-      await screen.findByText(/Loaded 3 players into the database/i),
-    ).toBeInTheDocument();
-  });
-
-  it("Load Data trigger shows truncated ingest warning", async () => {
-    setLoadDataIpcMockMode("truncatedSuccess");
-    const user = userEvent.setup();
-    renderWithProviders();
-
-    await screen.findByText(/^Bridge:/i);
-    await user.click(screen.getByRole("button", { name: "Load Data" }));
-
-    expect(
-      await screen.findByText(/Partial ingest \(capped at 10000 players\)/i),
-    ).toBeInTheDocument();
-  });
-
-  it("Load Data trigger shows scan failure from load_data", async () => {
-    setLoadDataIpcMockMode("scanFailed");
-    const user = userEvent.setup();
-    renderWithProviders();
-
-    await screen.findByText(/^Bridge:/i);
-    await user.click(screen.getByRole("button", { name: "Load Data" }));
-
-    expect(await screen.findByText(/Scan failed/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/scan produced zero player candidates/i),
-    ).toBeInTheDocument();
-  });
-
-  it("Load Data trigger shows ingest failure from load_data", async () => {
-    setLoadDataIpcMockMode("ingestFailed");
-    const user = userEvent.setup();
-    renderWithProviders();
-
-    await screen.findByText(/^Bridge:/i);
-    await user.click(screen.getByRole("button", { name: "Load Data" }));
-
-    expect(await screen.findByText(/Ingest failed/i)).toBeInTheDocument();
-    expect(screen.getByText(/dump validation failed/i)).toBeInTheDocument();
-  });
-
-  it("Load Data button shows busy label while request is pending", async () => {
-    setLoadDataIpcMockMode("busy");
-    const user = userEvent.setup();
-    renderWithProviders();
-
-    await screen.findByText(/^Bridge:/i);
-    await user.click(screen.getByRole("button", { name: "Load Data" }));
-
-    expect(
-      await screen.findByRole("button", { name: "Loading…" }),
-    ).toBeDisabled();
-    expect(
-      await screen.findByText(/Scanning and ingesting FM data/i),
-    ).toBeInTheDocument();
   });
 
   it("renders plugin install status from mock IPC", async () => {
