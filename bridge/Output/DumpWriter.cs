@@ -77,6 +77,8 @@ public static class DiagnosticsWriter
         sb.AppendLine($"candidatesAccepted={diagnostics.CandidatesAccepted}");
         sb.AppendLine($"candidatesRejected={diagnostics.CandidatesRejected}");
         sb.AppendLine($"duplicatesSkipped={diagnostics.DuplicatesSkipped}");
+        sb.AppendLine($"identitySkippedEmptyName={diagnostics.IdentitySkippedEmptyName}");
+        sb.AppendLine($"identitySkippedImpossibleDob={diagnostics.IdentitySkippedImpossibleDob}");
         if (diagnostics.MaxAccepted is { } maxAccepted)
         {
             sb.AppendLine($"maxAccepted={maxAccepted}");
@@ -104,6 +106,14 @@ public static class DiagnosticsWriter
         foreach (var uid in diagnostics.SampleUids)
         {
             sb.AppendLine($"  {uid}");
+        }
+
+        sb.AppendLine("attrsStoredTimesFive=decode floor(raw/5+0.5); null if unread or outside 1..20");
+        sb.AppendLine("personalityRaw=1..20 or null");
+        sb.AppendLine("sampleAttributes:");
+        foreach (var sample in diagnostics.SampleAttributeSnapshots)
+        {
+            sb.AppendLine($"  {sample}");
         }
 
         if (!string.IsNullOrEmpty(diagnostics.FailureReason)

@@ -608,7 +608,10 @@ mod tests {
             error: error.map(str::to_string),
         };
         let json = serde_json::to_string_pretty(&status).expect("serialize");
-        fs::write(status_path(bridge_dir), json).expect("write status");
+        let path = status_path(bridge_dir);
+        let temp = path.with_extension("json.tmp");
+        fs::write(&temp, &json).expect("write status tmp");
+        fs::rename(&temp, &path).expect("rename status");
     }
 
     #[test]

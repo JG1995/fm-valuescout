@@ -1,9 +1,9 @@
+using FmDataBridge.Extraction;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
 using FmDataBridge.Models;
 using FmDataBridge.Output;
 using FmDataBridge.Protocol;
-using FmDataBridge.Scanning;
 
 namespace FmDataBridge.Scanning;
 
@@ -59,9 +59,70 @@ public sealed class CapADumpPipeline
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
 
-        var players = candidates
-            .Select(c => new DumpPlayer { Uid = c.Uid, Ca = c.Ca, Pa = c.Pa })
-            .ToList();
+        var players = new List<DumpPlayer>(candidates.Count);
+        foreach (var candidate in candidates)
+        {
+            var playerBase = candidate.ObjectAddress - (ulong)candidate.ClassOffset;
+            var identity = PlayerIdentityReader.TryRead(
+                reader,
+                candidate.ObjectAddress,
+                playerBase,
+                layout,
+                out var rejectReason);
+
+            if (identity is null)
+            {
+                switch (rejectReason)
+                {
+                    case IdentityRejectReason.EmptyName:
+                        diagnostics.IdentitySkippedEmptyName++;
+                        break;
+                    case IdentityRejectReason.ImpossibleDob:
+                        diagnostics.IdentitySkippedImpossibleDob++;
+                        break;
+                }
+
+                continue;
+            }
+
+            var attrs = PlayerAttributeReader.Read(
+                reader,
+                candidate.ObjectAddress,
+                playerBase,
+                layout);
+
+            players.Add(
+                new DumpPlayer
+                {
+                    Uid = candidate.Uid,
+                    Ca = candidate.Ca,
+                    Pa = candidate.Pa,
+                    Name = identity.Name,
+                    BirthYear = identity.BirthYear,
+                    BirthDayOfYear = identity.BirthDayOfYear,
+                    Nationalities = identity.Nationalities,
+                    HeightCm = identity.HeightCm,
+                    PreferredFoot = identity.PreferredFoot,
+                    Positions = identity.Positions,
+                    Attributes = attrs.Attributes,
+                    HiddenAttributes = attrs.HiddenAttributes,
+                    Personality = attrs.Personality,
+                });
+
+            if (diagnostics.SampleAttributeSnapshots.Count < ScanDiagnostics.MaxSampleAttributeSnapshots)
+            {
+                diagnostics.SampleAttributeSnapshots.Add(
+                    FormatAttributeSample(candidate.Uid, identity.Name, attrs));
+            }
+        }
+
+        if (players.Count == 0)
+        {
+            diagnostics.FailureReason =
+                "scan produced candidates but none passed identity sanity (name/DOB)";
+            DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
+            return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+        }
 
         var document = new DumpDocument
         {
@@ -81,6 +142,17 @@ public sealed class CapADumpPipeline
         return replaced
             ? CapADumpResult.Succeeded(players.Count)
             : CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
+    }
+
+    private static string FormatAttributeSample(uint uid, string name, PlayerAttributes attrs)
+    {
+        static string Fmt(IReadOnlyDictionary<string, int?> map, string key) =>
+            map.TryGetValue(key, out var v) && v is { } n ? n.ToString() : "null";
+
+        return
+            $"uid={uid} name={name} Acceleration={Fmt(attrs.Attributes, "Acceleration")} " +
+            $"Pace={Fmt(attrs.Attributes, "Pace")} Consistency={Fmt(attrs.HiddenAttributes, "Consistency")} " +
+            $"Ambition={Fmt(attrs.Personality, "Ambition")}";
     }
 }
 

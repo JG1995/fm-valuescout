@@ -28,6 +28,123 @@ public sealed class Fm263Layout : IFmMemoryLayout
 
     public int PotentialAbilityOffset => 0x266;
 
-    // Ported from a public pin; still confirm CA/PA on 2–3 known players after first dump.
+    public int FirstNameOffset => 0x50;
+
+    public int SecondNameOffset => 0x58;
+
+    public int CommonNameOffset => 0x60;
+
+    public int NationPtrOffset => 0x68;
+
+    public int DobOffset => 0x88;
+
+    public int HeightOffset => 0x22E;
+
+    public int PositionsOffset => 0x150;
+
+    public int AttrsOffset => 0x15F;
+
+    public int FootLeftAttrOffset => 0x18;
+
+    public int FootRightAttrOffset => 0x19;
+
+    public int NationShortNameOffset => 0x20;
+
+    public int NationNameOffset => 0x30;
+
+    public IReadOnlyList<PositionLayoutEntry> PositionEntries { get; } = new PositionLayoutEntry[]
+    {
+        new("GK", 0x00),
+        new("SW", 0x01),
+        new("DL", 0x02),
+        new("DC", 0x03),
+        new("DR", 0x04),
+        new("DM", 0x05),
+        new("ML", 0x06),
+        new("MC", 0x07),
+        new("MR", 0x08),
+        new("AML", 0x09),
+        new("AMC", 0x0A),
+        new("AMR", 0x0B),
+        new("ST", 0x0C),
+        new("WBL", 0x0D),
+        new("WBR", 0x0E),
+    };
+
+    // Visible attrs at AttrsOffset; stored ×5. Foot slots 0x18/0x19 are not in this list.
+    public IReadOnlyList<AttributeLayoutEntry> AttributeEntries { get; } = new AttributeLayoutEntry[]
+    {
+        new("Crossing", 0x00),
+        new("Dribbling", 0x01),
+        new("Finishing", 0x02),
+        new("Heading", 0x03),
+        new("LongShots", 0x04),
+        new("Marking", 0x05),
+        new("OffTheBall", 0x06),
+        new("Passing", 0x07),
+        new("PenaltyTaking", 0x08),
+        new("Tackling", 0x09),
+        new("Vision", 0x0A),
+        new("Handling", 0x0B),
+        new("AerialReach", 0x0C),
+        new("CommandOfArea", 0x0D),
+        new("Communication", 0x0E),
+        new("Kicking", 0x0F),
+        new("Throwing", 0x10),
+        new("Anticipation", 0x11),
+        new("Decisions", 0x12),
+        new("OneOnOnes", 0x13),
+        new("Positioning", 0x14),
+        new("Reflexes", 0x15),
+        new("FirstTouch", 0x16),
+        new("Technique", 0x17),
+        new("Flair", 0x1A),
+        new("Corners", 0x1B),
+        new("Teamwork", 0x1C),
+        new("WorkRate", 0x1D),
+        new("LongThrows", 0x1E),
+        new("Eccentricity", 0x1F),
+        new("RushingOut", 0x20),
+        new("Punching", 0x21),
+        new("Acceleration", 0x22),
+        new("FreeKicks", 0x23),
+        new("Strength", 0x24),
+        new("Stamina", 0x25),
+        new("Pace", 0x26),
+        new("JumpingReach", 0x27),
+        new("Leadership", 0x28),
+        new("Balance", 0x2A),
+        new("Bravery", 0x2B),
+        new("Aggression", 0x2D),
+        new("Agility", 0x2E),
+        new("NaturalFitness", 0x32),
+        new("Determination", 0x33),
+        new("Composure", 0x34),
+        new("Concentration", 0x35),
+    };
+
+    public IReadOnlyList<AttributeLayoutEntry> HiddenAttributeEntries { get; } = new AttributeLayoutEntry[]
+    {
+        new("Dirtiness", 0x29),
+        new("Consistency", 0x2C),
+        new("ImportantMatches", 0x2F),
+        new("InjuryProneness", 0x30),
+        new("Versatility", 0x31),
+    };
+
+    // Person-relative personality bytes (Pada); already on the 1–20 scale.
+    public IReadOnlyList<AttributeLayoutEntry> PersonalityEntries { get; } = new AttributeLayoutEntry[]
+    {
+        new("Adaptability", 0x70),
+        new("Ambition", 0x71),
+        new("Loyalty", 0x72),
+        new("Pressure", 0x73),
+        new("Professionalism", 0x74),
+        new("Sportsmanship", 0x75),
+        new("Temperament", 0x76),
+        new("Controversy", 0x77),
+    };
+
+    // Ported from a public pin; still confirm identity fields on 2–3 known players after first dump.
     public bool IsProvisional => true;
 }

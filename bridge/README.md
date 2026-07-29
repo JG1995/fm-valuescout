@@ -19,12 +19,13 @@ Exact folder names: `fm-valuescout` / `fm-bridge`.
 
 Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
 
-### Layouts and CA/PA dump
+### Layouts, identity extraction, and dump
 
 - `Layouts/` — versioned pins keyed by FM major.minor (`26.3`). Unsupported versions fail closed and write diagnostics without touching a prior good `dump.json`.
-- `Fm263Layout` ports FMSuperScout’s 26.3 field pins (author permission — see `.wiki/notes/superscout-permission.md`). Confirm CA/PA against known players after first live dump; still marked provisional until then.
+- `Fm263Layout` ports FMSuperScout’s 26.3 field pins (author permission — see `.wiki/notes/superscout-permission.md`). Confirm identity fields against known players after first live dump; still marked provisional until then.
 - `Scanning/PersonScanner` — aligned heap walk, vtable in GameAssembly/game_plugin, Il2Cpp dynamic class offset, UID/CA/PA sanity (`1..200`), UID dedupe. **Temporary testing cap:** stops after `DefaultMaxAccepted` (10 000) accepted players so Load Data finishes quickly; set `maxAccepted: null` for a full walk. Full-scan optimization is tracked in `.wiki/BACKLOG.md` (High).
-- Dump schema v1 players: `{ uid, ca, pa }` only.
+- `Extraction/` — dedicated readers for nested/indirect UTF-8 names, FM packed DOB, nationality, height, preferred foot (from foot attrs ÷5), natural positions (suitability ≥ max(15, top−2)), and attribute groups (visible/hidden ÷5; personality raw 1–20). Empty names or impossible DOBs are skipped and counted in diagnostics.
+- Dump schema **v3** players: `{ uid, ca, pa, name, birthYear, birthDayOfYear, nationalities, heightCm, preferredFoot, positions, attributes, hiddenAttributes, personality }`. Attribute keys are stable PascalCase names (e.g. `Acceleration`, `Consistency`, `Ambition`). Unread or out-of-range values are JSON `null` (never `0` as a sentinel).
 
 ### In-app request protocol
 
@@ -40,7 +41,7 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
    `%LOCALAPPDATA%\fm-valuescout\fm-bridge\force-scan`
 2. The plugin treats it like a request (`requestId: force-scan`), then deletes the file.
 3. Inspect `dump.json` / `diagnostics.txt` and `status.json` (`scanning` → `ready` / `failed`).
-4. Spot-check several known players’ UID/CA/PA. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs) to adjust `Fm263Layout`.
+4. Spot-check several known players’ UID/CA/PA plus name, DOB, nationality, height, foot, positions, and a few visible/hidden/personality attributes. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs, `sampleAttributes`, identity skip counts) to adjust `Fm263Layout`.
 
 ## Prerequisites (Windows host)
 
