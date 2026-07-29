@@ -205,7 +205,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 3 — Docs for snapshot data flow
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Update ARCHITECTURE (ingest path, saves model), bridge/README or feature notes as needed; point TODO/completed cross-links at finish time. No ADR unless schema policy proves consequential beyond this ledger.
 
@@ -240,6 +240,7 @@ Implementation changes beyond doc fixes discovered while writing.
 - Migration v2 uses partial unique indexes for one active save and one current snapshot per save. Player scalars cover dump schema v5; arrays and attribute maps use JSON text. Foreign-key enforcement is enabled when the app opens SQLite.
 - Ingest (`features/snapshot/ingest.rs`) validates via `memory_read::dump_validation`, inserts snapshot+players with `is_current=0`, then promotes and deletes the prior current snapshot in one transaction so failures leave the old snapshot current. Single file read → `validate_dump_json` → parse (no validate-then-reread TOCTOU).
 - `load_data` IPC (`features/snapshot/load_data.rs`) scans via `memory_read::request_player_dump` without holding `Db`, then locks only for `ingest_dump_file`. `LoadDataError` uses `phase: scan | ingest` with scan `kind` for bridge/timeout/platform failures.
+- Gate fix during docs commit: added `.tmp/` to `.gitignore` so Vitest/Playwright transform caches under `.tmp/` do not fail Biome during `./scripts/dev check`.
 
 ## Completed work
 

@@ -12,7 +12,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 ## 1. Top-Level Shape
 
-**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), and an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)).
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), and **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [active ledger](./features/active/snapshot-ingest.md)).
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 
@@ -36,9 +36,11 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
-**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); snapshot ingest into SQLite is the next feature.
+**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migration v2: `saves`, `snapshots`, `players`).
 
-**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe scanning, `status.json` / `dump.json` / diagnostics. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls, bridge status, and triggers scans. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md) and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
+**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe scanning, `status.json` / `dump.json` / diagnostics. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls, bridge status, and the **Load Data** button. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md) and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
+
+**Snapshot ingest:** Rust `features/snapshot` owns save slots, transactional ingest from `dump.json`, and query IPC; React `features/snapshot` owns the save switcher, snapshot overview, and sanity list. `load_data` composes bridge scan (`memory_read`) and ingest without holding the DB mutex across the scan. See [snapshot-ingest](./features/active/snapshot-ingest.md).
 
 **Auth:** None in the template default — chosen per fork via `/stack`
 
@@ -365,7 +367,7 @@ Migrations apply on open — there is no separate plugin preload step.
 
 If a mutation must clear more than one cache key, document the invalidation map in the feature ledger.
 
-### 5.4 Memory read path (FM26 bridge)
+### 5.4 Memory read path (FM26 bridge status)
 
 ```text
 User opens home route
@@ -374,17 +376,55 @@ User opens home route
   → Rust memory_read: resolve %LOCALAPPDATA%\fm-valuescout\fm-bridge\, parse status.json
   → Panel shows ready / missing / error / unsupported platform
 
-User clicks Load Data
-  → useMutation → invokeCommand("request_player_dump")
-  → Rust writes request.json (30s TTL), polls status.json until terminal state (120s default)
-  → Bridge plugin (off Unity main thread): scan → dump.json + diagnostics.txt
-  → Rust may call validate_dump_at_bridge_directory (logs validation failures; no dump body over IPC)
-  → UI shows busy / success / error from DumpRequestResult
-
-Dump contract: bridge/DUMP_SCHEMA.md schema v5 (frozen). Feature 2 ingests from dump.json on disk.
+Dump contract: bridge/DUMP_SCHEMA.md schema v5 (frozen). Scan writes dump.json on disk; ingest reads it in Rust (§5.5).
 ```
 
-### 5.5 Bridge plugin install path
+### 5.5 Load Data and snapshot ingest
+
+**Load Data** is one user action: bridge scan, then SQLite ingest for the **active app save**. The dump body never crosses IPC.
+
+```text
+User clicks Load Data (BridgeStatusPanel)
+  → useMutation → invokeCommand("load_data")
+  → Rust snapshot/load_data (no Db lock yet):
+      memory_read::request_player_dump — writes request.json (30s TTL),
+      polls status.json until terminal state (120s default)
+      Bridge plugin (off Unity main thread): scan → dump.json + diagnostics.txt
+  → On scan failure: LoadDataError { phase: "scan", kind, message }; prior snapshot unchanged
+  → On scan success: lock Db → ingest::ingest_dump_file(dump path)
+      validate_dump_json (memory_read::dump_validation) — hard-fail before insert
+      Transaction: insert new snapshot + players, promote to current, delete prior current
+      On ingest failure: roll back; prior current snapshot remains
+  → Returns LoadDataResult { requestId, playersFound, scanTruncated, maxAccepted, snapshot }
+  → onSettled: invalidate snapshot query keys (current snapshot, sanity list)
+  → UI shows ingest outcome (player count, truncated banner when scanTruncated)
+```
+
+**Saves model** (migration v2, `src-tauri/src/db/migrations.rs`):
+
+| Table | Role |
+| --- | --- |
+| `saves` | App-side game save slots (not FM save files). Exactly one row has `is_active = 1` (partial unique index). Default save created when the DB has none. |
+| `snapshots` | One **current** snapshot per save (`is_current = 1`, partial unique index per `save_id`). Stores dump metadata: schema/game/bridge versions, `game_date`, `scan_truncated`, `max_accepted`, `player_count`, `loaded_at_utc`. Snapshot **history** is out of scope — schema allows future rows. |
+| `players` | Rows keyed by `(snapshot_id, uid)`. Scalars for list/search foundations; attribute maps and arrays as JSON text columns. `null` in dump JSON means unknown — never coerced to 0 on ingest. |
+
+**Query and save-management IPC** (`features/snapshot/commands.rs`):
+
+```text
+Save switcher (home route)
+  → list_saves / create_save / rename_save / set_active_save
+  → set_active_save switches which save’s current snapshot queries target
+
+Snapshot overview + sanity list
+  → get_current_snapshot → active save’s current snapshot metadata (or null)
+  → list_sanity_players(limit ≤ 20) → name, ca, club for proof-of-ingest table
+
+Route loader prefetches saves, current snapshot, and sanity list alongside health/demo queries.
+```
+
+`request_player_dump` remains registered for tests and low-level scan-only use; the home **Load Data** button calls `load_data`.
+
+### 5.6 Bridge plugin install path
 
 ```text
 User opens home route
@@ -443,8 +483,8 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
 | Walking-skeleton UI with stubbed IPC: status panel, demo-value form flow, sidebar toggle | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
-| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `request_player_dump`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin` | Capabilities ACL, plugin permissions, or menu/tray integration |
-| Bridge panel, plugin install section, and Load Data button render with stubbed bridge IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, or Steam-folder DLL install |
+| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `load_data` | Capabilities ACL, plugin permissions, or menu/tray integration |
+| Bridge panel, save switcher, snapshot overview, plugin install section, and Load Data button render with stubbed IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, SQLite ingest, or Steam-folder DLL install |
 
 | Concern | Owner in this template |
 | --- | --- |
