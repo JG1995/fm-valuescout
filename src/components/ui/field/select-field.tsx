@@ -30,7 +30,7 @@ export function SelectField({
       <label className={fieldLabelClasses} htmlFor={selectId}>
         {label}
       </label>
-      <select id={selectId} className={fieldClasses} {...props}>
+      <select id={selectId} className={cn(fieldClasses, "w-full")} {...props}>
         {children}
       </select>
     </div>

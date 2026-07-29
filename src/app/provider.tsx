@@ -8,8 +8,10 @@ export function AppProvider() {
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
       {import.meta.env.DEV ? (
+        // Bottom-left belongs to the nav rail's collapse toggle, which this
+        // launcher would sit on top of.
         <ReactQueryDevtools
-          buttonPosition="bottom-left"
+          buttonPosition="bottom-right"
           initialIsOpen={false}
         />
       ) : null}

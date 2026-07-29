@@ -34,7 +34,7 @@ export function TextField({
         id={inputId}
         aria-describedby={error ? errorId : undefined}
         aria-invalid={error ? true : undefined}
-        className={cn(fieldClasses, error && "border-error")}
+        className={cn(fieldClasses, "w-full", error && "border-error")}
         {...props}
       />
       {error ? (

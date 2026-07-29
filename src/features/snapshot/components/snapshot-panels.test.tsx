@@ -59,7 +59,7 @@ describe("snapshot panels", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Loaded 10000 players into the database/i),
+      screen.getByText(/Loaded 10,000 players into the database/i),
     ).toBeInTheDocument();
   });
 
@@ -104,6 +104,23 @@ describe("snapshot panels", () => {
 
     await user.selectOptions(select, "1");
     expect(await screen.findByText("Alex Morgan")).toBeInTheDocument();
+  });
+
+  it("retargets the rename field when the top bar switches save", async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.type(await screen.findByLabelText("New save"), "Youth intake");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+
+    const select = await screen.findByRole("combobox", { name: "Active save" });
+    await user.selectOptions(select, "2");
+
+    // A draft left over from the previous save would rename the new one to the
+    // old name on the next submit.
+    expect(await screen.findByLabelText("Rename active save")).toHaveValue(
+      "Youth intake",
+    );
   });
 
   it("renames the active save", async () => {

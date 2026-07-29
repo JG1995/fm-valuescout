@@ -15,7 +15,7 @@ import { renderWithProviders } from "@/testing/render-with-providers";
 
 describe("app shell routing", () => {
   beforeEach(() => {
-    useLayoutStore.setState({ sidebarOpen: false });
+    useLayoutStore.setState({ railExpanded: false });
     setHealthSimulateError(false);
   });
 
@@ -28,23 +28,51 @@ describe("app shell routing", () => {
     ).toBeInTheDocument();
   });
 
-  it("toggles sidebar visibility from the layout store", async () => {
+  it("keeps the nav rail reachable and its label hidden while collapsed", async () => {
+    renderWithProviders();
+
+    const rail = await screen.findByRole("navigation", { name: "Primary" });
+
+    expect(rail).toHaveAttribute("data-expanded", "false");
+    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("expands the nav rail to show item labels", async () => {
     const user = userEvent.setup();
     renderWithProviders();
 
-    const sidebar = await screen.findByTestId("app-sidebar");
-    const toggle = screen.getByRole("button", { name: "Toggle sidebar" });
+    const rail = await screen.findByTestId("app-nav-rail");
+    const toggle = screen.getByRole("button", { name: "Toggle navigation" });
 
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(sidebar).toHaveAttribute("data-open", "false");
+    expect(
+      screen.queryByText("FM ValueScout", { selector: "span" }),
+    ).toBeNull();
 
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(sidebar).toHaveAttribute("data-open", "true");
+    expect(rail).toHaveAttribute("data-expanded", "true");
+    expect(
+      screen.getByText("FM ValueScout", { selector: "span" }),
+    ).toBeInTheDocument();
 
     await user.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(sidebar).toHaveAttribute("data-open", "false");
+    expect(rail).toHaveAttribute("data-expanded", "false");
+  });
+
+  it("offers a skip link to the main region", async () => {
+    renderWithProviders();
+
+    const skipLink = await screen.findByRole("link", {
+      name: "Skip to content",
+    });
+
+    expect(skipLink).toHaveAttribute("href", "#main-content");
+    expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
   });
 
   it("renders the not-found page for unknown routes", async () => {

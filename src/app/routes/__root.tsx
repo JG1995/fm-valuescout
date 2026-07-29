@@ -22,7 +22,12 @@ function RootComponent() {
     <>
       <AppShellLayout />
       {import.meta.env.DEV ? (
-        <TanStackRouterDevtools position="bottom-right" />
+        // Offset so this launcher sits beside the React Query one instead of
+        // under it — both share the only corner the app shell does not own.
+        <TanStackRouterDevtools
+          position="bottom-right"
+          toggleButtonProps={{ style: { right: "4rem" } }}
+        />
       ) : null}
     </>
   );

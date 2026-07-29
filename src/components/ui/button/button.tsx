@@ -55,6 +55,7 @@ export function Button({
   loadingLabel,
   type = "button",
   disabled,
+  title,
   ...props
 }: ButtonProps) {
   const LeadingIcon = loading ? LoaderCircle : Icon;
@@ -63,6 +64,9 @@ export function Button({
     <button
       type={type}
       disabled={disabled || loading}
+      // An icon-only button gets its tooltip from the accessible name the type
+      // already requires, so no call site can ship an unexplained glyph.
+      title={title ?? (size === "icon" ? props["aria-label"] : undefined)}
       className={cn(
         "inline-flex cursor-pointer items-center justify-center gap-2 text-label-lg",
         "transition-colors duration-150 ease-out",
