@@ -285,7 +285,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 1 — Names, DOB, nationality, height, foot, positions
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `b564143`
 
 **Work:**
 - Extend player extraction beyond UID/CA/PA: display name (handle non-ASCII), date of birth / age inputs as present in memory, nationality (single or multi if the layout exposes it), height, preferred foot, and natural positions.
@@ -312,7 +312,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Visible, hidden, and personality attributes
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Extract the three CONCEPT attribute groups into each dumped player: visible (technical/mental/physical as FM stores them), hidden, and personality. Document encoding quirks in bridge diagnostics or `bridge/` notes (e.g. attributes stored scaled ×5 — decode to the 1–20 scale the rest of the app will expect).
@@ -394,19 +394,19 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 3 — Player identity and attributes
 
-**Commit:** Commit 1 — Names, DOB, nationality, height, foot, positions — implementation done; awaiting `/checkpoint`
+**Commit:** Commit 2 — Visible, hidden, and personality attributes
 
 ### RED test (active commit)
 
-Covered: `IdentityExtractionTests` (date reject/accept, UTF-8 name, nation, identity reject paths, natural positions, pipeline schema v2 + skip counts).
+Attribute decoder fixtures for visible/hidden/personality (×5 decode to 1–20); dump shape/schema bump if player object gains attribute maps.
 
 ### Expected outcome
 
-Dump expands beyond UID/CA/PA with display name (incl. non-ASCII), DOB inputs, nationality, height, preferred foot, and natural positions. Identity sanity rejects garbage rows; diagnostics count skips. Schema v2.
+Each dumped player includes visible, hidden, and personality attribute groups with stable named keys on the 1–20 scale. Diagnostics include a few sample attribute snapshots.
 
 ### Explicit exclusions
 
-Visible/hidden/personality attribute blocks; contracts, clubs, loans; age (needs game date in PR 4).
+Contracts and clubs; role score computation.
 
 ## Discoveries and replanning
 
@@ -436,6 +436,7 @@ Visible/hidden/personality attribute blocks; contracts, clubs, loans; age (needs
 | 2 | Commit 2 — Versioned layout stub and CA/PA candidate dump | `2f8490c` | Layout registry, Il2Cpp scan, dump/diagnostics, force-scan poll, SuperScout pins |
 | 2 | Commit 3 — In-app scan request and completion watch | `3b1e6c2` | request.json TTL, Rust watch IPC, Load Data UI, force-scan fallback |
 | 2 | Follow-up — live-test ops (not a planned commit) | `62ddfc9`, `e638383`, `8a50cc8` | bridge-install; 10k scan cap + BACKLOG; refresh module flags after lazy load |
+| 3 | Commit 1 — Names, DOB, nationality, height, foot, positions | `b564143` | Dump schema v2; Extraction readers; identity sanity skips |
 
 ## Final validation
 
