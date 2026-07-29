@@ -7,7 +7,7 @@ use crate::features::memory_read::service::DumpWaitConfig;
 use super::ingest::SnapshotSummary;
 use super::load_data::{self, LoadDataError, LoadDataResult};
 use super::query::{self, PlayerSanityRow, DEFAULT_SANITY_LIMIT, MAX_SANITY_LIMIT};
-use super::service::{self, SaveSummary};
+use super::service::{self, active_save_id, SaveSummary};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -178,12 +178,23 @@ pub fn list_sanity_players(
 
 #[tauri::command]
 pub fn load_data(db: State<'_, Db>) -> Result<LoadDataResultDto, LoadDataError> {
+    let save_id = {
+        let conn = db.0.lock().map_err(|_| LoadDataError::Scan {
+            kind: "internal".to_string(),
+            message: "database lock poisoned".to_string(),
+        })?;
+        active_save_id(&conn).map_err(|message| LoadDataError::Scan {
+            kind: "internal".to_string(),
+            message,
+        })?
+    };
     let (bridge_directory, dump_result) =
         load_data::scan_dump_from_local_app_data(DumpWaitConfig::default())?;
     let mut conn = db.0.lock().map_err(|_| LoadDataError::Scan {
         kind: "internal".to_string(),
         message: "database lock poisoned".to_string(),
     })?;
-    let result = load_data::load_data_after_scan(&mut conn, &bridge_directory, dump_result)?;
+    let result =
+        load_data::load_data_after_scan(&mut conn, &bridge_directory, dump_result, save_id)?;
     Ok(LoadDataResultDto::from(result))
 }

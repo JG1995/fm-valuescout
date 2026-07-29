@@ -240,6 +240,7 @@ Do not start role scoring or other roadmap items until this feature is finished 
 - Migration v2 uses partial unique indexes for one active save and one current snapshot per save. Player scalars cover dump schema v5; arrays and attribute maps use JSON text. Foreign-key enforcement is enabled when the app opens SQLite.
 - Ingest (`features/snapshot/ingest.rs`) validates via `memory_read::dump_validation`, inserts snapshot+players with `is_current=0`, then promotes and deletes the prior current snapshot in one transaction so failures leave the old snapshot current. Single file read → `validate_dump_json` → parse (no validate-then-reread TOCTOU).
 - `load_data` IPC (`features/snapshot/load_data.rs`) scans via `memory_read::request_player_dump` without holding `Db`, then locks only for `ingest_dump_file`. `LoadDataError` uses `phase: scan | ingest` with scan `kind` for bridge/timeout/platform failures.
+- Finish-feature fix: `load_data` captures `active_save_id` before the scan and passes it to `ingest_dump_file_for_save` so a mid-scan save switch cannot ingest into the wrong slot. `invokeCommand` preserves `phase` on `TauriCommandError` for scan vs ingest UI copy; smoke asserts Saves/Snapshot/Load Data on home.
 - Gate fix during docs commit: added `.tmp/` to `.gitignore` so Vitest/Playwright transform caches under `.tmp/` do not fail Biome during `./scripts/dev check`.
 
 ## Completed work

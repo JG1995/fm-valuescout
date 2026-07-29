@@ -9,6 +9,7 @@ use crate::features::memory_read::service::{
 };
 
 use super::ingest::{self, SnapshotSummary};
+use super::service;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadDataResult {
@@ -59,19 +60,24 @@ pub fn load_data_from_bridge(
     bridge_directory: &Path,
     wait: DumpWaitConfig,
 ) -> Result<LoadDataResult, LoadDataError> {
+    let save_id = service::active_save_id(conn).map_err(|message| LoadDataError::Scan {
+        kind: "internal".to_string(),
+        message,
+    })?;
     let dump_result =
         request_player_dump(bridge_directory, wait).map_err(map_dump_request_error)?;
-    load_data_after_scan(conn, bridge_directory, dump_result)
+    load_data_after_scan(conn, bridge_directory, dump_result, save_id)
 }
 
 pub fn load_data_after_scan(
     conn: &mut Connection,
     bridge_directory: &Path,
     dump_result: DumpRequestResult,
+    save_id: i64,
 ) -> Result<LoadDataResult, LoadDataError> {
     ensure_scan_succeeded(&dump_result)?;
 
-    let snapshot = ingest::ingest_dump_file(conn, &dump_path(bridge_directory))
+    let snapshot = ingest::ingest_dump_file_for_save(conn, save_id, &dump_path(bridge_directory))
         .map_err(|message| LoadDataError::Ingest { message })?;
 
     Ok(LoadDataResult {
@@ -131,7 +137,7 @@ mod tests {
     use crate::features::memory_read::service::{
         request_path, status_path, BridgeRequest, BridgeStatus, PROTOCOL_VERSION,
     };
-    use crate::features::snapshot::service::list_saves;
+    use crate::features::snapshot::service::{create_save, list_saves, set_active_save};
     use rusqlite::OptionalExtension;
     use std::fs;
     use std::path::Path;
@@ -353,13 +359,49 @@ mod tests {
             scan_truncated: Some(false),
             max_accepted: Some(10_000),
         };
-        let error =
-            load_data_after_scan(&mut conn, &bridge_dir, dump_result).expect_err("ingest failure");
+        let error = load_data_after_scan(&mut conn, &bridge_dir, dump_result, active_save.id)
+            .expect_err("ingest failure");
 
         assert!(matches!(error, LoadDataError::Ingest { .. }));
         assert_eq!(
             current_snapshot_id(&conn, active_save.id),
             Some(prior_snapshot_id)
         );
+    }
+
+    #[test]
+    fn load_data_after_scan_uses_captured_save_not_current_active() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let bridge_dir = temp_dir.path().join("bridge");
+        fs::create_dir_all(&bridge_dir).expect("bridge dir");
+        let mut conn = open_migrated(&temp_dir.path().join("captured-save.db"));
+        let default_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let second_save = create_save(&conn, "Second save").expect("create second save");
+        set_active_save(&mut conn, second_save.id).expect("switch active save");
+
+        fs::write(dump_path(&bridge_dir), GOLDEN_FIXTURE).expect("dump");
+        let dump_result = DumpRequestResult {
+            request_id: "req-captured-save".to_string(),
+            state: "ready".to_string(),
+            players_found: Some(1),
+            dump_present: true,
+            error: None,
+            scan_truncated: Some(false),
+            max_accepted: Some(10_000),
+        };
+
+        let result = load_data_after_scan(&mut conn, &bridge_dir, dump_result, default_save.id)
+            .expect("ingest into captured save");
+
+        assert_eq!(result.snapshot.save_id, default_save.id);
+        assert_eq!(
+            current_snapshot_id(&conn, default_save.id),
+            Some(result.snapshot.id)
+        );
+        assert_eq!(current_snapshot_id(&conn, second_save.id), None);
     }
 }

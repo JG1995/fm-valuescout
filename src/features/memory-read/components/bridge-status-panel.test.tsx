@@ -112,7 +112,7 @@ describe("bridge status panel", () => {
     await screen.findByText(/^Bridge:/i);
     await user.click(screen.getByRole("button", { name: "Load Data" }));
 
-    expect(await screen.findByText(/Could not load data/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Scan failed/i)).toBeInTheDocument();
     expect(
       screen.getByText(/scan produced zero player candidates/i),
     ).toBeInTheDocument();
@@ -126,7 +126,7 @@ describe("bridge status panel", () => {
     await screen.findByText(/^Bridge:/i);
     await user.click(screen.getByRole("button", { name: "Load Data" }));
 
-    expect(await screen.findByText(/Could not load data/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Ingest failed/i)).toBeInTheDocument();
     expect(screen.getByText(/dump validation failed/i)).toBeInTheDocument();
   });
 

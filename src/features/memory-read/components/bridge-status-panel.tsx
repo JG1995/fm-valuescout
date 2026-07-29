@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button/button";
 import { bridgeStatusQueryOptions } from "../api/bridge-status-query-options";
 import { loadData } from "../api/load-data";
 import type { LoadDataResult } from "../types/load-data";
+import { loadDataErrorCopy } from "./load-data-error";
 
 function formatLoadOutcome(result: LoadDataResult): string {
   const count = result.snapshot.playerCount;
@@ -43,6 +44,8 @@ export function BridgeStatusPanel({
       : data.state === "scanning"
         ? "scanning"
         : data.state;
+
+  const loadDataError = scan.isError ? loadDataErrorCopy(scan.error) : null;
 
   return (
     <div className="space-y-3 rounded-md border border-on-background/20 p-4">
@@ -94,11 +97,13 @@ export function BridgeStatusPanel({
       {scan.isSuccess && scan.data.snapshot.saveId === activeSaveId && (
         <p className="text-on-background/80">{formatLoadOutcome(scan.data)}</p>
       )}
-      {scan.isError && (
-        <p className="text-on-background/80">
-          Could not load data.{" "}
-          <span className="text-on-background">{scan.error.message}</span>
-        </p>
+      {loadDataError && (
+        <div className="space-y-1 text-on-background/80">
+          <p className="font-medium text-on-background">
+            {loadDataError.title}
+          </p>
+          <p>{loadDataError.body}</p>
+        </div>
       )}
     </div>
   );

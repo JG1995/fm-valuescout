@@ -16,6 +16,12 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       main.getByRole("heading", { name: "FM ValueScout" }),
     ).toBeVisible();
+    await expect(main.getByRole("heading", { name: "Saves" })).toBeVisible();
+    await expect(
+      main.getByRole("combobox", { name: "Active save" }),
+    ).toBeVisible();
+    await expect(main.getByRole("heading", { name: "Snapshot" })).toBeVisible();
+    await expect(main.getByRole("button", { name: "Load Data" })).toBeVisible();
     await expect(main.getByText(/^Bridge:/i)).toContainText("ready");
     await expect(main.getByText("Status:")).toContainText("ok");
     await expect(main.getByText("Stored value:")).toBeVisible();
