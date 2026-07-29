@@ -151,7 +151,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 3 — Transactional ingest from dump file
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Ingest a validated dump path into the active save: create new current snapshot, insert players, commit; on failure roll back and keep prior current snapshot. Persist `scanTruncated` / `maxAccepted`. Map dump player fields into columns/JSON. Hard-fail if validation fails. Unit-test with `golden_dump_v5.json` and a truncated fixture variant.
 
@@ -238,6 +238,7 @@ Bridge scan, React sanity list UI.
 
 - Product decisions (2026-07-29): truncated ingest allowed with UI; Load Data = scan+ingest; sanity list in scope; multi-save M1; snapshot history deferred to backlog.
 - Migration v2 uses partial unique indexes for one active save and one current snapshot per save. Player scalars cover dump schema v5; arrays and attribute maps use JSON text. Foreign-key enforcement is enabled when the app opens SQLite.
+- Ingest (`features/snapshot/ingest.rs`) validates via `memory_read::dump_validation`, inserts snapshot+players with `is_current=0`, then promotes and deletes the prior current snapshot in one transaction so failures leave the old snapshot current. Single file read → `validate_dump_json` → parse (no validate-then-reread TOCTOU).
 
 ## Completed work
 
