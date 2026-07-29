@@ -165,6 +165,10 @@ public sealed class CapADumpTests
             SupportedGameVersion = "26.3",
             BridgeVersion = "0.1.0",
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
+            GameDate = "2026-08-14",
+            GameDateSource = "memory",
+            ScanTruncated = false,
+            MaxAccepted = PersonScanner.DefaultMaxAccepted,
             PlayerCount = 1,
             Players = new[]
             {
@@ -183,6 +187,21 @@ public sealed class CapADumpTests
                     Attributes = new Dictionary<string, int?> { ["Acceleration"] = 13 },
                     HiddenAttributes = new Dictionary<string, int?> { ["Consistency"] = 12 },
                     Personality = new Dictionary<string, int?> { ["Ambition"] = 16 },
+                    WeeklyWageGbp = 50_000,
+                    ContractExpiryYear = 2028,
+                    ContractExpiryDayOfYear = 100,
+                    TransferListed = false,
+                    LoanListed = false,
+                    NotForSale = true,
+                    SetForRelease = false,
+                    MarketValueGbp = 8_000_000,
+                    Reputation = new DumpReputation { Current = 4000, World = 3500 },
+                    CurrentClub = "Example FC",
+                    ParentClub = "Example FC",
+                    OnLoan = false,
+                    Division = "Premier League",
+                    TeamLevel = "senior",
+                    Age = 25,
                 },
             },
         };
@@ -190,7 +209,15 @@ public sealed class CapADumpTests
         var json = DumpWriter.Serialize(document);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        Assert.Equal(3, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(5, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("2026-08-14", root.GetProperty("gameDate").GetString());
+        Assert.Equal("memory", root.GetProperty("gameDateSource").GetString());
+        Assert.False(root.GetProperty("scanTruncated").GetBoolean());
+        Assert.Equal(
+            PersonScanner.DefaultMaxAccepted,
+            root.GetProperty("maxAccepted").GetInt32());
+        Assert.Equal("Example FC", root.GetProperty("players")[0].GetProperty("currentClub").GetString());
+        Assert.Equal(25, root.GetProperty("players")[0].GetProperty("age").GetInt32());
         Assert.Equal("26.3.2.2329565", root.GetProperty("gameVersion").GetString());
         Assert.Equal("26.3", root.GetProperty("supportedGameVersion").GetString());
         Assert.Equal("0.1.0", root.GetProperty("bridgeVersion").GetString());
@@ -198,6 +225,9 @@ public sealed class CapADumpTests
         Assert.Equal(1, root.GetProperty("playerCount").GetInt32());
         Assert.Equal(7u, root.GetProperty("players")[0].GetProperty("uid").GetUInt32());
         Assert.Equal(120, root.GetProperty("players")[0].GetProperty("ca").GetInt32());
+        Assert.Equal(50_000, root.GetProperty("players")[0].GetProperty("weeklyWageGbp").GetInt64());
+        Assert.True(root.GetProperty("players")[0].GetProperty("notForSale").GetBoolean());
+        Assert.Equal(4000, root.GetProperty("players")[0].GetProperty("reputation").GetProperty("current").GetInt32());
         Assert.Equal(160, root.GetProperty("players")[0].GetProperty("pa").GetInt32());
         Assert.Equal("Meta Player", root.GetProperty("players")[0].GetProperty("name").GetString());
         Assert.Equal(2001, root.GetProperty("players")[0].GetProperty("birthYear").GetInt32());
@@ -326,6 +356,189 @@ public sealed class CapADumpTests
     }
 
     [Fact]
+    public void Person_scanner_exact_cap_without_extra_players_not_truncated()
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        PlacePlayerFixture(reader, layout, PersonAddress, uid: 101, ca: 100, pa: 110);
+        PlacePlayerFixture(
+            reader,
+            layout,
+            PersonAddress + 0x100,
+            uid: 102,
+            ca: 120,
+            pa: 130,
+            playerBlockBase: PlayerBlockBase + 0x100);
+
+        var diagnostics = new ScanDiagnostics();
+        var candidates = PersonScanner.Scan(
+            reader,
+            layout,
+            new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+            gamePlugin: null,
+            RegionEnumerator.GetCandidateRegions(reader),
+            diagnostics,
+            maxAccepted: 2);
+
+        Assert.Equal(2, candidates.Count);
+        Assert.False(diagnostics.StoppedEarly);
+    }
+
+    [Fact]
+    public void Pipeline_writes_scan_truncated_when_max_accepted_reached()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var layout = Fm263Layout.Instance;
+            var reader = new FakeMemoryReader();
+            PlacePlayerFixture(
+                reader,
+                layout,
+                PersonAddress,
+                uid: 201,
+                ca: 150,
+                pa: 170,
+                name: "Player One",
+                birthYear: 2000,
+                birthDoy: 100);
+            PlacePlayerFixture(
+                reader,
+                layout,
+                PersonAddress + 0x100,
+                uid: 202,
+                ca: 140,
+                pa: 160,
+                playerBlockBase: PlayerBlockBase + 0x100,
+                name: "Player Two",
+                birthYear: 2001,
+                birthDoy: 101);
+            PlacePlayerFixture(
+                reader,
+                layout,
+                PersonAddress + 0x200,
+                uid: 203,
+                ca: 130,
+                pa: 150,
+                playerBlockBase: PlayerBlockBase + 0x200,
+                name: "Player Three",
+                birthYear: 2002,
+                birthDoy: 102);
+
+            var pipeline = new CapADumpPipeline();
+            var result = pipeline.Run(
+                reader,
+                bridgeDir,
+                gameVersion: "26.3.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+                maxAccepted: 2);
+
+            Assert.True(result.Success);
+            Assert.True(result.ScanTruncated);
+            Assert.Equal(2, result.MaxAccepted);
+            Assert.Equal(2, result.PlayerCount);
+
+            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            Assert.True(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
+            Assert.Equal(2, doc.RootElement.GetProperty("maxAccepted").GetInt32());
+            Assert.Equal(2, doc.RootElement.GetProperty("playerCount").GetInt32());
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Person_scanner_sets_cancelled_when_token_already_cancelled()
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        PlacePlayerFixture(reader, layout, PersonAddress, uid: 101, ca: 100, pa: 110);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var diagnostics = new ScanDiagnostics();
+        var candidates = PersonScanner.Scan(
+            reader,
+            layout,
+            new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+            gamePlugin: null,
+            RegionEnumerator.GetCandidateRegions(reader),
+            diagnostics,
+            cancellationToken: cts.Token);
+
+        Assert.True(diagnostics.Cancelled);
+        Assert.False(diagnostics.StoppedEarly);
+        Assert.Empty(candidates);
+    }
+
+    [Fact]
+    public void Pipeline_preserves_prior_dump_when_scan_cancelled()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var prior = new DumpDocument
+            {
+                SchemaVersion = 5,
+                GeneratedAtUtc = "2026-07-28T00:00:00Z",
+                GameVersion = "26.3.0",
+                SupportedGameVersion = "26.3",
+                BridgeVersion = "0.1.0",
+                ProtocolVersion = 1,
+                ScanTruncated = false,
+                MaxAccepted = PersonScanner.DefaultMaxAccepted,
+                PlayerCount = 1,
+                Players = new[]
+                {
+                    new DumpPlayer
+                    {
+                        Uid = 9,
+                        Ca = 11,
+                        Pa = 12,
+                        Name = "Prior Player",
+                        BirthYear = 1990,
+                        BirthDayOfYear = 2,
+                        PreferredFoot = "right",
+                    },
+                },
+            };
+            Assert.True(DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, prior));
+
+            var layout = Fm263Layout.Instance;
+            var reader = new FakeMemoryReader();
+            PlacePlayerFixture(reader, layout, PersonAddress, uid: 201, ca: 150, pa: 170);
+
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            var pipeline = new CapADumpPipeline();
+            var result = pipeline.Run(
+                reader,
+                bridgeDir,
+                gameVersion: "26.3.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+                cancellationToken: cts.Token);
+
+            Assert.False(result.Success);
+            Assert.False(result.DumpReplaced);
+            Assert.Contains("cancelled", result.Error, StringComparison.OrdinalIgnoreCase);
+
+            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            Assert.Equal(1, doc.RootElement.GetProperty("playerCount").GetInt32());
+            Assert.Equal("Prior Player", doc.RootElement.GetProperty("players")[0].GetProperty("name").GetString());
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Pipeline_writes_dump_when_fake_memory_has_players()
     {
         var bridgeDir = CreateTempBridgeDir();
@@ -345,9 +558,15 @@ public sealed class CapADumpTests
             Assert.True(result.Success);
             Assert.True(result.DumpReplaced);
             Assert.Equal(1, result.PlayerCount);
+            Assert.False(result.ScanTruncated);
+            Assert.Equal(PersonScanner.DefaultMaxAccepted, result.MaxAccepted);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
             Assert.Equal(1, doc.RootElement.GetProperty("playerCount").GetInt32());
+            Assert.False(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
+            Assert.Equal(
+                PersonScanner.DefaultMaxAccepted,
+                doc.RootElement.GetProperty("maxAccepted").GetInt32());
             Assert.True(File.Exists(BridgePaths.GetDiagnosticsPath(bridgeDir)));
         }
         finally

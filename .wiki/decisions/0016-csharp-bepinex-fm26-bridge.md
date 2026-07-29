@@ -23,7 +23,7 @@ Boundaries:
 - Do **not** vendor BepInEx or FM interop assemblies in git; use local path overrides.
 - Do **not** ship SuperScout’s DLL as our product binary. Layout offsets and algorithms may be ported into our `bridge/` structure: the SuperScout author ([mark17072](https://github.com/mavarobli)) granted explicit permission (“do whatever you like”) — see [superscout-permission.md](../notes/superscout-permission.md). Prefer independent module layout; record provenance when pins stabilize.
 
-Delivery plan: [features/active/fm26-memory-read.md](../features/active/fm26-memory-read.md).
+Delivery record: [features/completed/fm26-memory-read.md](../features/completed/fm26-memory-read.md).
 
 ## Alternatives considered
 
@@ -55,14 +55,14 @@ CONCEPT explicitly keeps save-file import out of MVP. Rejected for this decision
 
 ### Follow-up
 
-- Implement per [fm26-memory-read](../features/active/fm26-memory-read.md) (toolchain chore → status → dump fields → schema freeze).
-- Update [ARCHITECTURE.md](../ARCHITECTURE.md) current-state sections when the bridge lands — do not describe it as implemented before code exists.
+- Implemented per [fm26-memory-read](../features/completed/fm26-memory-read.md) (toolchain → status → dump fields → schema freeze).
+- [ARCHITECTURE.md](../ARCHITECTURE.md) current-state sections describe the bridge boundary and file protocol.
 - In-app BepInEx/plugin install remains deferred — see [BACKLOG.md](../BACKLOG.md).
 - Optional later: Windows CI `dotnet test` only if tests run without machine-local FM interop.
 
 ## Related work
 
-- Feature plan: [features/active/fm26-memory-read.md](../features/active/fm26-memory-read.md)
+- Feature record: [fm26-memory-read](../features/completed/fm26-memory-read.md)
 - Related notes: [superscout-permission.md](../notes/superscout-permission.md)
 - Planning notes: [notes/memory-read-initial-notes.md](../notes/memory-read-initial-notes.md)
 - Rust IPC boundary: [0014](./0014-rust-backend-ipc-boundary.md)

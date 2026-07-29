@@ -7,7 +7,12 @@ export type BridgeStatusIpcMockMode =
   | "unsupportedVersion"
   | "corrupt";
 
-export type DumpRequestIpcMockMode = "success" | "failed" | "timeout" | "busy";
+export type DumpRequestIpcMockMode =
+  | "success"
+  | "truncatedSuccess"
+  | "failed"
+  | "timeout"
+  | "busy";
 
 const READY_STATUS: BridgeStatus = {
   protocolVersion: 1,
@@ -110,6 +115,18 @@ export function resolveDumpRequestIpcMock(): Promise<DumpRequestResult> {
       playersFound: null,
       dumpPresent: false,
       error: "scan produced zero player candidates",
+    });
+  }
+
+  if (dumpRequestMode === "truncatedSuccess") {
+    return Promise.resolve({
+      requestId: "req-mock",
+      state: "ready",
+      playersFound: 10_000,
+      dumpPresent: true,
+      error: null,
+      scanTruncated: true,
+      maxAccepted: 10_000,
     });
   }
 

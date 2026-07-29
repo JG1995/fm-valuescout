@@ -11,8 +11,12 @@ import type { DumpRequestResult } from "../types/bridge-status";
 function formatScanOutcome(result: DumpRequestResult): string {
   if (result.state === "ready") {
     const count = result.playersFound ?? 0;
+    const truncatedNote =
+      result.scanTruncated === true
+        ? ` Partial dump (capped at ${result.maxAccepted ?? "unknown"} players).`
+        : "";
     return result.dumpPresent
-      ? `Dump ready (${count} players).`
+      ? `Dump ready (${count} players).${truncatedNote}`
       : `Scan finished but dump file is missing.`;
   }
 

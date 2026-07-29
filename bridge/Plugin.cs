@@ -15,9 +15,19 @@ public class Plugin : BasePlugin
 
     private CancellationTokenSource? _pollCts;
 
+    private Thread? _pollThread;
+
+    private static CancellationTokenSource? s_unloadCts;
+
+    private static Thread? s_scanThread;
+
     private static readonly TimeSpan RequestPollInterval = TimeSpan.FromSeconds(2);
 
     private static readonly TimeSpan RequestTtl = TimeSpan.FromSeconds(BridgeProtocol.RequestTtlSeconds);
+
+    private static readonly TimeSpan PollThreadJoinTimeout = TimeSpan.FromSeconds(30);
+
+    private static readonly TimeSpan ScanThreadJoinTimeout = TimeSpan.FromSeconds(30);
 
     private static readonly object ScanGate = new();
 
@@ -34,14 +44,15 @@ public class Plugin : BasePlugin
             Log.LogInfo(
                 $"FM Data Bridge {MyPluginInfo.PLUGIN_VERSION} loaded; wrote {BridgePaths.GetStatusPath(bridgeDirectory)}");
 
+            s_unloadCts = new CancellationTokenSource();
             _pollCts = new CancellationTokenSource();
             var token = _pollCts.Token;
-            var thread = new Thread(() => PollRequests(bridgeDirectory, token))
+            _pollThread = new Thread(() => PollRequests(bridgeDirectory, token))
             {
                 IsBackground = true,
                 Name = "FmBridge-RequestPoll",
             };
-            thread.Start();
+            _pollThread.Start();
         }
         catch (Exception ex)
         {
@@ -53,11 +64,26 @@ public class Plugin : BasePlugin
     {
         try
         {
+            s_unloadCts?.Cancel();
             _pollCts?.Cancel();
         }
         catch (Exception ex)
         {
-            Log.LogWarning($"Request poll cancel failed: {ex.Message}");
+            Log.LogWarning($"Bridge shutdown cancel failed: {ex.Message}");
+        }
+
+        if (_pollThread is { IsAlive: true } pollThread
+            && !pollThread.Join(PollThreadJoinTimeout))
+        {
+            Log.LogWarning(
+                $"Request poll thread did not exit within {PollThreadJoinTimeout.TotalSeconds:0}s");
+        }
+
+        if (s_scanThread is { IsAlive: true } scanThread
+            && !scanThread.Join(ScanThreadJoinTimeout))
+        {
+            Log.LogWarning(
+                $"Scan thread did not exit within {ScanThreadJoinTimeout.TotalSeconds:0}s");
         }
 
         return true;
@@ -137,20 +163,33 @@ public class Plugin : BasePlugin
             _scanInProgress = true;
         }
 
-        try
+        var scanRequestId = requestId!;
+        var cancelToken = s_unloadCts?.Token ?? CancellationToken.None;
+        s_scanThread = new Thread(() =>
         {
-            RunDumpScan(bridgeDirectory, requestId!);
-        }
-        finally
-        {
-            lock (ScanGate)
+            try
             {
-                _scanInProgress = false;
+                RunDumpScan(bridgeDirectory, scanRequestId, cancelToken);
             }
-        }
+            finally
+            {
+                lock (ScanGate)
+                {
+                    _scanInProgress = false;
+                }
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "FmBridge-Scan",
+        };
+        s_scanThread.Start();
     }
 
-    private static void RunDumpScan(string bridgeDirectory, string requestId)
+    private static void RunDumpScan(
+        string bridgeDirectory,
+        string requestId,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -170,10 +209,19 @@ public class Plugin : BasePlugin
             if (!GameVersionDetector.TryDetectFromCurrentProcess(out var gameVersion)
                 || string.IsNullOrWhiteSpace(gameVersion))
             {
-                // Fallback when game_plugin.dll version is missing — still exercise 26.3 layout path.
-                gameVersion = Fm263FallbackVersion;
-                Log.LogWarning(
-                    $"Could not read game_plugin.dll version; using fallback '{gameVersion}' for layout resolve");
+                const string message =
+                    "could not detect FM game_plugin.dll version; refusing scan (fail closed)";
+                DiagnosticsWriter.Write(bridgeDirectory, message + Environment.NewLine);
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    modules,
+                    requestId: requestId,
+                    playersFound: null,
+                    error: message);
+                Log.LogError(message);
+                TryDeleteForceScanFlag(bridgeDirectory);
+                return;
             }
 
             if (known.GameAssembly is not { } gameAssembly)
@@ -198,7 +246,8 @@ public class Plugin : BasePlugin
                 gameVersion,
                 MyPluginInfo.PLUGIN_VERSION,
                 gameAssembly,
-                known.GamePlugin);
+                known.GamePlugin,
+                cancellationToken: cancellationToken);
 
             TryDeleteForceScanFlag(bridgeDirectory);
 
@@ -210,8 +259,12 @@ public class Plugin : BasePlugin
                     modules,
                     requestId: requestId,
                     playersFound: result.PlayerCount,
-                    error: null);
-                Log.LogInfo($"Dump request {requestId} wrote {result.PlayerCount} players");
+                    error: null,
+                    scanTruncated: result.ScanTruncated,
+                    maxAccepted: result.MaxAccepted);
+                Log.LogInfo(
+                    $"Dump request {requestId} wrote {result.PlayerCount} players"
+                    + (result.ScanTruncated ? " (scan truncated)" : ""));
             }
             else
             {
@@ -285,10 +338,10 @@ public class Plugin : BasePlugin
             modules,
             requestId: current.RequestId,
             playersFound: current.PlayersFound,
-            error: current.Error);
+            error: current.Error,
+            scanTruncated: current.ScanTruncated,
+            maxAccepted: current.MaxAccepted);
     }
-
-    private const string Fm263FallbackVersion = "26.3.0";
 
     private static void TryDeleteForceScanFlag(string bridgeDirectory)
     {
@@ -321,7 +374,9 @@ public class Plugin : BasePlugin
         ModulePresenceSignals modules,
         string? requestId,
         int? playersFound,
-        string? error)
+        string? error,
+        bool? scanTruncated = null,
+        int? maxAccepted = null)
     {
         var status = new BridgeStatus
         {
@@ -334,6 +389,8 @@ public class Plugin : BasePlugin
             RequestId = requestId,
             PlayersFound = playersFound,
             Error = error,
+            ScanTruncated = scanTruncated,
+            MaxAccepted = maxAccepted,
         };
         StatusWriter.Write(bridgeDirectory, status);
     }

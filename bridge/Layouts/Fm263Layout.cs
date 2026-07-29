@@ -145,6 +145,56 @@ public sealed class Fm263Layout : IFmMemoryLayout
         new("Controversy", 0x77),
     };
 
+    public int FullContractPtrOffset => 0xA8;
+
+    public int ContractWeeklyWageOffset => 0x20;
+
+    public int ContractExpiryOffset => 0x48;
+
+    public int ContractStatusFlagsOffset => 0x57;
+
+    // PLAO_GUIDE_VALUE — SuperScout verified as FM's real transfer value (GBP).
+    public int MarketValueOffset => 0x234;
+
+    public int CurrentReputationOffset => 0x260;
+
+    public int WorldReputationOffset => 0x262;
+
+    // Contract → team → club (SuperScout Dumper.cs / Fields.cs).
+    public int ContractTeamPtrOffset => 0x10;
+
+    public int TeamClubPtrOffset => 0x30;
+
+    public int TeamTypeOffset => 0x28;
+
+    public int TeamReputationOffset => 0xA8;
+
+    public int TeamCompPtrOffset => 0x50;
+
+    public int TeamCompAltPtrOffset => 0x60;
+
+    public int TeamSchedulePtrOffset => 0xA0;
+
+    public int ClubTeamsBeginOffset => 0x18;
+
+    public int ClubTeamsEndOffset => 0x20;
+
+    public int TeamSquadBeginOffset => 0x38;
+
+    public int TeamSquadEndOffset => 0x40;
+
+    public int ClubNameOffset => 0xC0;
+
+    public int ClubShortNameOffset => 0xC8;
+
+    public int CompNameOffset => 0x40;
+
+    public int CompShortNameOffset => 0x48;
+
+    public int ScheduleNextMatchOffset => 0x94;
+
+    public int ScheduleNextMatchAltOffset => 0x18;
+
     // Ported from a public pin; still confirm identity fields on 2–3 known players after first dump.
     public bool IsProvisional => true;
 }
