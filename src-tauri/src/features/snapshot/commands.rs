@@ -6,6 +6,7 @@ use crate::features::memory_read::service::DumpWaitConfig;
 
 use super::ingest::SnapshotSummary;
 use super::load_data::{self, LoadDataError, LoadDataResult};
+use super::query::{self, PlayerSanityRow, DEFAULT_SANITY_LIMIT, MAX_SANITY_LIMIT};
 use super::service::{self, SaveSummary};
 
 #[derive(Serialize)]
@@ -130,6 +131,49 @@ impl From<LoadDataResult> for LoadDataResultDto {
             snapshot: SnapshotSummaryDto::from(result.snapshot),
         }
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerSanityRowDto {
+    pub name: String,
+    pub ca: i64,
+    pub club: Option<String>,
+}
+
+impl From<PlayerSanityRow> for PlayerSanityRowDto {
+    fn from(row: PlayerSanityRow) -> Self {
+        Self {
+            name: row.name,
+            ca: row.ca,
+            club: row.club,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_current_snapshot(db: State<'_, Db>) -> Result<Option<SnapshotSummaryDto>, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let snapshot = query::get_current_snapshot(&conn)?;
+    Ok(snapshot.map(SnapshotSummaryDto::from))
+}
+
+#[tauri::command]
+pub fn list_sanity_players(
+    limit: Option<u32>,
+    db: State<'_, Db>,
+) -> Result<Vec<PlayerSanityRowDto>, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let limit = limit
+        .map(|value| value as usize)
+        .unwrap_or(DEFAULT_SANITY_LIMIT)
+        .min(MAX_SANITY_LIMIT);
+    let players = query::list_sanity_players(&conn, limit)?;
+    Ok(players.into_iter().map(PlayerSanityRowDto::from).collect())
 }
 
 #[tauri::command]

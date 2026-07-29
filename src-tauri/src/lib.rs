@@ -34,6 +34,8 @@ pub fn run() {
             features::snapshot::commands::create_save,
             features::snapshot::commands::rename_save,
             features::snapshot::commands::set_active_save,
+            features::snapshot::commands::get_current_snapshot,
+            features::snapshot::commands::list_sanity_players,
             features::snapshot::commands::load_data,
         ])
         .run(tauri::generate_context!())

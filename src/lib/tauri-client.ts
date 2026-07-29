@@ -17,12 +17,20 @@ export async function invokeCommand<T>(
   try {
     return await invoke<T>(command, args);
   } catch (error) {
-    if (typeof error === "object" && error !== null && "kind" in error) {
-      const structured = error as { kind: string; message?: string };
-      throw new TauriCommandError(
-        structured.message ?? structured.kind,
-        structured.kind,
-      );
+    if (typeof error === "object" && error !== null) {
+      if ("kind" in error) {
+        const structured = error as { kind: string; message?: string };
+        throw new TauriCommandError(
+          structured.message ?? structured.kind,
+          structured.kind,
+        );
+      }
+      if ("message" in error) {
+        const structured = error as { message?: string };
+        if (structured.message) {
+          throw new TauriCommandError(structured.message);
+        }
+      }
     }
     throw new TauriCommandError(String(error));
   }

@@ -2,6 +2,10 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderWithProviders } from "@/testing/render-with-providers";
+import {
+  resolveBusyLoadDataRequest,
+  setLoadDataIpcMockMode,
+} from "@/testing/snapshot-ipc-mock";
 import { setBridgeInstallIpcMockMode } from "../api/bridge-install-ipc-mock";
 import {
   resolveBusyDumpRequest,
@@ -13,11 +17,13 @@ describe("bridge status panel", () => {
   beforeEach(() => {
     setBridgeStatusIpcMockMode("ready");
     setDumpRequestIpcMockMode("success");
+    setLoadDataIpcMockMode("success");
     setBridgeInstallIpcMockMode("absent");
   });
 
   afterEach(() => {
     resolveBusyDumpRequest();
+    resolveBusyLoadDataRequest();
   });
 
   it("renders ready state from mock IPC", async () => {
@@ -73,7 +79,7 @@ describe("bridge status panel", () => {
     expect(await screen.findByText(/^Bridge:/i)).toHaveTextContent("ready");
   });
 
-  it("Load Data trigger shows success after dump request", async () => {
+  it("Load Data trigger shows ingest success after load_data", async () => {
     const user = userEvent.setup();
     renderWithProviders();
 
@@ -81,12 +87,12 @@ describe("bridge status panel", () => {
     await user.click(screen.getByRole("button", { name: "Load Data" }));
 
     expect(
-      await screen.findByText(/Dump ready \(12 players\)/i),
+      await screen.findByText(/Loaded 3 players into the database/i),
     ).toBeInTheDocument();
   });
 
-  it("Load Data trigger shows truncated dump warning", async () => {
-    setDumpRequestIpcMockMode("truncatedSuccess");
+  it("Load Data trigger shows truncated ingest warning", async () => {
+    setLoadDataIpcMockMode("truncatedSuccess");
     const user = userEvent.setup();
     renderWithProviders();
 
@@ -94,39 +100,38 @@ describe("bridge status panel", () => {
     await user.click(screen.getByRole("button", { name: "Load Data" }));
 
     expect(
-      await screen.findByText(/Partial dump \(capped at 10000 players\)/i),
+      await screen.findByText(/Partial ingest \(capped at 10000 players\)/i),
     ).toBeInTheDocument();
   });
 
-  it("Load Data trigger shows scan failure from bridge", async () => {
-    setDumpRequestIpcMockMode("failed");
+  it("Load Data trigger shows scan failure from load_data", async () => {
+    setLoadDataIpcMockMode("scanFailed");
     const user = userEvent.setup();
     renderWithProviders();
 
     await screen.findByText(/^Bridge:/i);
     await user.click(screen.getByRole("button", { name: "Load Data" }));
 
+    expect(await screen.findByText(/Could not load data/i)).toBeInTheDocument();
     expect(
-      await screen.findByText(/Scan failed: scan produced zero player/i),
+      screen.getByText(/scan produced zero player candidates/i),
     ).toBeInTheDocument();
   });
 
-  it("Load Data trigger shows IPC timeout error", async () => {
-    setDumpRequestIpcMockMode("timeout");
+  it("Load Data trigger shows ingest failure from load_data", async () => {
+    setLoadDataIpcMockMode("ingestFailed");
     const user = userEvent.setup();
     renderWithProviders();
 
     await screen.findByText(/^Bridge:/i);
     await user.click(screen.getByRole("button", { name: "Load Data" }));
 
-    expect(
-      await screen.findByText(/Could not request dump/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/timed out waiting/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Could not load data/i)).toBeInTheDocument();
+    expect(screen.getByText(/dump validation failed/i)).toBeInTheDocument();
   });
 
   it("Load Data button shows busy label while request is pending", async () => {
-    setDumpRequestIpcMockMode("busy");
+    setLoadDataIpcMockMode("busy");
     const user = userEvent.setup();
     renderWithProviders();
 
@@ -134,10 +139,10 @@ describe("bridge status panel", () => {
     await user.click(screen.getByRole("button", { name: "Load Data" }));
 
     expect(
-      await screen.findByRole("button", { name: "Scanning…" }),
+      await screen.findByRole("button", { name: "Loading…" }),
     ).toBeDisabled();
     expect(
-      await screen.findByText(/Waiting for the FM bridge dump/i),
+      await screen.findByText(/Scanning and ingesting FM data/i),
     ).toBeInTheDocument();
   });
 
