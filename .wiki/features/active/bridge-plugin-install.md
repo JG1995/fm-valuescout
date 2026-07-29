@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation complete — pending `/finish-feature` after checkpoint
+Feature complete — run `/finish-feature` for validation and docs reconciliation
 
 ## Intent
 
@@ -98,7 +98,7 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 ### PR 1 — In-app plugin install and remove
 
-**Status:** Completed — pending checkpoint commit
+**Status:** Completed — `983c6f2`
 
 **Provisional PR title:** `feat(bridge-install): install and remove FmDataBridge from Steam plugins`
 
@@ -140,7 +140,7 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 #### Commit 3 — IPC, bridge panel actions, and docs
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `983c6f2`
 
 **Work:** Register Tauri commands; wire React API + bridge panel Install/Update and Remove actions with mockIPC tests; document in-app install in `bridge/README.md` and note AV/permission expectations; move packaging note for the bundled DLL (how Windows release/dev supplies the real binary vs test fixture). Soften manual-only copy language on the panel.
 
@@ -155,7 +155,7 @@ Resolve default plugins path → report install status → copy fixture DLL into
 
 ## Active work
 
-None — all planned commits implemented; run `/checkpoint` then `/finish-feature`.
+None — PR 1 complete. Run `/finish-feature`.
 
 ## Discoveries and replanning
 
@@ -168,7 +168,7 @@ None — all planned commits implemented; run `/checkpoint` then `/finish-featur
 
 | PR 1 | Resolve Steam plugins path and install status | `ed47e1a` | `memory_read/install.rs` — path resolve + `BridgeInstallStatus` |
 | PR 1 | Install and remove plugin DLL | `7a496bb` | `install.rs` — copy/remove helpers + 7 new unit tests |
-| PR 1 | IPC, bridge panel actions, and docs | pending | Tauri commands + `BridgePluginInstallSection` + `bridge/README.md` in-app install |
+| PR 1 | IPC, bridge panel actions, and docs | `983c6f2` | Tauri commands + `BridgePluginInstallSection` + `bridge/README.md` in-app install |
 
 ## Final validation
 
