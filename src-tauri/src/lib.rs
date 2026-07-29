@@ -30,6 +30,10 @@ pub fn run() {
             features::memory_read::commands::get_bridge_install_status,
             features::memory_read::commands::install_bridge_plugin,
             features::memory_read::commands::remove_bridge_plugin,
+            features::snapshot::commands::list_saves,
+            features::snapshot::commands::create_save,
+            features::snapshot::commands::rename_save,
+            features::snapshot::commands::set_active_save,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

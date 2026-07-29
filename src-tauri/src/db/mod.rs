@@ -27,7 +27,26 @@ pub fn open(db_path: &Path) -> Result<Db, String> {
     }
 
     let conn = Connection::open(db_path).map_err(|error| error.to_string())?;
+    conn.pragma_update(None, "foreign_keys", true)
+        .map_err(|error| error.to_string())?;
     migrations::apply(&conn).map_err(|error| error.to_string())?;
 
     Ok(Db(Mutex::new(conn)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn open_enables_foreign_key_enforcement() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = open(&temp_dir.path().join("foreign-keys-test.db")).expect("open db");
+        let conn = db.0.into_inner().expect("unlock db");
+
+        let foreign_keys: i32 = conn
+            .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+            .expect("read foreign_keys");
+        assert_eq!(foreign_keys, 1);
+    }
 }

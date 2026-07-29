@@ -8,12 +8,12 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 > **Lifecycle:** Approved 2026-07-28 from [CONCEPT.md](./CONCEPT.md) MVP scope. Ordering is **provisional — revisit after speccing** individual features.
 >
-> **Gating context:** FM26 memory read is complete — C# BepInEx IL2CPP bridge + Rust file protocol ([completed record](./features/completed/fm26-memory-read.md), dump schema v5 in `bridge/DUMP_SCHEMA.md`). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm.
+> **Gating context:** FM26 memory read is complete — C# BepInEx IL2CPP bridge + Rust file protocol ([completed record](./features/completed/fm26-memory-read.md), dump schema v5 in `bridge/DUMP_SCHEMA.md`). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm. Multi-save (thin) lands with snapshot ingest; snapshot **history** is backlog.
 
 | Order | Feature | Spec | Confidence | Why this position |
 | --- | --- | --- | --- | --- |
 | 1 | FM26 memory read | [Completed](./features/completed/fm26-memory-read.md) | medium | Foundation — live dump from FM; **done** |
-| 2 | Snapshot ingest + Load Data | CONCEPT | high | Persist memory dumps to SQLite; explicit refresh workflow — **plan next** |
+| 2 | Snapshot ingest + Load Data | [Active](./features/active/snapshot-ingest.md) | medium-high | Persist dumps to SQLite; multi-save; Load Data = scan+ingest — **in progress** |
 | 3 | Role scoring engine | CONCEPT | medium | One scoring model on ingest; FM role-relevant attributes + custom algorithm |
 | 4 | Player search | CONCEPT | high | First full UI value path after Load Data; validates DB and scores |
 | 5 | Player profiles | CONCEPT | high | Detail view from search; traditional scouting path |
@@ -46,15 +46,15 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- [Snapshot ingest + Load Data](./features/active/snapshot-ingest.md) — saves + current snapshot ingest; Load Data scan+ingest; sanity list
 
 ## Plan next
 
-`/plan-feature` on **Snapshot ingest + Load Data** (order 2) against the frozen dump schema v5 from [fm26-memory-read](./features/completed/fm26-memory-read.md).
+`/plan-feature` on **Role scoring engine** (order 3) after snapshot ingest finishes.
 
 ## Next
 
-Snapshot ingest + Load Data (order 2).
+Role scoring engine (order 3), after the active snapshot-ingest feature.
 
 ## Completed
 
