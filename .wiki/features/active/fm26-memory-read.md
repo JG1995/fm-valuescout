@@ -372,7 +372,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 2 — Clubs, loans, division, team level, game date
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `00dbf02`
 
 **Work:**
 - Resolve **current club** vs **parent club**, loan in/out, division, and team level (senior/reserve/youth as the layout allows). Apply deterministic rules when a player appears in multiple team structures so dumps are stable across scans.
@@ -398,7 +398,7 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 #### Commit 3 — Dump schema freeze and handoff docs
 
-**Status:** Pending
+**Status:** Active
 
 **Work:**
 - Freeze a versioned dump document contract (required fields, types, null rules, schema version) that feature 2 will import. Prefer a short durable note under `.wiki/` or `bridge/` that describes the file layout and status/request protocol — not a second architecture essay.
@@ -419,19 +419,19 @@ Plugin loads in FM → `status.json` visible to Rust/UI → user triggers scan i
 
 **PR:** PR 4 — Contracts, clubs, loans, and dump contract freeze
 
-**Commit:** Commit 2 — Clubs, loans, division, team level, game date
+**Commit:** Commit 3 — Dump schema freeze and handoff docs
 
 ### RED test (active commit)
 
-Club/loan/division/team-level resolution fixtures; dump metadata game date (and source tag); multi-squad deterministic rules. *(implemented — awaiting checkpoint)*
+Rust dump ingestibility validation (schema version, required keys, non-empty players or empty-save marker); golden fixture dump.
 
 ### Expected outcome
 
-Each dumped player has stable current vs parent club, loan in/out, division, and team level as the layout allows. Dump metadata includes in-game date. Diagnostics flag widespread club-resolution failures.
+Frozen dump contract documented for feature 2; Rust helper validates dump shape without SQLite import; CONCEPT MVP field coverage confirmed (gaps noted); `./scripts/dev check` + test green.
 
 ### Explicit exclusions
 
-SQLite ingest or search UI; asking-price heuristics or non-memory-derived estimates.
+SQLite migrations/importer (feature 2); in-app BepInEx installer (unless already trivial); player search UI.
 
 ## Discoveries and replanning
 
@@ -468,6 +468,7 @@ SQLite ingest or search UI; asking-price heuristics or non-memory-derived estima
 | 3 | Commit 1 — Names, DOB, nationality, height, foot, positions | `b564143` | Dump schema v2; Extraction readers; identity sanity skips |
 | 3 | Commit 2 — Visible, hidden, and personality attributes | `3febd3b` | Dump schema v3; attr maps with JSON null for invalid |
 | 4 | Commit 1 — Contracts, wages, transfer status, value, reputation | `fe6ee98` | Dump schema v4; free-agent nulls; money sentinels |
+| 4 | Commit 2 — Clubs, loans, division, team level, game date | `00dbf02` | Dump schema v5; squad walk; game date + age |
 
 ## Final validation
 
