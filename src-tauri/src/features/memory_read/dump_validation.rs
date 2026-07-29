@@ -36,6 +36,27 @@ const REQUIRED_PLAYER_KEYS: &[&str] = &[
     "reputation",
 ];
 
+/// Nullable MVP fields that must still be present on each player object.
+const REQUIRED_PLAYER_NULLABLE_KEYS: &[&str] = &[
+    "age",
+    "heightCm",
+    "weeklyWageGbp",
+    "contractExpiryYear",
+    "contractExpiryDayOfYear",
+    "transferListed",
+    "loanListed",
+    "notForSale",
+    "setForRelease",
+    "marketValueGbp",
+    "currentClub",
+    "parentClub",
+    "onLoan",
+    "division",
+    "teamLevel",
+];
+
+const VALID_GAME_DATE_SOURCES: &[&str] = &["memory", "derived", "unknown"];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DumpValidationError {
     Corrupt(String),
@@ -139,9 +160,20 @@ pub fn validate_dump_json(json: &str) -> Result<(), DumpValidationError> {
     require_string(object, "gameVersion")?;
     require_string(object, "supportedGameVersion")?;
     require_string(object, "bridgeVersion")?;
-    require_string(object, "gameDateSource")?;
-    require_bool(object, "scanTruncated")?;
+    require_game_date_source(object, "gameDateSource")?;
+    let scan_truncated = require_bool_value(object, "scanTruncated")?;
     require_nullable_non_negative_i64(object, "maxAccepted")?;
+    if scan_truncated {
+        match object.get("maxAccepted") {
+            Some(Value::Number(number)) if number.as_i64().is_some_and(|n| n >= 0) => {}
+            _ => {
+                return Err(DumpValidationError::WrongType {
+                    field: "maxAccepted".to_string(),
+                    detail: "must be a non-negative number when scanTruncated is true".to_string(),
+                });
+            }
+        }
+    }
 
     let player_count = require_i64(object, "playerCount")?;
     if player_count < 0 {
@@ -213,6 +245,14 @@ fn validate_player_object(player: &Value, index: usize) -> Result<(), DumpValida
         }
     }
 
+    for key in REQUIRED_PLAYER_NULLABLE_KEYS {
+        if !object.contains_key(*key) {
+            return Err(DumpValidationError::MissingField(format!(
+                "players[{index}].{key}"
+            )));
+        }
+    }
+
     require_u64(object, &format!("players[{index}].uid"), "uid")?;
     require_i64_at(object, &format!("players[{index}].ca"), "ca")?;
     require_i64_at(object, &format!("players[{index}].pa"), "pa")?;
@@ -253,6 +293,81 @@ fn validate_player_object(player: &Value, index: usize) -> Result<(), DumpValida
         object,
         &format!("players[{index}].reputation"),
         "reputation",
+    )?;
+    validate_reputation_object(
+        object.get("reputation").expect("reputation checked above"),
+        index,
+    )?;
+    require_nullable_i64_at(object, &format!("players[{index}].age"), "age")?;
+    require_nullable_i64_at(object, &format!("players[{index}].heightCm"), "heightCm")?;
+    require_nullable_i64_at(
+        object,
+        &format!("players[{index}].weeklyWageGbp"),
+        "weeklyWageGbp",
+    )?;
+    require_nullable_i64_at(
+        object,
+        &format!("players[{index}].contractExpiryYear"),
+        "contractExpiryYear",
+    )?;
+    require_nullable_i64_at(
+        object,
+        &format!("players[{index}].contractExpiryDayOfYear"),
+        "contractExpiryDayOfYear",
+    )?;
+    require_nullable_bool_at(
+        object,
+        &format!("players[{index}].transferListed"),
+        "transferListed",
+    )?;
+    require_nullable_bool_at(
+        object,
+        &format!("players[{index}].loanListed"),
+        "loanListed",
+    )?;
+    require_nullable_bool_at(
+        object,
+        &format!("players[{index}].notForSale"),
+        "notForSale",
+    )?;
+    require_nullable_bool_at(
+        object,
+        &format!("players[{index}].setForRelease"),
+        "setForRelease",
+    )?;
+    require_nullable_i64_at(
+        object,
+        &format!("players[{index}].marketValueGbp"),
+        "marketValueGbp",
+    )?;
+    require_nullable_string_at(
+        object,
+        &format!("players[{index}].currentClub"),
+        "currentClub",
+    )?;
+    require_nullable_string_at(
+        object,
+        &format!("players[{index}].parentClub"),
+        "parentClub",
+    )?;
+    require_nullable_bool_at(object, &format!("players[{index}].onLoan"), "onLoan")?;
+    require_nullable_string_at(object, &format!("players[{index}].division"), "division")?;
+    require_nullable_string_at(object, &format!("players[{index}].teamLevel"), "teamLevel")?;
+    validate_int_or_null_map(
+        object.get("attributes").expect("attributes checked above"),
+        &format!("players[{index}].attributes"),
+    )?;
+    validate_int_or_null_map(
+        object
+            .get("hiddenAttributes")
+            .expect("hiddenAttributes checked above"),
+        &format!("players[{index}].hiddenAttributes"),
+    )?;
+    validate_int_or_null_map(
+        object
+            .get("personality")
+            .expect("personality checked above"),
+        &format!("players[{index}].personality"),
     )?;
 
     Ok(())
@@ -333,18 +448,122 @@ fn require_non_empty_string(
     }
 }
 
-fn require_bool(
+fn require_bool_value(
     object: &serde_json::Map<String, Value>,
     field: &str,
-) -> Result<(), DumpValidationError> {
+) -> Result<bool, DumpValidationError> {
     match object.get(field) {
-        Some(Value::Bool(_)) => Ok(()),
+        Some(Value::Bool(value)) => Ok(*value),
         Some(_) => Err(DumpValidationError::WrongType {
             field: field.to_string(),
             detail: "expected boolean".to_string(),
         }),
         None => Err(DumpValidationError::MissingField(field.to_string())),
     }
+}
+
+fn require_game_date_source(
+    object: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<(), DumpValidationError> {
+    let value = object.get(field).and_then(Value::as_str).ok_or_else(|| {
+        DumpValidationError::WrongType {
+            field: field.to_string(),
+            detail: "expected string".to_string(),
+        }
+    })?;
+    if VALID_GAME_DATE_SOURCES.contains(&value) {
+        Ok(())
+    } else {
+        Err(DumpValidationError::WrongType {
+            field: field.to_string(),
+            detail: "expected memory, derived, or unknown".to_string(),
+        })
+    }
+}
+
+fn require_nullable_i64_at(
+    object: &serde_json::Map<String, Value>,
+    display_field: &str,
+    key: &str,
+) -> Result<(), DumpValidationError> {
+    match object.get(key) {
+        Some(Value::Null) | Some(Value::Number(_)) => Ok(()),
+        Some(_) => Err(DumpValidationError::WrongType {
+            field: display_field.to_string(),
+            detail: "expected number or null".to_string(),
+        }),
+        None => Err(DumpValidationError::MissingField(display_field.to_string())),
+    }
+}
+
+fn require_nullable_bool_at(
+    object: &serde_json::Map<String, Value>,
+    display_field: &str,
+    key: &str,
+) -> Result<(), DumpValidationError> {
+    match object.get(key) {
+        Some(Value::Null) | Some(Value::Bool(_)) => Ok(()),
+        Some(_) => Err(DumpValidationError::WrongType {
+            field: display_field.to_string(),
+            detail: "expected boolean or null".to_string(),
+        }),
+        None => Err(DumpValidationError::MissingField(display_field.to_string())),
+    }
+}
+
+fn require_nullable_string_at(
+    object: &serde_json::Map<String, Value>,
+    display_field: &str,
+    key: &str,
+) -> Result<(), DumpValidationError> {
+    match object.get(key) {
+        Some(Value::Null) | Some(Value::String(_)) => Ok(()),
+        Some(_) => Err(DumpValidationError::WrongType {
+            field: display_field.to_string(),
+            detail: "expected string or null".to_string(),
+        }),
+        None => Err(DumpValidationError::MissingField(display_field.to_string())),
+    }
+}
+
+fn validate_reputation_object(reputation: &Value, index: usize) -> Result<(), DumpValidationError> {
+    let object = reputation
+        .as_object()
+        .ok_or_else(|| DumpValidationError::WrongType {
+            field: format!("players[{index}].reputation"),
+            detail: "expected object".to_string(),
+        })?;
+    for key in ["current", "world"] {
+        if !object.contains_key(key) {
+            return Err(DumpValidationError::MissingField(format!(
+                "players[{index}].reputation.{key}"
+            )));
+        }
+        require_nullable_i64_at(object, &format!("players[{index}].reputation.{key}"), key)?;
+    }
+    Ok(())
+}
+
+fn validate_int_or_null_map(map: &Value, display_field: &str) -> Result<(), DumpValidationError> {
+    let object = map
+        .as_object()
+        .ok_or_else(|| DumpValidationError::WrongType {
+            field: display_field.to_string(),
+            detail: "expected object".to_string(),
+        })?;
+    for (key, value) in object {
+        match value {
+            Value::Null | Value::Number(_) => {}
+            _ => {
+                return Err(DumpValidationError::WrongType {
+                    field: format!("{display_field}.{key}"),
+                    detail: "expected number or null".to_string(),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 fn require_nullable_non_negative_i64(
@@ -540,6 +759,59 @@ mod tests {
         assert!(matches!(
             error,
             DumpValidationError::WrongType { field, .. } if field == "players[0].ca"
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_game_date_source() {
+        let json = GOLDEN_FIXTURE.replace(
+            "\"gameDateSource\": \"memory\"",
+            "\"gameDateSource\": \"guess\"",
+        );
+
+        let error = validate_dump_json(&json).expect_err("invalid gameDateSource");
+
+        assert!(matches!(
+            error,
+            DumpValidationError::WrongType { field, .. } if field == "gameDateSource"
+        ));
+    }
+
+    #[test]
+    fn rejects_scan_truncated_true_without_max_accepted() {
+        let json = GOLDEN_FIXTURE
+            .replace("\"scanTruncated\": false", "\"scanTruncated\": true")
+            .replace("\"maxAccepted\": 10000", "\"maxAccepted\": null");
+
+        let error = validate_dump_json(&json).expect_err("truncated without cap");
+
+        assert!(matches!(
+            error,
+            DumpValidationError::WrongType { field, .. } if field == "maxAccepted"
+        ));
+    }
+
+    #[test]
+    fn rejects_player_missing_current_club_key() {
+        let json = GOLDEN_FIXTURE.replace("\"currentClub\": \"Loan FC\",", "");
+
+        let error = validate_dump_json(&json).expect_err("missing currentClub");
+
+        assert!(matches!(
+            error,
+            DumpValidationError::MissingField(field) if field == "players[0].currentClub"
+        ));
+    }
+
+    #[test]
+    fn rejects_attribute_map_with_string_value() {
+        let json = GOLDEN_FIXTURE.replace("\"Acceleration\": 14", "\"Acceleration\": \"fast\"");
+
+        let error = validate_dump_json(&json).expect_err("bad attribute value");
+
+        assert!(matches!(
+            error,
+            DumpValidationError::WrongType { field, .. } if field == "players[0].attributes.Acceleration"
         ));
     }
 
