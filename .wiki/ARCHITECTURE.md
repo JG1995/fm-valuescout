@@ -38,7 +38,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); snapshot ingest into SQLite is the next feature.
 
-**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe scanning, `status.json` / `dump.json` / diagnostics. Rust `features/memory_read` orchestrates requests and validates dump shape; React `features/memory-read` shows status and triggers scans. Windows Steam FM26 only.
+**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe scanning, `status.json` / `dump.json` / diagnostics. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls, bridge status, and triggers scans. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md) and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
 **Auth:** None in the template default — chosen per fork via `/stack`
 
@@ -384,6 +384,27 @@ User clicks Load Data
 Dump contract: bridge/DUMP_SCHEMA.md schema v5 (frozen). Feature 2 ingests from dump.json on disk.
 ```
 
+### 5.5 Bridge plugin install path
+
+```text
+User opens home route
+  → BridgePluginInstallSection: useSuspenseQuery(bridgeInstallStatusQueryOptions)
+  → invokeCommand("get_bridge_install_status")
+  → Rust memory_read/install.rs: resolve Steam BepInEx/plugins path, check FmDataBridge.dll presence
+
+User clicks Install / Update plugin
+  → useMutation → invokeCommand("install_bridge_plugin")
+  → Rust copies bundled src-tauri/resources/FmDataBridge.dll → plugins/
+  → User restarts FM so BepInEx loads the DLL
+
+User clicks Remove plugin
+  → useMutation → invokeCommand("remove_bridge_plugin")
+  → Rust deletes only FmDataBridge.dll (never BepInEx core or other plugins)
+
+Path resolution: FM_BRIDGE_PLUGINS → FM_STEAM_ROOT/BepInEx/plugins → default Windows Steam path
+(same order as ./scripts/dev bridge-install). Developer build-and-copy from source stays on bridge-install.
+```
+
 Non-Windows hosts return `unsupportedPlatform` for bridge commands. Full FM attach tests are manual on Windows. Linux CI runs Rust/Vitest/Playwright checks only; bridge `dotnet test` is local.
 
 ---
@@ -422,8 +443,8 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
 | Walking-skeleton UI with stubbed IPC: status panel, demo-value form flow, sidebar toggle | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
-| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `request_player_dump` | Capabilities ACL, plugin permissions, or menu/tray integration |
-| Bridge panel and Load Data button render with stubbed bridge IPC | Real BepInEx plugin, FM attach, or LocalAppData file protocol |
+| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `request_player_dump`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin` | Capabilities ACL, plugin permissions, or menu/tray integration |
+| Bridge panel, plugin install section, and Load Data button render with stubbed bridge IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, or Steam-folder DLL install |
 
 | Concern | Owner in this template |
 | --- | --- |
@@ -502,7 +523,7 @@ Each item links to an ADR with alternatives and consequences.
 | SQLite (Rust-owned) | [0015](./decisions/0015-sqlite-rust-owned.md) |
 | C# BepInEx FM26 bridge | [0016](./decisions/0016-csharp-bepinex-fm26-bridge.md) |
 
-TanStack Table, Form, Virtual, and TanStack Start are intentionally **not** in the default stack — add per feature when needed. The FM26 bridge is implemented per [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md) and [fm26-memory-read](./features/completed/fm26-memory-read.md); dump schema v5 is frozen in `bridge/DUMP_SCHEMA.md`.
+TanStack Table, Form, Virtual, and TanStack Start are intentionally **not** in the default stack — add per feature when needed. The FM26 bridge is implemented per [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [fm26-memory-read](./features/completed/fm26-memory-read.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md); dump schema v5 is frozen in `bridge/DUMP_SCHEMA.md`.
 
 ---
 
@@ -549,7 +570,7 @@ On **WSL**, you also need a display server for the native window:
 
 Headless gate commands (`./scripts/dev check`, `cargo test`) do not require a display.
 
-**FM26 bridge:** Build and install the plugin on a **Windows** host with .NET 6 SDK and BepInEx 6 IL2CPP on the Steam FM26 folder. From WSL, `./scripts/dev bridge-install` can build and copy the DLL when `FM_STEAM_ROOT` or the default Windows Steam path is set. See `bridge/README.md`.
+**FM26 bridge:** Build and install the plugin on a **Windows** host with .NET 6 SDK and BepInEx 6 IL2CPP on the Steam FM26 folder. End users can install the bundled DLL from the app (**Bridge plugin install** on the home screen); developers use `./scripts/dev bridge-install` or manual copy from WSL when `FM_STEAM_ROOT` or the default Windows Steam path is set. See [bridge/README.md](../bridge/README.md).
 
 ### What `pnpm install` does
 
