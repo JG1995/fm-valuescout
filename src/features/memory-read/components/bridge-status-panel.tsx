@@ -61,8 +61,9 @@ export function BridgeStatusPanel() {
         </strong>
       </p>
       <p className="text-sm text-on-background/60">
-        Keep Football Manager 26 running with the bridge plugin installed.
-        Manual install steps are in <code>bridge/README.md</code>.
+        Keep Football Manager 26 running with the bridge plugin installed. Use
+        the install section above or see <code>bridge/README.md</code> for
+        manual steps.
       </p>
       <div className="flex flex-wrap gap-2">
         <Button

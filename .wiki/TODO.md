@@ -46,16 +46,17 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-_(none — run `/plan-feature` on Snapshot ingest + Load Data)_
+None.
 
 ## Plan next
 
-`/plan-feature` on **Snapshot ingest + Load Data** (order 2), against the frozen dump schema v5 from [fm26-memory-read](./features/completed/fm26-memory-read.md).
+`/plan-feature` on **Snapshot ingest + Load Data** (order 2) against the frozen dump schema v5 from [fm26-memory-read](./features/completed/fm26-memory-read.md).
 
 ## Next
 
-Snapshot ingest + Load Data (order 2)
+Snapshot ingest + Load Data (order 2).
 
 ## Completed
 
 - [FM26 memory read](./features/completed/fm26-memory-read.md) — BepInEx bridge, file protocol, dump schema v5, Rust validation, bridge status + Load Data UI
+- [In-app bridge plugin install](./features/completed/bridge-plugin-install.md) — install / update / remove `FmDataBridge.dll` for default Steam FM26 from the app

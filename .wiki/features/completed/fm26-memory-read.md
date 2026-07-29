@@ -13,7 +13,7 @@ Planning input (not authority): [memory-read-initial-notes.md](../../notes/memor
 - A successful scan writes `dump.json` under `%LOCALAPPDATA%\fm-valuescout\fm-bridge\` with the CONCEPT MVP player field set at dump schema **v5** (frozen in [bridge/DUMP_SCHEMA.md](../../../bridge/DUMP_SCHEMA.md)).
 - Unknown or unsupported FM builds **fail closed** — no layout fallback. A failed scan does not replace a prior good dump (replace-only-on-success in the bridge).
 - `scanTruncated` and `maxAccepted` on dump and ready `status.json` signal when the person scanner stopped at the testing cap (10 000 accepted players). Ingest must not treat truncated dumps as a complete world database.
-- Manual plugin install (copy DLL into `BepInEx/plugins`, or `./scripts/dev bridge-install` from WSL) is the MVP install path. In-app BepInEx install remains deferred ([BACKLOG.md](../../BACKLOG.md)).
+- Plugin install at delivery: manual copy into `BepInEx/plugins` or `./scripts/dev bridge-install` from WSL. Superseded by in-app **Install / Update / Remove** in [bridge-plugin-install](./bridge-plugin-install.md); developers building from source still use `bridge-install` or manual copy.
 
 ## Final architecture
 
@@ -44,7 +44,7 @@ Tauri
 
 - [ADR-0016 — C# BepInEx bridge for FM26 memory read](../../decisions/0016-csharp-bepinex-fm26-bridge.md)
 - C# bridge + Rust file protocol (not Rust-only external reader)
-- In-app trigger only; manual plugin install for MVP
+- In-app trigger only; in-app DLL install added in [bridge-plugin-install](./bridge-plugin-install.md)
 - SuperScout layout pins reimplemented independently with author permission ([superscout-permission.md](../../notes/superscout-permission.md))
 
 ## Migration and operational implications
@@ -65,5 +65,5 @@ Tauri
 ## Follow-up
 
 - **Next feature:** Snapshot ingest + Load Data (order 2 in [TODO.md](../../TODO.md)) — persist dumps to SQLite; wire Load Data persistence semantics.
-- **BACKLOG:** full-scan performance (High); in-app BepInEx / bridge install (Medium).
+- **BACKLOG:** full-scan performance (High); in-app BepInEx bootstrap (Medium — see [BACKLOG.md](../../BACKLOG.md)).
 - **Repin:** FM patches may require layout updates and fail-closed version checks until repinned.
