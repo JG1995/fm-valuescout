@@ -191,7 +191,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 2 — Snapshot status, sanity list, and save switcher UI
 
-**Status:** Active
+**Status:** Completed — `98297c6`
 
 **Work:** React: active-save switcher (create / rename / switch); after load (and on open) show snapshot metadata, truncated banner, and a short player sanity table (name, CA, club). Wire queries/mutations with TanStack Query; mockIPC tests. Soften/replace scan-only success copy so Load Data means “in database.”
 
@@ -205,7 +205,7 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 #### Commit 3 — Docs for snapshot data flow
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Update ARCHITECTURE (ingest path, saves model), bridge/README or feature notes as needed; point TODO/completed cross-links at finish time. No ADR unless schema policy proves consequential beyond this ledger.
 
@@ -220,19 +220,19 @@ Migration creates saves/snapshots/players → ingest golden fixture into a save 
 
 **PR:** 2 — Load Data UX, sanity list, save switcher
 
-**Commit:** Snapshot status, sanity list, and save switcher UI
+**Commit:** Docs for snapshot data flow
 
 ### RED test (active commit)
 
-After load (and on open), UI shows snapshot metadata, truncated banner, and a short player sanity table (name, CA, club); save switcher supports create/rename/switch.
+Doc links resolve; ARCHITECTURE describes ingest path and saves model.
 
 ### Expected outcome
 
-React save switcher + post-load snapshot status, truncated banner, and sanity list wired via TanStack Query; Load Data copy reflects ingest not scan-only.
+ARCHITECTURE and related docs updated for Load Data ingest and multi-save; no implementation changes unless doc fixes require them.
 
 ### Explicit exclusions
 
-Full search/filter UI, snapshot history browser.
+Implementation changes beyond doc fixes discovered while writing.
 
 ## Discoveries and replanning
 
@@ -249,6 +249,7 @@ Full search/filter UI, snapshot history browser.
 | 1 | Save CRUD and active-save selection | `446913f` | `features/snapshot` service + IPC: list/create/rename/set-active; default save on empty DB; validate-before-ensure on create. |
 | 1 | Transactional ingest from dump file | `a77d744` | `ingest_dump_file` with single-read validation, staged transaction replace, golden/truncated/reject/rollback/re-ingest tests. |
 | 2 | Load Data command composes scan and ingest | `fc068b1` | `load_data` IPC scans without Db mutex, ingests via `load_data_after_scan`; `LoadDataError` phase scan/ingest; unit tests for success, scan fail, ingest rollback. |
+| 2 | Snapshot status, sanity list, and save switcher UI | `98297c6` | `get_current_snapshot` / `list_sanity_players` IPC; React save switcher + overview + sanity table; Load Data ingest copy via `load_data`; Vitest + per-save mockIPC. |
 
 ## Final validation
 
