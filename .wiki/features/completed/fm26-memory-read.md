@@ -51,7 +51,7 @@ Tauri
 
 - Developers need a Windows host with .NET 6 SDK, BepInEx 6 IL2CPP on the Steam FM26 install, and the plugin DLL in `BepInEx/plugins`. See [bridge/README.md](../../../bridge/README.md).
 - Linux CI runs `./scripts/dev check` and `./scripts/dev test` (Rust protocol/validation, Vitest, Playwright stubs). Bridge `dotnet test` with fakes runs locally on a machine with .NET 6 — not on Linux CI. Full FM attach verification is manual on Windows.
-- Feature 2 (snapshot ingest) imports against the frozen v5 dump contract. `validate_dump_at_bridge_directory` is ready for ingest wiring.
+- Snapshot ingest hard-validates via `validate_dump_json` inside `ingest_dump_file_for_save` ([snapshot-ingest](./snapshot-ingest.md)). Scan-path `validate_dump_at_bridge_directory` in `request_player_dump` logs warnings only — it does not gate ingest.
 - Full unlimited scans are slow on large saves (~3m+ observed); a 10 000-player cap keeps Load Data testable until [BACKLOG.md](../../BACKLOG.md) High item is addressed.
 
 ## Validation
@@ -64,6 +64,6 @@ Tauri
 
 ## Follow-up
 
-- **Next feature:** Snapshot ingest + Load Data (order 2 in [TODO.md](../../TODO.md)) — persist dumps to SQLite; wire Load Data persistence semantics.
+- **Delivered downstream:** [Snapshot ingest + Load Data](./snapshot-ingest.md) — persist dumps to SQLite; Load Data scan+ingest wired.
 - **BACKLOG:** full-scan performance (High); in-app BepInEx bootstrap (Medium — see [BACKLOG.md](../../BACKLOG.md)).
 - **Repin:** FM patches may require layout updates and fail-closed version checks until repinned.

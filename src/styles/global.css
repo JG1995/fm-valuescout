@@ -8,6 +8,9 @@
   --color-primary: oklch(0.63 0.14 256);
   --color-on-primary: oklch(0.09 0 0);
   --color-outline: oklch(0.35 0 0);
+  --color-warning: oklch(0.82 0.16 86);
+  --color-warning-container: oklch(0.28 0.1 86);
+  --color-on-warning-container: oklch(0.88 0.12 86);
 }
 
 body {

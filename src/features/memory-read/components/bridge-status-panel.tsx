@@ -5,34 +5,36 @@ import {
 } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button/button";
 import { bridgeStatusQueryOptions } from "../api/bridge-status-query-options";
-import { requestPlayerDump } from "../api/request-player-dump";
-import type { DumpRequestResult } from "../types/bridge-status";
+import { loadData } from "../api/load-data";
+import type { LoadDataResult } from "../types/load-data";
+import { loadDataErrorCopy } from "./load-data-error";
 
-function formatScanOutcome(result: DumpRequestResult): string {
-  if (result.state === "ready") {
-    const count = result.playersFound ?? 0;
-    const truncatedNote =
-      result.scanTruncated === true
-        ? ` Partial dump (capped at ${result.maxAccepted ?? "unknown"} players).`
-        : "";
-    return result.dumpPresent
-      ? `Dump ready (${count} players).${truncatedNote}`
-      : `Scan finished but dump file is missing.`;
-  }
-
-  return result.error?.trim() ? `Scan failed: ${result.error}` : "Scan failed.";
+function formatLoadOutcome(result: LoadDataResult): string {
+  const count = result.snapshot.playerCount;
+  const truncatedNote =
+    result.snapshot.scanTruncated === true
+      ? ` Partial ingest (capped at ${result.snapshot.maxAccepted ?? "unknown"} players).`
+      : "";
+  return `Loaded ${count} players into the database.${truncatedNote}`;
 }
 
-export function BridgeStatusPanel() {
+export function BridgeStatusPanel({
+  activeSaveId,
+  onLoadDataSettled,
+}: {
+  activeSaveId?: number;
+  onLoadDataSettled?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { data } = useSuspenseQuery(bridgeStatusQueryOptions);
 
   const scan = useMutation({
-    mutationFn: requestPlayerDump,
+    mutationFn: loadData,
     onSettled: () => {
       void queryClient.invalidateQueries({
         queryKey: bridgeStatusQueryOptions.queryKey,
       });
+      onLoadDataSettled?.();
     },
   });
 
@@ -42,6 +44,8 @@ export function BridgeStatusPanel() {
       : data.state === "scanning"
         ? "scanning"
         : data.state;
+
+  const loadDataError = scan.isError ? loadDataErrorCopy(scan.error) : null;
 
   return (
     <div className="space-y-3 rounded-md border border-on-background/20 p-4">
@@ -72,7 +76,7 @@ export function BridgeStatusPanel() {
           disabled={scan.isPending}
           onClick={() => scan.mutate()}
         >
-          {scan.isPending ? "Scanning…" : "Load Data"}
+          {scan.isPending ? "Loading…" : "Load Data"}
         </Button>
         <Button
           type="button"
@@ -88,16 +92,18 @@ export function BridgeStatusPanel() {
         </Button>
       </div>
       {scan.isPending && (
-        <p className="text-on-background/80">Waiting for the FM bridge dump…</p>
+        <p className="text-on-background/80">Scanning and ingesting FM data…</p>
       )}
-      {scan.isSuccess && (
-        <p className="text-on-background/80">{formatScanOutcome(scan.data)}</p>
+      {scan.isSuccess && scan.data.snapshot.saveId === activeSaveId && (
+        <p className="text-on-background/80">{formatLoadOutcome(scan.data)}</p>
       )}
-      {scan.isError && (
-        <p className="text-on-background/80">
-          Could not request dump.{" "}
-          <span className="text-on-background">{scan.error.message}</span>
-        </p>
+      {loadDataError && (
+        <div className="space-y-1 text-on-background/80">
+          <p className="font-medium text-on-background">
+            {loadDataError.title}
+          </p>
+          <p>{loadDataError.body}</p>
+        </div>
       )}
     </div>
   );

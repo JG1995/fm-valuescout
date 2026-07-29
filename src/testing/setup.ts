@@ -15,6 +15,18 @@ import {
   setBridgeStatusIpcMockMode,
   setDumpRequestIpcMockMode,
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
+import {
+  resetSnapshotIpcMock,
+  resolveBusyLoadDataRequest,
+  resolveCreateSaveIpcMock,
+  resolveGetCurrentSnapshotIpcMock,
+  resolveListSanityPlayersIpcMock,
+  resolveListSavesIpcMock,
+  resolveLoadDataIpcMock,
+  resolveRenameSaveIpcMock,
+  resolveSetActiveSaveIpcMock,
+  setLoadDataIpcMockMode,
+} from "@/testing/snapshot-ipc-mock";
 
 let demoValue = "";
 
@@ -48,6 +60,34 @@ function registerIpcMocks() {
       return resolveDumpRequestIpcMock();
     }
 
+    if (cmd === "list_saves") {
+      return resolveListSavesIpcMock();
+    }
+
+    if (cmd === "create_save") {
+      return resolveCreateSaveIpcMock(args);
+    }
+
+    if (cmd === "rename_save") {
+      return resolveRenameSaveIpcMock(args);
+    }
+
+    if (cmd === "set_active_save") {
+      return resolveSetActiveSaveIpcMock(args);
+    }
+
+    if (cmd === "get_current_snapshot") {
+      return resolveGetCurrentSnapshotIpcMock();
+    }
+
+    if (cmd === "list_sanity_players") {
+      return resolveListSanityPlayersIpcMock();
+    }
+
+    if (cmd === "load_data") {
+      return resolveLoadDataIpcMock();
+    }
+
     if (cmd === "get_bridge_install_status") {
       return resolveBridgeInstallStatusIpcMock();
     }
@@ -68,11 +108,14 @@ registerIpcMocks();
 
 afterEach(() => {
   resolveBusyDumpRequest();
+  resolveBusyLoadDataRequest();
   cleanup();
   clearMocks();
   demoValue = "";
   setBridgeStatusIpcMockMode("ready");
   setDumpRequestIpcMockMode("success");
+  setLoadDataIpcMockMode("success");
   resetBridgeInstallIpcMock();
+  resetSnapshotIpcMock();
   registerIpcMocks();
 });

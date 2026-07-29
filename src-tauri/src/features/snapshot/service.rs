@@ -39,6 +39,16 @@ pub fn ensure_default_save(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+pub fn active_save_id(conn: &Connection) -> Result<i64, String> {
+    ensure_default_save(conn)?;
+    conn.query_row(
+        "SELECT id FROM saves WHERE is_active = 1 LIMIT 1",
+        [],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
+}
+
 pub fn list_saves(conn: &Connection) -> Result<Vec<SaveSummary>, String> {
     ensure_default_save(conn)?;
 

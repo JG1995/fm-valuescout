@@ -26,6 +26,8 @@ ValueScout solves this with four pillars tied to how FM players actually work:
 
 Load the current game world from a running FM26 session. One action refreshes clubs, squads, contracts, and attributes to match what is in memory—no manual export step. Snapshots are explicit (you click **Load Data** when you want fresh data), which keeps the model simple and predictable.
 
+The app supports multiple **save slots** (separate scouting databases—for example, different FM careers). Exactly one slot is active; **Load Data** refreshes that slot's current snapshot only. Slots are app-side labels, not FM save files.
+
 ### 2. Searchable database with role scores
 
 Every loaded player lives in a searchable database with scores per position and per role (e.g. defensive midfielder / deep-lying playmaker). Sort and filter transfer targets by the role you need, not only by raw attributes. Detailed player profiles support the traditional scouting path; ranked lists support the moneyball path.

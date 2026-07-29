@@ -1,8 +1,4 @@
 //! Validates and ingests `dump.json` into the active save's current snapshot.
-//!
-//! # ponytail: module is not wired to IPC until PR2 Load Data commit
-//! Upgrade to a `load_data` command when scan+ingest composition lands.
-#![allow(dead_code)]
 
 use std::fs;
 use std::path::Path;
@@ -12,7 +8,7 @@ use serde_json::Value;
 
 use crate::features::memory_read::dump_validation::validate_dump_json;
 
-use super::service::ensure_default_save;
+use super::service;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotSummary {
@@ -32,24 +28,35 @@ pub struct SnapshotSummary {
     pub loaded_at_utc: String,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn ingest_dump_file(
     conn: &mut Connection,
     dump_path: &Path,
 ) -> Result<SnapshotSummary, String> {
-    let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
-    ingest_dump_json(conn, &json)
+    let save_id = service::active_save_id(conn)?;
+    ingest_dump_file_for_save(conn, save_id, dump_path)
 }
 
-fn ingest_dump_json(conn: &mut Connection, json: &str) -> Result<SnapshotSummary, String> {
+pub fn ingest_dump_file_for_save(
+    conn: &mut Connection,
+    save_id: i64,
+    dump_path: &Path,
+) -> Result<SnapshotSummary, String> {
+    let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
+    ingest_dump_json_for_save(conn, save_id, &json)
+}
+
+fn ingest_dump_json_for_save(
+    conn: &mut Connection,
+    save_id: i64,
+    json: &str,
+) -> Result<SnapshotSummary, String> {
     validate_dump_json(json).map_err(|error| error.to_string())?;
 
     let root: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
     let object = root
         .as_object()
         .ok_or_else(|| "dump root must be a JSON object".to_string())?;
-
-    ensure_default_save(conn)?;
-    let save_id = active_save_id(conn)?;
 
     let tx = conn.transaction().map_err(|error| error.to_string())?;
     let snapshot_id = insert_snapshot(&tx, save_id, object)?;
@@ -58,15 +65,6 @@ fn ingest_dump_json(conn: &mut Connection, json: &str) -> Result<SnapshotSummary
     tx.commit().map_err(|error| error.to_string())?;
 
     get_snapshot_by_id(conn, snapshot_id)
-}
-
-fn active_save_id(conn: &Connection) -> Result<i64, String> {
-    conn.query_row(
-        "SELECT id FROM saves WHERE is_active = 1 LIMIT 1",
-        [],
-        |row| row.get(0),
-    )
-    .map_err(|error| error.to_string())
 }
 
 fn insert_snapshot(

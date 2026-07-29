@@ -41,6 +41,81 @@ export async function stubTauriIpc(page: Page) {
             };
           }
 
+          if (cmd === "list_saves") {
+            return [
+              {
+                id: 1,
+                name: "Default save",
+                isActive: true,
+                createdAtUtc: "2026-07-28T12:00:00.000Z",
+                updatedAtUtc: "2026-07-28T12:00:00.000Z",
+              },
+            ];
+          }
+
+          if (cmd === "create_save") {
+            return {
+              id: 2,
+              name: args?.name ?? "New save",
+              isActive: false,
+              createdAtUtc: "2026-07-28T16:00:00.000Z",
+              updatedAtUtc: "2026-07-28T16:00:00.000Z",
+            };
+          }
+
+          if (cmd === "rename_save") {
+            return {
+              id: args?.saveId ?? 1,
+              name: args?.name ?? "Renamed save",
+              isActive: true,
+              createdAtUtc: "2026-07-28T12:00:00.000Z",
+              updatedAtUtc: "2026-07-28T16:05:00.000Z",
+            };
+          }
+
+          if (cmd === "set_active_save") {
+            return {
+              id: args?.saveId ?? 1,
+              name: "Default save",
+              isActive: true,
+              createdAtUtc: "2026-07-28T12:00:00.000Z",
+              updatedAtUtc: "2026-07-28T16:10:00.000Z",
+            };
+          }
+
+          if (cmd === "get_current_snapshot") {
+            return null;
+          }
+
+          if (cmd === "list_sanity_players") {
+            return [];
+          }
+
+          if (cmd === "load_data") {
+            return {
+              requestId: "req-smoke",
+              playersFound: 0,
+              scanTruncated: false,
+              maxAccepted: null,
+              snapshot: {
+                id: 1,
+                saveId: 1,
+                schemaVersion: 5,
+                generatedAtUtc: "2026-07-28T15:00:00.000Z",
+                gameVersion: "26.0.0",
+                supportedGameVersion: "26.0.0",
+                bridgeVersion: "0.1.0",
+                protocolVersion: 1,
+                gameDate: null,
+                gameDateSource: "unknown",
+                scanTruncated: false,
+                maxAccepted: null,
+                playerCount: 0,
+                loadedAtUtc: "2026-07-28T15:05:00.000Z",
+              },
+            };
+          }
+
           if (cmd === "get_bridge_install_status") {
             return {
               pluginsPath:
