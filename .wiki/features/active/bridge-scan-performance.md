@@ -259,6 +259,13 @@ Production and fake readers can fill a caller-owned byte array for a contiguous 
 - If the single-thread block scanner misses the candidate-discovery budget, add one pending PR 1 commit for bounded worker-local scanning after reporting the measured CPU and memory trade-off. Do not add it preemptively.
 - If large-dump validation and ingest already meet budget, remove PR 2 Commit 3 rather than refactor Rust without evidence.
 - Commit 1: `clubIndexingMs` stops after squad/club indexing only; game-date resolution and DumpPlayer assembly remain in residual `totalMs` so live baselines do not misattribute serialization cost to club work.
+- **Pre-block-scan live baseline** (2026-07-30, FM 26.3.2, `maxAccepted=500`, `stoppedEarly=true`, build with Commit 1 diagnostics). Full paste: `.cursor/work/baselines/2026-07-30-capped-500-pre-blockscan-diagnostics.txt`.
+  - `regionEnumerationMs=45`
+  - `candidateDiscoveryMs=72958` (~73s) — dominates `totalMs=73171`
+  - `extractionMs=48`, `clubIndexingMs=89`, `dumpWritingMs=24`
+  - `processMemoryCalls=171533882`, `processMemoryRequestedBytes=1355448581` (~1.26 GiB requested)
+  - `bytesScanned=1302961856` (~1.21 GiB), `vtableHits=4344871`, `regionCount=2166`
+  - Confirms the plan thesis: candidate discovery + scalar heap reads are the bottleneck; post-discovery phases are already sub-second at the 500-player cap. PR 1 success criterion remains capped path `<10s` after block scanning.
 
 ## Completed work
 
