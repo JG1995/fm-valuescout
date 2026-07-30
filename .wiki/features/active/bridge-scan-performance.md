@@ -190,7 +190,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 2 — Stream compact full dump output
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `a686189`
 
 **Work:** Write compact schema-v5 JSON incrementally to the existing temporary file and retain atomic replace-on-success behavior.
 
@@ -205,7 +205,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 3 — Reduce measured large-dump ingest overhead
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add a generated large-dump measurement around validation and transactional ingest. Reuse prepared SQLite work and remove duplicate parse work only where the measurement shows material cost.
 
@@ -254,21 +254,21 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **PR:** PR 2 — Enable complete player snapshots
 
-**Commit:** Stream compact full dump output
+**Commit:** Reduce measured large-dump ingest overhead
 
 ### RED test (active commit)
 
-Existing schema/round-trip tests remain green; generated 184,000- and 500,000-player documents complete without a second full serialized copy or out-of-memory failure. Fails today if dump writing still materializes a full in-memory JSON document before write.
+Existing rollback and replacement tests stay green. Generated 184,000- and 500,000-player runs record validation, insert, and total ingest timing and complete without unbounded memory growth. Fails today if ingest still duplicates full parse work or re-prepares SQLite statements per player with no measurement harness.
 
 ### Expected outcome
 
-DumpWriter streams compact schema-v5 JSON to the temp file and atomically replaces on success.
+Generated large-dump measurement around validation and transactional ingest; reuse prepared SQLite work and remove duplicate parse only where measurement shows material cost.
 
 ### Explicit exclusions
 
-- Schema or protocol version changes.
-- Chunked Rust ingestion.
+- Database schema changes.
 - Snapshot history.
+- Role scoring.
 
 ## Discoveries and replanning
 
@@ -307,6 +307,7 @@ DumpWriter streams compact schema-v5 JSON to the temp file and atomically replac
 | 1 | Add reusable block memory reads | `6f299da` | `TryReadBlock` + page-aligned failed-block subdivision |
 | 1 | Scan heap regions from reusable blocks | `648b81f` | Block walk + in-buffer UID + vtable offset cache; live capped path `totalMs=6700` (~11× faster than pre-scan) |
 | 2 | Batch contiguous player field reads | `8316c43` | Attrs/personality/positions/cstrings via `TryReadBlock` + ArrayPool decode |
+| 2 | Stream compact full dump output | `a686189` | Utf8JsonWriter compact stream + per-player flush; 184k/500k scale tests |
 
 ## Final validation
 
