@@ -175,7 +175,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 1 — Batch contiguous player field reads
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `8316c43`
 
 **Work:** Read contiguous attribute, position, personality, and bounded string ranges into reusable buffers, then decode locally. Keep pointer-chain reads safe and nullable.
 
@@ -190,7 +190,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 2 — Stream compact full dump output
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Write compact schema-v5 JSON incrementally to the existing temporary file and retain atomic replace-on-success behavior.
 
@@ -254,21 +254,21 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **PR:** PR 2 — Enable complete player snapshots
 
-**Commit:** Batch contiguous player field reads — implementation complete; awaiting checkpoint commit
+**Commit:** Stream compact full dump output
 
 ### RED test (active commit)
 
-Counting-reader tests in `ExtractionBatchingTests` prove attrs/personality ≤3 calls, positions not per-slot, and cstrings in 1 call. Existing extraction tests stay green.
+Existing schema/round-trip tests remain green; generated 184,000- and 500,000-player documents complete without a second full serialized copy or out-of-memory failure. Fails today if dump writing still materializes a full in-memory JSON document before write.
 
 ### Expected outcome
 
-Player extraction reads contiguous field ranges into `ArrayPool` buffers via `TryReadBlock` and decodes locally; pointer-chain hops remain scalar.
+DumpWriter streams compact schema-v5 JSON to the temp file and atomically replaces on success.
 
 ### Explicit exclusions
 
-- Layout changes or new fields.
-- Parallel extraction.
-- JSON and SQLite changes.
+- Schema or protocol version changes.
+- Chunked Rust ingestion.
+- Snapshot history.
 
 ## Discoveries and replanning
 
@@ -305,6 +305,7 @@ Player extraction reads contiguous field ranges into `ArrayPool` buffers via `Tr
 | 1 | Add scan phase performance diagnostics | `b2c8663` | Phase ms + process-memory call/byte counts in diagnostics.txt |
 | 1 | Add reusable block memory reads | `6f299da` | `TryReadBlock` + page-aligned failed-block subdivision |
 | 1 | Scan heap regions from reusable blocks | `648b81f` | Block walk + in-buffer UID + vtable offset cache; live capped path `totalMs=6700` (~11× faster than pre-scan) |
+| 2 | Batch contiguous player field reads | `8316c43` | Attrs/personality/positions/cstrings via `TryReadBlock` + ArrayPool decode |
 
 ## Final validation
 
