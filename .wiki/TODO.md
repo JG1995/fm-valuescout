@@ -14,6 +14,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 | --- | --- | --- | --- | --- |
 | 1 | FM26 memory read | [Completed](./features/completed/fm26-memory-read.md) | medium | Foundation — live dump from FM; **done** |
 | 2 | Snapshot ingest + Load Data | [Completed](./features/completed/snapshot-ingest.md) | medium-high | Persist dumps to SQLite; multi-save; Load Data = scan+ingest — **done** |
+| 2a | Bridge scan performance | [Active](./features/active/bridge-scan-performance.md) | medium-high | Remove the scalar heap-read bottleneck and validate complete snapshots before scoring adds more ingest work |
 | 3 | Role scoring engine | CONCEPT | medium | One scoring model on ingest; FM role-relevant attributes + custom algorithm |
 | 4 | Player search | CONCEPT | high | First full UI value path after Load Data; validates DB and scores |
 | 5 | Player profiles | CONCEPT | high | Detail view from search; traditional scouting path |
@@ -26,18 +27,23 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 [FM26 memory read]
         │
         ▼
-[Snapshot ingest + SQLite] ──► [Role scoring on ingest]
-        │                              │
-        └──────────────┬───────────────┘
-                       ▼
-              [Player search]
-                       │
-              ┌────────┴────────┐
-              ▼                 ▼
-      [Player profiles]   [Squad planner + tactic]
-                                  │
-                                  ▼
-                          [Squad optimizer]
+[Snapshot ingest + SQLite]
+        │
+        ▼
+[Bridge scan performance]
+        │
+        ├──────────────────────► [Role scoring on ingest]
+        │                                │
+        └────────────────┬───────────────┘
+                         ▼
+                [Player search]
+                         │
+                ┌────────┴────────┐
+                ▼                 ▼
+        [Player profiles]   [Squad planner + tactic]
+                                    │
+                                    ▼
+                            [Squad optimizer]
 ```
 
 **MVP spine:** Load Data (FM running) → searchable players with role scores → profile → planner gap → optimize XI.
@@ -46,11 +52,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-_None — run `/plan-feature` on the item in **Plan next** when ready to start._
+- [Bridge scan performance](./features/active/bridge-scan-performance.md) — optimize safe memory reads, scale dump/ingest, then remove the temporary 500-player cap
 
 ## Plan next
 
-`/plan-feature` on **Role scoring engine** (order 3).
+_None — finish the active bridge scan performance work before planning another feature._
 
 ## Next
 
