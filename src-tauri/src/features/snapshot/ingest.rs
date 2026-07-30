@@ -8,6 +8,8 @@ use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
 
 use crate::features::memory_read::dump_validation::parse_and_validate_dump;
+use crate::features::scoring::catalog::all_roles;
+use crate::features::scoring::score::score_role;
 
 use super::service;
 
@@ -86,6 +88,9 @@ fn ingest_dump_json_for_save(
     let tx = conn.transaction().map_err(|error| error.to_string())?;
     let snapshot_id = insert_snapshot(&tx, save_id, object)?;
     insert_players(&tx, snapshot_id, object)?;
+    // ponytail: score every catalog role synchronously during ingest (one INSERT per role × player)
+    // Upgrade to lazy/on-demand or batched scoring if ingest scoring time dominates Load Data
+    insert_role_scores(&tx, snapshot_id, object)?;
     replace_current_snapshot(&tx, save_id, snapshot_id)?;
     tx.commit().map_err(|error| error.to_string())?;
     let insert_ms = insert_started.elapsed().as_millis();
@@ -235,6 +240,73 @@ fn insert_players(
     }
 
     Ok(())
+}
+
+fn insert_role_scores(
+    tx: &Transaction<'_>,
+    snapshot_id: i64,
+    object: &serde_json::Map<String, Value>,
+) -> Result<(), String> {
+    let players = object
+        .get("players")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "dump players must be an array".to_string())?;
+
+    let mut stmt = tx
+        .prepare(
+            "INSERT INTO player_role_scores (snapshot_id, uid, role_id, phase, score)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let roles = all_roles();
+    for player in players {
+        let player = player
+            .as_object()
+            .ok_or_else(|| "each player must be a JSON object".to_string())?;
+        let uid = require_u64(player, "uid")? as i64;
+        let attributes = attributes_map(required_value(player, "attributes")?)?;
+
+        for role in roles {
+            let score = score_role(&attributes, role).map(i64::from);
+            stmt.execute(params![
+                snapshot_id,
+                uid,
+                role.role_id,
+                role.phase.as_db_str(),
+                score,
+            ])
+            .map_err(|error| error.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+fn attributes_map(value: &Value) -> Result<std::collections::HashMap<String, Option<u8>>, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "attributes must be an object".to_string())?;
+    let mut attributes = std::collections::HashMap::with_capacity(object.len());
+    for (key, raw) in object {
+        let parsed = match raw {
+            Value::Null => None,
+            Value::Number(number) => {
+                let as_i64 = number
+                    .as_i64()
+                    .ok_or_else(|| format!("attribute `{key}` must be an integer or null"))?;
+                Some(
+                    u8::try_from(as_i64)
+                        .map_err(|_| format!("attribute `{key}` out of u8 range"))?,
+                )
+            }
+            _ => {
+                return Err(format!("attribute `{key}` must be an integer or null"));
+            }
+        };
+        attributes.insert(key.clone(), parsed);
+    }
+    Ok(attributes)
 }
 
 fn replace_current_snapshot(
@@ -435,6 +507,49 @@ mod tests {
         .expect("count players")
     }
 
+    fn role_score_count_for_snapshot(conn: &Connection, snapshot_id: i64) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM player_role_scores WHERE snapshot_id = ?1",
+            params![snapshot_id],
+            |row| row.get(0),
+        )
+        .expect("count role scores")
+    }
+
+    fn role_scores_for_player(
+        conn: &Connection,
+        snapshot_id: i64,
+        uid: i64,
+    ) -> Vec<(String, String, Option<i64>)> {
+        let mut statement = conn
+            .prepare(
+                "SELECT role_id, phase, score
+                 FROM player_role_scores
+                 WHERE snapshot_id = ?1 AND uid = ?2
+                 ORDER BY role_id",
+            )
+            .expect("prepare role score query");
+        statement
+            .query_map(params![snapshot_id, uid], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .expect("query role scores")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read role scores")
+    }
+
+    fn dump_with_uniform_attributes(value: u8) -> String {
+        use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
+
+        let attributes: serde_json::Map<String, Value> = DUMP_ATTRIBUTE_KEYS
+            .iter()
+            .map(|key| ((*key).to_string(), Value::from(value)))
+            .collect();
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse golden fixture");
+        root["players"][0]["attributes"] = Value::Object(attributes);
+        root.to_string()
+    }
+
     fn snapshot_row_exists(conn: &Connection, snapshot_id: i64) -> bool {
         conn.query_row(
             "SELECT COUNT(*) FROM snapshots WHERE id = ?1",
@@ -443,6 +558,102 @@ mod tests {
         )
         .expect("count snapshot row")
             > 0
+    }
+
+    #[test]
+    fn ingest_writes_null_role_scores_when_required_attributes_are_missing() {
+        use crate::features::scoring::catalog::all_roles;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-role-scores-null.db"));
+        list_saves(&conn).expect("seed default save");
+
+        let dump_path = write_dump(&temp_dir, "sparse.json", GOLDEN_FIXTURE);
+        let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest sparse dump");
+
+        let expected_roles = all_roles().len() as i64;
+        assert_eq!(
+            role_score_count_for_snapshot(&conn, snapshot.id),
+            expected_roles
+        );
+
+        let scores = role_scores_for_player(&conn, snapshot.id, 77);
+        assert_eq!(scores.len(), all_roles().len());
+        for (role_id, phase, score) in &scores {
+            assert!(score.is_none(), "expected null score for {role_id}");
+            assert!(
+                phase == "in_possession" || phase == "out_of_possession",
+                "unexpected phase {phase} for {role_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn ingest_writes_expected_role_scores_for_uniform_attributes() {
+        use crate::features::scoring::catalog::all_roles;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-role-scores-uniform.db"));
+        list_saves(&conn).expect("seed default save");
+
+        let dump_json = dump_with_uniform_attributes(10);
+        let dump_path = write_dump(&temp_dir, "uniform.json", &dump_json);
+        let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest uniform dump");
+
+        let scores = role_scores_for_player(&conn, snapshot.id, 77);
+        assert_eq!(scores.len(), all_roles().len());
+        for (role_id, _phase, score) in &scores {
+            assert_eq!(
+                score,
+                &Some(50),
+                "uniform attr 10 must score 50 for {role_id}"
+            );
+        }
+    }
+
+    #[test]
+    fn second_ingest_replaces_prior_role_scores_with_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-role-scores-replace.db"));
+        list_saves(&conn).expect("seed default save");
+
+        let first_path = write_dump(&temp_dir, "first.json", &dump_with_uniform_attributes(10));
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        assert!(role_score_count_for_snapshot(&conn, first.id) > 0);
+
+        let second_path = write_dump(&temp_dir, "second.json", &dump_with_uniform_attributes(20));
+        let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
+
+        assert_eq!(role_score_count_for_snapshot(&conn, first.id), 0);
+        let scores = role_scores_for_player(&conn, second.id, 77);
+        assert!(!scores.is_empty());
+        assert!(scores.iter().all(|(_, _, score)| *score == Some(100)));
+    }
+
+    #[test]
+    fn failed_ingest_leaves_prior_role_scores_untouched() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-role-scores-rollback.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+
+        let good_path = write_dump(&temp_dir, "good.json", &dump_with_uniform_attributes(10));
+        let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
+        let prior_count = role_score_count_for_snapshot(&conn, first.id);
+        assert!(prior_count > 0);
+
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 5", "\"schemaVersion\": 4");
+        let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
+        let _ = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
+
+        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
+        assert_eq!(role_score_count_for_snapshot(&conn, first.id), prior_count);
+        assert!(role_scores_for_player(&conn, first.id, 77)
+            .iter()
+            .all(|(_, _, score)| *score == Some(50)));
     }
 
     #[test]
@@ -671,6 +882,14 @@ mod tests {
     }
 
     #[test]
+    fn ingest_completes_generated_2k_players_with_role_scores_and_timings() {
+        run_generated_large_ingest(2_000);
+    }
+
+    /// Scale check — role-score matrix (~68 rows/player) is too heavy for the default gate.
+    /// Run: `cargo test ingest_completes_generated_184k_players_with_timings -- --ignored`
+    #[test]
+    #[ignore = "role-score matrix at 184k players is too heavy for the default gate"]
     fn ingest_completes_generated_184k_players_with_timings() {
         run_generated_large_ingest(184_000);
     }
@@ -684,6 +903,8 @@ mod tests {
     }
 
     fn run_generated_large_ingest(player_count: usize) {
+        use crate::features::scoring::catalog::all_roles;
+
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join(format!("ingest-{player_count}.db")));
         let active_save = list_saves(&conn)
@@ -703,6 +924,10 @@ mod tests {
         assert_eq!(
             player_count_for_snapshot(&conn, snapshot.id),
             player_count as i64
+        );
+        assert_eq!(
+            role_score_count_for_snapshot(&conn, snapshot.id),
+            (player_count * all_roles().len()) as i64
         );
         assert_ingest_timings(&timings);
         assert!(

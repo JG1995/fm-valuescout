@@ -90,6 +90,21 @@ CREATE INDEX idx_players_snapshot_ca
     ON players(snapshot_id, ca DESC);
 ";
 
+pub const PLAYER_ROLE_SCORES_SQL: &str = "
+CREATE TABLE player_role_scores (
+    snapshot_id INTEGER NOT NULL,
+    uid INTEGER NOT NULL,
+    role_id TEXT NOT NULL,
+    phase TEXT NOT NULL CHECK (phase IN ('in_possession', 'out_of_possession')),
+    score INTEGER CHECK (score IS NULL OR (score >= 0 AND score <= 100)),
+    PRIMARY KEY (snapshot_id, uid, role_id),
+    FOREIGN KEY (snapshot_id, uid) REFERENCES players(snapshot_id, uid) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_player_role_scores_snapshot_role
+    ON player_role_scores(snapshot_id, role_id);
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -101,6 +116,11 @@ pub fn all() -> &'static [Migration] {
             version: 2,
             description: "create_snapshot_schema",
             sql: SNAPSHOT_SCHEMA_SQL,
+        },
+        Migration {
+            version: 3,
+            description: "create_player_role_scores",
+            sql: PLAYER_ROLE_SCORES_SQL,
         },
     ]
 }
@@ -182,7 +202,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
 
         let table_name: String = conn
             .query_row(
@@ -195,15 +215,10 @@ mod tests {
     }
 
     #[test]
-    fn opening_fresh_db_applies_version_2_and_creates_snapshot_tables() {
+    fn opening_fresh_db_applies_snapshot_schema_tables() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("snapshot-migration-test.db");
         let conn = open_migrated(&db_path);
-
-        let version: i32 = conn
-            .pragma_query_value(None, "user_version", |row| row.get(0))
-            .expect("read user_version");
-        assert_eq!(version, 2);
 
         for expected_table in ["saves", "snapshots", "players"] {
             let table_name: String = conn
@@ -215,6 +230,32 @@ mod tests {
                 .expect("read snapshot table from sqlite_master");
             assert_eq!(table_name, expected_table);
         }
+    }
+
+    #[test]
+    fn opening_fresh_db_applies_version_3_and_creates_player_role_scores() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("role-scores-migration-test.db");
+        let conn = open_migrated(&db_path);
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(version, 3);
+
+        let table_name: String = conn
+            .query_row(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'player_role_scores'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read player_role_scores from sqlite_master");
+        assert_eq!(table_name, "player_role_scores");
+
+        assert_eq!(
+            table_columns(&conn, "player_role_scores"),
+            ["snapshot_id", "uid", "role_id", "phase", "score"]
+        );
     }
 
     #[test]
@@ -313,6 +354,7 @@ mod tests {
         assert_eq!(
             indexes,
             [
+                "idx_player_role_scores_snapshot_role",
                 "idx_players_snapshot_ca",
                 "idx_players_snapshot_name",
                 "idx_saves_one_active",
@@ -404,19 +446,22 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 2);
+        assert_eq!(migrations.len(), 3);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
         assert_eq!(migrations[1].version, 2);
         assert_eq!(migrations[1].description, "create_snapshot_schema");
         assert_eq!(migrations[1].sql, SNAPSHOT_SCHEMA_SQL);
+        assert_eq!(migrations[2].version, 3);
+        assert_eq!(migrations[2].description, "create_player_role_scores");
+        assert_eq!(migrations[2].sql, PLAYER_ROLE_SCORES_SQL);
     }
 }

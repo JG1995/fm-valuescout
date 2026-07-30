@@ -163,7 +163,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 4 — Score table migration and ingest write path
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Migration v3: `player_role_scores` keyed by `(snapshot_id, uid, role_id)` with `phase` and nullable `score`. On snapshot ingest, after players insert, compute all catalog roles per player and insert scores in the same transaction (or clearly bounded follow-on inside the ingest transaction). Cascade delete with snapshot. Ponytail comment if batching is simplified: upgrade to lazy/on-demand scoring if ingest scoring time becomes a Load Data bottleneck (measure in tests or manual note).
 
@@ -211,6 +211,7 @@ React UI, combine IPC, weight settings, sanity-list proof column.
 - Dump keys differ from guide labels (`Jumping` → `JumpingReach`, spaced names → PascalCase). Catalog must store dump keys only.
 - Delivery plan collapsed from two PRs to one (five commits) — small feature, no mergeable mid-feature user value.
 - Catalog commit 1 reconciliation: Sidekick “generic” OOP hubs (`goalkeeper_oop`, `centre_back_oop`, …) map to SortItOutSI’s named OOP variants (Line-Holding/Sweeper Keeper, Covering/Stopping CB, …) — catalog uses the named variants. SortItOutSI-only roles kept: `wide_centre_back_ip`, `overlapping_centre_back_ip`, `covering_wide_centre_back_oop`, `stopping_wide_centre_back_oop`, `pressing_defensive_midfielder_oop`. Sidekick `no_nonsense_center_back_ip` spelling normalized to `no_nonsense_centre_back_ip`. Deep-Lying Playmaker primary follows SortItOutSI Key (includes `OffTheBall`); Sidekick key list omits it. Where SortItOutSI listed the same attribute in Key and Preferred, catalog keeps it in primary only (bands must be disjoint for 75/25 scoring).
+- Commit 4 scale note: persisting one row per catalog role × player (~68×) made the former default-gate 184k-player ingest test too heavy (disk full in ~46s). Moved 184k to `#[ignore]`; gate keeps a 2k scored ingest timing check. Full-world Load Data cost remains the ponytail trigger for lazy scoring.
 
 ## Completed work
 

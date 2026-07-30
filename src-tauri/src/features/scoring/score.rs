@@ -1,8 +1,4 @@
 //! Per-role 0–100 score from primary/secondary attribute bands.
-//!
-//! Public API stays unused until ingest persistence in this feature.
-
-#![allow(dead_code)]
 
 use std::collections::HashMap;
 

@@ -3,11 +3,8 @@
 //! Primary/secondary from SortItOutSI Key/Preferred; inventory cross-checked
 //! against FM Sidekick IP/OOP details. Keys are dump PascalCase only.
 //!
-//! Public items stay unused until ingest / combine commits in this feature.
-
-#![allow(dead_code)]
-
 /// Known visible attribute keys from `bridge/Layouts/Fm263Layout.cs` AttributeEntries.
+#[allow(dead_code)] // catalog invariant tests + future attribute validation
 pub const DUMP_ATTRIBUTE_KEYS: &[&str] = &[
     "Crossing",
     "Dribbling",
@@ -59,6 +56,7 @@ pub const DUMP_ATTRIBUTE_KEYS: &[&str] = &[
 ];
 
 /// Human guide label → dump PascalCase key (transcription aid).
+#[allow(dead_code)]
 pub fn label_to_dump_key(label: &str) -> Option<&'static str> {
     match label {
         "Acceleration" => Some("Acceleration"),
@@ -118,6 +116,15 @@ pub fn label_to_dump_key(label: &str) -> Option<&'static str> {
 pub enum RolePhase {
     InPossession,
     OutOfPossession,
+}
+
+impl RolePhase {
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            Self::InPossession => "in_possession",
+            Self::OutOfPossession => "out_of_possession",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
