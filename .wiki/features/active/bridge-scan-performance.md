@@ -165,7 +165,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 ### PR 2 — Enable complete player snapshots
 
-**Status:** Active
+**Status:** Ready to merge — delivery plan complete; optional manual capped UI check remaining
 
 **Provisional PR title:** `perf(load-data): enable complete player snapshots`
 
@@ -235,7 +235,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 5 — UI toggle and configurable player cap
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `b67fc3b`
 
 **Work:** Add Load Data controls: a toggle for the player cap and a numeric field used when the cap is on. Toggle off sends `maxAccepted: null` (unlimited). Toggle on sends a positive integer (default 500 when enabling). Wire through the Commit 4 IPC and request path. Persist the preference lightly in the UI store if that keeps diagnostic loads convenient. Default the toggle to off after Commit 4's live unlimited proof.
 
@@ -254,17 +254,13 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **PR:** PR 2 — Enable complete player snapshots
 
-**Commit:** UI toggle and configurable player cap — staging for checkpoint
+**Commit:** _None_ — delivery plan complete
 
-### RED test (active commit)
+### Next step
 
-Frontend and IPC tests cover capped and unlimited Load Data requests. Manual check: capped load truncates with the chosen limit; uncapped load reports `scanTruncated: false`. Pass `./scripts/dev check` and `./scripts/dev test`.
+Run `/finish-feature` after optional manual UI check (capped Load Data truncates at the chosen limit; uncapped reports `scanTruncated: false`). Then open/merge the PR when ready.
 
-### Expected outcome
-
-Load Data cap toggle (off = unlimited / null; on = configurable positive integer, default 500 when enabling), wired through Commit 4 request plumbing; preference persisted in `useLoadDataPreferences`.
-
-### Explicit exclusions
+### Explicit exclusions (feature)
 
 - Progress UI beyond the existing loading state.
 - Background refresh or incremental scans.
@@ -322,6 +318,7 @@ Load Data cap toggle (off = unlimited / null; on = configurable positive integer
 | 2 | Stream compact full dump output | `a686189` | Utf8JsonWriter compact stream + per-player flush; 184k/500k scale tests |
 | 2 | Reduce measured large-dump ingest overhead | `862486a` | Single parse + prepared INSERT; timed 184k/500k harness |
 | 2 | Request-scoped scan limit and unlimited production default | `d8b7b04` | Request maxAccepted; production Load Data unlimited; caps for tests/Commit 5 |
+| 2 | UI toggle and configurable player cap | `b67fc3b` | Cap players checkbox + limit; `load_data` maxAccepted; preference persist |
 
 ## Final validation
 
