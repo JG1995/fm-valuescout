@@ -3,7 +3,7 @@
 //! Primary/secondary from SortItOutSI Key/Preferred; inventory cross-checked
 //! against FM Sidekick IP/OOP details. Keys are dump PascalCase only.
 //!
-//! Public items stay unused until score_role / ingest commits in this feature.
+//! Public items stay unused until ingest / combine commits in this feature.
 
 #![allow(dead_code)]
 
