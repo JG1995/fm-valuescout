@@ -6,13 +6,14 @@ Active
 
 ## Intent
 
-Make **Load Data** fast enough to ingest a complete FM26 player database. Replace the bridge's syscall-heavy scalar heap walk with safe block scanning, then remove the temporary 500-player production cap after live validation proves the full path stays within budget.
+Make **Load Data** fast enough to ingest a complete FM26 player database. Replace the bridge's syscall-heavy scalar heap walk with safe block scanning, enable unlimited production loads after live validation, then expose a UI toggle and optional numeric cap for faster diagnostic loads.
 
 ## User-visible behavior
 
 - A 500-player diagnostic load completes in less than 10 seconds on the current reference machine.
 - A complete reference save of about 184,000 players completes the bridge dump in less than 60 seconds and finishes Load Data in less than 90 seconds.
-- Production Load Data no longer truncates the player database at 500 players.
+- Production Load Data defaults to an unlimited scan (`scanTruncated: false`, `maxAccepted: null`).
+- The UI can turn a player cap on or off. When the cap is on, the limit is a configurable positive integer (default 500 when enabling). When the cap is off, the scan is unlimited.
 - Failed scans and failed ingests preserve the prior good snapshot.
 - Unsupported FM builds still fail closed.
 
@@ -26,15 +27,16 @@ The live-save budgets are provisional until Commit 1 records phase timings on th
 - The bridge replaces `dump.json` only after a non-empty successful scan.
 - Dump schema v5 and the C# file-protocol → Rust validation → transactional SQLite boundary remain stable unless measurements prove a contract change is necessary.
 - A full scan sets `scanTruncated: false` and `maxAccepted: null`.
+- Request `maxAccepted: null` means unlimited; a positive integer means stop after that many accepted players.
 
 ## Non-goals
 
 - Unsafe pointer dereferences inside FM.
 - A new global player-container pointer or patch-specific object-root traversal without separate reverse-engineering evidence.
 - Save-file parsing, background synchronization, or incremental snapshots.
-- UI redesign or role scoring.
+- Broad UI redesign or role scoring. PR 2 Commit 5 adds only Load Data cap controls.
 - Parallel scanning by default. Add bounded workers only if the single-thread block scanner misses the live budget.
-- Progress UI or a request-configurable player cap unless measured scan duration still requires them.
+- Progress UI unless the measured full path cannot provide acceptable feedback with the existing loading state.
 
 ## Current-state map
 
@@ -79,7 +81,8 @@ The first implementation remains single-threaded. Public FMSuperScout evidence s
 
 - Preserve safe `ReadProcessMemory`; do not trade game stability for raw pointer speed.
 - Optimize syscall count before changing region-selection heuristics.
-- Keep the 500-player cap until the optimized scanner passes correctness checks and a full live reference run.
+- Keep the hardcoded 500-player production default until PR 2 Commit 4 wires request-scoped `maxAccepted` and a full live reference run passes.
+- After that live proof, production Load Data defaults to unlimited; a UI cap remains available for diagnostic loads (PR 2 Commit 5).
 - Start single-threaded. Consider bounded worker-local buffers only after measured evidence.
 - Do not add benchmark dependencies. Use diagnostics, deterministic read-count assertions, generated data, and manual Windows timing.
 
@@ -166,7 +169,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **Provisional PR title:** `perf(load-data): enable complete player snapshots`
 
-**Purpose:** Scale the post-discovery path, validate a complete live dump, and remove the temporary production cap.
+**Purpose:** Scale the post-discovery path, validate a complete live dump, enable unlimited production loads via request-scoped `maxAccepted`, then expose toggleable and configurable Load Data cap controls.
 
 **Depends on:** PR 1 merged to `main`.
 
@@ -215,22 +218,37 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **Provisional commit:** `perf(snapshot): reduce large dump ingest overhead`
 
-#### Commit 4 — Enable complete production data loads
+#### Commit 4 — Request-scoped scan limit and unlimited production default
 
 **Status:** Pending
 
-**Work:** Remove the temporary production cap, retain explicit caps only in tests or diagnostics, align the Rust wait timeout with the measured envelope if needed, and update operational documentation with reference-save results.
+**Work:** Add optional `maxAccepted` to `BridgeRequest` / `request.json`. Pass it from Rust `load_data` into the bridge. Treat request `null` as unlimited in `CapADumpPipeline` (stop collapsing omitted/null into `DefaultMaxAccepted`). Default production Load Data to unlimited (`null`) so the reference full save can run. Align the Rust wait timeout with the measured envelope if needed, and update operational documentation with reference-save results. Keep explicit caps in tests and characterization paths.
 
 **Out of scope for this commit:**
-- User-configurable scan limits.
+- Load Data UI controls.
 - Background refresh or incremental scans.
 - New progress UI unless the measured full path cannot provide acceptable feedback with the existing loading state.
 
-**Validation:** A fresh full Windows/FM run loads the complete reference save, reports `scanTruncated: false` and `maxAccepted: null`, preserves the prior snapshot on forced failure, completes the bridge phase below 60 seconds and end-to-end Load Data below 90 seconds, then passes `./scripts/dev check` and `./scripts/dev test`.
+**Validation:** Request plumbing tests cover positive caps and unlimited (`null`). A fresh full Windows/FM run loads the complete reference save, reports `scanTruncated: false` and `maxAccepted: null`, preserves the prior snapshot on forced failure, completes the bridge phase below 60 seconds and end-to-end Load Data below 90 seconds, then passes `./scripts/dev check` and `./scripts/dev test`.
 
-**Provisional commit:** `perf(load-data): enable complete player snapshots`
+**Provisional commit:** `feat(load-data): request-scoped scan limit with unlimited default`
 
-**Merge to trunk when:** Complete live data passes the reference budget and correctness spot checks; generated 500,000-player output/ingest completes without out-of-memory failure; timeout and docs match measured behavior.
+#### Commit 5 — UI toggle and configurable player cap
+
+**Status:** Pending
+
+**Work:** Add Load Data controls: a toggle for the player cap and a numeric field used when the cap is on. Toggle off sends `maxAccepted: null` (unlimited). Toggle on sends a positive integer (default 500 when enabling). Wire through the Commit 4 IPC and request path. Persist the preference lightly in the UI store if that keeps diagnostic loads convenient. Default the toggle to off after Commit 4's live unlimited proof.
+
+**Out of scope for this commit:**
+- Progress UI beyond the existing loading state.
+- Background refresh or incremental scans.
+- Changing dump schema v5.
+
+**Validation:** Frontend and IPC tests cover capped and unlimited Load Data requests. Manual check: capped load truncates with the chosen limit; uncapped load reports `scanTruncated: false`. Pass `./scripts/dev check` and `./scripts/dev test`.
+
+**Provisional commit:** `feat(ui): toggleable configurable Load Data player cap`
+
+**Merge to trunk when:** Complete live data passes the reference budget and correctness spot checks; generated 500,000-player output/ingest completes without out-of-memory failure; timeout and docs match measured behavior; Load Data can run unlimited by default and optionally capped from the UI.
 
 ## Active work
 
@@ -277,6 +295,7 @@ Player extraction reads contiguous field ranges into reusable buffers and decode
 - Commit 2: `TryReadBlock` `bytesRead` is a success count, not a contiguous prefix after hole recovery. Commit 3 must scan the full requested length (cleared gaps stay zero), not `buffer[0..bytesRead)`.
 - Commit 3: heap discovery uses `MemoryConstants.DefaultScanBlockSize` (32 MiB) with 16-byte overlap; UID is read from the block buffer; vtable→class-offset results are cached for the scan (including negative 0). CA/PA remain scalar until PR 2 extraction batching.
 - Commit 3: `FakeMemoryReader.TryReadBlock` composes sparse `AddBytes` segments with first-fill-wins so overlapping fixture blobs do not erase earlier person headers (matches scalar `TryRead` first-match).
+- **PR 2 replan (2026-07-30):** Replace hard-delete of the production cap with request-scoped `maxAccepted` (Commit 4) plus UI toggle/configurable limit (Commit 5). Unlimited becomes the production default after live full-save validation; capped loads remain available for diagnostics. Progress UI stays a non-goal unless the measured full path needs it.
 
 ## Completed work
 
@@ -292,4 +311,4 @@ At feature end.
 
 ## Documentation impact
 
-At feature end, reconcile `ARCHITECTURE.md`, `bridge/README.md`, `bridge/DUMP_SCHEMA.md`, completed memory-read and snapshot-ingest records, TODO, and backlog.
+At feature end, reconcile `ARCHITECTURE.md`, `bridge/README.md`, `bridge/DUMP_SCHEMA.md` (request `maxAccepted` semantics), completed memory-read and snapshot-ingest records, TODO, and backlog.

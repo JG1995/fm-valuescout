@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Bridge scan performance](./features/active/bridge-scan-performance.md) — optimize safe memory reads, scale dump/ingest, then remove the temporary 500-player cap
+- [Bridge scan performance](./features/active/bridge-scan-performance.md) — optimize safe memory reads, scale dump/ingest, enable unlimited loads via request-scoped `maxAccepted`, then add UI toggleable/configurable caps
 
 ## Plan next
 
