@@ -180,7 +180,7 @@ spacing:
 
 > **Authority:** This document owns the visual language, design tokens, and UI decisions. It does not own product purpose ([CONCEPT.md](./CONCEPT.md)) or implemented system shape ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-> **Status:** Tokens, shared primitives (`src/components/ui/`), and the app shell (nav rail, top bar) are implemented. Debug and dashboard panels use this spec today. Player search, profiles, squad planner, and optimizer surfaces are specced in deferred sections and land with their features. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
+> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), and the **Search** surface (compact filter strip, editor modal, virtualized results table) are implemented. Debug and dashboard panels use this spec today. Player profiles, squad planner, and optimizer surfaces are specced in deferred sections and land with their features. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 ## Brand & Style
 
