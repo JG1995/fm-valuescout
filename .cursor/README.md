@@ -57,7 +57,7 @@ Invoke these from the chat command palette in Cursor (type `/`):
 | --- | --- |
 | `/stack` | CONCEPT filled — recommend stack and target architecture from wiki notes; write wiki only after approval |
 | `/roadmap` | Dependency-aware MVP build order (grounded in planned specs when present; inferred from CONCEPT when not); write TODO sequence only after approval |
-| `/plan-feature` | Next feature from the sequence — PR/commit plan (trunk-based, atomic commits, Conventional Commits) |
+| `/plan-feature` | Next feature from the sequence — minimize PRs, keep atomic commits (trunk-based, Conventional Commits) |
 | `/build` | Default: one active commit (RED/GREEN), ledger update, stop for `/checkpoint`. Opt-in: full feature one commit at a time |
 | `/build-loop` | **Manual opt-in:** `/build` + automated checkpoint/fix loop (max 5 fix rounds; fixes CRITICAL/HIGH/MEDIUM; bundles NITPICK when mixed) + auto-commit when NITPICK-only |
 | `/fix` | Default: CRITICAL, HIGH, and MEDIUM (or narrowed delegation) — stop for `/checkpoint` unless running inside `/build-loop` |
