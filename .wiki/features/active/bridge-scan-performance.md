@@ -220,7 +220,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 4 — Request-scoped scan limit and unlimited production default
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `d8b7b04`
 
 **Work:** Add optional `maxAccepted` to `BridgeRequest` / `request.json`. Pass it from Rust `load_data` into the bridge. Treat request `null` as unlimited in `CapADumpPipeline` (stop collapsing omitted/null into `DefaultMaxAccepted`). Default production Load Data to unlimited (`null`) so the reference full save can run. Align the Rust wait timeout with the measured envelope if needed, and update operational documentation with reference-save results. Keep explicit caps in tests and characterization paths.
 
@@ -235,7 +235,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 5 — UI toggle and configurable player cap
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add Load Data controls: a toggle for the player cap and a numeric field used when the cap is on. Toggle off sends `maxAccepted: null` (unlimited). Toggle on sends a positive integer (default 500 when enabling). Wire through the Commit 4 IPC and request path. Persist the preference lightly in the UI store if that keeps diagnostic loads convenient. Default the toggle to off after Commit 4's live unlimited proof.
 
@@ -254,21 +254,21 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **PR:** PR 2 — Enable complete player snapshots
 
-**Commit:** Request-scoped scan limit and unlimited production default
+**Commit:** UI toggle and configurable player cap
 
 ### RED test (active commit)
 
-Request plumbing tests cover positive caps and unlimited (`null`). A fresh full Windows/FM run loads the complete reference save, reports `scanTruncated: false` and `maxAccepted: null`, preserves the prior snapshot on forced failure, completes the bridge phase below 60 seconds and end-to-end Load Data below 90 seconds, then passes `./scripts/dev check` and `./scripts/dev test`. Fails today if omitted/null `maxAccepted` still collapses to `DefaultMaxAccepted` (500) or production Load Data cannot request unlimited.
+Frontend and IPC tests cover capped and unlimited Load Data requests. Manual check: capped load truncates with the chosen limit; uncapped load reports `scanTruncated: false`. Pass `./scripts/dev check` and `./scripts/dev test`. Fails today if Load Data has no UI path to send a positive `maxAccepted` or cannot toggle back to unlimited.
 
 ### Expected outcome
 
-Optional request-scoped `maxAccepted` with production default unlimited (`null`); caps retained for tests and characterization; timeout/docs aligned with measured envelope after live full-save validation.
+Load Data cap toggle (off = unlimited / null; on = configurable positive integer, default 500 when enabling), wired through Commit 4 request plumbing; preference persisted lightly if convenient.
 
 ### Explicit exclusions
 
-- Load Data UI controls.
+- Progress UI beyond the existing loading state.
 - Background refresh or incremental scans.
-- New progress UI unless the measured full path cannot provide acceptable feedback with the existing loading state.
+- Changing dump schema v5.
 
 ## Discoveries and replanning
 
