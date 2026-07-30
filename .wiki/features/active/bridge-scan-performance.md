@@ -235,7 +235,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 5 — UI toggle and configurable player cap
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add Load Data controls: a toggle for the player cap and a numeric field used when the cap is on. Toggle off sends `maxAccepted: null` (unlimited). Toggle on sends a positive integer (default 500 when enabling). Wire through the Commit 4 IPC and request path. Persist the preference lightly in the UI store if that keeps diagnostic loads convenient. Default the toggle to off after Commit 4's live unlimited proof.
 
@@ -254,15 +254,15 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **PR:** PR 2 — Enable complete player snapshots
 
-**Commit:** UI toggle and configurable player cap
+**Commit:** UI toggle and configurable player cap — staging for checkpoint
 
 ### RED test (active commit)
 
-Frontend and IPC tests cover capped and unlimited Load Data requests. Manual check: capped load truncates with the chosen limit; uncapped load reports `scanTruncated: false`. Pass `./scripts/dev check` and `./scripts/dev test`. Fails today if Load Data has no UI path to send a positive `maxAccepted` or cannot toggle back to unlimited.
+Frontend and IPC tests cover capped and unlimited Load Data requests. Manual check: capped load truncates with the chosen limit; uncapped load reports `scanTruncated: false`. Pass `./scripts/dev check` and `./scripts/dev test`.
 
 ### Expected outcome
 
-Load Data cap toggle (off = unlimited / null; on = configurable positive integer, default 500 when enabling), wired through Commit 4 request plumbing; preference persisted lightly if convenient.
+Load Data cap toggle (off = unlimited / null; on = configurable positive integer, default 500 when enabling), wired through Commit 4 request plumbing; preference persisted in `useLoadDataPreferences`.
 
 ### Explicit exclusions
 
@@ -309,6 +309,7 @@ Load Data cap toggle (off = unlimited / null; on = configurable positive integer
   - `processMemoryCalls=10260800`, `processMemoryRequestedBytes≈4.11 GiB`
   - Sample players decode sanely (known names/attrs). `clubUnresolved=18382` / `playersLinkedViaSquad=0` remain pre-existing club-link noise, not a scan-cap regression.
   - End-to-end Load Data wall clock not recorded in this paste; bridge alone leaves ample room under the 90s e2e budget if ingest stays near the generated-dump harness (~8s for 184k).
+- **PR 2 Commit 5:** `load_data` IPC takes optional `maxAccepted`; AppTopBar Cap players checkbox + limit field (default off / unlimited; enable defaults to 500); preference persisted via `useLoadDataPreferences`. Frontend tests assert unlimited vs capped invoke args; Rust `scan_dump_from_bridge` forwards positive caps through `request_player_dump_with_limit`.
 
 ## Completed work
 

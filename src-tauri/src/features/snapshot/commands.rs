@@ -177,7 +177,10 @@ pub fn list_sanity_players(
 }
 
 #[tauri::command]
-pub fn load_data(db: State<'_, Db>) -> Result<LoadDataResultDto, LoadDataError> {
+pub fn load_data(
+    max_accepted: Option<i32>,
+    db: State<'_, Db>,
+) -> Result<LoadDataResultDto, LoadDataError> {
     let save_id = {
         let conn = db.0.lock().map_err(|_| LoadDataError::Scan {
             kind: "internal".to_string(),
@@ -189,7 +192,7 @@ pub fn load_data(db: State<'_, Db>) -> Result<LoadDataResultDto, LoadDataError> 
         })?
     };
     let (bridge_directory, dump_result) =
-        load_data::scan_dump_from_local_app_data(DumpWaitConfig::default())?;
+        load_data::scan_dump_from_local_app_data(DumpWaitConfig::default(), max_accepted)?;
     let mut conn = db.0.lock().map_err(|_| LoadDataError::Scan {
         kind: "internal".to_string(),
         message: "database lock poisoned".to_string(),

@@ -19,7 +19,7 @@ Persist a validated FM26 `dump.json` into SQLite as the active app save's **curr
 ```text
 React features/snapshot
   → save switcher panel (create / rename on home route)
-  → AppTopBar: ActiveSaveSelect, SnapshotFreshnessChip, Load Data → invokeCommand("load_data")
+  → AppTopBar: ActiveSaveSelect, SnapshotFreshnessChip, optional player-cap controls, Load Data → invokeCommand("load_data", { maxAccepted })
   → snapshot overview + sanity list (TanStack Query)
 
 Rust features/snapshot

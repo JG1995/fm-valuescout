@@ -2,8 +2,13 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setBridgeStatusIpcMockMode } from "@/features/memory-read/api/bridge-status-ipc-mock";
+import {
+  DEFAULT_PLAYER_CAP,
+  useLoadDataPreferences,
+} from "@/features/memory-read/stores/use-load-data-preferences";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
+  getLastLoadDataIpcArgs,
   resolveBusyLoadDataRequest,
   setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
@@ -14,6 +19,10 @@ describe("app top bar", () => {
   beforeEach(() => {
     setBridgeStatusIpcMockMode("ready");
     setLoadDataIpcMockMode("success");
+    useLoadDataPreferences.setState({
+      playerCapEnabled: false,
+      playerCap: DEFAULT_PLAYER_CAP,
+    });
   });
 
   afterEach(() => {
@@ -29,6 +38,34 @@ describe("app top bar", () => {
     expect(
       await screen.findByText(/Loaded 3 players into the database/i),
     ).toBeInTheDocument();
+  });
+
+  it("sends unlimited maxAccepted when the player cap is off", async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+    await screen.findByText(/Loaded 3 players into the database/i);
+
+    expect(getLastLoadDataIpcArgs()).toEqual({ maxAccepted: null });
+  });
+
+  it("sends the configured player cap when the toggle is on", async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Cap players" }),
+    );
+    const limitField = await screen.findByLabelText("Player limit");
+    expect(limitField).toHaveValue(DEFAULT_PLAYER_CAP);
+
+    await user.clear(limitField);
+    await user.type(limitField, "250");
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+    await screen.findByText(/Loaded 3 players into the database/i);
+
+    expect(getLastLoadDataIpcArgs()).toEqual({ maxAccepted: 250 });
   });
 
   it("warns that a capped scan produced a partial ingest", async () => {

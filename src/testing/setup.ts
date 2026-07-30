@@ -85,7 +85,7 @@ function registerIpcMocks() {
     }
 
     if (cmd === "load_data") {
-      return resolveLoadDataIpcMock();
+      return resolveLoadDataIpcMock(args);
     }
 
     if (cmd === "get_bridge_install_status") {

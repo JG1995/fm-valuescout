@@ -64,6 +64,7 @@ const snapshotsBySaveId = new Map<
   { snapshot: SnapshotSummary; players: PlayerSanityRow[] }
 >();
 let loadDataMode: LoadDataIpcMockMode = "success";
+let lastLoadDataArgs: unknown;
 let busyDeferred: {
   promise: Promise<LoadDataResult>;
   resolve: (value: LoadDataResult) => void;
@@ -117,8 +118,13 @@ export function resetSnapshotIpcMock() {
   saves = [{ ...DEFAULT_SAVE }];
   snapshotsBySaveId.clear();
   loadDataMode = "success";
+  lastLoadDataArgs = undefined;
   busyDeferred = null;
   nextSaveId = 2;
+}
+
+export function getLastLoadDataIpcArgs() {
+  return lastLoadDataArgs;
 }
 
 export function setLoadDataIpcMockMode(mode: LoadDataIpcMockMode) {
@@ -229,7 +235,11 @@ export function resolveSetActiveSaveIpcMock(args: unknown) {
   return saves.find((save) => save.id === saveId) ?? target;
 }
 
-export function resolveLoadDataIpcMock(): Promise<LoadDataResult> {
+export function resolveLoadDataIpcMock(
+  args?: unknown,
+): Promise<LoadDataResult> {
+  lastLoadDataArgs = args;
+
   if (loadDataMode === "busy") {
     if (!busyDeferred) {
       let resolve!: (value: LoadDataResult) => void;

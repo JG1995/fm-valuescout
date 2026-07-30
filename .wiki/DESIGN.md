@@ -346,7 +346,7 @@ The app is a **single window with a persistent left rail and a top bar** — a d
 Regions, in visual order:
 
 1. **Nav rail** (left, `rail-width` 56px, `rail-width-expanded` 208px). Icon-only by default with the label as a tooltip; expands to icon-plus-label. Sits on `surface-container-lowest` — the rail is the darkest region, which pushes the content forward. Collapsed state persists across launches.
-2. **Top bar** (`header-height` 56px, spans the area right of the rail). Left to right: global player search (pill, grows to fill), active save selector, snapshot freshness chip, **Load Data** primary button. Load Data lives here rather than on a page because it is the app's one recurring action and must be reachable from every screen.
+2. **Top bar** (`header-height` 56px, spans the area right of the rail). Left to right: global player search (pill, grows to fill), active save selector, snapshot freshness chip, optional **Cap players** toggle with a numeric limit when on, **Load Data** primary button. Load Data lives here rather than on a page because it is the app's one recurring action and must be reachable from every screen. Cap off means unlimited scan; cap on sends a positive `maxAccepted` (default 500 when enabling).
 3. **Page header** (inside the content area). Page title in `headline-lg`, then view-mode toggles and a local search or filter trigger on the right. One row, `stack-md` below it.
 4. **Content area.** Panels on `surface-container` with `gutter` 16px between them and 16px page padding.
 5. **Inspector** (right, `inspector-width` 320px, optional and dismissible). Filters on the search screen, comparison controls on a profile. Slides over the content edge; never squeezes the table below its usable width.

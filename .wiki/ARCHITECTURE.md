@@ -24,7 +24,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Client UI state:** Zustand v5 (modals, layout chrome, selections not in the URL)
 
-**Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md). IBM Plex Sans/Mono self-hosted via `@fontsource`; Lucide icons via `lucide-react`. Shared primitives in `src/components/ui/` (Button, Panel, StatusChip, EmptyState, TextField, SelectField). App shell: `AppNavRail` + `AppTopBar` (active save, snapshot freshness, **Load Data**); `useLayoutStore` persists nav-rail expansion.
+**Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md). IBM Plex Sans/Mono self-hosted via `@fontsource`; Lucide icons via `lucide-react`. Shared primitives in `src/components/ui/` (Button, Panel, StatusChip, EmptyState, TextField, SelectField). App shell: `AppNavRail` + `AppTopBar` (active save, snapshot freshness, optional Load Data player-cap toggle/limit, **Load Data**); `useLayoutStore` persists nav-rail expansion; `useLoadDataPreferences` persists the Load Data cap toggle and limit.
 
 **Language:** TypeScript (strict) on the frontend; Rust on the backend
 
