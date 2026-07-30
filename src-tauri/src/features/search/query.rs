@@ -6,6 +6,87 @@ use super::filter::{compile_filters, dynamic_fields_from_ast, field_value_sql, F
 
 pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
+pub const DEFAULT_SUGGEST_LIMIT: usize = 10;
+pub const MAX_SUGGEST_LIMIT: usize = 20;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerSuggestHit {
+    pub uid: i64,
+    pub name: String,
+    pub ca: i64,
+}
+
+/// Ranked name matches for the active save's current snapshot.
+/// Empty/whitespace query → empty list. Order: exact → prefix → contains, then CA desc.
+pub fn suggest_players(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<PlayerSuggestHit>, String> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let snapshot_id: Option<i64> = conn
+        .query_row(
+            "SELECT s.id
+             FROM snapshots s
+             INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
+             WHERE s.is_current = 1
+             LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+
+    let Some(snapshot_id) = snapshot_id else {
+        return Ok(Vec::new());
+    };
+
+    let limit = i64::try_from(limit.clamp(1, MAX_SUGGEST_LIMIT))
+        .map_err(|_| "suggest limit out of range".to_string())?;
+    let escaped = super::filter::escape_like(query);
+    let prefix_pattern = format!("{escaped}%");
+    let contains_pattern = format!("%{escaped}%");
+
+    let sql = "
+        SELECT players.uid, players.name, players.ca
+        FROM players
+        WHERE players.snapshot_id = ?1
+          AND players.name LIKE ?2 ESCAPE '\\' COLLATE NOCASE
+        ORDER BY
+          CASE
+            WHEN players.name = ?3 COLLATE NOCASE THEN 0
+            WHEN players.name LIKE ?4 ESCAPE '\\' COLLATE NOCASE THEN 1
+            ELSE 2
+          END ASC,
+          players.ca DESC,
+          players.uid ASC
+        LIMIT ?5
+    ";
+
+    let mut stmt = conn.prepare(sql).map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(
+            rusqlite::params![snapshot_id, contains_pattern, query, prefix_pattern, limit],
+            |row| {
+                Ok(PlayerSuggestHit {
+                    uid: row.get(0)?,
+                    name: row.get(1)?,
+                    ca: row.get(2)?,
+                })
+            },
+        )
+        .map_err(|error| error.to_string())?;
+
+    let mut hits = Vec::new();
+    for row in rows {
+        hits.push(row.map_err(|error| error.to_string())?);
+    }
+    Ok(hits)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SortField {
@@ -1241,5 +1322,65 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["High Role", "Low Role"]
         );
+    }
+
+    #[test]
+    fn suggest_returns_empty_for_blank_query() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("suggest-blank.db"));
+        ingest_players(&mut conn, vec![player_template(1, "Anyone", 150)]);
+
+        let hits = suggest_players(&conn, "   ", DEFAULT_SUGGEST_LIMIT).expect("suggest");
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn suggest_orders_by_match_tier_then_ca_descending() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("suggest-rank.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Alex", 100),
+                player_template(2, "Alex", 160),
+                player_template(3, "Alexander", 120),
+                player_template(4, "Sam Alex", 180),
+                player_template(5, "Unrelated", 200),
+            ],
+        );
+
+        let hits = suggest_players(&conn, "Alex", DEFAULT_SUGGEST_LIMIT).expect("suggest");
+        let names: Vec<&str> = hits.iter().map(|hit| hit.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "Alex",      // exact, higher CA
+                "Alex",      // exact, lower CA
+                "Alexander", // prefix
+                "Sam Alex",  // contains
+            ]
+        );
+        assert_eq!(hits[0].uid, 2);
+        assert_eq!(hits[0].ca, 160);
+        assert!(!names.contains(&"Unrelated"));
+    }
+
+    #[test]
+    fn suggest_caps_limit_and_escapes_like_wildcards() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("suggest-cap.db"));
+        let players = (1..=5)
+            .map(|index| player_template(index, &format!("Pat {index}"), 100 + index as i64))
+            .collect();
+        ingest_players(&mut conn, players);
+
+        let hits = suggest_players(&conn, "Pat", 2).expect("suggest capped");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].name, "Pat 5");
+        assert_eq!(hits[1].name, "Pat 4");
+
+        // Literal % in the query must not match every name via LIKE.
+        let wild = suggest_players(&conn, "%", DEFAULT_SUGGEST_LIMIT).expect("suggest wildcard");
+        assert!(wild.is_empty());
     }
 }

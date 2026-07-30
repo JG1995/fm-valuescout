@@ -286,13 +286,13 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 **PR:** 2 — Filters, dynamic columns, and global search
 
-**Commit:** Ranked name suggest IPC
+**Commit:** Ranked name suggest IPC — Completed — hash pending checkpoint commit
 
 ### RED test (active commit)
 
-`suggest_players` (or equivalent): query string → limited rows from current snapshot; order by match tier (exact → prefix → contains) then CA desc; parameterized `LIKE`. Empty query → empty list.
+`suggest_players`: blank query → empty; exact → prefix → contains then CA desc; LIKE wildcards escaped; limit capped.
 
-**Wrong behaviour caught:** Empty query returns rows; ranking ignores exact/prefix tiers or CA tie-break.
+**Wrong behaviour caught:** Empty query returns rows; ranking ignores exact/prefix tiers or CA tie-break; `%` matches everything.
 
 ### Expected outcome
 
@@ -308,6 +308,7 @@ Full filter AST in suggest; React top-bar UI; fuzzy/typo tolerance.
 - Replanned 2026-07-30: first condensation over-merged commits (2 PRs / 5 commits). Corrected to **2 PRs / 10 commits** — keep original atomic commit breakpoints; only reduce PR count from 4 to 2.
 - 2026-07-30 PR2 Commit 4: deep filters use field ids `attr.*` / `hidden.*` / `personality.*` / `nationality` / `position` / `pos.*`. Position presence is exact key match (`is`/`is_not`); never substring LIKE. Attribute filter on a 2k-player fixture stayed under 500ms with `json_extract` (no extra indexes). Spike/index only if full-snapshot p95 exceeds ~200ms.
 - 2026-07-30 PR2 Commit 5: role filters use `role.{catalog_role_id}` with EXISTS on `player_role_scores` (null scores never match). Dynamic columns follow active non-basic filters; IPC returns `dynamicValues`. Sort accepts those field ids while the column is visible. `position` presence does not add a dynamic column. DESIGN Search filters reconciled to compact strip + modal + operators (inspector no longer the Search filter surface).
+- 2026-07-30 PR2 Commit 6: `suggest_players` ranks exact → prefix → contains (`COLLATE NOCASE`), then CA desc; blank query empty; `escape_like` on LIKE patterns; default/max limit 10/20.
 
 ## Completed work
 

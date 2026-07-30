@@ -5,8 +5,8 @@ use crate::db::Db;
 
 use super::filter::{self, FilterRule};
 use super::query::{
-    self, DynamicValue, PlayerSummary, SearchPlayersPage, SortDir, SortField, DEFAULT_PAGE_LIMIT,
-    MAX_PAGE_LIMIT,
+    self, DynamicValue, PlayerSuggestHit, PlayerSummary, SearchPlayersPage, SortDir, SortField,
+    DEFAULT_PAGE_LIMIT, DEFAULT_SUGGEST_LIMIT, MAX_PAGE_LIMIT, MAX_SUGGEST_LIMIT,
 };
 
 #[derive(Deserialize)]
@@ -145,4 +145,39 @@ pub fn search_players(
     };
     let page = query::search_players(&conn, offset, limit, sort_by, sort_dir, filter_ast.as_ref())?;
     Ok(SearchPlayersPageDto::from(page))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerSuggestHitDto {
+    pub uid: i64,
+    pub name: String,
+    pub ca: i64,
+}
+
+impl From<PlayerSuggestHit> for PlayerSuggestHitDto {
+    fn from(hit: PlayerSuggestHit) -> Self {
+        Self {
+            uid: hit.uid,
+            name: hit.name,
+            ca: hit.ca,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn suggest_players(
+    query: String,
+    limit: Option<u32>,
+    db: State<'_, Db>,
+) -> Result<Vec<PlayerSuggestHitDto>, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let limit = limit
+        .map(|value| value as usize)
+        .unwrap_or(DEFAULT_SUGGEST_LIMIT)
+        .clamp(1, MAX_SUGGEST_LIMIT);
+    let hits = query::suggest_players(&conn, &query, limit)?;
+    Ok(hits.into_iter().map(PlayerSuggestHitDto::from).collect())
 }
