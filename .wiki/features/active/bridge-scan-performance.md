@@ -105,7 +105,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 ### PR 1 — Replace scalar heap reads with block scanning
 
-**Status:** Active
+**Status:** Implementation complete — awaiting live capped validation before merge
 
 **Provisional PR title:** `perf(bridge): replace scalar heap reads with block scanning`
 
@@ -145,7 +145,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 3 — Scan heap regions from reusable blocks
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `648b81f`
 
 **Work:** Replace per-word process-memory calls with bounded region blocks, local aligned-word inspection, in-buffer UID reads, and cached module metadata or vtable-to-class-offset results. Stop immediately when a diagnostic cap is reached and preserve truncation semantics.
 
@@ -162,7 +162,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 ### PR 2 — Enable complete player snapshots
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional PR title:** `perf(load-data): enable complete player snapshots`
 
@@ -172,7 +172,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 1 — Batch contiguous player field reads
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Read contiguous attribute, position, personality, and bounded string ranges into reusable buffers, then decode locally. Keep pointer-chain reads safe and nullable.
 
@@ -234,23 +234,23 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 ## Active work
 
-**PR:** PR 1 — Replace scalar heap reads with block scanning
+**PR:** PR 2 — Enable complete player snapshots
 
-**Commit:** Scan heap regions from reusable blocks (checkpoint pending)
+**Commit:** Batch contiguous player field reads
 
 ### RED test (active commit)
 
-Characterization + counting-reader tests (block-scale discovery; cached vtable resolve across many shared-vtable hits). Implemented; awaiting content commit hash.
+Counting-reader tests prove contiguous attribute/position/personality/string field reads are batched without changing decoded players. Existing extraction tests stay green. Fails today because extraction still issues one process-memory call per byte/field.
 
 ### Expected outcome
 
-Candidate discovery walks regions from reusable bounded blocks with local aligned-word inspection, in-buffer UID reads, and cached vtable-to-class-offset results, while preserving the 500-player cap and truncation semantics.
+Player extraction reads contiguous field ranges into reusable buffers and decodes locally, keeping pointer-chain reads safe and nullable.
 
 ### Explicit exclusions
 
-- Player field extraction batching.
-- Parallel region workers.
-- Full production scans (uncapped reference budget is PR 2).
+- Layout changes or new fields.
+- Parallel extraction.
+- JSON and SQLite changes.
 
 ## Discoveries and replanning
 
@@ -277,6 +277,7 @@ Candidate discovery walks regions from reusable bounded blocks with local aligne
 | --- | --- | --- | --- |
 | 1 | Add scan phase performance diagnostics | `b2c8663` | Phase ms + process-memory call/byte counts in diagnostics.txt |
 | 1 | Add reusable block memory reads | `6f299da` | `TryReadBlock` + page-aligned failed-block subdivision |
+| 1 | Scan heap regions from reusable blocks | `648b81f` | Block walk + in-buffer UID + vtable offset cache; live `<10s` validation still required for PR 1 merge |
 
 ## Final validation
 
