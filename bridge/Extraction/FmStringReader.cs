@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text;
 using FmDataBridge.Memory;
 
@@ -45,31 +46,30 @@ public static class FmStringReader
             return null;
         }
 
-        // Read byte-by-byte so a short region near the end still yields a string
-        // (full-buffer TryRead fails closed on partial fills).
-        var buffer = new byte[maxLength];
-        var n = 0;
-        while (n < maxLength)
+        // One bounded block read; uncleared/inaccessible gaps stay zero and act as terminators
+        // (same practical stop as the former byte-by-byte short-region path).
+        var buffer = ArrayPool<byte>.Shared.Rent(maxLength);
+        try
         {
-            if (!reader.TryReadByte(address + (ulong)n, out var b))
+            reader.TryReadBlock(address, buffer, 0, maxLength, out _);
+
+            var n = 0;
+            while (n < maxLength && buffer[n] != 0)
             {
-                break;
+                n++;
             }
 
-            if (b == 0)
+            if (n == 0)
             {
-                break;
+                return null;
             }
 
-            buffer[n++] = b;
+            var s = Encoding.UTF8.GetString(buffer, 0, n).Trim();
+            return s.Length == 0 ? null : s;
         }
-
-        if (n == 0)
+        finally
         {
-            return null;
+            ArrayPool<byte>.Shared.Return(buffer);
         }
-
-        var s = Encoding.UTF8.GetString(buffer, 0, n).Trim();
-        return s.Length == 0 ? null : s;
     }
 }

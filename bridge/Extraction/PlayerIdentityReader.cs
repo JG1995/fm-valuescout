@@ -1,3 +1,4 @@
+using System.Buffers;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
 
@@ -122,39 +123,69 @@ public static class PlayerIdentityReader
         ulong playerBlockBase,
         IFmMemoryLayout layout)
     {
-        var rated = new List<(string Key, int Rating)>();
-        foreach (var entry in layout.PositionEntries)
+        var entries = layout.PositionEntries;
+        var min = int.MaxValue;
+        var max = 0;
+        foreach (var entry in entries)
         {
-            if (!reader.TryReadByte(
-                    playerBlockBase + (ulong)layout.PositionsOffset + (ulong)entry.Offset,
-                    out var raw)
-                || raw < 1)
+            if (entry.Offset < min)
             {
-                continue;
+                min = entry.Offset;
             }
 
-            rated.Add((entry.Key, raw));
+            if (entry.Offset > max)
+            {
+                max = entry.Offset;
+            }
         }
 
-        if (rated.Count == 0)
+        var length = max - min + 1;
+        var buffer = ArrayPool<byte>.Shared.Rent(length);
+        try
         {
-            return new Dictionary<string, int>();
+            reader.TryReadBlock(
+                playerBlockBase + (ulong)layout.PositionsOffset + (ulong)min,
+                buffer,
+                0,
+                length,
+                out _);
+
+            var rated = new List<(string Key, int Rating)>();
+            foreach (var entry in entries)
+            {
+                var raw = buffer[entry.Offset - min];
+                if (raw < 1)
+                {
+                    continue;
+                }
+
+                rated.Add((entry.Key, raw));
+            }
+
+            if (rated.Count == 0)
+            {
+                return new Dictionary<string, int>();
+            }
+
+            var top = rated.Max(x => x.Rating);
+            var threshold = Math.Max(NaturalPositionFloor, top - 2);
+            var natural = rated
+                .Where(x => x.Rating >= threshold)
+                .OrderByDescending(x => x.Rating)
+                .ThenBy(x => x.Key, StringComparer.Ordinal)
+                .ToDictionary(x => x.Key, x => x.Rating, StringComparer.Ordinal);
+
+            if (natural.Count == 0)
+            {
+                var best = rated.OrderByDescending(x => x.Rating).First();
+                natural[best.Key] = best.Rating;
+            }
+
+            return natural;
         }
-
-        var top = rated.Max(x => x.Rating);
-        var threshold = Math.Max(NaturalPositionFloor, top - 2);
-        var natural = rated
-            .Where(x => x.Rating >= threshold)
-            .OrderByDescending(x => x.Rating)
-            .ThenBy(x => x.Key, StringComparer.Ordinal)
-            .ToDictionary(x => x.Key, x => x.Rating, StringComparer.Ordinal);
-
-        if (natural.Count == 0)
+        finally
         {
-            var best = rated.OrderByDescending(x => x.Rating).First();
-            natural[best.Key] = best.Rating;
+            ArrayPool<byte>.Shared.Return(buffer);
         }
-
-        return natural;
     }
 }

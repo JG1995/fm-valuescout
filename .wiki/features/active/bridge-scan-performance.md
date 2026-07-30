@@ -175,7 +175,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 1 — Batch contiguous player field reads
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Read contiguous attribute, position, personality, and bounded string ranges into reusable buffers, then decode locally. Keep pointer-chain reads safe and nullable.
 
@@ -254,15 +254,15 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **PR:** PR 2 — Enable complete player snapshots
 
-**Commit:** Batch contiguous player field reads
+**Commit:** Batch contiguous player field reads — implementation complete; awaiting checkpoint commit
 
 ### RED test (active commit)
 
-Counting-reader tests prove contiguous attribute/position/personality/string field reads are batched without changing decoded players. Existing extraction tests stay green. Fails today because extraction still issues one process-memory call per byte/field.
+Counting-reader tests in `ExtractionBatchingTests` prove attrs/personality ≤3 calls, positions not per-slot, and cstrings in 1 call. Existing extraction tests stay green.
 
 ### Expected outcome
 
-Player extraction reads contiguous field ranges into reusable buffers and decodes locally, keeping pointer-chain reads safe and nullable.
+Player extraction reads contiguous field ranges into `ArrayPool` buffers via `TryReadBlock` and decodes locally; pointer-chain hops remain scalar.
 
 ### Explicit exclusions
 
@@ -296,6 +296,7 @@ Player extraction reads contiguous field ranges into reusable buffers and decode
 - Commit 3: heap discovery uses `MemoryConstants.DefaultScanBlockSize` (32 MiB) with 16-byte overlap; UID is read from the block buffer; vtable→class-offset results are cached for the scan (including negative 0). CA/PA remain scalar until PR 2 extraction batching.
 - Commit 3: `FakeMemoryReader.TryReadBlock` composes sparse `AddBytes` segments with first-fill-wins so overlapping fixture blobs do not erase earlier person headers (matches scalar `TryRead` first-match).
 - **PR 2 replan (2026-07-30):** Replace hard-delete of the production cap with request-scoped `maxAccepted` (Commit 4) plus UI toggle/configurable limit (Commit 5). Unlimited becomes the production default after live full-save validation; capped loads remain available for diagnostics. Progress UI stays a non-goal unless the measured full path needs it.
+- **PR 2 Commit 1:** Attribute visible+hidden share one contiguous `TryReadBlock` from `AttrsOffset`; personality and positions each get one span; `FmStringReader.TryReadCString` uses one bounded block (gaps/zeros terminate). Unread bytes remain 0 → same null/skip decode as failed scalar reads. Pointer chains (name/nation/contract) stay scalar.
 
 ## Completed work
 

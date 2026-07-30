@@ -1,3 +1,4 @@
+using System.Buffers;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
 
@@ -26,38 +27,26 @@ public static class PlayerAttributeReader
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(layout);
 
-        return new PlayerAttributes
+        var attrsBase = playerBlockBase + (ulong)layout.AttrsOffset;
+        var attrSpan = ContiguousByteSpan(layout.AttributeEntries, layout.HiddenAttributeEntries);
+        var attrBuffer = ArrayPool<byte>.Shared.Rent(attrSpan.Length);
+        try
         {
-            Attributes = ReadScaledGroup(
-                reader,
-                playerBlockBase + (ulong)layout.AttrsOffset,
-                layout.AttributeEntries),
-            HiddenAttributes = ReadScaledGroup(
-                reader,
-                playerBlockBase + (ulong)layout.AttrsOffset,
-                layout.HiddenAttributeEntries),
-            Personality = ReadPersonalityGroup(reader, personAddress, layout.PersonalityEntries),
-        };
-    }
-
-    private static IReadOnlyDictionary<string, int?> ReadScaledGroup(
-        IMemoryReader reader,
-        ulong attrsBase,
-        IReadOnlyList<AttributeLayoutEntry> entries)
-    {
-        var map = new Dictionary<string, int?>(entries.Count, StringComparer.Ordinal);
-        foreach (var entry in entries)
-        {
-            if (!reader.TryReadByte(attrsBase + (ulong)entry.Offset, out var raw))
+            reader.TryReadBlock(attrsBase + (ulong)attrSpan.Start, attrBuffer, 0, attrSpan.Length, out _);
+            return new PlayerAttributes
             {
-                map[entry.Key] = null;
-                continue;
-            }
-
-            map[entry.Key] = AttributeScale.TryDecodeScaled(raw);
+                Attributes = DecodeScaledGroup(attrBuffer, attrSpan.Start, layout.AttributeEntries),
+                HiddenAttributes = DecodeScaledGroup(
+                    attrBuffer,
+                    attrSpan.Start,
+                    layout.HiddenAttributeEntries),
+                Personality = ReadPersonalityGroup(reader, personAddress, layout.PersonalityEntries),
+            };
         }
-
-        return map;
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(attrBuffer);
+        }
     }
 
     private static IReadOnlyDictionary<string, int?> ReadPersonalityGroup(
@@ -65,18 +54,81 @@ public static class PlayerAttributeReader
         ulong personAddress,
         IReadOnlyList<AttributeLayoutEntry> entries)
     {
+        var span = ContiguousByteSpan(entries);
+        var buffer = ArrayPool<byte>.Shared.Rent(span.Length);
+        try
+        {
+            reader.TryReadBlock(
+                personAddress + (ulong)span.Start,
+                buffer,
+                0,
+                span.Length,
+                out _);
+            return DecodePersonalityGroup(buffer, span.Start, entries);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private static IReadOnlyDictionary<string, int?> DecodeScaledGroup(
+        byte[] buffer,
+        int spanStart,
+        IReadOnlyList<AttributeLayoutEntry> entries)
+    {
         var map = new Dictionary<string, int?>(entries.Count, StringComparer.Ordinal);
         foreach (var entry in entries)
         {
-            if (!reader.TryReadByte(personAddress + (ulong)entry.Offset, out var raw))
-            {
-                map[entry.Key] = null;
-                continue;
-            }
-
-            map[entry.Key] = AttributeScale.TryPersonality(raw);
+            map[entry.Key] = AttributeScale.TryDecodeScaled(buffer[entry.Offset - spanStart]);
         }
 
         return map;
+    }
+
+    private static IReadOnlyDictionary<string, int?> DecodePersonalityGroup(
+        byte[] buffer,
+        int spanStart,
+        IReadOnlyList<AttributeLayoutEntry> entries)
+    {
+        var map = new Dictionary<string, int?>(entries.Count, StringComparer.Ordinal);
+        foreach (var entry in entries)
+        {
+            map[entry.Key] = AttributeScale.TryPersonality(buffer[entry.Offset - spanStart]);
+        }
+
+        return map;
+    }
+
+    private static (int Start, int Length) ContiguousByteSpan(
+        IReadOnlyList<AttributeLayoutEntry> entries)
+    {
+        var min = int.MaxValue;
+        var max = 0;
+        foreach (var entry in entries)
+        {
+            if (entry.Offset < min)
+            {
+                min = entry.Offset;
+            }
+
+            if (entry.Offset > max)
+            {
+                max = entry.Offset;
+            }
+        }
+
+        return (min, max - min + 1);
+    }
+
+    private static (int Start, int Length) ContiguousByteSpan(
+        IReadOnlyList<AttributeLayoutEntry> first,
+        IReadOnlyList<AttributeLayoutEntry> second)
+    {
+        var a = ContiguousByteSpan(first);
+        var b = ContiguousByteSpan(second);
+        var start = Math.Min(a.Start, b.Start);
+        var end = Math.Max(a.Start + a.Length, b.Start + b.Length);
+        return (start, end - start);
     }
 }
