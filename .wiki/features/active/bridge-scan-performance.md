@@ -115,7 +115,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 1 — Add scan phase performance diagnostics
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `b2c8663`
 
 **Work:** Record elapsed time for region enumeration, candidate discovery, player extraction, club indexing, dump writing, and total bridge work. Record process-memory call and requested-byte counts without changing dump schema v5.
 
@@ -130,7 +130,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 2 — Add reusable block memory reads
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add a direct caller-owned byte-array block-read path that avoids the current intermediate allocation and copy. Add bounded subdivision for failed blocks while preserving short-read and invalid-address behavior in the Windows implementation and fake reader.
 
@@ -236,21 +236,21 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **PR:** PR 1 — Replace scalar heap reads with block scanning
 
-**Commit:** Add scan phase performance diagnostics
+**Commit:** Add reusable block memory reads
 
 ### RED test (active commit)
 
-Format diagnostics for a completed fake pipeline run and require named duration fields for region enumeration, candidate discovery, extraction, club indexing, dump writing, and total time, plus process-memory call and requested-byte counts. It fails today because the bridge exposes scan-result counters but no phase timings or read-volume evidence, which would leave later optimization decisions unmeasured.
+Call a new caller-owned block-read path on the fake reader (and Windows path where covered) and assert full success, short/partial reads, failed inaccessible ranges, and region-edge behavior. It fails today because `IMemoryReader` only exposes per-call `TryRead` into a span with an intermediate allocate-and-copy on Windows, with no reusable block API or failed-block subdivision.
 
 ### Expected outcome
 
-`diagnostics.txt` provides a stable phase breakdown and memory-read evidence for capped and full scans without changing dump schema v5 or user behavior.
+Production and fake readers can fill a caller-owned byte array for a contiguous address range, subdividing failed blocks without changing short-read or invalid-address semantics used by existing scalar helpers.
 
 ### Explicit exclusions
 
-- No scanner optimization yet.
-- No cap or timeout change.
-- No dependency, UI, dump-schema, or SQLite change.
+- Do not replace the PersonScanner heap loop yet.
+- No parallel reads.
+- No extraction field batching.
 
 ## Discoveries and replanning
 
@@ -258,12 +258,13 @@ Format diagnostics for a completed fake pipeline run and require named duration 
 - Public FMSuperScout history provides directly comparable evidence for safe block scanning and cached module metadata. Genie Scout does not publish actionable implementation details.
 - If the single-thread block scanner misses the candidate-discovery budget, add one pending PR 1 commit for bounded worker-local scanning after reporting the measured CPU and memory trade-off. Do not add it preemptively.
 - If large-dump validation and ingest already meet budget, remove PR 2 Commit 3 rather than refactor Rust without evidence.
+- Commit 1: `clubIndexingMs` stops after squad/club indexing only; game-date resolution and DumpPlayer assembly remain in residual `totalMs` so live baselines do not misattribute serialization cost to club work.
 
 ## Completed work
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
-| — | — | — | No implementation completed |
+| 1 | Add scan phase performance diagnostics | `b2c8663` | Phase ms + process-memory call/byte counts in diagnostics.txt |
 
 ## Final validation
 
