@@ -42,6 +42,7 @@ describe("snapshot panels", () => {
     expect(screen.getByText(/In database:/i)).toBeInTheDocument();
     expect(screen.getByText("Alex Morgan")).toBeInTheDocument();
     expect(screen.getByText("165")).toBeInTheDocument();
+    expect(screen.getByText("72")).toBeInTheDocument();
     expect(screen.getByText("Metro FC")).toBeInTheDocument();
   });
 

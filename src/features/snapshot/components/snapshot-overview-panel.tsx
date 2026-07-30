@@ -76,6 +76,13 @@ export function SnapshotOverviewPanel() {
               </th>
               <th
                 scope="col"
+                className="h-table-header-height px-2 text-right text-label-md text-on-surface-variant uppercase"
+                title="Deep-Lying Playmaker (in possession) role score"
+              >
+                DLP IP
+              </th>
+              <th
+                scope="col"
                 className="h-table-header-height px-2 text-label-md text-on-surface-variant uppercase"
               >
                 Club
@@ -85,7 +92,7 @@ export function SnapshotOverviewPanel() {
           <tbody>
             {players.length === 0 ? (
               <tr>
-                <td colSpan={3}>
+                <td colSpan={4}>
                   <EmptyState icon={DatabaseZap} title="No players in snapshot">
                     The snapshot exists but holds no player rows. Run Load Data
                     again with Football Manager in an active save.
@@ -103,6 +110,9 @@ export function SnapshotOverviewPanel() {
                   </td>
                   <td className="h-table-row-height px-2 text-right font-mono text-mono-sm text-on-surface tabular-nums">
                     {player.ca}
+                  </td>
+                  <td className="h-table-row-height px-2 text-right font-mono text-mono-sm text-on-surface tabular-nums">
+                    {formatMissable(player.proofRoleScore)}
                   </td>
                   <td className="h-table-row-height px-2 text-body-sm text-on-surface-variant">
                     {formatMissable(player.club)}
