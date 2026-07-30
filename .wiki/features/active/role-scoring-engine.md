@@ -122,7 +122,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 1 — Role catalog with primary and secondary attributes
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `0b08dd1`
 
 **Work:** Add Rust `features/scoring` with a static FM26 role catalog: stable `role_id`, display name, phase (`in_possession` | `out_of_possession`), position tags, primary attribute keys, secondary attribute keys (dump PascalCase). Include a small label→key map for transcription. Source primary/secondary from SortItOutSI Key/Preferred; use Sidekick IP/OOP inventory as the completeness checklist. Reconcile source mismatches in this commit; record leftovers in Discoveries; ask only when a role cannot be included without a product call.
 
@@ -136,7 +136,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 2 — Per-role 0–100 score function
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Implement `score_role`: within-band means → 75/25 blend (or primary-only if no secondary) → `/20×100` → rounded integer. Any null in the used attribute set → `None`. Unit tests: equal bands, unequal primary/secondary counts, empty secondary, null attribute → None, known fixture maps.
 
@@ -191,19 +191,19 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 **PR:** 1 — Role scoring on ingest
 
-**Commit:** Role catalog with primary and secondary attributes
+**Commit:** Per-role 0–100 score function
 
 ### RED test (active commit)
 
-Assert catalog invariants fail when empty: e.g. `scoring::catalog::all_roles()` is non-empty, every role has non-empty primary keys drawn from the known dump attribute set, and role ids are unique — first test fails because the module/catalog does not exist.
+Assert `score_role` returns the expected 0–100 integer for a fixture attribute map (equal primary/secondary means → 75/25 blend), and returns `None` when any required attribute is null — fails because the scoring function does not exist.
 
 ### Expected outcome
 
-`src-tauri/src/features/scoring/` exists with a static catalog module and passing catalog invariant tests; no ingest or UI changes.
+Pure `score_role` in `features/scoring` with unit tests for equal bands, unequal band sizes, empty secondary (primary-only), and null → None; no combine helper, ingest, or UI.
 
 ### Explicit exclusions
 
-Scoring formula, combine helper, migrations, React, IPC.
+Combined IP+OOP helper, persistence / ingest, React, IPC.
 
 ## Discoveries and replanning
 
@@ -216,7 +216,7 @@ Scoring formula, combine helper, migrations, React, IPC.
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
-| — | — | — | — |
+| 1 | Role catalog with primary and secondary attributes | `0b08dd1` | 68 roles; SortItOutSI Key/Preferred; disjoint bands |
 
 ## Final validation
 
