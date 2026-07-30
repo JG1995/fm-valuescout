@@ -79,6 +79,14 @@ public static class DiagnosticsWriter
         sb.AppendLine($"duplicatesSkipped={diagnostics.DuplicatesSkipped}");
         sb.AppendLine($"identitySkippedEmptyName={diagnostics.IdentitySkippedEmptyName}");
         sb.AppendLine($"identitySkippedImpossibleDob={diagnostics.IdentitySkippedImpossibleDob}");
+        sb.AppendLine($"regionEnumerationMs={diagnostics.RegionEnumerationMs}");
+        sb.AppendLine($"candidateDiscoveryMs={diagnostics.CandidateDiscoveryMs}");
+        sb.AppendLine($"extractionMs={diagnostics.ExtractionMs}");
+        sb.AppendLine($"clubIndexingMs={diagnostics.ClubIndexingMs}");
+        sb.AppendLine($"dumpWritingMs={diagnostics.DumpWritingMs}");
+        sb.AppendLine($"totalMs={diagnostics.TotalMs}");
+        sb.AppendLine($"processMemoryCalls={diagnostics.ProcessMemoryCalls}");
+        sb.AppendLine($"processMemoryRequestedBytes={diagnostics.ProcessMemoryRequestedBytes}");
         if (diagnostics.MaxAccepted is { } maxAccepted)
         {
             sb.AppendLine($"maxAccepted={maxAccepted}");

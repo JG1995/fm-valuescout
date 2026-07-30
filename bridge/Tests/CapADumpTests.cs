@@ -576,6 +576,49 @@ public sealed class CapADumpTests
     }
 
     [Fact]
+    public void Pipeline_diagnostics_include_phase_timings_and_memory_read_counts()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var layout = Fm263Layout.Instance;
+            var reader = BuildReaderWithTwoIdenticalPlayers(layout);
+            var result = new CapADumpPipeline().Run(
+                reader,
+                bridgeDir,
+                gameVersion: "26.3.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success);
+
+            var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
+            AssertNonNegativeDiagnostic(diagnostics, "regionEnumerationMs");
+            AssertNonNegativeDiagnostic(diagnostics, "candidateDiscoveryMs");
+            AssertNonNegativeDiagnostic(diagnostics, "extractionMs");
+            AssertNonNegativeDiagnostic(diagnostics, "clubIndexingMs");
+            AssertNonNegativeDiagnostic(diagnostics, "dumpWritingMs");
+            AssertNonNegativeDiagnostic(diagnostics, "totalMs");
+            AssertNonNegativeDiagnostic(diagnostics, "processMemoryCalls");
+            AssertNonNegativeDiagnostic(diagnostics, "processMemoryRequestedBytes");
+            Assert.True(
+                ParseDiagnosticLong(diagnostics, "processMemoryCalls") > 0,
+                "successful fake scan should perform at least one memory read");
+            Assert.True(
+                ParseDiagnosticLong(diagnostics, "processMemoryRequestedBytes") > 0,
+                "successful fake scan should request at least one memory byte");
+            Assert.True(
+                ParseDiagnosticLong(diagnostics, "totalMs")
+                >= ParseDiagnosticLong(diagnostics, "regionEnumerationMs"),
+                "totalMs should cover at least region enumeration");
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Pipeline_zero_candidates_preserves_prior_dump()
     {
         var bridgeDir = CreateTempBridgeDir();
@@ -771,5 +814,33 @@ public sealed class CapADumpTests
         var path = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static void AssertNonNegativeDiagnostic(string diagnostics, string key)
+    {
+        Assert.True(
+            ParseDiagnosticLong(diagnostics, key) >= 0,
+            $"diagnostics must include non-negative {key}");
+    }
+
+    private static long ParseDiagnosticLong(string diagnostics, string key)
+    {
+        var prefix = key + "=";
+        foreach (var line in diagnostics.Split('\n'))
+        {
+            var trimmed = line.TrimEnd('\r');
+            if (!trimmed.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            Assert.True(
+                long.TryParse(trimmed.AsSpan(prefix.Length), out var value),
+                $"{key} must be an integer");
+            return value;
+        }
+
+        Assert.Fail($"diagnostics missing {key}");
+        return -1;
     }
 }

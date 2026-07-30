@@ -69,6 +69,22 @@ public sealed class ScanDiagnostics
     /// <summary>True when the walk was cancelled via <see cref="CancellationToken"/>.</summary>
     public bool Cancelled { get; set; }
 
+    public long RegionEnumerationMs { get; set; }
+
+    public long CandidateDiscoveryMs { get; set; }
+
+    public long ExtractionMs { get; set; }
+
+    public long ClubIndexingMs { get; set; }
+
+    public long DumpWritingMs { get; set; }
+
+    public long TotalMs { get; set; }
+
+    public long ProcessMemoryCalls { get; set; }
+
+    public long ProcessMemoryRequestedBytes { get; set; }
+
     public Dictionary<int, int> ClassOffsetHistogram { get; } = new();
 
     public List<uint> SampleUids { get; } = new();

@@ -115,7 +115,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 1 — Add scan phase performance diagnostics
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Record elapsed time for region enumeration, candidate discovery, player extraction, club indexing, dump writing, and total bridge work. Record process-memory call and requested-byte counts without changing dump schema v5.
 
