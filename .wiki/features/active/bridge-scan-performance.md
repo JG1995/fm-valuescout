@@ -311,6 +311,7 @@ Load Data cap toggle (off = unlimited / null; on = configurable positive integer
 | 2 | Batch contiguous player field reads | `8316c43` | Attrs/personality/positions/cstrings via `TryReadBlock` + ArrayPool decode |
 | 2 | Stream compact full dump output | `a686189` | Utf8JsonWriter compact stream + per-player flush; 184k/500k scale tests |
 | 2 | Reduce measured large-dump ingest overhead | `862486a` | Single parse + prepared INSERT; timed 184k/500k harness |
+| 2 | Request-scoped scan limit and unlimited production default | `d8b7b04` | Request maxAccepted; production Load Data unlimited; caps for tests/Commit 5 |
 
 ## Final validation
 
