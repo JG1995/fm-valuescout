@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using FmDataBridge.Extraction;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
@@ -29,6 +30,10 @@ public sealed class CapADumpPipeline
         ArgumentNullException.ThrowIfNull(reader);
         Directory.CreateDirectory(bridgeDirectory);
 
+        var totalSw = Stopwatch.StartNew();
+        var counting = reader as CountingMemoryReader ?? new CountingMemoryReader(reader);
+        reader = counting;
+
         var diagnostics = new ScanDiagnostics
         {
             GameVersion = gameVersion,
@@ -41,12 +46,16 @@ public sealed class CapADumpPipeline
         {
             diagnostics.FailureReason =
                 $"unsupported FM version '{gameVersion}'; no layout for major.minor key";
-            DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
+            WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
 
+        var phaseSw = Stopwatch.StartNew();
         var regions = RegionEnumerator.GetCandidateRegions(reader);
+        diagnostics.RegionEnumerationMs = phaseSw.ElapsedMilliseconds;
+
         var scanCap = maxAccepted ?? PersonScanner.DefaultMaxAccepted;
+        phaseSw.Restart();
         var candidates = PersonScanner.Scan(
             reader,
             layout,
@@ -56,18 +65,19 @@ public sealed class CapADumpPipeline
             diagnostics,
             scanCap,
             cancellationToken);
+        diagnostics.CandidateDiscoveryMs = phaseSw.ElapsedMilliseconds;
 
         if (diagnostics.Cancelled)
         {
             diagnostics.FailureReason = "scan cancelled";
-            DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
+            WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
 
         if (candidates.Count == 0)
         {
             diagnostics.FailureReason = "scan produced zero player candidates";
-            DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
+            WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
 
@@ -76,6 +86,7 @@ public sealed class CapADumpPipeline
         var parentClubByUid = new Dictionary<uint, string?>();
         var clubAddresses = new HashSet<ulong>();
 
+        phaseSw.Restart();
         foreach (var candidate in candidates)
         {
             var playerBase = candidate.ObjectAddress - (ulong)candidate.ClassOffset;
@@ -143,14 +154,17 @@ public sealed class CapADumpPipeline
             }
         }
 
+        diagnostics.ExtractionMs = phaseSw.ElapsedMilliseconds;
+
         if (drafts.Count == 0)
         {
             diagnostics.FailureReason =
                 "scan produced candidates but none passed identity sanity (name/DOB)";
-            DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
+            WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
 
+        phaseSw.Restart();
         var squadIndex = SquadClubIndex.Build(
             reader,
             layout,
@@ -165,6 +179,7 @@ public sealed class CapADumpPipeline
 
         diagnostics.ClubsWalked = squadIndex.ClubsWalked;
         diagnostics.PlayersLinkedViaSquad = squadIndex.PlayersLinked;
+        diagnostics.ClubIndexingMs = phaseSw.ElapsedMilliseconds;
 
         var gameDate = GameDateResolver.Resolve(
             squadIndex.DateVotes,
@@ -287,8 +302,10 @@ public sealed class CapADumpPipeline
             Players = players,
         };
 
+        phaseSw.Restart();
         var replaced = DumpWriter.TryWriteReplaceOnSuccess(bridgeDirectory, document);
-        DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
+        diagnostics.DumpWritingMs = phaseSw.ElapsedMilliseconds;
+        WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
 
         return replaced
             ? CapADumpResult.Succeeded(
@@ -296,6 +313,18 @@ public sealed class CapADumpPipeline
                 scanTruncated: diagnostics.StoppedEarly,
                 maxAccepted: diagnostics.MaxAccepted)
             : CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
+    }
+
+    private static void WriteDiagnostics(
+        string bridgeDirectory,
+        ScanDiagnostics diagnostics,
+        CountingMemoryReader counting,
+        Stopwatch totalSw)
+    {
+        diagnostics.ProcessMemoryCalls = counting.CallCount;
+        diagnostics.ProcessMemoryRequestedBytes = counting.RequestedBytes;
+        diagnostics.TotalMs = totalSw.ElapsedMilliseconds;
+        DiagnosticsWriter.Write(bridgeDirectory, DiagnosticsWriter.Format(diagnostics));
     }
 
     private static string FormatAttributeSample(uint uid, string name, PlayerAttributes attrs)

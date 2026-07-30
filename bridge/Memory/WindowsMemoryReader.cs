@@ -48,6 +48,33 @@ public sealed class WindowsMemoryReader : IMemoryReader
         return ok && bytesRead == destination.Length;
     }
 
+    public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead) =>
+        BlockReadHelper.TryFill(address, buffer, offset, length, out bytesRead, TryReadDirect);
+
+    private bool TryReadDirect(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
+    {
+        bytesRead = 0;
+        if (length == 0)
+        {
+            return true;
+        }
+
+        unsafe
+        {
+            fixed (byte* ptr = &buffer[offset])
+            {
+                var ok = NativeMethods.ReadProcessMemory(
+                    _processHandle,
+                    (IntPtr)address,
+                    (IntPtr)ptr,
+                    (IntPtr)length,
+                    out var read);
+                bytesRead = (int)read;
+                return ok && bytesRead == length;
+            }
+        }
+    }
+
     public IEnumerable<MemoryRegion> EnumerateRegions()
     {
         var address = 0UL;
@@ -124,6 +151,15 @@ internal static class NativeMethods
         IntPtr hProcess,
         IntPtr lpBaseAddress,
         [Out] byte[] lpBuffer,
+        IntPtr nSize,
+        out IntPtr lpNumberOfBytesRead);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ReadProcessMemory(
+        IntPtr hProcess,
+        IntPtr lpBaseAddress,
+        IntPtr lpBuffer,
         IntPtr nSize,
         out IntPtr lpNumberOfBytesRead);
 

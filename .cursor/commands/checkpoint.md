@@ -19,7 +19,7 @@ Read `.cursor/skills/recallium-usage/SKILL.md`. Use `project_name` from `AGENTS.
 **Search before:** presenting the checkpoint package — refresh context on decisions or constraints relevant to this commit.
 **Search with:** `search_memories` → `expand_memories` as needed.
 
-**Reconcile after gate, before the checkpoint package** — non-blocking if Recallium is unavailable; report failures and continue.
+**Reconcile after gate, before the checkpoint package** — non-blocking if Recallium is unavailable after the resilience retries in `.cursor/skills/recallium-usage/SKILL.md` § Call resilience; report failures and continue.
 
 1. Search recent memories for this feature or area (constraints, roadmap, learnings).
 2. Compare the staged outcome and any ledger updates against what Recallium already holds.

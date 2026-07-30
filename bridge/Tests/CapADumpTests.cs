@@ -266,6 +266,95 @@ public sealed class CapADumpTests
     }
 
     [Fact]
+    public void Person_scanner_discovery_scales_with_blocks_not_per_word_reads()
+    {
+        var layout = Fm263Layout.Instance;
+        const ulong regionBase = 0x300000UL;
+        const ulong regionSize = 128UL * 1024;
+        var inner = new FakeMemoryReader();
+        AddCandidateRegion(inner, regionBase, regionSize);
+
+        var personAddress = regionBase + (ulong)PlayerClassOffset;
+        PlacePlayerBytes(
+            inner,
+            layout,
+            personAddress,
+            uid: 4242,
+            ca: 110,
+            pa: 140,
+            playerBlockBase: regionBase);
+
+        var reader = new CountingMemoryReader(inner);
+        var diagnostics = new ScanDiagnostics();
+        var candidates = PersonScanner.Scan(
+            reader,
+            layout,
+            new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+            gamePlugin: null,
+            RegionEnumerator.GetCandidateRegions(reader),
+            diagnostics);
+
+        Assert.Single(candidates);
+        Assert.Equal(4242u, candidates[0].Uid);
+        Assert.Equal(110, candidates[0].Ca);
+        Assert.Equal(140, candidates[0].Pa);
+
+        var wordsScanned = diagnostics.BytesScanned / 8;
+        Assert.True(wordsScanned > 1000, "fixture must scan a multi-kilobyte region");
+        // Scalar heap walk issues ~1 ReadProcessMemory per aligned word. Block scanning must
+        // keep process-memory calls well below that floor.
+        Assert.True(
+            reader.CallCount < wordsScanned / 4,
+            $"expected block-scale calls, got CallCount={reader.CallCount} for wordsScanned={wordsScanned}");
+    }
+
+    [Fact]
+    public void Person_scanner_caches_vtable_class_offset_across_hits()
+    {
+        var layout = Fm263Layout.Instance;
+        const ulong regionBase = 0x400000UL;
+        const int hitCount = 40;
+        // One region large enough for hitCount aligned person headers (invalid UID → reject after resolve).
+        const ulong regionSize = 0x1000;
+        var inner = new FakeMemoryReader();
+        AddCandidateRegion(inner, regionBase, regionSize);
+
+        var metaBytes = new byte[8];
+        WriteInt32(metaBytes, 4, PlayerClassOffset);
+        inner.AddBytes(MetaInAssembly, metaBytes);
+        var vtableLink = new byte[8];
+        WriteUInt64(vtableLink, 0, MetaInAssembly);
+        inner.AddBytes(VtableInAssembly - 8, vtableLink);
+
+        for (var i = 0; i < hitCount; i++)
+        {
+            var personAddress = regionBase + (ulong)(i * 0x20);
+            var personHeader = new byte[0x10];
+            WriteUInt64(personHeader, 0, VtableInAssembly);
+            WriteUInt32(personHeader, layout.ObjectUidOffset, 0); // invalid UID — still resolves class offset
+            inner.AddBytes(personAddress, personHeader);
+        }
+
+        var reader = new CountingMemoryReader(inner);
+        var diagnostics = new ScanDiagnostics();
+        var candidates = PersonScanner.Scan(
+            reader,
+            layout,
+            new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+            gamePlugin: null,
+            RegionEnumerator.GetCandidateRegions(reader),
+            diagnostics);
+
+        Assert.Empty(candidates);
+        Assert.Equal(hitCount, diagnostics.VtableHits);
+        Assert.Equal(hitCount, diagnostics.CandidatesRejected);
+        // Uncached resolve costs 2 module reads per hit (~80 here). Cached resolve pays once.
+        Assert.True(
+            reader.CallCount < hitCount,
+            $"expected cached vtable resolve; CallCount={reader.CallCount} for hits={hitCount}");
+    }
+
+    [Fact]
     public void Person_scanner_accepts_candidates_above_int_max_address()
     {
         var layout = Fm263Layout.Instance;
@@ -576,6 +665,49 @@ public sealed class CapADumpTests
     }
 
     [Fact]
+    public void Pipeline_diagnostics_include_phase_timings_and_memory_read_counts()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var layout = Fm263Layout.Instance;
+            var reader = BuildReaderWithTwoIdenticalPlayers(layout);
+            var result = new CapADumpPipeline().Run(
+                reader,
+                bridgeDir,
+                gameVersion: "26.3.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success);
+
+            var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
+            AssertNonNegativeDiagnostic(diagnostics, "regionEnumerationMs");
+            AssertNonNegativeDiagnostic(diagnostics, "candidateDiscoveryMs");
+            AssertNonNegativeDiagnostic(diagnostics, "extractionMs");
+            AssertNonNegativeDiagnostic(diagnostics, "clubIndexingMs");
+            AssertNonNegativeDiagnostic(diagnostics, "dumpWritingMs");
+            AssertNonNegativeDiagnostic(diagnostics, "totalMs");
+            AssertNonNegativeDiagnostic(diagnostics, "processMemoryCalls");
+            AssertNonNegativeDiagnostic(diagnostics, "processMemoryRequestedBytes");
+            Assert.True(
+                ParseDiagnosticLong(diagnostics, "processMemoryCalls") > 0,
+                "successful fake scan should perform at least one memory read");
+            Assert.True(
+                ParseDiagnosticLong(diagnostics, "processMemoryRequestedBytes") > 0,
+                "successful fake scan should request at least one memory byte");
+            Assert.True(
+                ParseDiagnosticLong(diagnostics, "totalMs")
+                >= ParseDiagnosticLong(diagnostics, "regionEnumerationMs"),
+                "totalMs should cover at least region enumeration");
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Pipeline_zero_candidates_preserves_prior_dump()
     {
         var bridgeDir = CreateTempBridgeDir();
@@ -677,6 +809,25 @@ public sealed class CapADumpTests
             playerBase + (ulong)Math.Max(layout.PotentialAbilityOffset, layout.HeightOffset) + 2);
         regionEnd = Math.Max(regionEnd, playerBase + (ulong)layout.AttrsOffset + 0x40);
         AddCandidateRegion(reader, regionBase, regionEnd - regionBase);
+        PlacePlayerBytes(reader, layout, personAddress, uid, ca, pa, playerBase, name, birthYear, birthDoy);
+    }
+
+    /// <summary>
+    /// Writes person/player bytes without adding a candidate region (caller owns the region).
+    /// </summary>
+    private static void PlacePlayerBytes(
+        FakeMemoryReader reader,
+        IFmMemoryLayout layout,
+        ulong personAddress,
+        uint uid,
+        int ca,
+        int pa,
+        ulong? playerBlockBase = null,
+        string? name = "Fixture Player",
+        int birthYear = 1999,
+        int birthDoy = 50)
+    {
+        var playerBase = playerBlockBase ?? (personAddress - (ulong)PlayerClassOffset);
 
         // Il2Cpp meta: *(vtable - 8) → meta; *(int*)(meta + 4) → class offset.
         var metaBytes = new byte[8];
@@ -771,5 +922,33 @@ public sealed class CapADumpTests
         var path = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static void AssertNonNegativeDiagnostic(string diagnostics, string key)
+    {
+        Assert.True(
+            ParseDiagnosticLong(diagnostics, key) >= 0,
+            $"diagnostics must include non-negative {key}");
+    }
+
+    private static long ParseDiagnosticLong(string diagnostics, string key)
+    {
+        var prefix = key + "=";
+        foreach (var line in diagnostics.Split('\n'))
+        {
+            var trimmed = line.TrimEnd('\r');
+            if (!trimmed.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            Assert.True(
+                long.TryParse(trimmed.AsSpan(prefix.Length), out var value),
+                $"{key} must be an integer");
+            return value;
+        }
+
+        Assert.Fail($"diagnostics missing {key}");
+        return -1;
     }
 }

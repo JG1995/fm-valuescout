@@ -12,7 +12,9 @@ The developer may delegate narrowly (e.g. one HIGH item, or CRITICAL/HIGH only).
 
 **Default delegation** includes **MEDIUM** as well as CRITICAL and HIGH. MEDIUM does not make **Blocking: Yes** in manual `/checkpoint` — the developer may still approve a commit with MEDIUM findings. `/build-loop` auto-fixes MEDIUM before it commits.
 
-If a finding is incorrect or a NITPICK, say so and do not "fix" it by over-engineering.
+If a finding is incorrect, say so and do not "fix" it by over-engineering.
+
+**NITPICK under `/build-loop`:** When the verdict is NITPICK-only, `/build-loop` does not invoke `/fix` — do not fix NITPICK items in that case. When the verdict mixes CRITICAL, HIGH, and/or MEDIUM with NITPICK, include the NITPICK items in the same fix pass. Outside `/build-loop`, NITPICK remains optional unless the developer delegates it.
 
 ## Mandatory reads
 

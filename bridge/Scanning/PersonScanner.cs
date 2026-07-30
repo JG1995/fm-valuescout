@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
 
@@ -10,8 +11,12 @@ public static class PersonScanner
     public const int MaxAbility = 200;
 
     // ponytail: hard cap so live Load Data tests finish in seconds, not minutes
-    // Upgrade to unlimited (or request-driven maxPlayers) when full-DB dumps are required — see BACKLOG High "Bridge scan performance"
+    // Upgrade to unlimited (or request-driven maxPlayers) when full-DB dumps are required — see
+    // .wiki/features/active/bridge-scan-performance.md PR 2
     public const int DefaultMaxAccepted = 500;
+
+    /// <summary>Minimum object header span covering vtable + UID for in-buffer reads.</summary>
+    private const int MinObjectHeaderBytes = 0x10;
 
     public static IReadOnlyList<PersonCandidate> Scan(
         IMemoryReader reader,
@@ -46,8 +51,12 @@ public static class PersonScanner
 
         var playerOffsets = new HashSet<int>(layout.PlayerClassOffsets);
         var accepted = new Dictionary<uint, PersonCandidate>();
+        var classOffsetByVtable = new Dictionary<ulong, int>();
         var atCap = false;
         var stoppedDueToCap = false;
+        var headerBytes = Math.Max(MinObjectHeaderBytes, layout.ObjectUidOffset + sizeof(uint));
+        var overlap = (ulong)AlignUp((uint)headerBytes, 8);
+        var buffer = new byte[MemoryConstants.DefaultScanBlockSize];
 
         foreach (var region in candidateRegions)
         {
@@ -62,109 +71,143 @@ public static class PersonScanner
                 break;
             }
 
-            if (region.Size < 0x10)
+            if (region.Size < (ulong)headerBytes)
             {
                 continue;
             }
 
             var end = region.BaseAddress + region.Size;
-            for (var address = AlignUp(region.BaseAddress, 8);
-                 address + 0x10 <= end;
-                 address += 8)
+            for (var blockStart = AlignUp(region.BaseAddress, 8);
+                 blockStart + (ulong)headerBytes <= end;
+                 )
             {
+                if (stoppedDueToCap)
+                {
+                    break;
+                }
+
                 if (cancellationToken.IsCancellationRequested)
                 {
                     diagnostics.Cancelled = true;
                     return accepted.Values.OrderBy(c => c.Uid).ToList();
                 }
 
-                diagnostics.BytesScanned += 8;
-
-                if (!reader.TryReadUInt64(address, out var vtable))
+                var remaining = end - blockStart;
+                var toRead = (int)Math.Min((ulong)buffer.Length, remaining);
+                if (toRead < headerBytes)
                 {
-                    continue;
-                }
-
-                if (!IsModuleVtable(vtable, gameAssembly, gamePlugin))
-                {
-                    continue;
-                }
-
-                diagnostics.VtableHits++;
-
-                if (!TryResolveDynamicOffset(reader, vtable, out var classOffset) || classOffset == 0)
-                {
-                    diagnostics.CandidatesRejected++;
-                    continue;
-                }
-
-                if (classOffset is > 0 and < 0x2000)
-                {
-                    diagnostics.RecordClassOffsetHit(classOffset);
-                }
-
-                if (!playerOffsets.Contains(classOffset))
-                {
-                    diagnostics.CandidatesRejected++;
-                    continue;
-                }
-
-                if (!reader.TryReadUInt32(address + (ulong)layout.ObjectUidOffset, out var uid)
-                    || !IsValidUid(uid))
-                {
-                    diagnostics.CandidatesRejected++;
-                    continue;
-                }
-
-                if ((ulong)classOffset > address)
-                {
-                    diagnostics.CandidatesRejected++;
-                    continue;
-                }
-
-                var playerBase = address - (ulong)classOffset;
-                if (!reader.TryReadUInt16(playerBase + (ulong)layout.CurrentAbilityOffset, out var ca)
-                    || !IsValidAbility(ca))
-                {
-                    diagnostics.CandidatesRejected++;
-                    continue;
-                }
-
-                if (!reader.TryReadUInt16(playerBase + (ulong)layout.PotentialAbilityOffset, out var pa)
-                    || !IsValidAbility(pa))
-                {
-                    diagnostics.CandidatesRejected++;
-                    continue;
-                }
-
-                if (accepted.ContainsKey(uid))
-                {
-                    diagnostics.DuplicatesSkipped++;
-                    continue;
-                }
-
-                if (atCap)
-                {
-                    stoppedDueToCap = true;
                     break;
                 }
 
-                accepted[uid] = new PersonCandidate(address, uid, ca, pa, classOffset);
-                diagnostics.CandidatesAccepted++;
-                if (diagnostics.SampleUids.Count < 16)
+                // Failed/partial fills leave cleared gaps as zero — scan the full requested length.
+                _ = reader.TryReadBlock(blockStart, buffer, 0, toRead, out _);
+
+                for (var local = 0;
+                     local + headerBytes <= toRead && blockStart + (ulong)local + (ulong)headerBytes <= end;
+                     local += 8)
                 {
-                    diagnostics.SampleUids.Add(uid);
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        diagnostics.Cancelled = true;
+                        return accepted.Values.OrderBy(c => c.Uid).ToList();
+                    }
+
+                    diagnostics.BytesScanned += 8;
+
+                    var address = blockStart + (ulong)local;
+                    var vtable = BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(local, sizeof(ulong)));
+
+                    if (!IsModuleVtable(vtable, gameAssembly, gamePlugin))
+                    {
+                        continue;
+                    }
+
+                    diagnostics.VtableHits++;
+
+                    if (!TryResolveDynamicOffsetCached(reader, vtable, classOffsetByVtable, out var classOffset)
+                        || classOffset == 0)
+                    {
+                        diagnostics.CandidatesRejected++;
+                        continue;
+                    }
+
+                    if (classOffset is > 0 and < 0x2000)
+                    {
+                        diagnostics.RecordClassOffsetHit(classOffset);
+                    }
+
+                    if (!playerOffsets.Contains(classOffset))
+                    {
+                        diagnostics.CandidatesRejected++;
+                        continue;
+                    }
+
+                    var uid = BinaryPrimitives.ReadUInt32LittleEndian(
+                        buffer.AsSpan(local + layout.ObjectUidOffset, sizeof(uint)));
+                    if (!IsValidUid(uid))
+                    {
+                        diagnostics.CandidatesRejected++;
+                        continue;
+                    }
+
+                    if ((ulong)classOffset > address)
+                    {
+                        diagnostics.CandidatesRejected++;
+                        continue;
+                    }
+
+                    var playerBase = address - (ulong)classOffset;
+                    if (!reader.TryReadUInt16(playerBase + (ulong)layout.CurrentAbilityOffset, out var ca)
+                        || !IsValidAbility(ca))
+                    {
+                        diagnostics.CandidatesRejected++;
+                        continue;
+                    }
+
+                    if (!reader.TryReadUInt16(playerBase + (ulong)layout.PotentialAbilityOffset, out var pa)
+                        || !IsValidAbility(pa))
+                    {
+                        diagnostics.CandidatesRejected++;
+                        continue;
+                    }
+
+                    if (accepted.ContainsKey(uid))
+                    {
+                        diagnostics.DuplicatesSkipped++;
+                        continue;
+                    }
+
+                    if (atCap)
+                    {
+                        stoppedDueToCap = true;
+                        break;
+                    }
+
+                    accepted[uid] = new PersonCandidate(address, uid, ca, pa, classOffset);
+                    diagnostics.CandidatesAccepted++;
+                    if (diagnostics.SampleUids.Count < 16)
+                    {
+                        diagnostics.SampleUids.Add(uid);
+                    }
+
+                    if (maxAccepted is { } limit && accepted.Count >= limit)
+                    {
+                        atCap = true;
+                    }
                 }
 
-                if (maxAccepted is { } limit && accepted.Count >= limit)
+                if (stoppedDueToCap)
                 {
-                    atCap = true;
+                    break;
                 }
-            }
 
-            if (stoppedDueToCap)
-            {
-                break;
+                var advance = toRead - (int)overlap;
+                if (advance < 8)
+                {
+                    advance = 8;
+                }
+
+                blockStart += (ulong)advance;
             }
         }
 
@@ -200,6 +243,28 @@ public static class PersonScanner
         return reader.TryReadInt32(meta + 4, out classOffset);
     }
 
+    private static bool TryResolveDynamicOffsetCached(
+        IMemoryReader reader,
+        ulong vtable,
+        Dictionary<ulong, int> cache,
+        out int classOffset)
+    {
+        if (cache.TryGetValue(vtable, out classOffset))
+        {
+            return classOffset != 0;
+        }
+
+        if (!TryResolveDynamicOffset(reader, vtable, out classOffset) || classOffset == 0)
+        {
+            cache[vtable] = 0;
+            classOffset = 0;
+            return false;
+        }
+
+        cache[vtable] = classOffset;
+        return true;
+    }
+
     private static bool IsModuleVtable(
         ulong vtable,
         ModuleBounds gameAssembly,
@@ -216,5 +281,8 @@ public static class PersonScanner
     }
 
     private static ulong AlignUp(ulong value, ulong alignment) =>
+        (value + (alignment - 1)) & ~(alignment - 1);
+
+    private static uint AlignUp(uint value, uint alignment) =>
         (value + (alignment - 1)) & ~(alignment - 1);
 }

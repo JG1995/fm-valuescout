@@ -2,7 +2,7 @@
 description: Build the active commit, then auto checkpoint/fix until review is clean (NITPICK-only) — manual opt-in only
 ---
 
-Build the **active commit** (same scope as `/build`), then run an automated **checkpoint → fix → checkpoint** cycle until the reviewer reports no **CRITICAL**, **HIGH**, or **MEDIUM** findings. **NITPICK** findings are allowed. When clean, commit the content and advance the ledger without waiting for approval.
+Build the **active commit** (same scope as `/build`), then run an automated **checkpoint → fix → checkpoint** cycle until the reviewer reports no **CRITICAL**, **HIGH**, or **MEDIUM** findings. **NITPICK-only** verdicts skip `/fix` and proceed to auto-commit; **mixed** verdicts fix NITPICK alongside delegated tiers in the same pass. When clean, commit the content and advance the ledger without waiting for approval.
 
 **Manual invocation only.** Run this command only when the developer explicitly types `/build-loop`. Never suggest it, never run it automatically, and never substitute it for the default `/build` → `/checkpoint` flow unless the developer asked for it.
 
@@ -20,28 +20,34 @@ Same as `/build`:
 
 ## Loop contract
 
-Maximum **3 fix rounds**. One fix round = `/fix` then another `/checkpoint`.
+Maximum **5 fix rounds**. One fix round = `/fix` then another `/checkpoint`.
 
 ```text
 /build
 → /checkpoint (review 1)
 → if CRITICAL | HIGH | MEDIUM: /fix → /checkpoint (review 2)
 → if still CRITICAL | HIGH | MEDIUM: /fix → /checkpoint (review 3)
-→ if still CRITICAL | HIGH | MEDIUM: /fix → /checkpoint (review 4 — final)
+→ if still CRITICAL | HIGH | MEDIUM: /fix → /checkpoint (review 4)
+→ if still CRITICAL | HIGH | MEDIUM: /fix → /checkpoint (review 5)
+→ if still CRITICAL | HIGH | MEDIUM: /fix → /checkpoint (review 6 — final)
 → if still CRITICAL | HIGH | MEDIUM: stop — report verdict, do not commit
 → if only NITPICK or none: auto-commit content + ledger advancement
 ```
 
 | Finding tier | In loop | Blocks manual `/checkpoint` commit? |
 | --- | --- | --- |
-| CRITICAL | Auto-fix; stop without commit if still present after 3 fix rounds | Yes |
-| HIGH | Auto-fix; stop without commit if still present after 3 fix rounds | Yes |
-| MEDIUM | Auto-fix by default (same as `/fix` with no args); stop without commit if still present after 3 fix rounds | No — developer may approve commit with MEDIUM in manual `/checkpoint` |
-| NITPICK | Leave as-is; loop may exit and commit | No |
+| CRITICAL | Auto-fix; stop without commit if still present after 5 fix rounds | Yes |
+| HIGH | Auto-fix; stop without commit if still present after 5 fix rounds | Yes |
+| MEDIUM | Auto-fix by default (same as `/fix` with no args); stop without commit if still present after 5 fix rounds | No — developer may approve commit with MEDIUM in manual `/checkpoint` |
+| NITPICK | Fix only when the same verdict also has CRITICAL, HIGH, or MEDIUM; otherwise leave as-is and exit | No |
 
-**Exit success:** Review verdict has no CRITICAL, HIGH, or MEDIUM items (NITPICK allowed).
+**NITPICK-only verdicts:** When a review lists **only** NITPICK findings (no CRITICAL, HIGH, or MEDIUM), do **not** run `/fix`. Proceed directly to Phase 3 (auto-commit).
 
-**Exit failure:** After **3** `/fix` rounds, the final `/checkpoint` review still lists any CRITICAL, HIGH, or MEDIUM finding. Present the full verdict and loop summary; do not commit.
+**Mixed verdicts:** When a review lists CRITICAL, HIGH, and/or MEDIUM **and** NITPICK items, run `/fix` for the delegated tiers **and** include the NITPICK items in the same fix pass.
+
+**Exit success:** Review verdict has no CRITICAL, HIGH, or MEDIUM items (residual NITPICK allowed only if you chose not to fix them in a prior mixed pass — normally none remain).
+
+**Exit failure:** After **5** `/fix` rounds, the final `/checkpoint` review still lists any CRITICAL, HIGH, or MEDIUM finding. Present the full verdict and loop summary; do not commit.
 
 ## Phase 1 — Build
 
@@ -56,12 +62,12 @@ For each checkpoint pass in the loop, follow `.cursor/commands/checkpoint.md` st
 Differences from manual `/checkpoint`:
 
 - **Do not wait for developer approval** between loop iterations.
-- When the verdict still has CRITICAL, HIGH, or MEDIUM and fix rounds remain, run `/fix` with default delegation (**CRITICAL**, **HIGH**, and **MEDIUM** from that verdict) per `.cursor/commands/fix.md` — including the **build-loop carve-out** (continue to the next checkpoint; do not stop for the developer).
-- When the verdict is clean (NITPICK-only or empty), proceed to Phase 3.
+- When the verdict still has CRITICAL, HIGH, or MEDIUM and fix rounds remain, run `/fix` with default delegation (**CRITICAL**, **HIGH**, and **MEDIUM** from that verdict) per `.cursor/commands/fix.md`. When the same verdict also lists NITPICK items, include them in that `/fix` pass. Include the **build-loop carve-out** (continue to the next checkpoint; do not stop for the developer).
+- When the verdict is NITPICK-only or empty, proceed to Phase 3 — do **not** run `/fix` for NITPICK-only.
 
 Track and report in the final summary:
 
-- Fix round count (0–3)
+- Fix round count (0–5)
 - Each review verdict (at least final; brief notes on earlier rounds if findings changed)
 
 ## Phase 3 — Auto-commit (success only)
@@ -83,7 +89,7 @@ Same as `/build` plus `.cursor/commands/checkpoint.md` and `.cursor/commands/fix
 
 ## Recallium
 
-Read `.cursor/skills/recallium-usage/SKILL.md`. Use `project_name` from `AGENTS.md` § Recallium project.
+Read `.cursor/skills/recallium-usage/SKILL.md`. Use `project_name` from `AGENTS.md` § Recallium project. Apply **Call resilience** (re-auth + retries) on MCP failures.
 
 **Search before:** build — unfamiliar conventions or constraints for this commit; each checkpoint — context relevant to the staged outcome.
 **Search with:** `search_memories` → `expand_memories` as needed.
@@ -108,6 +114,6 @@ Do not use `/build-loop` for `/finish-feature`, documentation reconciliation, or
 
 **Success:** Report content hash, ledger hash, loop rounds used, final verdict (NITPICK listed if any), and next active commit from the ledger.
 
-**Failure:** Report that the 3-fix cap was reached, the final verdict, what remains unfixed, and that nothing was committed. Tell the developer to `/fix` manually (narrow or broad) and `/checkpoint` when ready.
+**Failure:** Report that the 5-fix cap was reached, the final verdict, what remains unfixed, and that nothing was committed. Tell the developer to `/fix` manually (narrow or broad) and `/checkpoint` when ready.
 
 Do not start the next planned commit in the same command invocation unless the developer explicitly asks to continue.

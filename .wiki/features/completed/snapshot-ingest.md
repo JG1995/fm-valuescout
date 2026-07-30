@@ -63,5 +63,6 @@ SQLite (migration v2)
 ## Follow-up
 
 - **Next feature:** [Role scoring engine](../../TODO.md) (order 3) — scores on ingest using FM role-relevant attributes.
-- **BACKLOG:** snapshot history per save; full-scan performance / raising the 10k bridge cap.
+- **Active:** [bridge scan performance](../active/bridge-scan-performance.md) keeps the 500-player cap through its first PR, then validates complete snapshots.
+- **BACKLOG:** snapshot history per save.
 - **Roadmap:** player search (order 4), profiles, squad planner, optimizer — see [TODO.md](../../TODO.md).

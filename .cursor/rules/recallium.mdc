@@ -21,6 +21,10 @@ Search when wiki, code, or the active ledger do not answer the question:
 
 Use `search_mode="keyword"` for symbols, errors, and identifiers.
 
+## Call resilience
+
+When a Recallium MCP tool call fails: call `mcp_auth` for `user-recallium` (empty args), retry once, then retry up to **3** more times before treating Recallium as unavailable. Report `skipped — Recallium unavailable` and continue per the active command when all attempts fail. Full policy: `.cursor/skills/recallium-usage/SKILL.md` § Call resilience.
+
 Wiki and Git own formal plans and task records. Recallium holds context that **explains** them.
 
 ## Save — sparingly

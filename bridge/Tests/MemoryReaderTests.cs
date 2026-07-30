@@ -8,6 +8,20 @@ public sealed class MemoryReaderTests
 {
     private const ulong MaxRegionSize = 64UL * 1024 * 1024;
 
+    /// <summary>
+    /// Marks a test skipped on non-Windows hosts (xunit 2.x has no built-in Skip.If).
+    /// </summary>
+    private sealed class WindowsFactAttribute : FactAttribute
+    {
+        public WindowsFactAttribute()
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                Skip = "WindowsMemoryReader requires kernel32 ReadProcessMemory";
+            }
+        }
+    }
+
     [Fact]
     public void Region_filter_keeps_committed_private_readwrite_pages()
     {
@@ -117,6 +131,156 @@ public sealed class MemoryReaderTests
 
         Assert.False(reader.TryReadUInt32(0x1000, out var value));
         Assert.Equal(0u, value);
+    }
+
+    [Fact]
+    public void TryReadBlock_fills_caller_owned_buffer_on_full_success()
+    {
+        var reader = new FakeMemoryReader();
+        var payload = new byte[0x2000];
+        for (var i = 0; i < payload.Length; i++)
+        {
+            payload[i] = (byte)(i & 0xFF);
+        }
+
+        reader.AddBytes(0x10000, payload);
+
+        var buffer = new byte[0x1800];
+        var ok = reader.TryReadBlock(0x10000, buffer, 0, buffer.Length, out var bytesRead);
+
+        Assert.True(ok);
+        Assert.Equal(buffer.Length, bytesRead);
+        Assert.Equal(payload.AsSpan(0, buffer.Length).ToArray(), buffer);
+    }
+
+    [Fact]
+    public void TryReadBlock_returns_short_read_at_region_edge()
+    {
+        var reader = new FakeMemoryReader();
+        reader.AddBytes(0x10000, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 });
+
+        var buffer = new byte[16];
+        buffer[8] = 0xEE;
+        var ok = reader.TryReadBlock(0x10000, buffer, 0, 16, out var bytesRead);
+
+        Assert.False(ok);
+        Assert.Equal(8, bytesRead);
+        Assert.Equal(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }, buffer.AsSpan(0, 8).ToArray());
+        Assert.Equal(0, buffer[8]);
+    }
+
+    [Fact]
+    public void TryReadBlock_returns_false_for_invalid_address()
+    {
+        var reader = new FakeMemoryReader();
+        reader.AddBytes(0x10000, new byte[] { 1, 2, 3, 4 });
+
+        var buffer = new byte[4];
+        buffer[0] = 0xFF;
+        var ok = reader.TryReadBlock(0x20000, buffer, 0, 4, out var bytesRead);
+
+        Assert.False(ok);
+        Assert.Equal(0, bytesRead);
+        Assert.Equal(0, buffer[0]);
+    }
+
+    [Fact]
+    public void TryReadBlock_subdivides_between_one_and_two_pages_without_missing_trailing_page()
+    {
+        var reader = new FakeMemoryReader();
+        var left = new byte[MemoryConstants.MinBlockReadSize];
+        var right = new byte[MemoryConstants.MinBlockReadSize];
+        for (var i = 0; i < left.Length; i++)
+        {
+            left[i] = 0x31;
+            right[i] = 0x32;
+        }
+
+        reader.AddBytes(0x20000, left);
+        reader.AddBytes(0x20000 + (ulong)(MemoryConstants.MinBlockReadSize * 2), right);
+
+        // 2.5 pages: after a page-aligned first split, the right remainder is in (page, 2×page).
+        var length = (MemoryConstants.MinBlockReadSize * 2) + (MemoryConstants.MinBlockReadSize / 2);
+        var buffer = new byte[length];
+        var ok = reader.TryReadBlock(0x20000, buffer, 0, length, out var bytesRead);
+
+        Assert.False(ok);
+        Assert.Equal(MemoryConstants.MinBlockReadSize + (MemoryConstants.MinBlockReadSize / 2), bytesRead);
+        Assert.Equal(left, buffer.AsSpan(0, left.Length).ToArray());
+        Assert.True(
+            buffer.AsSpan(left.Length, MemoryConstants.MinBlockReadSize).ToArray().All(b => b == 0));
+        Assert.Equal(
+            right.AsSpan(0, MemoryConstants.MinBlockReadSize / 2).ToArray(),
+            buffer.AsSpan(MemoryConstants.MinBlockReadSize * 2, MemoryConstants.MinBlockReadSize / 2).ToArray());
+    }
+
+    [Fact]
+    public void TryReadBlock_subdivides_failed_block_around_inaccessible_gap()
+    {
+        var reader = new FakeMemoryReader();
+        var left = new byte[MemoryConstants.MinBlockReadSize];
+        var right = new byte[MemoryConstants.MinBlockReadSize];
+        for (var i = 0; i < left.Length; i++)
+        {
+            left[i] = 0x11;
+            right[i] = 0x22;
+        }
+
+        reader.AddBytes(0x10000, left);
+        // Gap of one min-block between left and right — inaccessible for a spanning read.
+        reader.AddBytes(0x10000 + (ulong)(MemoryConstants.MinBlockReadSize * 2), right);
+
+        var length = MemoryConstants.MinBlockReadSize * 3;
+        var buffer = new byte[length];
+        var ok = reader.TryReadBlock(0x10000, buffer, 0, length, out var bytesRead);
+
+        Assert.False(ok);
+        Assert.Equal(MemoryConstants.MinBlockReadSize * 2, bytesRead);
+        Assert.Equal(left, buffer.AsSpan(0, left.Length).ToArray());
+        Assert.True(buffer.AsSpan(left.Length, MemoryConstants.MinBlockReadSize).ToArray().All(b => b == 0));
+        Assert.Equal(
+            right,
+            buffer.AsSpan(MemoryConstants.MinBlockReadSize * 2, right.Length).ToArray());
+    }
+
+    [Fact]
+    public void TryReadBlock_writes_into_caller_buffer_offset()
+    {
+        var reader = new FakeMemoryReader();
+        reader.AddBytes(0x10000, new byte[] { 10, 20, 30, 40 });
+
+        var buffer = new byte[] { 1, 1, 1, 1, 1, 1, 1, 1 };
+        var ok = reader.TryReadBlock(0x10000, buffer, 2, 4, out var bytesRead);
+
+        Assert.True(ok);
+        Assert.Equal(4, bytesRead);
+        Assert.Equal(new byte[] { 1, 1, 10, 20, 30, 40, 1, 1 }, buffer);
+    }
+
+    [WindowsFact]
+    public void TryReadBlock_on_windows_fills_from_current_process_without_requiring_span_copy()
+    {
+        var source = new byte[64];
+        for (var i = 0; i < source.Length; i++)
+        {
+            source[i] = (byte)(0xA0 + i);
+        }
+
+        var reader = new WindowsMemoryReader();
+        var buffer = new byte[32];
+        bool ok;
+        int bytesRead;
+        unsafe
+        {
+            fixed (byte* ptr = source)
+            {
+                ok = reader.TryReadBlock((ulong)ptr, buffer, 0, buffer.Length, out bytesRead);
+            }
+        }
+
+        Assert.True(ok);
+        Assert.Equal(buffer.Length, bytesRead);
+        Assert.Equal(source.AsSpan(0, buffer.Length).ToArray(), buffer);
     }
 
     [Fact]

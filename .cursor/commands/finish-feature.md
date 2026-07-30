@@ -28,7 +28,7 @@ Read `.cursor/skills/recallium-usage/SKILL.md`. Use `project_name` from `AGENTS.
 **Search before:** establishing scope and plan verification — prior decisions, constraints, and feature context not in wiki or ledger.
 **Search with:** `search_memories` → `expand_memories` as needed; `recallium` / `session_recap` when resuming feature close-out across sessions.
 
-**Reconcile after documentation reconciliation, before the close-out report** — non-blocking if Recallium is unavailable; report failures and continue.
+**Reconcile after documentation reconciliation, before the close-out report** — non-blocking if Recallium is unavailable after the resilience retries in `.cursor/skills/recallium-usage/SKILL.md` § Call resilience; report failures and continue.
 
 1. Search memories for this feature (constraints, roadmap, learnings, prior progress snapshots).
 2. Compare the implemented feature, archived ledger, and updated wiki against what Recallium already holds.

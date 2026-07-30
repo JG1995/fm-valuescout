@@ -27,4 +27,14 @@ public static class MemoryConstants
     /// Default upper bound for a single candidate region (512 MiB).
     /// </summary>
     public const ulong DefaultMaxRegionSize = 512UL * 1024 * 1024;
+
+    /// <summary>
+    /// Smallest block size used when subdividing a failed large process-memory read (one page).
+    /// </summary>
+    public const int MinBlockReadSize = 0x1000;
+
+    /// <summary>
+    /// Default candidate-region scan block size (32 MiB).
+    /// </summary>
+    public const int DefaultScanBlockSize = 32 * 1024 * 1024;
 }
