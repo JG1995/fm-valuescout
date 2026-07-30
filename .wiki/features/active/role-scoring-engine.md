@@ -122,7 +122,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 1 — Role catalog with primary and secondary attributes
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add Rust `features/scoring` with a static FM26 role catalog: stable `role_id`, display name, phase (`in_possession` | `out_of_possession`), position tags, primary attribute keys, secondary attribute keys (dump PascalCase). Include a small label→key map for transcription. Source primary/secondary from SortItOutSI Key/Preferred; use Sidekick IP/OOP inventory as the completeness checklist. Reconcile source mismatches in this commit; record leftovers in Discoveries; ask only when a role cannot be included without a product call.
 
@@ -210,6 +210,7 @@ Scoring formula, combine helper, migrations, React, IPC.
 - Sidekick `/api/roles/*` is useful for IP/OOP inventory and key-only lists but lacks Preferred/secondary — SortItOutSI is the primary/secondary source for the catalog.
 - Dump keys differ from guide labels (`Jumping` → `JumpingReach`, spaced names → PascalCase). Catalog must store dump keys only.
 - Delivery plan collapsed from two PRs to one (five commits) — small feature, no mergeable mid-feature user value.
+- Catalog commit 1 reconciliation: Sidekick “generic” OOP hubs (`goalkeeper_oop`, `centre_back_oop`, …) map to SortItOutSI’s named OOP variants (Line-Holding/Sweeper Keeper, Covering/Stopping CB, …) — catalog uses the named variants. SortItOutSI-only roles kept: `wide_centre_back_ip`, `overlapping_centre_back_ip`, `covering_wide_centre_back_oop`, `stopping_wide_centre_back_oop`, `pressing_defensive_midfielder_oop`. Sidekick `no_nonsense_center_back_ip` spelling normalized to `no_nonsense_centre_back_ip`. Deep-Lying Playmaker primary follows SortItOutSI Key (includes `OffTheBall`); Sidekick key list omits it. Where SortItOutSI listed the same attribute in Key and Preferred, catalog keeps it in primary only (bands must be disjoint for 75/25 scoring).
 
 ## Completed work
 
