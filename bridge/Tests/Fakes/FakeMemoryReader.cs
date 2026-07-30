@@ -50,4 +50,38 @@ public sealed class FakeMemoryReader : IMemoryReader
 
         return false;
     }
+
+    public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead) =>
+        BlockReadHelper.TryFill(address, buffer, offset, length, out bytesRead, TryReadDirect);
+
+    private bool TryReadDirect(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
+    {
+        bytesRead = 0;
+        if (length == 0)
+        {
+            return true;
+        }
+
+        foreach (var (segmentAddress, bytes) in _segments)
+        {
+            if (address < segmentAddress)
+            {
+                continue;
+            }
+
+            var segmentOffset = address - segmentAddress;
+            if (segmentOffset >= (ulong)bytes.Length)
+            {
+                continue;
+            }
+
+            var available = bytes.Length - (int)segmentOffset;
+            var toCopy = Math.Min(available, length);
+            bytes.AsSpan((int)segmentOffset, toCopy).CopyTo(buffer.AsSpan(offset, toCopy));
+            bytesRead = toCopy;
+            return toCopy == length;
+        }
+
+        return false;
+    }
 }

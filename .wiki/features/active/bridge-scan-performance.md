@@ -130,7 +130,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 2 — Add reusable block memory reads
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add a direct caller-owned byte-array block-read path that avoids the current intermediate allocation and copy. Add bounded subdivision for failed blocks while preserving short-read and invalid-address behavior in the Windows implementation and fake reader.
 
@@ -266,6 +266,8 @@ Production and fake readers can fill a caller-owned byte array for a contiguous 
   - `processMemoryCalls=171533882`, `processMemoryRequestedBytes=1355448581` (~1.26 GiB requested)
   - `bytesScanned=1302961856` (~1.21 GiB), `vtableHits=4344871`, `regionCount=2166`
   - Confirms the plan thesis: candidate discovery + scalar heap reads are the bottleneck; post-discovery phases are already sub-second at the 500-player cap. PR 1 success criterion remains capped path `<10s` after block scanning.
+- Commit 2: failed-block subdivision splits must align to `MinBlockReadSize` (page size). When `length/2` rounds below one page, split at `MinBlockReadSize` instead of an unaligned midpoint so mid-gap starts cannot miss a later accessible page.
+- Commit 2: `TryReadBlock` `bytesRead` is a success count, not a contiguous prefix after hole recovery. Commit 3 must scan the full requested length (cleared gaps stay zero), not `buffer[0..bytesRead)`.
 
 ## Completed work
 

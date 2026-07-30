@@ -6,6 +6,7 @@
     <IsPackable>false</IsPackable>
     <RootNamespace>FmDataBridge.Tests</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,7 +1,8 @@
 namespace FmDataBridge.Memory;
 
 /// <summary>
-/// Counts <see cref="IMemoryReader.TryRead"/> calls and requested byte totals for scan diagnostics.
+/// Counts <see cref="IMemoryReader.TryRead"/> / <see cref="IMemoryReader.TryReadBlock"/> calls
+/// and requested byte totals for scan diagnostics.
 /// </summary>
 public sealed class CountingMemoryReader : IMemoryReader
 {
@@ -21,6 +22,13 @@ public sealed class CountingMemoryReader : IMemoryReader
         CallCount++;
         RequestedBytes += destination.Length;
         return _inner.TryRead(address, destination, out bytesRead);
+    }
+
+    public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
+    {
+        CallCount++;
+        RequestedBytes += length;
+        return _inner.TryReadBlock(address, buffer, offset, length, out bytesRead);
     }
 
     public IEnumerable<MemoryRegion> EnumerateRegions() => _inner.EnumerateRegions();
