@@ -417,6 +417,16 @@ mod tests {
     }
 
     #[test]
+    fn rejects_more_than_max_filter_rules() {
+        let rules = (0..=MAX_FILTER_RULES)
+            .map(|i| rule("ca", "gt", FilterValue::Integer(i as i64)))
+            .collect::<Vec<_>>();
+
+        let error = parse_filter_ast(rules, None).expect_err("cap");
+        assert!(error.contains("filter rule count exceeds maximum"));
+    }
+
+    #[test]
     fn rejects_unknown_field() {
         let ast = parse_filter_ast(
             vec![rule(

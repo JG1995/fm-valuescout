@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DatabaseZap } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense, useMemo } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { searchPlayersQueryOptions } from "@/features/search/api/search-players-query-options";
@@ -22,11 +22,20 @@ import {
   isSearchSortDir,
   isSearchSortField,
 } from "@/features/search/types/search-sort";
+import type { FilterRuleUrl } from "@/features/search/utils/search-url-search";
+import {
+  parseSearchCombine,
+  parseSearchFilters,
+  searchFiltersForUrl,
+} from "@/features/search/utils/search-url-search";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 
 export type SearchRouteSearch = {
   sort: SearchSortField;
   dir: SearchSortDir;
+  /** Flat URL shape — validateSearch always normalizes to this. */
+  filters: FilterRuleUrl[];
+  combine: FilterCombineMode;
 };
 
 export const Route = createFileRoute("/search")({
@@ -39,16 +48,31 @@ export const Route = createFileRoute("/search")({
       : isSearchSortField(search.sort)
         ? defaultDirForSortField(sort)
         : DEFAULT_SEARCH_SORT_DIR;
-    return { sort, dir };
+    return {
+      sort,
+      dir,
+      filters: searchFiltersForUrl(parseSearchFilters(search.filters)),
+      combine: parseSearchCombine(search.combine),
+    };
   },
-  loaderDeps: ({ search: { sort, dir } }) => ({ sort, dir }),
-  loader: ({ context: { queryClient }, deps: { sort, dir } }) =>
-    Promise.all([
+  loaderDeps: ({ search: { sort, dir, filters, combine } }) => ({
+    sort,
+    dir,
+    filters,
+    combine,
+  }),
+  loader: ({
+    context: { queryClient },
+    deps: { sort, dir, filters, combine },
+  }) => {
+    const rules = parseSearchFilters(filters);
+    return Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(
-        searchPlayersQueryOptions(0, undefined, sort, dir),
+        searchPlayersQueryOptions(0, undefined, sort, dir, rules, combine),
       ),
-    ]),
+    ]);
+  },
   component: SearchPage,
 });
 
@@ -60,22 +84,33 @@ function PanelFallback() {
   );
 }
 
-type SearchFiltersProps = {
-  filters: FilterRule[];
-  filterCombine: FilterCombineMode;
-  onFiltersChange: (rules: FilterRule[]) => void;
-  onCombineChange: (combine: FilterCombineMode) => void;
-};
-
-function SearchPageContent({
-  filters,
-  filterCombine,
-  onFiltersChange,
-  onCombineChange,
-}: SearchFiltersProps) {
+function SearchPageContent() {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
-  const { sort, dir } = Route.useSearch();
+  const { sort, dir, filters: filterUrls, combine } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const filters = useMemo(() => parseSearchFilters(filterUrls), [filterUrls]);
+
+  const updateSearch = (
+    patch: Partial<{
+      sort: SearchSortField;
+      dir: SearchSortDir;
+      filters: FilterRule[];
+      combine: FilterCombineMode;
+    }>,
+  ) => {
+    void navigate({
+      search: (previous) => ({
+        sort: patch.sort ?? previous.sort,
+        dir: patch.dir ?? previous.dir,
+        filters:
+          patch.filters !== undefined
+            ? searchFiltersForUrl(patch.filters)
+            : previous.filters,
+        combine: patch.combine ?? previous.combine,
+      }),
+      replace: true,
+    });
+  };
 
   if (!snapshot) {
     return (
@@ -92,21 +127,22 @@ function SearchPageContent({
     <>
       <SearchFilterBar
         rules={filters}
-        combine={filterCombine}
-        onRulesChange={onFiltersChange}
-        onCombineChange={onCombineChange}
+        combine={combine}
+        onRulesChange={(rules) => {
+          updateSearch({ filters: rules });
+        }}
+        onCombineChange={(nextCombine) => {
+          updateSearch({ combine: nextCombine });
+        }}
       />
       <Suspense fallback={<PanelFallback />}>
         <SearchResultsPanel
           sortBy={sort}
           sortDir={dir}
           filters={filters}
-          filterCombine={filterCombine}
+          filterCombine={combine}
           onSortChange={(nextSort, nextDir) => {
-            void navigate({
-              search: { sort: nextSort, dir: nextDir },
-              replace: true,
-            });
+            updateSearch({ sort: nextSort, dir: nextDir });
           }}
         />
       </Suspense>
@@ -115,19 +151,11 @@ function SearchPageContent({
 }
 
 function SearchPage() {
-  const [filters, setFilters] = useState<FilterRule[]>([]);
-  const [filterCombine, setFilterCombine] = useState<FilterCombineMode>("and");
-
   return (
     <div className="space-y-gutter">
       <h1 className="text-headline-lg text-on-surface">Search</h1>
       <Suspense fallback={<PanelFallback />}>
-        <SearchPageContent
-          filters={filters}
-          filterCombine={filterCombine}
-          onFiltersChange={setFilters}
-          onCombineChange={setFilterCombine}
-        />
+        <SearchPageContent />
       </Suspense>
     </div>
   );

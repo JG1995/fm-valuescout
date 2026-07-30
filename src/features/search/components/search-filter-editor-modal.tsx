@@ -15,6 +15,7 @@ import {
   FILTER_FIELDS,
   getFilterField,
 } from "../utils/filter-registry";
+import { capFilterRules, MAX_FILTER_RULES } from "../utils/search-url-search";
 
 type SearchFilterEditorModalProps = {
   open: boolean;
@@ -166,8 +167,13 @@ export function SearchFilterEditorModal({
   onRulesChange,
   onCombineChange,
 }: SearchFilterEditorModalProps) {
+  const atCap = rules.length >= MAX_FILTER_RULES;
+
   const addRule = () => {
-    onRulesChange([...rules, createDefaultFilterRule()]);
+    if (atCap) {
+      return;
+    }
+    onRulesChange(capFilterRules([...rules, createDefaultFilterRule()]));
   };
 
   return (
@@ -231,7 +237,7 @@ export function SearchFilterEditorModal({
           )}
         </div>
 
-        <Button variant="secondary" onClick={addRule}>
+        <Button variant="secondary" onClick={addRule} disabled={atCap}>
           Add filter
         </Button>
       </div>

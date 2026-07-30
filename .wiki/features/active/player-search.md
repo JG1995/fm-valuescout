@@ -219,7 +219,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 3 — Persist filters in URL search params
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Encode/decode filter rules, combine mode, and sort into TanStack Router validated search params so reload and back/forward restore the view. Cap rule count in Rust and UI.
 
