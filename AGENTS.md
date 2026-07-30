@@ -211,6 +211,6 @@ Follow `.wiki/INDEX.md` for documentation ownership. Trivial changes normally ne
 
 The Documentation Steward may change documentation and feature-ledger state, but must not change implementation, tests, executable scripts, CI, Cursor configuration, agent definitions, command templates, or Git state.
 
-The main session is the `worker`. Dispatch specialist agents explicitly. Do not route them automatically. See `.cursor/README.md` for role selection and MCP details.
+The main session is the `worker`. Dispatch specialist agents explicitly. Do not route them automatically. See `.cursor/README.md` for role selection and MCP details. When dispatching `reviewer` or `documentation-steward` via Task, **never** pass `model` — use only the pin in that agent's frontmatter (`.cursor/agents/reviewer.md` / `documentation-steward.md`). No exceptions.
 
 When you need current library API or configuration details, use Context7 MCP (`resolve-library-id`, then `query-docs`). Use `WebSearch` and `WebFetch` for bounded external research. Recallium is configured in `.cursor/mcp.json`. Never put credentials in repository files.

@@ -4,10 +4,13 @@ description: Review staged changes or a complete feature — functional bugs, ru
 
 ## Specialist dispatch
 
-When the Task tool is available, dispatch the `reviewer` agent:
+When the Task tool is available, dispatch the `reviewer` agent.
+
+**Model:** Always use the pin in `.cursor/agents/reviewer.md` frontmatter. **Never** pass Task `model`. No exceptions.
 
     Task({
       subagent_type: "reviewer",
+      // do not pass model — reviewer.md frontmatter owns it
       prompt: "Review following .cursor/agents/reviewer.md and AGENTS.md. Search Recallium per .cursor/rules/recallium.mdc when wiki/Git do not explain prior decisions relevant to the review. Mode: ${ARGUMENTS:-commit review on staged changes}. Read .cursor/skills/coding-standards/SKILL.md, coding-standards/references/universal.md, and coding-standards/references/testing.md when diff includes tests, plus matching stack refs. Read other matching .cursor/skills/. Return the full Review verdict with CRITICAL/HIGH/MEDIUM/NITPICK tiers. Do not fix anything — report only.",
       description: "Review changes",
     })

@@ -90,7 +90,11 @@ Structural planning uses **`/plan-feature`** and **`.wiki/ARCHITECTURE.md`**, pl
 
 Cursor's built-in `explore` subagent handles fast codebase search automatically or via Task — no project file.
 
-Dispatch project agents explicitly via the Task tool (`subagent_type: "reviewer"` or `"documentation-steward"`) or by asking Cursor to use the named agent. Do **not** pass Task `model` — the agent frontmatter pins the model. The main session is the **worker** — routine implementation and validation. No automatic role routing.
+Dispatch project agents explicitly via the Task tool (`subagent_type: "reviewer"` or `"documentation-steward"`) or by asking Cursor to use the named agent.
+
+**Pinned models — no overrides:** Each agent file's `model` frontmatter is the only allowed model for that agent. **Never** pass Task `model` when dispatching `reviewer` or `documentation-steward` — not the parent session model, not a faster alternative, not a model preferred elsewhere in the chat. No exceptions. Change a fleet default by editing the agent frontmatter only.
+
+The main session is the **worker** — routine implementation and validation. No automatic role routing.
 
 Manual fallback: read the agent file and follow its instructions in the current session, or use the matching command (`/review`, `/docs-review`).
 

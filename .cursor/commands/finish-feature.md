@@ -87,10 +87,13 @@ Report pass/fail for each step. A failing gate or test suite blocks moving to re
 
 Require a **separate** reviewer pass — not self-review of implementation you wrote in this turn.
 
+**Model:** Always use the pin in `.cursor/agents/reviewer.md` frontmatter. **Never** pass Task `model`. No exceptions.
+
 Dispatch via Task when available:
 
     Task({
       subagent_type: "reviewer",
+      // do not pass model — reviewer.md frontmatter owns it
       prompt: "Feature-complete review per .cursor/agents/reviewer.md — mode: feature-complete. Comparison base: <base>. Feature: <name>. Search Recallium per .cursor/rules/recallium.mdc when wiki/Git do not explain prior decisions relevant to the feature. Read active ledger, planned spec, and git diff <base>...HEAD. Judge the implemented feature as a whole against intent, user-visible behaviour, invariants, and delivery plan. Return full Review verdict with CRITICAL/HIGH/MEDIUM/NITPICK. Do not fix anything — report only.",
       description: "Feature-complete review",
     })
@@ -105,10 +108,13 @@ Or run `/review` in a separate read-only chat with the same mode and scope.
 
 Only when **Blocking: No** on the feature-complete verdict, or the developer has **explicitly approved** proceeding with blocking findings recorded:
 
-Run **`/docs-review`** as a foreground Documentation Steward pass scoped to this feature:
+Run **`/docs-review`** as a foreground Documentation Steward pass scoped to this feature.
+
+**Model:** Always use the pin in `.cursor/agents/documentation-steward.md` frontmatter. **Never** pass Task `model`. No exceptions.
 
     Task({
       subagent_type: "documentation-steward",
+      // do not pass model — documentation-steward.md frontmatter owns it
       prompt: "Feature completion reconciliation per .cursor/agents/documentation-steward.md and AGENTS.md. Search Recallium per .cursor/rules/recallium.mdc when prior decisions affect reconciliation. Feature: <name>. Reconcile durable documentation with implemented state; condense and move the active ledger to features/completed/; update ARCHITECTURE.md, TODO.md, and INDEX-owned docs as needed. ${ARGUMENTS}",
       description: "Reconcile documentation",
     })

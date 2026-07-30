@@ -18,10 +18,13 @@ Broad wiki reconciliation belongs here or in `/finish-feature`, not after every 
 
 ## Documentation Steward dispatch
 
-When the Task tool is available, dispatch the `documentation-steward` agent in the foreground:
+When the Task tool is available, dispatch the `documentation-steward` agent in the foreground.
+
+**Model:** Always use the pin in `.cursor/agents/documentation-steward.md` frontmatter. **Never** pass Task `model`. No exceptions.
 
     Task({
       subagent_type: "documentation-steward",
+      // do not pass model — documentation-steward.md frontmatter owns it
       prompt: "Reconcile documentation following .cursor/agents/documentation-steward.md and AGENTS.md. Search Recallium per .cursor/rules/recallium.mdc when prior decisions affect reconciliation and are not in wiki or Git. Context: ${ARGUMENTS:-feature completion for the active ledger}. Use feature branch diff or implementation evidence — not staged-only unless the scope is a single pending commit. When feature completion: condense and move the active ledger to features/completed/; update ARCHITECTURE.md, TODO.md, and INDEX-owned docs per ownership rules.",
       description: "Reconcile documentation",
     })
