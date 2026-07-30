@@ -150,7 +150,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 3 — Combined IP and OOP score helper
 
-**Status:** Active
+**Status:** Completed — `d81fea0`
 
 **Work:** Pure `combine_role_scores(ip, oop, ip_weight)` (oop weight = `1 - ip_weight`), default weight `0.5`. Null if either input score is null or weight out of `[0, 1]`. Tests for 50/50, custom weights, null propagation.
 
@@ -163,7 +163,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 4 — Score table migration and ingest write path
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Migration v3: `player_role_scores` keyed by `(snapshot_id, uid, role_id)` with `phase` and nullable `score`. On snapshot ingest, after players insert, compute all catalog roles per player and insert scores in the same transaction (or clearly bounded follow-on inside the ingest transaction). Cascade delete with snapshot. Ponytail comment if batching is simplified: upgrade to lazy/on-demand scoring if ingest scoring time becomes a Load Data bottleneck (measure in tests or manual note).
 
@@ -191,19 +191,19 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 **PR:** 1 — Role scoring on ingest
 
-**Commit:** Combined IP and OOP score helper
+**Commit:** Score table migration and ingest write path
 
 ### RED test (active commit)
 
-Assert `combine_role_scores` returns the weighted average for known IP/OOP inputs, default 50/50, and returns `None` when either input is null or weight is out of `[0, 1]` — fails because the combine helper does not exist.
+Assert ingest writes `player_role_scores` rows for golden fixture players and expected catalog roles — fails because migration v3 and ingest scoring path do not exist.
 
 ### Expected outcome
 
-Pure `combine_role_scores` in `features/scoring` with unit tests for 50/50, custom weights, and null propagation; no persistence, ingest, or UI.
+Migration v3 `player_role_scores` table; ingest computes and persists all catalog role scores per player in the ingest transaction; golden-player fixture tests assert expected scores.
 
 ### Explicit exclusions
 
-Persisting weights, planner UI, IPC for combine, SQLite ingest, React.
+React UI, combine IPC, weight settings, sanity-list proof column.
 
 ## Discoveries and replanning
 
@@ -218,6 +218,7 @@ Persisting weights, planner UI, IPC for combine, SQLite ingest, React.
 | --- | --- | --- | --- |
 | 1 | Role catalog with primary and secondary attributes | `0b08dd1` | 68 roles; SortItOutSI Key/Preferred; disjoint bands |
 | 1 | Per-role 0–100 score function | `f504dcf` | `score_role`; 75/25 blend; null → None |
+| 1 | Combined IP and OOP score helper | `d81fea0` | `combine_role_scores`; `DEFAULT_IP_WEIGHT` 0.5 |
 
 ## Final validation
 
