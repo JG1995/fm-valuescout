@@ -142,7 +142,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 1 — Paged player list IPC
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `889aed7`
 
 **Work:** Add Rust `features/search` with `search_players`: active current snapshot; page of basic summary DTOs + `uid` + `total`; `offset`/`limit` with server-side cap; default order CA descending; empty when no snapshot. Parameterized SQL. Unit tests.
 
@@ -155,7 +155,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 2 — Search route and virtualized table
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** `/search` route, nav **Search**, Query wiring, TanStack Virtual table, basic columns, loading / no-snapshot / empty states. Invalidate on save switch / Load Data. Smoke stub for the new IPC.
 
@@ -286,21 +286,21 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 **PR:** 1 — Search page with paged player list
 
-**Commit:** Paged player list IPC
+**Commit:** Search route and virtualized table
 
 ### RED test (active commit)
 
-Assert `search_players` against a migrated temp DB with an ingested snapshot returns a page ordered by CA descending with basic summary fields and a correct `total`, and returns an empty page when the active save has no current snapshot.
+Assert the Search route renders in the nav, loads a virtualized page of basic columns via `search_players` mockIPC, and shows the no-snapshot empty state when the current snapshot is absent.
 
-**Wrong behaviour caught:** list commands that ignore the active snapshot, return unsorted or wrong-snapshot rows, or blow the limit cap.
+**Wrong behaviour caught:** Search missing from the shell, table that materializes every row, or Query that never hits the paged IPC.
 
 ### Expected outcome
 
-Rust `features/search` registered; windowed list IPC covered by unit tests; no React Search UI yet.
+`/search` in the rail with a virtualized basic-column table wired to the paged IPC; smoke stubs the new command.
 
 ### Explicit exclusions
 
-React route, filters, virtualization, sort whitelist UI, global search, migrations unless strictly required for the list query.
+Filters, sorting UI beyond default CA order from IPC, global search, row navigation.
 
 ## Discoveries and replanning
 
@@ -311,7 +311,7 @@ React route, filters, virtualization, sort whitelist UI, global search, migratio
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
-| — | — | — | — |
+| 1 | Paged player list IPC | `889aed7` | `search_players` windowed IPC; CA desc; limit cap; active-save isolation |
 
 ## Final validation
 
