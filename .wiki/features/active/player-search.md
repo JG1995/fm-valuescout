@@ -232,7 +232,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 4 — Attribute and multi-value filters
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `ab97626`
 
 **Work:** Extend registry/SQL for attribute maps (`json_extract`), nationalities list match, position presence/suitability. Indexes only if profiling shows need. Timed note on large fixture; optional `/spike` if query cost is unacceptable.
 
@@ -245,7 +245,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 5 — Role-score filters and dynamic columns
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Filter by catalog role score; return values for dynamic columns; UI shows basic columns plus columns for active non-basic filter fields. Sort on visible dynamic columns when practical. Reconcile DESIGN.md Search filter/nav notes to compact strip + modal + operators.
 
@@ -286,27 +286,27 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 **PR:** 2 — Filters, dynamic columns, and global search
 
-**Commit:** Attribute and multi-value filters
+**Commit:** Role-score filters and dynamic columns
 
 ### RED test (active commit)
 
-Extend registry/SQL for attribute maps (`json_extract`), nationalities list match, position presence/suitability. Indexes only if profiling shows need. Timed note on large fixture; optional `/spike` if query cost is unacceptable.
+Filter by catalog role score; return values for dynamic columns; UI shows basic columns plus columns for active non-basic filter fields. Sort on visible dynamic columns when practical. Reconcile DESIGN.md Search filter/nav notes to compact strip + modal + operators.
 
-**Wrong behaviour caught:** Attribute / nationality / position filters ignored or wrong SQL at the trust boundary.
+**Wrong behaviour caught:** Role filters ignored or wrong join; dynamic columns missing for active non-basic fields.
 
 ### Expected outcome
 
-Scalar-plus deep filters for attributes, nationalities, and positions compile and match in Rust tests.
+Role-score filters and dynamic columns for active filter fields work end-to-end.
 
 ### Explicit exclusions
 
-Role scores; dynamic column UI.
+One column per role by default; profile role grid; global search.
 
 ## Discoveries and replanning
 
 - Planning 2026-07-30: product choices locked (Search label; operator filters; compact strip + modal; filter depth D including role scores; dynamic columns; AND/OR; sortable default CA; row no-op; Ctrl+K global search). DESIGN inspector/slider filter spec deferred/superseded for this feature.
 - Replanned 2026-07-30: first condensation over-merged commits (2 PRs / 5 commits). Corrected to **2 PRs / 10 commits** — keep original atomic commit breakpoints; only reduce PR count from 4 to 2.
-- 2026-07-30 PR2 Commit 4: deep filters use field ids `attr.*` / `hidden.*` / `personality.*` / `nationality` / `position` / `pos.*`. Attribute filter on a 2k-player fixture stayed under 500ms with `json_extract` (no extra indexes). Spike/index only if full-snapshot p95 exceeds ~200ms.
+- 2026-07-30 PR2 Commit 4: deep filters use field ids `attr.*` / `hidden.*` / `personality.*` / `nationality` / `position` / `pos.*`. Position presence is exact key match (`is`/`is_not`); never substring LIKE. Attribute filter on a 2k-player fixture stayed under 500ms with `json_extract` (no extra indexes). Spike/index only if full-snapshot p95 exceeds ~200ms.
 
 ## Completed work
 
@@ -317,6 +317,7 @@ Role scores; dynamic column UI.
 | 2 | Filter AST and scalar SQL builder | `183de74` | Filter AST + scalar/bool/enum registry; parameterized WHERE; search_players filters IPC |
 | 2 | Compact filter bar and editor modal | `45293c3` | Modal primitive; compact strip + editor; immediate apply via Query/IPC; filter-aware mock |
 | 2 | Persist filters in URL search params | `9ba8886` | Validated search params for filters/combine/sort; UI+Rust rule cap 32 |
+| 2 | Attribute and multi-value filters | `ab97626` | `json_extract` attrs/hidden/personality; nationality `json_each`; position presence/suitability |
 
 ## Final validation
 
