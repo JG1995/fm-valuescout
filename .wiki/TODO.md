@@ -14,7 +14,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 | --- | --- | --- | --- | --- |
 | 1 | FM26 memory read | [Completed](./features/completed/fm26-memory-read.md) | medium | Foundation — live dump from FM; **done** |
 | 2 | Snapshot ingest + Load Data | [Completed](./features/completed/snapshot-ingest.md) | medium-high | Persist dumps to SQLite; multi-save; Load Data = scan+ingest — **done** |
-| 2a | Bridge scan performance | [Active](./features/active/bridge-scan-performance.md) | medium-high | Remove the scalar heap-read bottleneck and validate complete snapshots before scoring adds more ingest work |
+| 2a | Bridge scan performance | [Completed](./features/completed/bridge-scan-performance.md) | medium-high | Block heap scanning, streaming dump, optimized ingest, unlimited default, UI cap controls — **done** |
 | 3 | Role scoring engine | CONCEPT | medium | One scoring model on ingest; FM role-relevant attributes + custom algorithm |
 | 4 | Player search | CONCEPT | high | First full UI value path after Load Data; validates DB and scores |
 | 5 | Player profiles | CONCEPT | high | Detail view from search; traditional scouting path |
@@ -52,18 +52,19 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Bridge scan performance](./features/active/bridge-scan-performance.md) — optimize safe memory reads, scale dump/ingest, enable unlimited loads via request-scoped `maxAccepted`, then add UI toggleable/configurable caps
+_None._
 
 ## Plan next
 
-_None — finish the active bridge scan performance work before planning another feature._
+Role scoring engine (order 3) — scores computed on ingest from FM role-relevant attributes.
 
 ## Next
 
-Role scoring engine (order 3) — scores computed on ingest from FM role-relevant attributes.
+Player search (order 4) — first full UI value path after Load Data; validates DB and scores.
 
 ## Completed
 
 - [FM26 memory read](./features/completed/fm26-memory-read.md) — BepInEx bridge, file protocol, dump schema v5, Rust validation, bridge status + Load Data UI
 - [In-app bridge plugin install](./features/completed/bridge-plugin-install.md) — install / update / remove `FmDataBridge.dll` for default Steam FM26 from the app
 - [Snapshot ingest + Load Data](./features/completed/snapshot-ingest.md) — app save slots, current snapshot ingest, Load Data scan+ingest, sanity list
+- [Bridge scan performance](./features/completed/bridge-scan-performance.md) — block heap scanning, streaming dump, optimized ingest, unlimited Load Data default, UI cap controls and timings
