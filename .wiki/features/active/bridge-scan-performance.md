@@ -105,7 +105,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 ### PR 1 — Replace scalar heap reads with block scanning
 
-**Status:** Implementation complete — awaiting live capped validation before merge
+**Status:** Ready to merge — capped live path validated (`totalMs=6700`)
 
 **Provisional PR title:** `perf(bridge): replace scalar heap reads with block scanning`
 
@@ -266,6 +266,13 @@ Player extraction reads contiguous field ranges into reusable buffers and decode
   - `processMemoryCalls=171533882`, `processMemoryRequestedBytes=1355448581` (~1.26 GiB requested)
   - `bytesScanned=1302961856` (~1.21 GiB), `vtableHits=4344871`, `regionCount=2166`
   - Confirms the plan thesis: candidate discovery + scalar heap reads are the bottleneck; post-discovery phases are already sub-second at the 500-player cap. PR 1 success criterion remains capped path `<10s` after block scanning.
+- **Post-block-scan live validation** (2026-07-30, FM 26.3.2, `maxAccepted=500`, `stoppedEarly=true`, build with Commit 3 block scanner). Full paste: `.cursor/work/baselines/2026-07-30-capped-500-post-blockscan-diagnostics.txt`.
+  - `regionEnumerationMs=40`
+  - `candidateDiscoveryMs=6480` (~6.5s) — still dominates `totalMs=6700`
+  - `extractionMs=47`, `clubIndexingMs=94`, `dumpWritingMs=22`
+  - `processMemoryCalls=1238027` (~139× fewer than pre-scan), `processMemoryRequestedBytes=1546632333` (~1.44 GiB)
+  - `bytesScanned=1538692064` (~1.43 GiB), `vtableHits=5297686`, `regionCount=2108`
+  - Meets PR 1 capped budget (`totalMs=6700` and discovery well under 10s). No parallel workers needed for the capped path. Sample players decode sanely; extraction/club/dump remain sub-second.
 - Commit 2: failed-block subdivision splits must align to `MinBlockReadSize` (page size). When `length/2` rounds below one page, split at `MinBlockReadSize` instead of an unaligned midpoint so mid-gap starts cannot miss a later accessible page.
 - Commit 2: `TryReadBlock` `bytesRead` is a success count, not a contiguous prefix after hole recovery. Commit 3 must scan the full requested length (cleared gaps stay zero), not `buffer[0..bytesRead)`.
 - Commit 3: heap discovery uses `MemoryConstants.DefaultScanBlockSize` (32 MiB) with 16-byte overlap; UID is read from the block buffer; vtable→class-offset results are cached for the scan (including negative 0). CA/PA remain scalar until PR 2 extraction batching.
@@ -277,7 +284,7 @@ Player extraction reads contiguous field ranges into reusable buffers and decode
 | --- | --- | --- | --- |
 | 1 | Add scan phase performance diagnostics | `b2c8663` | Phase ms + process-memory call/byte counts in diagnostics.txt |
 | 1 | Add reusable block memory reads | `6f299da` | `TryReadBlock` + page-aligned failed-block subdivision |
-| 1 | Scan heap regions from reusable blocks | `648b81f` | Block walk + in-buffer UID + vtable offset cache; live `<10s` validation still required for PR 1 merge |
+| 1 | Scan heap regions from reusable blocks | `648b81f` | Block walk + in-buffer UID + vtable offset cache; live capped path `totalMs=6700` (~11× faster than pre-scan) |
 
 ## Final validation
 
