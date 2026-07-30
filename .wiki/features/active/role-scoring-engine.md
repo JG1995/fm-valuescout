@@ -163,7 +163,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 4 — Score table migration and ingest write path
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `00d1e80`
 
 **Work:** Migration v3: `player_role_scores` keyed by `(snapshot_id, uid, role_id)` with `phase` and nullable `score`. On snapshot ingest, after players insert, compute all catalog roles per player and insert scores in the same transaction (or clearly bounded follow-on inside the ingest transaction). Cascade delete with snapshot. Ponytail comment if batching is simplified: upgrade to lazy/on-demand scoring if ingest scoring time becomes a Load Data bottleneck (measure in tests or manual note).
 
@@ -176,7 +176,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 5 — Sanity-list score proof
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Extend sanity player DTO/query with one proof field (fixed sample role score, e.g. a stable catalog id, or “scores present” count). Update React sanity table and Playwright/Vitest stubs. No score browser.
 
@@ -191,19 +191,19 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 **PR:** 1 — Role scoring on ingest
 
-**Commit:** Score table migration and ingest write path
+**Commit:** Sanity-list score proof
 
 ### RED test (active commit)
 
-Assert ingest writes `player_role_scores` rows for golden fixture players and expected catalog roles — fails because migration v3 and ingest scoring path do not exist.
+Assert sanity list IPC / UI exposes one sample role score (or scores-present proof) for an ingested player — fails because query DTO and React column do not exist.
 
 ### Expected outcome
 
-Migration v3 `player_role_scores` table; ingest computes and persists all catalog role scores per player in the ingest transaction; golden-player fixture tests assert expected scores.
+Sanity player DTO includes one proof score field; React sanity table and smoke/Vitest stubs show it.
 
 ### Explicit exclusions
 
-React UI, combine IPC, weight settings, sanity-list proof column.
+Search filters, profile role grid, weight UI, full role browser.
 
 ## Discoveries and replanning
 
@@ -220,6 +220,7 @@ React UI, combine IPC, weight settings, sanity-list proof column.
 | 1 | Role catalog with primary and secondary attributes | `0b08dd1` | 68 roles; SortItOutSI Key/Preferred; disjoint bands |
 | 1 | Per-role 0–100 score function | `f504dcf` | `score_role`; 75/25 blend; null → None |
 | 1 | Combined IP and OOP score helper | `d81fea0` | `combine_role_scores`; `DEFAULT_IP_WEIGHT` 0.5 |
+| 1 | Score table migration and ingest write path | `00d1e80` | v3 `player_role_scores`; scores on ingest |
 
 ## Final validation
 
