@@ -245,7 +245,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 5 — Role-score filters and dynamic columns
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `92a0049`
 
 **Work:** Filter by catalog role score; return values for dynamic columns; UI shows basic columns plus columns for active non-basic filter fields. Sort on visible dynamic columns when practical. Reconcile DESIGN.md Search filter/nav notes to compact strip + modal + operators.
 
@@ -258,7 +258,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 6 — Ranked name suggest IPC
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** `suggest_players` (or equivalent): query string → limited rows from current snapshot; order by match tier (exact → prefix → contains) then CA desc; parameterized `LIKE`. Empty query → empty list.
 
@@ -286,21 +286,21 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 **PR:** 2 — Filters, dynamic columns, and global search
 
-**Commit:** Role-score filters and dynamic columns
+**Commit:** Ranked name suggest IPC
 
 ### RED test (active commit)
 
-Filter by catalog role score; return values for dynamic columns; UI shows basic columns plus columns for active non-basic filter fields. Sort on visible dynamic columns when practical. Reconcile DESIGN.md Search filter/nav notes to compact strip + modal + operators.
+`suggest_players` (or equivalent): query string → limited rows from current snapshot; order by match tier (exact → prefix → contains) then CA desc; parameterized `LIKE`. Empty query → empty list.
 
-**Wrong behaviour caught:** Role filters ignored or wrong join; dynamic columns missing for active non-basic fields.
+**Wrong behaviour caught:** Empty query returns rows; ranking ignores exact/prefix tiers or CA tie-break.
 
 ### Expected outcome
 
-Role-score filters and dynamic columns for active filter fields work end-to-end.
+Ranked name suggest IPC returns ordered, capped rows for the current snapshot.
 
 ### Explicit exclusions
 
-One column per role by default; profile role grid; global search.
+Full filter AST in suggest; React top-bar UI; fuzzy/typo tolerance.
 
 ## Discoveries and replanning
 
@@ -319,6 +319,7 @@ One column per role by default; profile role grid; global search.
 | 2 | Compact filter bar and editor modal | `45293c3` | Modal primitive; compact strip + editor; immediate apply via Query/IPC; filter-aware mock |
 | 2 | Persist filters in URL search params | `9ba8886` | Validated search params for filters/combine/sort; UI+Rust rule cap 32 |
 | 2 | Attribute and multi-value filters | `ab97626` | `json_extract` attrs/hidden/personality; nationality `json_each`; position presence/suitability |
+| 2 | Role-score filters and dynamic columns | `92a0049` | `role.*` EXISTS on `player_role_scores`; `dynamicValues`; UI dynamic columns; DESIGN strip/modal |
 
 ## Final validation
 
