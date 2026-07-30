@@ -206,7 +206,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 2 — Compact filter bar and editor modal
 
-**Status:** Active
+**Status:** Completed — `45293c3`
 
 **Work:** Shared Modal primitive per DESIGN. Compact strip: tags, clear all, open editor. Modal: add/remove rules, field/operator/value, AND/OR toggle. Wire to search query. Immediate apply.
 
@@ -219,7 +219,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 3 — Persist filters in URL search params
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Encode/decode filter rules, combine mode, and sort into TanStack Router validated search params so reload and back/forward restore the view. Cap rule count in Rust and UI.
 
@@ -286,21 +286,21 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 **PR:** 2 — Filters, dynamic columns, and global search
 
-**Commit:** Compact filter bar and editor modal
+**Commit:** Persist filters in URL search params
 
 ### RED test (active commit)
 
-Assert compact filter strip renders active rules as removable tags, opens editor modal, and applies rules immediately via `search_players` mockIPC.
+Encode/decode filter rules, combine mode, and sort into TanStack Router validated search params so reload and back/forward restore the view. Cap rule count in Rust and UI.
 
-**Wrong behaviour caught:** Filters only in modal without strip tags, or deferred Apply button instead of immediate apply.
+**Wrong behaviour caught:** Filters lost on reload or browser back despite active rules in the strip.
 
 ### Expected outcome
 
-Shared Modal primitive; compact strip + editor modal wired to search query (no URL persistence yet).
+URL search params carry filters, combine mode, and sort; navigation restores the view.
 
 ### Explicit exclusions
 
-Deep field types beyond commit 1 registry; URL persistence (next commit).
+Deep field types; shareable deep-links as a product promise beyond surviving reload.
 
 ## Discoveries and replanning
 
@@ -314,6 +314,7 @@ Deep field types beyond commit 1 registry; URL persistence (next commit).
 | 1 | Paged player list IPC | `889aed7` | `search_players` windowed IPC; CA desc; limit cap; active-save isolation |
 | 1 | Search route and virtualized table | `bbec416` | `/search` + nav; TanStack Virtual; invalidate on save/Load Data; smoke stub |
 | 2 | Filter AST and scalar SQL builder | `183de74` | Filter AST + scalar/bool/enum registry; parameterized WHERE; search_players filters IPC |
+| 2 | Compact filter bar and editor modal | `45293c3` | Modal primitive; compact strip + editor; immediate apply via Query/IPC; filter-aware mock |
 
 ## Final validation
 
