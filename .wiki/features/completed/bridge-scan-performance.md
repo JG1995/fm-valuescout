@@ -62,6 +62,6 @@ IPC load_data(maxAccepted?)
 
 ## Follow-up
 
-- **Next feature:** [Role scoring engine](../../TODO.md) (order 3).
+- **Delivered downstream:** [Role scoring engine](./role-scoring-engine.md) (order 3).
 - **BACKLOG:** snapshot history per save; in-app bridge DLL build-before-copy.
 - **Repin:** FM patches may require layout updates; scan performance does not remove fail-closed version checks.

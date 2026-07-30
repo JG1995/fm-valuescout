@@ -27,6 +27,7 @@ type PlayerSanityRow = {
   name: string;
   ca: number;
   club: string | null;
+  proofRoleScore: number | null;
 };
 
 type LoadDataTimings = {
@@ -60,9 +61,9 @@ const DEFAULT_SAVE: SaveSummary = {
 };
 
 const SAMPLE_PLAYERS: PlayerSanityRow[] = [
-  { name: "Alex Morgan", ca: 165, club: "Metro FC" },
-  { name: "Jordan Lee", ca: 142, club: "Riverside United" },
-  { name: "Sam Rivera", ca: 178, club: null },
+  { name: "Alex Morgan", ca: 165, club: "Metro FC", proofRoleScore: 72 },
+  { name: "Jordan Lee", ca: 142, club: "Riverside United", proofRoleScore: 58 },
+  { name: "Sam Rivera", ca: 178, club: null, proofRoleScore: 81 },
 ];
 
 let saves: SaveSummary[] = [{ ...DEFAULT_SAVE }];
@@ -287,7 +288,7 @@ export function resolveLoadDataIpcMock(
   });
 
   const players = truncated
-    ? [{ name: "Capped Player", ca: 150, club: "Cap City" }]
+    ? [{ name: "Capped Player", ca: 150, club: "Cap City", proofRoleScore: 65 }]
     : [...SAMPLE_PLAYERS];
 
   snapshotsBySaveId.set(activeSave().id, {

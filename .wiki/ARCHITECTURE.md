@@ -12,7 +12,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 ## 1. Top-Level Shape
 
-**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), and **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)).
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), and **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)).
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 
@@ -36,11 +36,13 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
-**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migration v2: `saves`, `snapshots`, `players`).
+**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v3: `saves`, `snapshots`, `players`, `player_role_scores`).
 
 **FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), `status.json` / `dump.json` / diagnostics with phase timings. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
 **Snapshot ingest:** Rust `features/snapshot` owns save slots, transactional ingest from `dump.json`, and query IPC; React `features/snapshot` owns the save switcher, snapshot overview, and sanity list. `load_data` captures `active_save_id` under a brief Db lock, runs the bridge scan without holding the Db mutex, then ingests via `ingest_dump_file_for_save` with the captured id. See [snapshot-ingest](./features/completed/snapshot-ingest.md).
+
+**Role scoring:** Rust `features/scoring` owns a static FM26 IP/OOP catalog (68 roles), `score_role`, and `combine_role_scores`. During snapshot ingest, `features/snapshot` computes and persists all role scores in the same transaction. See [role-scoring-engine](./features/completed/role-scoring-engine.md).
 
 **Auth:** None in the template default — chosen per fork via `/stack`
 
@@ -408,7 +410,7 @@ User clicks Load Data (AppTopBar)
   → On scan failure: LoadDataError { phase: "scan", kind, message }; prior snapshot unchanged
   → On scan success: lock Db → load_data_after_scan → ingest::ingest_dump_file_for_save(save_id, dump path)
       validate_dump_json (memory_read::dump_validation) — hard-fail before insert
-      Transaction: insert new snapshot + players, promote to current, delete prior current
+      Transaction: insert new snapshot + players + player_role_scores, promote to current, delete prior current
       On ingest failure: roll back; prior current snapshot remains
   → Returns LoadDataResult { requestId, playersFound, scanTruncated, maxAccepted, snapshot,
       timings: { scanMs, ingestMs, totalMs } }
@@ -417,13 +419,14 @@ User clicks Load Data (AppTopBar)
   → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
 
-**Saves model** (migration v2, `src-tauri/src/db/migrations.rs`):
+**Saves model** (migrations v2–v3, `src-tauri/src/db/migrations.rs`):
 
 | Table | Role |
 | --- | --- |
 | `saves` | App-side game save slots (not FM save files). Exactly one row has `is_active = 1` (partial unique index). Default save created when the DB has none. |
 | `snapshots` | One **current** snapshot per save (`is_current = 1`, partial unique index per `save_id`). Stores dump metadata: schema/game/bridge versions, `game_date`, `scan_truncated`, `max_accepted`, `player_count`, `loaded_at_utc`. Snapshot **history** is out of scope — schema allows future rows. |
 | `players` | Rows keyed by `(snapshot_id, uid)`. Scalars for list/search foundations; attribute maps and arrays as JSON text columns. `null` in dump JSON means unknown — never coerced to 0 on ingest. |
+| `player_role_scores` | Per-player role-fit scores keyed by `(snapshot_id, uid, role_id)` with `phase` (`in_possession` \| `out_of_possession`) and nullable integer `score` (0–100). FK to `players` with `ON DELETE CASCADE`. Index on `(snapshot_id, role_id)` for role-filtered queries. |
 
 **Query and save-management IPC** (`features/snapshot/commands.rs`):
 
@@ -440,14 +443,37 @@ Snapshot freshness (AppTopBar SnapshotFreshnessChip)
 
 Snapshot overview + sanity list
   → get_current_snapshot → active save’s current snapshot metadata (or null)
-  → list_sanity_players(limit ≤ 20) → name, ca, club for proof-of-ingest table
+  → list_sanity_players(limit ≤ 20) → name, ca, club, proofRoleScore (DLP IP — deep_lying_playmaker_ip)
 
 Route loader prefetches saves, current snapshot, and sanity list alongside health/demo queries.
 ```
 
 `request_player_dump` remains registered for tests and low-level scan-only use; the **Load Data** button in `AppTopBar` calls `load_data`.
 
-### 5.6 Bridge plugin install path
+### 5.6 Role scoring on ingest
+
+Role scores are computed in Rust during snapshot ingest — not in the WebView and not as a separate post-ingest job.
+
+```text
+ingest transaction (after insert_players):
+  → scoring::catalog::all_roles() — 68 static FM26 IP/OOP roles (SortItOutSI Key/Preferred; dump PascalCase keys)
+  → for each player: parse attributes_json → score_role per role
+      within-band equal means → 0.75 × primary + 0.25 × secondary (primary-only when no secondary list)
+      scale / 20 × 100 → rounded integer 0–100
+      any null required attribute → null score
+  → INSERT player_role_scores (one row per role × player)
+
+Pure helpers (no IPC yet):
+  → combine_role_scores(ip, oop, ip_weight) — default 0.5; null if either input null or weight ∉ [0, 1]
+
+Sanity proof:
+  → list_sanity_players LEFT JOINs role_id deep_lying_playmaker_ip as proofRoleScore
+  → React sanity table column "DLP IP"
+```
+
+Position suitability does not enter role scores. Combined IP/OOP weight persistence and UI are deferred to squad planner. Ponytail in `ingest.rs`: upgrade to lazy/on-demand or batched scoring if ingest scoring time dominates Load Data. Full-matrix 184k-player ingest test is `#[ignore]`; gate keeps a 2k scored ingest timing check.
+
+### 5.7 Bridge plugin install path
 
 ```text
 User opens home route
@@ -506,7 +532,7 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
 | Walking-skeleton UI with stubbed IPC: app shell (nav rail, top bar), status panels, demo-value form flow | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
-| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `load_data` | Capabilities ACL, plugin permissions, or menu/tray integration |
+| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
 | Bridge panel, save switcher, snapshot overview, plugin install section, top-bar save selector, and Load Data button render with stubbed IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, SQLite ingest, or Steam-folder DLL install |
 
 | Concern | Owner in this template |

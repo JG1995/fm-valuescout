@@ -6,11 +6,15 @@ use super::service::ensure_default_save;
 pub const DEFAULT_SANITY_LIMIT: usize = 20;
 pub const MAX_SANITY_LIMIT: usize = 20;
 
+/// Stable catalog role used as the sanity-list score proof column.
+pub const PROOF_ROLE_ID: &str = "deep_lying_playmaker_ip";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerSanityRow {
     pub name: String,
     pub ca: i64,
     pub club: Option<String>,
+    pub proof_role_score: Option<i32>,
 }
 
 pub fn get_current_snapshot(conn: &Connection) -> Result<Option<SnapshotSummary>, String> {
@@ -70,16 +74,23 @@ pub fn list_sanity_players(
 
     let mut stmt = conn
         .prepare(
-            "SELECT name, ca, current_club
-             FROM players
-             WHERE snapshot_id = ?1
-             ORDER BY name COLLATE NOCASE
+            "SELECT p.name, p.ca, p.current_club, prs.score
+             FROM players p
+             LEFT JOIN player_role_scores prs
+               ON prs.snapshot_id = p.snapshot_id
+              AND prs.uid = p.uid
+              AND prs.role_id = ?3
+             WHERE p.snapshot_id = ?1
+             ORDER BY p.name COLLATE NOCASE
              LIMIT ?2",
         )
         .map_err(|error| error.to_string())?;
 
     let players = stmt
-        .query_map(params![snapshot_id, limit], map_player_sanity_row)
+        .query_map(
+            params![snapshot_id, limit, PROOF_ROLE_ID],
+            map_player_sanity_row,
+        )
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
@@ -111,6 +122,7 @@ fn map_player_sanity_row(row: &Row<'_>) -> rusqlite::Result<PlayerSanityRow> {
         name: row.get(0)?,
         ca: row.get(1)?,
         club: row.get(2)?,
+        proof_role_score: row.get(3)?,
     })
 }
 
@@ -160,6 +172,32 @@ mod tests {
         assert!(!players.is_empty());
         assert!(players.len() <= 5);
         assert!(players.windows(2).all(|pair| pair[0].name <= pair[1].name));
+    }
+
+    #[test]
+    fn sanity_list_includes_proof_role_score_after_ingest() {
+        use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
+        use serde_json::{json, Value};
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("proof-role-score.db"));
+        let mut root: Value =
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v5.json"))
+                .expect("parse golden fixture");
+        let attributes: serde_json::Map<String, Value> = DUMP_ATTRIBUTE_KEYS
+            .iter()
+            .map(|key| (key.to_string(), json!(10)))
+            .collect();
+        root["players"][0]["attributes"] = Value::Object(attributes);
+
+        let dump_path = temp_dir.path().join("uniform.json");
+        std::fs::write(&dump_path, root.to_string()).expect("write dump");
+        ingest_dump_file(&mut conn, &dump_path).expect("ingest uniform dump");
+
+        let players = list_sanity_players(&conn, DEFAULT_SANITY_LIMIT).expect("list players");
+
+        assert_eq!(players.len(), 1);
+        assert_eq!(players[0].proof_role_score, Some(50));
     }
 
     #[test]

@@ -161,6 +161,7 @@ pub struct PlayerSanityRowDto {
     pub name: String,
     pub ca: i64,
     pub club: Option<String>,
+    pub proof_role_score: Option<i32>,
 }
 
 impl From<PlayerSanityRow> for PlayerSanityRowDto {
@@ -169,6 +170,7 @@ impl From<PlayerSanityRow> for PlayerSanityRowDto {
             name: row.name,
             ca: row.ca,
             club: row.club,
+            proof_role_score: row.proof_role_score,
         }
     }
 }
