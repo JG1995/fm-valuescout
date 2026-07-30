@@ -3,6 +3,8 @@ import {
   formatAbsoluteUtc,
   formatCount,
   formatMissable,
+  formatMoney,
+  formatPlayerDob,
   formatRelativeAge,
 } from "@/utils/format";
 
@@ -46,5 +48,27 @@ describe("formatCount and formatMissable", () => {
     expect(formatMissable(null)).toBe("—");
     expect(formatMissable("")).toBe("—");
     expect(formatMissable(0)).toBe(0);
+  });
+});
+
+describe("formatMoney", () => {
+  it.each([
+    [750, "€750"],
+    [900_000, "€900k"],
+    [12_500_000, "€12.5M"],
+    [120_000_000, "€120M"],
+  ])("renders %s as %s", (value, expected) => {
+    expect(formatMoney(value)).toBe(expected);
+  });
+});
+
+describe("formatPlayerDob", () => {
+  it("formats day-of-year with age", () => {
+    // 2001-03-21 is day-of-year 80 in a non-leap year.
+    expect(formatPlayerDob(2001, 80, 25)).toBe("21/03/2001 (25)");
+  });
+
+  it("omits age when unknown", () => {
+    expect(formatPlayerDob(2001, 80, null)).toBe("21/03/2001");
   });
 });

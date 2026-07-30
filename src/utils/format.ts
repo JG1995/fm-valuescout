@@ -56,3 +56,37 @@ export function formatCount(value: number): string {
 export function formatMissable(value: string | number | null | undefined) {
   return value === null || value === undefined || value === "" ? "—" : value;
 }
+
+/**
+ * Money per DESIGN.md — euro prefix, abbreviated by magnitude. Source values
+ * are GBP from FM; display currency follows the design system.
+ */
+export function formatMoney(value: number): string {
+  if (value < 1_000) {
+    return `€${value}`;
+  }
+  if (value < 1_000_000) {
+    return `€${Math.round(value / 1_000)}k`;
+  }
+  const millions = value / 1_000_000;
+  if (value < 100_000_000) {
+    const rounded = Math.round(millions * 10) / 10;
+    return Number.isInteger(rounded)
+      ? `€${rounded}M`
+      : `€${rounded.toFixed(1)}M`;
+  }
+  return `€${Math.round(millions)}M`;
+}
+
+/** Birth date from FM day-of-year, with optional age: `21/03/2001 (25)`. */
+export function formatPlayerDob(
+  birthYear: number,
+  birthDayOfYear: number,
+  age: number | null,
+): string {
+  const date = new Date(Date.UTC(birthYear, 0, birthDayOfYear));
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dob = `${day}/${month}/${birthYear}`;
+  return age === null ? dob : `${dob} (${age})`;
+}
