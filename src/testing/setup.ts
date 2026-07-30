@@ -18,6 +18,7 @@ import {
 import {
   resetSearchPlayersOverride,
   resolveSearchPlayersIpcMock,
+  resolveSuggestPlayersIpcMock,
 } from "@/testing/search-ipc-mock";
 import {
   resetSnapshotIpcMock,
@@ -90,6 +91,10 @@ function registerIpcMocks() {
 
     if (cmd === "search_players") {
       return resolveSearchPlayersIpcMock(args);
+    }
+
+    if (cmd === "suggest_players") {
+      return resolveSuggestPlayersIpcMock(args);
     }
 
     if (cmd === "load_data") {

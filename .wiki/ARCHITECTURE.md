@@ -532,7 +532,7 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
 | Walking-skeleton UI with stubbed IPC: app shell (nav rail, top bar), status panels, demo-value form flow | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
-| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
+| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `search_players`, `suggest_players`, `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
 | Bridge panel, save switcher, snapshot overview, plugin install section, top-bar save selector, and Load Data button render with stubbed IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, SQLite ingest, or Steam-folder DLL install |
 
 | Concern | Owner in this template |

@@ -28,4 +28,6 @@ export const searchKeys = {
         filterCombine,
       },
     ] as const,
+  suggest: (query: string, limit: number) =>
+    [...searchKeys.all, "suggest", { query, limit }] as const,
 };

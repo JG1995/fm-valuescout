@@ -70,6 +70,15 @@ test.describe("walking skeleton smoke", () => {
     await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
   });
 
+  test("top bar exposes global player search", async ({ page }) => {
+    await page.goto("/");
+
+    const header = page.getByTestId("app-header");
+    await expect(
+      header.getByRole("combobox", { name: "Search players" }),
+    ).toBeVisible();
+  });
+
   test("unknown routes render the not-found page", async ({ page }) => {
     await page.goto("/does-not-exist");
 

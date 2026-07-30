@@ -271,7 +271,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 7 — Top-bar global search UI
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Search field in `AppTopBar`; Ctrl+K focus; debounce 200ms; popover results; Escape clears per DESIGN. Activating a hit navigates to `/search` with a name `is` filter (no profile route yet). Smoke stub.
 
@@ -309,6 +309,7 @@ Opening player profiles.
 - 2026-07-30 PR2 Commit 4: deep filters use field ids `attr.*` / `hidden.*` / `personality.*` / `nationality` / `position` / `pos.*`. Position presence is exact key match (`is`/`is_not`); never substring LIKE. Attribute filter on a 2k-player fixture stayed under 500ms with `json_extract` (no extra indexes). Spike/index only if full-snapshot p95 exceeds ~200ms.
 - 2026-07-30 PR2 Commit 5: role filters use `role.{catalog_role_id}` with EXISTS on `player_role_scores` (null scores never match). Dynamic columns follow active non-basic filters; IPC returns `dynamicValues`. Sort accepts those field ids while the column is visible. `position` presence does not add a dynamic column. DESIGN Search filters reconciled to compact strip + modal + operators (inspector no longer the Search filter surface).
 - 2026-07-30 PR2 Commit 6: `suggest_players` ranks exact → prefix → contains (`COLLATE NOCASE`), then CA desc; blank query empty; `escape_like` on LIKE patterns; default/max limit 10/20.
+- 2026-07-30 PR2 Commit 7: Top-bar `GlobalPlayerSearch` uses combobox + listbox; Ctrl+K / Meta+K focus; 200ms debounce into `suggest_players`; hit navigates to `/search` with `name` `is` filter; Escape clears before dismissing popover.
 
 ## Completed work
 

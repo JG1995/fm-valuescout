@@ -1,4 +1,5 @@
 import type { FilterRuleIpc } from "@/features/search/types/filter-rule";
+import type { PlayerSuggestHit } from "@/features/search/types/player-suggest-hit";
 import type {
   PlayerSummary,
   SearchPlayersPage,
@@ -20,18 +21,30 @@ import {
 
 let overridePlayers: PlayerSummary[] | null = null;
 let lastSearchPlayersArgs: Record<string, unknown> | null = null;
+let suggestOverride: PlayerSuggestHit[] | null = null;
+let lastSuggestPlayersArgs: Record<string, unknown> | null = null;
 
 export function setSearchPlayersOverride(players: PlayerSummary[] | null) {
   overridePlayers = players;
 }
 
+export function setSuggestPlayersOverride(hits: PlayerSuggestHit[] | null) {
+  suggestOverride = hits;
+}
+
 export function resetSearchPlayersOverride() {
   overridePlayers = null;
   lastSearchPlayersArgs = null;
+  suggestOverride = null;
+  lastSuggestPlayersArgs = null;
 }
 
 export function getLastSearchPlayersArgs(): Record<string, unknown> | null {
   return lastSearchPlayersArgs;
+}
+
+export function getLastSuggestPlayersArgs(): Record<string, unknown> | null {
+  return lastSuggestPlayersArgs;
 }
 
 function parsePaging(args: unknown): {
@@ -256,6 +269,62 @@ function fromSanityRows(): PlayerSummary[] {
     ca: row.ca,
     pa: row.ca + 10,
     marketValueGbp: row.ca * 100_000,
+  }));
+}
+
+/** Ranked name suggestions for the top-bar global search. */
+export function resolveSuggestPlayersIpcMock(
+  args: unknown,
+): PlayerSuggestHit[] {
+  lastSuggestPlayersArgs =
+    typeof args === "object" && args !== null
+      ? (args as Record<string, unknown>)
+      : {};
+
+  const record = lastSuggestPlayersArgs;
+  const query = typeof record.query === "string" ? record.query.trim() : "";
+  if (query.length === 0) {
+    return [];
+  }
+
+  if (suggestOverride) {
+    return suggestOverride;
+  }
+
+  const snapshot = resolveGetCurrentSnapshotIpcMock();
+  if (!snapshot) {
+    return [];
+  }
+
+  const limit =
+    typeof record.limit === "number"
+      ? Math.min(20, Math.max(1, record.limit))
+      : 10;
+  const needle = query.toLowerCase();
+  const players = overridePlayers ?? fromSanityRows();
+
+  const ranked = players
+    .filter((player) => player.name.toLowerCase().includes(needle))
+    .map((player) => {
+      const name = player.name.toLowerCase();
+      const tier = name === needle ? 0 : name.startsWith(needle) ? 1 : 2;
+      return { player, tier };
+    })
+    .sort((a, b) => {
+      if (a.tier !== b.tier) {
+        return a.tier - b.tier;
+      }
+      if (a.player.ca !== b.player.ca) {
+        return b.player.ca - a.player.ca;
+      }
+      return a.player.uid - b.player.uid;
+    })
+    .slice(0, limit);
+
+  return ranked.map(({ player }) => ({
+    uid: player.uid,
+    name: player.name,
+    ca: player.ca,
   }));
 }
 
