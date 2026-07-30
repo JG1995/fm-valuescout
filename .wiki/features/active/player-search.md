@@ -193,7 +193,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 1 — Filter AST and scalar SQL builder
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `183de74`
 
 **Work:** Filter rule DTO + AND/OR; field registry for scalars/bools/enums; validate operators per field; compile to parameterized WHERE; integrate into `search_players`. Reject unknown fields/ops. Rust tests for each operator class and AND vs OR.
 
@@ -313,7 +313,7 @@ Deep field types beyond commit 1 registry; URL persistence (next commit).
 | --- | --- | --- | --- |
 | 1 | Paged player list IPC | `889aed7` | `search_players` windowed IPC; CA desc; limit cap; active-save isolation |
 | 1 | Search route and virtualized table | `bbec416` | `/search` + nav; TanStack Virtual; invalidate on save/Load Data; smoke stub |
-| 1 | Sortable result columns | `1b42133` | Whitelist sort IPC; URL `sort`/`dir`; `aria-sort`; default CA desc |
+| 2 | Filter AST and scalar SQL builder | `183de74` | Filter AST + scalar/bool/enum registry; parameterized WHERE; search_players filters IPC |
 
 ## Final validation
 
