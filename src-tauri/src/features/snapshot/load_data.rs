@@ -11,6 +11,14 @@ use crate::features::memory_read::service::{
 use super::ingest::{self, SnapshotSummary};
 use super::service;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadDataTimings {
+    pub scan_ms: u64,
+    pub ingest_ms: u64,
+    pub total_ms: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadDataResult {
     pub request_id: String,
@@ -18,6 +26,7 @@ pub struct LoadDataResult {
     pub scan_truncated: Option<bool>,
     pub max_accepted: Option<i32>,
     pub snapshot: SnapshotSummary,
+    pub timings: LoadDataTimings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -88,6 +97,7 @@ pub fn load_data_after_scan(
         scan_truncated: dump_result.scan_truncated,
         max_accepted: dump_result.max_accepted,
         snapshot,
+        timings: LoadDataTimings::default(),
     })
 }
 

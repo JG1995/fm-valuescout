@@ -46,17 +46,63 @@ public static class FmStringReader
             return null;
         }
 
-        // One bounded block read; uncleared/inaccessible gaps stay zero and act as terminators
-        // (same practical stop as the former byte-by-byte short-region path).
         var buffer = ArrayPool<byte>.Shared.Rent(maxLength);
         try
         {
-            reader.TryReadBlock(address, buffer, 0, maxLength, out _);
-
-            var n = 0;
-            while (n < maxLength && buffer[n] != 0)
+            if (reader.TryReadBlock(address, buffer, 0, maxLength, out _))
             {
-                n++;
+                var fromBlock = DecodeCStringPrefix(buffer, maxLength);
+                if (fromBlock != null)
+                {
+                    return fromBlock;
+                }
+            }
+
+            // Block read failed or yielded empty — byte-by-byte for short regions near boundaries.
+            return ReadCStringByteByByte(reader, address, maxLength);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private static string? DecodeCStringPrefix(byte[] buffer, int maxLength)
+    {
+        var n = 0;
+        while (n < maxLength && buffer[n] != 0)
+        {
+            n++;
+        }
+
+        if (n == 0)
+        {
+            return null;
+        }
+
+        var s = Encoding.UTF8.GetString(buffer, 0, n).Trim();
+        return s.Length == 0 ? null : s;
+    }
+
+    private static string? ReadCStringByteByByte(IMemoryReader reader, ulong address, int maxLength)
+    {
+        var buffer = ArrayPool<byte>.Shared.Rent(maxLength);
+        try
+        {
+            var n = 0;
+            while (n < maxLength)
+            {
+                if (!reader.TryReadByte(address + (ulong)n, out var b))
+                {
+                    break;
+                }
+
+                if (b == 0)
+                {
+                    break;
+                }
+
+                buffer[n++] = b;
             }
 
             if (n == 0)

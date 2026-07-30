@@ -38,6 +38,9 @@ describe("app top bar", () => {
     expect(
       await screen.findByText(/Loaded 3 players into the database/i),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Scan 1\.2s, ingest 400ms, total 1\.6s/i),
+    ).toBeInTheDocument();
   });
 
   it("sends unlimited maxAccepted when the player cap is off", async () => {

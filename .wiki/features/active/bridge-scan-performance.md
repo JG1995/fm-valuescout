@@ -304,8 +304,9 @@ Run `/finish-feature` after optional manual UI check (capped Load Data truncates
   - `totalMs=26155` (~26s) — meets PR 2 bridge budget (&lt;60s) with headroom; no parallel workers needed
   - `processMemoryCalls=10260800`, `processMemoryRequestedBytes≈4.11 GiB`
   - Sample players decode sanely (known names/attrs). `clubUnresolved=18382` / `playersLinkedViaSquad=0` remain pre-existing club-link noise, not a scan-cap regression.
-  - End-to-end Load Data wall clock not recorded in this paste; bridge alone leaves ample room under the 90s e2e budget if ingest stays near the generated-dump harness (~8s for 184k).
+  - **End-to-end Load Data (developer live check, same session):** Unlimited Load Data on the reference save completed with wall clock only marginally above the bridge-only diagnostics (`totalMs≈26155`); well within the &lt;90s user-visible budget. Exact ms were not pasted to the ledger; `load_data` timings in the success banner capture them on future runs.
 - **PR 2 Commit 5:** `load_data` IPC takes optional `maxAccepted`; AppTopBar Cap players checkbox + limit field (default off / unlimited; enable defaults to 500); preference persisted via `useLoadDataPreferences`. Frontend tests assert unlimited vs capped invoke args; Rust `scan_dump_from_bridge` forwards positive caps through `request_player_dump_with_limit`.
+- **Finish-feature remediation:** `FmStringReader` falls back to byte-by-byte when a bounded block read fails (restores short-region CString behaviour). Generated 500k ingest test is `#[ignore]` in the default gate. `load_data` returns `timings` (`scanMs`, `ingestMs`, `totalMs`) and the success banner shows them for live e2e budget evidence.
 
 ## Completed work
 

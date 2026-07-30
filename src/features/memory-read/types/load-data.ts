@@ -15,10 +15,17 @@ export type LoadDataSnapshotSummary = {
   loadedAtUtc: string;
 };
 
+export type LoadDataTimings = {
+  scanMs: number;
+  ingestMs: number;
+  totalMs: number;
+};
+
 export type LoadDataResult = {
   requestId: string;
   playersFound: number | null;
   scanTruncated: boolean | null;
   maxAccepted: number | null;
   snapshot: LoadDataSnapshotSummary;
+  timings: LoadDataTimings;
 };

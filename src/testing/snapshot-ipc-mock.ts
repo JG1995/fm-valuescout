@@ -29,12 +29,19 @@ type PlayerSanityRow = {
   club: string | null;
 };
 
+type LoadDataTimings = {
+  scanMs: number;
+  ingestMs: number;
+  totalMs: number;
+};
+
 type LoadDataResult = {
   requestId: string;
   playersFound: number | null;
   scanTruncated: boolean | null;
   maxAccepted: number | null;
   snapshot: SnapshotSummary;
+  timings: LoadDataTimings;
 };
 
 export type LoadDataIpcMockMode =
@@ -102,6 +109,7 @@ function buildLoadDataResult(
     scanTruncated: snapshot.scanTruncated,
     maxAccepted: snapshot.maxAccepted,
     snapshot,
+    timings: { scanMs: 1200, ingestMs: 400, totalMs: 1600 },
     ...overrides,
   };
 }

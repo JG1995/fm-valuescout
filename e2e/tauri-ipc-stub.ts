@@ -97,6 +97,7 @@ export async function stubTauriIpc(page: Page) {
               playersFound: 0,
               scanTruncated: false,
               maxAccepted: null,
+              timings: { scanMs: 0, ingestMs: 0, totalMs: 0 },
               snapshot: {
                 id: 1,
                 saveId: 1,

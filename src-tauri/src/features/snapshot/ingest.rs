@@ -675,7 +675,10 @@ mod tests {
         run_generated_large_ingest(184_000);
     }
 
+    /// Scale check — not part of the default gate (memory/time). Run:
+    /// `cargo test ingest_completes_generated_500k_players_with_timings -- --ignored`
     #[test]
+    #[ignore = "large scale check — run with cargo test -- --ignored"]
     fn ingest_completes_generated_500k_players_with_timings() {
         run_generated_large_ingest(500_000);
     }

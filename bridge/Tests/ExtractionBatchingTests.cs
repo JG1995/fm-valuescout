@@ -91,6 +91,42 @@ public sealed class ExtractionBatchingTests
         Assert.Equal(1, reader.CallCount);
     }
 
+    [Fact]
+    public void Fm_string_reader_falls_back_to_byte_reads_when_block_read_fails()
+    {
+        var inner = new FakeMemoryReader();
+        const ulong address = 0x6000;
+        inner.AddBytes(address, Encoding.UTF8.GetBytes("Boundary\0"));
+        var reader = new FailFullBlockReader(inner);
+
+        var value = FmStringReader.TryReadCString(reader, address);
+
+        Assert.Equal("Boundary", value);
+    }
+
+    private sealed class FailFullBlockReader : IMemoryReader
+    {
+        private readonly FakeMemoryReader _inner;
+
+        public FailFullBlockReader(FakeMemoryReader inner) => _inner = inner;
+
+        public IEnumerable<MemoryRegion> EnumerateRegions() => _inner.EnumerateRegions();
+
+        public bool TryRead(ulong address, Span<byte> destination, out int bytesRead) =>
+            _inner.TryRead(address, destination, out bytesRead);
+
+        public bool TryReadBlock(
+            ulong address,
+            byte[] buffer,
+            int offset,
+            int length,
+            out int bytesRead)
+        {
+            bytesRead = 0;
+            return false;
+        }
+    }
+
     private static void WriteContiguousAttrs(
         FakeMemoryReader reader,
         IFmMemoryLayout layout,
