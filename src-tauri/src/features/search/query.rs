@@ -683,4 +683,346 @@ mod tests {
 
         assert_eq!(page.total, 0);
     }
+
+    struct DeepPlayerFields {
+        nationalities: Value,
+        positions: Value,
+        attributes: Value,
+        hidden: Value,
+        personality: Value,
+    }
+
+    fn player_with_deep_fields(uid: u64, name: &str, ca: i64, deep: DeepPlayerFields) -> Value {
+        let mut player = player_template(uid, name, ca);
+        player["nationalities"] = deep.nationalities;
+        player["positions"] = deep.positions;
+        player["attributes"] = deep.attributes;
+        player["hiddenAttributes"] = deep.hidden;
+        player["personality"] = deep.personality;
+        player
+    }
+
+    #[test]
+    fn filters_by_attribute_json_extract_and_excludes_null_attr() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-attr.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Fast",
+                    150,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 18 }),
+                        attributes: json!({ "Acceleration": 16, "Pace": 14 }),
+                        hidden: json!({ "Consistency": 12 }),
+                        personality: json!({ "Ambition": 14 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Slow",
+                    140,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 18 }),
+                        attributes: json!({ "Acceleration": 8, "Pace": 14 }),
+                        hidden: json!({ "Consistency": 12 }),
+                        personality: json!({ "Ambition": 14 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    3,
+                    "Unknown Accel",
+                    160,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "ST": 15 }),
+                        attributes: json!({ "Acceleration": null, "Pace": 18 }),
+                        hidden: json!({ "Consistency": 12 }),
+                        personality: json!({ "Ambition": 14 }),
+                    },
+                ),
+            ],
+        );
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "attr.Acceleration",
+                "gt",
+                FilterValue::Integer(12),
+            )],
+            None,
+        )
+        .expect("attr filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Fast");
+    }
+
+    #[test]
+    fn filters_nationality_when_any_list_element_matches() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-nation.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Dual",
+                    150,
+                    DeepPlayerFields {
+                        nationalities: json!(["SCO", "ENG"]),
+                        positions: json!({ "MC": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Welsh",
+                    140,
+                    DeepPlayerFields {
+                        nationalities: json!(["WAL"]),
+                        positions: json!({ "MC": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+            ],
+        );
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "nationality",
+                "is",
+                FilterValue::Text("ENG".to_string()),
+            )],
+            None,
+        )
+        .expect("nationality filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Dual");
+    }
+
+    #[test]
+    fn filters_position_presence_and_suitability() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-pos.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Natural MC",
+                    150,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 18, "DM": 12 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Fringe MC",
+                    140,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 10, "ST": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    3,
+                    "Striker Only",
+                    160,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "ST": 20 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+            ],
+        );
+
+        let presence = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "position",
+                "is",
+                FilterValue::Text("MC".to_string()),
+            )],
+            None,
+        )
+        .expect("position presence");
+        assert_eq!(presence.total, 2);
+        assert_eq!(
+            presence
+                .players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Natural MC", "Fringe MC"]
+        );
+
+        let suitability = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule("pos.MC", "gt", FilterValue::Integer(15))],
+            None,
+        )
+        .expect("position suitability");
+        assert_eq!(suitability.total, 1);
+        assert_eq!(suitability.players[0].name, "Natural MC");
+    }
+
+    #[test]
+    fn position_contains_matches_exact_key_not_substring() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-pos-exact.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "True MC",
+                    150,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "AMC Only",
+                    140,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "AMC": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+            ],
+        );
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "position",
+                "contains",
+                FilterValue::Text("MC".to_string()),
+            )],
+            None,
+        )
+        .expect("exact position contains");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "True MC");
+    }
+
+    #[test]
+    fn attribute_filter_on_two_thousand_players_stays_interactive() {
+        // ponytail: no JSON expression indexes for attribute/position filters
+        // Upgrade to generated columns / indexes if attr filter p95 exceeds ~200ms on a full ~180k snapshot
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-attr-timing.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_with_deep_fields(
+                1,
+                "Seed",
+                150,
+                DeepPlayerFields {
+                    nationalities: json!(["ENG"]),
+                    positions: json!({ "MC": 18 }),
+                    attributes: json!({ "Acceleration": 16 }),
+                    hidden: json!({ "Consistency": 10 }),
+                    personality: json!({ "Ambition": 10 }),
+                },
+            )],
+        );
+
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+
+        let attrs = r#"{"Acceleration":10,"Pace":12}"#;
+        for uid in 2..=2000 {
+            conn.execute(
+                "INSERT INTO players (
+                    snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
+                    nationalities_json, preferred_foot, positions_json, attributes_json,
+                    hidden_attributes_json, personality_json
+                 ) VALUES (?1, ?2, 100, 110, ?3, 2000, 1, '[\"ENG\"]', 'right', '{\"MC\":10}', ?4, '{}', '{}')",
+                rusqlite::params![snapshot_id, uid, format!("P{uid}"), attrs],
+            )
+            .expect("insert bulk player");
+        }
+
+        let started = std::time::Instant::now();
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "attr.Acceleration",
+                "gt",
+                FilterValue::Integer(12),
+            )],
+            None,
+        )
+        .expect("timed attr filter");
+        let elapsed = started.elapsed();
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Seed");
+        assert!(
+            elapsed.as_millis() < 500,
+            "attr json_extract filter on 2k players took {:?}; investigate indexes",
+            elapsed
+        );
+    }
 }

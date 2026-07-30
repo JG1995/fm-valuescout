@@ -64,6 +64,9 @@ export function formatFilterTagLabel(rule: FilterRule): string {
   }
 
   if (field.kind === "boolean" || field.kind === "enum") {
+    if (op === "contains" || op === "not_contains") {
+      return `${field.label} ${operatorSymbol(op)} ${value}`;
+    }
     const opLabel = op === "is_not" ? "is not" : "is";
     return `${field.label} ${opLabel} ${value}`;
   }

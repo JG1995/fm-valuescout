@@ -232,7 +232,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 4 — Attribute and multi-value filters
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Extend registry/SQL for attribute maps (`json_extract`), nationalities list match, position presence/suitability. Indexes only if profiling shows need. Timed note on large fixture; optional `/spike` if query cost is unacceptable.
 
@@ -306,6 +306,7 @@ Role scores; dynamic column UI.
 
 - Planning 2026-07-30: product choices locked (Search label; operator filters; compact strip + modal; filter depth D including role scores; dynamic columns; AND/OR; sortable default CA; row no-op; Ctrl+K global search). DESIGN inspector/slider filter spec deferred/superseded for this feature.
 - Replanned 2026-07-30: first condensation over-merged commits (2 PRs / 5 commits). Corrected to **2 PRs / 10 commits** — keep original atomic commit breakpoints; only reduce PR count from 4 to 2.
+- 2026-07-30 PR2 Commit 4: deep filters use field ids `attr.*` / `hidden.*` / `personality.*` / `nationality` / `position` / `pos.*`. Attribute filter on a 2k-player fixture stayed under 500ms with `json_extract` (no extra indexes). Spike/index only if full-snapshot p95 exceeds ~200ms.
 
 ## Completed work
 

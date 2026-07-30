@@ -52,7 +52,12 @@ pub struct CompiledFilter {
     pub params: Vec<Value>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// FM26 dump position keys (bridge `PositionEntries`).
+const POSITION_KEYS: &[&str] = &[
+    "GK", "SW", "DL", "DC", "DR", "DM", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "WBL", "WBR",
+];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum FieldKind {
     String {
         column: &'static str,
@@ -69,6 +74,55 @@ enum FieldKind {
         column: &'static str,
         allowed: &'static [&'static str],
     },
+    /// Integer in a JSON object column (`attributes_json`, etc.).
+    JsonInteger {
+        column: &'static str,
+        key: String,
+    },
+    /// String list JSON array (`nationalities_json`) — any element may match.
+    StringList {
+        column: &'static str,
+    },
+    /// Position key presence / key match against `positions_json`.
+    PositionPresence,
+}
+
+fn is_safe_json_object_key(key: &str) -> bool {
+    !key.is_empty() && key.chars().all(|ch| ch.is_ascii_alphanumeric())
+}
+
+fn resolve_prefixed_json_integer(
+    field: &str,
+    prefix: &str,
+    column: &'static str,
+) -> Result<Option<FieldKind>, String> {
+    let Some(key) = field.strip_prefix(prefix) else {
+        return Ok(None);
+    };
+    if !is_safe_json_object_key(key) {
+        return Err(format!("invalid filter field key: {key}"));
+    }
+    Ok(Some(FieldKind::JsonInteger {
+        column,
+        key: key.to_string(),
+    }))
+}
+
+fn resolve_position_suitability(field: &str) -> Result<Option<FieldKind>, String> {
+    let Some(key) = field.strip_prefix("pos.") else {
+        return Ok(None);
+    };
+    let Some(canonical) = POSITION_KEYS
+        .iter()
+        .copied()
+        .find(|candidate| *candidate == key)
+    else {
+        return Err(format!("unknown position key: {key}"));
+    };
+    Ok(Some(FieldKind::JsonInteger {
+        column: "positions_json",
+        key: canonical.to_string(),
+    }))
 }
 
 fn resolve_field(field: &str) -> Result<FieldKind, String> {
@@ -150,7 +204,29 @@ fn resolve_field(field: &str) -> Result<FieldKind, String> {
             column: "team_level",
             allowed: &["senior", "reserve", "youth"],
         }),
-        _ => Err(format!("unknown filter field: {field}")),
+        "nationality" => Ok(FieldKind::StringList {
+            column: "nationalities_json",
+        }),
+        "position" => Ok(FieldKind::PositionPresence),
+        _ => {
+            if let Some(kind) = resolve_prefixed_json_integer(field, "attr.", "attributes_json")? {
+                return Ok(kind);
+            }
+            if let Some(kind) =
+                resolve_prefixed_json_integer(field, "hidden.", "hidden_attributes_json")?
+            {
+                return Ok(kind);
+            }
+            if let Some(kind) =
+                resolve_prefixed_json_integer(field, "personality.", "personality_json")?
+            {
+                return Ok(kind);
+            }
+            if let Some(kind) = resolve_position_suitability(field)? {
+                return Ok(kind);
+            }
+            Err(format!("unknown filter field: {field}"))
+        }
     }
 }
 
@@ -231,7 +307,103 @@ fn compile_rule(
         FieldKind::Enum { column, allowed } => {
             compile_enum_rule(column, allowed, op, value, next_index)
         }
+        FieldKind::JsonInteger { column, key } => {
+            compile_json_integer_rule(column, &key, op, value, next_index)
+        }
+        FieldKind::StringList { column } => compile_string_list_rule(column, op, value, next_index),
+        FieldKind::PositionPresence => compile_position_presence_rule(op, value, next_index),
     }
+}
+
+fn json_extract_expr(column: &str, key: &str) -> String {
+    // Key is validated alphanumeric — safe to embed in the JSON path literal.
+    format!("json_extract({column}, '$.{key}')")
+}
+
+fn compile_json_integer_rule(
+    column: &str,
+    key: &str,
+    op: &str,
+    value: &FilterValue,
+    next_index: &mut usize,
+) -> Result<(String, Vec<Value>), String> {
+    let number = value_as_integer(value)?;
+    let placeholder = next_placeholder(next_index);
+    let compare = match op {
+        "gt" => ">",
+        "lt" => "<",
+        "eq" => "=",
+        "neq" => "!=",
+        _ => return Err(format!("invalid integer filter operator: {op}")),
+    };
+    let extract = json_extract_expr(column, key);
+    let clause = format!("({extract} {compare} {placeholder} AND {extract} IS NOT NULL)");
+    Ok((clause, vec![Value::Integer(number)]))
+}
+
+fn compile_string_list_rule(
+    column: &str,
+    op: &str,
+    value: &FilterValue,
+    next_index: &mut usize,
+) -> Result<(String, Vec<Value>), String> {
+    let text = value_as_text(value)?;
+    let placeholder = next_placeholder(next_index);
+
+    let (exists_op, bound) = match op {
+        "contains" => (
+            format!(
+                "EXISTS (SELECT 1 FROM json_each({column}) AS n WHERE typeof(n.value) = 'text' AND n.value LIKE {placeholder} ESCAPE '\\' COLLATE NOCASE)"
+            ),
+            Value::Text(format!("%{}%", escape_like(&text))),
+        ),
+        "not_contains" => (
+            format!(
+                "NOT EXISTS (SELECT 1 FROM json_each({column}) AS n WHERE typeof(n.value) = 'text' AND n.value LIKE {placeholder} ESCAPE '\\' COLLATE NOCASE)"
+            ),
+            Value::Text(format!("%{}%", escape_like(&text))),
+        ),
+        "is" => (
+            format!(
+                "EXISTS (SELECT 1 FROM json_each({column}) AS n WHERE typeof(n.value) = 'text' AND n.value = {placeholder} COLLATE NOCASE)"
+            ),
+            Value::Text(text),
+        ),
+        "is_not" => (
+            format!(
+                "NOT EXISTS (SELECT 1 FROM json_each({column}) AS n WHERE typeof(n.value) = 'text' AND n.value = {placeholder} COLLATE NOCASE)"
+            ),
+            Value::Text(text),
+        ),
+        _ => return Err(format!("invalid string filter operator: {op}")),
+    };
+
+    Ok((exists_op, vec![bound]))
+}
+
+fn compile_position_presence_rule(
+    op: &str,
+    value: &FilterValue,
+    next_index: &mut usize,
+) -> Result<(String, Vec<Value>), String> {
+    let _ = next_index;
+    let text = value_as_text(value)?;
+    let Some(canonical) = POSITION_KEYS
+        .iter()
+        .copied()
+        .find(|candidate| candidate.eq_ignore_ascii_case(&text))
+    else {
+        return Err(format!("unknown position key: {text}"));
+    };
+    let extract = json_extract_expr("positions_json", canonical);
+
+    // Presence is exact key match only — never substring LIKE (MC must not match AMC).
+    let clause = match op {
+        "is" | "contains" => format!("{extract} IS NOT NULL"),
+        "is_not" | "not_contains" => format!("{extract} IS NULL"),
+        _ => return Err(format!("invalid string filter operator: {op}")),
+    };
+    Ok((clause, Vec::new()))
 }
 
 fn compile_string_rule(
@@ -608,5 +780,138 @@ mod tests {
             compiled.params,
             vec![Value::Text("%100\\%\\_%".to_string())]
         );
+    }
+
+    #[test]
+    fn compiles_attribute_integer_via_json_extract() {
+        let ast = parse_filter_ast(
+            vec![rule("attr.Acceleration", "gt", FilterValue::Integer(12))],
+            None,
+        )
+        .expect("parse ast");
+
+        let compiled = compile_filters(&ast, 2).expect("compile");
+        assert!(
+            compiled
+                .sql
+                .contains("json_extract(attributes_json, '$.Acceleration')"),
+            "expected attributes_json extract, got {}",
+            compiled.sql
+        );
+        assert!(compiled.sql.contains("IS NOT NULL"));
+        assert_eq!(compiled.params, vec![Value::Integer(12)]);
+    }
+
+    #[test]
+    fn compiles_hidden_and_personality_attribute_fields() {
+        let hidden = compile_filters(
+            &parse_filter_ast(
+                vec![rule("hidden.Consistency", "eq", FilterValue::Integer(10))],
+                None,
+            )
+            .expect("parse"),
+            2,
+        )
+        .expect("compile hidden");
+        assert!(hidden
+            .sql
+            .contains("json_extract(hidden_attributes_json, '$.Consistency')"));
+
+        let personality = compile_filters(
+            &parse_filter_ast(
+                vec![rule("personality.Ambition", "lt", FilterValue::Integer(15))],
+                None,
+            )
+            .expect("parse"),
+            2,
+        )
+        .expect("compile personality");
+        assert!(personality
+            .sql
+            .contains("json_extract(personality_json, '$.Ambition')"));
+    }
+
+    #[test]
+    fn rejects_attribute_field_with_unsafe_key() {
+        let ast = parse_filter_ast(
+            vec![rule(
+                "attr.Acceleration'; DROP TABLE players--",
+                "gt",
+                FilterValue::Integer(1),
+            )],
+            None,
+        )
+        .expect("parse ast");
+
+        let error = compile_filters(&ast, 2).expect_err("unsafe key");
+        assert!(error.contains("unknown filter field") || error.contains("invalid"));
+    }
+
+    #[test]
+    fn compiles_nationality_contains_via_json_each() {
+        let ast = parse_filter_ast(
+            vec![rule(
+                "nationality",
+                "contains",
+                FilterValue::Text("ENG".to_string()),
+            )],
+            None,
+        )
+        .expect("parse ast");
+
+        let compiled = compile_filters(&ast, 2).expect("compile");
+        assert!(
+            compiled.sql.contains("json_each(nationalities_json)"),
+            "expected json_each on nationalities, got {}",
+            compiled.sql
+        );
+        assert!(compiled.sql.contains("EXISTS"));
+        assert_eq!(compiled.params, vec![Value::Text("%ENG%".to_string())]);
+    }
+
+    #[test]
+    fn compiles_position_presence_and_suitability() {
+        let presence = compile_filters(
+            &parse_filter_ast(
+                vec![rule("position", "is", FilterValue::Text("MC".to_string()))],
+                None,
+            )
+            .expect("parse"),
+            2,
+        )
+        .expect("compile presence");
+        assert!(
+            presence
+                .sql
+                .contains("json_extract(positions_json, '$.MC')")
+                || presence.sql.contains("json_each(positions_json)"),
+            "expected positions presence SQL, got {}",
+            presence.sql
+        );
+
+        let suitability = compile_filters(
+            &parse_filter_ast(vec![rule("pos.MC", "gt", FilterValue::Integer(15))], None)
+                .expect("parse"),
+            2,
+        )
+        .expect("compile suitability");
+        assert!(
+            suitability
+                .sql
+                .contains("json_extract(positions_json, '$.MC')"),
+            "expected position suitability extract, got {}",
+            suitability.sql
+        );
+        assert!(suitability.sql.contains("IS NOT NULL"));
+        assert_eq!(suitability.params, vec![Value::Integer(15)]);
+    }
+
+    #[test]
+    fn rejects_unknown_position_key() {
+        let ast = parse_filter_ast(vec![rule("pos.XYZ", "gt", FilterValue::Integer(10))], None)
+            .expect("parse ast");
+
+        let error = compile_filters(&ast, 2).expect_err("unknown pos");
+        assert!(error.contains("unknown") || error.contains("invalid"));
     }
 }

@@ -40,6 +40,128 @@ const ENUM_OPERATORS: FilterOperator[] = [
   { id: "is_not", label: "is not" },
 ];
 
+/** Visible attribute keys — dump PascalCase (bridge AttributeEntries). */
+const ATTR_KEYS = [
+  "Crossing",
+  "Dribbling",
+  "Finishing",
+  "Heading",
+  "LongShots",
+  "Marking",
+  "OffTheBall",
+  "Passing",
+  "PenaltyTaking",
+  "Tackling",
+  "Vision",
+  "Handling",
+  "AerialReach",
+  "CommandOfArea",
+  "Communication",
+  "Kicking",
+  "Throwing",
+  "Anticipation",
+  "Decisions",
+  "OneOnOnes",
+  "Positioning",
+  "Reflexes",
+  "FirstTouch",
+  "Technique",
+  "Flair",
+  "Corners",
+  "Teamwork",
+  "WorkRate",
+  "LongThrows",
+  "Eccentricity",
+  "RushingOut",
+  "Punching",
+  "Acceleration",
+  "FreeKicks",
+  "Strength",
+  "Stamina",
+  "Pace",
+  "JumpingReach",
+  "Leadership",
+  "Balance",
+  "Bravery",
+  "Aggression",
+  "Agility",
+  "NaturalFitness",
+  "Determination",
+  "Composure",
+  "Concentration",
+] as const;
+
+const HIDDEN_ATTR_KEYS = [
+  "Dirtiness",
+  "Consistency",
+  "ImportantMatches",
+  "InjuryProneness",
+  "Versatility",
+] as const;
+
+const PERSONALITY_KEYS = [
+  "Adaptability",
+  "Ambition",
+  "Loyalty",
+  "Pressure",
+  "Professionalism",
+  "Sportsmanship",
+  "Temperament",
+  "Controversy",
+] as const;
+
+const POSITION_KEYS = [
+  "GK",
+  "SW",
+  "DL",
+  "DC",
+  "DR",
+  "DM",
+  "ML",
+  "MC",
+  "MR",
+  "AML",
+  "AMC",
+  "AMR",
+  "ST",
+  "WBL",
+  "WBR",
+] as const;
+
+function labelFromPascal(key: string): string {
+  return key.replaceAll(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+const ATTRIBUTE_FIELDS: FilterFieldDef[] = ATTR_KEYS.map((key) => ({
+  id: `attr.${key}`,
+  label: labelFromPascal(key),
+  kind: "integer" as const,
+  operators: INTEGER_OPERATORS,
+}));
+
+const HIDDEN_FIELDS: FilterFieldDef[] = HIDDEN_ATTR_KEYS.map((key) => ({
+  id: `hidden.${key}`,
+  label: `Hidden · ${labelFromPascal(key)}`,
+  kind: "integer" as const,
+  operators: INTEGER_OPERATORS,
+}));
+
+const PERSONALITY_FIELDS: FilterFieldDef[] = PERSONALITY_KEYS.map((key) => ({
+  id: `personality.${key}`,
+  label: `Personality · ${labelFromPascal(key)}`,
+  kind: "integer" as const,
+  operators: INTEGER_OPERATORS,
+}));
+
+const POSITION_SUITABILITY_FIELDS: FilterFieldDef[] = POSITION_KEYS.map(
+  (key) => ({
+    id: `pos.${key}`,
+    label: `Position · ${key} suitability`,
+    kind: "integer" as const,
+    operators: INTEGER_OPERATORS,
+  }),
+);
+
 export const FILTER_FIELDS: FilterFieldDef[] = [
   { id: "name", label: "Name", kind: "string", operators: STRING_OPERATORS },
   { id: "club", label: "Club", kind: "string", operators: STRING_OPERATORS },
@@ -54,6 +176,19 @@ export const FILTER_FIELDS: FilterFieldDef[] = [
     label: "Parent club",
     kind: "string",
     operators: STRING_OPERATORS,
+  },
+  {
+    id: "nationality",
+    label: "Nationality",
+    kind: "string",
+    operators: STRING_OPERATORS,
+  },
+  {
+    id: "position",
+    label: "Position",
+    kind: "enum",
+    operators: ENUM_OPERATORS,
+    enumOptions: POSITION_KEYS.map((key) => ({ value: key, label: key })),
   },
   { id: "age", label: "Age", kind: "integer", operators: INTEGER_OPERATORS },
   { id: "ca", label: "CA", kind: "integer", operators: INTEGER_OPERATORS },
@@ -147,6 +282,10 @@ export const FILTER_FIELDS: FilterFieldDef[] = [
       { value: "youth", label: "Youth" },
     ],
   },
+  ...ATTRIBUTE_FIELDS,
+  ...HIDDEN_FIELDS,
+  ...PERSONALITY_FIELDS,
+  ...POSITION_SUITABILITY_FIELDS,
 ];
 
 const FIELD_BY_ID = new Map(FILTER_FIELDS.map((field) => [field.id, field]));
