@@ -142,7 +142,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 1 — Paged player list IPC
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add Rust `features/search` with `search_players`: active current snapshot; page of basic summary DTOs + `uid` + `total`; `offset`/`limit` with server-side cap; default order CA descending; empty when no snapshot. Parameterized SQL. Unit tests.
 
