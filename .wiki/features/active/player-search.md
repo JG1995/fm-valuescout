@@ -181,7 +181,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 ### PR 2 — Filters, dynamic columns, and global search
 
-**Status:** Active
+**Status:** Implementation complete — run `/finish-feature`
 
 **Provisional PR title:** `feat(search): add player filters and global name search`
 
@@ -271,7 +271,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 7 — Top-bar global search UI
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `cc714a1`
 
 **Work:** Search field in `AppTopBar`; Ctrl+K focus; debounce 200ms; popover results; Escape clears per DESIGN. Activating a hit navigates to `/search` with a name `is` filter (no profile route yet). Smoke stub.
 
@@ -286,21 +286,15 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 **PR:** 2 — Filters, dynamic columns, and global search
 
-**Commit:** Top-bar global search UI
+**Commit:** None — delivery plan complete
 
-### RED test (active commit)
+### Next step
 
-Top-bar search: Ctrl+K focuses field; debounced `suggest_players` fills popover; selecting a hit navigates to `/search` with a name `is` filter; Escape clears.
-
-**Wrong behaviour caught:** No Ctrl+K focus; results ignore ranking IPC; hit does not set name filter; Escape does not clear.
-
-### Expected outcome
-
-Global name search works from the top bar on any route.
+Run `/finish-feature` (full suite, feature-complete review, docs reconciliation).
 
 ### Explicit exclusions
 
-Opening player profiles.
+Opening player profiles (deferred to the next MVP feature).
 
 ## Discoveries and replanning
 
@@ -323,6 +317,7 @@ Opening player profiles.
 | 2 | Attribute and multi-value filters | `ab97626` | `json_extract` attrs/hidden/personality; nationality `json_each`; position presence/suitability |
 | 2 | Role-score filters and dynamic columns | `92a0049` | `role.*` EXISTS on `player_role_scores`; `dynamicValues`; UI dynamic columns; DESIGN strip/modal |
 | 2 | Ranked name suggest IPC | `b47938c` | `suggest_players`: exact→prefix→contains then CA; blank empty; LIKE escape; limit 10/20 |
+| 2 | Top-bar global search UI | `cc714a1` | Ctrl+K combobox; 200ms debounce; listbox + keyboard; Escape clear; name `is` → `/search`; smoke stub |
 
 ## Final validation
 
