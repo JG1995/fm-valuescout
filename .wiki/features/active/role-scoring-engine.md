@@ -110,7 +110,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 ### PR 1 — Role scoring on ingest
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional PR title:** `feat(scoring): add role scores on ingest`
 
@@ -176,7 +176,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 5 — Sanity-list score proof
 
-**Status:** Active
+**Status:** Completed — `56e94bf`
 
 **Work:** Extend sanity player DTO/query with one proof field (fixed sample role score, e.g. a stable catalog id, or “scores present” count). Update React sanity table and Playwright/Vitest stubs. No score browser.
 
@@ -189,21 +189,17 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 ## Active work
 
-**PR:** 1 — Role scoring on ingest
+**PR:** 1 — Role scoring on ingest (all commits complete)
 
-**Commit:** Sanity-list score proof
-
-### RED test (active commit)
-
-Assert sanity list IPC / UI exposes one sample role score (or scores-present proof) for an ingested player — fails because query DTO and React column do not exist.
+**Commit:** None — run `/finish-feature` for validation, review, and documentation reconciliation.
 
 ### Expected outcome
 
-Sanity player DTO includes one proof score field; React sanity table and smoke/Vitest stubs show it.
+Feature delivery plan complete. Next: `/finish-feature` then archive ledger.
 
 ### Explicit exclusions
 
-Search filters, profile role grid, weight UI, full role browser.
+Search filters, profile role grid, weight UI, full role browser (deferred to later features).
 
 ## Discoveries and replanning
 
@@ -221,6 +217,7 @@ Search filters, profile role grid, weight UI, full role browser.
 | 1 | Per-role 0–100 score function | `f504dcf` | `score_role`; 75/25 blend; null → None |
 | 1 | Combined IP and OOP score helper | `d81fea0` | `combine_role_scores`; `DEFAULT_IP_WEIGHT` 0.5 |
 | 1 | Score table migration and ingest write path | `00d1e80` | v3 `player_role_scores`; scores on ingest |
+| 1 | Sanity-list score proof | `56e94bf` | `proofRoleScore` for `deep_lying_playmaker_ip`; DLP IP column |
 
 ## Final validation
 
