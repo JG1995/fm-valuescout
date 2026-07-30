@@ -17,7 +17,7 @@ Make **Load Data** fast enough to ingest a complete FM26 player database. Replac
 - Failed scans and failed ingests preserve the prior good snapshot.
 - Unsupported FM builds still fail closed.
 
-The live-save budgets are provisional until Commit 1 records phase timings on the reference machine. A synthetic 500,000-player downstream run must complete without out-of-memory failure; it is a scale check, not a claim that a comparable live save exists.
+The live-save budgets were confirmed on the reference machine: capped path &lt;10s (PR 1), unlimited bridge dump ~26s for ~181k players (PR 2 Commit 4). A synthetic 500,000-player downstream run must complete without out-of-memory failure; it is a scale check, not a claim that a comparable live save exists.
 
 ## Invariants
 
@@ -299,7 +299,16 @@ Load Data cap toggle (off = unlimited / null; on = configurable positive integer
 - **PR 2 Commit 1:** Attribute visible+hidden share one contiguous `TryReadBlock` from `AttrsOffset`; personality and positions each get one span; `FmStringReader.TryReadCString` uses one bounded block (gaps/zeros terminate). Unread bytes remain 0 → same null/skip decode as failed scalar reads. Pointer chains (name/nation/contract) stay scalar.
 - **PR 2 Commit 2:** `DumpWriter.WriteCompact` emits unindented schema-v5 via `Utf8JsonWriter`, serializing each player then flushing so write chunks stay bounded (no second full JSON string). Atomic temp→`dump.json` replace unchanged. Generated 184k/500k minimal-player docs complete under the streaming tests.
 - **PR 2 Commit 3:** Ingest measurement harness (`IngestTimings` + `ingest_dump_file_for_save_timed`) recorded generated minimal-player runs: 184k `validation_ms=5799` `insert_ms=2529` `total_ms=8329`; 500k `validation_ms=15551` `insert_ms=6797` `total_ms=22349`. Validation (parse+schema walk) dominated; removed the second full `serde_json::from_str` via `parse_and_validate_dump`, and reuse one prepared player `INSERT` statement per transaction. Existing rollback/replace tests stay green.
-- **PR 2 Commit 4:** Request `maxAccepted` plumbed end-to-end. C# `BridgeRequest.MaxAccepted` + Plugin pass-through; `CapADumpPipeline` no longer coalesces null/omit to `DefaultMaxAccepted`. Rust `BridgeRequest.max_accepted` + production `request_player_dump` defaults to unlimited (`null`); `request_player_dump_with_limit` keeps explicit caps for tests/Commit 5. Dump wait timeout left at 120s pending live full-save envelope. Live Windows/FM complete-save validation (`scanTruncated: false`, bridge &lt;60s, e2e &lt;90s) still requires a developer run after install — same pattern as PR 1 capped validation.
+- **PR 2 Commit 4:** Request `maxAccepted` plumbed end-to-end. C# `BridgeRequest.MaxAccepted` + Plugin pass-through; `CapADumpPipeline` no longer coalesces null/omit to `DefaultMaxAccepted`. Rust `BridgeRequest.max_accepted` + production `request_player_dump` defaults to unlimited (`null`); `request_player_dump_with_limit` keeps explicit caps for tests/Commit 5. Dump wait timeout left at 120s (comfortable vs measured bridge ~26s).
+- **Post-unlimited live validation** (2026-07-30, FM 26.3.2, unlimited request, `stoppedEarly=false`, build with Commit 4). Full paste: `.cursor/work/baselines/2026-07-30-unlimited-fullsave-diagnostics.txt`.
+  - `candidatesAccepted=181210`, `regionCount=2168`, `bytesScanned≈3.94 GiB`
+  - `regionEnumerationMs=48`
+  - `candidateDiscoveryMs=17037` (~17s) — still largest phase
+  - `extractionMs=5666`, `clubIndexingMs=1597`, `dumpWritingMs=1656`
+  - `totalMs=26155` (~26s) — meets PR 2 bridge budget (&lt;60s) with headroom; no parallel workers needed
+  - `processMemoryCalls=10260800`, `processMemoryRequestedBytes≈4.11 GiB`
+  - Sample players decode sanely (known names/attrs). `clubUnresolved=18382` / `playersLinkedViaSquad=0` remain pre-existing club-link noise, not a scan-cap regression.
+  - End-to-end Load Data wall clock not recorded in this paste; bridge alone leaves ample room under the 90s e2e budget if ingest stays near the generated-dump harness (~8s for 184k).
 
 ## Completed work
 

@@ -35,7 +35,7 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 2. In the Tauri app, click **Load Data** in the top bar.
 3. Rust writes `request.json` (`protocolVersion`, `requestId`, `createdAtUtc`, `operation: "full-dump"`, optional `maxAccepted`: `null` = unlimited, positive integer = cap).
 4. The plugin polls every ~2s, rejects requests older than **30 seconds**, runs the dump off the Unity main thread, and updates `status.json` (`idle` → `scanning` → `ready` / `failed`).
-5. The app waits for a terminal status matching the request id (default timeout 120s; provisional until a full reference-save live run confirms the measured envelope). On success, Rust reads `dump.json` from disk, validates schema v5, and ingests players into SQLite for the active app save (`load_data` IPC). The dump body never crosses IPC. Scan or ingest failure leaves the prior snapshot unchanged; the UI shows a typed error or ingest summary (player count, truncated banner when `scanTruncated`).
+5. The app waits for a terminal status matching the request id (default timeout 120s; unlimited reference save bridge dump measured ~26s on 2026-07-30). On success, Rust reads `dump.json` from disk, validates schema v5, and ingests players into SQLite for the active app save (`load_data` IPC). The dump body never crosses IPC. Scan or ingest failure leaves the prior snapshot unchanged; the UI shows a typed error or ingest summary (player count, truncated banner when `scanTruncated`).
 
 ### Manual force-scan fallback
 
