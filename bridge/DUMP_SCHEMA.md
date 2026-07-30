@@ -26,7 +26,7 @@ Top-level JSON object, camelCase keys, compact (unindented) JSON streamed by the
 
 ### Scan truncation
 
-Production scans currently use `PersonScanner.DefaultMaxAccepted` (500). When the walk hits that cap, `scanTruncated` is `true` and `maxAccepted` is `500`. Ingest must not treat a truncated dump as a complete world database. Full unlimited walks set `maxAccepted` to JSON `null` and `scanTruncated` to `false`.
+Production Load Data requests `maxAccepted: null` (unlimited). A positive request `maxAccepted` stops the person scanner after that many accepted players; the dump then sets `scanTruncated: true` and echoes the cap. Ingest must not treat a truncated dump as a complete world database. Unlimited walks set `maxAccepted` to JSON `null` and `scanTruncated` to `false`. `PersonScanner.DefaultMaxAccepted` (500) is the diagnostic/test constant for capped characterization, not the production default.
 
 `status.json` mirrors the same signals on a successful `ready` state (`scanTruncated`, `maxAccepted`).
 
@@ -86,7 +86,7 @@ Deferred to later features or derivable at ingest:
 
 | File | Writer | Purpose |
 | --- | --- | --- |
-| `request.json` | Tauri | Scan request (`operation: "full-dump"`, 30s TTL) |
+| `request.json` | Tauri | Scan request (`operation: "full-dump"`, optional `maxAccepted`, 30s TTL) |
 | `status.json` | Bridge | Idle / scanning / ready / failed; ready carries `scanTruncated` / `maxAccepted` |
 | `dump.json` | Bridge | This schema |
 | `diagnostics.txt` | Bridge | Scan diagnostics (not validated for ingest) |

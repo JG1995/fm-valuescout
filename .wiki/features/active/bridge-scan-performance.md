@@ -41,7 +41,7 @@ The live-save budgets are provisional until Commit 1 records phase timings on th
 ## Current-state map
 
 - Relevant components: `bridge/Scanning/PersonScanner.cs`, `CapADumpPipeline.cs`, `bridge/Memory/WindowsMemoryReader.cs`, extraction readers, `DumpWriter.cs`, and Rust snapshot ingest.
-- Data model: dump schema v5 stores rich player objects; production scans currently stop at `PersonScanner.DefaultMaxAccepted = 500`.
+- Data model: dump schema v5 stores rich player objects; production Load Data requests `maxAccepted: null` (unlimited); `PersonScanner.DefaultMaxAccepted` (500) remains the diagnostic/test constant.
 - Persistence and migrations: Rust validates the full JSON, parses it again, and inserts each player inside one SQLite transaction.
 - Existing behavioral assumptions: the app waits up to 120 seconds for terminal bridge status; prior live evidence recorded about 4.1 GiB scanned, 7.5 million vtable hits, 184,000 accepted players, and 3 minutes 47 seconds.
 - Architectural seams: `IMemoryReader` isolates Win32 reads from fake-memory tests; `CapADumpPipeline` separates discovery, extraction, club resolution, and output; scan and ingest are split in Rust.
@@ -220,7 +220,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 4 — Request-scoped scan limit and unlimited production default
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add optional `maxAccepted` to `BridgeRequest` / `request.json`. Pass it from Rust `load_data` into the bridge. Treat request `null` as unlimited in `CapADumpPipeline` (stop collapsing omitted/null into `DefaultMaxAccepted`). Default production Load Data to unlimited (`null`) so the reference full save can run. Align the Rust wait timeout with the measured envelope if needed, and update operational documentation with reference-save results. Keep explicit caps in tests and characterization paths.
 
@@ -299,6 +299,7 @@ Optional request-scoped `maxAccepted` with production default unlimited (`null`)
 - **PR 2 Commit 1:** Attribute visible+hidden share one contiguous `TryReadBlock` from `AttrsOffset`; personality and positions each get one span; `FmStringReader.TryReadCString` uses one bounded block (gaps/zeros terminate). Unread bytes remain 0 → same null/skip decode as failed scalar reads. Pointer chains (name/nation/contract) stay scalar.
 - **PR 2 Commit 2:** `DumpWriter.WriteCompact` emits unindented schema-v5 via `Utf8JsonWriter`, serializing each player then flushing so write chunks stay bounded (no second full JSON string). Atomic temp→`dump.json` replace unchanged. Generated 184k/500k minimal-player docs complete under the streaming tests.
 - **PR 2 Commit 3:** Ingest measurement harness (`IngestTimings` + `ingest_dump_file_for_save_timed`) recorded generated minimal-player runs: 184k `validation_ms=5799` `insert_ms=2529` `total_ms=8329`; 500k `validation_ms=15551` `insert_ms=6797` `total_ms=22349`. Validation (parse+schema walk) dominated; removed the second full `serde_json::from_str` via `parse_and_validate_dump`, and reuse one prepared player `INSERT` statement per transaction. Existing rollback/replace tests stay green.
+- **PR 2 Commit 4:** Request `maxAccepted` plumbed end-to-end. C# `BridgeRequest.MaxAccepted` + Plugin pass-through; `CapADumpPipeline` no longer coalesces null/omit to `DefaultMaxAccepted`. Rust `BridgeRequest.max_accepted` + production `request_player_dump` defaults to unlimited (`null`); `request_player_dump_with_limit` keeps explicit caps for tests/Commit 5. Dump wait timeout left at 120s pending live full-save envelope. Live Windows/FM complete-save validation (`scanTruncated: false`, bridge &lt;60s, e2e &lt;90s) still requires a developer run after install — same pattern as PR 1 capped validation.
 
 ## Completed work
 

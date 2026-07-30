@@ -12,7 +12,7 @@ Planning input (not authority): [memory-read-initial-notes.md](../../notes/memor
 - The app shows bridge readiness (plugin present, FM modules, scan phase) and surfaces structured status-read errors: missing bridge, unsupported platform, corrupt status, or unsupported bridge protocol (`unsupportedVersion` when `status.json` uses an unknown `protocolVersion`). Unsupported or undetectable FM builds fail closed at scan time (`status` `failed` with an error message — not the `unsupportedVersion` kind).
 - A successful scan writes `dump.json` under `%LOCALAPPDATA%\fm-valuescout\fm-bridge\` with the CONCEPT MVP player field set at dump schema **v5** (frozen in [bridge/DUMP_SCHEMA.md](../../../bridge/DUMP_SCHEMA.md)).
 - Unknown or unsupported FM builds **fail closed** — no layout fallback. A failed scan does not replace a prior good dump (replace-only-on-success in the bridge).
-- `scanTruncated` and `maxAccepted` on dump and ready `status.json` signal when the person scanner stopped at the testing cap (500 accepted players). Ingest must not treat truncated dumps as a complete world database.
+- `scanTruncated` and `maxAccepted` on dump and ready `status.json` signal when the person scanner stopped at a request-scoped cap. Production Load Data requests `maxAccepted: null` (unlimited). Ingest must not treat truncated dumps as a complete world database.
 - Plugin install at delivery: manual copy into `BepInEx/plugins` or `./scripts/dev bridge-install` from WSL. Superseded by in-app **Install / Update / Remove** in [bridge-plugin-install](./bridge-plugin-install.md); developers building from source still use `bridge-install` or manual copy.
 
 ## Final architecture

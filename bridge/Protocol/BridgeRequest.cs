@@ -13,4 +13,10 @@ public sealed class BridgeRequest
 
     /// <summary>Supported: <see cref="BridgeProtocol.OperationFullDump"/>.</summary>
     public string Operation { get; init; } = "";
+
+    /// <summary>
+    /// Optional accepted-player cap. <c>null</c> (or omitted) means unlimited;
+    /// a positive integer stops after that many accepted players.
+    /// </summary>
+    public int? MaxAccepted { get; init; }
 }

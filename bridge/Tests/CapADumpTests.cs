@@ -648,15 +648,45 @@ public sealed class CapADumpTests
             Assert.True(result.DumpReplaced);
             Assert.Equal(1, result.PlayerCount);
             Assert.False(result.ScanTruncated);
-            Assert.Equal(PersonScanner.DefaultMaxAccepted, result.MaxAccepted);
+            Assert.Null(result.MaxAccepted);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
             Assert.Equal(1, doc.RootElement.GetProperty("playerCount").GetInt32());
             Assert.False(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
-            Assert.Equal(
-                PersonScanner.DefaultMaxAccepted,
-                doc.RootElement.GetProperty("maxAccepted").GetInt32());
+            Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("maxAccepted").ValueKind);
             Assert.True(File.Exists(BridgePaths.GetDiagnosticsPath(bridgeDir)));
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_null_max_accepted_is_unlimited_not_default_cap()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var layout = Fm263Layout.Instance;
+            var reader = BuildReaderWithTwoIdenticalPlayers(layout);
+            var pipeline = new CapADumpPipeline();
+
+            var result = pipeline.Run(
+                reader,
+                bridgeDir,
+                gameVersion: "26.3.1",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+                maxAccepted: null);
+
+            Assert.True(result.Success);
+            Assert.False(result.ScanTruncated);
+            Assert.Null(result.MaxAccepted);
+
+            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("maxAccepted").ValueKind);
+            Assert.False(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
         }
         finally
         {

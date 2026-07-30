@@ -45,6 +45,8 @@ pub struct BridgeRequest {
     pub request_id: String,
     pub created_at_utc: String,
     pub operation: String,
+    /// Optional accepted-player cap. `None` means unlimited (serialized as JSON `null`).
+    pub max_accepted: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -276,16 +278,36 @@ pub fn write_player_dump_request(
 }
 
 /// Writes `request.json` and polls `status.json` until this request reaches a terminal state.
+///
+/// `max_accepted`: `None` = unlimited (production Load Data default); `Some(n)` stops after `n`
+/// accepted players (tests / diagnostic caps).
 pub fn request_player_dump(
     bridge_directory: &Path,
     wait: DumpWaitConfig,
 ) -> Result<DumpRequestResult, DumpRequestError> {
+    request_player_dump_with_limit(bridge_directory, wait, None)
+}
+
+pub fn request_player_dump_with_limit(
+    bridge_directory: &Path,
+    wait: DumpWaitConfig,
+    max_accepted: Option<i32>,
+) -> Result<DumpRequestResult, DumpRequestError> {
+    if let Some(limit) = max_accepted {
+        if limit <= 0 {
+            return Err(DumpRequestError::WriteFailed(
+                "maxAccepted must be null or a positive integer".to_string(),
+            ));
+        }
+    }
+
     let request_id = new_request_id();
     let request = BridgeRequest {
         protocol_version: PROTOCOL_VERSION,
         request_id: request_id.clone(),
         created_at_utc: utc_now_rfc3339(),
         operation: OPERATION_FULL_DUMP.to_string(),
+        max_accepted,
     };
 
     write_player_dump_request(bridge_directory, &request)?;
@@ -466,6 +488,7 @@ mod tests {
             request_id: "req-test".to_string(),
             created_at_utc: "2026-07-28T18:30:00.000Z".to_string(),
             operation: OPERATION_FULL_DUMP.to_string(),
+            max_accepted: None,
         };
 
         write_player_dump_request(bridge_dir, &request).expect("write request");
@@ -475,6 +498,98 @@ mod tests {
         assert_eq!(parsed.request_id, "req-test");
         assert_eq!(parsed.operation, "full-dump");
         assert_eq!(parsed.protocol_version, 1);
+        assert_eq!(parsed.max_accepted, None);
+        assert!(
+            json.contains("\"maxAccepted\": null") || !json.contains("maxAccepted"),
+            "unlimited request must omit maxAccepted or set it null, got: {json}"
+        );
+    }
+
+    #[test]
+    fn write_request_includes_positive_max_accepted_cap() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let bridge_dir = temp_dir.path();
+        let request = BridgeRequest {
+            protocol_version: 1,
+            request_id: "req-cap".to_string(),
+            created_at_utc: "2026-07-28T18:30:00.000Z".to_string(),
+            operation: OPERATION_FULL_DUMP.to_string(),
+            max_accepted: Some(500),
+        };
+
+        write_player_dump_request(bridge_dir, &request).expect("write request");
+
+        let json = fs::read_to_string(request_path(bridge_dir)).expect("read request");
+        let parsed: BridgeRequest = serde_json::from_str(&json).expect("parse request");
+        assert_eq!(parsed.max_accepted, Some(500));
+        assert!(
+            json.contains("\"maxAccepted\": 500"),
+            "capped request must serialize maxAccepted, got: {json}"
+        );
+    }
+
+    #[test]
+    fn request_player_dump_defaults_to_unlimited_max_accepted() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let bridge_dir = temp_dir.path().to_path_buf();
+        let barrier = Arc::new(Barrier::new(2));
+
+        let writer_dir = bridge_dir.clone();
+        let writer_barrier = Arc::clone(&barrier);
+        thread::spawn(move || {
+            writer_barrier.wait();
+            loop {
+                if request_path(&writer_dir).is_file() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            let json = fs::read_to_string(request_path(&writer_dir)).expect("read request");
+            let request: BridgeRequest = serde_json::from_str(&json).expect("parse request");
+            assert_eq!(request.max_accepted, None);
+            assert!(
+                json.contains("\"maxAccepted\": null") || !json.contains("maxAccepted"),
+                "production request must be unlimited, got: {json}"
+            );
+            write_status_fixture(
+                &writer_dir,
+                "ready",
+                Some(&request.request_id),
+                Some(1),
+                None,
+                Some(false),
+                None,
+            );
+            fs::write(dump_path(&writer_dir), INGESTIBLE_DUMP_FIXTURE).expect("dump");
+        });
+
+        barrier.wait();
+        let result = request_player_dump(
+            &bridge_dir,
+            DumpWaitConfig {
+                timeout: Duration::from_secs(2),
+                poll_interval: Duration::from_millis(20),
+            },
+        )
+        .expect("request dump");
+        assert_eq!(result.state, "ready");
+        assert_eq!(result.max_accepted, None);
+    }
+
+    #[test]
+    fn request_player_dump_with_limit_rejects_non_positive_cap() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let error = request_player_dump_with_limit(
+            temp_dir.path(),
+            DumpWaitConfig {
+                timeout: Duration::from_millis(50),
+                poll_interval: Duration::from_millis(10),
+            },
+            Some(0),
+        )
+        .expect_err("non-positive cap");
+        assert!(matches!(error, DumpRequestError::WriteFailed(_)));
+        assert!(!request_path(temp_dir.path()).is_file());
     }
 
     #[test]
@@ -524,6 +639,7 @@ mod tests {
             request_id: request_id.clone(),
             created_at_utc: "2026-07-28T18:30:00.000Z".to_string(),
             operation: OPERATION_FULL_DUMP.to_string(),
+            max_accepted: Some(500),
         };
         write_player_dump_request(&bridge_dir, &request).expect("write");
 
