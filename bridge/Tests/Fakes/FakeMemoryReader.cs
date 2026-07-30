@@ -62,26 +62,48 @@ public sealed class FakeMemoryReader : IMemoryReader
             return true;
         }
 
+        // Compose every overlapping segment into the range (production RPM returns a contiguous
+        // page image; tests store sparse AddBytes fragments).
+        var hit = new bool[length];
+        var reqEnd = address + (ulong)length;
         foreach (var (segmentAddress, bytes) in _segments)
         {
-            if (address < segmentAddress)
+            var segEnd = segmentAddress + (ulong)bytes.Length;
+            if (segEnd <= address || segmentAddress >= reqEnd)
             {
                 continue;
             }
 
-            var segmentOffset = address - segmentAddress;
-            if (segmentOffset >= (ulong)bytes.Length)
+            var dstStart = segmentAddress > address ? (int)(segmentAddress - address) : 0;
+            var srcStart = address > segmentAddress ? (int)(address - segmentAddress) : 0;
+            var copyLen = Math.Min(bytes.Length - srcStart, length - dstStart);
+            if (copyLen <= 0)
             {
                 continue;
             }
 
-            var available = bytes.Length - (int)segmentOffset;
-            var toCopy = Math.Min(available, length);
-            bytes.AsSpan((int)segmentOffset, toCopy).CopyTo(buffer.AsSpan(offset, toCopy));
-            bytesRead = toCopy;
-            return toCopy == length;
+            for (var i = 0; i < copyLen; i++)
+            {
+                if (hit[dstStart + i])
+                {
+                    continue;
+                }
+
+                buffer[offset + dstStart + i] = bytes[srcStart + i];
+                hit[dstStart + i] = true;
+            }
         }
 
-        return false;
+        var filled = 0;
+        for (var i = 0; i < length; i++)
+        {
+            if (hit[i])
+            {
+                filled++;
+            }
+        }
+
+        bytesRead = filled;
+        return filled == length;
     }
 }

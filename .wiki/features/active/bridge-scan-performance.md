@@ -145,7 +145,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 3 — Scan heap regions from reusable blocks
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Replace per-word process-memory calls with bounded region blocks, local aligned-word inspection, in-buffer UID reads, and cached module metadata or vtable-to-class-offset results. Stop immediately when a diagnostic cap is reached and preserve truncation semantics.
 
@@ -236,15 +236,15 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **PR:** PR 1 — Replace scalar heap reads with block scanning
 
-**Commit:** Scan heap regions from reusable blocks
+**Commit:** Scan heap regions from reusable blocks (checkpoint pending)
 
 ### RED test (active commit)
 
-Characterization tests prove PersonScanner (via CapADumpPipeline or direct Scan) returns the same accepted UIDs, CA/PA values, deduplication, cancellation, and fail-safe behavior when heap discovery uses `TryReadBlock` instead of per-word `TryRead`. A counting reader proves process-memory calls scale with blocks, not 8-byte slots. It fails today because `PersonScanner.Scan` still issues one scalar read per aligned heap word.
+Characterization + counting-reader tests (block-scale discovery; cached vtable resolve across many shared-vtable hits). Implemented; awaiting content commit hash.
 
 ### Expected outcome
 
-Candidate discovery walks regions from reusable bounded blocks with local aligned-word inspection, in-buffer UID reads where possible, and cached module metadata or vtable-to-class-offset results, while preserving the 500-player cap and truncation semantics.
+Candidate discovery walks regions from reusable bounded blocks with local aligned-word inspection, in-buffer UID reads, and cached vtable-to-class-offset results, while preserving the 500-player cap and truncation semantics.
 
 ### Explicit exclusions
 
@@ -268,6 +268,8 @@ Candidate discovery walks regions from reusable bounded blocks with local aligne
   - Confirms the plan thesis: candidate discovery + scalar heap reads are the bottleneck; post-discovery phases are already sub-second at the 500-player cap. PR 1 success criterion remains capped path `<10s` after block scanning.
 - Commit 2: failed-block subdivision splits must align to `MinBlockReadSize` (page size). When `length/2` rounds below one page, split at `MinBlockReadSize` instead of an unaligned midpoint so mid-gap starts cannot miss a later accessible page.
 - Commit 2: `TryReadBlock` `bytesRead` is a success count, not a contiguous prefix after hole recovery. Commit 3 must scan the full requested length (cleared gaps stay zero), not `buffer[0..bytesRead)`.
+- Commit 3: heap discovery uses `MemoryConstants.DefaultScanBlockSize` (32 MiB) with 16-byte overlap; UID is read from the block buffer; vtable→class-offset results are cached for the scan (including negative 0). CA/PA remain scalar until PR 2 extraction batching.
+- Commit 3: `FakeMemoryReader.TryReadBlock` composes sparse `AddBytes` segments with first-fill-wins so overlapping fixture blobs do not erase earlier person headers (matches scalar `TryRead` first-match).
 
 ## Completed work
 
