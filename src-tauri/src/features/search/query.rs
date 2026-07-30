@@ -3,6 +3,76 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortField {
+    Name,
+    Age,
+    Nationality,
+    Club,
+    Division,
+    Ca,
+    Pa,
+    Value,
+}
+
+impl SortField {
+    pub const DEFAULT: Self = Self::Ca;
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "name" => Ok(Self::Name),
+            "age" => Ok(Self::Age),
+            "nationality" => Ok(Self::Nationality),
+            "club" => Ok(Self::Club),
+            "division" => Ok(Self::Division),
+            "ca" => Ok(Self::Ca),
+            "pa" => Ok(Self::Pa),
+            "value" => Ok(Self::Value),
+            _ => Err(format!("unknown search sort field: {value}")),
+        }
+    }
+
+    fn sql_expr(self) -> &'static str {
+        match self {
+            Self::Name => "name COLLATE NOCASE",
+            Self::Age => "age",
+            // ponytail: sort by raw nationalities_json text, not display join order
+            // Upgrade to first-nationality / normalized key if multi-nation sort UX matters
+            Self::Nationality => "nationalities_json COLLATE NOCASE",
+            Self::Club => "current_club COLLATE NOCASE",
+            Self::Division => "division COLLATE NOCASE",
+            Self::Ca => "ca",
+            Self::Pa => "pa",
+            Self::Value => "market_value_gbp",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortDir {
+    Asc,
+    Desc,
+}
+
+impl SortDir {
+    pub const DEFAULT: Self = Self::Desc;
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "asc" => Ok(Self::Asc),
+            "desc" => Ok(Self::Desc),
+            _ => Err(format!("unknown search sort direction: {value}")),
+        }
+    }
+
+    fn sql_keyword(self) -> &'static str {
+        match self {
+            Self::Asc => "ASC",
+            Self::Desc => "DESC",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerSummary {
     pub uid: i64,
@@ -28,6 +98,8 @@ pub fn search_players(
     conn: &Connection,
     offset: usize,
     limit: usize,
+    sort_by: SortField,
+    sort_dir: SortDir,
 ) -> Result<SearchPlayersPage, String> {
     let snapshot_id: Option<i64> = conn
         .query_row(
@@ -61,9 +133,14 @@ pub fn search_players(
         )
         .map_err(|error| error.to_string())?;
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT
+    // Whitelisted expr + dir only — never interpolate raw client strings.
+    let order_sql = format!(
+        "ORDER BY {} {}, uid ASC",
+        sort_by.sql_expr(),
+        sort_dir.sql_keyword()
+    );
+    let select_sql = format!(
+        "SELECT
                 uid,
                 name,
                 age,
@@ -77,9 +154,12 @@ pub fn search_players(
                 market_value_gbp
              FROM players
              WHERE snapshot_id = ?1
-             ORDER BY ca DESC, uid ASC
-             LIMIT ?2 OFFSET ?3",
-        )
+             {order_sql}
+             LIMIT ?2 OFFSET ?3"
+    );
+
+    let mut stmt = conn
+        .prepare(&select_sql)
         .map_err(|error| error.to_string())?;
 
     let players = stmt
@@ -191,7 +271,14 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("no-snapshot.db"));
 
-        let page = search_players(&conn, 0, DEFAULT_PAGE_LIMIT).expect("search players");
+        let page = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+        )
+        .expect("search players");
 
         assert_eq!(page.total, 0);
         assert!(page.players.is_empty());
@@ -209,7 +296,14 @@ mod tests {
         let second_save = create_save(&conn, "Second save").expect("create save");
         set_active_save(&mut conn, second_save.id).expect("switch save");
 
-        let page = search_players(&conn, 0, DEFAULT_PAGE_LIMIT).expect("search after switch");
+        let page = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+        )
+        .expect("search after switch");
 
         assert_eq!(page.total, 0);
         assert!(page.players.is_empty());
@@ -228,7 +322,14 @@ mod tests {
             ],
         );
 
-        let page = search_players(&conn, 0, DEFAULT_PAGE_LIMIT).expect("search players");
+        let page = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+        )
+        .expect("search players");
 
         assert_eq!(page.total, 3);
         assert_eq!(page.players.len(), 3);
@@ -260,7 +361,8 @@ mod tests {
             .collect();
         ingest_players(&mut conn, players);
 
-        let page = search_players(&conn, 2, 2).expect("offset page");
+        let page =
+            search_players(&conn, 2, 2, SortField::DEFAULT, SortDir::DEFAULT).expect("offset page");
         assert_eq!(page.total, 5);
         assert_eq!(page.players.len(), 2);
         assert_eq!(
@@ -299,8 +401,72 @@ mod tests {
             .expect("insert extra player");
         }
 
-        let page = search_players(&conn, 0, MAX_PAGE_LIMIT + 50).expect("capped search");
+        let page = search_players(
+            &conn,
+            0,
+            MAX_PAGE_LIMIT + 50,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+        )
+        .expect("capped search");
         assert_eq!(page.total, extra);
         assert_eq!(page.players.len(), MAX_PAGE_LIMIT);
+    }
+
+    #[test]
+    fn rejects_unknown_sort_field() {
+        assert!(SortField::parse("not_a_column").is_err());
+        assert!(SortField::parse("ca; DROP TABLE players").is_err());
+        assert!(SortDir::parse("sideways").is_err());
+    }
+
+    #[test]
+    fn orders_by_whitelisted_name_ascending() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("sort-name.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Charlie", 100),
+                player_template(2, "Alice", 180),
+                player_template(3, "Bob", 140),
+            ],
+        );
+
+        let page = search_players(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Name, SortDir::Asc)
+            .expect("sort by name");
+
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Alice", "Bob", "Charlie"]
+        );
+    }
+
+    #[test]
+    fn orders_by_pa_ascending_when_requested() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("sort-pa.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Low", 100),
+                player_template(2, "High", 180),
+                player_template(3, "Mid", 140),
+            ],
+        );
+
+        let page = search_players(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Pa, SortDir::Asc)
+            .expect("sort by pa");
+
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.pa)
+                .collect::<Vec<_>>(),
+            vec![110, 150, 190]
+        );
     }
 }

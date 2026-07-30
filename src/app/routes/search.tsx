@@ -6,13 +6,43 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { searchPlayersQueryOptions } from "@/features/search/api/search-players-query-options";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
+import type {
+  SearchSortDir,
+  SearchSortField,
+} from "@/features/search/types/search-sort";
+import {
+  DEFAULT_SEARCH_SORT_DIR,
+  DEFAULT_SEARCH_SORT_FIELD,
+  defaultDirForSortField,
+  isSearchSortDir,
+  isSearchSortField,
+} from "@/features/search/types/search-sort";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 
+export type SearchRouteSearch = {
+  sort: SearchSortField;
+  dir: SearchSortDir;
+};
+
 export const Route = createFileRoute("/search")({
-  loader: ({ context: { queryClient } }) =>
+  validateSearch: (search: Record<string, unknown>): SearchRouteSearch => {
+    const sort = isSearchSortField(search.sort)
+      ? search.sort
+      : DEFAULT_SEARCH_SORT_FIELD;
+    const dir = isSearchSortDir(search.dir)
+      ? search.dir
+      : isSearchSortField(search.sort)
+        ? defaultDirForSortField(sort)
+        : DEFAULT_SEARCH_SORT_DIR;
+    return { sort, dir };
+  },
+  loaderDeps: ({ search: { sort, dir } }) => ({ sort, dir }),
+  loader: ({ context: { queryClient }, deps: { sort, dir } }) =>
     Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
-      queryClient.ensureQueryData(searchPlayersQueryOptions(0)),
+      queryClient.ensureQueryData(
+        searchPlayersQueryOptions(0, undefined, sort, dir),
+      ),
     ]),
   component: SearchPage,
 });
@@ -27,6 +57,8 @@ function PanelFallback() {
 
 function SearchPageBody() {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
+  const { sort, dir } = Route.useSearch();
+  const navigate = Route.useNavigate();
 
   if (!snapshot) {
     return (
@@ -39,7 +71,18 @@ function SearchPageBody() {
     );
   }
 
-  return <SearchResultsPanel />;
+  return (
+    <SearchResultsPanel
+      sortBy={sort}
+      sortDir={dir}
+      onSortChange={(nextSort, nextDir) => {
+        void navigate({
+          search: { sort: nextSort, dir: nextDir },
+          replace: true,
+        });
+      }}
+    />
+  );
 }
 
 function SearchPage() {

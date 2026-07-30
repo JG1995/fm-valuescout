@@ -3,7 +3,9 @@ use tauri::State;
 
 use crate::db::Db;
 
-use super::query::{self, PlayerSummary, SearchPlayersPage, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT};
+use super::query::{
+    self, PlayerSummary, SearchPlayersPage, SortDir, SortField, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
+};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -63,6 +65,8 @@ impl From<SearchPlayersPage> for SearchPlayersPageDto {
 pub fn search_players(
     offset: Option<u32>,
     limit: Option<u32>,
+    sort_by: Option<String>,
+    sort_dir: Option<String>,
     db: State<'_, Db>,
 ) -> Result<SearchPlayersPageDto, String> {
     let conn =
@@ -73,6 +77,14 @@ pub fn search_players(
         .map(|value| value as usize)
         .unwrap_or(DEFAULT_PAGE_LIMIT)
         .clamp(1, MAX_PAGE_LIMIT);
-    let page = query::search_players(&conn, offset, limit)?;
+    let sort_by = match sort_by.as_deref() {
+        None => SortField::DEFAULT,
+        Some(value) => SortField::parse(value)?,
+    };
+    let sort_dir = match sort_dir.as_deref() {
+        None => SortDir::DEFAULT,
+        Some(value) => SortDir::parse(value)?,
+    };
+    let page = query::search_players(&conn, offset, limit, sort_by, sort_dir)?;
     Ok(SearchPlayersPageDto::from(page))
 }

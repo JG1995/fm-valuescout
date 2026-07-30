@@ -168,7 +168,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 3 — Sortable result columns
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Extend list IPC with sort field + direction (whitelist basic columns). Table headers set sort via URL search params; default remains CA desc. `aria-sort` on headers.
 

@@ -19,7 +19,7 @@ import {
   resolveLoadDataIpcMock,
 } from "@/testing/snapshot-ipc-mock";
 
-function renderSearchRoute() {
+function renderSearchRoute(initialEntry = "/search") {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: 60_000 },
@@ -30,7 +30,7 @@ function renderSearchRoute() {
     routeTree,
     context: { queryClient } satisfies RouterContext,
     defaultPreloadStaleTime: 0,
-    history: createMemoryHistory({ initialEntries: ["/search"] }),
+    history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
 
   return {
@@ -167,5 +167,133 @@ describe("search route", () => {
     await user.selectOptions(saveSelect, "1");
     expect(await screen.findByText("Save One Star")).toBeInTheDocument();
     expect(screen.queryByText("Save Two Star")).not.toBeInTheDocument();
+  });
+
+  it("defaults CA header to descending aria-sort", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("High", 180),
+      playerNamed("Low", 100),
+    ]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const caHeader = within(table).getByRole("columnheader", { name: /CA/i });
+    expect(caHeader).toHaveAttribute("aria-sort", "descending");
+    expect(screen.getByText(/sorted by CA \(descending\)/)).toBeInTheDocument();
+  });
+
+  it("writes sort into URL search params when a header is clicked", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    // CA desc → Zara first; name asc → Alice first (orders must diverge).
+    setSearchPlayersOverride([
+      playerNamed("Zara", 200),
+      playerNamed("Alice", 100),
+      playerNamed("Bob", 150),
+    ]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(await within(table).findByText("Zara")).toBeInTheDocument();
+
+    const bodyRowsBefore = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    const firstBefore = bodyRowsBefore[0];
+    if (!firstBefore) {
+      throw new Error("expected a virtualized body row before sort");
+    }
+    expect(within(firstBefore).getByText("Zara")).toBeInTheDocument();
+
+    await user.click(within(table).getByRole("button", { name: /^Name$/i }));
+
+    expect(router.state.location.search).toMatchObject({
+      sort: "name",
+      dir: "asc",
+    });
+    const nameHeader = within(table).getByRole("columnheader", {
+      name: /Name/i,
+    });
+    expect(nameHeader).toHaveAttribute("aria-sort", "ascending");
+
+    const bodyRowsAfter = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    const firstAfter = bodyRowsAfter[0];
+    if (!firstAfter) {
+      throw new Error("expected a virtualized body row after sort");
+    }
+    expect(within(firstAfter).getByText("Alice")).toBeInTheDocument();
+    expect(within(firstAfter).queryByText("Zara")).not.toBeInTheDocument();
+  });
+
+  it("defaults missing dir from the sort field for partial URLs", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Zara", 200),
+      playerNamed("Alice", 100),
+    ]);
+    const { router } = renderSearchRoute("/search?sort=name");
+
+    expect(router.state.location.search).toMatchObject({
+      sort: "name",
+      dir: "asc",
+    });
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(table).getByRole("columnheader", { name: /Name/i }),
+    ).toHaveAttribute("aria-sort", "ascending");
+
+    const bodyRows = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    const firstRow = bodyRows[0];
+    if (!firstRow) {
+      throw new Error("expected a virtualized body row");
+    }
+    expect(within(firstRow).getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("toggles CA from default descending to ascending on header click", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("High", 180),
+      playerNamed("Low", 100),
+    ]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const caButton = await within(table).findByRole("button", {
+      name: /^CA$/i,
+    });
+
+    await user.click(caButton);
+    expect(router.state.location.search).toMatchObject({
+      sort: "ca",
+      dir: "asc",
+    });
+    expect(
+      within(table).getByRole("columnheader", { name: /CA/i }),
+    ).toHaveAttribute("aria-sort", "ascending");
+
+    const bodyRows = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    const firstRow = bodyRows[0];
+    if (!firstRow) {
+      throw new Error("expected a virtualized body row");
+    }
+    expect(within(firstRow).getByText("Low")).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 import { useQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { SearchX } from "lucide-react";
+import { ChevronDown, ChevronUp, SearchX } from "lucide-react";
 import { useRef } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
@@ -15,6 +15,8 @@ import {
   searchPlayersQueryOptions,
 } from "../api/search-players-query-options";
 import type { PlayerSummary } from "../types/player-summary";
+import type { SearchSortDir, SearchSortField } from "../types/search-sort";
+import { defaultDirForSortField } from "../types/search-sort";
 
 /** Must match `--spacing-table-row-height-two-line` / `h-table-row-height-two-line`. */
 const ROW_HEIGHT = 40;
@@ -33,7 +35,28 @@ const COLUMNS = [
   { key: "ca", label: "CA", align: "right" as const },
   { key: "pa", label: "PA", align: "right" as const },
   { key: "value", label: "Value", align: "right" as const },
-] as const;
+] as const satisfies ReadonlyArray<{
+  key: SearchSortField;
+  label: string;
+  align: "left" | "right";
+}>;
+
+const SORT_LABELS: Record<SearchSortField, string> = {
+  name: "Name",
+  age: "Age / DOB",
+  nationality: "Nationality",
+  club: "Club",
+  division: "Division",
+  ca: "CA",
+  pa: "PA",
+  value: "Value",
+};
+
+type SearchResultsPanelProps = {
+  sortBy: SearchSortField;
+  sortDir: SearchSortDir;
+  onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
+};
 
 function pageIndexesForRange(startIndex: number, endIndex: number): number[] {
   const startPage = Math.floor(startIndex / SEARCH_PAGE_SIZE);
@@ -54,7 +77,31 @@ function playerAtIndex(
   return entry?.players?.[index % SEARCH_PAGE_SIZE];
 }
 
-function SearchResultsVirtualTable({ total }: { total: number }) {
+function nextSort(
+  currentBy: SearchSortField,
+  currentDir: SearchSortDir,
+  clicked: SearchSortField,
+): { sortBy: SearchSortField; sortDir: SearchSortDir } {
+  if (clicked === currentBy) {
+    return {
+      sortBy: currentBy,
+      sortDir: currentDir === "asc" ? "desc" : "asc",
+    };
+  }
+  return { sortBy: clicked, sortDir: defaultDirForSortField(clicked) };
+}
+
+function SearchResultsVirtualTable({
+  total,
+  sortBy,
+  sortDir,
+  onSortChange,
+}: {
+  total: number;
+  sortBy: SearchSortField;
+  sortDir: SearchSortDir;
+  onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
+}) {
   const parentRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: total,
@@ -97,7 +144,12 @@ function SearchResultsVirtualTable({ total }: { total: number }) {
 
   const pageQueries = useQueries({
     queries: pages.map((page) =>
-      searchPlayersQueryOptions(page * SEARCH_PAGE_SIZE, SEARCH_PAGE_SIZE),
+      searchPlayersQueryOptions(
+        page * SEARCH_PAGE_SIZE,
+        SEARCH_PAGE_SIZE,
+        sortBy,
+        sortDir,
+      ),
     ),
   });
 
@@ -122,19 +174,49 @@ function SearchResultsVirtualTable({ total }: { total: number }) {
         <caption className="sr-only">Player search results</caption>
         <thead className="sticky top-0 z-10">
           <tr className="bg-surface-container-lowest">
-            {COLUMNS.map((column) => (
-              <th
-                key={column.key}
-                scope="col"
-                className={
-                  column.align === "right"
-                    ? "h-table-header-height px-2 text-right text-label-md text-on-surface-variant uppercase"
-                    : "h-table-header-height px-2 text-label-md text-on-surface-variant uppercase"
-                }
-              >
-                {column.label}
-              </th>
-            ))}
+            {COLUMNS.map((column) => {
+              const active = column.key === sortBy;
+              const ariaSort = active
+                ? sortDir === "asc"
+                  ? "ascending"
+                  : "descending"
+                : "none";
+              const Caret = sortDir === "asc" ? ChevronUp : ChevronDown;
+              return (
+                <th
+                  key={column.key}
+                  scope="col"
+                  aria-sort={ariaSort}
+                  className={
+                    column.align === "right"
+                      ? "h-table-header-height px-2 text-right"
+                      : "h-table-header-height px-2 text-left"
+                  }
+                >
+                  <button
+                    type="button"
+                    className={
+                      active
+                        ? "inline-flex items-center gap-1 text-label-md text-primary uppercase"
+                        : "inline-flex items-center gap-1 text-label-md text-on-surface-variant uppercase"
+                    }
+                    onClick={() => {
+                      const next = nextSort(sortBy, sortDir, column.key);
+                      onSortChange(next.sortBy, next.sortDir);
+                    }}
+                  >
+                    {column.label}
+                    {active ? (
+                      <Caret
+                        aria-hidden
+                        className="size-3.5 shrink-0"
+                        strokeWidth={2}
+                      />
+                    ) : null}
+                  </button>
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -220,8 +302,14 @@ function SearchResultsVirtualTable({ total }: { total: number }) {
 }
 
 /** Assumes a current snapshot exists — the route handles the no-snapshot empty. */
-export function SearchResultsPanel() {
-  const { data: page } = useSuspenseQuery(searchPlayersQueryOptions(0));
+export function SearchResultsPanel({
+  sortBy,
+  sortDir,
+  onSortChange,
+}: SearchResultsPanelProps) {
+  const { data: page } = useSuspenseQuery(
+    searchPlayersQueryOptions(0, SEARCH_PAGE_SIZE, sortBy, sortDir),
+  );
 
   if (page.total === 0) {
     return (
@@ -234,13 +322,20 @@ export function SearchResultsPanel() {
     );
   }
 
+  const dirLabel = sortDir === "asc" ? "ascending" : "descending";
+
   return (
     <Panel title="Results" flush>
       <p className="px-4 pb-3 text-body-md text-on-surface-variant">
         <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
-        players · sorted by CA
+        players · sorted by {SORT_LABELS[sortBy]} ({dirLabel})
       </p>
-      <SearchResultsVirtualTable total={page.total} />
+      <SearchResultsVirtualTable
+        total={page.total}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        onSortChange={onSortChange}
+      />
     </Panel>
   );
 }
