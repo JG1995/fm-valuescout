@@ -1,9 +1,94 @@
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use std::collections::BTreeMap;
+
+use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Row};
+
+use super::filter::{compile_filters, dynamic_fields_from_ast, field_value_sql, FilterAst};
 
 pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
+pub const DEFAULT_SUGGEST_LIMIT: usize = 10;
+pub const MAX_SUGGEST_LIMIT: usize = 20;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayerSuggestHit {
+    pub uid: i64,
+    pub name: String,
+    pub ca: i64,
+}
+
+/// Ranked name matches for the active save's current snapshot.
+/// Empty/whitespace query → empty list. Order: exact → prefix → contains, then CA desc.
+pub fn suggest_players(
+    conn: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<PlayerSuggestHit>, String> {
+    let query = query.trim();
+    if query.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let snapshot_id: Option<i64> = conn
+        .query_row(
+            "SELECT s.id
+             FROM snapshots s
+             INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
+             WHERE s.is_current = 1
+             LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+
+    let Some(snapshot_id) = snapshot_id else {
+        return Ok(Vec::new());
+    };
+
+    let limit = i64::try_from(limit.clamp(1, MAX_SUGGEST_LIMIT))
+        .map_err(|_| "suggest limit out of range".to_string())?;
+    let escaped = super::filter::escape_like(query);
+    let prefix_pattern = format!("{escaped}%");
+    let contains_pattern = format!("%{escaped}%");
+
+    let sql = "
+        SELECT players.uid, players.name, players.ca
+        FROM players
+        WHERE players.snapshot_id = ?1
+          AND players.name LIKE ?2 ESCAPE '\\' COLLATE NOCASE
+        ORDER BY
+          CASE
+            WHEN players.name = ?3 COLLATE NOCASE THEN 0
+            WHEN players.name LIKE ?4 ESCAPE '\\' COLLATE NOCASE THEN 1
+            ELSE 2
+          END ASC,
+          players.ca DESC,
+          players.uid ASC
+        LIMIT ?5
+    ";
+
+    let mut stmt = conn.prepare(sql).map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(
+            rusqlite::params![snapshot_id, contains_pattern, query, prefix_pattern, limit],
+            |row| {
+                Ok(PlayerSuggestHit {
+                    uid: row.get(0)?,
+                    name: row.get(1)?,
+                    ca: row.get(2)?,
+                })
+            },
+        )
+        .map_err(|error| error.to_string())?;
+
+    let mut hits = Vec::new();
+    for row in rows {
+        hits.push(row.map_err(|error| error.to_string())?);
+    }
+    Ok(hits)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SortField {
     Name,
     Age,
@@ -13,6 +98,8 @@ pub enum SortField {
     Ca,
     Pa,
     Value,
+    /// Whitelisted filter field id (`role.*`, `attr.*`, scalar non-basics, …).
+    Dynamic(String),
 }
 
 impl SortField {
@@ -28,23 +115,28 @@ impl SortField {
             "ca" => Ok(Self::Ca),
             "pa" => Ok(Self::Pa),
             "value" => Ok(Self::Value),
-            _ => Err(format!("unknown search sort field: {value}")),
+            other => {
+                // Reject fields that cannot produce a single sortable expression.
+                let _ = field_value_sql(other)?;
+                Ok(Self::Dynamic(other.to_string()))
+            }
         }
     }
 
-    fn sql_expr(self) -> &'static str {
-        match self {
-            Self::Name => "name COLLATE NOCASE",
-            Self::Age => "age",
+    fn sql_expr(&self) -> Result<String, String> {
+        Ok(match self {
+            Self::Name => "name COLLATE NOCASE".to_string(),
+            Self::Age => "age".to_string(),
             // ponytail: sort by raw nationalities_json text, not display join order
             // Upgrade to first-nationality / normalized key if multi-nation sort UX matters
-            Self::Nationality => "nationalities_json COLLATE NOCASE",
-            Self::Club => "current_club COLLATE NOCASE",
-            Self::Division => "division COLLATE NOCASE",
-            Self::Ca => "ca",
-            Self::Pa => "pa",
-            Self::Value => "market_value_gbp",
-        }
+            Self::Nationality => "nationalities_json COLLATE NOCASE".to_string(),
+            Self::Club => "current_club COLLATE NOCASE".to_string(),
+            Self::Division => "division COLLATE NOCASE".to_string(),
+            Self::Ca => "ca".to_string(),
+            Self::Pa => "pa".to_string(),
+            Self::Value => "market_value_gbp".to_string(),
+            Self::Dynamic(field) => field_value_sql(field)?,
+        })
     }
 }
 
@@ -74,6 +166,12 @@ impl SortDir {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DynamicValue {
+    Integer(i64),
+    Text(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerSummary {
     pub uid: i64,
     pub name: String,
@@ -86,6 +184,8 @@ pub struct PlayerSummary {
     pub ca: i64,
     pub pa: i64,
     pub market_value_gbp: Option<i64>,
+    /// Values for active non-basic filter fields (field id → nullable cell).
+    pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +200,7 @@ pub fn search_players(
     limit: usize,
     sort_by: SortField,
     sort_dir: SortDir,
+    filter_ast: Option<&FilterAst>,
 ) -> Result<SearchPlayersPage, String> {
     let snapshot_id: Option<i64> = conn
         .query_row(
@@ -125,45 +226,85 @@ pub fn search_players(
     let offset = i64::try_from(offset).map_err(|_| "search offset out of range".to_string())?;
     let limit = i64::try_from(limit).map_err(|_| "search limit out of range".to_string())?;
 
-    let total: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM players WHERE snapshot_id = ?1",
-            params![snapshot_id],
-            |row| row.get(0),
-        )
+    let dynamic_fields = filter_ast.map(dynamic_fields_from_ast).unwrap_or_default();
+
+    let compiled = match filter_ast {
+        None => None,
+        Some(ast) => {
+            let compiled = compile_filters(ast, 2)?;
+            if compiled.sql.is_empty() {
+                None
+            } else {
+                Some(compiled)
+            }
+        }
+    };
+
+    let mut where_sql = "players.snapshot_id = ?1".to_string();
+    if let Some(compiled) = &compiled {
+        where_sql.push_str(" AND ");
+        where_sql.push_str(&compiled.sql);
+    }
+
+    let mut bind_values = vec![Value::Integer(snapshot_id)];
+    if let Some(compiled) = &compiled {
+        bind_values.extend(compiled.params.clone());
+    }
+
+    let count_sql = format!("SELECT COUNT(*) FROM players WHERE {where_sql}");
+    let mut count_stmt = conn
+        .prepare(&count_sql)
         .map_err(|error| error.to_string())?;
+    let total: i64 = count_stmt
+        .query_row(params_from_iter(bind_values.iter()), |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+
+    let limit_index = bind_values.len() + 1;
+    let offset_index = bind_values.len() + 2;
+    bind_values.push(Value::Integer(limit));
+    bind_values.push(Value::Integer(offset));
 
     // Whitelisted expr + dir only — never interpolate raw client strings.
     let order_sql = format!(
-        "ORDER BY {} {}, uid ASC",
-        sort_by.sql_expr(),
+        "ORDER BY {} {}, players.uid ASC",
+        sort_by.sql_expr()?,
         sort_dir.sql_keyword()
     );
-    let select_sql = format!(
+
+    let mut select_sql = String::from(
         "SELECT
-                uid,
-                name,
-                age,
-                birth_year,
-                birth_day_of_year,
-                nationalities_json,
-                current_club,
-                division,
-                ca,
-                pa,
-                market_value_gbp
-             FROM players
-             WHERE snapshot_id = ?1
-             {order_sql}
-             LIMIT ?2 OFFSET ?3"
+                players.uid,
+                players.name,
+                players.age,
+                players.birth_year,
+                players.birth_day_of_year,
+                players.nationalities_json,
+                players.current_club,
+                players.division,
+                players.ca,
+                players.pa,
+                players.market_value_gbp",
     );
+    for field in &dynamic_fields {
+        select_sql.push_str(", ");
+        select_sql.push_str(&field_value_sql(field)?);
+    }
+    select_sql.push_str(&format!(
+        "
+             FROM players
+             WHERE {where_sql}
+             {order_sql}
+             LIMIT ?{limit_index} OFFSET ?{offset_index}"
+    ));
 
     let mut stmt = conn
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?;
 
     let players = stmt
-        .query_map(params![snapshot_id, limit, offset], map_player_summary)
+        .query_map(params_from_iter(bind_values.iter()), |row| {
+            map_player_summary(row, &dynamic_fields)
+        })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
@@ -171,7 +312,7 @@ pub fn search_players(
     Ok(SearchPlayersPage { players, total })
 }
 
-fn map_player_summary(row: &Row<'_>) -> rusqlite::Result<PlayerSummary> {
+fn map_player_summary(row: &Row<'_>, dynamic_fields: &[String]) -> rusqlite::Result<PlayerSummary> {
     let nationalities_json: String = row.get(5)?;
     let nationalities = parse_nationalities(&nationalities_json).map_err(|message| {
         rusqlite::Error::FromSqlConversionFailure(
@@ -183,6 +324,13 @@ fn map_player_summary(row: &Row<'_>) -> rusqlite::Result<PlayerSummary> {
             )),
         )
     })?;
+
+    let mut dynamic_values = BTreeMap::new();
+    for (offset, field) in dynamic_fields.iter().enumerate() {
+        let idx = 11 + offset;
+        let cell = read_dynamic_cell(row, idx, field)?;
+        dynamic_values.insert(field.clone(), cell);
+    }
 
     Ok(PlayerSummary {
         uid: row.get(0)?,
@@ -196,7 +344,42 @@ fn map_player_summary(row: &Row<'_>) -> rusqlite::Result<PlayerSummary> {
         ca: row.get(8)?,
         pa: row.get(9)?,
         market_value_gbp: row.get(10)?,
+        dynamic_values,
     })
+}
+
+fn read_dynamic_cell(
+    row: &Row<'_>,
+    idx: usize,
+    field: &str,
+) -> rusqlite::Result<Option<DynamicValue>> {
+    // Integer-like fields (scores, attrs, scalars, bools as 0/1).
+    if field.starts_with("role.")
+        || field.starts_with("attr.")
+        || field.starts_with("hidden.")
+        || field.starts_with("personality.")
+        || field.starts_with("pos.")
+        || matches!(
+            field,
+            "height"
+                | "wage"
+                | "reputation"
+                | "world_reputation"
+                | "birth_year"
+                | "contract_year"
+                | "transfer_listed"
+                | "loan_listed"
+                | "not_for_sale"
+                | "set_for_release"
+                | "on_loan"
+        )
+    {
+        let value: Option<i64> = row.get(idx)?;
+        return Ok(value.map(DynamicValue::Integer));
+    }
+
+    let value: Option<String> = row.get(idx)?;
+    Ok(value.map(DynamicValue::Text))
 }
 
 fn parse_nationalities(json: &str) -> Result<Vec<String>, String> {
@@ -207,10 +390,34 @@ fn parse_nationalities(json: &str) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
     use crate::db::migrations;
+    use crate::features::search::filter::{parse_filter_ast, FilterRule, FilterValue};
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service::{create_save, set_active_save};
     use serde_json::{json, Value};
     use std::path::Path;
+
+    fn search_without_filters(
+        conn: &Connection,
+        offset: usize,
+        limit: usize,
+        sort_by: SortField,
+        sort_dir: SortDir,
+    ) -> Result<SearchPlayersPage, String> {
+        search_players(conn, offset, limit, sort_by, sort_dir, None)
+    }
+
+    fn search_with_filters(
+        conn: &Connection,
+        offset: usize,
+        limit: usize,
+        sort_by: SortField,
+        sort_dir: SortDir,
+        rules: Vec<FilterRule>,
+        combine: Option<&str>,
+    ) -> Result<SearchPlayersPage, String> {
+        let ast = parse_filter_ast(rules, combine)?;
+        search_players(conn, offset, limit, sort_by, sort_dir, Some(&ast))
+    }
 
     fn open_migrated(db_path: &Path) -> rusqlite::Connection {
         let conn = rusqlite::Connection::open(db_path).expect("open test db");
@@ -271,7 +478,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("no-snapshot.db"));
 
-        let page = search_players(
+        let page = search_without_filters(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -296,7 +503,7 @@ mod tests {
         let second_save = create_save(&conn, "Second save").expect("create save");
         set_active_save(&mut conn, second_save.id).expect("switch save");
 
-        let page = search_players(
+        let page = search_without_filters(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -322,7 +529,7 @@ mod tests {
             ],
         );
 
-        let page = search_players(
+        let page = search_without_filters(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -361,8 +568,8 @@ mod tests {
             .collect();
         ingest_players(&mut conn, players);
 
-        let page =
-            search_players(&conn, 2, 2, SortField::DEFAULT, SortDir::DEFAULT).expect("offset page");
+        let page = search_without_filters(&conn, 2, 2, SortField::DEFAULT, SortDir::DEFAULT)
+            .expect("offset page");
         assert_eq!(page.total, 5);
         assert_eq!(page.players.len(), 2);
         assert_eq!(
@@ -401,7 +608,7 @@ mod tests {
             .expect("insert extra player");
         }
 
-        let page = search_players(
+        let page = search_without_filters(
             &conn,
             0,
             MAX_PAGE_LIMIT + 50,
@@ -433,8 +640,9 @@ mod tests {
             ],
         );
 
-        let page = search_players(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Name, SortDir::Asc)
-            .expect("sort by name");
+        let page =
+            search_without_filters(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Name, SortDir::Asc)
+                .expect("sort by name");
 
         assert_eq!(
             page.players
@@ -458,8 +666,9 @@ mod tests {
             ],
         );
 
-        let page = search_players(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Pa, SortDir::Asc)
-            .expect("sort by pa");
+        let page =
+            search_without_filters(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Pa, SortDir::Asc)
+                .expect("sort by pa");
 
         assert_eq!(
             page.players
@@ -468,5 +677,710 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![110, 150, 190]
         );
+    }
+
+    fn filter_rule(field: &str, op: &str, value: FilterValue) -> FilterRule {
+        FilterRule {
+            field: field.to_string(),
+            op: op.to_string(),
+            value,
+        }
+    }
+
+    #[test]
+    fn filters_players_by_ca_and_name_with_and_combine() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-and.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Alpha Star", 180),
+                player_template(2, "Beta Star", 120),
+                player_template(3, "Alpha Bench", 150),
+            ],
+        );
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![
+                filter_rule("ca", "gt", FilterValue::Integer(140)),
+                filter_rule("name", "contains", FilterValue::Text("Alpha".to_string())),
+            ],
+            Some("and"),
+        )
+        .expect("filtered search");
+
+        assert_eq!(page.total, 2);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Alpha Star", "Alpha Bench"]
+        );
+    }
+
+    #[test]
+    fn filters_players_with_or_combine() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-or.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Low", 100),
+                player_template(2, "High", 180),
+                player_template(3, "Mid", 140),
+            ],
+        );
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![
+                filter_rule("ca", "eq", FilterValue::Integer(100)),
+                filter_rule("ca", "eq", FilterValue::Integer(180)),
+            ],
+            Some("or"),
+        )
+        .expect("or filtered search");
+
+        assert_eq!(page.total, 2);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.ca)
+                .collect::<Vec<_>>(),
+            vec![180, 100]
+        );
+    }
+
+    #[test]
+    fn excludes_nullable_integers_from_integer_filters() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-null-age.db"));
+        ingest_players(&mut conn, vec![player_template(1, "Known Age", 150)]);
+
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "INSERT INTO players (
+                snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year, age,
+                nationalities_json, preferred_foot, positions_json, attributes_json,
+                hidden_attributes_json, personality_json
+             ) VALUES (?1, 2, 120, 130, 'Unknown Age', 2000, 1, NULL, '[]', 'right', '{}', '{}', '{}', '{}')",
+            rusqlite::params![snapshot_id],
+        )
+        .expect("insert null age");
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule("age", "gt", FilterValue::Integer(20))],
+            None,
+        )
+        .expect("age filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Known Age");
+    }
+
+    #[test]
+    fn excludes_null_boolean_from_is_not_filter() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-null-bool.db"));
+        ingest_players(&mut conn, vec![player_template(1, "Listed", 150)]);
+
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "UPDATE players SET transfer_listed = NULL WHERE snapshot_id = ?1 AND uid = 1",
+            rusqlite::params![snapshot_id],
+        )
+        .expect("null transfer listed");
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "transfer_listed",
+                "is_not",
+                FilterValue::Bool(true),
+            )],
+            None,
+        )
+        .expect("bool is_not filter");
+
+        assert_eq!(page.total, 0);
+    }
+
+    struct DeepPlayerFields {
+        nationalities: Value,
+        positions: Value,
+        attributes: Value,
+        hidden: Value,
+        personality: Value,
+    }
+
+    fn player_with_deep_fields(uid: u64, name: &str, ca: i64, deep: DeepPlayerFields) -> Value {
+        let mut player = player_template(uid, name, ca);
+        player["nationalities"] = deep.nationalities;
+        player["positions"] = deep.positions;
+        player["attributes"] = deep.attributes;
+        player["hiddenAttributes"] = deep.hidden;
+        player["personality"] = deep.personality;
+        player
+    }
+
+    #[test]
+    fn filters_by_attribute_json_extract_and_excludes_null_attr() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-attr.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Fast",
+                    150,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 18 }),
+                        attributes: json!({ "Acceleration": 16, "Pace": 14 }),
+                        hidden: json!({ "Consistency": 12 }),
+                        personality: json!({ "Ambition": 14 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Slow",
+                    140,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 18 }),
+                        attributes: json!({ "Acceleration": 8, "Pace": 14 }),
+                        hidden: json!({ "Consistency": 12 }),
+                        personality: json!({ "Ambition": 14 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    3,
+                    "Unknown Accel",
+                    160,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "ST": 15 }),
+                        attributes: json!({ "Acceleration": null, "Pace": 18 }),
+                        hidden: json!({ "Consistency": 12 }),
+                        personality: json!({ "Ambition": 14 }),
+                    },
+                ),
+            ],
+        );
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "attr.Acceleration",
+                "gt",
+                FilterValue::Integer(12),
+            )],
+            None,
+        )
+        .expect("attr filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Fast");
+    }
+
+    #[test]
+    fn filters_nationality_when_any_list_element_matches() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-nation.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Dual",
+                    150,
+                    DeepPlayerFields {
+                        nationalities: json!(["SCO", "ENG"]),
+                        positions: json!({ "MC": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Welsh",
+                    140,
+                    DeepPlayerFields {
+                        nationalities: json!(["WAL"]),
+                        positions: json!({ "MC": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+            ],
+        );
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "nationality",
+                "is",
+                FilterValue::Text("ENG".to_string()),
+            )],
+            None,
+        )
+        .expect("nationality filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Dual");
+    }
+
+    #[test]
+    fn filters_position_presence_and_suitability() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-pos.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Natural MC",
+                    150,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 18, "DM": 12 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Fringe MC",
+                    140,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 10, "ST": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    3,
+                    "Striker Only",
+                    160,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "ST": 20 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+            ],
+        );
+
+        let presence = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "position",
+                "is",
+                FilterValue::Text("MC".to_string()),
+            )],
+            None,
+        )
+        .expect("position presence");
+        assert_eq!(presence.total, 2);
+        assert_eq!(
+            presence
+                .players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Natural MC", "Fringe MC"]
+        );
+
+        let suitability = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule("pos.MC", "gt", FilterValue::Integer(15))],
+            None,
+        )
+        .expect("position suitability");
+        assert_eq!(suitability.total, 1);
+        assert_eq!(suitability.players[0].name, "Natural MC");
+    }
+
+    #[test]
+    fn position_contains_matches_exact_key_not_substring() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-pos-exact.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "True MC",
+                    150,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "AMC Only",
+                    140,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "AMC": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+            ],
+        );
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "position",
+                "contains",
+                FilterValue::Text("MC".to_string()),
+            )],
+            None,
+        )
+        .expect("exact position contains");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "True MC");
+    }
+
+    #[test]
+    fn attribute_filter_on_two_thousand_players_stays_interactive() {
+        // ponytail: no JSON expression indexes for attribute/position filters
+        // Upgrade to generated columns / indexes if attr filter p95 exceeds ~200ms on a full ~180k snapshot
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-attr-timing.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_with_deep_fields(
+                1,
+                "Seed",
+                150,
+                DeepPlayerFields {
+                    nationalities: json!(["ENG"]),
+                    positions: json!({ "MC": 18 }),
+                    attributes: json!({ "Acceleration": 16 }),
+                    hidden: json!({ "Consistency": 10 }),
+                    personality: json!({ "Ambition": 10 }),
+                },
+            )],
+        );
+
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+
+        let attrs = r#"{"Acceleration":10,"Pace":12}"#;
+        for uid in 2..=2000 {
+            conn.execute(
+                "INSERT INTO players (
+                    snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
+                    nationalities_json, preferred_foot, positions_json, attributes_json,
+                    hidden_attributes_json, personality_json
+                 ) VALUES (?1, ?2, 100, 110, ?3, 2000, 1, '[\"ENG\"]', 'right', '{\"MC\":10}', ?4, '{}', '{}')",
+                rusqlite::params![snapshot_id, uid, format!("P{uid}"), attrs],
+            )
+            .expect("insert bulk player");
+        }
+
+        let started = std::time::Instant::now();
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "attr.Acceleration",
+                "gt",
+                FilterValue::Integer(12),
+            )],
+            None,
+        )
+        .expect("timed attr filter");
+        let elapsed = started.elapsed();
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Seed");
+        assert!(
+            elapsed.as_millis() < 500,
+            "attr json_extract filter on 2k players took {:?}; investigate indexes",
+            elapsed
+        );
+    }
+
+    fn set_role_score(conn: &Connection, uid: i64, role_id: &str, score: Option<i64>) {
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "UPDATE player_role_scores
+             SET score = ?1
+             WHERE snapshot_id = ?2 AND uid = ?3 AND role_id = ?4",
+            rusqlite::params![score, snapshot_id, uid, role_id],
+        )
+        .expect("update role score");
+    }
+
+    #[test]
+    fn filters_by_role_score_and_excludes_null_score() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-role.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "High DLP", 150),
+                player_template(2, "Low DLP", 140),
+                player_template(3, "Null DLP", 160),
+            ],
+        );
+        set_role_score(&conn, 1, "deep_lying_playmaker_ip", Some(85));
+        set_role_score(&conn, 2, "deep_lying_playmaker_ip", Some(40));
+        set_role_score(&conn, 3, "deep_lying_playmaker_ip", None);
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "role.deep_lying_playmaker_ip",
+                "gt",
+                FilterValue::Integer(70),
+            )],
+            None,
+        )
+        .expect("role score filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "High DLP");
+    }
+
+    #[test]
+    fn returns_dynamic_values_for_active_non_basic_filter_fields() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("dynamic-cols.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_with_deep_fields(
+                1,
+                "Scout Target",
+                150,
+                DeepPlayerFields {
+                    nationalities: json!(["ENG"]),
+                    positions: json!({ "MC": 18 }),
+                    attributes: json!({ "Acceleration": 16 }),
+                    hidden: json!({ "Consistency": 10 }),
+                    personality: json!({ "Ambition": 10 }),
+                },
+            )],
+        );
+        set_role_score(&conn, 1, "deep_lying_playmaker_ip", Some(82));
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![
+                filter_rule(
+                    "role.deep_lying_playmaker_ip",
+                    "gt",
+                    FilterValue::Integer(70),
+                ),
+                filter_rule("attr.Acceleration", "gt", FilterValue::Integer(12)),
+            ],
+            None,
+        )
+        .expect("dynamic values search");
+
+        assert_eq!(page.total, 1);
+        let player = &page.players[0];
+        assert_eq!(
+            player.dynamic_values.get("role.deep_lying_playmaker_ip"),
+            Some(&Some(DynamicValue::Integer(82)))
+        );
+        assert_eq!(
+            player.dynamic_values.get("attr.Acceleration"),
+            Some(&Some(DynamicValue::Integer(16)))
+        );
+        assert!(
+            !player.dynamic_values.contains_key("ca"),
+            "basic fields must not appear in dynamic_values"
+        );
+    }
+
+    #[test]
+    fn orders_by_role_score_when_sort_field_is_role() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("sort-role.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Low Role", 180),
+                player_template(2, "High Role", 100),
+            ],
+        );
+        set_role_score(&conn, 1, "deep_lying_playmaker_ip", Some(40));
+        set_role_score(&conn, 2, "deep_lying_playmaker_ip", Some(90));
+
+        let sort_by = SortField::parse("role.deep_lying_playmaker_ip").expect("parse role sort");
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            sort_by,
+            SortDir::Desc,
+            vec![filter_rule(
+                "role.deep_lying_playmaker_ip",
+                "gt",
+                FilterValue::Integer(0),
+            )],
+            None,
+        )
+        .expect("sort by role");
+
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["High Role", "Low Role"]
+        );
+    }
+
+    #[test]
+    fn suggest_returns_empty_for_blank_query() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("suggest-blank.db"));
+        ingest_players(&mut conn, vec![player_template(1, "Anyone", 150)]);
+
+        let hits = suggest_players(&conn, "   ", DEFAULT_SUGGEST_LIMIT).expect("suggest");
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn suggest_orders_by_match_tier_then_ca_descending() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("suggest-rank.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Alex", 100),
+                player_template(2, "Alex", 160),
+                player_template(3, "Alexander", 120),
+                player_template(4, "Sam Alex", 180),
+                player_template(5, "Unrelated", 200),
+            ],
+        );
+
+        let hits = suggest_players(&conn, "Alex", DEFAULT_SUGGEST_LIMIT).expect("suggest");
+        let names: Vec<&str> = hits.iter().map(|hit| hit.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "Alex",      // exact, higher CA
+                "Alex",      // exact, lower CA
+                "Alexander", // prefix
+                "Sam Alex",  // contains
+            ]
+        );
+        assert_eq!(hits[0].uid, 2);
+        assert_eq!(hits[0].ca, 160);
+        assert!(!names.contains(&"Unrelated"));
+    }
+
+    #[test]
+    fn suggest_caps_limit_and_escapes_like_wildcards() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("suggest-cap.db"));
+        let players = (1..=5)
+            .map(|index| player_template(index, &format!("Pat {index}"), 100 + index as i64))
+            .collect();
+        ingest_players(&mut conn, players);
+
+        let hits = suggest_players(&conn, "Pat", 2).expect("suggest capped");
+        assert_eq!(hits.len(), 2);
+        assert_eq!(hits[0].name, "Pat 5");
+        assert_eq!(hits[1].name, "Pat 4");
+
+        // Literal % in the query must not match every name via LIKE.
+        let wild = suggest_players(&conn, "%", DEFAULT_SUGGEST_LIMIT).expect("suggest wildcard");
+        assert!(wild.is_empty());
     }
 }

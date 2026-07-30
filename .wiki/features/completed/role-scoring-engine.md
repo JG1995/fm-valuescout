@@ -59,5 +59,5 @@ SQLite migration v3
 
 ## Follow-up
 
-- **Next feature:** [Player search](../../TODO.md) (order 4) — first full UI value path; sort/filter by role scores.
-- **Deferred:** search filters, profile role grid, weight UI, full role browser, lazy scoring (ponytail if ingest bottleneck).
+- **Next feature:** [Player profiles](../../TODO.md) (order 5) — detail view from search; row activation from Search.
+- **Deferred:** profile role grid, weight UI, full role browser, lazy scoring (ponytail if ingest bottleneck). Search filters and sort by role scores shipped in [player-search](./player-search.md).

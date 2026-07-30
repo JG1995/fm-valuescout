@@ -38,6 +38,7 @@ pub fn run() {
             features::snapshot::commands::list_sanity_players,
             features::snapshot::commands::load_data,
             features::search::commands::search_players,
+            features::search::commands::suggest_players,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

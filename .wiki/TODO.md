@@ -16,7 +16,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 | 2 | Snapshot ingest + Load Data | [Completed](./features/completed/snapshot-ingest.md) | medium-high | Persist dumps to SQLite; multi-save; Load Data = scan+ingest — **done** |
 | 2a | Bridge scan performance | [Completed](./features/completed/bridge-scan-performance.md) | medium-high | Block heap scanning, streaming dump, optimized ingest, unlimited default, UI cap controls — **done** |
 | 3 | Role scoring engine | [Completed](./features/completed/role-scoring-engine.md) | medium | One scoring model on ingest; primary/secondary bands; combined IP/OOP helper — **done** |
-| 4 | Player search | [Active ledger](./features/active/player-search.md) | high | First full UI value path after Load Data; validates DB and scores — **in progress** |
+| 4 | Player search | [Completed](./features/completed/player-search.md) | high | First full UI value path after Load Data; validates DB and scores — **done** |
 | 5 | Player profiles | CONCEPT | high | Detail view from search; traditional scouting path |
 | 6 | Squad planner | CONCEPT | medium | Tactic + squad slots; same scores as search |
 | 7 | Squad optimizer | CONCEPT | medium | Maximize combined team score; closes success vignette |
@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Player search](./features/active/player-search.md) (order 4) — Search page, operator filters, role/attribute filters, global Ctrl+K name search.
+_None — plan next feature with `/plan-feature`._
 
 ## Plan next
 
@@ -64,6 +64,7 @@ Squad planner (order 6) — tactic + squad slots; same scores as search.
 
 ## Completed
 
+- [Player search](./features/completed/player-search.md) — `/search` route, virtualized table, operator filters (scalars through role scores), URL-persisted filter/sort state, global Ctrl+K name suggest
 - [Role scoring engine](./features/completed/role-scoring-engine.md) — FM26 IP/OOP catalog (68 roles), scores on ingest into `player_role_scores`, DLP IP sanity proof, `combine_role_scores` helper
 - [FM26 memory read](./features/completed/fm26-memory-read.md) — BepInEx bridge, file protocol, dump schema v5, Rust validation, bridge status + Load Data UI
 - [In-app bridge plugin install](./features/completed/bridge-plugin-install.md) — install / update / remove `FmDataBridge.dll` for default Steam FM26 from the app

@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
 import type { SearchSortDir, SearchSortField } from "../types/search-sort";
 import {
   DEFAULT_SEARCH_SORT_DIR,
@@ -14,9 +15,26 @@ export function searchPlayersQueryOptions(
   limit = SEARCH_PAGE_SIZE,
   sortBy: SearchSortField = DEFAULT_SEARCH_SORT_FIELD,
   sortDir: SearchSortDir = DEFAULT_SEARCH_SORT_DIR,
+  filters: FilterRule[] = [],
+  filterCombine: FilterCombineMode = "and",
 ) {
   return queryOptions({
-    queryKey: searchKeys.players(offset, limit, sortBy, sortDir),
-    queryFn: () => fetchSearchPlayers(offset, limit, sortBy, sortDir),
+    queryKey: searchKeys.players(
+      offset,
+      limit,
+      sortBy,
+      sortDir,
+      filters,
+      filterCombine,
+    ),
+    queryFn: () =>
+      fetchSearchPlayers(
+        offset,
+        limit,
+        sortBy,
+        sortDir,
+        filters,
+        filterCombine,
+      ),
   });
 }

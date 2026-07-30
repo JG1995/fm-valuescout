@@ -7,6 +7,7 @@ import { LoadDataOutcome } from "@/features/memory-read/components/load-data-out
 import { useLoadData } from "@/features/memory-read/hooks/use-load-data";
 import { useLoadDataPreferences } from "@/features/memory-read/stores/use-load-data-preferences";
 import { searchKeys } from "@/features/search/api/search-keys";
+import { GlobalPlayerSearch } from "@/features/search/components/global-player-search";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { ActiveSaveSelect } from "@/features/snapshot/components/active-save-select";
@@ -50,13 +51,13 @@ export function AppTopBar() {
       className="z-10 shrink-0 border-b border-outline-variant bg-surface-container"
     >
       <div className="flex h-header-height items-center gap-3 px-4">
+        <GlobalPlayerSearch />
         <ActiveSaveSelect
           onSwitched={() => {
             void queryClient.invalidateQueries({ queryKey: searchKeys.all });
           }}
         />
         <SnapshotFreshnessChip />
-        <div className="flex-1" />
         <div className="flex items-center gap-2">
           <label
             className="flex cursor-pointer items-center gap-1.5 text-label-md text-on-surface-variant"

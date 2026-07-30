@@ -180,7 +180,7 @@ spacing:
 
 > **Authority:** This document owns the visual language, design tokens, and UI decisions. It does not own product purpose ([CONCEPT.md](./CONCEPT.md)) or implemented system shape ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-> **Status:** Tokens, shared primitives (`src/components/ui/`), and the app shell (nav rail, top bar) are implemented. Debug and dashboard panels use this spec today. Player search, profiles, squad planner, and optimizer surfaces are specced in deferred sections and land with their features. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
+> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), and the **Search** surface (compact filter strip, editor modal, virtualized results table) are implemented. Debug and dashboard panels use this spec today. Player profiles, squad planner, and optimizer surfaces are specced in deferred sections and land with their features. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 ## Brand & Style
 
@@ -331,7 +331,7 @@ The app is mostly formatted numbers, so formatting is a design decision, not a p
 
 Seven constraints. Every component and screen satisfies all of them.
 
-1. **Data outranks chrome.** No decorative element may take space a data column could use. *Test:* on the player search screen at 1600×900 with the rail collapsed and the inspector closed, the results table covers at least 70% of the window area.
+1. **Data outranks chrome.** No decorative element may take space a data column could use. *Test:* on the player search screen at 1600×900 with the rail collapsed and the filter editor closed, the results table covers at least 70% of the window area.
 2. **Separate with hairlines, not boxes.** Rows, fields, and sections are divided by a 1px `outline-variant` rule or a tonal step. *Test:* no nested card inside a card, and no vertical rules between table columns.
 3. **Snapshot provenance is always visible.** Every screen that shows player data states which save is active and how old the snapshot is, without scrolling. Truncated and stale snapshots carry a warning wherever their data appears. *Test:* screenshot any data view and you can name the save and the snapshot age from the image alone. This follows the explicit-refresh principle in [CONCEPT.md](./CONCEPT.md) — the user must never mistake old data for current data.
 4. **Brightness carries value; the number carries the fact.** Score meaning comes from the ramp, and the number is always present. *Test:* convert a screenshot to greyscale — the ranking still reads.
@@ -349,7 +349,7 @@ Regions, in visual order:
 2. **Top bar** (`header-height` 56px, spans the area right of the rail). Left to right: global player search (pill, grows to fill), active save selector, snapshot freshness chip, optional **Cap players** toggle with a numeric limit when on, **Load Data** primary button. Load Data lives here rather than on a page because it is the app's one recurring action and must be reachable from every screen. Cap off means unlimited scan; cap on sends a positive `maxAccepted` (default 500 when enabling).
 3. **Page header** (inside the content area). Page title in `headline-lg`, then view-mode toggles and a local search or filter trigger on the right. One row, `stack-md` below it.
 4. **Content area.** Panels on `surface-container` with `gutter` 16px between them and 16px page padding.
-5. **Inspector** (right, `inspector-width` 320px, optional and dismissible). Filters on the search screen, comparison controls on a profile. Slides over the content edge; never squeezes the table below its usable width.
+5. **Inspector** (right, `inspector-width` 320px, optional and dismissible). Comparison and detail controls on a profile. Slides over the content edge; never squeezes the table below its usable width. **Search does not use the inspector for filters** — filters use the compact strip and editor modal below.
 
 Spacing rhythm, all multiples of the 4px `unit`:
 
@@ -482,15 +482,15 @@ The default container for a titled block of content.
 - **Content / Anatomy:** optional header row with a `headline-sm` title on the left and actions on the right, then the content with `stack-md` above it. Do not nest a panel inside a panel — use a `stack-lg` gap and a hairline rule instead.
 - **Behaviour:** the panel title is the section heading and must keep the document's heading order correct.
 
-### Filter Panel and Filter Tag
+### Compact Filter Strip, Filter Tag, and Filter Editor
 
-Progressive filtering on the search screen.
+Progressive filtering on the Search screen — Genie Scout / FM-style operator rules, not an inspector of sliders.
 
-- **Container:** inspector region, `inspector-width` 320px, `surface-container` with `xl` radius on the inner edge, `stack-md` padding, its own scroll area. Filter tags are `full` pills with `primary-container` fill, `on-primary-container` text, and a trailing remove button.
-- **States:** a filter group with an active value shows a `primary` count badge on its header. The panel header shows "Clear all" only when at least one filter is set. Tag remove button hover fills `surface-container-highest`.
-- **Variants:** panel groups are `range` (dual slider with `primary` track and a numeric field pair), `multi-select` (checkbox list producing tags), `toggle`, and `text`.
-- **Content / Anatomy:** the five most-used filters — position, role, age, value, contract expiry — are visible by default; the rest sit behind "More filters". Group labels in `label-md`.
-- **Behaviour:** filters apply immediately, with no Apply button. Active filters are reflected in the URL search params so the view survives a reload. Removing the last tag restores the unfiltered result set. Every slider is keyboard-operable with arrows, Home, and End.
+- **Compact strip (above results):** horizontal row of active filter tags, an AND|OR mode indicator when more than one rule is set, **Clear all** when any rule is active, and **Edit filters** to open the modal. Tags are `full` pills with `primary-container` fill, `on-primary-container` text, and a trailing remove button. Tag remove hover fills `surface-container-highest`.
+- **Filter tag label:** field label, operator word, and value (e.g. `CA > 150`, `Role · Deep-Lying Playmaker (IP) > 70`). Incomplete draft rules do not appear as tags.
+- **Filter editor modal:** `form` modal variant. Lists rules as field + operator + value rows with add/remove. Single AND|OR toggle for the flat rule list (no nested groups). Primary action is not required — changes apply immediately to the results query as the user edits; Cancel/close dismisses the dialog.
+- **Operators by field kind:** strings — contains / does not contain / is / is not; integers (CA, attributes, role scores, suitability) — greater than / less than / equals / does not equal; booleans and closed enums — is / is not.
+- **Behaviour:** filters apply immediately, with no Apply button. Active filters, combine mode, and sort live in the URL search params so the view survives a reload. Removing the last tag restores the unfiltered result set. Dynamic result columns appear for each active non-basic filter field (attributes, role scores, and other non-basic fields); removing the filter removes that column.
 
 ### Modal
 
@@ -595,7 +595,7 @@ Verify before delivering any UI code.
 
 - [ ] All `z-index` values come from the scale (10 / 20 / 30 / 40 / 50) — no arbitrary values
 - [ ] No content hidden behind the sticky top bar or sticky table header
-- [ ] Layout holds at the 1280×800 minimum window with the inspector open
+- [ ] Layout holds at the 1280×800 minimum window with the filter editor closed (Search) or inspector open (profile)
 
 ### States & Data Honesty
 

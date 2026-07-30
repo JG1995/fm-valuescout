@@ -95,6 +95,10 @@ export async function stubTauriIpc(page: Page) {
             return { players: [], total: 0 };
           }
 
+          if (cmd === "suggest_players") {
+            return [];
+          }
+
           if (cmd === "load_data") {
             return {
               requestId: "req-smoke",

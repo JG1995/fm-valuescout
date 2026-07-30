@@ -66,4 +66,4 @@ SQLite (migration v2)
 - **Delivered downstream:** [Role scoring engine](./role-scoring-engine.md) — scores on ingest using FM role-relevant attributes.
 - **Delivered downstream:** [bridge scan performance](./bridge-scan-performance.md) — block scanning, unlimited default, UI cap controls, `load_data` timings in the success banner.
 - **BACKLOG:** snapshot history per save.
-- **Roadmap:** player search (order 4), profiles, squad planner, optimizer — see [TODO.md](../../TODO.md).
+- **Roadmap:** [Player search](./player-search.md) (order 4, done), profiles, squad planner, optimizer — see [TODO.md](../../TODO.md).

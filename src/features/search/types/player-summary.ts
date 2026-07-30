@@ -1,3 +1,5 @@
+export type DynamicCellValue = number | string;
+
 export type PlayerSummary = {
   uid: number;
   name: string;
@@ -10,6 +12,8 @@ export type PlayerSummary = {
   ca: number;
   pa: number;
   marketValueGbp: number | null;
+  /** Values for active non-basic filter fields (field id → nullable cell). */
+  dynamicValues?: Record<string, DynamicCellValue | null>;
 };
 
 export type SearchPlayersPage = {
