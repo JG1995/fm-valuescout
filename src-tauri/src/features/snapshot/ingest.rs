@@ -2,11 +2,12 @@
 
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
 
-use crate::features::memory_read::dump_validation::validate_dump_json;
+use crate::features::memory_read::dump_validation::parse_and_validate_dump;
 
 use super::service;
 
@@ -28,6 +29,15 @@ pub struct SnapshotSummary {
     pub loaded_at_utc: String,
 }
 
+/// Phase timings for large-dump ingest measurement (milliseconds).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(not(test), allow(dead_code))]
+pub struct IngestTimings {
+    pub validation_ms: u128,
+    pub insert_ms: u128,
+    pub total_ms: u128,
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn ingest_dump_file(
     conn: &mut Connection,
@@ -43,6 +53,17 @@ pub fn ingest_dump_file_for_save(
     dump_path: &Path,
 ) -> Result<SnapshotSummary, String> {
     let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
+    ingest_dump_json_for_save(conn, save_id, &json).map(|(summary, _)| summary)
+}
+
+/// Ingests a dump file and returns phase timings for measurement harnesses.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn ingest_dump_file_for_save_timed(
+    conn: &mut Connection,
+    save_id: i64,
+    dump_path: &Path,
+) -> Result<(SnapshotSummary, IngestTimings), String> {
+    let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
     ingest_dump_json_for_save(conn, save_id, &json)
 }
 
@@ -50,21 +71,36 @@ fn ingest_dump_json_for_save(
     conn: &mut Connection,
     save_id: i64,
     json: &str,
-) -> Result<SnapshotSummary, String> {
-    validate_dump_json(json).map_err(|error| error.to_string())?;
+) -> Result<(SnapshotSummary, IngestTimings), String> {
+    let total_started = Instant::now();
 
-    let root: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
+    let validation_started = Instant::now();
+    let root = parse_and_validate_dump(json).map_err(|error| error.to_string())?;
+    let validation_ms = validation_started.elapsed().as_millis();
+
     let object = root
         .as_object()
         .ok_or_else(|| "dump root must be a JSON object".to_string())?;
 
+    let insert_started = Instant::now();
     let tx = conn.transaction().map_err(|error| error.to_string())?;
     let snapshot_id = insert_snapshot(&tx, save_id, object)?;
     insert_players(&tx, snapshot_id, object)?;
     replace_current_snapshot(&tx, save_id, snapshot_id)?;
     tx.commit().map_err(|error| error.to_string())?;
+    let insert_ms = insert_started.elapsed().as_millis();
 
-    get_snapshot_by_id(conn, snapshot_id)
+    let summary = get_snapshot_by_id(conn, snapshot_id)?;
+    let total_ms = total_started.elapsed().as_millis();
+
+    Ok((
+        summary,
+        IngestTimings {
+            validation_ms,
+            insert_ms,
+            total_ms,
+        },
+    ))
 }
 
 fn insert_snapshot(
@@ -118,12 +154,8 @@ fn insert_players(
         .and_then(Value::as_array)
         .ok_or_else(|| "dump players must be an array".to_string())?;
 
-    for player in players {
-        let player = player
-            .as_object()
-            .ok_or_else(|| "each player must be a JSON object".to_string())?;
-
-        tx.execute(
+    let mut stmt = tx
+        .prepare(
             "INSERT INTO players (
                 snapshot_id,
                 uid,
@@ -159,39 +191,46 @@ fn insert_players(
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
                 ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30
             )",
-            params![
-                snapshot_id,
-                require_u64(player, "uid")? as i64,
-                require_i64(player, "ca")?,
-                require_i64(player, "pa")?,
-                require_string(player, "name")?,
-                require_i64(player, "birthYear")?,
-                require_i64(player, "birthDayOfYear")?,
-                optional_i64(player.get("age"))?,
-                json_string(required_value(player, "nationalities")?)?,
-                optional_i64(player.get("heightCm"))?,
-                require_string(player, "preferredFoot")?,
-                json_string(required_value(player, "positions")?)?,
-                json_string(required_value(player, "attributes")?)?,
-                json_string(required_value(player, "hiddenAttributes")?)?,
-                json_string(required_value(player, "personality")?)?,
-                optional_i64(player.get("weeklyWageGbp"))?,
-                optional_i64(player.get("contractExpiryYear"))?,
-                optional_i64(player.get("contractExpiryDayOfYear"))?,
-                optional_bool(player.get("transferListed"))?,
-                optional_bool(player.get("loanListed"))?,
-                optional_bool(player.get("notForSale"))?,
-                optional_bool(player.get("setForRelease"))?,
-                optional_i64(player.get("marketValueGbp"))?,
-                reputation_field(player, "current")?,
-                reputation_field(player, "world")?,
-                optional_string(player.get("currentClub"))?,
-                optional_string(player.get("parentClub"))?,
-                optional_bool(player.get("onLoan"))?,
-                optional_string(player.get("division"))?,
-                optional_string(player.get("teamLevel"))?,
-            ],
         )
+        .map_err(|error| error.to_string())?;
+
+    for player in players {
+        let player = player
+            .as_object()
+            .ok_or_else(|| "each player must be a JSON object".to_string())?;
+
+        stmt.execute(params![
+            snapshot_id,
+            require_u64(player, "uid")? as i64,
+            require_i64(player, "ca")?,
+            require_i64(player, "pa")?,
+            require_string(player, "name")?,
+            require_i64(player, "birthYear")?,
+            require_i64(player, "birthDayOfYear")?,
+            optional_i64(player.get("age"))?,
+            json_string(required_value(player, "nationalities")?)?,
+            optional_i64(player.get("heightCm"))?,
+            require_string(player, "preferredFoot")?,
+            json_string(required_value(player, "positions")?)?,
+            json_string(required_value(player, "attributes")?)?,
+            json_string(required_value(player, "hiddenAttributes")?)?,
+            json_string(required_value(player, "personality")?)?,
+            optional_i64(player.get("weeklyWageGbp"))?,
+            optional_i64(player.get("contractExpiryYear"))?,
+            optional_i64(player.get("contractExpiryDayOfYear"))?,
+            optional_bool(player.get("transferListed"))?,
+            optional_bool(player.get("loanListed"))?,
+            optional_bool(player.get("notForSale"))?,
+            optional_bool(player.get("setForRelease"))?,
+            optional_i64(player.get("marketValueGbp"))?,
+            reputation_field(player, "current")?,
+            reputation_field(player, "world")?,
+            optional_string(player.get("currentClub"))?,
+            optional_string(player.get("parentClub"))?,
+            optional_bool(player.get("onLoan"))?,
+            optional_string(player.get("division"))?,
+            optional_string(player.get("teamLevel"))?,
+        ])
         .map_err(|error| error.to_string())?;
     }
 
@@ -560,5 +599,121 @@ mod tests {
 
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
         assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
+    }
+
+    fn write_generated_minimal_dump(path: &Path, player_count: usize) {
+        use std::io::Write;
+
+        let mut file = fs::File::create(path).expect("create generated dump");
+        write!(
+            file,
+            concat!(
+                r#"{{"schemaVersion":5,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
+                r#""gameVersion":"26.3.2","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","#,
+                r#""protocolVersion":1,"gameDate":null,"gameDateSource":"unknown","#,
+                r#""scanTruncated":false,"maxAccepted":null,"playerCount":{player_count},"players":["#
+            ),
+            player_count = player_count
+        )
+        .expect("write dump header");
+
+        for uid in 1..=player_count {
+            if uid > 1 {
+                write!(file, ",").expect("write comma");
+            }
+            write!(
+                file,
+                concat!(
+                    r#"{{"uid":{uid},"ca":1,"pa":1,"name":"P{uid}","birthYear":2000,"birthDayOfYear":1,"#,
+                    r#""age":null,"nationalities":[],"heightCm":null,"preferredFoot":"right","#,
+                    r#""positions":{{}},"attributes":{{}},"hiddenAttributes":{{}},"personality":{{}},"#,
+                    r#""weeklyWageGbp":null,"contractExpiryYear":null,"contractExpiryDayOfYear":null,"#,
+                    r#""transferListed":null,"loanListed":null,"notForSale":null,"setForRelease":null,"#,
+                    r#""marketValueGbp":null,"reputation":{{"current":null,"world":null}},"#,
+                    r#""currentClub":null,"parentClub":null,"onLoan":null,"division":null,"teamLevel":null}}"#
+                ),
+                uid = uid
+            )
+            .expect("write player");
+        }
+
+        write!(file, "]}}").expect("write dump footer");
+        file.flush().expect("flush dump");
+    }
+
+    fn assert_ingest_timings(timings: &IngestTimings) {
+        assert!(
+            timings.total_ms >= timings.validation_ms.saturating_add(timings.insert_ms),
+            "total_ms ({}) must cover validation_ms ({}) + insert_ms ({})",
+            timings.total_ms,
+            timings.validation_ms,
+            timings.insert_ms
+        );
+    }
+
+    #[test]
+    fn ingest_records_validation_insert_and_total_timings() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-timings.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+
+        let dump_path = write_dump(&temp_dir, "dump.json", GOLDEN_FIXTURE);
+        let (snapshot, timings) =
+            ingest_dump_file_for_save_timed(&mut conn, active_save.id, &dump_path)
+                .expect("timed ingest");
+
+        assert_eq!(snapshot.player_count, 1);
+        assert_ingest_timings(&timings);
+    }
+
+    #[test]
+    fn ingest_completes_generated_184k_players_with_timings() {
+        run_generated_large_ingest(184_000);
+    }
+
+    #[test]
+    fn ingest_completes_generated_500k_players_with_timings() {
+        run_generated_large_ingest(500_000);
+    }
+
+    fn run_generated_large_ingest(player_count: usize) {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join(format!("ingest-{player_count}.db")));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+
+        let dump_path = temp_dir.path().join("generated.json");
+        write_generated_minimal_dump(&dump_path, player_count);
+
+        let (snapshot, timings) =
+            ingest_dump_file_for_save_timed(&mut conn, active_save.id, &dump_path)
+                .expect("large ingest");
+
+        assert_eq!(snapshot.player_count, player_count as i64);
+        assert_eq!(
+            player_count_for_snapshot(&conn, snapshot.id),
+            player_count as i64
+        );
+        assert_ingest_timings(&timings);
+        assert!(
+            timings.validation_ms > 0,
+            "validation_ms should be material for {player_count} players: {timings:?}"
+        );
+        assert!(
+            timings.insert_ms > 0,
+            "insert_ms should be material for {player_count} players: {timings:?}"
+        );
+
+        eprintln!(
+            "generated ingest player_count={player_count} validation_ms={} insert_ms={} total_ms={}",
+            timings.validation_ms, timings.insert_ms, timings.total_ms
+        );
     }
 }

@@ -26,7 +26,7 @@ Rust features/snapshot
   → load_data: brief Db lock → active_save_id; scan without Db lock;
     ingest_dump_file_for_save(captured save_id)
   → save CRUD IPC; get_current_snapshot; list_sanity_players
-  → ingest: validate_dump_json → transactional replace current snapshot
+  → ingest: parse_and_validate_dump (single parse) → prepared player inserts → transactional replace current snapshot
 
 SQLite (migration v2)
   saves (one is_active)

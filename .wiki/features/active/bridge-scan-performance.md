@@ -205,7 +205,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 3 — Reduce measured large-dump ingest overhead
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add a generated large-dump measurement around validation and transactional ingest. Reuse prepared SQLite work and remove duplicate parse work only where the measurement shows material cost.
 
@@ -298,6 +298,7 @@ Generated large-dump measurement around validation and transactional ingest; reu
 - **PR 2 replan (2026-07-30):** Replace hard-delete of the production cap with request-scoped `maxAccepted` (Commit 4) plus UI toggle/configurable limit (Commit 5). Unlimited becomes the production default after live full-save validation; capped loads remain available for diagnostics. Progress UI stays a non-goal unless the measured full path needs it.
 - **PR 2 Commit 1:** Attribute visible+hidden share one contiguous `TryReadBlock` from `AttrsOffset`; personality and positions each get one span; `FmStringReader.TryReadCString` uses one bounded block (gaps/zeros terminate). Unread bytes remain 0 → same null/skip decode as failed scalar reads. Pointer chains (name/nation/contract) stay scalar.
 - **PR 2 Commit 2:** `DumpWriter.WriteCompact` emits unindented schema-v5 via `Utf8JsonWriter`, serializing each player then flushing so write chunks stay bounded (no second full JSON string). Atomic temp→`dump.json` replace unchanged. Generated 184k/500k minimal-player docs complete under the streaming tests.
+- **PR 2 Commit 3:** Ingest measurement harness (`IngestTimings` + `ingest_dump_file_for_save_timed`) recorded generated minimal-player runs: 184k `validation_ms=5799` `insert_ms=2529` `total_ms=8329`; 500k `validation_ms=15551` `insert_ms=6797` `total_ms=22349`. Validation (parse+schema walk) dominated; removed the second full `serde_json::from_str` via `parse_and_validate_dump`, and reuse one prepared player `INSERT` statement per transaction. Existing rollback/replace tests stay green.
 
 ## Completed work
 
