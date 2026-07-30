@@ -258,7 +258,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 6 — Ranked name suggest IPC
 
-**Status:** Active
+**Status:** Completed — `b47938c`
 
 **Work:** `suggest_players` (or equivalent): query string → limited rows from current snapshot; order by match tier (exact → prefix → contains) then CA desc; parameterized `LIKE`. Empty query → empty list.
 
@@ -271,7 +271,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 7 — Top-bar global search UI
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Search field in `AppTopBar`; Ctrl+K focus; debounce 200ms; popover results; Escape clears per DESIGN. Activating a hit navigates to `/search` with a name `is` filter (no profile route yet). Smoke stub.
 
@@ -286,21 +286,21 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 **PR:** 2 — Filters, dynamic columns, and global search
 
-**Commit:** Ranked name suggest IPC — Completed — hash pending checkpoint commit
+**Commit:** Top-bar global search UI
 
 ### RED test (active commit)
 
-`suggest_players`: blank query → empty; exact → prefix → contains then CA desc; LIKE wildcards escaped; limit capped.
+Top-bar search: Ctrl+K focuses field; debounced `suggest_players` fills popover; selecting a hit navigates to `/search` with a name `is` filter; Escape clears.
 
-**Wrong behaviour caught:** Empty query returns rows; ranking ignores exact/prefix tiers or CA tie-break; `%` matches everything.
+**Wrong behaviour caught:** No Ctrl+K focus; results ignore ranking IPC; hit does not set name filter; Escape does not clear.
 
 ### Expected outcome
 
-Ranked name suggest IPC returns ordered, capped rows for the current snapshot.
+Global name search works from the top bar on any route.
 
 ### Explicit exclusions
 
-Full filter AST in suggest; React top-bar UI; fuzzy/typo tolerance.
+Opening player profiles.
 
 ## Discoveries and replanning
 
@@ -321,6 +321,7 @@ Full filter AST in suggest; React top-bar UI; fuzzy/typo tolerance.
 | 2 | Persist filters in URL search params | `9ba8886` | Validated search params for filters/combine/sort; UI+Rust rule cap 32 |
 | 2 | Attribute and multi-value filters | `ab97626` | `json_extract` attrs/hidden/personality; nationality `json_each`; position presence/suitability |
 | 2 | Role-score filters and dynamic columns | `92a0049` | `role.*` EXISTS on `player_role_scores`; `dynamicValues`; UI dynamic columns; DESIGN strip/modal |
+| 2 | Ranked name suggest IPC | `b47938c` | `suggest_players`: exact→prefix→contains then CA; blank empty; LIKE escape; limit 10/20 |
 
 ## Final validation
 
