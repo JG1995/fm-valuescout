@@ -34,6 +34,17 @@ Use `search_mode="keyword"` for exact symbols, errors, or identifiers. Use `sear
 
 Optional at session start (after `AGENTS.md` and `.wiki/INDEX.md`): `recallium` or `session_recap` when resuming multi-session work — not required for every trivial message.
 
+## Call resilience
+
+The Recallium MCP service can be flaky. When **any** Recallium tool call fails (auth, transport, timeout, server error):
+
+1. Call `mcp_auth` for the Recallium server (`user-recallium`) with empty arguments.
+2. Retry the failed call once.
+3. If it still fails, retry the same call up to **3** more times.
+4. After re-auth plus **3** retries still fail, treat Recallium as unavailable for that step — report `skipped — Recallium unavailable` and continue per the active command's non-blocking rules (checkpoint, finish-feature, and similar).
+
+Do not loop indefinitely. Do not call `mcp_auth` on every retry unless a later attempt returns an auth error again.
+
 ## When to save
 
 **Save sparingly.** One concise memory per coherent work unit when the answer is not in the repository and would help a future developer avoid a broad search.

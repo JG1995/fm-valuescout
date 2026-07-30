@@ -67,9 +67,9 @@ When structural questions arise during planning: read `.wiki/ARCHITECTURE.md`, s
 ## Build-loop phase (`/build-loop` — manual opt-in only)
 
 - **Developer must type `/build-loop`.** Never suggest or run it automatically.
-- Same scope as `/build` (one active commit), then automated checkpoint → fix (CRITICAL/HIGH/MEDIUM) → checkpoint, up to **3** fix rounds.
-- On success: auto-commit content and ledger advancement (two commits). On failure after 3 rounds: report verdict; do not commit.
-- NITPICK findings do not block loop exit.
+- Same scope as `/build` (one active commit), then automated checkpoint → fix (CRITICAL/HIGH/MEDIUM) → checkpoint, up to **5** fix rounds.
+- On success: auto-commit content and ledger advancement (two commits). On failure after 5 rounds: report verdict; do not commit.
+- NITPICK-only verdicts do not trigger `/fix`. When a verdict mixes CRITICAL/HIGH/MEDIUM with NITPICK, fix NITPICK in the same `/fix` pass. NITPICK alone does not block loop exit.
 
 ## Fix phase (`/fix`)
 

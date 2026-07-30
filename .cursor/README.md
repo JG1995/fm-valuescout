@@ -32,7 +32,7 @@ Never put credentials in repository files — repository files must not contain 
 8. **Reassess.** Activate the next commit in the delivery plan.
 9. **`/finish-feature`** — when every commit in the delivery plan is done: full tests, feature-complete review, then documentation reconciliation.
 
-**Optional:** **`/build-loop`** — same as `/build` for one commit, then an automated checkpoint/fix loop (up to 3 fix rounds) and auto-commit when only NITPICK remains. Use only when you explicitly type the command; agents must not suggest or run it by default.
+**Optional:** **`/build-loop`** — same as `/build` for one commit, then an automated checkpoint/fix loop (up to 5 fix rounds) and auto-commit when only NITPICK remains. NITPICK-only verdicts skip `/fix`; mixed verdicts fix NITPICK alongside CRITICAL/HIGH/MEDIUM. Use only when you explicitly type the command; agents must not suggest or run it by default.
 
 For trivial changes (doc fix, rename), describe the change — the agent follows the loop internally without invoking each command.
 
@@ -59,7 +59,7 @@ Invoke these from the chat command palette in Cursor (type `/`):
 | `/roadmap` | Dependency-aware MVP build order (grounded in planned specs when present; inferred from CONCEPT when not); write TODO sequence only after approval |
 | `/plan-feature` | Next feature from the sequence — PR/commit plan (trunk-based, atomic commits, Conventional Commits) |
 | `/build` | Default: one active commit (RED/GREEN), ledger update, stop for `/checkpoint`. Opt-in: full feature one commit at a time |
-| `/build-loop` | **Manual opt-in:** `/build` + automated checkpoint/fix loop (max 3 fix rounds; fixes CRITICAL/HIGH/MEDIUM) + auto-commit when NITPICK-only |
+| `/build-loop` | **Manual opt-in:** `/build` + automated checkpoint/fix loop (max 5 fix rounds; fixes CRITICAL/HIGH/MEDIUM; bundles NITPICK when mixed) + auto-commit when NITPICK-only |
 | `/fix` | Default: CRITICAL, HIGH, and MEDIUM (or narrowed delegation) — stop for `/checkpoint` unless running inside `/build-loop` |
 | `/checkpoint` | Stage, reviewer verdict, present for approval; commit only when approved |
 | `/review` | Read-only review — commit scope (staged) or feature-complete (whole feature diff) |
@@ -102,7 +102,7 @@ Project MCP servers in `.cursor/mcp.json`:
 
 | Server | Purpose |
 | --- | --- |
-| Recallium | Search institutional memory before non-obvious decisions; save sparingly per `recallium.mdc` and `recallium-usage` skill |
+| Recallium | Search institutional memory before non-obvious decisions; save sparingly per `recallium.mdc` and `recallium-usage` skill. On MCP failure: re-auth via `mcp_auth`, then retry up to 3 times |
 | Context7 | Current library documentation (`resolve-library-id`, `query-docs`) |
 
 Built-in Cursor tools: `WebSearch`, `WebFetch` for bounded external research.

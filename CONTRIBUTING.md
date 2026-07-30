@@ -82,7 +82,7 @@ Building the FM26 BepInEx plugin (Windows host, .NET 6) is separate from the Lin
 6. Reassess remaining commits in the delivery plan.
 7. `/finish-feature` — when the delivery plan is complete: full tests, feature-complete review, then documentation reconciliation when review clears.
 
-**Optional:** `/build-loop` — manual opt-in only; automates build, checkpoint, and fix (up to three fix rounds) and commits when only NITPICK findings remain. See `.cursor/commands/build-loop.md`.
+**Optional:** `/build-loop` — manual opt-in only; automates build, checkpoint, and fix (up to five fix rounds) and commits when only NITPICK findings remain. Mixed verdicts fix NITPICK alongside CRITICAL/HIGH/MEDIUM. See `.cursor/commands/build-loop.md`.
 
 Optional (not every feature): `/spike` when a runtime experiment is the only way to unblock planning or build; `/security-audit` before first deploy or after auth, payments, or sensitive data features.
 

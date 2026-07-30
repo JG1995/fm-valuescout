@@ -65,7 +65,7 @@ The development cycle follows a repeating loop. Invoke the Cursor commands from 
 5. **Reassess** — update the delivery plan and select the next commit; repeat from build until the plan is done.
 6. **Finish feature** (`/finish-feature`) — when every planned commit is done: full tests, feature-complete review, then documentation reconciliation.
 
-**Optional:** **`/build-loop`** — manual opt-in only; never suggest or run automatically. Same as `/build` for one commit, then an automated checkpoint/fix loop and auto-commit when only NITPICK remains. Typing `/build-loop` is explicit approval to commit on loop success without a separate checkpoint approval step.
+**Optional:** **`/build-loop`** — manual opt-in only; never suggest or run automatically. Same as `/build` for one commit, then an automated checkpoint/fix loop (up to five fix rounds) and auto-commit when only NITPICK remains. NITPICK-only verdicts skip `/fix`; mixed verdicts fix NITPICK alongside CRITICAL/HIGH/MEDIUM. Typing `/build-loop` is explicit approval to commit on loop success without a separate checkpoint approval step.
 
 The user never invokes these commands directly on a trivial change — they just describe the fix and you follow the full loop internally.
 
