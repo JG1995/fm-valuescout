@@ -219,7 +219,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 3 — Persist filters in URL search params
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `9ba8886`
 
 **Work:** Encode/decode filter rules, combine mode, and sort into TanStack Router validated search params so reload and back/forward restore the view. Cap rule count in Rust and UI.
 
@@ -232,7 +232,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 4 — Attribute and multi-value filters
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Extend registry/SQL for attribute maps (`json_extract`), nationalities list match, position presence/suitability. Indexes only if profiling shows need. Timed note on large fixture; optional `/spike` if query cost is unacceptable.
 
@@ -286,21 +286,21 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 **PR:** 2 — Filters, dynamic columns, and global search
 
-**Commit:** Persist filters in URL search params
+**Commit:** Attribute and multi-value filters
 
 ### RED test (active commit)
 
-Encode/decode filter rules, combine mode, and sort into TanStack Router validated search params so reload and back/forward restore the view. Cap rule count in Rust and UI.
+Extend registry/SQL for attribute maps (`json_extract`), nationalities list match, position presence/suitability. Indexes only if profiling shows need. Timed note on large fixture; optional `/spike` if query cost is unacceptable.
 
-**Wrong behaviour caught:** Filters lost on reload or browser back despite active rules in the strip.
+**Wrong behaviour caught:** Attribute / nationality / position filters ignored or wrong SQL at the trust boundary.
 
 ### Expected outcome
 
-URL search params carry filters, combine mode, and sort; navigation restores the view.
+Scalar-plus deep filters for attributes, nationalities, and positions compile and match in Rust tests.
 
 ### Explicit exclusions
 
-Deep field types; shareable deep-links as a product promise beyond surviving reload.
+Role scores; dynamic column UI.
 
 ## Discoveries and replanning
 
@@ -315,6 +315,7 @@ Deep field types; shareable deep-links as a product promise beyond surviving rel
 | 1 | Search route and virtualized table | `bbec416` | `/search` + nav; TanStack Virtual; invalidate on save/Load Data; smoke stub |
 | 2 | Filter AST and scalar SQL builder | `183de74` | Filter AST + scalar/bool/enum registry; parameterized WHERE; search_players filters IPC |
 | 2 | Compact filter bar and editor modal | `45293c3` | Modal primitive; compact strip + editor; immediate apply via Query/IPC; filter-aware mock |
+| 2 | Persist filters in URL search params | `9ba8886` | Validated search params for filters/combine/sort; UI+Rust rule cap 32 |
 
 ## Final validation
 
