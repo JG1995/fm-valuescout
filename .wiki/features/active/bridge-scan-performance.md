@@ -205,7 +205,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 3 — Reduce measured large-dump ingest overhead
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `862486a`
 
 **Work:** Add a generated large-dump measurement around validation and transactional ingest. Reuse prepared SQLite work and remove duplicate parse work only where the measurement shows material cost.
 
@@ -220,7 +220,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 4 — Request-scoped scan limit and unlimited production default
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add optional `maxAccepted` to `BridgeRequest` / `request.json`. Pass it from Rust `load_data` into the bridge. Treat request `null` as unlimited in `CapADumpPipeline` (stop collapsing omitted/null into `DefaultMaxAccepted`). Default production Load Data to unlimited (`null`) so the reference full save can run. Align the Rust wait timeout with the measured envelope if needed, and update operational documentation with reference-save results. Keep explicit caps in tests and characterization paths.
 
@@ -254,21 +254,21 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **PR:** PR 2 — Enable complete player snapshots
 
-**Commit:** Reduce measured large-dump ingest overhead
+**Commit:** Request-scoped scan limit and unlimited production default
 
 ### RED test (active commit)
 
-Existing rollback and replacement tests stay green. Generated 184,000- and 500,000-player runs record validation, insert, and total ingest timing and complete without unbounded memory growth. Fails today if ingest still duplicates full parse work or re-prepares SQLite statements per player with no measurement harness.
+Request plumbing tests cover positive caps and unlimited (`null`). A fresh full Windows/FM run loads the complete reference save, reports `scanTruncated: false` and `maxAccepted: null`, preserves the prior snapshot on forced failure, completes the bridge phase below 60 seconds and end-to-end Load Data below 90 seconds, then passes `./scripts/dev check` and `./scripts/dev test`. Fails today if omitted/null `maxAccepted` still collapses to `DefaultMaxAccepted` (500) or production Load Data cannot request unlimited.
 
 ### Expected outcome
 
-Generated large-dump measurement around validation and transactional ingest; reuse prepared SQLite work and remove duplicate parse only where measurement shows material cost.
+Optional request-scoped `maxAccepted` with production default unlimited (`null`); caps retained for tests and characterization; timeout/docs aligned with measured envelope after live full-save validation.
 
 ### Explicit exclusions
 
-- Database schema changes.
-- Snapshot history.
-- Role scoring.
+- Load Data UI controls.
+- Background refresh or incremental scans.
+- New progress UI unless the measured full path cannot provide acceptable feedback with the existing loading state.
 
 ## Discoveries and replanning
 
@@ -309,6 +309,7 @@ Generated large-dump measurement around validation and transactional ingest; reu
 | 1 | Scan heap regions from reusable blocks | `648b81f` | Block walk + in-buffer UID + vtable offset cache; live capped path `totalMs=6700` (~11× faster than pre-scan) |
 | 2 | Batch contiguous player field reads | `8316c43` | Attrs/personality/positions/cstrings via `TryReadBlock` + ArrayPool decode |
 | 2 | Stream compact full dump output | `a686189` | Utf8JsonWriter compact stream + per-player flush; 184k/500k scale tests |
+| 2 | Reduce measured large-dump ingest overhead | `862486a` | Single parse + prepared INSERT; timed 184k/500k harness |
 
 ## Final validation
 
