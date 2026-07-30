@@ -136,7 +136,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 2 — Per-role 0–100 score function
 
-**Status:** Active
+**Status:** Completed — `f504dcf`
 
 **Work:** Implement `score_role`: within-band means → 75/25 blend (or primary-only if no secondary) → `/20×100` → rounded integer. Any null in the used attribute set → `None`. Unit tests: equal bands, unequal primary/secondary counts, empty secondary, null attribute → None, known fixture maps.
 
@@ -150,7 +150,7 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 #### Commit 3 — Combined IP and OOP score helper
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Pure `combine_role_scores(ip, oop, ip_weight)` (oop weight = `1 - ip_weight`), default weight `0.5`. Null if either input score is null or weight out of `[0, 1]`. Tests for 50/50, custom weights, null propagation.
 
@@ -191,19 +191,19 @@ Static catalog for a handful of roles → pure `score_role` GREEN in `cargo test
 
 **PR:** 1 — Role scoring on ingest
 
-**Commit:** Per-role 0–100 score function
+**Commit:** Combined IP and OOP score helper
 
 ### RED test (active commit)
 
-Assert `score_role` returns the expected 0–100 integer for a fixture attribute map (equal primary/secondary means → 75/25 blend), and returns `None` when any required attribute is null — fails because the scoring function does not exist.
+Assert `combine_role_scores` returns the weighted average for known IP/OOP inputs, default 50/50, and returns `None` when either input is null or weight is out of `[0, 1]` — fails because the combine helper does not exist.
 
 ### Expected outcome
 
-Pure `score_role` in `features/scoring` with unit tests for equal bands, unequal band sizes, empty secondary (primary-only), and null → None; no combine helper, ingest, or UI.
+Pure `combine_role_scores` in `features/scoring` with unit tests for 50/50, custom weights, and null propagation; no persistence, ingest, or UI.
 
 ### Explicit exclusions
 
-Combined IP+OOP helper, persistence / ingest, React, IPC.
+Persisting weights, planner UI, IPC for combine, SQLite ingest, React.
 
 ## Discoveries and replanning
 
@@ -217,6 +217,7 @@ Combined IP+OOP helper, persistence / ingest, React, IPC.
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
 | 1 | Role catalog with primary and secondary attributes | `0b08dd1` | 68 roles; SortItOutSI Key/Preferred; disjoint bands |
+| 1 | Per-role 0–100 score function | `f504dcf` | `score_role`; 75/25 blend; null → None |
 
 ## Final validation
 
