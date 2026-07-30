@@ -193,7 +193,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 1 — Filter AST and scalar SQL builder
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Filter rule DTO + AND/OR; field registry for scalars/bools/enums; validate operators per field; compile to parameterized WHERE; integrate into `search_players`. Reject unknown fields/ops. Rust tests for each operator class and AND vs OR.
 
@@ -206,7 +206,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 2 — Compact filter bar and editor modal
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Shared Modal primitive per DESIGN. Compact strip: tags, clear all, open editor. Modal: add/remove rules, field/operator/value, AND/OR toggle. Wire to search query. Immediate apply.
 
@@ -286,21 +286,21 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 **PR:** 2 — Filters, dynamic columns, and global search
 
-**Commit:** Filter AST and scalar SQL builder
+**Commit:** Compact filter bar and editor modal
 
 ### RED test (active commit)
 
-Assert filter rules with AND/OR compile to parameterized WHERE for scalar/bool/enum fields, reject unknown fields/operators, and that `search_players` returns only matching rows.
+Assert compact filter strip renders active rules as removable tags, opens editor modal, and applies rules immediately via `search_players` mockIPC.
 
-**Wrong behaviour caught:** Client-side filtering, SQL injection via field/op strings, or accepting invalid operators for a field kind.
+**Wrong behaviour caught:** Filters only in modal without strip tags, or deferred Apply button instead of immediate apply.
 
 ### Expected outcome
 
-Validated filter AST → Rust SQL builder for scalars; integrated into paged search.
+Shared Modal primitive; compact strip + editor modal wired to search query (no URL persistence yet).
 
 ### Explicit exclusions
 
-Attributes, positions, nationalities, role scores, React filter UI.
+Deep field types beyond commit 1 registry; URL persistence (next commit).
 
 ## Discoveries and replanning
 

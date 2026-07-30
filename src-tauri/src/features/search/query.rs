@@ -1,4 +1,6 @@
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Row};
+
+use super::filter::{compile_filters, FilterAst};
 
 pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
@@ -100,6 +102,7 @@ pub fn search_players(
     limit: usize,
     sort_by: SortField,
     sort_dir: SortDir,
+    filter_ast: Option<&FilterAst>,
 ) -> Result<SearchPlayersPage, String> {
     let snapshot_id: Option<i64> = conn
         .query_row(
@@ -125,13 +128,41 @@ pub fn search_players(
     let offset = i64::try_from(offset).map_err(|_| "search offset out of range".to_string())?;
     let limit = i64::try_from(limit).map_err(|_| "search limit out of range".to_string())?;
 
-    let total: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM players WHERE snapshot_id = ?1",
-            params![snapshot_id],
-            |row| row.get(0),
-        )
+    let compiled = match filter_ast {
+        None => None,
+        Some(ast) => {
+            let compiled = compile_filters(ast, 2)?;
+            if compiled.sql.is_empty() {
+                None
+            } else {
+                Some(compiled)
+            }
+        }
+    };
+
+    let mut where_sql = "snapshot_id = ?1".to_string();
+    if let Some(compiled) = &compiled {
+        where_sql.push_str(" AND ");
+        where_sql.push_str(&compiled.sql);
+    }
+
+    let mut bind_values = vec![Value::Integer(snapshot_id)];
+    if let Some(compiled) = &compiled {
+        bind_values.extend(compiled.params.clone());
+    }
+
+    let count_sql = format!("SELECT COUNT(*) FROM players WHERE {where_sql}");
+    let mut count_stmt = conn
+        .prepare(&count_sql)
         .map_err(|error| error.to_string())?;
+    let total: i64 = count_stmt
+        .query_row(params_from_iter(bind_values.iter()), |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+
+    let limit_index = bind_values.len() + 1;
+    let offset_index = bind_values.len() + 2;
+    bind_values.push(Value::Integer(limit));
+    bind_values.push(Value::Integer(offset));
 
     // Whitelisted expr + dir only — never interpolate raw client strings.
     let order_sql = format!(
@@ -153,9 +184,9 @@ pub fn search_players(
                 pa,
                 market_value_gbp
              FROM players
-             WHERE snapshot_id = ?1
+             WHERE {where_sql}
              {order_sql}
-             LIMIT ?2 OFFSET ?3"
+             LIMIT ?{limit_index} OFFSET ?{offset_index}"
     );
 
     let mut stmt = conn
@@ -163,7 +194,7 @@ pub fn search_players(
         .map_err(|error| error.to_string())?;
 
     let players = stmt
-        .query_map(params![snapshot_id, limit, offset], map_player_summary)
+        .query_map(params_from_iter(bind_values.iter()), map_player_summary)
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
@@ -207,10 +238,34 @@ fn parse_nationalities(json: &str) -> Result<Vec<String>, String> {
 mod tests {
     use super::*;
     use crate::db::migrations;
+    use crate::features::search::filter::{parse_filter_ast, FilterRule, FilterValue};
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service::{create_save, set_active_save};
     use serde_json::{json, Value};
     use std::path::Path;
+
+    fn search_without_filters(
+        conn: &Connection,
+        offset: usize,
+        limit: usize,
+        sort_by: SortField,
+        sort_dir: SortDir,
+    ) -> Result<SearchPlayersPage, String> {
+        search_players(conn, offset, limit, sort_by, sort_dir, None)
+    }
+
+    fn search_with_filters(
+        conn: &Connection,
+        offset: usize,
+        limit: usize,
+        sort_by: SortField,
+        sort_dir: SortDir,
+        rules: Vec<FilterRule>,
+        combine: Option<&str>,
+    ) -> Result<SearchPlayersPage, String> {
+        let ast = parse_filter_ast(rules, combine)?;
+        search_players(conn, offset, limit, sort_by, sort_dir, Some(&ast))
+    }
 
     fn open_migrated(db_path: &Path) -> rusqlite::Connection {
         let conn = rusqlite::Connection::open(db_path).expect("open test db");
@@ -271,7 +326,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("no-snapshot.db"));
 
-        let page = search_players(
+        let page = search_without_filters(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -296,7 +351,7 @@ mod tests {
         let second_save = create_save(&conn, "Second save").expect("create save");
         set_active_save(&mut conn, second_save.id).expect("switch save");
 
-        let page = search_players(
+        let page = search_without_filters(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -322,7 +377,7 @@ mod tests {
             ],
         );
 
-        let page = search_players(
+        let page = search_without_filters(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
@@ -361,8 +416,8 @@ mod tests {
             .collect();
         ingest_players(&mut conn, players);
 
-        let page =
-            search_players(&conn, 2, 2, SortField::DEFAULT, SortDir::DEFAULT).expect("offset page");
+        let page = search_without_filters(&conn, 2, 2, SortField::DEFAULT, SortDir::DEFAULT)
+            .expect("offset page");
         assert_eq!(page.total, 5);
         assert_eq!(page.players.len(), 2);
         assert_eq!(
@@ -401,7 +456,7 @@ mod tests {
             .expect("insert extra player");
         }
 
-        let page = search_players(
+        let page = search_without_filters(
             &conn,
             0,
             MAX_PAGE_LIMIT + 50,
@@ -433,8 +488,9 @@ mod tests {
             ],
         );
 
-        let page = search_players(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Name, SortDir::Asc)
-            .expect("sort by name");
+        let page =
+            search_without_filters(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Name, SortDir::Asc)
+                .expect("sort by name");
 
         assert_eq!(
             page.players
@@ -458,8 +514,9 @@ mod tests {
             ],
         );
 
-        let page = search_players(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Pa, SortDir::Asc)
-            .expect("sort by pa");
+        let page =
+            search_without_filters(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Pa, SortDir::Asc)
+                .expect("sort by pa");
 
         assert_eq!(
             page.players
@@ -468,5 +525,162 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![110, 150, 190]
         );
+    }
+
+    fn filter_rule(field: &str, op: &str, value: FilterValue) -> FilterRule {
+        FilterRule {
+            field: field.to_string(),
+            op: op.to_string(),
+            value,
+        }
+    }
+
+    #[test]
+    fn filters_players_by_ca_and_name_with_and_combine() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-and.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Alpha Star", 180),
+                player_template(2, "Beta Star", 120),
+                player_template(3, "Alpha Bench", 150),
+            ],
+        );
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![
+                filter_rule("ca", "gt", FilterValue::Integer(140)),
+                filter_rule("name", "contains", FilterValue::Text("Alpha".to_string())),
+            ],
+            Some("and"),
+        )
+        .expect("filtered search");
+
+        assert_eq!(page.total, 2);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Alpha Star", "Alpha Bench"]
+        );
+    }
+
+    #[test]
+    fn filters_players_with_or_combine() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-or.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Low", 100),
+                player_template(2, "High", 180),
+                player_template(3, "Mid", 140),
+            ],
+        );
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![
+                filter_rule("ca", "eq", FilterValue::Integer(100)),
+                filter_rule("ca", "eq", FilterValue::Integer(180)),
+            ],
+            Some("or"),
+        )
+        .expect("or filtered search");
+
+        assert_eq!(page.total, 2);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.ca)
+                .collect::<Vec<_>>(),
+            vec![180, 100]
+        );
+    }
+
+    #[test]
+    fn excludes_nullable_integers_from_integer_filters() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-null-age.db"));
+        ingest_players(&mut conn, vec![player_template(1, "Known Age", 150)]);
+
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "INSERT INTO players (
+                snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year, age,
+                nationalities_json, preferred_foot, positions_json, attributes_json,
+                hidden_attributes_json, personality_json
+             ) VALUES (?1, 2, 120, 130, 'Unknown Age', 2000, 1, NULL, '[]', 'right', '{}', '{}', '{}', '{}')",
+            rusqlite::params![snapshot_id],
+        )
+        .expect("insert null age");
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule("age", "gt", FilterValue::Integer(20))],
+            None,
+        )
+        .expect("age filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Known Age");
+    }
+
+    #[test]
+    fn excludes_null_boolean_from_is_not_filter() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-null-bool.db"));
+        ingest_players(&mut conn, vec![player_template(1, "Listed", 150)]);
+
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "UPDATE players SET transfer_listed = NULL WHERE snapshot_id = ?1 AND uid = 1",
+            rusqlite::params![snapshot_id],
+        )
+        .expect("null transfer listed");
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "transfer_listed",
+                "is_not",
+                FilterValue::Bool(true),
+            )],
+            None,
+        )
+        .expect("bool is_not filter");
+
+        assert_eq!(page.total, 0);
     }
 }

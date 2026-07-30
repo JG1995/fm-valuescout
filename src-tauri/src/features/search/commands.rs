@@ -1,11 +1,31 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::db::Db;
 
+use super::filter::{self, FilterRule};
 use super::query::{
     self, PlayerSummary, SearchPlayersPage, SortDir, SortField, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
 };
+
+#[derive(Deserialize)]
+pub struct FilterRuleInput {
+    pub field: String,
+    pub op: String,
+    pub value: serde_json::Value,
+}
+
+impl TryFrom<FilterRuleInput> for FilterRule {
+    type Error = String;
+
+    fn try_from(input: FilterRuleInput) -> Result<Self, Self::Error> {
+        Ok(FilterRule {
+            field: input.field,
+            op: input.op,
+            value: filter::filter_value_from_json(input.value)?,
+        })
+    }
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +87,8 @@ pub fn search_players(
     limit: Option<u32>,
     sort_by: Option<String>,
     sort_dir: Option<String>,
+    filters: Option<Vec<FilterRuleInput>>,
+    filter_combine: Option<String>,
     db: State<'_, Db>,
 ) -> Result<SearchPlayersPageDto, String> {
     let conn =
@@ -85,6 +107,19 @@ pub fn search_players(
         None => SortDir::DEFAULT,
         Some(value) => SortDir::parse(value)?,
     };
-    let page = query::search_players(&conn, offset, limit, sort_by, sort_dir)?;
+    let filter_ast = match filters {
+        None => None,
+        Some(rules) => {
+            let parsed_rules = rules
+                .into_iter()
+                .map(FilterRule::try_from)
+                .collect::<Result<Vec<_>, _>>()?;
+            Some(filter::parse_filter_ast(
+                parsed_rules,
+                filter_combine.as_deref(),
+            )?)
+        }
+    };
+    let page = query::search_players(&conn, offset, limit, sort_by, sort_dir, filter_ast.as_ref())?;
     Ok(SearchPlayersPageDto::from(page))
 }
