@@ -4,7 +4,13 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
@@ -13,7 +19,10 @@ import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import { renderWithProviders } from "@/testing/render-with-providers";
-import { setSearchPlayersOverride } from "@/testing/search-ipc-mock";
+import {
+  getLastSearchPlayersArgs,
+  setSearchPlayersOverride,
+} from "@/testing/search-ipc-mock";
 import {
   resolveCreateSaveIpcMock,
   resolveLoadDataIpcMock,
@@ -260,6 +269,128 @@ describe("search route", () => {
       throw new Error("expected a virtualized body row");
     }
     expect(within(firstRow).getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("renders filter tags, opens editor, and applies filters immediately", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("High CA", 180),
+      playerNamed("Low CA", 100),
+    ]);
+    renderSearchRoute();
+
+    expect(await screen.findByText("High CA")).toBeInTheDocument();
+    expect(screen.getByText("Low CA")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Edit filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+    expect(dialog).toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+
+    const valueField = within(dialog).getByLabelText("Value");
+    fireEvent.change(valueField, { target: { value: "150" } });
+
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()?.filters).toEqual([
+        { field: "ca", op: "gt", value: 150 },
+      ]);
+      expect(
+        screen.getByRole("button", {
+          name: /Remove filter CA > 150/i,
+        }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Low CA")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("High CA")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /Remove filter CA > 150/i }),
+    );
+    expect(screen.queryByRole("button", { name: /Remove filter/i })).toBeNull();
+    expect(await screen.findByText("Low CA")).toBeInTheDocument();
+  });
+
+  it("sends filterCombine or when OR mode is selected in the editor", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("High CA", 180),
+      playerNamed("Low CA", 100),
+    ]);
+    renderSearchRoute();
+
+    expect(await screen.findByText("High CA")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+
+    await user.click(within(dialog).getByRole("button", { name: "or" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+
+    const valueField = within(dialog).getByLabelText("Value");
+    fireEvent.change(valueField, { target: { value: "150" } });
+
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()?.filterCombine).toBe("or");
+      expect(getLastSearchPlayersArgs()?.filters).toEqual([
+        { field: "ca", op: "gt", value: 150 },
+      ]);
+    });
+  });
+
+  it("shows a no-matches empty state when filters exclude every player", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("High CA", 180),
+      playerNamed("Low CA", 100),
+    ]);
+    renderSearchRoute();
+
+    expect(await screen.findByText("High CA")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+    fireEvent.change(within(dialog).getByLabelText("Value"), {
+      target: { value: "250" },
+    });
+
+    expect(
+      await screen.findByText("No players match these filters"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("High CA")).not.toBeInTheDocument();
+  });
+
+  it("keeps focus in the filter value field while editing", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("High CA", 180)]);
+    renderSearchRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Edit filters" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+
+    const valueField = within(dialog).getByLabelText("Value");
+    await user.click(valueField);
+    expect(valueField).toHaveFocus();
+
+    await user.clear(valueField);
+    await user.type(valueField, "1");
+    expect(valueField).toHaveFocus();
+    await user.type(valueField, "50");
+    expect(valueField).toHaveFocus();
   });
 
   it("toggles CA from default descending to ascending on header click", async () => {

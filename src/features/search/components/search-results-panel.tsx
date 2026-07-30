@@ -14,9 +14,11 @@ import {
   SEARCH_PAGE_SIZE,
   searchPlayersQueryOptions,
 } from "../api/search-players-query-options";
+import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
 import type { PlayerSummary } from "../types/player-summary";
 import type { SearchSortDir, SearchSortField } from "../types/search-sort";
 import { defaultDirForSortField } from "../types/search-sort";
+import { completeFilterRules } from "../utils/filter-registry";
 
 /** Must match `--spacing-table-row-height-two-line` / `h-table-row-height-two-line`. */
 const ROW_HEIGHT = 40;
@@ -55,6 +57,8 @@ const SORT_LABELS: Record<SearchSortField, string> = {
 type SearchResultsPanelProps = {
   sortBy: SearchSortField;
   sortDir: SearchSortDir;
+  filters: FilterRule[];
+  filterCombine: FilterCombineMode;
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
 };
 
@@ -95,11 +99,15 @@ function SearchResultsVirtualTable({
   total,
   sortBy,
   sortDir,
+  filters,
+  filterCombine,
   onSortChange,
 }: {
   total: number;
   sortBy: SearchSortField;
   sortDir: SearchSortDir;
+  filters: FilterRule[];
+  filterCombine: FilterCombineMode;
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -149,6 +157,8 @@ function SearchResultsVirtualTable({
         SEARCH_PAGE_SIZE,
         sortBy,
         sortDir,
+        filters,
+        filterCombine,
       ),
     ),
   });
@@ -305,13 +315,33 @@ function SearchResultsVirtualTable({
 export function SearchResultsPanel({
   sortBy,
   sortDir,
+  filters,
+  filterCombine,
   onSortChange,
 }: SearchResultsPanelProps) {
   const { data: page } = useSuspenseQuery(
-    searchPlayersQueryOptions(0, SEARCH_PAGE_SIZE, sortBy, sortDir),
+    searchPlayersQueryOptions(
+      0,
+      SEARCH_PAGE_SIZE,
+      sortBy,
+      sortDir,
+      filters,
+      filterCombine,
+    ),
   );
 
   if (page.total === 0) {
+    const appliedFilters = completeFilterRules(filters);
+    if (appliedFilters.length > 0) {
+      return (
+        <Panel title="Results" flush>
+          <EmptyState icon={SearchX} title="No players match these filters">
+            Adjust or clear filters in the strip above to widen the result set.
+          </EmptyState>
+        </Panel>
+      );
+    }
+
     return (
       <Panel title="Results" flush>
         <EmptyState icon={SearchX} title="No players in snapshot">
@@ -334,6 +364,8 @@ export function SearchResultsPanel({
         total={page.total}
         sortBy={sortBy}
         sortDir={sortDir}
+        filters={filters}
+        filterCombine={filterCombine}
         onSortChange={onSortChange}
       />
     </Panel>

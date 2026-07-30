@@ -1,3 +1,4 @@
+import type { FilterRuleIpc } from "@/features/search/types/filter-rule";
 import type {
   PlayerSummary,
   SearchPlayersPage,
@@ -18,6 +19,7 @@ import {
 } from "@/testing/snapshot-ipc-mock";
 
 let overridePlayers: PlayerSummary[] | null = null;
+let lastSearchPlayersArgs: Record<string, unknown> | null = null;
 
 export function setSearchPlayersOverride(players: PlayerSummary[] | null) {
   overridePlayers = players;
@@ -25,6 +27,11 @@ export function setSearchPlayersOverride(players: PlayerSummary[] | null) {
 
 export function resetSearchPlayersOverride() {
   overridePlayers = null;
+  lastSearchPlayersArgs = null;
+}
+
+export function getLastSearchPlayersArgs(): Record<string, unknown> | null {
+  return lastSearchPlayersArgs;
 }
 
 function parsePaging(args: unknown): {
@@ -32,6 +39,8 @@ function parsePaging(args: unknown): {
   limit: number;
   sortBy: SearchSortField;
   sortDir: SearchSortDir;
+  filters: FilterRuleIpc[];
+  filterCombine: "and" | "or";
 } {
   const record =
     typeof args === "object" && args !== null
@@ -49,7 +58,27 @@ function parsePaging(args: unknown): {
   const sortDir = isSearchSortDir(record.sortDir)
     ? record.sortDir
     : DEFAULT_SEARCH_SORT_DIR;
-  return { offset, limit, sortBy, sortDir };
+  const filterCombine =
+    record.filterCombine === "or" ? ("or" as const) : ("and" as const);
+  const filters = Array.isArray(record.filters)
+    ? record.filters.filter(isFilterRuleIpc)
+    : [];
+  return { offset, limit, sortBy, sortDir, filters, filterCombine };
+}
+
+function isFilterRuleIpc(value: unknown): value is FilterRuleIpc {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const valueField = record.value;
+  return (
+    typeof record.field === "string" &&
+    typeof record.op === "string" &&
+    (typeof valueField === "string" ||
+      typeof valueField === "number" ||
+      typeof valueField === "boolean")
+  );
 }
 
 function compareNullableString(
@@ -103,6 +132,99 @@ function comparePlayers(
   return sortDir === "asc" ? cmp : -cmp;
 }
 
+function fieldValue(
+  player: PlayerSummary,
+  field: string,
+): string | number | null {
+  switch (field) {
+    case "name":
+      return player.name;
+    case "club":
+      return player.club;
+    case "division":
+      return player.division;
+    case "age":
+      return player.age;
+    case "ca":
+      return player.ca;
+    case "pa":
+      return player.pa;
+    case "value":
+      return player.marketValueGbp;
+    default:
+      return null;
+  }
+}
+
+function matchFilterRule(player: PlayerSummary, rule: FilterRuleIpc): boolean {
+  const raw = fieldValue(player, rule.field);
+  const { op } = rule;
+
+  if (typeof rule.value === "boolean") {
+    return false;
+  }
+
+  if (
+    rule.field === "name" ||
+    rule.field === "club" ||
+    rule.field === "division"
+  ) {
+    const text = raw === null ? "" : String(raw);
+    const needle = String(rule.value);
+    const haystack = text.toLowerCase();
+    const target = needle.toLowerCase();
+    switch (op) {
+      case "contains":
+        return haystack.includes(target);
+      case "not_contains":
+        return raw !== null && !haystack.includes(target);
+      case "is":
+        return raw !== null && haystack === target;
+      case "is_not":
+        return raw !== null && haystack !== target;
+      default:
+        return false;
+    }
+  }
+
+  if (typeof rule.value === "string") {
+    return false;
+  }
+
+  const number = typeof raw === "number" ? raw : null;
+  if (number === null) {
+    return false;
+  }
+
+  switch (op) {
+    case "gt":
+      return number > rule.value;
+    case "lt":
+      return number < rule.value;
+    case "eq":
+      return number === rule.value;
+    case "neq":
+      return number !== rule.value;
+    default:
+      return false;
+  }
+}
+
+function applyFilters(
+  players: PlayerSummary[],
+  filters: FilterRuleIpc[],
+  combine: "and" | "or",
+): PlayerSummary[] {
+  if (filters.length === 0) {
+    return players;
+  }
+
+  return players.filter((player) => {
+    const matches = filters.map((rule) => matchFilterRule(player, rule));
+    return combine === "and" ? matches.every(Boolean) : matches.some(Boolean);
+  });
+}
+
 function fromSanityRows(): PlayerSummary[] {
   return resolveListSanityPlayersIpcMock().map((row, index) => ({
     uid: index + 1,
@@ -121,15 +243,23 @@ function fromSanityRows(): PlayerSummary[] {
 
 /** Builds a paged search response from the active snapshot mock state. */
 export function resolveSearchPlayersIpcMock(args: unknown): SearchPlayersPage {
+  lastSearchPlayersArgs =
+    typeof args === "object" && args !== null
+      ? (args as Record<string, unknown>)
+      : {};
+
   const snapshot = resolveGetCurrentSnapshotIpcMock();
   if (!snapshot) {
     return { players: [], total: 0 };
   }
 
-  const { offset, limit, sortBy, sortDir } = parsePaging(args);
-  const players = [...(overridePlayers ?? fromSanityRows())].sort((a, b) =>
-    comparePlayers(a, b, sortBy, sortDir),
-  );
+  const { offset, limit, sortBy, sortDir, filters, filterCombine } =
+    parsePaging(args);
+  const players = applyFilters(
+    [...(overridePlayers ?? fromSanityRows())],
+    filters,
+    filterCombine,
+  ).sort((a, b) => comparePlayers(a, b, sortBy, sortDir));
 
   return {
     players: players.slice(offset, offset + limit),

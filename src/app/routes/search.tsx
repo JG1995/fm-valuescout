@@ -1,11 +1,16 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DatabaseZap } from "lucide-react";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { searchPlayersQueryOptions } from "@/features/search/api/search-players-query-options";
+import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
+import type {
+  FilterCombineMode,
+  FilterRule,
+} from "@/features/search/types/filter-rule";
 import type {
   SearchSortDir,
   SearchSortField,
@@ -55,7 +60,19 @@ function PanelFallback() {
   );
 }
 
-function SearchPageBody() {
+type SearchFiltersProps = {
+  filters: FilterRule[];
+  filterCombine: FilterCombineMode;
+  onFiltersChange: (rules: FilterRule[]) => void;
+  onCombineChange: (combine: FilterCombineMode) => void;
+};
+
+function SearchPageContent({
+  filters,
+  filterCombine,
+  onFiltersChange,
+  onCombineChange,
+}: SearchFiltersProps) {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { sort, dir } = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -72,25 +89,45 @@ function SearchPageBody() {
   }
 
   return (
-    <SearchResultsPanel
-      sortBy={sort}
-      sortDir={dir}
-      onSortChange={(nextSort, nextDir) => {
-        void navigate({
-          search: { sort: nextSort, dir: nextDir },
-          replace: true,
-        });
-      }}
-    />
+    <>
+      <SearchFilterBar
+        rules={filters}
+        combine={filterCombine}
+        onRulesChange={onFiltersChange}
+        onCombineChange={onCombineChange}
+      />
+      <Suspense fallback={<PanelFallback />}>
+        <SearchResultsPanel
+          sortBy={sort}
+          sortDir={dir}
+          filters={filters}
+          filterCombine={filterCombine}
+          onSortChange={(nextSort, nextDir) => {
+            void navigate({
+              search: { sort: nextSort, dir: nextDir },
+              replace: true,
+            });
+          }}
+        />
+      </Suspense>
+    </>
   );
 }
 
 function SearchPage() {
+  const [filters, setFilters] = useState<FilterRule[]>([]);
+  const [filterCombine, setFilterCombine] = useState<FilterCombineMode>("and");
+
   return (
     <div className="space-y-gutter">
       <h1 className="text-headline-lg text-on-surface">Search</h1>
       <Suspense fallback={<PanelFallback />}>
-        <SearchPageBody />
+        <SearchPageContent
+          filters={filters}
+          filterCombine={filterCombine}
+          onFiltersChange={setFilters}
+          onCombineChange={setFilterCombine}
+        />
       </Suspense>
     </div>
   );
