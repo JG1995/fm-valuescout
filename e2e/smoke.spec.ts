@@ -57,6 +57,19 @@ test.describe("walking skeleton smoke", () => {
     await expect(rail.getByText("Dashboard")).toBeVisible();
   });
 
+  test("search route shows no-snapshot empty state from stubbed IPC", async ({
+    page,
+  }) => {
+    await page.goto("/search");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("heading", { level: 1, name: "Search" }),
+    ).toBeVisible();
+    await expect(main.getByText("No data loaded for this save")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
+  });
+
   test("unknown routes render the not-found page", async ({ page }) => {
     await page.goto("/does-not-exist");
 

@@ -150,6 +150,7 @@
   --spacing-rail-width-expanded: 208px;
   --spacing-header-height: 56px;
   --spacing-table-row-height: 36px;
+  --spacing-table-row-height-two-line: 40px;
   --spacing-table-header-height: 32px;
   --spacing-gutter: 16px;
 }

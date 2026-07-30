@@ -56,23 +56,30 @@ Do not implement, stage, commit, or push.
 
 ### Trunk-based development
 
-This repository uses **trunk-based development** — `main` is the trunk; all work lands there through short-lived branches and small PRs.
+This repository uses **trunk-based development** — `main` is the trunk; all work lands there through short-lived branches and PRs.
 
-When designing PR breakpoints:
+When designing delivery:
 
 - **Short-lived branches** — one branch per PR; merge to trunk soon after review, not a months-long feature branch.
 - **Trunk stays green** — every commit and every merged PR must pass `./scripts/dev check` (and configured smoke/mutate when applicable).
 - **Independently mergeable PRs** — each PR should be safe to merge to `main` on its own. Later PRs in the feature may depend on earlier merged work, but avoid changes that only work on a stale branch.
-- **Incremental delivery** — prefer multiple small PRs over one large PR. Use feature flags, disabled routes, or schema additions that do not break existing behaviour when partial delivery is needed.
-- **No "merge when feature complete"** — the feature completes through a **sequence of trunk merges**, not a single big bang.
+- **No "merge when feature complete"** — the feature completes through trunk merges (often one PR, sometimes a short sequence), not an unmerged mega-branch.
+
+**PRs and commits are different knobs.** Minimize PR count. Keep commits atomic and fine-grained. Do not merge commits just because you merged PRs, and do not invent extra PRs just because the commit list is long.
 
 ### PR breakpoints
 
-Group work that reviews and merges together:
+**Default: one PR** with an ordered atomic commit sequence.
 
-- **Small feature:** one PR with an ordered atomic commit sequence, merged to trunk once.
-- **Large feature:** multiple PRs merged to trunk in order (foundation → core → polish, or by review/risk boundary).
-- Split PRs when: review surface is too large, risk should be isolated, trunk should receive value early, or layers must land in order.
+Add another PR only when there is a **clear boundary** — for example:
+
+- A walking skeleton must land on trunk before the rest (so intermediate value is mergeable and green).
+- A risky or reversible foundation (schema migration, new dependency, protocol change) should merge alone before dependent work.
+- Two halves have no shared review surface and would be clearer as separate merges.
+
+Do **not** split PRs merely to keep each PR “small,” to mirror layer cake (backend / UI / polish), or because the feature has many commits. A long commit list inside one PR is normal and preferred for this solo-hobbyist workflow.
+
+When a second PR exists, state **why** the split is required in the plan. Prefer at most two PRs unless a third clear boundary is unavoidable.
 
 **PR titles** use the same Conventional Commits shape as commits: `type(scope): imperative description` (optional body in the PR description, not the title). Scope is usually the feature slug or affected module. Example: `feat(auth): add session store and login route`.
 
@@ -80,7 +87,7 @@ Record a **provisional PR title** per PR in the plan.
 
 ### Atomic commit breakpoints
 
-Each commit is one **atomic** unit — the strategy used for every `/build` and `/checkpoint`:
+Each commit is one **atomic** unit — the strategy used for every `/build` and `/checkpoint`. **Retain fine-grained commits** even when the feature is a single PR.
 
 - **One coherent, revertible outcome** — one behavioural or structural change; if the subject needs "and", split the commit.
 - **Reviewable** — a reviewer can understand and approve the diff without unrelated changes.
@@ -90,7 +97,7 @@ Each commit is one **atomic** unit — the strategy used for every `/build` and 
 
 **Provisional commit messages** must follow [Conventional Commits](.cursor/skills/conventional-commits/SKILL.md): `type(scope): imperative description` — outcome, not file list; under 72 characters; no period.
 
-**Walking skeleton** — name the thinnest path through the feature (first PR / first commits) that proves the approach on trunk.
+**Walking skeleton** — name the thinnest path through the feature (often the first commits of the sole PR, or the whole first PR when a second PR is justified) that proves the approach on trunk.
 
 When repository evidence is thin, deepen read-only reconnaissance before planning: inspect implementation and tests, read `.wiki/ARCHITECTURE.md` (§1.1 when present), read matching skills from `.cursor/skills/`, search Recallium per **## Recallium**, and use Context7 for stack facts. If a **gating unknown** needs a runtime experiment before the first commit, note it and suggest optional **`/spike`** — otherwise **ask the developer** with unresolved decisions stated explicitly.
 
@@ -118,7 +125,7 @@ Present before or alongside the ledger:
 1. **<commit title>** — work: …; out of scope: …; validation: …; provisional: `type(scope): …`
 2. …
 
-#### PR 2 — … (only when feature warrants multiple PRs)
+#### PR 2 — … (only when a clear PR boundary exists; omit by default)
 
 ### Walking skeleton
 <Thinnest path through the feature.>

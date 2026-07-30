@@ -50,10 +50,13 @@ Do not mirror the feature ledger or staged diff. Skip when unsure.
 6. Stage exact files or hunks only. Never use `git add .` or `git commit -a`.
 7. Run and inspect `git diff --cached --check`, `git diff --cached --stat`, and the complete staged diff.
 8. Run targeted tests and `./scripts/dev check`. Status 69 on smoke/mutate means unsupported, not passed.
-9. Require a separate reviewer pass for non-trivial work. Dispatch via Task when available:
+9. Require a separate reviewer pass for non-trivial work. Dispatch via Task when available.
+
+    **Model:** Always use the pin in `.cursor/agents/reviewer.md` frontmatter. **Never** pass Task `model`. No exceptions (including `/build-loop` and "use a faster model").
 
     Task({
       subagent_type: "reviewer",
+      // do not pass model — reviewer.md frontmatter owns it
       prompt: "Review following .cursor/agents/reviewer.md and AGENTS.md. Search Recallium per .cursor/rules/recallium.mdc when wiki/Git do not explain prior decisions relevant to the diff. Read .cursor/skills/coding-standards/SKILL.md, coding-standards/references/universal.md, and coding-standards/references/testing.md when diff includes tests, plus matching stack refs. Read other matching .cursor/skills/. Judge active commit scope only. Return the full Review verdict with CRITICAL/HIGH/MEDIUM/NITPICK tiers. Do not fix anything — report only.",
       description: "Review staged changes",
     })

@@ -16,7 +16,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 | 2 | Snapshot ingest + Load Data | [Completed](./features/completed/snapshot-ingest.md) | medium-high | Persist dumps to SQLite; multi-save; Load Data = scan+ingest — **done** |
 | 2a | Bridge scan performance | [Completed](./features/completed/bridge-scan-performance.md) | medium-high | Block heap scanning, streaming dump, optimized ingest, unlimited default, UI cap controls — **done** |
 | 3 | Role scoring engine | [Completed](./features/completed/role-scoring-engine.md) | medium | One scoring model on ingest; primary/secondary bands; combined IP/OOP helper — **done** |
-| 4 | Player search | CONCEPT | high | First full UI value path after Load Data; validates DB and scores |
+| 4 | Player search | [Active ledger](./features/active/player-search.md) | high | First full UI value path after Load Data; validates DB and scores — **in progress** |
 | 5 | Player profiles | CONCEPT | high | Detail view from search; traditional scouting path |
 | 6 | Squad planner | CONCEPT | medium | Tactic + squad slots; same scores as search |
 | 7 | Squad optimizer | CONCEPT | medium | Maximize combined team score; closes success vignette |
@@ -52,15 +52,15 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-_None._
+- [Player search](./features/active/player-search.md) (order 4) — Search page, operator filters, role/attribute filters, global Ctrl+K name search.
 
 ## Plan next
 
-Player search (order 4) — first full UI value path after Load Data; validates DB and role scores.
+Player profiles (order 5) — detail view from search; traditional scouting path.
 
 ## Next
 
-Player profiles (order 5) — detail view from search; traditional scouting path.
+Squad planner (order 6) — tactic + squad slots; same scores as search.
 
 ## Completed
 

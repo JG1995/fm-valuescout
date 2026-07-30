@@ -5,10 +5,19 @@ import { savesQueryOptions } from "../api/saves-query-options";
 import { setActiveSave } from "../api/set-active-save";
 import { snapshotKeys } from "../api/snapshot-keys";
 
+type ActiveSaveSelectProps = {
+  className?: string;
+  /** Shell composition — invalidate non-snapshot query trees (e.g. search). */
+  onSwitched?: () => void;
+};
+
 // Shell chrome, so this uses useQuery rather than the route loader's suspense
 // pattern: the top bar renders on every route, including ones with no loader,
 // and a failed save list must not blank the whole window.
-export function ActiveSaveSelect({ className }: { className?: string }) {
+export function ActiveSaveSelect({
+  className,
+  onSwitched,
+}: ActiveSaveSelectProps) {
   const queryClient = useQueryClient();
   const { data: saves } = useQuery(savesQueryOptions);
   const activeSave = saves?.find((save) => save.isActive) ?? saves?.[0];
@@ -17,6 +26,7 @@ export function ActiveSaveSelect({ className }: { className?: string }) {
     mutationFn: setActiveSave,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
+      onSwitched?.();
     },
   });
 

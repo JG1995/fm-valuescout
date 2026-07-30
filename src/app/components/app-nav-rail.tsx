@@ -1,6 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
-import { LayoutDashboard, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import {
+  LayoutDashboard,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Search,
+} from "lucide-react";
 import { Button } from "@/components/ui/button/button";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import { cn } from "@/utils/cn";
@@ -11,10 +16,11 @@ type NavItem = {
   icon: LucideIcon;
 };
 
-// Only routes that exist. Search, Planner, and Optimizer join this list with
-// their features, not before — a rail of dead links is worse than a short rail.
+// Only routes that exist. Planner and Optimizer join this list with their
+// features, not before — a rail of dead links is worse than a short rail.
 const navItems: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/search", label: "Search", icon: Search },
 ];
 
 export function AppNavRail() {

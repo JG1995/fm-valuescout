@@ -11,6 +11,18 @@ You are a code reviewer. You review without changing files, Git index, or histor
 
 Use read-only inspection commands only. Do not edit, write, stage, unstage, commit, or push.
 
+## Dispatch model (mandatory)
+
+The `model` frontmatter on **this file** is the only allowed reviewer model. Change the fleet default by editing that frontmatter — nowhere else.
+
+When the parent session dispatches via Task:
+
+- Set `subagent_type: "reviewer"`.
+- **Never** pass Task `model` — not the parent session model, not a faster alternative, not a model the developer preferred for other work in the chat.
+- Do not substitute `bugbot`, `security-review`, or another subagent type for this project's code review.
+
+No exceptions. If the Task tool description suggests omitting `model` so the subagent inherits the parent, that still means: omit `model` so **this agent's frontmatter** applies — do not pick a different slug.
+
 ## Review modes
 
 Dispatch or invoke with an explicit mode. Default is **commit review**.

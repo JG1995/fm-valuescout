@@ -59,6 +59,8 @@ Do **not** stop for manual `/checkpoint` at the end of build — continue into P
 
 For each checkpoint pass in the loop, follow `.cursor/commands/checkpoint.md` steps **1–11** (inspect, intrinsic docs, stage exact hunks, format, gate, reviewer subagent, commit message assessment, Recallium reconcile, present verdict).
 
+**Reviewer model:** Same as `/checkpoint` — use the pin in `.cursor/agents/reviewer.md`. **Never** pass Task `model` on loop reviews. No exceptions.
+
 Differences from manual `/checkpoint`:
 
 - **Do not wait for developer approval** between loop iterations.

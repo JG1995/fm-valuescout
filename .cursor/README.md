@@ -57,7 +57,7 @@ Invoke these from the chat command palette in Cursor (type `/`):
 | --- | --- |
 | `/stack` | CONCEPT filled — recommend stack and target architecture from wiki notes; write wiki only after approval |
 | `/roadmap` | Dependency-aware MVP build order (grounded in planned specs when present; inferred from CONCEPT when not); write TODO sequence only after approval |
-| `/plan-feature` | Next feature from the sequence — PR/commit plan (trunk-based, atomic commits, Conventional Commits) |
+| `/plan-feature` | Next feature from the sequence — minimize PRs, keep atomic commits (trunk-based, Conventional Commits) |
 | `/build` | Default: one active commit (RED/GREEN), ledger update, stop for `/checkpoint`. Opt-in: full feature one commit at a time |
 | `/build-loop` | **Manual opt-in:** `/build` + automated checkpoint/fix loop (max 5 fix rounds; fixes CRITICAL/HIGH/MEDIUM; bundles NITPICK when mixed) + auto-commit when NITPICK-only |
 | `/fix` | Default: CRITICAL, HIGH, and MEDIUM (or narrowed delegation) — stop for `/checkpoint` unless running inside `/build-loop` |
@@ -90,7 +90,11 @@ Structural planning uses **`/plan-feature`** and **`.wiki/ARCHITECTURE.md`**, pl
 
 Cursor's built-in `explore` subagent handles fast codebase search automatically or via Task — no project file.
 
-Dispatch project agents explicitly via the Task tool (`subagent_type: "reviewer"` or `"documentation-steward"`) or by asking Cursor to use the named agent. Do **not** pass Task `model` — the agent frontmatter pins the model. The main session is the **worker** — routine implementation and validation. No automatic role routing.
+Dispatch project agents explicitly via the Task tool (`subagent_type: "reviewer"` or `"documentation-steward"`) or by asking Cursor to use the named agent.
+
+**Pinned models — no overrides:** Each agent file's `model` frontmatter is the only allowed model for that agent. **Never** pass Task `model` when dispatching `reviewer` or `documentation-steward` — not the parent session model, not a faster alternative, not a model preferred elsewhere in the chat. No exceptions. Change a fleet default by editing the agent frontmatter only.
+
+The main session is the **worker** — routine implementation and validation. No automatic role routing.
 
 Manual fallback: read the agent file and follow its instructions in the current session, or use the matching command (`/review`, `/docs-review`).
 

@@ -89,6 +89,8 @@ When structural questions arise during planning: read `.wiki/ARCHITECTURE.md`, s
 
 Non-trivial staged diffs require a separate `reviewer` subagent (Task) or a new chat with `/review`. The reviewer **reports only** — never fixes findings. Do not self-review implementation you just wrote in the same turn without a reviewer pass.
 
+**Reviewer model:** Always use the pin in `.cursor/agents/reviewer.md` frontmatter. When dispatching via Task, **never** pass `model` — not the parent session model, not a faster alternative, not a developer preference for other work. No exceptions. Change the fleet default only by editing that frontmatter.
+
 ## Finish-feature phase (`/finish-feature`)
 
 Feature is implementation-complete (all delivery-plan commits done):
