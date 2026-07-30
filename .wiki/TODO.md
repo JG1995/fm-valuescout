@@ -15,7 +15,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 | 1 | FM26 memory read | [Completed](./features/completed/fm26-memory-read.md) | medium | Foundation — live dump from FM; **done** |
 | 2 | Snapshot ingest + Load Data | [Completed](./features/completed/snapshot-ingest.md) | medium-high | Persist dumps to SQLite; multi-save; Load Data = scan+ingest — **done** |
 | 2a | Bridge scan performance | [Completed](./features/completed/bridge-scan-performance.md) | medium-high | Block heap scanning, streaming dump, optimized ingest, unlimited default, UI cap controls — **done** |
-| 3 | Role scoring engine | CONCEPT | medium | One scoring model on ingest; FM role-relevant attributes + custom algorithm |
+| 3 | Role scoring engine | [Active](./features/active/role-scoring-engine.md) | medium | One scoring model on ingest; primary/secondary bands; combined IP/OOP helper |
 | 4 | Player search | CONCEPT | high | First full UI value path after Load Data; validates DB and scores |
 | 5 | Player profiles | CONCEPT | high | Detail view from search; traditional scouting path |
 | 6 | Squad planner | CONCEPT | medium | Tactic + squad slots; same scores as search |
@@ -52,15 +52,15 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-_None._
+- [Role scoring engine](./features/active/role-scoring-engine.md) (order 3) — primary/secondary attribute scores on ingest; thin sanity proof; combined IP/OOP helper without weight UI
 
 ## Plan next
 
-Role scoring engine (order 3) — scores computed on ingest from FM role-relevant attributes.
+Player search (order 4) — first full UI value path after Load Data; validates DB and scores.
 
 ## Next
 
-Player search (order 4) — first full UI value path after Load Data; validates DB and scores.
+Player profiles (order 5) — detail view from search; traditional scouting path.
 
 ## Completed
 
