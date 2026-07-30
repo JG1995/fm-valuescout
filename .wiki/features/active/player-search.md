@@ -155,7 +155,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 2 — Search route and virtualized table
 
-**Status:** Active
+**Status:** Completed — `bbec416`
 
 **Work:** `/search` route, nav **Search**, Query wiring, TanStack Virtual table, basic columns, loading / no-snapshot / empty states. Invalidate on save switch / Load Data. Smoke stub for the new IPC.
 
@@ -168,7 +168,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 3 — Sortable result columns
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Extend list IPC with sort field + direction (whitelist basic columns). Table headers set sort via URL search params; default remains CA desc. `aria-sort` on headers.
 
@@ -286,21 +286,21 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 **PR:** 1 — Search page with paged player list
 
-**Commit:** Search route and virtualized table
+**Commit:** Sortable result columns
 
 ### RED test (active commit)
 
-Assert the Search route renders in the nav, loads a virtualized page of basic columns via `search_players` mockIPC, and shows the no-snapshot empty state when the current snapshot is absent.
+Assert list IPC accepts a whitelisted sort field + direction (default CA desc), rejects unknown fields, and that table headers write sort into URL search params with `aria-sort`.
 
-**Wrong behaviour caught:** Search missing from the shell, table that materializes every row, or Query that never hits the paged IPC.
+**Wrong behaviour caught:** Client invents sort SQL, default not CA desc, or headers that do not drive the query.
 
 ### Expected outcome
 
-`/search` in the rail with a virtualized basic-column table wired to the paged IPC; smoke stubs the new command.
+Sortable basic columns via URL params; server whitelist; default CA descending.
 
 ### Explicit exclusions
 
-Filters, sorting UI beyond default CA order from IPC, global search, row navigation.
+Sorting by dynamic/filter-only columns (PR 2).
 
 ## Discoveries and replanning
 
@@ -312,6 +312,7 @@ Filters, sorting UI beyond default CA order from IPC, global search, row navigat
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
 | 1 | Paged player list IPC | `889aed7` | `search_players` windowed IPC; CA desc; limit cap; active-save isolation |
+| 1 | Search route and virtualized table | `bbec416` | `/search` + nav; TanStack Virtual; invalidate on save/Load Data; smoke stub |
 
 ## Final validation
 
