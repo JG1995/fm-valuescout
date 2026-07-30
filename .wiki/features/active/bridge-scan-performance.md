@@ -190,7 +190,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 2 — Stream compact full dump output
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Write compact schema-v5 JSON incrementally to the existing temporary file and retain atomic replace-on-success behavior.
 
@@ -297,6 +297,7 @@ DumpWriter streams compact schema-v5 JSON to the temp file and atomically replac
 - Commit 3: `FakeMemoryReader.TryReadBlock` composes sparse `AddBytes` segments with first-fill-wins so overlapping fixture blobs do not erase earlier person headers (matches scalar `TryRead` first-match).
 - **PR 2 replan (2026-07-30):** Replace hard-delete of the production cap with request-scoped `maxAccepted` (Commit 4) plus UI toggle/configurable limit (Commit 5). Unlimited becomes the production default after live full-save validation; capped loads remain available for diagnostics. Progress UI stays a non-goal unless the measured full path needs it.
 - **PR 2 Commit 1:** Attribute visible+hidden share one contiguous `TryReadBlock` from `AttrsOffset`; personality and positions each get one span; `FmStringReader.TryReadCString` uses one bounded block (gaps/zeros terminate). Unread bytes remain 0 → same null/skip decode as failed scalar reads. Pointer chains (name/nation/contract) stay scalar.
+- **PR 2 Commit 2:** `DumpWriter.WriteCompact` emits unindented schema-v5 via `Utf8JsonWriter`, serializing each player then flushing so write chunks stay bounded (no second full JSON string). Atomic temp→`dump.json` replace unchanged. Generated 184k/500k minimal-player docs complete under the streaming tests.
 
 ## Completed work
 

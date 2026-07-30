@@ -6,7 +6,7 @@ Contract between the FM26 BepInEx bridge (`dump.json`) and snapshot ingest (feat
 
 ## Document shape
 
-Top-level JSON object, camelCase keys, pretty-printed by the bridge.
+Top-level JSON object, camelCase keys, compact (unindented) JSON streamed by the bridge. Whitespace is not significant for validation.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
