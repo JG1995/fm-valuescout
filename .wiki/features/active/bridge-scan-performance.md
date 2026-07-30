@@ -130,7 +130,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 2 — Add reusable block memory reads
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `6f299da`
 
 **Work:** Add a direct caller-owned byte-array block-read path that avoids the current intermediate allocation and copy. Add bounded subdivision for failed blocks while preserving short-read and invalid-address behavior in the Windows implementation and fake reader.
 
@@ -145,7 +145,7 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 #### Commit 3 — Scan heap regions from reusable blocks
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Replace per-word process-memory calls with bounded region blocks, local aligned-word inspection, in-buffer UID reads, and cached module metadata or vtable-to-class-offset results. Stop immediately when a diagnostic cap is reached and preserve truncation semantics.
 
@@ -236,21 +236,21 @@ Add phase timings, implement one reusable single-thread block-read path, and pro
 
 **PR:** PR 1 — Replace scalar heap reads with block scanning
 
-**Commit:** Add reusable block memory reads
+**Commit:** Scan heap regions from reusable blocks
 
 ### RED test (active commit)
 
-Call a new caller-owned block-read path on the fake reader (and Windows path where covered) and assert full success, short/partial reads, failed inaccessible ranges, and region-edge behavior. It fails today because `IMemoryReader` only exposes per-call `TryRead` into a span with an intermediate allocate-and-copy on Windows, with no reusable block API or failed-block subdivision.
+Characterization tests prove PersonScanner (via CapADumpPipeline or direct Scan) returns the same accepted UIDs, CA/PA values, deduplication, cancellation, and fail-safe behavior when heap discovery uses `TryReadBlock` instead of per-word `TryRead`. A counting reader proves process-memory calls scale with blocks, not 8-byte slots. It fails today because `PersonScanner.Scan` still issues one scalar read per aligned heap word.
 
 ### Expected outcome
 
-Production and fake readers can fill a caller-owned byte array for a contiguous address range, subdividing failed blocks without changing short-read or invalid-address semantics used by existing scalar helpers.
+Candidate discovery walks regions from reusable bounded blocks with local aligned-word inspection, in-buffer UID reads where possible, and cached module metadata or vtable-to-class-offset results, while preserving the 500-player cap and truncation semantics.
 
 ### Explicit exclusions
 
-- Do not replace the PersonScanner heap loop yet.
-- No parallel reads.
-- No extraction field batching.
+- Player field extraction batching.
+- Parallel region workers.
+- Full production scans (uncapped reference budget is PR 2).
 
 ## Discoveries and replanning
 
@@ -274,6 +274,7 @@ Production and fake readers can fill a caller-owned byte array for a contiguous 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
 | 1 | Add scan phase performance diagnostics | `b2c8663` | Phase ms + process-memory call/byte counts in diagnostics.txt |
+| 1 | Add reusable block memory reads | `6f299da` | `TryReadBlock` + page-aligned failed-block subdivision |
 
 ## Final validation
 
