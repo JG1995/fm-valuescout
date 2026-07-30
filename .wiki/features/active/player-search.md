@@ -130,7 +130,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 ### PR 1 — Search page with paged player list
 
-**Status:** Active
+**Status:** Implementation complete — merge when ready
 
 **Provisional PR title:** `feat(search): add Search page with paged player list`
 
@@ -168,7 +168,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 3 — Sortable result columns
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `1b42133`
 
 **Work:** Extend list IPC with sort field + direction (whitelist basic columns). Table headers set sort via URL search params; default remains CA desc. `aria-sort` on headers.
 
@@ -181,7 +181,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 ### PR 2 — Filters, dynamic columns, and global search
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional PR title:** `feat(search): add player filters and global name search`
 
@@ -193,7 +193,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 1 — Filter AST and scalar SQL builder
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Filter rule DTO + AND/OR; field registry for scalars/bools/enums; validate operators per field; compile to parameterized WHERE; integrate into `search_players`. Reject unknown fields/ops. Rust tests for each operator class and AND vs OR.
 
@@ -284,23 +284,23 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 ## Active work
 
-**PR:** 1 — Search page with paged player list
+**PR:** 2 — Filters, dynamic columns, and global search
 
-**Commit:** Sortable result columns
+**Commit:** Filter AST and scalar SQL builder
 
 ### RED test (active commit)
 
-Assert list IPC accepts a whitelisted sort field + direction (default CA desc), rejects unknown fields, and that table headers write sort into URL search params with `aria-sort`.
+Assert filter rules with AND/OR compile to parameterized WHERE for scalar/bool/enum fields, reject unknown fields/operators, and that `search_players` returns only matching rows.
 
-**Wrong behaviour caught:** Client invents sort SQL, default not CA desc, or headers that do not drive the query.
+**Wrong behaviour caught:** Client-side filtering, SQL injection via field/op strings, or accepting invalid operators for a field kind.
 
 ### Expected outcome
 
-Sortable basic columns via URL params; server whitelist; default CA descending.
+Validated filter AST → Rust SQL builder for scalars; integrated into paged search.
 
 ### Explicit exclusions
 
-Sorting by dynamic/filter-only columns (PR 2).
+Attributes, positions, nationalities, role scores, React filter UI.
 
 ## Discoveries and replanning
 
@@ -313,6 +313,7 @@ Sorting by dynamic/filter-only columns (PR 2).
 | --- | --- | --- | --- |
 | 1 | Paged player list IPC | `889aed7` | `search_players` windowed IPC; CA desc; limit cap; active-save isolation |
 | 1 | Search route and virtualized table | `bbec416` | `/search` + nav; TanStack Virtual; invalidate on save/Load Data; smoke stub |
+| 1 | Sortable result columns | `1b42133` | Whitelist sort IPC; URL `sort`/`dir`; `aria-sort`; default CA desc |
 
 ## Final validation
 
