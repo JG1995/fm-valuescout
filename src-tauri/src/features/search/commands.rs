@@ -5,7 +5,8 @@ use crate::db::Db;
 
 use super::filter::{self, FilterRule};
 use super::query::{
-    self, PlayerSummary, SearchPlayersPage, SortDir, SortField, DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT,
+    self, DynamicValue, PlayerSummary, SearchPlayersPage, SortDir, SortField, DEFAULT_PAGE_LIMIT,
+    MAX_PAGE_LIMIT,
 };
 
 #[derive(Deserialize)]
@@ -41,6 +42,23 @@ pub struct PlayerSummaryDto {
     pub ca: i64,
     pub pa: i64,
     pub market_value_gbp: Option<i64>,
+    pub dynamic_values: std::collections::BTreeMap<String, Option<DynamicValueDto>>,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum DynamicValueDto {
+    Integer(i64),
+    Text(String),
+}
+
+impl From<DynamicValue> for DynamicValueDto {
+    fn from(value: DynamicValue) -> Self {
+        match value {
+            DynamicValue::Integer(number) => Self::Integer(number),
+            DynamicValue::Text(text) => Self::Text(text),
+        }
+    }
 }
 
 impl From<PlayerSummary> for PlayerSummaryDto {
@@ -57,6 +75,11 @@ impl From<PlayerSummary> for PlayerSummaryDto {
             ca: row.ca,
             pa: row.pa,
             market_value_gbp: row.market_value_gbp,
+            dynamic_values: row
+                .dynamic_values
+                .into_iter()
+                .map(|(key, value)| (key, value.map(DynamicValueDto::from)))
+                .collect(),
         }
     }
 }

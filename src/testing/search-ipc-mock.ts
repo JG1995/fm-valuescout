@@ -125,6 +125,19 @@ function comparePlayers(
     case "value":
       cmp = (a.marketValueGbp ?? -1) - (b.marketValueGbp ?? -1);
       break;
+    default: {
+      const left = a.dynamicValues?.[sortBy];
+      const right = b.dynamicValues?.[sortBy];
+      if (typeof left === "number" && typeof right === "number") {
+        cmp = left - right;
+      } else {
+        cmp = compareNullableString(
+          left === undefined || left === null ? null : String(left),
+          right === undefined || right === null ? null : String(right),
+        );
+      }
+      break;
+    }
   }
   if (cmp === 0) {
     return a.uid - b.uid;
@@ -151,8 +164,13 @@ function fieldValue(
       return player.pa;
     case "value":
       return player.marketValueGbp;
-    default:
-      return null;
+    default: {
+      const dynamic = player.dynamicValues?.[field];
+      if (dynamic === undefined || dynamic === null) {
+        return null;
+      }
+      return dynamic;
+    }
   }
 }
 

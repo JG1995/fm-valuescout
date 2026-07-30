@@ -85,6 +85,60 @@ enum FieldKind {
     },
     /// Position key presence / key match against `positions_json`.
     PositionPresence,
+    /// Integer score from `player_role_scores` for a catalog `role_id`.
+    RoleScore {
+        role_id: String,
+    },
+}
+
+/// Fields that already have a fixed results-table column.
+pub fn is_basic_column_field(field: &str) -> bool {
+    matches!(
+        field,
+        "name" | "age" | "nationality" | "club" | "division" | "ca" | "pa" | "value"
+    )
+}
+
+/// Non-basic filter fields that should appear as dynamic result columns.
+/// Skips `position` presence (no single numeric cell without the rule value).
+pub fn collects_dynamic_column(field: &str) -> bool {
+    !is_basic_column_field(field) && field != "position"
+}
+
+/// Unique dynamic column field ids from an AST, in first-seen order.
+pub fn dynamic_fields_from_ast(ast: &FilterAst) -> Vec<String> {
+    let mut fields = Vec::new();
+    for rule in &ast.rules {
+        if !collects_dynamic_column(&rule.field) {
+            continue;
+        }
+        if fields.iter().any(|existing| existing == &rule.field) {
+            continue;
+        }
+        fields.push(rule.field.clone());
+    }
+    fields
+}
+
+/// SQL expression (relative to `players`) for selecting or sorting a filter field.
+pub fn field_value_sql(field: &str) -> Result<String, String> {
+    match resolve_field(field)? {
+        FieldKind::String { column, .. }
+        | FieldKind::Integer { column, .. }
+        | FieldKind::Boolean { column }
+        | FieldKind::Enum { column, .. } => Ok(column.to_string()),
+        FieldKind::JsonInteger { column, key } => Ok(json_extract_expr(column, &key)),
+        FieldKind::StringList { column } => Ok(column.to_string()),
+        FieldKind::PositionPresence => {
+            Err("position presence is not a sortable column".to_string())
+        }
+        FieldKind::RoleScore { role_id } => {
+            // role_id is catalog-validated (`[a-z0-9_]+`).
+            Ok(format!(
+                "(SELECT prs.score FROM player_role_scores prs WHERE prs.snapshot_id = players.snapshot_id AND prs.uid = players.uid AND prs.role_id = '{role_id}')"
+            ))
+        }
+    }
 }
 
 fn is_safe_json_object_key(key: &str) -> bool {
@@ -225,9 +279,27 @@ fn resolve_field(field: &str) -> Result<FieldKind, String> {
             if let Some(kind) = resolve_position_suitability(field)? {
                 return Ok(kind);
             }
+            if let Some(kind) = resolve_role_score(field)? {
+                return Ok(kind);
+            }
             Err(format!("unknown filter field: {field}"))
         }
     }
+}
+
+fn resolve_role_score(field: &str) -> Result<Option<FieldKind>, String> {
+    let Some(role_id) = field.strip_prefix("role.") else {
+        return Ok(None);
+    };
+    let Some(role) = crate::features::scoring::catalog::all_roles()
+        .iter()
+        .find(|candidate| candidate.role_id == role_id)
+    else {
+        return Err(format!("unknown role id: {role_id}"));
+    };
+    Ok(Some(FieldKind::RoleScore {
+        role_id: role.role_id.to_string(),
+    }))
 }
 
 pub fn filter_value_from_json(value: serde_json::Value) -> Result<FilterValue, String> {
@@ -312,7 +384,35 @@ fn compile_rule(
         }
         FieldKind::StringList { column } => compile_string_list_rule(column, op, value, next_index),
         FieldKind::PositionPresence => compile_position_presence_rule(op, value, next_index),
+        FieldKind::RoleScore { role_id } => {
+            compile_role_score_rule(&role_id, op, value, next_index)
+        }
     }
+}
+
+fn compile_role_score_rule(
+    role_id: &str,
+    op: &str,
+    value: &FilterValue,
+    next_index: &mut usize,
+) -> Result<(String, Vec<Value>), String> {
+    let number = value_as_integer(value)?;
+    let compare = match op {
+        "gt" => ">",
+        "lt" => "<",
+        "eq" => "=",
+        "neq" => "!=",
+        _ => return Err(format!("invalid integer filter operator: {op}")),
+    };
+    let role_placeholder = next_placeholder(next_index);
+    let score_placeholder = next_placeholder(next_index);
+    let clause = format!(
+        "EXISTS (SELECT 1 FROM player_role_scores prs WHERE prs.snapshot_id = players.snapshot_id AND prs.uid = players.uid AND prs.role_id = {role_placeholder} AND prs.score IS NOT NULL AND prs.score {compare} {score_placeholder})"
+    );
+    Ok((
+        clause,
+        vec![Value::Text(role_id.to_string()), Value::Integer(number)],
+    ))
 }
 
 fn json_extract_expr(column: &str, key: &str) -> String {
@@ -912,6 +1012,51 @@ mod tests {
             .expect("parse ast");
 
         let error = compile_filters(&ast, 2).expect_err("unknown pos");
+        assert!(error.contains("unknown") || error.contains("invalid"));
+    }
+
+    #[test]
+    fn compiles_role_score_filter_via_player_role_scores() {
+        let ast = parse_filter_ast(
+            vec![rule(
+                "role.deep_lying_playmaker_ip",
+                "gt",
+                FilterValue::Integer(70),
+            )],
+            None,
+        )
+        .expect("parse ast");
+
+        let compiled = compile_filters(&ast, 2).expect("compile role score");
+        assert!(
+            compiled.sql.contains("player_role_scores"),
+            "expected role-score join/subquery, got {}",
+            compiled.sql
+        );
+        assert!(
+            compiled.sql.contains("prs.role_id = ?2"),
+            "expected bound role_id placeholder, got {}",
+            compiled.sql
+        );
+        assert!(compiled.sql.contains("IS NOT NULL"));
+        assert_eq!(
+            compiled.params,
+            vec![
+                Value::Text("deep_lying_playmaker_ip".to_string()),
+                Value::Integer(70),
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_role_id() {
+        let ast = parse_filter_ast(
+            vec![rule("role.not_a_real_role", "gt", FilterValue::Integer(50))],
+            None,
+        )
+        .expect("parse ast");
+
+        let error = compile_filters(&ast, 2).expect_err("unknown role");
         assert!(error.contains("unknown") || error.contains("invalid"));
     }
 }

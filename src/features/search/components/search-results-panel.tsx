@@ -1,7 +1,7 @@
 import { useQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronUp, SearchX } from "lucide-react";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import {
@@ -17,18 +17,25 @@ import {
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
 import type { PlayerSummary } from "../types/player-summary";
 import type { SearchSortDir, SearchSortField } from "../types/search-sort";
-import { defaultDirForSortField } from "../types/search-sort";
-import { completeFilterRules } from "../utils/filter-registry";
+import {
+  type BASIC_SEARCH_SORT_FIELDS,
+  defaultDirForSortField,
+  isBasicSearchSortField,
+} from "../types/search-sort";
+import {
+  dynamicColumnFields,
+  dynamicColumnLabel,
+} from "../utils/dynamic-columns";
+import { completeFilterRules, getFilterField } from "../utils/filter-registry";
 
 /** Must match `--spacing-table-row-height-two-line` / `h-table-row-height-two-line`. */
 const ROW_HEIGHT = 40;
-const COLUMN_COUNT = 8;
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
 const NUM_CELL =
   "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
 
-const COLUMNS = [
+const BASIC_COLUMNS = [
   { key: "name", label: "Name", align: "left" as const },
   { key: "age", label: "Age / DOB", align: "left" as const },
   { key: "nationality", label: "Nationality", align: "left" as const },
@@ -38,12 +45,22 @@ const COLUMNS = [
   { key: "pa", label: "PA", align: "right" as const },
   { key: "value", label: "Value", align: "right" as const },
 ] as const satisfies ReadonlyArray<{
-  key: SearchSortField;
+  key: (typeof BASIC_SEARCH_SORT_FIELDS)[number];
   label: string;
   align: "left" | "right";
 }>;
 
-const SORT_LABELS: Record<SearchSortField, string> = {
+type TableColumn = {
+  key: SearchSortField;
+  label: string;
+  align: "left" | "right";
+  dynamic?: boolean;
+};
+
+const BASIC_SORT_LABELS: Record<
+  (typeof BASIC_SEARCH_SORT_FIELDS)[number],
+  string
+> = {
   name: "Name",
   age: "Age / DOB",
   nationality: "Nationality",
@@ -95,12 +112,82 @@ function nextSort(
   return { sortBy: clicked, sortDir: defaultDirForSortField(clicked) };
 }
 
+function formatDynamicCell(
+  player: PlayerSummary | undefined,
+  fieldId: string,
+): string {
+  if (!player) {
+    return "…";
+  }
+  const value = player.dynamicValues?.[fieldId];
+  if (value === undefined || value === null) {
+    return "—";
+  }
+  return String(value);
+}
+
+function basicCell(
+  player: PlayerSummary | undefined,
+  key: (typeof BASIC_SEARCH_SORT_FIELDS)[number],
+): { text: string; title?: string; numeric: boolean } {
+  if (!player) {
+    return { text: "…", numeric: key !== "name" && key !== "age" };
+  }
+  switch (key) {
+    case "name":
+      return { text: player.name, title: player.name, numeric: false };
+    case "age": {
+      const dob = formatPlayerDob(
+        player.birthYear,
+        player.birthDayOfYear,
+        player.age,
+      );
+      return { text: dob, title: dob, numeric: false };
+    }
+    case "nationality": {
+      const nationalities = String(
+        formatMissable(player.nationalities.join(", ")),
+      );
+      return { text: nationalities, title: nationalities, numeric: false };
+    }
+    case "club": {
+      const club = String(formatMissable(player.club));
+      return {
+        text: club,
+        title: club !== "—" ? club : undefined,
+        numeric: false,
+      };
+    }
+    case "division": {
+      const division = String(formatMissable(player.division));
+      return {
+        text: division,
+        title: division !== "—" ? division : undefined,
+        numeric: false,
+      };
+    }
+    case "ca":
+      return { text: String(player.ca), numeric: true };
+    case "pa":
+      return { text: String(player.pa), numeric: true };
+    case "value":
+      return {
+        text:
+          player.marketValueGbp === null
+            ? "—"
+            : formatMoney(player.marketValueGbp),
+        numeric: true,
+      };
+  }
+}
+
 function SearchResultsVirtualTable({
   total,
   sortBy,
   sortDir,
   filters,
   filterCombine,
+  columns,
   onSortChange,
 }: {
   total: number;
@@ -108,9 +195,11 @@ function SearchResultsVirtualTable({
   sortDir: SearchSortDir;
   filters: FilterRule[];
   filterCombine: FilterCombineMode;
+  columns: TableColumn[];
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const columnCount = columns.length;
   const virtualizer = useVirtualizer({
     count: total,
     getScrollElement: () => parentRef.current,
@@ -184,7 +273,7 @@ function SearchResultsVirtualTable({
         <caption className="sr-only">Player search results</caption>
         <thead className="sticky top-0 z-10">
           <tr className="bg-surface-container-lowest">
-            {COLUMNS.map((column) => {
+            {columns.map((column) => {
               const active = column.key === sortBy;
               const ariaSort = active
                 ? sortDir === "asc"
@@ -232,30 +321,11 @@ function SearchResultsVirtualTable({
         <tbody>
           {paddingTop > 0 ? (
             <tr>
-              <td colSpan={COLUMN_COUNT} style={{ height: paddingTop }} />
+              <td colSpan={columnCount} style={{ height: paddingTop }} />
             </tr>
           ) : null}
           {virtualRows.map((virtualRow) => {
             const player = playerAtIndex(pageData, virtualRow.index);
-            const dob = player
-              ? formatPlayerDob(
-                  player.birthYear,
-                  player.birthDayOfYear,
-                  player.age,
-                )
-              : "…";
-            const nationalities = player
-              ? String(formatMissable(player.nationalities.join(", ")))
-              : "…";
-            const club = player ? String(formatMissable(player.club)) : "…";
-            const division = player
-              ? String(formatMissable(player.division))
-              : "…";
-            const value = player
-              ? player.marketValueGbp === null
-                ? "—"
-                : formatMoney(player.marketValueGbp)
-              : "…";
 
             return (
               <tr
@@ -264,45 +334,47 @@ function SearchResultsVirtualTable({
                 className="border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high"
                 style={{ height: `${virtualRow.size}px` }}
               >
-                <td
-                  className={`${TEXT_CELL} text-on-surface`}
-                  title={player?.name}
-                >
-                  {player?.name ?? "…"}
-                </td>
-                <td
-                  className={`${TEXT_CELL} text-on-surface-variant`}
-                  title={player ? dob : undefined}
-                >
-                  {dob}
-                </td>
-                <td
-                  className={`${TEXT_CELL} text-on-surface`}
-                  title={player ? nationalities : undefined}
-                >
-                  {nationalities}
-                </td>
-                <td
-                  className={`${TEXT_CELL} text-on-surface`}
-                  title={player && club !== "—" ? club : undefined}
-                >
-                  {club}
-                </td>
-                <td
-                  className={`${TEXT_CELL} text-on-surface-variant`}
-                  title={player && division !== "—" ? division : undefined}
-                >
-                  {division}
-                </td>
-                <td className={NUM_CELL}>{player?.ca ?? "…"}</td>
-                <td className={NUM_CELL}>{player?.pa ?? "…"}</td>
-                <td className={NUM_CELL}>{value}</td>
+                {columns.map((column) => {
+                  if (column.dynamic) {
+                    const text = formatDynamicCell(player, column.key);
+                    return (
+                      <td
+                        key={column.key}
+                        className={
+                          column.align === "right"
+                            ? NUM_CELL
+                            : `${TEXT_CELL} text-on-surface`
+                        }
+                        title={text !== "—" && text !== "…" ? text : undefined}
+                      >
+                        {text}
+                      </td>
+                    );
+                  }
+                  const cell = basicCell(
+                    player,
+                    column.key as (typeof BASIC_SEARCH_SORT_FIELDS)[number],
+                  );
+                  return (
+                    <td
+                      key={column.key}
+                      className={
+                        cell.numeric
+                          ? NUM_CELL
+                          : `${TEXT_CELL} ${column.key === "age" || column.key === "division" ? "text-on-surface-variant" : "text-on-surface"}`
+                      }
+                      title={cell.title}
+                    >
+                      {cell.text}
+                    </td>
+                  );
+                })}
               </tr>
             );
           })}
           {paddingBottom > 0 ? (
             <tr>
-              <td colSpan={COLUMN_COUNT} style={{ height: paddingBottom }} />
+              <td colSpan={columnCount} style={{ height: paddingBottom }} />
             </tr>
           ) : null}
         </tbody>
@@ -319,6 +391,24 @@ export function SearchResultsPanel({
   filterCombine,
   onSortChange,
 }: SearchResultsPanelProps) {
+  const dynamicFields = useMemo(() => dynamicColumnFields(filters), [filters]);
+  const columns = useMemo<TableColumn[]>(
+    () => [
+      ...BASIC_COLUMNS.map((column) => ({ ...column })),
+      ...dynamicFields.map((fieldId) => {
+        const kind = getFilterField(fieldId)?.kind;
+        const numeric = kind === "integer" || kind === "boolean";
+        return {
+          key: fieldId,
+          label: dynamicColumnLabel(fieldId),
+          align: numeric ? ("right" as const) : ("left" as const),
+          dynamic: true,
+        };
+      }),
+    ],
+    [dynamicFields],
+  );
+
   const { data: page } = useSuspenseQuery(
     searchPlayersQueryOptions(
       0,
@@ -353,12 +443,15 @@ export function SearchResultsPanel({
   }
 
   const dirLabel = sortDir === "asc" ? "ascending" : "descending";
+  const sortLabel = isBasicSearchSortField(sortBy)
+    ? BASIC_SORT_LABELS[sortBy]
+    : dynamicColumnLabel(sortBy);
 
   return (
     <Panel title="Results" flush>
       <p className="px-4 pb-3 text-body-md text-on-surface-variant">
         <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
-        players · sorted by {SORT_LABELS[sortBy]} ({dirLabel})
+        players · sorted by {sortLabel} ({dirLabel})
       </p>
       <SearchResultsVirtualTable
         total={page.total}
@@ -366,6 +459,7 @@ export function SearchResultsPanel({
         sortDir={sortDir}
         filters={filters}
         filterCombine={filterCombine}
+        columns={columns}
         onSortChange={onSortChange}
       />
     </Panel>

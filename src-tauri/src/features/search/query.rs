@@ -1,11 +1,13 @@
+use std::collections::BTreeMap;
+
 use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Row};
 
-use super::filter::{compile_filters, FilterAst};
+use super::filter::{compile_filters, dynamic_fields_from_ast, field_value_sql, FilterAst};
 
 pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SortField {
     Name,
     Age,
@@ -15,6 +17,8 @@ pub enum SortField {
     Ca,
     Pa,
     Value,
+    /// Whitelisted filter field id (`role.*`, `attr.*`, scalar non-basics, …).
+    Dynamic(String),
 }
 
 impl SortField {
@@ -30,23 +34,28 @@ impl SortField {
             "ca" => Ok(Self::Ca),
             "pa" => Ok(Self::Pa),
             "value" => Ok(Self::Value),
-            _ => Err(format!("unknown search sort field: {value}")),
+            other => {
+                // Reject fields that cannot produce a single sortable expression.
+                let _ = field_value_sql(other)?;
+                Ok(Self::Dynamic(other.to_string()))
+            }
         }
     }
 
-    fn sql_expr(self) -> &'static str {
-        match self {
-            Self::Name => "name COLLATE NOCASE",
-            Self::Age => "age",
+    fn sql_expr(&self) -> Result<String, String> {
+        Ok(match self {
+            Self::Name => "name COLLATE NOCASE".to_string(),
+            Self::Age => "age".to_string(),
             // ponytail: sort by raw nationalities_json text, not display join order
             // Upgrade to first-nationality / normalized key if multi-nation sort UX matters
-            Self::Nationality => "nationalities_json COLLATE NOCASE",
-            Self::Club => "current_club COLLATE NOCASE",
-            Self::Division => "division COLLATE NOCASE",
-            Self::Ca => "ca",
-            Self::Pa => "pa",
-            Self::Value => "market_value_gbp",
-        }
+            Self::Nationality => "nationalities_json COLLATE NOCASE".to_string(),
+            Self::Club => "current_club COLLATE NOCASE".to_string(),
+            Self::Division => "division COLLATE NOCASE".to_string(),
+            Self::Ca => "ca".to_string(),
+            Self::Pa => "pa".to_string(),
+            Self::Value => "market_value_gbp".to_string(),
+            Self::Dynamic(field) => field_value_sql(field)?,
+        })
     }
 }
 
@@ -76,6 +85,12 @@ impl SortDir {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DynamicValue {
+    Integer(i64),
+    Text(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerSummary {
     pub uid: i64,
     pub name: String,
@@ -88,6 +103,8 @@ pub struct PlayerSummary {
     pub ca: i64,
     pub pa: i64,
     pub market_value_gbp: Option<i64>,
+    /// Values for active non-basic filter fields (field id → nullable cell).
+    pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,6 +145,8 @@ pub fn search_players(
     let offset = i64::try_from(offset).map_err(|_| "search offset out of range".to_string())?;
     let limit = i64::try_from(limit).map_err(|_| "search limit out of range".to_string())?;
 
+    let dynamic_fields = filter_ast.map(dynamic_fields_from_ast).unwrap_or_default();
+
     let compiled = match filter_ast {
         None => None,
         Some(ast) => {
@@ -140,7 +159,7 @@ pub fn search_players(
         }
     };
 
-    let mut where_sql = "snapshot_id = ?1".to_string();
+    let mut where_sql = "players.snapshot_id = ?1".to_string();
     if let Some(compiled) = &compiled {
         where_sql.push_str(" AND ");
         where_sql.push_str(&compiled.sql);
@@ -166,35 +185,45 @@ pub fn search_players(
 
     // Whitelisted expr + dir only — never interpolate raw client strings.
     let order_sql = format!(
-        "ORDER BY {} {}, uid ASC",
-        sort_by.sql_expr(),
+        "ORDER BY {} {}, players.uid ASC",
+        sort_by.sql_expr()?,
         sort_dir.sql_keyword()
     );
-    let select_sql = format!(
+
+    let mut select_sql = String::from(
         "SELECT
-                uid,
-                name,
-                age,
-                birth_year,
-                birth_day_of_year,
-                nationalities_json,
-                current_club,
-                division,
-                ca,
-                pa,
-                market_value_gbp
+                players.uid,
+                players.name,
+                players.age,
+                players.birth_year,
+                players.birth_day_of_year,
+                players.nationalities_json,
+                players.current_club,
+                players.division,
+                players.ca,
+                players.pa,
+                players.market_value_gbp",
+    );
+    for field in &dynamic_fields {
+        select_sql.push_str(", ");
+        select_sql.push_str(&field_value_sql(field)?);
+    }
+    select_sql.push_str(&format!(
+        "
              FROM players
              WHERE {where_sql}
              {order_sql}
              LIMIT ?{limit_index} OFFSET ?{offset_index}"
-    );
+    ));
 
     let mut stmt = conn
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?;
 
     let players = stmt
-        .query_map(params_from_iter(bind_values.iter()), map_player_summary)
+        .query_map(params_from_iter(bind_values.iter()), |row| {
+            map_player_summary(row, &dynamic_fields)
+        })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
@@ -202,7 +231,7 @@ pub fn search_players(
     Ok(SearchPlayersPage { players, total })
 }
 
-fn map_player_summary(row: &Row<'_>) -> rusqlite::Result<PlayerSummary> {
+fn map_player_summary(row: &Row<'_>, dynamic_fields: &[String]) -> rusqlite::Result<PlayerSummary> {
     let nationalities_json: String = row.get(5)?;
     let nationalities = parse_nationalities(&nationalities_json).map_err(|message| {
         rusqlite::Error::FromSqlConversionFailure(
@@ -214,6 +243,13 @@ fn map_player_summary(row: &Row<'_>) -> rusqlite::Result<PlayerSummary> {
             )),
         )
     })?;
+
+    let mut dynamic_values = BTreeMap::new();
+    for (offset, field) in dynamic_fields.iter().enumerate() {
+        let idx = 11 + offset;
+        let cell = read_dynamic_cell(row, idx, field)?;
+        dynamic_values.insert(field.clone(), cell);
+    }
 
     Ok(PlayerSummary {
         uid: row.get(0)?,
@@ -227,7 +263,42 @@ fn map_player_summary(row: &Row<'_>) -> rusqlite::Result<PlayerSummary> {
         ca: row.get(8)?,
         pa: row.get(9)?,
         market_value_gbp: row.get(10)?,
+        dynamic_values,
     })
+}
+
+fn read_dynamic_cell(
+    row: &Row<'_>,
+    idx: usize,
+    field: &str,
+) -> rusqlite::Result<Option<DynamicValue>> {
+    // Integer-like fields (scores, attrs, scalars, bools as 0/1).
+    if field.starts_with("role.")
+        || field.starts_with("attr.")
+        || field.starts_with("hidden.")
+        || field.starts_with("personality.")
+        || field.starts_with("pos.")
+        || matches!(
+            field,
+            "height"
+                | "wage"
+                | "reputation"
+                | "world_reputation"
+                | "birth_year"
+                | "contract_year"
+                | "transfer_listed"
+                | "loan_listed"
+                | "not_for_sale"
+                | "set_for_release"
+                | "on_loan"
+        )
+    {
+        let value: Option<i64> = row.get(idx)?;
+        return Ok(value.map(DynamicValue::Integer));
+    }
+
+    let value: Option<String> = row.get(idx)?;
+    Ok(value.map(DynamicValue::Text))
 }
 
 fn parse_nationalities(json: &str) -> Result<Vec<String>, String> {
@@ -1023,6 +1094,152 @@ mod tests {
             elapsed.as_millis() < 500,
             "attr json_extract filter on 2k players took {:?}; investigate indexes",
             elapsed
+        );
+    }
+
+    fn set_role_score(conn: &Connection, uid: i64, role_id: &str, score: Option<i64>) {
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "UPDATE player_role_scores
+             SET score = ?1
+             WHERE snapshot_id = ?2 AND uid = ?3 AND role_id = ?4",
+            rusqlite::params![score, snapshot_id, uid, role_id],
+        )
+        .expect("update role score");
+    }
+
+    #[test]
+    fn filters_by_role_score_and_excludes_null_score() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("filtered-role.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "High DLP", 150),
+                player_template(2, "Low DLP", 140),
+                player_template(3, "Null DLP", 160),
+            ],
+        );
+        set_role_score(&conn, 1, "deep_lying_playmaker_ip", Some(85));
+        set_role_score(&conn, 2, "deep_lying_playmaker_ip", Some(40));
+        set_role_score(&conn, 3, "deep_lying_playmaker_ip", None);
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "role.deep_lying_playmaker_ip",
+                "gt",
+                FilterValue::Integer(70),
+            )],
+            None,
+        )
+        .expect("role score filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "High DLP");
+    }
+
+    #[test]
+    fn returns_dynamic_values_for_active_non_basic_filter_fields() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("dynamic-cols.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_with_deep_fields(
+                1,
+                "Scout Target",
+                150,
+                DeepPlayerFields {
+                    nationalities: json!(["ENG"]),
+                    positions: json!({ "MC": 18 }),
+                    attributes: json!({ "Acceleration": 16 }),
+                    hidden: json!({ "Consistency": 10 }),
+                    personality: json!({ "Ambition": 10 }),
+                },
+            )],
+        );
+        set_role_score(&conn, 1, "deep_lying_playmaker_ip", Some(82));
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![
+                filter_rule(
+                    "role.deep_lying_playmaker_ip",
+                    "gt",
+                    FilterValue::Integer(70),
+                ),
+                filter_rule("attr.Acceleration", "gt", FilterValue::Integer(12)),
+            ],
+            None,
+        )
+        .expect("dynamic values search");
+
+        assert_eq!(page.total, 1);
+        let player = &page.players[0];
+        assert_eq!(
+            player.dynamic_values.get("role.deep_lying_playmaker_ip"),
+            Some(&Some(DynamicValue::Integer(82)))
+        );
+        assert_eq!(
+            player.dynamic_values.get("attr.Acceleration"),
+            Some(&Some(DynamicValue::Integer(16)))
+        );
+        assert!(
+            !player.dynamic_values.contains_key("ca"),
+            "basic fields must not appear in dynamic_values"
+        );
+    }
+
+    #[test]
+    fn orders_by_role_score_when_sort_field_is_role() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("sort-role.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Low Role", 180),
+                player_template(2, "High Role", 100),
+            ],
+        );
+        set_role_score(&conn, 1, "deep_lying_playmaker_ip", Some(40));
+        set_role_score(&conn, 2, "deep_lying_playmaker_ip", Some(90));
+
+        let sort_by = SortField::parse("role.deep_lying_playmaker_ip").expect("parse role sort");
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            sort_by,
+            SortDir::Desc,
+            vec![filter_rule(
+                "role.deep_lying_playmaker_ip",
+                "gt",
+                FilterValue::Integer(0),
+            )],
+            None,
+        )
+        .expect("sort by role");
+
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["High Role", "Low Role"]
         );
     }
 }

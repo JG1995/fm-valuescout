@@ -245,7 +245,7 @@ PR 1: `/search` in the rail → paged IPC → virtualized basic columns → sort
 
 #### Commit 5 — Role-score filters and dynamic columns
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Filter by catalog role score; return values for dynamic columns; UI shows basic columns plus columns for active non-basic filter fields. Sort on visible dynamic columns when practical. Reconcile DESIGN.md Search filter/nav notes to compact strip + modal + operators.
 
@@ -307,6 +307,7 @@ One column per role by default; profile role grid; global search.
 - Planning 2026-07-30: product choices locked (Search label; operator filters; compact strip + modal; filter depth D including role scores; dynamic columns; AND/OR; sortable default CA; row no-op; Ctrl+K global search). DESIGN inspector/slider filter spec deferred/superseded for this feature.
 - Replanned 2026-07-30: first condensation over-merged commits (2 PRs / 5 commits). Corrected to **2 PRs / 10 commits** — keep original atomic commit breakpoints; only reduce PR count from 4 to 2.
 - 2026-07-30 PR2 Commit 4: deep filters use field ids `attr.*` / `hidden.*` / `personality.*` / `nationality` / `position` / `pos.*`. Position presence is exact key match (`is`/`is_not`); never substring LIKE. Attribute filter on a 2k-player fixture stayed under 500ms with `json_extract` (no extra indexes). Spike/index only if full-snapshot p95 exceeds ~200ms.
+- 2026-07-30 PR2 Commit 5: role filters use `role.{catalog_role_id}` with EXISTS on `player_role_scores` (null scores never match). Dynamic columns follow active non-basic filters; IPC returns `dynamicValues`. Sort accepts those field ids while the column is visible. `position` presence does not add a dynamic column. DESIGN Search filters reconciled to compact strip + modal + operators (inspector no longer the Search filter surface).
 
 ## Completed work
 

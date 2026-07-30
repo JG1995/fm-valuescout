@@ -1,6 +1,8 @@
 import type { FilterRule, FilterValue } from "../types/filter-rule";
 import { createFilterRuleId } from "../types/filter-rule";
 
+import { ROLE_CATALOG } from "./role-catalog";
+
 export type FilterFieldKind = "string" | "integer" | "boolean" | "enum";
 
 export type FilterOperator = {
@@ -162,6 +164,13 @@ const POSITION_SUITABILITY_FIELDS: FilterFieldDef[] = POSITION_KEYS.map(
   }),
 );
 
+const ROLE_SCORE_FIELDS: FilterFieldDef[] = ROLE_CATALOG.map((role) => ({
+  id: `role.${role.id}`,
+  label: `Role · ${role.label}`,
+  kind: "integer" as const,
+  operators: INTEGER_OPERATORS,
+}));
+
 export const FILTER_FIELDS: FilterFieldDef[] = [
   { id: "name", label: "Name", kind: "string", operators: STRING_OPERATORS },
   { id: "club", label: "Club", kind: "string", operators: STRING_OPERATORS },
@@ -286,6 +295,7 @@ export const FILTER_FIELDS: FilterFieldDef[] = [
   ...HIDDEN_FIELDS,
   ...PERSONALITY_FIELDS,
   ...POSITION_SUITABILITY_FIELDS,
+  ...ROLE_SCORE_FIELDS,
 ];
 
 const FIELD_BY_ID = new Map(FILTER_FIELDS.map((field) => [field.id, field]));

@@ -542,4 +542,49 @@ describe("search route", () => {
     }
     expect(within(firstRow).getByText("Low")).toBeInTheDocument();
   });
+
+  it("shows dynamic columns for active non-basic filter fields", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Role Fit", 160),
+        dynamicValues: {
+          "role.deep_lying_playmaker_ip": 82,
+          "attr.Acceleration": 16,
+        },
+      },
+    ]);
+
+    const filters = encodeURIComponent(
+      JSON.stringify([
+        { field: "role.deep_lying_playmaker_ip", op: "gt", value: 70 },
+        { field: "attr.Acceleration", op: "gt", value: 12 },
+      ]),
+    );
+    renderSearchRoute(
+      `/search?sort=ca&dir=desc&combine=and&filters=${filters}`,
+    );
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(table).getByRole("columnheader", {
+        name: /Role · Deep-Lying Playmaker \(IP\)/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: /Acceleration/i }),
+    ).toBeInTheDocument();
+
+    const bodyRows = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    const firstRow = bodyRows[0];
+    if (!firstRow) {
+      throw new Error("expected a virtualized body row");
+    }
+    expect(within(firstRow).getByText("82")).toBeInTheDocument();
+    expect(within(firstRow).getByText("16")).toBeInTheDocument();
+  });
 });

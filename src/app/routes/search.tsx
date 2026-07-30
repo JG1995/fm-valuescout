@@ -20,8 +20,8 @@ import {
   DEFAULT_SEARCH_SORT_FIELD,
   defaultDirForSortField,
   isSearchSortDir,
-  isSearchSortField,
 } from "@/features/search/types/search-sort";
+import { isVisibleSortField } from "@/features/search/utils/dynamic-columns";
 import type { FilterRuleUrl } from "@/features/search/utils/search-url-search";
 import {
   parseSearchCombine,
@@ -40,18 +40,20 @@ export type SearchRouteSearch = {
 
 export const Route = createFileRoute("/search")({
   validateSearch: (search: Record<string, unknown>): SearchRouteSearch => {
-    const sort = isSearchSortField(search.sort)
+    const filters = searchFiltersForUrl(parseSearchFilters(search.filters));
+    const filterRules = parseSearchFilters(filters);
+    const sort = isVisibleSortField(search.sort, filterRules)
       ? search.sort
       : DEFAULT_SEARCH_SORT_FIELD;
     const dir = isSearchSortDir(search.dir)
       ? search.dir
-      : isSearchSortField(search.sort)
+      : isVisibleSortField(search.sort, filterRules)
         ? defaultDirForSortField(sort)
         : DEFAULT_SEARCH_SORT_DIR;
     return {
       sort,
       dir,
-      filters: searchFiltersForUrl(parseSearchFilters(search.filters)),
+      filters,
       combine: parseSearchCombine(search.combine),
     };
   },
