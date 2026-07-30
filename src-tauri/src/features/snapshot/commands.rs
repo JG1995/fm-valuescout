@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use serde::Serialize;
 use tauri::State;
 
@@ -113,12 +115,31 @@ impl From<SnapshotSummary> for SnapshotSummaryDto {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LoadDataTimingsDto {
+    pub scan_ms: u64,
+    pub ingest_ms: u64,
+    pub total_ms: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LoadDataResultDto {
     pub request_id: String,
     pub players_found: Option<i32>,
     pub scan_truncated: Option<bool>,
     pub max_accepted: Option<i32>,
     pub snapshot: SnapshotSummaryDto,
+    pub timings: LoadDataTimingsDto,
+}
+
+impl From<load_data::LoadDataTimings> for LoadDataTimingsDto {
+    fn from(timings: load_data::LoadDataTimings) -> Self {
+        Self {
+            scan_ms: timings.scan_ms,
+            ingest_ms: timings.ingest_ms,
+            total_ms: timings.total_ms,
+        }
+    }
 }
 
 impl From<LoadDataResult> for LoadDataResultDto {
@@ -129,6 +150,7 @@ impl From<LoadDataResult> for LoadDataResultDto {
             scan_truncated: result.scan_truncated,
             max_accepted: result.max_accepted,
             snapshot: SnapshotSummaryDto::from(result.snapshot),
+            timings: LoadDataTimingsDto::from(result.timings),
         }
     }
 }
@@ -177,7 +199,11 @@ pub fn list_sanity_players(
 }
 
 #[tauri::command]
-pub fn load_data(db: State<'_, Db>) -> Result<LoadDataResultDto, LoadDataError> {
+pub fn load_data(
+    max_accepted: Option<i32>,
+    db: State<'_, Db>,
+) -> Result<LoadDataResultDto, LoadDataError> {
+    let total_started = Instant::now();
     let save_id = {
         let conn = db.0.lock().map_err(|_| LoadDataError::Scan {
             kind: "internal".to_string(),
@@ -188,13 +214,21 @@ pub fn load_data(db: State<'_, Db>) -> Result<LoadDataResultDto, LoadDataError> 
             message,
         })?
     };
+    let scan_started = Instant::now();
     let (bridge_directory, dump_result) =
-        load_data::scan_dump_from_local_app_data(DumpWaitConfig::default())?;
+        load_data::scan_dump_from_local_app_data(DumpWaitConfig::default(), max_accepted)?;
+    let scan_ms = scan_started.elapsed().as_millis() as u64;
+    let ingest_started = Instant::now();
     let mut conn = db.0.lock().map_err(|_| LoadDataError::Scan {
         kind: "internal".to_string(),
         message: "database lock poisoned".to_string(),
     })?;
-    let result =
+    let mut result =
         load_data::load_data_after_scan(&mut conn, &bridge_directory, dump_result, save_id)?;
+    result.timings = load_data::LoadDataTimings {
+        scan_ms,
+        ingest_ms: ingest_started.elapsed().as_millis() as u64,
+        total_ms: total_started.elapsed().as_millis() as u64,
+    };
     Ok(LoadDataResultDto::from(result))
 }

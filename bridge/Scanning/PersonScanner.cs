@@ -10,9 +10,10 @@ public static class PersonScanner
     public const int MinAbility = 1;
     public const int MaxAbility = 200;
 
-    // ponytail: hard cap so live Load Data tests finish in seconds, not minutes
-    // Upgrade to unlimited (or request-driven maxPlayers) when full-DB dumps are required — see
-    // .wiki/features/active/bridge-scan-performance.md PR 2
+    /// <summary>
+    /// Default diagnostic/test cap when a caller wants a bounded scan.
+    /// Production Load Data passes request <c>maxAccepted: null</c> (unlimited).
+    /// </summary>
     public const int DefaultMaxAccepted = 500;
 
     /// <summary>Minimum object header span covering vtable + UID for in-buffer reads.</summary>
@@ -25,7 +26,7 @@ public static class PersonScanner
         ModuleBounds? gamePlugin,
         IReadOnlyList<MemoryRegion> candidateRegions,
         ScanDiagnostics diagnostics,
-        int? maxAccepted = DefaultMaxAccepted,
+        int? maxAccepted = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reader);

@@ -346,7 +346,7 @@ The app is a **single window with a persistent left rail and a top bar** — a d
 Regions, in visual order:
 
 1. **Nav rail** (left, `rail-width` 56px, `rail-width-expanded` 208px). Icon-only by default with the label as a tooltip; expands to icon-plus-label. Sits on `surface-container-lowest` — the rail is the darkest region, which pushes the content forward. Collapsed state persists across launches.
-2. **Top bar** (`header-height` 56px, spans the area right of the rail). Left to right: global player search (pill, grows to fill), active save selector, snapshot freshness chip, **Load Data** primary button. Load Data lives here rather than on a page because it is the app's one recurring action and must be reachable from every screen.
+2. **Top bar** (`header-height` 56px, spans the area right of the rail). Left to right: global player search (pill, grows to fill), active save selector, snapshot freshness chip, optional **Cap players** toggle with a numeric limit when on, **Load Data** primary button. Load Data lives here rather than on a page because it is the app's one recurring action and must be reachable from every screen. Cap off means unlimited scan; cap on sends a positive `maxAccepted` (default 500 when enabling).
 3. **Page header** (inside the content area). Page title in `headline-lg`, then view-mode toggles and a local search or filter trigger on the right. One row, `stack-md` below it.
 4. **Content area.** Panels on `surface-container` with `gutter` 16px between them and 16px page padding.
 5. **Inspector** (right, `inspector-width` 320px, optional and dismissible). Filters on the search screen, comparison controls on a profile. Slides over the content edge; never squeezes the table below its usable width.
@@ -429,8 +429,8 @@ Global search, save context, snapshot freshness, and the Load Data action.
 - **Container:** `surface-container`, `header-height` 56px, 1px `outline-variant` bottom border, 16px horizontal padding, sticky at `z-10`.
 - **States:** static. Its children carry their own states. When no snapshot exists for the active save, the freshness chip reads "No data loaded" in `on-surface-variant` and Load Data is the only emphasized element on screen.
 - **Variants:** none.
-- **Content / Anatomy:** global search field (pill, grows), save selector (`secondary` menu button showing the active save name), snapshot freshness chip (`label-md` relative age; `success` under 30 minutes, `on-surface-variant` under 6 hours, `warning` beyond that or when the scan was truncated), Load Data (`primary` button).
-- **Behaviour:** the search field takes focus on `Ctrl+K` from anywhere. Switching saves swaps all snapshot-scoped views and clears any stale result banner from a previous load. Load Data reports scan and ingest phases separately, both in its own pending label and in the resulting error message.
+- **Content / Anatomy:** global search field (pill, grows), save selector (`secondary` menu button showing the active save name), snapshot freshness chip (`label-md` relative age; `success` under 30 minutes, `on-surface-variant` under 6 hours, `warning` beyond that or when the scan was truncated), **Cap players** checkbox with numeric limit field (visible when on; default 500 when enabling), Load Data (`primary` button).
+- **Behaviour:** the search field takes focus on `Ctrl+K` from anywhere. Switching saves swaps all snapshot-scoped views and clears any stale result banner from a previous load. Load Data reports scan and ingest phases separately, both in its own pending label and in the resulting error message. On success, the result banner appends scan, ingest, and total durations from `load_data` timings.
 
 ### Data Table
 

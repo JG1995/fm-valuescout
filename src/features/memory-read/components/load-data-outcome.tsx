@@ -5,6 +5,20 @@ import { formatCount, formatMissable } from "@/utils/format";
 import type { LoadDataResult } from "../types/load-data";
 import { loadDataErrorCopy } from "./load-data-error";
 
+function formatDurationMs(ms: number): string {
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function formatLoadTimings(timings: LoadDataResult["timings"]): string {
+  if (timings.totalMs === 0) {
+    return "";
+  }
+  return ` Scan ${formatDurationMs(timings.scanMs)}, ingest ${formatDurationMs(timings.ingestMs)}, total ${formatDurationMs(timings.totalMs)}.`;
+}
+
 type LoadDataOutcomeProps = {
   error: Error | null;
   /** Omitted when the load targeted a save the user has since switched away from. */
@@ -40,7 +54,7 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
     return null;
   }
 
-  const loaded = `Loaded ${formatCount(result.snapshot.playerCount)} players into the database.`;
+  const loaded = `Loaded ${formatCount(result.snapshot.playerCount)} players into the database.${formatLoadTimings(result.timings)}`;
   if (result.snapshot.scanTruncated !== true) {
     return { icon: CircleCheck, tone: toneClasses.success, body: loaded };
   }

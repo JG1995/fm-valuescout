@@ -19,14 +19,15 @@ Persist a validated FM26 `dump.json` into SQLite as the active app save's **curr
 ```text
 React features/snapshot
   → save switcher panel (create / rename on home route)
-  → AppTopBar: ActiveSaveSelect, SnapshotFreshnessChip, Load Data → invokeCommand("load_data")
+  → AppTopBar: ActiveSaveSelect, SnapshotFreshnessChip, optional player-cap controls, Load Data → invokeCommand("load_data", { maxAccepted })
+  → load_data returns timings (scanMs, ingestMs, totalMs) for the success banner
   → snapshot overview + sanity list (TanStack Query)
 
 Rust features/snapshot
   → load_data: brief Db lock → active_save_id; scan without Db lock;
     ingest_dump_file_for_save(captured save_id)
   → save CRUD IPC; get_current_snapshot; list_sanity_players
-  → ingest: validate_dump_json → transactional replace current snapshot
+  → ingest: parse_and_validate_dump (single parse) → prepared player inserts → transactional replace current snapshot
 
 SQLite (migration v2)
   saves (one is_active)
@@ -63,6 +64,6 @@ SQLite (migration v2)
 ## Follow-up
 
 - **Next feature:** [Role scoring engine](../../TODO.md) (order 3) — scores on ingest using FM role-relevant attributes.
-- **Active:** [bridge scan performance](../active/bridge-scan-performance.md) keeps the 500-player cap through its first PR, then validates complete snapshots.
+- **Delivered downstream:** [bridge scan performance](./bridge-scan-performance.md) — block scanning, unlimited default, UI cap controls, `load_data` timings in the success banner.
 - **BACKLOG:** snapshot history per save.
 - **Roadmap:** player search (order 4), profiles, squad planner, optimizer — see [TODO.md](../../TODO.md).

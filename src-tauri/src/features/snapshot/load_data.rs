@@ -4,12 +4,20 @@ use rusqlite::Connection;
 use serde::Serialize;
 
 use crate::features::memory_read::service::{
-    dump_path, request_player_dump, resolve_bridge_directory, BridgeStatusError, DumpRequestError,
-    DumpRequestResult, DumpWaitConfig,
+    dump_path, request_player_dump, request_player_dump_with_limit, resolve_bridge_directory,
+    BridgeStatusError, DumpRequestError, DumpRequestResult, DumpWaitConfig,
 };
 
 use super::ingest::{self, SnapshotSummary};
 use super::service;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadDataTimings {
+    pub scan_ms: u64,
+    pub ingest_ms: u64,
+    pub total_ms: u64,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadDataResult {
@@ -18,6 +26,7 @@ pub struct LoadDataResult {
     pub scan_truncated: Option<bool>,
     pub max_accepted: Option<i32>,
     pub snapshot: SnapshotSummary,
+    pub timings: LoadDataTimings,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -39,17 +48,19 @@ impl std::error::Error for LoadDataError {}
 
 pub fn scan_dump_from_local_app_data(
     wait: DumpWaitConfig,
+    max_accepted: Option<i32>,
 ) -> Result<(PathBuf, DumpRequestResult), LoadDataError> {
     let bridge_directory = resolve_bridge_directory().map_err(map_bridge_status_error)?;
-    scan_dump_from_bridge(&bridge_directory, wait)
+    scan_dump_from_bridge(&bridge_directory, wait, max_accepted)
 }
 
 pub fn scan_dump_from_bridge(
     bridge_directory: &Path,
     wait: DumpWaitConfig,
+    max_accepted: Option<i32>,
 ) -> Result<(PathBuf, DumpRequestResult), LoadDataError> {
-    let dump_result =
-        request_player_dump(bridge_directory, wait).map_err(map_dump_request_error)?;
+    let dump_result = request_player_dump_with_limit(bridge_directory, wait, max_accepted)
+        .map_err(map_dump_request_error)?;
     Ok((bridge_directory.to_path_buf(), dump_result))
 }
 
@@ -86,6 +97,7 @@ pub fn load_data_after_scan(
         scan_truncated: dump_result.scan_truncated,
         max_accepted: dump_result.max_accepted,
         snapshot,
+        timings: LoadDataTimings::default(),
     })
 }
 
@@ -235,8 +247,8 @@ mod tests {
                             Some(&request.request_id),
                             Some(42),
                             None,
-                            Some(false),
-                            Some(500),
+                            Some(request.max_accepted.is_some()),
+                            request.max_accepted,
                         );
                     }
                     ScanSimulation::Failed { ref message } => {
@@ -286,12 +298,33 @@ mod tests {
 
         assert!(result.request_id.starts_with("req-"));
         assert_eq!(result.players_found, Some(42));
+        assert_eq!(result.max_accepted, None);
         assert_eq!(result.snapshot.save_id, active_save.id);
         assert_eq!(result.snapshot.player_count, 1);
         assert_eq!(
             current_snapshot_id(&conn, active_save.id),
             Some(result.snapshot.id)
         );
+    }
+
+    #[test]
+    fn scan_dump_from_bridge_forwards_positive_max_accepted() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let bridge_dir = temp_dir.path().join("bridge");
+        fs::create_dir_all(&bridge_dir).expect("bridge dir");
+
+        spawn_scan_responder(
+            &bridge_dir,
+            ScanSimulation::Ready {
+                dump_json: GOLDEN_FIXTURE.to_string(),
+            },
+        );
+
+        let (_dir, result) =
+            scan_dump_from_bridge(&bridge_dir, short_wait(), Some(250)).expect("scan");
+
+        assert_eq!(result.max_accepted, Some(250));
+        assert_eq!(result.scan_truncated, Some(true));
     }
 
     #[test]

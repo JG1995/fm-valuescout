@@ -119,6 +119,11 @@ impl std::error::Error for DumpValidationError {}
 
 /// Validates that `dump.json` content is ingestible without importing into SQLite.
 pub fn validate_dump_json(json: &str) -> Result<(), DumpValidationError> {
+    parse_and_validate_dump(json).map(|_| ())
+}
+
+/// Parses and validates dump JSON once, returning the root value for reuse by ingest.
+pub fn parse_and_validate_dump(json: &str) -> Result<Value, DumpValidationError> {
     if json.trim().is_empty() {
         return Err(DumpValidationError::Corrupt("dump is empty".to_string()));
     }
@@ -126,7 +131,12 @@ pub fn validate_dump_json(json: &str) -> Result<(), DumpValidationError> {
     let root: Value = serde_json::from_str(json).map_err(|error| {
         DumpValidationError::Corrupt(format!("dump is not valid JSON: {error}"))
     })?;
+    validate_dump_value(&root)?;
+    Ok(root)
+}
 
+/// Validates an already-parsed dump document.
+pub fn validate_dump_value(root: &Value) -> Result<(), DumpValidationError> {
     let object = root
         .as_object()
         .ok_or_else(|| DumpValidationError::WrongType {

@@ -110,6 +110,7 @@ public class Plugin : BasePlugin
     private static void TryStartScanFromRequestOrForceFlag(string bridgeDirectory)
     {
         string? requestId = null;
+        int? maxAccepted = null;
 
         lock (ScanGate)
         {
@@ -149,11 +150,14 @@ public class Plugin : BasePlugin
                 }
 
                 requestId = request.RequestId;
+                maxAccepted = request.MaxAccepted;
             }
             else if (File.Exists(BridgePaths.GetForceScanPath(bridgeDirectory)))
             {
                 // Manual fallback until operators prefer only the in-app request path.
+                // Unlimited — same as production Load Data (null maxAccepted).
                 requestId = "force-scan";
+                maxAccepted = null;
             }
             else
             {
@@ -164,12 +168,13 @@ public class Plugin : BasePlugin
         }
 
         var scanRequestId = requestId!;
+        var scanMaxAccepted = maxAccepted;
         var cancelToken = s_unloadCts?.Token ?? CancellationToken.None;
         s_scanThread = new Thread(() =>
         {
             try
             {
-                RunDumpScan(bridgeDirectory, scanRequestId, cancelToken);
+                RunDumpScan(bridgeDirectory, scanRequestId, scanMaxAccepted, cancelToken);
             }
             finally
             {
@@ -189,6 +194,7 @@ public class Plugin : BasePlugin
     private static void RunDumpScan(
         string bridgeDirectory,
         string requestId,
+        int? maxAccepted,
         CancellationToken cancellationToken)
     {
         try
@@ -247,6 +253,7 @@ public class Plugin : BasePlugin
                 MyPluginInfo.PLUGIN_VERSION,
                 gameAssembly,
                 known.GamePlugin,
+                maxAccepted,
                 cancellationToken: cancellationToken);
 
             TryDeleteForceScanFlag(bridgeDirectory);

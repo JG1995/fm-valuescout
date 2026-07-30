@@ -100,6 +100,13 @@ public static class RequestAcceptance
             return false;
         }
 
+        if (parsed.MaxAccepted is <= 0)
+        {
+            rejectReason = "maxAccepted must be null or a positive integer";
+            TryDelete(requestPath);
+            return false;
+        }
+
         if (!IsFresh(parsed.CreatedAtUtc, now, ttl))
         {
             rejectReason =
@@ -161,6 +168,7 @@ public static class RequestAcceptance
             RequestId = parsed.RequestId,
             CreatedAtUtc = now,
             Operation = parsed.Operation,
+            MaxAccepted = parsed.MaxAccepted,
         };
 
         try

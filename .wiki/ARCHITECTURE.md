@@ -24,7 +24,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Client UI state:** Zustand v5 (modals, layout chrome, selections not in the URL)
 
-**Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md). IBM Plex Sans/Mono self-hosted via `@fontsource`; Lucide icons via `lucide-react`. Shared primitives in `src/components/ui/` (Button, Panel, StatusChip, EmptyState, TextField, SelectField). App shell: `AppNavRail` + `AppTopBar` (active save, snapshot freshness, **Load Data**); `useLayoutStore` persists nav-rail expansion.
+**Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md). IBM Plex Sans/Mono self-hosted via `@fontsource`; Lucide icons via `lucide-react`. Shared primitives in `src/components/ui/` (Button, Panel, StatusChip, EmptyState, TextField, SelectField). App shell: `AppNavRail` + `AppTopBar` (active save, snapshot freshness, optional Load Data player-cap toggle/limit, **Load Data**); `useLayoutStore` persists nav-rail expansion; `useLoadDataPreferences` persists the Load Data cap toggle and limit.
 
 **Language:** TypeScript (strict) on the frontend; Rust on the backend
 
@@ -38,7 +38,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migration v2: `saves`, `snapshots`, `players`).
 
-**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe scanning, `status.json` / `dump.json` / diagnostics. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md) and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
+**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), `status.json` / `dump.json` / diagnostics with phase timings. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
 **Snapshot ingest:** Rust `features/snapshot` owns save slots, transactional ingest from `dump.json`, and query IPC; React `features/snapshot` owns the save switcher, snapshot overview, and sanity list. `load_data` captures `active_save_id` under a brief Db lock, runs the bridge scan without holding the Db mutex, then ingests via `ingest_dump_file_for_save` with the captured id. See [snapshot-ingest](./features/completed/snapshot-ingest.md).
 
@@ -397,20 +397,23 @@ Dump contract: bridge/DUMP_SCHEMA.md schema v5 (frozen). Scan writes dump.json o
 
 ```text
 User clicks Load Data (AppTopBar)
-  → useLoadData mutation → invokeCommand("load_data")
+  → useLoadData mutation → invokeCommand("load_data", { maxAccepted })
+      maxAccepted omitted or null = unlimited (production default)
+      positive integer = diagnostic cap (UI toggle via useLoadDataPreferences)
   → Rust snapshot/commands load_data:
       Brief Db lock → active_save_id (target save for this load; released before scan)
       memory_read::request_player_dump — no Db lock during scan:
         writes request.json (30s TTL), polls status.json until terminal (120s default)
-        Bridge plugin (off Unity main thread): scan → dump.json + diagnostics.txt
+        Bridge plugin (off Unity main thread): block heap scan → dump.json + diagnostics.txt
   → On scan failure: LoadDataError { phase: "scan", kind, message }; prior snapshot unchanged
   → On scan success: lock Db → load_data_after_scan → ingest::ingest_dump_file_for_save(save_id, dump path)
       validate_dump_json (memory_read::dump_validation) — hard-fail before insert
       Transaction: insert new snapshot + players, promote to current, delete prior current
       On ingest failure: roll back; prior current snapshot remains
-  → Returns LoadDataResult { requestId, playersFound, scanTruncated, maxAccepted, snapshot }
+  → Returns LoadDataResult { requestId, playersFound, scanTruncated, maxAccepted, snapshot,
+      timings: { scanMs, ingestMs, totalMs } }
   → onSettled: invalidate snapshot query keys (current snapshot, sanity list)
-  → LoadDataOutcome banner in AppTopBar (aria-live; cleared when user switches save)
+  → LoadDataOutcome banner in AppTopBar (aria-live; success shows phase timings; cleared when user switches save)
   → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
 

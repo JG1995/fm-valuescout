@@ -14,7 +14,7 @@ export function useLoadData({ onSettled }: UseLoadDataOptions = {}) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: loadData,
+    mutationFn: (maxAccepted: number | null) => loadData(maxAccepted),
     onSettled: () => {
       void queryClient.invalidateQueries({
         queryKey: bridgeStatusQueryOptions.queryKey,

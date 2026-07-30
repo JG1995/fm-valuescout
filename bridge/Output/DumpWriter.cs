@@ -10,7 +10,12 @@ public static class DumpWriter
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true,
+        WriteIndented = false,
+    };
+
+    private static readonly JsonWriterOptions WriterOptions = new()
+    {
+        Indented = false,
     };
 
     /// <summary>
@@ -33,17 +38,70 @@ public static class DumpWriter
 
         using (var stream = File.Create(tempPath))
         {
-            // ponytail: serialize full player list in one shot
-            // Upgrade to Utf8JsonWriter streaming if dumps exceed ~100k players or memory spikes
-            JsonSerializer.Serialize(stream, document, SerializerOptions);
+            WriteCompact(stream, document);
         }
 
         File.Move(tempPath, path, overwrite: true);
         return true;
     }
 
-    public static string Serialize(DumpDocument document) =>
-        JsonSerializer.Serialize(document, SerializerOptions);
+    /// <summary>
+    /// Streams compact schema-v5 dump JSON to <paramref name="stream"/> without building a second full document string.
+    /// </summary>
+    public static void WriteCompact(Stream stream, DumpDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(document);
+
+        using var writer = new Utf8JsonWriter(stream, WriterOptions);
+        writer.WriteStartObject();
+        writer.WriteNumber("schemaVersion", document.SchemaVersion);
+        writer.WriteString("generatedAtUtc", document.GeneratedAtUtc);
+        writer.WriteString("gameVersion", document.GameVersion);
+        writer.WriteString("supportedGameVersion", document.SupportedGameVersion);
+        writer.WriteString("bridgeVersion", document.BridgeVersion);
+        writer.WriteNumber("protocolVersion", document.ProtocolVersion);
+        if (document.GameDate is null)
+        {
+            writer.WriteNull("gameDate");
+        }
+        else
+        {
+            writer.WriteString("gameDate", document.GameDate);
+        }
+
+        writer.WriteString("gameDateSource", document.GameDateSource);
+        writer.WriteBoolean("scanTruncated", document.ScanTruncated);
+        if (document.MaxAccepted is { } maxAccepted)
+        {
+            writer.WriteNumber("maxAccepted", maxAccepted);
+        }
+        else
+        {
+            writer.WriteNull("maxAccepted");
+        }
+
+        writer.WriteNumber("playerCount", document.PlayerCount);
+        writer.WritePropertyName("players");
+        writer.WriteStartArray();
+        foreach (var player in document.Players)
+        {
+            JsonSerializer.Serialize(writer, player, SerializerOptions);
+            writer.Flush();
+        }
+
+        writer.WriteEndArray();
+        writer.WriteEndObject();
+        writer.Flush();
+    }
+
+    public static string Serialize(DumpDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        using var stream = new MemoryStream();
+        WriteCompact(stream, document);
+        return Encoding.UTF8.GetString(stream.GetBuffer(), 0, (int)stream.Length);
+    }
 }
 
 public static class DiagnosticsWriter
