@@ -36,7 +36,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
-**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v4: `saves`, `snapshots`, `players`, `player_role_scores`, and save-scoped planner club-family sources).
+**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v5: `saves`, `snapshots`, `players`, `player_role_scores`, save-scoped planner club-family sources, and the shared planner tactic).
 
 **FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), `status.json` / `dump.json` / diagnostics with phase timings. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
@@ -49,6 +49,8 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 **Player profiles:** Rust `features/player` owns `get_player` — one player by `uid` from the active save's current snapshot, including attribute JSON maps and `player_role_scores` merged in-process with the scoring catalog (`displayName`, `phase`, `positionTags`). React `features/player-profile` owns Overview / Attributes / Roles tab panels; route `/players/$uid` with validated `tab` search param. Shared **ScoreBadge** (`table` / `card` / `hero` / `muted`) in `src/components/ui/score-badge/`. Search row activation and GlobalPlayerSearch navigate by route path only (no cross-feature imports). See [player-profiles](./features/completed/player-profiles.md).
 
 **Planner club family:** Rust `features/planner` owns save-scoped `planner_club_settings` and `planner_club_sources`, current-snapshot club discovery, and validation for `get_planner_club_family`, `list_planner_clubs`, and `save_planner_club_family`. React `features/planner` owns the `/planner` setup panel. The primary club seeds Senior, Reserves, and Youth sources with matching `teamLevel` filters; attached sources preserve explicit separate B-team or youth club mappings. App-shell save switching and Load Data invalidate planner queries alongside snapshot and player queries.
+
+**Planner tactic:** Rust `features/planner` also owns one save-scoped `planner_tactics` row and eleven ordered `planner_tactic_lanes` rows. `get_planner_tactic` seeds a validated 4-3-3 DM In-Possession / 4-1-4-1 DM Out-of-Possession tactic with compatible catalog roles; `get_planner_tactic_options` exposes catalog-backed placements and phase/position metadata; `save_planner_tactic` validates the complete linked tactic and its 0–1 IP weight before replacing the lane rows. React `features/planner` loads the tactic and options through TanStack Query; the editor is deferred to the next commit.
 
 **Auth:** None in the template default — chosen per fork via `/stack`
 
@@ -426,7 +428,7 @@ User clicks Load Data (AppTopBar)
   → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
 
-**Saves model** (migrations v2–v4, `src-tauri/src/db/migrations.rs`):
+**Saves model** (migrations v2–v5, `src-tauri/src/db/migrations.rs`):
 
 | Table | Role |
 | --- | --- |
@@ -436,6 +438,8 @@ User clicks Load Data (AppTopBar)
 | `player_role_scores` | Per-player role-fit scores keyed by `(snapshot_id, uid, role_id)` with `phase` (`in_possession` \| `out_of_possession`) and nullable integer `score` (0–100). FK to `players` with `ON DELETE CASCADE`. Index on `(snapshot_id, role_id)` for role-filtered queries. |
 | `planner_club_settings` | One optional club-family configuration per save. Stores the explicitly selected primary club and survives current-snapshot replacement. |
 | `planner_club_sources` | Primary and attached club sources assigned to Senior, Reserves, or Youth, with an optional `team_level` filter. Source rows reference the save, not a snapshot. |
+| `planner_tactics` | One shared tactic per save. Stores the in-possession score weight and survives current-snapshot replacement. |
+| `planner_tactic_lanes` | Eleven ordered, stable lanes per tactic. Each lane links an IP placement and role to an OOP placement and role; both role references are validated against the scoring catalog. |
 
 **Query and save-management IPC** (`features/snapshot/commands.rs`):
 
@@ -468,6 +472,17 @@ User opens /planner
   → save: invokeCommand("save_planner_club_family", { primaryClub, sources })
   → Rust validates team, team level, name length, and duplicate sources, then replaces only that save's source rows
   → Load Data and active-save changes invalidate planner query keys from AppTopBar
+```
+
+**Planner tactic IPC** (`features/planner/commands.rs`):
+
+```text
+User opens /planner
+  → route loader: ensureQueryData(get_planner_tactic + get_planner_tactic_options)
+  → get_planner_tactic creates the default tactic for a save when none exists
+  → save_planner_tactic receives the complete 11-lane draft and IP weight
+  → Rust rejects incomplete lanes, unknown or phase-incompatible roles, unsupported positions, and weights outside 0–1
+  → planner query keys remain save-scoped and are invalidated with the rest of the planner tree on save/snapshot changes
 ```
 
 `request_player_dump` remains registered for tests and low-level scan-only use; the **Load Data** button in `AppTopBar` calls `load_data`.
@@ -628,7 +643,7 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
 | Walking-skeleton UI with stubbed IPC: app shell (nav rail with Search and Planner, top bar with global search), status panels, demo-value form flow, Search route, no-snapshot Planner route | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
-| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `search_players`, `suggest_players`, `get_player`, `get_planner_club_family`, `list_planner_clubs`, `save_planner_club_family`, `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
+| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `search_players`, `suggest_players`, `get_player`, `get_planner_club_family`, `list_planner_clubs`, `save_planner_club_family`, `get_planner_tactic`, `get_planner_tactic_options`, `save_planner_tactic`, `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
 | Bridge panel, save switcher, snapshot overview, plugin install section, top-bar save selector, and Load Data button render with stubbed IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, SQLite ingest, or Steam-folder DLL install |
 
 | Concern | Owner in this template |

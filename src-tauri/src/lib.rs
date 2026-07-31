@@ -43,6 +43,9 @@ pub fn run() {
             features::planner::commands::get_planner_club_family,
             features::planner::commands::list_planner_clubs,
             features::planner::commands::save_planner_club_family,
+            features::planner::commands::get_planner_tactic,
+            features::planner::commands::get_planner_tactic_options,
+            features::planner::commands::save_planner_tactic,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

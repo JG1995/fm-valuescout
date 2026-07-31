@@ -19,7 +19,10 @@ import {
   resetPlannerIpcMock,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerClubsIpcMock,
+  resolvePlannerTacticIpcMock,
+  resolvePlannerTacticOptionsIpcMock,
   resolveSavePlannerClubFamilyIpcMock,
+  resolveSavePlannerTacticIpcMock,
 } from "@/testing/planner-ipc-mock";
 import {
   resetGetPlayerOverride,
@@ -121,6 +124,18 @@ function registerIpcMocks() {
 
     if (cmd === "save_planner_club_family") {
       return resolveSavePlannerClubFamilyIpcMock(args);
+    }
+
+    if (cmd === "get_planner_tactic") {
+      return resolvePlannerTacticIpcMock();
+    }
+
+    if (cmd === "get_planner_tactic_options") {
+      return resolvePlannerTacticOptionsIpcMock();
+    }
+
+    if (cmd === "save_planner_tactic") {
+      return resolveSavePlannerTacticIpcMock(args);
     }
 
     if (cmd === "load_data") {

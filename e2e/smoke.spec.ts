@@ -99,6 +99,9 @@ test.describe("walking skeleton smoke", () => {
       main.getByRole("combobox", { name: "Primary club" }),
     ).toBeVisible();
     await expect(main.getByText("Set up your club family")).toBeVisible();
+    await expect(
+      main.getByText("11 linked lanes · 50% IP score weight"),
+    ).toBeVisible();
   });
 
   test("player profile route shows no-snapshot empty state from stubbed IPC", async ({

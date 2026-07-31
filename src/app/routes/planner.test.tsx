@@ -85,5 +85,8 @@ describe("planner route", () => {
     expect(
       within(screen.getByRole("main")).getByText(/Associated clubs/),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("11 linked lanes · 50% IP score weight"),
+    ).toBeInTheDocument();
   });
 });
