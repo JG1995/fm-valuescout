@@ -15,8 +15,8 @@ Give the user a Genie Scout–style **Search** surface over the active save's cu
 - Flat AND|OR only — no nested filter groups.
 - Filters, combine mode, sort field, and sort direction persist in TanStack Router validated URL search params (reload and back/forward restore the view). Rule count capped at 32 (Rust trust boundary and UI).
 - Table headers sort; **default sort is CA descending** (`aria-sort` on headers). Dynamic filter columns are sortable while visible.
-- Row click is a **no-op** until player profiles exist.
-- Top bar: **GlobalPlayerSearch** pill; **Ctrl+K** / **Meta+K** focus; 200ms debounced `suggest_players`; combobox + listbox; Escape clears before dismissing; hit navigates to `/search` with a `name` `is` filter.
+- Row click or Enter on a focused row navigates to `/players/$uid` (Arrow Up/Down move row focus within the virtualized list).
+- Top bar: **GlobalPlayerSearch** pill; **Ctrl+K** / **Meta+K** focus; 200ms debounced `suggest_players`; combobox + listbox; Escape clears before dismissing; hit navigates to `/players/$uid`.
 - Empty states: no snapshot → points at Load Data; no matches with filters → "No players match these filters" (strip above for clear); empty snapshot → retry Load Data.
 - `null` / unknown values never coerce to 0; missing cells render as `—`.
 - Truncated-scan warning appears on the top-bar **SnapshotFreshnessChip** (and dashboard snapshot panels) but **not** yet on the Search results panel or in the results count line — see Follow-up.
@@ -80,7 +80,6 @@ SQLite (read-only from search)
 
 ## Follow-up
 
-- **Next feature:** [Player profiles](../../TODO.md) (order 5) — row activation and detail view from search.
 - **Review MEDIUM:** Search results omit truncated-scan warning banner and capped-count annotation on the results panel; top-bar `SnapshotFreshnessChip` still warns. Add per DESIGN.md truncated banner on Search when polishing.
 - **Review NITPICK:** No-results empty state copy points at the filter strip but has no inline **Clear filters** action.
-- **Deferred (unchanged):** nested filter groups, saved presets, export, cross-save search, profile navigation, combined IP+OOP weight UI (squad planner).
+- **Deferred (unchanged):** nested filter groups, saved presets, export, cross-save search, combined IP+OOP weight UI (squad planner).
