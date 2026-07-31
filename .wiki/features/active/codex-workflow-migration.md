@@ -132,7 +132,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 3 — Port repository skills to Codex
 
-**Status:** Active
+**Status:** Completed — `eaba444`
 
 **Work:** Copy domain skills to `.agents/skills/` with mechanical path updates. Port each Cursor command as a `workflow-*` skill with clear triggers and no Cursor argument macros.
 
@@ -146,7 +146,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 4 — Port specialist agents to Codex
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add Codex TOML definitions for the reviewer and documentation steward, translate delegation instructions, and validate their scope and permissions.
 
@@ -190,19 +190,19 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 **PR:** PR 1 — Replace Cursor workflow with Codex
 
-**Commit:** Port repository skills to Codex
+**Commit:** Port specialist agents to Codex
 
 ### RED test (active commit)
 
-Add a Codex skill-structure contract test that fails when the ported workflow and domain skills are absent or malformed. The test must prevent Codex from silently losing a reusable workflow during the transition.
+Add a Codex agent-definition contract test that fails when the reviewer or documentation steward is absent, malformed, or exceeds its intended scope and permissions.
 
 ### Expected outcome
 
-Codex can discover the repository's workflow and domain skills under `.agents/skills/`, with clear triggers and no Cursor-only argument macros.
+Codex can use a read-only reviewer and a documentation-only steward from `.codex/agents/`, with their boundaries validated through `./scripts/dev`.
 
 ### Explicit exclusions
 
-- Do not create specialist agents or hooks.
+- Do not cut over broad documentation, remove Cursor compatibility, or add hooks.
 - Do not change application code, product documentation, Git hooks, or the Codex MCP configuration.
 - Do not remove the existing Cursor configuration.
 
@@ -218,6 +218,7 @@ Codex can discover the repository's workflow and domain skills under `.agents/sk
 | --- | --- | --- | --- |
 | PR 1 | Document the Codex migration contract | `8c8d7ac` | Added the approved delivery plan and marked the tooling initiative active. |
 | PR 1 | Add Codex project configuration | `187c635` | Added Recallium and Context7 project MCP configuration with gate validation. |
+| PR 1 | Port repository skills to Codex | `eaba444` | Added copied domain skills, `workflow-*` skills, and their validation contract. |
 
 ## Final validation
 
