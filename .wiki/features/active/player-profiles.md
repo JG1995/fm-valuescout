@@ -164,7 +164,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 3 — Attributes tab
 
-**Status:** Active
+**Status:** Completed — `42f64cb`
 
 **Work:** Attributes tab: grouped visible attributes, Hidden, Personality; `—` for null; tabular figures per DESIGN.
 
@@ -179,7 +179,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 4 — Roles tab and ScoreBadge
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Shared ScoreBadge (`table` / `card` / `hero`); Roles tab groups all scores by position family; Overview best-role hero badge; accessible names include role + tier.
 
@@ -210,25 +210,26 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 **PR:** 1 — Player profile page and entry points
 
-**Commit:** Attributes tab
+**Commit:** Roles tab and ScoreBadge
 
 ### RED test (active commit)
 
-Vitest: Attributes tab shows Technical/Mental/Physical/Goalkeeping (or present groups), Hidden, and Personality; a null attribute renders as `—` not `0`; known integer attributes appear with tabular figures.
+Vitest: Roles tab groups scores by position family; each role shows a ScoreBadge (or `—` for null); Overview shows a hero badge for the best non-null role; badge accessible name includes role and tier.
 
 ### Expected outcome
 
-Attributes tab filled with grouped visible + hidden + personality values; Roles still empty placeholder; no Search/Ctrl+K wiring.
+Roles tab filled with family-grouped scores; shared ScoreBadge component; Overview best-role hero; no Search/Ctrl+K wiring.
 
 ### Explicit exclusions
 
-Roles tab content, ScoreBadge, Search/Ctrl+K navigation, radar/suitability.
+Search/Ctrl+K navigation, muting by familiarity, combined IP/OOP weights, radar/suitability.
 
 ## Discoveries and replanning
 
 - Product decisions locked 2026-07-31: dedicated route; Overview/Attributes/Roles tabs; all roles by position family; attributes = visible+hidden+personality (+ basics); no suitability/radar; entry = Search row + Ctrl+K; not sanity list; defer comparison/history/weights/export.
 - Commit 1: Query key documented as `["player", uid]` on the command (frontend invalidation lands with the route commit). Role scores returned in catalog order with catalog metadata; missing DB row → null score.
 - Commit 2: Profile page composition lives in `app/routes/players.$uid.tsx` (snapshot + player queries) so features stay free of cross-feature imports. Biome `useFilenamingConvention` overridden for TanStack `$param` route filenames. `playerKeys.all` invalidated on Load Data and active-save switch alongside search keys.
+- Commit 3: Visible attribute group membership is a static FE list in `attribute-groups.ts` aligned to FM Technical/Mental/Physical/Goalkeeping and `Fm263Layout` dump keys (not shared with search filter-registry — no cross-feature import).
 
 ## Completed work
 
@@ -236,6 +237,7 @@ Roles tab content, ScoreBadge, Search/Ctrl+K navigation, radar/suitability.
 | --- | --- | --- | --- |
 | 1 | get_player IPC for current-snapshot detail | `9bab503` | Rust `features/player`; null attrs/scores preserved |
 | 1 | Profile route and Overview tab | `f318171` | `/players/$uid` Overview + tab chrome; empty Attr/Roles panels |
+| 1 | Attributes tab | `42f64cb` | Grouped visible + Hidden + Personality; null → `—` |
 
 ## Final validation
 
