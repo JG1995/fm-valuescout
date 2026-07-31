@@ -50,14 +50,14 @@ Tauri
 ## Migration and operational implications
 
 - Developers need a Windows host with .NET 6 SDK, BepInEx 6 IL2CPP on the Steam FM26 install, and the plugin DLL in `BepInEx/plugins`. See [bridge/README.md](../../../bridge/README.md).
-- Linux CI runs `./scripts/dev check` and `./scripts/dev test` (Rust protocol/validation, Vitest, Playwright stubs). Bridge `dotnet test` with fakes runs locally on a machine with .NET 6 — not on Linux CI. Full FM attach verification is manual on Windows.
+- Linux CI runs `./scripts/dev check`, `./scripts/dev test`, and Playwright smoke (Rust protocol/validation, Vitest, and browser stubs). Windows CI runs bridge `dotnet test` with fakes. Full FM attach verification is manual on Windows.
 - Snapshot ingest hard-validates via `validate_dump_json` inside `ingest_dump_file_for_save` ([snapshot-ingest](./snapshot-ingest.md)). Scan-path `validate_dump_at_bridge_directory` in `request_player_dump` logs warnings only — it does not gate ingest.
 - Full unlimited scans were slow before block scanning (~3m+ observed pre-optimization); [bridge scan performance](./bridge-scan-performance.md) delivered ~26s bridge dump for ~181k players and sub-10s capped diagnostic loads.
 
 ## Validation
 
 - **Manual:** install plugin, load save, trigger scan, spot-check CONCEPT fields vs FM (known players, loans, non-ASCII names, contracts, clubs).
-- **Automated:** Linux CI (`./scripts/dev check`, `./scripts/dev test`): `cargo test` (status fixtures, request watch, dump validation), Vitest + mockIPC, Playwright stub for bridge IPC. Bridge `dotnet test` (fakes) is local only — not in Linux CI.
+- **Automated:** Linux CI (`./scripts/dev check`, `./scripts/dev test`, `./scripts/dev smoke`): `cargo test` (status fixtures, request watch, dump validation), Vitest + mockIPC, and Playwright stub for bridge IPC. Windows CI runs bridge `dotnet test` with fakes.
 - No SQLite player schema landed in this feature.
 
 **Delivery commits (final hashes):** `31b7670` … `743dcb4` (see Git history on `main` for the full sequence).

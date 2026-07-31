@@ -1,6 +1,6 @@
 # Agent prompt: Fix Playwright smoke flake (React Query Devtools)
 
-Use this prompt in other Cursor React Tauri template forks when CI smoke fails with a strict-mode violation on `Status:`.
+Use this prompt in other Codex React Tauri template forks when CI smoke fails with a strict-mode violation on `Status:`.
 
 ---
 

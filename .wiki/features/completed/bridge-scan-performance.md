@@ -54,7 +54,7 @@ IPC load_data(maxAccepted?)
 
 ## Validation
 
-- **Post-remediation (2026-07-30):** `./scripts/dev format` pass; `./scripts/dev test` — 55 Vitest passed; `./scripts/dev check` pass — 79 Rust tests, 1 ignored 500k scale check, smoke via dispatcher.
+- **Post-remediation (2026-07-30):** `./scripts/dev format` pass; `./scripts/dev test` — 55 Vitest passed; `./scripts/dev check` pass — 79 Rust tests, 1 ignored 500k scale check, and browser smoke passed.
 - **Live (FM 26.3.2):** Pre-block-scan capped 500 `totalMs≈73171` / `candidateDiscoveryMs≈72958`; post-block-scan capped 500 `totalMs=6700` (~11× faster); unlimited ~181k `totalMs=26155`, `scanTruncated=false`.
 - **Automated:** C# fake-reader tests (block reads, truncation, dedupe, batched extraction); Rust ingest rollback, `maxAccepted` plumbing, `load_data` timings; frontend tests for capped vs unlimited invoke args.
 

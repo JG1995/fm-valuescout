@@ -11,7 +11,7 @@ Participants:
 - **GfxJG** (project author) asked permission to use / analyze the memory-reading plugin from the public GitHub repo for their own project.
 - **mark17072** (FMSuperScout author) replied: “Yeah for sure, do whatever you like. That’s why it’s in GitHub.”
 
-Screenshot also retained under Cursor workspace assets (2026-07-28).
+Screenshot also retained in workspace assets (2026-07-28).
 
 ## Effect on this repository
 

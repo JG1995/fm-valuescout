@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Codex workflow migration](./features/active/codex-workflow-migration.md) — replace Cursor-specific workflow configuration while preserving the existing delivery contract
+_None — plan the next feature with `workflow-plan-feature`._
 
 ## Plan next
 
@@ -64,6 +64,7 @@ Squad planner (order 6) — tactic + squad slots; same scores as search.
 
 ## Completed
 
+- [Codex workflow migration](./features/completed/codex-workflow-migration.md) — Codex-only repository guidance, specialist agents, and product-focused validation
 - [Player search](./features/completed/player-search.md) — `/search` route, virtualized table, operator filters (scalars through role scores), URL-persisted filter/sort state, global Ctrl+K name suggest
 - [Role scoring engine](./features/completed/role-scoring-engine.md) — FM26 IP/OOP catalog (68 roles), scores on ingest into `player_role_scores`, DLP IP sanity proof, `combine_role_scores` helper
 - [FM26 memory read](./features/completed/fm26-memory-read.md) — BepInEx bridge, file protocol, dump schema v5, Rust validation, bridge status + Load Data UI
