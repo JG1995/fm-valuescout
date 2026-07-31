@@ -139,7 +139,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 #### Commit 2 — Persist the dual-phase tactic
 
-**Status:** Active
+**Status:** Completed — `88925cc`
 
 **Work:** Add the save-scoped tactic and 11 stable lane model, seed the default IP/OOP shapes with compatible general-purpose roles, expose phase-compatible role and placement options from the Rust scoring catalog, validate complete tactics and role-position compatibility, and persist the IP weight.
 
@@ -155,7 +155,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 #### Commit 3 — Add the dual-phase tactic editor
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add the planned IP, OOP, and side-by-side tactic views with editable pitch placements, phase-filtered role pickers, linked lane identity, IP/OOP weight control, complete loading/error states, and pointer plus keyboard operation. Save through the tactic IPC contract and show validation without losing the draft.
 
@@ -246,19 +246,21 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 **PR:** PR 1 — Create the club tactic
 
-**Commit:** Persist the dual-phase tactic
+**Commit:** Add the dual-phase tactic editor
 
 ### RED test (active commit)
 
-Persist an 11-lane dual-phase tactic with the default IP/OOP shapes, reload it, and assert that a second app save starts independently. Reject incomplete lanes, phase-incompatible roles, invalid role-position pairs, and IP weights outside 0–1.
+Edit a linked lane through IP and OOP phase controls, reject an incompatible role before save, change the IP/OOP weight, and retain the draft when a tactic save fails.
 
 ### Expected outcome
 
-Each app save has one persisted 11-lane tactic with linked IP and OOP placements and roles, a valid default shape, and a saved IP/OOP weight. The Planner route can load that tactic without introducing strings, assignments, or editor UI yet.
+The Planner route exposes a keyboard-operable editor for the shared tactic. Phase-filtered placement and role choices remain linked to each stable lane, the IP/OOP weight is editable, and a failed save leaves the current draft visible for correction.
 
 ### Explicit exclusions
 
-- Do not add tactic editor UI, string, assignment, or optimizer tables in this commit.
+- Do not add strings, assignments, candidate lists, or optimizer controls in this commit.
+- Do not add team instructions, set pieces, or multiple tactic presets.
+- Do not import or write tactics to Football Manager.
 - Do not infer affiliated clubs from names.
 - Do not edit bridge schema v5 or memory scanning.
 
@@ -271,6 +273,7 @@ Each app save has one persisted 11-lane tactic with linked IP and OOP placements
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
 | PR 1 | Configure club-family sources | `31b091a` | Added migration v4, save-scoped source persistence and validation, Planner route/setup UI, IPC, cache invalidation, and first-use smoke coverage. |
+| PR 1 | Persist the dual-phase tactic | `88925cc` | Added migration v5, save-scoped 11-lane tactic persistence, catalog-backed options, Rust validation, tactic IPC, and route loading/status coverage. |
 
 ## Final validation
 
