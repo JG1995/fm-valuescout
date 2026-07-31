@@ -134,7 +134,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 **Status:** Active
 
-**Work:** Move domain skills and translate Cursor commands into Codex skills under `.agents/skills/`, with clear triggers and no Cursor argument macros.
+**Work:** Copy domain skills to `.agents/skills/` with mechanical path updates. Port each Cursor command as a `workflow-*` skill with clear triggers and no Cursor argument macros.
 
 **Out of scope for this commit:**
 
@@ -209,6 +209,8 @@ Codex can discover the repository's workflow and domain skills under `.agents/sk
 ## Discoveries and replanning
 
 - **Planned:** Add RED contract checks in the documentation commit. **Changed:** Record the RED test as the first action of commit 2. **Why:** A committed failing contract test would violate the invariant that every migration commit keeps trunk green.
+- **Planned:** Preserve Cursor commands as project-local Codex custom prompts. **Changed:** Port them as `workflow-*` skills. **Why:** Codex custom prompts are user-level, while versioned repository skills are project-local and are the supported replacement.
+- **Planned:** Move disposable-work references and the ignore rule with Cursor removal. **Changed:** Add the `.work/` ignore rule while porting skills. **Why:** The copied debug and spike skills write disposable artifacts there; ignoring it now preserves the scratch-work boundary during the transition.
 
 ## Completed work
 

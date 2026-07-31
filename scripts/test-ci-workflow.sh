@@ -91,7 +91,7 @@ prepare_controlled_checkout() {
   local checkout="$1"
 
   mkdir "$checkout"
-  cp -R "$repo_root/scripts" "$repo_root/.codex" "$repo_root/.cursor" "$repo_root/.github" \
+  cp -R "$repo_root/scripts" "$repo_root/.agents" "$repo_root/.codex" "$repo_root/.cursor" "$repo_root/.github" \
     "$checkout"
   cp "$repo_root/package.json" "$repo_root/pnpm-lock.yaml" \
     "$repo_root/pnpm-workspace.yaml" "$repo_root/biome.json" \

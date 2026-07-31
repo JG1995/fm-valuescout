@@ -1,5 +1,6 @@
-# Cursor — disposable agent scratch (workflow config in .cursor/ is committed)
+# Disposable agent scratch (workspace configuration is committed)
 .cursor/work/
+.work/
 
 # Dependencies (pnpm)
 node_modules/
