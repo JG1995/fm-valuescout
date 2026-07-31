@@ -118,7 +118,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 2 — Add Codex project configuration
 
-**Status:** Active
+**Status:** Completed — `187c635`
 
 **Work:** Add `.codex/config.toml` with Recallium and Context7, then add contract validation for the trusted project configuration.
 
@@ -132,7 +132,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 3 — Port repository skills to Codex
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Move domain skills and translate Cursor commands into Codex skills under `.agents/skills/`, with clear triggers and no Cursor argument macros.
 
@@ -190,21 +190,21 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 **PR:** PR 1 — Replace Cursor workflow with Codex
 
-**Commit:** Add Codex project configuration
+**Commit:** Port repository skills to Codex
 
 ### RED test (active commit)
 
-Add a Codex configuration contract test that fails when `.codex/config.toml` is absent or does not define both Recallium and Context7. The test would catch a configuration that cannot supply the repository's required external context.
+Add a Codex skill-structure contract test that fails when the ported workflow and domain skills are absent or malformed. The test must prevent Codex from silently losing a reusable workflow during the transition.
 
 ### Expected outcome
 
-Codex can load a trusted project configuration with Recallium and Context7, and the repository gate validates that configuration.
+Codex can discover the repository's workflow and domain skills under `.agents/skills/`, with clear triggers and no Cursor-only argument macros.
 
 ### Explicit exclusions
 
-- Do not create workflow skills, specialist agents, or hooks.
-- Do not change application code, product documentation, or Git hooks.
-- Do not remove or edit the existing Cursor configuration.
+- Do not create specialist agents or hooks.
+- Do not change application code, product documentation, Git hooks, or the Codex MCP configuration.
+- Do not remove the existing Cursor configuration.
 
 ## Discoveries and replanning
 
@@ -215,6 +215,7 @@ Codex can load a trusted project configuration with Recallium and Context7, and 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
 | PR 1 | Document the Codex migration contract | `8c8d7ac` | Added the approved delivery plan and marked the tooling initiative active. |
+| PR 1 | Add Codex project configuration | `187c635` | Added Recallium and Context7 project MCP configuration with gate validation. |
 
 ## Final validation
 
