@@ -239,6 +239,7 @@ Sanity-list links; new nav-rail item; comparison / radar / suitability.
 | 1 | Attributes tab | `42f64cb` | Grouped visible + Hidden + Personality; null → `—` |
 | 1 | Roles tab and ScoreBadge | `109456e` | Family-grouped roles; hero best-role; shared ScoreBadge |
 | 1 | Open profile from Search and Ctrl+K | `5b11eeb` | Search row + suggest → `/players/$uid`; arrow row focus |
+| 1 | Finish-feature remediation (phase labels, skeletons, foot) | `a30e45a` | Wire phase → IP/OOP; tab skeletons; preferredFoot title-case |
 
 ## Final validation
 
