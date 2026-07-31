@@ -554,7 +554,7 @@ Dedicated route `/players/$uid` (not an inspector overlay). Comparison inspector
 
 ### Deferred specs
 
-These surfaces are not specced because their features are not planned yet. Spec them in this document during `/plan-feature` for the relevant feature, not before.
+These surfaces are not specced because their features are not planned yet. Spec them in this document during `workflow-plan-feature` for the relevant feature, not before.
 
 - **Pitch view** (squad planner and optimizer — orders 6 and 7 in [TODO.md](./TODO.md)): position slots, drag targets, formation switching, and best-and-worst candidate highlighting.
 - **Context menu:** deferred until a screen needs a right-click action. When it lands, it follows the Level 4 overlay rules and the `z-30` layer.

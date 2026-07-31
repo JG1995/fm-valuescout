@@ -1,0 +1,5 @@
+[mcp_servers.recallium]
+url = "http://10.189.1.195:8001/mcp"
+
+[mcp_servers.context7]
+url = "https://mcp.context7.com/mcp"

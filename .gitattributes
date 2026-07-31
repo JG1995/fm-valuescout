@@ -17,7 +17,7 @@ scripts/dev text eol=lf
 .jsonc text eol=lf
 .toml text eol=lf
 
-# ---- Docs / Cursor ----------------------------------------------------
+# ---- Docs / Codex -----------------------------------------------------
 .md text eol=lf
 .mdc text eol=lf
 

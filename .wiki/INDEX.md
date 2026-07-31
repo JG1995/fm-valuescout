@@ -1,6 +1,6 @@
 # Project Wiki
 
-This directory contains durable, version-controlled knowledge about this repository. Temporary investigation notes belong in `.cursor/work/` and are not project truth.
+This directory contains durable, version-controlled knowledge about this repository. Temporary investigation notes belong in `.work/` and are not project truth.
 
 ## Document map
 
@@ -16,12 +16,12 @@ This directory contains durable, version-controlled knowledge about this reposit
 
 ## Documentation lifecycle
 
-1. **New project bootstrap** — fill `CONCEPT.md`, run `/roadmap` when MVP direction is set (`/stack` only when changing defaults); approve wiki updates before building.
-2. **Per-feature planning** — create one active feature ledger with `/plan-feature` and mark exactly one commit `Active`.
-3. **Per commit** — update documentation intrinsic to the atomic outcome during `/build` and `/checkpoint`.
-4. **Feature completion** — run `/finish-feature` (tests, feature-complete review, then documentation reconciliation).
+1. **New project bootstrap** — fill `CONCEPT.md`, use `workflow-roadmap` when MVP direction is set (`workflow-stack` only when changing defaults); approve wiki updates before building.
+2. **Per-feature planning** — create one active feature ledger with `workflow-plan-feature` and mark exactly one commit `Active`.
+3. **Per commit** — update documentation intrinsic to the atomic outcome during `workflow-build` and `workflow-checkpoint`.
+4. **Feature completion** — use `workflow-finish-feature` (tests, feature-complete review, then documentation reconciliation).
 5. **Archive** — condense and move a completed ledger to `features/completed/`.
-6. **Cleanup** — remove disposable notes from `.cursor/work/`.
+6. **Cleanup** — remove disposable notes from `.work/`.
 
 Update durable documentation only when an externally meaningful behavior, command, configuration, contract, or persistent-data assumption changes.
 

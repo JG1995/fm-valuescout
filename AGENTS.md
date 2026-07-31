@@ -1,6 +1,6 @@
 # Development Contract
 
-This file contains the standing repository contract. Detailed procedures belong in `.cursor/commands/`. Project facts belong in `.wiki/`. Hard validation belongs in repository commands, tests, and CI.
+This file contains the standing repository contract. Detailed procedures belong in `.agents/skills/`. Project facts belong in `.wiki/`. Hard validation belongs in repository commands, tests, and CI.
 
 ## Project scope
 
@@ -35,11 +35,11 @@ For ordinary work, inspect the relevant code and tests before changing them.
 
 - **Trivial:** inspect, make the focused change, run the fast gate, review.
 - **Behavioural:** state a concise work contract and impact map. Use RED → GREEN → REFACTOR. Run affected validation.
-- **Architectural:** plan the feature first (`/plan-feature`), identify risks and decisions, create one active feature ledger, and implement one commit at a time.
+- **Architectural:** plan the feature first (`workflow-plan-feature`), identify risks and decisions, create one active feature ledger, and implement one commit at a time.
 
 Plans are provisional. Reassess remaining commits after each one. Ask only product questions that repository evidence or a bounded technical spike cannot answer.
 
-**Unresolved structural decisions** (persistence, schema, migration, authentication, concurrency, security, public API, or layer boundaries): read `.wiki/ARCHITECTURE.md`, scan `.cursor/skills/` for skills whose description matches the work (architecture, stack, coding standards), search Recallium. If docs and inspection are insufficient and the question needs a **runtime probe**, use optional **`/spike`** — otherwise **ask the developer**. Do not guess and do not implement.
+**Unresolved structural decisions** (persistence, schema, migration, authentication, concurrency, security, public API, or layer boundaries): read `.wiki/ARCHITECTURE.md`, scan `.agents/skills/` for skills whose description matches the work (architecture, stack, coding standards), search Recallium. If docs and inspection are insufficient and the question needs a **runtime probe**, use optional `workflow-spike` — otherwise **ask the developer**. Do not guess and do not implement.
 
 ## Guidance layers
 
@@ -48,34 +48,35 @@ Keep guidance in the narrowest appropriate layer:
 - `.wiki/CONCEPT.md` owns product purpose and boundaries.
 - `.wiki/ARCHITECTURE.md` owns the current implemented system, including its stack and operational constraints.
 - `.wiki/features/active/` owns current multi-commit feature intent and delivery plans (PRs and commits).
-- `.cursor/commands/` owns explicit workflows such as `/plan-feature`, `/build`, and `/checkpoint`.
-- `.cursor/skills/` owns reusable, task- or stack-specific operating guidance, when needed.
-- `.cursor/agents/` owns specialist role prompts. It must not duplicate this contract.
+- `.agents/skills/` owns named workflow procedures and reusable, task- or stack-specific operating guidance, when needed.
+- `.codex/agents/` owns specialist role prompts. It must not duplicate this contract.
 
-Do not treat `.cursor/work/` as project truth. Do not document proposed behaviour as implemented. Use the existing wiki ownership rules rather than duplicating facts across documents.
+Do not treat `.work/` as project truth. Do not document proposed behaviour as implemented. Use the existing wiki ownership rules rather than duplicating facts across documents.
 
 ## Development workflow
 
-The development cycle follows a repeating loop. Invoke the Cursor commands from chat, or follow the loop internally for trivial work.
+The development cycle follows a repeating loop. Invoke the Codex workflow skills from chat, or follow the loop internally for trivial work.
 
-1. **Feature plan** (`/plan-feature`) — plan one feature: PR and commit breakpoints, high-level work descriptions.
-2. **Build** (`/build`) — implement the active commit test-first (RED → GREEN → REFACTOR).
-3. **Checkpoint** (`/checkpoint`) — stage exact changes, run the gate, present evidence and review, wait for approval, commit locally.
-4. **Fix** (`/fix`) — when review blocks, address delegated findings (default: CRITICAL, HIGH, and MEDIUM), then checkpoint again.
+1. **Feature plan** (`workflow-plan-feature`) — plan one feature: PR and commit breakpoints, high-level work descriptions.
+2. **Build** (`workflow-build`) — implement the active commit test-first (RED → GREEN → REFACTOR).
+3. **Checkpoint** (`workflow-checkpoint`) — stage exact changes, run the gate, present evidence and review, wait for approval, commit locally.
+4. **Fix** (`workflow-fix`) — when review blocks, address delegated findings (default: CRITICAL, HIGH, and MEDIUM), then checkpoint again.
 5. **Reassess** — update the delivery plan and select the next commit; repeat from build until the plan is done.
-6. **Finish feature** (`/finish-feature`) — when every planned commit is done: full tests, feature-complete review, then documentation reconciliation.
+6. **Finish feature** (`workflow-finish-feature`) — when every planned commit is done: full tests, feature-complete review, then documentation reconciliation.
 
-**Optional:** **`/build-loop`** — manual opt-in only; never suggest or run automatically. Same as `/build` for one commit, then an automated checkpoint/fix loop (up to five fix rounds) and auto-commit when only NITPICK remains. NITPICK-only verdicts skip `/fix`; mixed verdicts fix NITPICK alongside CRITICAL/HIGH/MEDIUM. Typing `/build-loop` is explicit approval to commit on loop success without a separate checkpoint approval step.
+**Optional:** **`workflow-build-loop`** — manual opt-in only; never suggest or run automatically. Same as `workflow-build` for one commit, then an automated checkpoint/fix loop (up to five fix rounds) and auto-commit when only NITPICK remains. NITPICK-only verdicts skip `workflow-fix`; mixed verdicts fix NITPICK alongside CRITICAL/HIGH/MEDIUM. Typing `$workflow-build-loop` is explicit approval to commit on loop success without a separate checkpoint approval step.
 
-The user never invokes these commands directly on a trivial change — they just describe the fix and you follow the full loop internally.
+The user never invokes these skills directly on a trivial change — they just describe the fix and you follow the full loop internally.
 
-For broad features, `/plan-feature` produces a delivery plan (PRs and commits) before the first `/build` cycle. `/stack` and `/roadmap` precede this for new projects.
+For broad features, `workflow-plan-feature` produces a delivery plan (PRs and commits) before the first `workflow-build` cycle. `workflow-stack` and `workflow-roadmap` precede this for new projects.
 
 ## Commands and validation
 
 ```bash
 ./scripts/dev test [target...]
 ./scripts/dev check
+./scripts/dev check-app
+./scripts/dev bridge-test
 ./scripts/dev format [paths...]
 ./scripts/dev secrets [--staged]
 ./scripts/dev smoke
@@ -83,9 +84,9 @@ For broad features, `/plan-feature` produces a delivery plan (PRs and commits) b
 ./scripts/dev bridge-install
 ```
 
-`check` is the commit gate: Biome verify (`biome check`), TypeScript, secretlint, repository contract checks, and the `scripts/dev` dispatcher contract (which runs Playwright smoke). Run `pnpm exec playwright install chromium` once after install so check can pass locally. `format` applies Biome lint and format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/` — run before staging at `/build` and `/checkpoint`; it is not part of the gate. Optional path args forward to Biome only. `secrets` runs secretlint on the full tree, or on staged files with `--staged` (no lint-staged). `smoke` runs the same Playwright suite directly (`e2e/smoke.spec.ts`). `mutate` is unsupported until mutation tooling is wired into `scripts/dev`. Never report an unsupported command as passed. `bridge-install` builds the C# FM plugin and copies `FmDataBridge.dll` into BepInEx plugins (see `bridge/README.md`; path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL Steam default).
+`check` is the commit gate: Biome verify (`biome check`), TypeScript, secretlint, and Rust format, lint, and tests. `check-app` runs its frontend part only for CI. `bridge-test` runs the C# bridge unit suite and requires the .NET 6 SDK. Run `pnpm exec playwright install chromium` once after install, then use `smoke` for the Playwright product suite (`e2e/smoke.spec.ts`). `format` applies Biome lint and format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/` — run before staging at `workflow-build` and `workflow-checkpoint`; it is not part of the gate. Optional path args forward to Biome only. `secrets` runs secretlint on the full tree, or on staged files with `--staged` (no lint-staged). `mutate` is unsupported until mutation tooling is wired into `scripts/dev`. Never report an unsupported command as passed. `bridge-install` builds the C# FM plugin and copies `FmDataBridge.dll` into BepInEx plugins (see `bridge/README.md`; path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL Steam default).
 
-`test` runs `vitest run` (full suite or forwarded args). Override with `DEV_TEST_COMMAND` for contract tests. `check` runs Biome, TypeScript, secretlint, repository scripts, Cursor agents, CI workflow contract, and dispatcher smoke.
+`test` runs `vitest run` (full suite or forwarded args). CI selects frontend, browser, Rust, and bridge product checks from the changed paths. Its required `check` status aggregates the applicable results. Desktop installer builds run only from the release workflow.
 
 Use stack-native commands only through the stable `scripts/dev` surface.
 
@@ -100,7 +101,7 @@ For non-trivial behaviour:
 
 Prompts guide the workflow. Deterministic commands and tests provide evidence. Do not weaken, delete, skip, or broadly rewrite tests merely to make a change pass.
 
-Escalate after two failed repair loops, when the requested behaviour conflicts with the current architecture, when the feature graph becomes invalid, or when a genuine technical unknown requires an optional **`/spike`** (runtime experiment, not research-only). Every non-trivial staged change requires a separate read-only reviewer pass when the reviewer role is available. Otherwise use the documented manual fallback.
+Escalate after two failed repair loops, when the requested behaviour conflicts with the current architecture, when the feature graph becomes invalid, or when a genuine technical unknown requires an optional `workflow-spike` (runtime experiment, not research-only). Every non-trivial staged change requires a separate read-only reviewer pass when the reviewer role is available. Otherwise use the documented manual fallback.
 
 ## Design and execution
 
@@ -172,7 +173,7 @@ Strong verification lets you loop without asking for clarification.
 
 If the explanation is longer than the code, delete the explanation.
 
-Exceptions: commit messages (Conventional Commits per `.cursor/skills/conventional-commits/SKILL.md` — explain *why* in the body when the reason is not obvious from the diff), security decisions, architectural notes in durable docs, and explicit user requests for detail.
+Exceptions: commit messages (Conventional Commits per `.agents/skills/conventional-commits/SKILL.md` — explain *why* in the body when the reason is not obvious from the diff), security decisions, architectural notes in durable docs, and explicit user requests for detail.
 
 **Honesty boundaries.** Do not claim per-repo line savings — the unbuilt version is imaginary, so there is no baseline. Do not claim a performance improvement without before-and-after measurements. Do not claim 100% test coverage from line coverage alone. Do not call a change a bug fix unless you confirmed the old behaviour was wrong.
 
@@ -185,7 +186,7 @@ Exceptions: commit messages (Conventional Commits per `.cursor/skills/convention
 - Do not perform unrelated cleanup.
 - Stage exact files or hunks. Never use `git add .` or `git commit -a`.
 - Before commit, inspect status and the complete diff, run `git diff --cached --check`, review the staged diff and stat, and report tests, gate results, documentation impact, reviewer findings, risks, and the proposed commit message.
-- Wait for explicit developer approval before committing locally — except when the developer invoked **`/build-loop`**, which auto-commits on loop success (content commit plus ledger advancement) without a separate approval step.
+- Wait for explicit developer approval before committing locally — except when the developer invoked **`workflow-build-loop`**, which auto-commits on loop success (content commit plus ledger advancement) without a separate approval step.
 - Never push, amend, rebase, squash, or otherwise rewrite history without explicit approval.
 
 ## Recallium project
@@ -209,8 +210,8 @@ Use Recallium to recover project context often, but save only durable institutio
 
 Follow `.wiki/INDEX.md` for documentation ownership. Trivial changes normally need no wiki update. Update durable documentation when externally meaningful behaviour, commands, configuration, contracts, persistent-data assumptions, or architecture changes. Multi-commit work gets one active feature ledger. Architectural or schema work updates architecture and receives an ADR only when justified. Reconcile and archive feature documentation at feature completion rather than after every minor change.
 
-The Documentation Steward may change documentation and feature-ledger state, but must not change implementation, tests, executable scripts, CI, Cursor configuration, agent definitions, command templates, or Git state.
+The Documentation Steward may change documentation and feature-ledger state, but must not change implementation, tests, executable scripts, CI, Codex configuration, agent definitions, command templates, or Git state.
 
-The main session is the `worker`. Dispatch specialist agents explicitly. Do not route them automatically. See `.cursor/README.md` for role selection and MCP details. When dispatching `reviewer` or `documentation-steward` via Task, **never** pass `model` — use only the pin in that agent's frontmatter (`.cursor/agents/reviewer.md` / `documentation-steward.md`). No exceptions.
+The main session is the `worker`. Dispatch specialist agents explicitly. Do not route them automatically. See `.codex/README.md` for role selection and MCP details. The `reviewer` and `documentation-steward` model settings live in their respective `.codex/agents/*.toml` files. Do not override them when dispatching.
 
-When you need current library API or configuration details, use Context7 MCP (`resolve-library-id`, then `query-docs`). Use `WebSearch` and `WebFetch` for bounded external research. Recallium is configured in `.cursor/mcp.json`. Never put credentials in repository files.
+When you need current library API or configuration details, use Context7 MCP (`resolve-library-id`, then `query-docs`). Use web search and fetch for bounded external research. Recallium is configured in `.codex/config.toml`. Never put credentials in repository files.

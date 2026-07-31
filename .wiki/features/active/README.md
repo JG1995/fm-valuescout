@@ -2,7 +2,7 @@
 
 One ledger per feature in active development. A ledger owns feature intent, the **delivery plan** (PRs and commits), and discoveries that change the plan. It does not own permanent current-state architecture.
 
-Create a ledger with `/plan-feature`. Keep exactly **one commit** marked `Active` during implementation.
+Create a ledger with `workflow-plan-feature`. Keep exactly **one commit** marked `Active` during implementation.
 
 ## Status vocabulary
 

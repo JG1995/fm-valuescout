@@ -7,14 +7,15 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-fast|check-rust|format|secrets|smoke|mutate|bridge-install} [args...]
+Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
-                    Override with DEV_TEST_COMMAND for contract tests.
-  check             Run Biome, TypeScript, secretlint, Rust (fmt/clippy/test), and repository contract checks.
+  check             Run Biome, TypeScript, secretlint, and Rust (fmt/clippy/test).
+  check-app         Run Biome, TypeScript, and full-tree secretlint.
   check-fast        Run Biome, TypeScript, and secretlint on staged files (pre-commit fast path).
   check-rust        Run cargo fmt --check, clippy, and test in src-tauri/.
+  bridge-test       Run the C# bridge unit tests (requires the .NET 6 SDK).
   format [paths...] Apply Biome lint/format fixes, then cargo fmt in src-tauri/.
                     Optional paths forward to Biome only; cargo fmt always runs.
   secrets [--staged] Scan for secrets with secretlint (full tree or staged files only).
@@ -167,27 +168,33 @@ run_check_rust() {
   printf 'Rust quality checks passed.\n'
 }
 
+run_bridge_test() {
+  require_no_arguments bridge-test "$@"
+
+  DEV_COMMAND_LABEL=bridge-test
+  ensure_dotnet
+  (
+    cd "$repo_root/bridge"
+    dotnet test FmDataBridge.sln --configuration Release
+  )
+}
+
 run_check() {
   require_no_arguments check "$@"
 
-  bash -n "$repo_root/scripts/dev"
-  bash -n "$repo_root/scripts/test-dev.sh"
-  bash -n "$repo_root/scripts/test-agent-definitions.sh"
-  bash -n "$repo_root/scripts/test-cursor-config.sh"
-  bash -n "$repo_root/scripts/test-ci-workflow.sh"
-  bash -n "$repo_root/scripts/test-release-workflow.sh"
-
   run_app_quality_gates
-
-  "$repo_root/scripts/test-agent-definitions.sh"
-  "$repo_root/scripts/test-cursor-config.sh"
-  "$repo_root/scripts/test-ci-workflow.sh"
-  "$repo_root/scripts/test-release-workflow.sh"
-  "$repo_root/scripts/test-dev.sh"
-
   run_rust_quality_gates
 
   printf 'Repository quality checks passed.\n'
+}
+
+run_check_app() {
+  require_no_arguments check-app "$@"
+
+  DEV_COMMAND_LABEL=check-app
+  run_app_quality_gates
+
+  printf 'Application quality checks passed.\n'
 }
 
 run_format() {
@@ -217,16 +224,6 @@ run_smoke() {
 }
 
 run_test() {
-  if [[ -n "${DEV_TEST_COMMAND:-}" ]]; then
-    if [[ ! -x "$DEV_TEST_COMMAND" ]]; then
-      printf 'DEV_TEST_COMMAND must name an executable; got %q.\n' \
-        "$DEV_TEST_COMMAND" >&2
-      exit 66
-    fi
-    "$DEV_TEST_COMMAND" "$@"
-    return
-  fi
-
   DEV_COMMAND_LABEL=test
   require_node_deps
   (
@@ -312,11 +309,17 @@ case "$command" in
   check)
     run_check "$@"
     ;;
+  check-app)
+    run_check_app "$@"
+    ;;
   check-fast)
     run_check_fast "$@"
     ;;
   check-rust)
     run_check_rust "$@"
+    ;;
+  bridge-test)
+    run_bridge_test "$@"
     ;;
   format)
     run_format "$@"

@@ -2,7 +2,7 @@
 
 This directory contains condensed records of completed feature behavior, architecture, important decisions, and validation. It is not an unedited development diary or a duplicate of current architecture.
 
-At feature completion, run `/finish-feature` (or `/docs-review` for standalone milestones), remove temporary implementation detail, and move the active ledger here. Update [`ARCHITECTURE.md`](../../ARCHITECTURE.md) only for implemented current-state changes. Update [`TODO.md`](../../TODO.md) only at feature level.
+At feature completion, use `workflow-finish-feature` (or `workflow-docs-review` for standalone milestones), remove temporary implementation detail, and move the active ledger here. Update [`ARCHITECTURE.md`](../../ARCHITECTURE.md) only for implemented current-state changes. Update [`TODO.md`](../../TODO.md) only at feature level.
 
 ## Completion record template
 

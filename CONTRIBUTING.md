@@ -1,115 +1,71 @@
 # Contributing
 
-This template is designed to be forked, modified, and shipped from. Most of the
-ceremony exists so that one person (you) can return to the project after a
-break and still trust the commit history. Follow the rules below when you work
-on a project derived from this template.
+This template is designed to be forked, modified, and shipped. The workflow keeps the history useful after a break without adding unnecessary ceremony.
 
 ## Run the gate before every commit
 
 ```bash
 ./scripts/dev format
-./scripts/dev check-fast   # pre-commit runs this (+ check-rust when src-tauri/ is staged)
-./scripts/dev check        # full gate — same surface as CI
+./scripts/dev check-fast   # Pre-commit runs this (+ check-rust for staged src-tauri/ files)
+./scripts/dev check        # Full local code-quality gate
 ```
 
-`format` applies Biome lint and format fixes, then `cargo fmt` in `src-tauri/`, before you stage. `check-fast` runs full-tree Biome and TypeScript, plus staged secretlint only. `check` is the full gate: contract tests, Playwright smoke contract, full-tree secretlint, and Rust.
+`format` applies Biome fixes and `cargo fmt` before you stage. `check-fast` runs full-tree Biome and TypeScript plus staged secretlint. `check` runs code-quality checks: Biome, TypeScript, secretlint, and Rust.
 
-CI runs the full `./scripts/dev check`, then `./scripts/dev test`, then `pnpm build`.
-A failing gate must return non-zero; do not weaken tests to make a change pass.
-
-Run `pnpm exec playwright install chromium` once after `pnpm install` so the smoke contract inside `./scripts/dev check` can pass.
+CI selects frontend, browser, Rust, and bridge checks from the changed paths. Its required `check` status aggregates every applicable result. Desktop installer builds run only from the release workflow. Do not weaken tests to make a gate pass. Run `pnpm exec playwright install chromium` once after `pnpm install` so smoke can run.
 
 ## Pre-commit hook
 
-The Husky pre-commit hook runs a **fast** local gate:
+Husky runs `./scripts/dev check-fast`, plus `./scripts/dev check-rust` when staged files include `src-tauri/`. It does not replace the full gate.
 
-```bash
-./scripts/dev check-fast
-# plus ./scripts/dev check-rust when staged files include src-tauri/
-```
-
-`check-fast` runs full-tree Biome and TypeScript, and secretlint on **staged** files only. It does not run contract tests, Playwright smoke, full-tree secretlint, or Rust unless `src-tauri/` is in the staged diff.
-
-The **full** gate — `./scripts/dev check` — runs in CI and before you merge. It includes dispatcher contract tests (Vitest file pattern, Playwright smoke, mutate unsupported status) via `test-dev.sh`, but not the full Vitest suite (run `./scripts/dev test` locally or rely on CI for the full suite).
-
-**Husky** installs the hook on `pnpm install` — no manual Git config step. We use **Biome only** for lint and format (no ESLint, Prettier, or lint-staged). Secret scanning at commit time uses **secretlint --staged** via `check-fast`; the full gate scans the whole tree. See [ADR-0009](.wiki/decisions/0009-biome.md), [ADR-0011](.wiki/decisions/0011-husky-git-hooks.md), and [ADR-0012](.wiki/decisions/0012-secretlint.md).
-
-To bypass the hook for a single commit, use `git commit --no-verify`. Do not disable hooks globally.
+Husky installs on `pnpm install`. The repository uses Biome for lint and format and secretlint for secret scanning. To bypass the hook for one commit, use `git commit --no-verify`. Do not disable hooks globally.
 
 ## Follow the commit convention
 
-Every commit message uses [Conventional Commits
-1.0.0](https://www.conventionalcommits.org/). Read
-[`.cursor/skills/conventional-commits/SKILL.md`](.cursor/skills/conventional-commits/SKILL.md)
-before writing one.
+Every commit message uses [Conventional Commits 1.0.0](https://www.conventionalcommits.org/). Read [`.agents/skills/conventional-commits/SKILL.md`](.agents/skills/conventional-commits/SKILL.md) before writing one.
 
-Quick rules:
+- Use imperative present tense: “Add,” not “Added.”
+- Keep the subject under 72 characters.
+- Keep each commit to one coherent outcome.
+- Use the same `type(scope): description` form for PR titles.
+- Do not amend, rebase, squash, or rewrite history without explicit approval.
 
-- Imperative mood, present tense. "Add", not "Added" or "Adds".
-- Subject under 72 characters. Body and footers are optional.
-- One coherent outcome per commit. If the subject needs "and", split the commit.
-- PR titles use the same `type(scope): description` shape as commit subjects.
-- Mark breaking changes with `!` after the type/scope or a `BREAKING CHANGE:`
-  footer.
-- Do not amend, rebase, squash, or rewrite history without explicit
-  approval. The history is the audit trail.
+## Use the Codex workflow for non-trivial work
 
-## Use the workflow loop for non-trivial work
-
-The workflow loop lives in [`.cursor/README.md`](.cursor/README.md). Development is **trunk-based** — short-lived PR branches merge to `main` frequently; each commit is atomic and messages follow Conventional Commits.
+The workflow is documented in [.codex/README.md](.codex/README.md). Development is trunk-based: short-lived branches merge to `main` frequently, and every commit is atomic.
 
 ### New project bootstrap
 
-See [README — Forking this template](README.md#forking-this-template) for prerequisites, the rename table, Playwright setup, and editor extensions. Summary:
+See [README — Forking this template](README.md#forking-this-template) for setup details. In brief:
 
-1. Green gate (`./scripts/dev check`, `./scripts/dev test`) before feature work.
-2. In `AGENTS.md` § Recallium project, replace `[REPLACE_WITH_RECALLIUM_PROJECT_NAME]` when you use Recallium.
-3. Fill `.wiki/CONCEPT.md` (especially MVP scope).
-4. `/stack` — only when you change the default stack; skip when you keep template defaults.
-5. `/roadmap` — approve development sequence in `TODO.md` (CONCEPT bullets alone suffice for a provisional sequence).
-6. `/plan-feature` on the feature named in **Plan next**.
+1. Run `./scripts/dev check` and `./scripts/dev test` before feature work.
+2. Fill `.wiki/CONCEPT.md` with MVP scope.
+3. Use `workflow-stack` only when you change the default stack.
+4. Use `workflow-roadmap` to approve the development sequence in `TODO.md`.
+5. Use `workflow-plan-feature` for the feature named in **Plan next**.
 
-Building the FM26 BepInEx plugin (Windows host, .NET 6) is separate from the Linux gate — see [bridge/README.md](bridge/README.md).
+Building the FM26 BepInEx plugin is separate from the Linux gate. See [bridge/README.md](bridge/README.md).
 
 ### Per-feature loop
 
-1. `/plan-feature` — plan one feature (PRs and commits). Trivial changes skip the ledger.
-2. `/build` — write a failing test, implement the smallest passing change, refactor while green (default: one active commit, then stop).
-3. `/checkpoint` — stage exact files, run the gate, dispatch the reviewer, present evidence.
-4. `/fix` — when review blocks, address delegated findings (default: CRITICAL, HIGH, and MEDIUM), then checkpoint again.
-5. Approve the staged commit.
-6. Reassess remaining commits in the delivery plan.
-7. `/finish-feature` — when the delivery plan is complete: full tests, feature-complete review, then documentation reconciliation when review clears.
+1. `workflow-plan-feature` — create a delivery plan with atomic commits. Trivial changes skip the ledger.
+2. `workflow-build` — write a meaningful failing test, make the smallest passing change, and refactor while green.
+3. `workflow-checkpoint` — stage exact files, run the gate, dispatch the read-only reviewer, and present evidence.
+4. `workflow-fix` — address blocking review findings, then checkpoint again.
+5. Approve the local commit and reassess the remaining delivery plan.
+6. `workflow-finish-feature` — run full validation, feature review, then documentation reconciliation.
 
-**Optional:** `/build-loop` — manual opt-in only; automates build, checkpoint, and fix (up to five fix rounds) and commits when only NITPICK findings remain. Mixed verdicts fix NITPICK alongside CRITICAL/HIGH/MEDIUM. See `.cursor/commands/build-loop.md`.
+`workflow-build-loop` is manual opt-in. It can automate checkpoint and fix rounds, then commit when only NITPICK findings remain. Use `workflow-spike` only when a runtime experiment is necessary. Use `workflow-security-audit` before deployment or after sensitive changes.
 
-Optional (not every feature): `/spike` when a runtime experiment is the only way to unblock planning or build; `/security-audit` before first deploy or after auth, payments, or sensitive data features.
-
-For a single-line fix or a doc edit, follow the loop internally without
-invoking each command.
+For a single-line fix or documentation edit, follow the applicable workflow internally without naming every skill.
 
 ## Escalate before assuming
 
-These decisions need explicit developer input before implementation:
-
-- Persistence, schema, or migration shape
-- Authentication or authorisation
-- Concurrency model
-- Public API surface
-- Security controls
-- Anything that touches a safety carve-out (input validation at trust
-  boundaries, data-loss prevention, accessibility)
-
-The agent will not guess on these. Read `.wiki/ARCHITECTURE.md`, scan matching
-skills in `.cursor/skills/`, and search Recallium. If still blocked, ask the
-developer — or use optional `/spike` when only a runtime experiment can answer
-the question.
+Ask for developer input before choosing persistence, schema, migrations, authentication, concurrency, public APIs, security controls, or a safety-critical boundary. Read `.wiki/ARCHITECTURE.md`, matching skills in `.agents/skills/`, and Recallium first. Use `workflow-spike` only when a runtime experiment can answer the question.
 
 ## Merge template updates into a fork
 
-This template does not solve the cross-fork update problem. To pull changes
-back in, add the template as a remote and merge selectively:
+This template does not automate cross-fork updates. Add the template as a remote and merge selectively:
 
 ```bash
 git remote add template <template-repo-url>
@@ -117,6 +73,4 @@ git fetch template
 git merge template/main --allow-unrelated-histories
 ```
 
-Resolve conflicts manually. Watch for changes to `.cursor/`, `scripts/`,
-and `AGENTS.md` — those are the most likely to need attention. Do not auto-merge
-without reviewing the diff.
+Resolve conflicts manually. Review changes to `.agents/`, `.codex/`, `scripts/`, and `AGENTS.md` before you merge.

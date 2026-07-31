@@ -4,7 +4,7 @@
 
 This document describes how **FM ValueScout** is constructed: stack, thin-frontend / thick-backend boundaries, build and test pipeline, and conventions enforced by tooling.
 
-Application layout follows [Bulletproof React](https://github.com/alan2207/bulletproof-react) adapted for TanStack Router and Query on the frontend, and feature modules under `src-tauri/src/features/` on the backend. Line-level rules live in `.cursor/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, and `vite.md`.
+Application layout follows [Bulletproof React](https://github.com/alan2207/bulletproof-react) adapted for TanStack Router and Query on the frontend, and feature modules under `src-tauri/src/features/` on the backend. Line-level rules live in `.agents/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, and `vite.md`.
 
 For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each default choice, see [.wiki/decisions/](./decisions/README.md).
 
@@ -12,7 +12,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 ## 1. Top-Level Shape
 
-**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)), and **player profiles** (dedicated `/players/$uid` route with Overview / Attributes / Roles tabs — [completed record](./features/completed/player-profiles.md)).
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Codex workflow (skills, specialist agents, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), and **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)).
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 
@@ -52,7 +52,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Distribution:** OS installers built by `tauri-action` on version-tag push (unsigned by default)
 
-**Testing:** Vitest + jsdom + React Testing Library with `mockIPC` (`./scripts/dev test`); Playwright smoke with IPC stub (`./scripts/dev smoke`, `e2e/smoke.spec.ts`); Rust unit tests (`cargo test` inside `./scripts/dev check`)
+**Testing:** Vitest + jsdom + React Testing Library with `mockIPC` (`./scripts/dev test`); Playwright smoke with IPC stub (`./scripts/dev smoke`, `e2e/smoke.spec.ts`); Rust unit tests (`cargo test` inside `./scripts/dev check`); C# bridge unit tests (`./scripts/dev bridge-test` in Windows CI)
 
 **Client env validation:** not shipped in the template default — forks can add `src/config/env.ts` with Zod for `VITE_*` when needed (see `vite.md`; `.env.example` documents optional variables)
 
@@ -85,7 +85,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 │  Playwright + IPC stub — browser smoke                      │
 │  cargo test — Rust unit tests                               │
 │  Biome + tsc + secretlint + cargo fmt/clippy — gate         │
-│  scripts/dev — stable command surface + contract tests      │
+│  scripts/dev — stable product-test command surface          │
 └─────────────────────────────────────────────────────────────┘
 
 Fork chooses: auth, signing, auto-update, additional plugins
@@ -101,7 +101,7 @@ Fork chooses: auth, signing, auto-update, additional plugins
 - **Do not import across features** — compose features in route files.
 - **One invoke wrapper** — `src/lib/tauri-client.ts` is the sole `invoke` import site; feature `api/` folders call through it.
 - **No WebView SQL** — do not use `@tauri-apps/plugin-sql` from JavaScript for product features.
-- Use `./scripts/dev` for test and check commands — do not bypass with ad-hoc npm scripts in CI.
+- Use `./scripts/dev` for test and check commands — do not bypass with ad-hoc npm scripts in CI. `check-app` is the frontend-only CI gate; `check` remains the full local gate.
 
 ---
 
@@ -111,12 +111,12 @@ Fork chooses: auth, signing, auto-update, additional plugins
 
 ```text
 your-repo/
-├── .cursor/           # Commands, agents, skills, MCP config
+├── .agents/           # Repository skills
+├── .codex/            # Project agents, MCP config, and workflow guide
 ├── .wiki/             # Durable docs (this file, ADRs, TODO)
 ├── .husky/            # Git hooks (pre-commit → check-fast + conditional check-rust)
 ├── scripts/
-│   ├── dev            # test | check | format | smoke | mutate | bridge-install
-│   └── test-*.sh      # Contract tests for template tooling
+│   └── dev            # test | check | bridge-test | format | smoke | mutate | bridge-install
 ├── bridge/            # C# BepInEx FM26 plugin (see bridge/README.md, DUMP_SCHEMA.md)
 ├── src/               # WebView frontend (see below)
 ├── src-tauri/         # Rust backend + Tauri config (see below)
@@ -256,9 +256,11 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 | `./scripts/dev test <pattern>` | Vitest with file or name filter |
 | `./scripts/dev format` | Biome lint/format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/`; optional path args forward to Biome only |
 | `./scripts/dev secrets` | secretlint full-tree scan; `--staged` scans staged files only |
-| `./scripts/dev check` | Full gate — Biome + `tsc -b` + secretlint + contract tests + Rust |
+| `./scripts/dev check` | Code-quality gate — Biome + `tsc -b` + secretlint + Rust |
+| `./scripts/dev check-app` | Frontend code-quality checks — Biome + `tsc -b` + secretlint |
 | `./scripts/dev check-fast` | Fast pre-commit path — Biome + `tsc -b` + secretlint `--staged` |
 | `./scripts/dev check-rust` | `cargo fmt --check`, clippy, and test in `src-tauri/` |
+| `./scripts/dev bridge-test` | C# bridge unit tests; requires the .NET 6 SDK |
 | `./scripts/dev smoke` | Playwright (`e2e/smoke.spec.ts`); starts Vite via `playwright.config.ts` when needed |
 | `./scripts/dev bridge-install` | Build `bridge/` and copy `FmDataBridge.dll` into Steam `BepInEx/plugins` (Windows path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL default) |
 
@@ -267,31 +269,29 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 1. **Biome** — verify lint and format (`biome check`); fail on violations. Autofix via `./scripts/dev format` (also runs `cargo fmt`), not in `check`.
 2. **TypeScript** — `tsc -b`; fail on type errors.
 3. **secretlint** — `./scripts/dev secrets` (full tree, respects `.gitignore`); included in `check`. Optional `./scripts/dev secrets --staged` without lint-staged.
-4. **Template contracts** — `scripts/test-*.sh` via `./scripts/dev check` (Cursor config, agent definitions, CI and release workflow shape, dispatcher contract).
-5. **Rust** — `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test` in `src-tauri/`; gated behind `require_rust_toolchain` (requires `cargo` on PATH).
-6. **Vitest** — `./scripts/dev test`; CI runs the full suite after check.
-7. **Playwright smoke** — `./scripts/dev smoke`; also invoked by the `scripts/dev` dispatcher contract inside `./scripts/dev check`. CI installs Chromium before check (smoke runs inside check, not as a separate workflow step). Requires `pnpm exec playwright install chromium` once after install locally.
-
-Contract tests run before Rust gates so controlled-failure probes fail fast.
+4. **Rust** — `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test` in `src-tauri/`; gated behind `require_rust_toolchain` (requires `cargo` on PATH).
+5. **Vitest** — `./scripts/dev test`; CI runs the full suite when frontend or CI files change.
+6. **Playwright smoke** — `./scripts/dev smoke`; CI installs Chromium and runs it when frontend or CI files change. Requires `pnpm exec playwright install chromium` once after install locally.
+7. **Bridge tests** — `./scripts/dev bridge-test`; CI runs the C# unit suite on Windows when bridge or CI files change. Full FM attach tests remain manual on Windows.
 
 `mutate` remains unconfigured until mutation targets exist.
 
 ### 3.3 Git hooks
 
-Pre-commit runs a **fast local gate** (`check-fast`); CI and pre-merge validation use the **full** gate (`check`) — contracts, full-tree secretlint, smoke contract, and Rust.
+Pre-commit runs a **fast local gate** (`check-fast`); local pre-merge validation runs the full code-quality gate, while CI selects applicable product suites from changed paths.
 
 | Piece | Choice | Notes |
 | --- | --- | --- |
 | Hook runner | **Husky** | Installs on `pnpm install` via `prepare` script |
 | Pre-commit | `./scripts/dev check-fast` (+ `check-rust` when `src-tauri/` staged) | Full-tree Biome + `tsc`; staged secretlint only |
-| Full gate (CI, manual) | `./scripts/dev check` | Contracts + full secretlint + Rust + smoke contract |
+| Code-quality gate (manual) | `./scripts/dev check` | Biome + TypeScript + full secretlint + Rust |
 | lint-staged | **Not used** | Avoid split between staged lint and full gate |
 
 Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 
 ### 3.4 Commit message convention
 
-[Conventional Commits 1.0.0](https://www.conventionalcommits.org/). See `.cursor/skills/conventional-commits/SKILL.md`.
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/). See `.agents/skills/conventional-commits/SKILL.md`.
 
 ---
 
@@ -315,10 +315,10 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `src-tauri/tauri.conf.json` | Product identity, CSP, build hooks |
 | `src-tauri/capabilities/default.json` | Main-window capability ACL |
 | `src-tauri/Cargo.toml` | Rust crate dependencies and features |
-| `.github/workflows/check.yml` | CI — Rust toolchain, Tauri Linux deps, Playwright, check, test, `pnpm build` |
+| `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, and bridge checks from changed paths; required `check` aggregates applicable results |
 | `.github/workflows/release.yml` | Tag-triggered multi-OS installer build via `tauri-action` |
-| `scripts/dev` | Stable `test` / `check` / `format` / `secrets` / `smoke` / `mutate` surface |
-| `.cursor/mcp.json` | Recallium and Context7 MCP servers |
+| `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` surface |
+| `.codex/config.toml` | Recallium and Context7 MCP servers |
 | `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML |
 | `.vscode/settings.json` | Format on save (Biome / rust-analyzer); rust-analyzer linked to `src-tauri` |
 | `.gitignore` | Build, test, and tool artifacts; `.tanstack/` cache; `.env.*` except `.env.example`; `src-tauri/target/`; editor noise (`.idea/`, vim swap) |
@@ -575,7 +575,7 @@ Path resolution: FM_BRIDGE_PLUGINS → FM_STEAM_ROOT/BepInEx/plugins → default
 (same order as ./scripts/dev bridge-install). Developer build-and-copy from source stays on bridge-install.
 ```
 
-Non-Windows hosts return `unsupportedPlatform` for bridge commands. Full FM attach tests are manual on Windows. Linux CI runs Rust/Vitest/Playwright checks only; bridge `dotnet test` is local.
+Non-Windows hosts return `unsupportedPlatform` for bridge install commands. Full FM attach tests are manual on Windows. CI runs Rust, frontend, browser, and bridge checks only when their source paths or CI configuration change.
 
 ---
 
@@ -586,9 +586,9 @@ Non-Windows hosts return `unsupportedPlatform` for bridge commands. Full FM atta
 - **Component and hook tests** — colocated `*.test.tsx` or `*.test.ts` beside source; Vitest + jsdom.
 - **Integration tests** — feature flows under `features/<feature>/` or `app/routes/`; preferred over shallow unit tests for confidence.
 - **IPC mocks** — `mockIPC` in `src/testing/setup.ts`; prefer over ad-hoc invoke stubs.
-- **Template contract tests** — `scripts/test-*.sh`; always run via `./scripts/dev check`.
 - **E2E / smoke** — Playwright in `e2e/` with `tauri-ipc-stub.ts`; `./scripts/dev smoke` runs walking-skeleton checks. Vitest excludes `e2e/**`.
 - **Rust unit tests** — `#[cfg(test)]` modules in `src-tauri/src/`; run via `cargo test` in the gate.
+- **Bridge unit tests** — `bridge/Tests/` run through `./scripts/dev bridge-test` in Windows CI.
 
 ### 6.2 What each layer covers
 
@@ -600,13 +600,11 @@ Non-Windows hosts return `unsupportedPlatform` for bridge commands. Full FM atta
 
 ### 6.3 Test quality guidelines
 
-Test behaviour the user sees, not implementation details. Do not assert on Zustand or Query internal cache shape unless the contract is the subject. See `.cursor/skills/coding-standards/references/testing.md`.
+Test behaviour the user sees, not implementation details. Do not assert on Zustand or Query internal cache shape unless the contract is the subject. See `.agents/skills/coding-standards/references/testing.md`.
 
 ### 6.4 Playwright smoke scope
 
 `./scripts/dev smoke` runs Playwright against the **Vite dev server** in Chromium, not `pnpm tauri dev`. `e2e/tauri-ipc-stub.ts` injects `window.__TAURI_INTERNALS__` before the app loads so IPC calls never reach Rust. Demo value "persistence" in smoke is **in-page JavaScript memory** in the stub — not SQLite.
-
-**Terminology:** `CONTRIBUTING.md` and `AGENTS.md` use **smoke contract** for the dispatcher wiring test in `scripts/test-dev.sh` (Playwright smoke runs inside `./scripts/dev check`). This section defines **Playwright smoke scope** — what green smoke proves about product behaviour.
 
 | Playwright smoke covers | Playwright smoke does not cover |
 | --- | --- |
@@ -620,7 +618,7 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | --- | --- |
 | Frontend IPC wiring and React UI around commands | Vitest + `mockIPC` (`./scripts/dev test`) |
 | Command validation, services, migrations, SQLite | `cargo test` in `./scripts/dev check` |
-| Bridge scan, dump writers, file protocol | `dotnet test` in `bridge/` (fakes; no FM in Linux CI) |
+| Bridge scan, dump writers, file protocol | `./scripts/dev bridge-test` in Windows CI (fakes; no FM attach) |
 | Full-stack manual verification | `pnpm tauri dev` |
 | Automated real WebView e2e | Deferred — see [BACKLOG.md](./BACKLOG.md) (tauri-driver) and ponytail in `tauri.md` |
 
@@ -706,7 +704,7 @@ Each item links to an ADR with alternatives and consequences.
 - **Change visual language:** update [DESIGN.md](./DESIGN.md) first, then mirror tokens in `src/styles/global.css` `@theme`.
 - **Add persistence:** Migration in `db/migrations.rs`, service in `features/<feature>/service.rs`, commands in `commands.rs`. Open path stays `app_data_dir` + `APP_DB_FILE` via `db::open`.
 - **Change stack defaults:** Read ADRs, update decisions, then reconcile this file and scaffold configs.
-- **Coding standards detail:** `.cursor/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, `vite.md`
+- **Coding standards detail:** `.agents/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, `vite.md`
 
 ---
 
@@ -770,10 +768,10 @@ pnpm exec playwright install chromium
 pnpm tauri dev
 ```
 
-Husky runs `./scripts/dev check-fast` on every commit (and `check-rust` when `src-tauri/` is staged). Run `./scripts/dev check` before merge — CI runs the full gate.
+Husky runs `./scripts/dev check-fast` on every commit (and `check-rust` when `src-tauri/` is staged). Run `./scripts/dev check` before merge — CI selects the applicable product suites.
 
 ### CI parity
 
-GitHub Actions uses Node 24, installs the Rust toolchain with `rustfmt` and `clippy`, caches `src-tauri/target`, installs Tauri Linux dependencies, installs Playwright Chromium with `--with-deps`, then runs `./scripts/dev check` (includes smoke via dispatcher contract), `./scripts/dev test`, and `pnpm build`. Match local Node major version for fewer surprises.
+GitHub Actions selects product checks from changed paths. Frontend changes run `./scripts/dev check-app` and `./scripts/dev test`, then browser smoke. Rust changes install the Rust toolchain and Tauri Linux dependencies before `./scripts/dev check-rust`. Bridge changes run `./scripts/dev bridge-test` on Windows. The required `check` status aggregates every applicable job. Match local Node major version for fewer surprises.
 
 Release builds run on `v*` tag push via `.github/workflows/release.yml` — Windows, Ubuntu, and both macOS architectures. Installers are unsigned draft assets until signing secrets are configured.

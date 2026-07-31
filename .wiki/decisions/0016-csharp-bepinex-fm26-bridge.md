@@ -58,7 +58,7 @@ CONCEPT explicitly keeps save-file import out of MVP. Rejected for this decision
 - Implemented per [fm26-memory-read](../features/completed/fm26-memory-read.md) (toolchain → status → dump fields → schema freeze).
 - [ARCHITECTURE.md](../ARCHITECTURE.md) current-state sections describe the bridge boundary and file protocol.
 - In-app DLL install delivered in [bridge-plugin-install](../features/completed/bridge-plugin-install.md). In-app BepInEx bootstrap remains deferred.
-- Optional later: Windows CI `dotnet test` only if tests run without machine-local FM interop.
+- Delivered 2026-07-31: Windows CI runs `./scripts/dev bridge-test`; its unit tests run without machine-local FM interop.
 
 ## Related work
 
