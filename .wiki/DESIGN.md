@@ -180,7 +180,7 @@ spacing:
 
 > **Authority:** This document owns the visual language, design tokens, and UI decisions. It does not own product purpose ([CONCEPT.md](./CONCEPT.md)) or implemented system shape ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Search** surface (compact filter strip, editor modal, virtualized results table), and the **Player profile layout** (`/players/$uid` with Overview / Attributes / Roles tabs) are implemented. The Squad Planner surface is planned but not implemented. The optimizer surface remains deferred. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
+> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Search** surface (compact filter strip, editor modal, virtualized results table), the **Player profile layout** (`/players/$uid` with Overview / Attributes / Roles tabs), and the first **Squad Planner** club-family setup surface (`/planner`) are implemented. The dual-phase tactic editor and depth-chart matrix remain planned. The optimizer surface remains deferred. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 ## Brand & Style
 
@@ -552,9 +552,9 @@ Dedicated route `/players/$uid` (not an inspector overlay). Comparison inspector
 - **States:** no snapshot → EmptyState pointing at Load Data; unknown uid → “Player not in this snapshot”; loading skeletons match the active tab’s layout.
 - **Out of this layout for now:** position suitability map, radar charts, history/trend blocks, compare inspector, combined IP/OOP weight controls.
 
-### Squad planner layout (planned)
+### Squad planner layout
 
-Dedicated route `/planner`. The planner is one dense working surface with two modes: **Squad** for depth-chart assignments and **Tactic** for the shared dual-phase setup. It uses the active save and current snapshot shown in the global top bar.
+Dedicated route `/planner`. The planner is one dense working surface with two modes: **Squad** for depth-chart assignments and **Tactic** for the shared dual-phase setup. The initial club-family setup slice is implemented; the route uses the active save and current snapshot shown in the global top bar.
 
 - **First-use club family:** when the active app save has no planner configuration, replace the planner body with one setup Panel. Choose a required primary club from a searchable snapshot-derived list. Below it, show three source rows: Senior, Reserves, and Youth. The primary club supplies the matching `teamLevel` by default. Reserves and Youth each expose **Add associated club** for separately modeled B or youth teams; an associated club defaults to all team levels. Do not suggest relationships from similar names. Missing configured clubs remain visible with a warning and a Replace action.
 - **Page header:** `Squad Planner` as `headline-lg`; **Squad** | **Tactic** segmented mode control; **Club family** secondary action. Squad mode adds **Senior** | **Reserves** | **Youth** team tabs below the header. Tactic mode adds **IP** | **OOP** | **Both** view tabs and the IP/OOP weight control.

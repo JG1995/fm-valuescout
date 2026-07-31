@@ -12,7 +12,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 ## 1. Top-Level Shape
 
-**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Codex workflow (skills, specialist agents, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), and **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)).
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Codex workflow (skills, specialist agents, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)), and the first **Squad Planner** slice (save-scoped club-family setup at `/planner`).
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 
@@ -36,7 +36,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
-**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v3: `saves`, `snapshots`, `players`, `player_role_scores`).
+**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v4: `saves`, `snapshots`, `players`, `player_role_scores`, and save-scoped planner club-family sources).
 
 **FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), `status.json` / `dump.json` / diagnostics with phase timings. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
@@ -47,6 +47,8 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 **Player search:** Rust `features/search` owns `search_players` and `suggest_players` — parameterized SQLite queries against the active save's current snapshot (`players`, `player_role_scores`, JSON attribute columns). React `features/search` owns the `/search` route, virtualized results table, compact filter strip + editor modal, and top-bar global name search. Filter rules compile to a flat AND|OR AST in Rust; filters, combine mode, and sort live in TanStack Router search params. See [player-search](./features/completed/player-search.md).
 
 **Player profiles:** Rust `features/player` owns `get_player` — one player by `uid` from the active save's current snapshot, including attribute JSON maps and `player_role_scores` merged in-process with the scoring catalog (`displayName`, `phase`, `positionTags`). React `features/player-profile` owns Overview / Attributes / Roles tab panels; route `/players/$uid` with validated `tab` search param. Shared **ScoreBadge** (`table` / `card` / `hero` / `muted`) in `src/components/ui/score-badge/`. Search row activation and GlobalPlayerSearch navigate by route path only (no cross-feature imports). See [player-profiles](./features/completed/player-profiles.md).
+
+**Planner club family:** Rust `features/planner` owns save-scoped `planner_club_settings` and `planner_club_sources`, current-snapshot club discovery, and validation for `get_planner_club_family`, `list_planner_clubs`, and `save_planner_club_family`. React `features/planner` owns the `/planner` setup panel. The primary club seeds Senior, Reserves, and Youth sources with matching `teamLevel` filters; attached sources preserve explicit separate B-team or youth club mappings. App-shell save switching and Load Data invalidate planner queries alongside snapshot and player queries.
 
 **Auth:** None in the template default — chosen per fork via `/stack`
 
@@ -334,7 +336,7 @@ Examples use the scaffold **health** demo feature. Forked apps follow the same p
 
 ```text
 AppShellLayout (all routes via __root)
-  → AppNavRail — Dashboard + Search; railExpanded persisted in useLayoutStore (localStorage)
+  → AppNavRail — Dashboard + Search + Planner; railExpanded persisted in useLayoutStore (localStorage)
   → AppTopBar — GlobalPlayerSearch (Ctrl+K / Meta+K), ActiveSaveSelect, SnapshotFreshnessChip,
                 Load Data cap toggle/limit, Load Data + LoadDataOutcome banner
   → Main content — route Outlet (Dashboard, /search, …)
@@ -424,7 +426,7 @@ User clicks Load Data (AppTopBar)
   → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
 
-**Saves model** (migrations v2–v3, `src-tauri/src/db/migrations.rs`):
+**Saves model** (migrations v2–v4, `src-tauri/src/db/migrations.rs`):
 
 | Table | Role |
 | --- | --- |
@@ -432,6 +434,8 @@ User clicks Load Data (AppTopBar)
 | `snapshots` | One **current** snapshot per save (`is_current = 1`, partial unique index per `save_id`). Stores dump metadata: schema/game/bridge versions, `game_date`, `scan_truncated`, `max_accepted`, `player_count`, `loaded_at_utc`. Snapshot **history** is out of scope — schema allows future rows. |
 | `players` | Rows keyed by `(snapshot_id, uid)`. Scalars for list/search foundations; attribute maps and arrays as JSON text columns. `null` in dump JSON means unknown — never coerced to 0 on ingest. |
 | `player_role_scores` | Per-player role-fit scores keyed by `(snapshot_id, uid, role_id)` with `phase` (`in_possession` \| `out_of_possession`) and nullable integer `score` (0–100). FK to `players` with `ON DELETE CASCADE`. Index on `(snapshot_id, role_id)` for role-filtered queries. |
+| `planner_club_settings` | One optional club-family configuration per save. Stores the explicitly selected primary club and survives current-snapshot replacement. |
+| `planner_club_sources` | Primary and attached club sources assigned to Senior, Reserves, or Youth, with an optional `team_level` filter. Source rows reference the save, not a snapshot. |
 
 **Query and save-management IPC** (`features/snapshot/commands.rs`):
 
@@ -451,6 +455,19 @@ Snapshot overview + sanity list
   → list_sanity_players(limit ≤ 20) → name, ca, club, proofRoleScore (DLP IP — deep_lying_playmaker_ip)
 
 Route loader prefetches saves, current snapshot, and sanity list alongside health/demo queries.
+
+```
+
+**Planner club-family IPC** (`features/planner/commands.rs`):
+
+```text
+User opens /planner
+  → route loader: ensureQueryData(current snapshot + club family + distinct current-snapshot clubs)
+  → no snapshot: show Load Data guidance
+  → snapshot present: PlannerClubFamilyPanel reads get_planner_club_family and list_planner_clubs
+  → save: invokeCommand("save_planner_club_family", { primaryClub, sources })
+  → Rust validates team, team level, name length, and duplicate sources, then replaces only that save's source rows
+  → Load Data and active-save changes invalidate planner query keys from AppTopBar
 ```
 
 `request_player_dump` remains registered for tests and low-level scan-only use; the **Load Data** button in `AppTopBar` calls `load_data`.
@@ -609,9 +626,9 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Playwright smoke covers | Playwright smoke does not cover |
 | --- | --- |
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
-| Walking-skeleton UI with stubbed IPC: app shell (nav rail with Search, top bar with global search), status panels, demo-value form flow, Search route | Real `#[tauri::command]` handlers in Rust |
+| Walking-skeleton UI with stubbed IPC: app shell (nav rail with Search and Planner, top bar with global search), status panels, demo-value form flow, Search route, no-snapshot Planner route | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
-| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `search_players`, `suggest_players`, `get_player`, `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
+| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `search_players`, `suggest_players`, `get_player`, `get_planner_club_family`, `list_planner_clubs`, `save_planner_club_family`, `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
 | Bridge panel, save switcher, snapshot overview, plugin install section, top-bar save selector, and Load Data button render with stubbed IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, SQLite ingest, or Steam-folder DLL install |
 
 | Concern | Owner in this template |

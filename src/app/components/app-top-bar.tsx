@@ -6,6 +6,7 @@ import { fieldClasses } from "@/components/ui/field/field-styles";
 import { LoadDataOutcome } from "@/features/memory-read/components/load-data-outcome";
 import { useLoadData } from "@/features/memory-read/hooks/use-load-data";
 import { useLoadDataPreferences } from "@/features/memory-read/stores/use-load-data-preferences";
+import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { GlobalPlayerSearch } from "@/features/search/components/global-player-search";
@@ -36,6 +37,7 @@ export function AppTopBar() {
       void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
       void queryClient.invalidateQueries({ queryKey: searchKeys.all });
       void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+      void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
     },
   });
 
@@ -58,6 +60,7 @@ export function AppTopBar() {
           onSwitched={() => {
             void queryClient.invalidateQueries({ queryKey: searchKeys.all });
             void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+            void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
           }}
         />
         <SnapshotFreshnessChip />

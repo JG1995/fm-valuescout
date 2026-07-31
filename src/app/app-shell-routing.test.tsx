@@ -97,4 +97,12 @@ describe("app shell routing", () => {
       await screen.findByRole("heading", { name: "Page not found" }),
     ).toBeInTheDocument();
   });
+
+  it("lists Planner in the nav rail", async () => {
+    renderWithProviders();
+
+    expect(
+      await screen.findByRole("link", { name: "Planner" }),
+    ).toBeInTheDocument();
+  });
 });

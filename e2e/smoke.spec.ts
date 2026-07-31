@@ -70,6 +70,37 @@ test.describe("walking skeleton smoke", () => {
     await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
   });
 
+  test("planner route shows no-snapshot Load Data guidance", async ({
+    page,
+  }) => {
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("heading", { level: 1, name: "Squad Planner" }),
+    ).toBeVisible();
+    await expect(main.getByText("No data loaded for this save")).toBeVisible();
+    await expect(
+      main.getByText(/Use Load Data to scan Football Manager/i),
+    ).toBeVisible();
+  });
+
+  test("planner route shows first-use club setup for a loaded snapshot", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("heading", { level: 1, name: "Squad Planner" }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("combobox", { name: "Primary club" }),
+    ).toBeVisible();
+    await expect(main.getByText("Set up your club family")).toBeVisible();
+  });
+
   test("player profile route shows no-snapshot empty state from stubbed IPC", async ({
     page,
   }) => {

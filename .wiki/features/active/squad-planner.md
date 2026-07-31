@@ -49,10 +49,10 @@ Let the user model one FM26 tactic and organize the selected club family into Se
 
 ## Current-state map
 
-- **Relevant components:** `AppNavRail` exposes Dashboard and Search only. The app has no Planner route. Shared `Panel`, `Modal`, `Button`, `SelectField`, `EmptyState`, and `ScoreBadge` primitives cover most planned UI.
+- **Relevant components:** `AppNavRail` exposes Dashboard, Search, and Planner. The `/planner` route currently owns the no-snapshot state and club-family setup panel. Shared `Panel`, `Modal`, `Button`, `SelectField`, `EmptyState`, and `ScoreBadge` primitives cover most planned UI.
 - **Data model:** `players` already stores `current_club`, `parent_club`, `team_level`, positions, and player UID. `player_role_scores` stores every IP/OOP role score for the current snapshot.
-- **Persistence and migrations:** SQLite migration v3 is current. Snapshot replacement cascade-deletes players and role scores, so planner state must use new save-scoped tables without snapshot foreign keys.
-- **Existing behavioral assumptions:** one app save is active; all player reads use its current snapshot; Load Data and save switching invalidate snapshot, search, and profile query trees.
+- **Persistence and migrations:** SQLite migration v4 is current. Snapshot replacement cascade-deletes players and role scores, while `planner_club_settings` and `planner_club_sources` stay save-scoped without snapshot foreign keys.
+- **Existing behavioral assumptions:** one app save is active; all player reads use its current snapshot; Load Data and save switching invalidate snapshot, planner, search, and profile query trees.
 - **Architectural seams:** React feature code belongs in `src/features/planner`; Rust persistence and queries belong in `src-tauri/src/features/planner`; the route composes planner and snapshot context without cross-feature imports.
 - **Tests and validation:** Vitest + RTL own route and interaction behavior; Rust tests own migrations, validation, uniqueness, persistence, and score joins; Playwright smoke owns the browser planner path with stubbed IPC.
 - **Primary risks:** club relationships are absent from the dump; club identity is a name string; phase-slot linkage must remain clear during tactic edits; horizontally growing strings must remain usable at 1280x800.
@@ -123,7 +123,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 #### Commit 1 — Configure club-family sources
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add save-scoped club-family persistence, distinct-club and source-management IPC, the `/planner` shell, nav entry, no-snapshot Load Data guidance, first-use primary-club setup, and editable Reserves/Youth associated-club sources. Seed the primary club's three team-level sources and keep missing mappings visible after refresh.
 

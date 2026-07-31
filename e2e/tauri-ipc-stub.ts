@@ -1,9 +1,15 @@
 import type { Page } from "@playwright/test";
 
-export async function stubTauriIpc(page: Page) {
+type SmokeStubOptions = {
+  plannerSnapshot?: boolean;
+};
+
+export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
+  const plannerSnapshot = options.plannerSnapshot ?? false;
   await page.addInitScript({
     content: `
       let demoValue = "";
+      const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
 
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
@@ -84,7 +90,24 @@ export async function stubTauriIpc(page: Page) {
           }
 
           if (cmd === "get_current_snapshot") {
-            return null;
+            return plannerSnapshot
+              ? {
+                  id: 1,
+                  saveId: 1,
+                  schemaVersion: 5,
+                  generatedAtUtc: "2026-07-28T15:00:00.000Z",
+                  gameVersion: "26.0.0",
+                  supportedGameVersion: "26.0.0",
+                  bridgeVersion: "0.1.0",
+                  protocolVersion: 1,
+                  gameDate: null,
+                  gameDateSource: "unknown",
+                  scanTruncated: false,
+                  maxAccepted: null,
+                  playerCount: 3,
+                  loadedAtUtc: "2026-07-28T15:05:00.000Z",
+                }
+              : null;
           }
 
           if (cmd === "list_sanity_players") {
@@ -101,6 +124,20 @@ export async function stubTauriIpc(page: Page) {
 
           if (cmd === "get_player") {
             return null;
+          }
+
+          if (cmd === "get_planner_club_family") {
+            return { primaryClub: null, sources: [] };
+          }
+
+          if (cmd === "list_planner_clubs") {
+            return plannerSnapshot
+              ? ["Barcelona", "Barca Athletic", "Barcelona U19"]
+              : [];
+          }
+
+          if (cmd === "save_planner_club_family") {
+            return { primaryClub: args?.primaryClub ?? null, sources: [] };
           }
 
           if (cmd === "load_data") {
