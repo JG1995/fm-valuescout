@@ -173,6 +173,7 @@ run_check() {
   bash -n "$repo_root/scripts/dev"
   bash -n "$repo_root/scripts/test-dev.sh"
   bash -n "$repo_root/scripts/test-agent-definitions.sh"
+  bash -n "$repo_root/scripts/test-codex-config.sh"
   bash -n "$repo_root/scripts/test-cursor-config.sh"
   bash -n "$repo_root/scripts/test-ci-workflow.sh"
   bash -n "$repo_root/scripts/test-release-workflow.sh"
@@ -180,6 +181,7 @@ run_check() {
   run_app_quality_gates
 
   "$repo_root/scripts/test-agent-definitions.sh"
+  "$repo_root/scripts/test-codex-config.sh"
   "$repo_root/scripts/test-cursor-config.sh"
   "$repo_root/scripts/test-ci-workflow.sh"
   "$repo_root/scripts/test-release-workflow.sh"
