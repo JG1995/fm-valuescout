@@ -103,7 +103,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 1 — Document the Codex migration contract
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `8c8d7ac`
 
 **Work:** Create the active migration ledger and mark the tooling initiative active without changing the product development sequence.
 
@@ -118,7 +118,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 2 — Add Codex project configuration
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add `.codex/config.toml` with Recallium and Context7, then add contract validation for the trusted project configuration.
 
@@ -190,21 +190,21 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 **PR:** PR 1 — Replace Cursor workflow with Codex
 
-**Commit:** Document the Codex migration contract
+**Commit:** Add Codex project configuration
 
 ### RED test (active commit)
 
-Skipped. This commit changes documentation and workflow state only. Commit 2 will begin with the smallest contract test that rejects missing Codex project configuration.
+Add a Codex configuration contract test that fails when `.codex/config.toml` is absent or does not define both Recallium and Context7. The test would catch a configuration that cannot supply the repository's required external context.
 
 ### Expected outcome
 
-The approved migration has one active ledger, and `.wiki/TODO.md` identifies it as an active tooling initiative without changing the product sequence.
+Codex can load a trusted project configuration with Recallium and Context7, and the repository gate validates that configuration.
 
 ### Explicit exclusions
 
-- Do not create `.codex/` or `.agents/` files.
-- Do not change validation scripts, CI, application code, tests, or Git hooks.
-- Do not remove or edit `.cursor/`.
+- Do not create workflow skills, specialist agents, or hooks.
+- Do not change application code, product documentation, or Git hooks.
+- Do not remove or edit the existing Cursor configuration.
 
 ## Discoveries and replanning
 
@@ -214,6 +214,7 @@ The approved migration has one active ledger, and `.wiki/TODO.md` identifies it 
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
+| PR 1 | Document the Codex migration contract | `8c8d7ac` | Added the approved delivery plan and marked the tooling initiative active. |
 
 ## Final validation
 
