@@ -48,6 +48,7 @@ Keep guidance in the narrowest appropriate layer:
 - `.wiki/CONCEPT.md` owns product purpose and boundaries.
 - `.wiki/ARCHITECTURE.md` owns the current implemented system, including its stack and operational constraints.
 - `.wiki/features/active/` owns current multi-commit feature intent and delivery plans (PRs and commits).
+- `.agents/WORKFLOW.md` owns the canonical planning, model-routing, review-evidence, escalation, and replanning policy.
 - `.agents/skills/` owns named workflow procedures and reusable, task- or stack-specific operating guidance, when needed.
 - `.codex/agents/` owns specialist role prompts. It must not duplicate this contract.
 
@@ -57,8 +58,8 @@ Do not treat `.work/` as project truth. Do not document proposed behaviour as im
 
 The development cycle follows a repeating loop. Invoke the Codex workflow skills from chat, or follow the loop internally for trivial work.
 
-1. **Feature plan** (`workflow-plan-feature`) — plan one feature: PR and commit breakpoints, high-level work descriptions.
-2. **Build** (`workflow-build`) — implement the active commit test-first (RED → GREEN → REFACTOR).
+1. **Feature plan** (`workflow-plan-feature`) — plan one feature in a planning context: PR and commit breakpoints, implementation packets, validation contracts, and independent implementation/review profiles.
+2. **Build** (`workflow-build`) — use the active commit's assigned implementation profile and packet, then implement test-first (RED → GREEN → REFACTOR).
 3. **Checkpoint** (`workflow-checkpoint`) — stage exact changes, run the gate, present evidence and review, wait for approval, commit locally.
 4. **Fix** (`workflow-fix`) — when review blocks, address delegated findings (default: CRITICAL, HIGH, and MEDIUM), then checkpoint again.
 5. **Reassess** — update the delivery plan and select the next commit; repeat from build until the plan is done.
@@ -69,6 +70,8 @@ The development cycle follows a repeating loop. Invoke the Codex workflow skills
 The user never invokes these skills directly on a trivial change — they just describe the fix and you follow the full loop internally.
 
 For broad features, `workflow-plan-feature` produces a delivery plan (PRs and commits) before the first `workflow-build` cycle. `workflow-stack` and `workflow-roadmap` precede this for new projects.
+
+Model capability and reasoning effort are separate choices. Score Capability Demand and Effort Demand for implementation, then score Review Demand independently. Use the exact profile recorded in the active ledger. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. See `.agents/WORKFLOW.md` for scoring, hard floors, the Luna punch-up exception, evidence requirements, and escalation routes.
 
 ## Commands and validation
 
@@ -101,7 +104,7 @@ For non-trivial behaviour:
 
 Prompts guide the workflow. Deterministic commands and tests provide evidence. Do not weaken, delete, skip, or broadly rewrite tests merely to make a change pass.
 
-Escalate after two failed repair loops, when the requested behaviour conflicts with the current architecture, when the feature graph becomes invalid, or when a genuine technical unknown requires an optional `workflow-spike` (runtime experiment, not research-only). Every non-trivial staged change requires a separate read-only reviewer pass when the reviewer role is available. Otherwise use the documented manual fallback.
+Increase reasoning effort when the model has the right architecture but incomplete execution. Increase model capability after a structural misunderstanding. Stop and replan when a Known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes. Use optional `workflow-spike` only for a genuine runtime unknown. Every non-trivial staged change requires a separate fresh-context read-only reviewer pass with the ledger-assigned review profile.
 
 ## Design and execution
 
@@ -212,6 +215,6 @@ Follow `.wiki/INDEX.md` for documentation ownership. Trivial changes normally ne
 
 The Documentation Steward may change documentation and feature-ledger state, but must not change implementation, tests, executable scripts, CI, Codex configuration, agent definitions, command templates, or Git state.
 
-The main session is the `worker`. Dispatch specialist agents explicitly. Do not route them automatically. See `.codex/README.md` for role selection and MCP details. The `reviewer` and `documentation-steward` model settings live in their respective `.codex/agents/*.toml` files. Do not override them when dispatching.
+The main session is the `worker`. Dispatch specialist agents explicitly. See `.codex/README.md` for role selection and MCP details. The named `planner`, `reviewer`, and `documentation-steward` definitions provide default profiles. When a ledger assigns another implementation or review profile, use a separate agent with that exact model and effort instead of overriding a pinned named role.
 
 When you need current library API or configuration details, use Context7 MCP (`resolve-library-id`, then `query-docs`). Use web search and fetch for bounded external research. Recallium is configured in `.codex/config.toml`. Never put credentials in repository files.
