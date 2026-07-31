@@ -149,7 +149,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 2 — Profile route and Overview tab
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `f318171`
 
 **Work:** Add `/players/$uid` route with validated `tab` search param; loader prefetches player; Overview tab shows identity/basic fields with shared formatters; empty states for no snapshot / not found; tab chrome (Attributes/Roles can be empty panels). Page title = player name.
 
@@ -164,7 +164,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 3 — Attributes tab
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Attributes tab: grouped visible attributes, Hidden, Personality; `—` for null; tabular figures per DESIGN.
 
@@ -210,19 +210,19 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 **PR:** 1 — Player profile page and entry points
 
-**Commit:** Profile route and Overview tab
+**Commit:** Attributes tab
 
 ### RED test (active commit)
 
-Vitest: navigate to `/players/$uid` with mockIPC `get_player` returning a fixture; Overview shows player name and basic identity fields; unknown uid shows not-found empty state; `tab` search param selects Attributes/Roles chrome without full tab content.
+Vitest: Attributes tab shows Technical/Mental/Physical/Goalkeeping (or present groups), Hidden, and Personality; a null attribute renders as `—` not `0`; known integer attributes appear with tabular figures.
 
 ### Expected outcome
 
-`/players/$uid` route with Overview tab and tab chrome; Attributes/Roles empty panels; no Search/Ctrl+K wiring yet.
+Attributes tab filled with grouped visible + hidden + personality values; Roles still empty placeholder; no Search/Ctrl+K wiring.
 
 ### Explicit exclusions
 
-Full Attributes/Roles content, Search/Ctrl+K navigation, ScoreBadge (optional placeholder ok).
+Roles tab content, ScoreBadge, Search/Ctrl+K navigation, radar/suitability.
 
 ## Discoveries and replanning
 
@@ -235,6 +235,7 @@ Full Attributes/Roles content, Search/Ctrl+K navigation, ScoreBadge (optional pl
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
 | 1 | get_player IPC for current-snapshot detail | `9bab503` | Rust `features/player`; null attrs/scores preserved |
+| 1 | Profile route and Overview tab | `f318171` | `/players/$uid` Overview + tab chrome; empty Attr/Roles panels |
 
 ## Final validation
 
