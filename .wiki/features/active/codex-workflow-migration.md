@@ -50,7 +50,7 @@ Codex will use four repository-owned surfaces:
 - `.codex/agents/` for specialist agent configuration.
 - `.codex/config.toml` for trusted project configuration and MCP servers.
 
-The human workflow guide will live at `.codex/README.md`. Disposable agent work will move from `.cursor/work/` to the ignored `.work/` directory. Validation scripts will check the Codex surfaces through `./scripts/dev`.
+The human workflow guide lives at `.codex/README.md`. Disposable agent work uses the ignored `.work/` directory. Codex guidance is reviewed as configuration and documentation; repository checks focus on product behavior and code quality.
 
 ## Uncertainty register
 
@@ -186,19 +186,59 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 **Provisional commit:** `chore(workflow): remove Cursor compatibility`
 
+### PR 2 — Focus validation on product behavior
+
+**Status:** Active
+
+**Provisional PR title:** `chore(validation): focus checks on product behavior`
+
+**Purpose:** Remove self-testing workflow contracts from the product gate, keep static and product checks, and run the C# bridge test suite in CI.
+
+**Depends on:** PR 1 — Codex workflow migration.
+
+#### Commit 1 — Replace workflow contracts with product checks
+
+**Status:** Completed — hash pending checkpoint commit
+
+**Work:** Remove fixed-inventory, fixed-wording, workflow-YAML, and dispatcher contract scripts. Keep `check` for static analysis, secret scanning, and Rust quality tests; make browser smoke explicit in CI; add `bridge-test` and a Windows CI job for the C# bridge suite.
+
+**Out of scope for this commit:**
+
+- Changing application behavior, product tests, or production dependencies.
+- Broad documentation reconciliation beyond this ledger.
+
+**Validation:** Run the existing frontend, Rust, browser smoke, and bridge product suites where their toolchains are available; run the full `check` gate; inspect CI workflow syntax and diff.
+
+**Provisional commit:** `chore(validation): focus checks on product behavior`
+
+#### Commit 2 — Document product-focused validation
+
+**Status:** Pending
+
+**Work:** Update contributor, architecture, bridge, and repository guidance to describe product-test ownership and remove workflow-contract terminology.
+
+**Out of scope for this commit:**
+
+- New product features or additional test frameworks.
+- Changing Codex skills, agents, or MCP configuration.
+
+**Validation:** Check documentation links and terminology, then run the product validation commands available locally.
+
+**Provisional commit:** `docs(validation): document product-focused checks`
+
 ## Active work
 
-**PR:** PR 1 — Replace Cursor workflow with Codex — delivery complete
+**PR:** PR 2 — Focus validation on product behavior
 
-**Commit:** None
+**Commit:** Commit 1 — Replace workflow contracts with product checks
 
 ### Next step
 
-Run `workflow-finish-feature` to complete final validation, feature review, and documentation reconciliation before archiving this ledger.
+Implement Commit 1, then checkpoint it before moving to the documentation commit.
 
 ### Delivered outcome
 
-The repository validates only Codex workflow surfaces, disposable work uses `.work/`, and no live guidance or CI fixture depends on `.cursor/`.
+The repository uses Codex-only guidance, disposable work uses `.work/`, and no live guidance or CI fixture depends on `.cursor/`.
 
 ### Preserved exclusions
 
@@ -210,6 +250,7 @@ The repository validates only Codex workflow surfaces, disposable work uses `.wo
 - **Planned:** Add RED contract checks in the documentation commit. **Changed:** Record the RED test as the first action of commit 2. **Why:** A committed failing contract test would violate the invariant that every migration commit keeps trunk green.
 - **Planned:** Preserve Cursor commands as project-local Codex custom prompts. **Changed:** Port them as `workflow-*` skills. **Why:** Codex custom prompts are user-level, while versioned repository skills are project-local and are the supported replacement.
 - **Planned:** Move disposable-work references and the ignore rule with Cursor removal. **Changed:** Add the `.work/` ignore rule while porting skills. **Why:** The copied debug and spike skills write disposable artifacts there; ignoring it now preserves the scratch-work boundary during the transition.
+- **Planned:** Keep Codex workflow contracts in the full gate after migration. **Changed:** Remove them in PR 2 and run product suites directly. **Why:** Fixed inventories, text markers, and CI YAML copies test development process rather than FM ValueScout behavior.
 
 ## Completed work
 

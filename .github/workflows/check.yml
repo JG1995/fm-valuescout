@@ -41,5 +41,18 @@ jobs:
         run: ./scripts/dev check
       - name: Run tests
         run: ./scripts/dev test
+      - name: Run browser smoke tests
+        run: ./scripts/dev smoke
       - name: Production build
         run: pnpm build
+
+  bridge-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "6.0.x"
+      - name: Run bridge unit tests
+        shell: bash
+        run: ./scripts/dev bridge-test
