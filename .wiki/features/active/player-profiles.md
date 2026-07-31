@@ -228,6 +228,7 @@ Sanity-list links; new nav-rail item; comparison / radar / suitability.
 - Commit 3: Visible attribute group membership is a static FE list in `attribute-groups.ts` aligned to FM Technical/Mental/Physical/Goalkeeping and `Fm263Layout` dump keys (not shared with search filter-registry — no cross-feature import).
 - Commit 4: Shared `ScoreBadge` in `src/components/ui/score-badge/` (`table`/`card`/`hero`/`muted`); position-family grouping in `position-families.ts` (primary family = first known tag); Overview best-role = highest non-null score, catalog-order ties; `role="img"` + aria-label for Biome a11y.
 - Commit 5: Search row click/Enter and GlobalPlayerSearch hit activation navigate to `/players/$uid` (no name-filter redirect); arrow keys move focus between results rows.
+- Finish-feature remediation: Roles UI maps IPC/DB phase `in_possession`/`out_of_possession` to IP/OOP (fixtures had used short `ip`/`oop` and masked the bug); profile Suspense fallback uses tab-shaped loading skeletons; Overview title-cases dump `preferredFoot`.
 
 ## Completed work
 

@@ -17,6 +17,7 @@ import {
   parseProfileTab,
 } from "@/features/player-profile/utils/profile-tab";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { cn } from "@/utils/cn";
 
 export type PlayerProfileSearch = {
   tab: ProfileTab;
@@ -44,10 +45,129 @@ export const Route = createFileRoute("/players/$uid")({
   component: PlayerProfileRoute,
 });
 
-function ProfileFallback() {
+function SkeletonBar({ className }: { className?: string }) {
   return (
-    <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
-      Loading player…
+    <div
+      className={cn(
+        "rounded-sm bg-surface-container-high motion-safe:animate-[pulse_1.5s_ease-in-out_infinite]",
+        className,
+      )}
+    />
+  );
+}
+
+const OVERVIEW_FIELD_SLOTS = [
+  "f1",
+  "f2",
+  "f3",
+  "f4",
+  "f5",
+  "f6",
+  "f7",
+  "f8",
+] as const;
+const ATTRIBUTE_SECTION_SLOTS = ["s1", "s2", "s3"] as const;
+const ATTRIBUTE_ROW_SLOTS = ["r1", "r2", "r3", "r4", "r5", "r6"] as const;
+const ROLE_SECTION_SLOTS = ["s1", "s2", "s3"] as const;
+const ROLE_ROW_SLOTS = ["r1", "r2", "r3"] as const;
+
+function OverviewSkeleton() {
+  return (
+    <Panel title="Overview">
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <SkeletonBar className="size-12 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <SkeletonBar className="h-3 w-20" />
+            <SkeletonBar className="h-4 w-40" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+          {OVERVIEW_FIELD_SLOTS.map((slot) => (
+            <div key={slot} className="space-y-2">
+              <SkeletonBar className="h-3 w-16" />
+              <SkeletonBar className="h-4 w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function AttributesSkeleton() {
+  return (
+    <Panel title="Attributes">
+      <div className="space-y-6">
+        {ATTRIBUTE_SECTION_SLOTS.map((section) => (
+          <div key={section} className="space-y-3">
+            <SkeletonBar className="h-4 w-28" />
+            <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+              {ATTRIBUTE_ROW_SLOTS.map((row) => (
+                <div
+                  key={`${section}-${row}`}
+                  className="flex items-baseline justify-between gap-3"
+                >
+                  <SkeletonBar className="h-4 w-24" />
+                  <SkeletonBar className="h-4 w-8" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function RolesSkeleton() {
+  return (
+    <Panel title="Roles">
+      <div className="space-y-6">
+        {ROLE_SECTION_SLOTS.map((section) => (
+          <div key={section} className="space-y-3">
+            <SkeletonBar className="h-4 w-36" />
+            <ul className="space-y-2">
+              {ROLE_ROW_SLOTS.map((row) => (
+                <li
+                  key={`${section}-${row}`}
+                  className="flex min-w-0 items-center justify-between gap-3"
+                >
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <SkeletonBar className="h-4 w-40" />
+                    <SkeletonBar className="h-3 w-10" />
+                  </div>
+                  <SkeletonBar className="size-7 shrink-0 rounded-full" />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function ProfileFallback({ tab }: { tab: ProfileTab }) {
+  return (
+    <div
+      className="space-y-gutter"
+      aria-busy="true"
+      aria-live="polite"
+      data-testid="profile-loading"
+    >
+      <SkeletonBar className="h-8 w-48" />
+      <div
+        className="inline-flex h-9 w-72 rounded-full bg-surface-container-high"
+        aria-hidden
+      />
+      {tab === "overview" ? <OverviewSkeleton /> : null}
+      {tab === "attributes" ? <AttributesSkeleton /> : null}
+      {tab === "roles" ? <RolesSkeleton /> : null}
+      <p className="sr-only">Loading player…</p>
+      <p className="hidden text-body-md text-on-surface-variant motion-reduce:block">
+        Loading…
+      </p>
     </div>
   );
 }
@@ -127,7 +247,7 @@ function PlayerProfileRoute() {
   }
 
   return (
-    <Suspense fallback={<ProfileFallback />}>
+    <Suspense fallback={<ProfileFallback tab={tab} />}>
       <PlayerProfileContent uid={uid} tab={tab} onTabChange={onTabChange} />
     </Suspense>
   );

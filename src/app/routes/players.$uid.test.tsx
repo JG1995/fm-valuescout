@@ -256,5 +256,8 @@ describe("player profile route", () => {
     expect(
       screen.getByLabelText("Advanced Forward: 55, Rotation"),
     ).toBeInTheDocument();
+
+    const goalkeeper = screen.getByRole("region", { name: "Goalkeeper" });
+    expect(within(goalkeeper).getByText("IP")).toBeInTheDocument();
   });
 });

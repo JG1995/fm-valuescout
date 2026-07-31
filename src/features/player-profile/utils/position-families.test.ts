@@ -14,7 +14,7 @@ function role(
     Partial<Pick<PlayerRoleScore, "phase">>,
 ): PlayerRoleScore {
   return {
-    phase: "ip",
+    phase: "in_possession",
     ...partial,
   };
 }

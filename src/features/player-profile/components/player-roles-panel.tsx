@@ -3,12 +3,7 @@ import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { formatMissable } from "@/utils/format";
 import type { PlayerDetail } from "../types/player-detail";
 import { groupRolesByFamily } from "../utils/position-families";
-
-function phaseLabel(phase: string): string {
-  if (phase === "ip") return "IP";
-  if (phase === "oop") return "OOP";
-  return phase.toUpperCase();
-}
+import { rolePhaseLabel } from "../utils/role-phase";
 
 type PlayerRolesPanelProps = {
   player: PlayerDetail;
@@ -42,7 +37,7 @@ export function PlayerRolesPanel({ player }: PlayerRolesPanelProps) {
                         {role.displayName}
                       </p>
                       <p className="text-[11px] text-on-surface-variant">
-                        {phaseLabel(role.phase)}
+                        {rolePhaseLabel(role.phase)}
                       </p>
                     </div>
                     {role.score === null ? (

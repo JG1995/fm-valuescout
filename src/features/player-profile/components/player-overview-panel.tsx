@@ -1,6 +1,11 @@
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
-import { formatMissable, formatMoney, formatPlayerDob } from "@/utils/format";
+import {
+  formatMissable,
+  formatMoney,
+  formatPlayerDob,
+  formatPreferredFoot,
+} from "@/utils/format";
 import type { PlayerDetail } from "../types/player-detail";
 import { bestRoleScore } from "../utils/position-families";
 
@@ -101,7 +106,7 @@ export function PlayerOverviewPanel({ player }: PlayerOverviewPanelProps) {
           />
           <Field
             label="Preferred foot"
-            value={formatMissable(player.preferredFoot)}
+            value={formatPreferredFoot(player.preferredFoot)}
           />
           {flags.length > 0 ? (
             <Field label="Status" value={flags.join(" · ")} />
