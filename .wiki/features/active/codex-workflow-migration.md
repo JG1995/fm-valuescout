@@ -146,7 +146,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 4 — Port specialist agents to Codex
 
-**Status:** Active
+**Status:** Completed — `a8cb615`
 
 **Work:** Add Codex TOML definitions for the reviewer and documentation steward, translate delegation instructions, and validate their scope and permissions.
 
@@ -160,7 +160,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 5 — Make Codex the documented workflow
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Reduce `AGENTS.md` to durable rules and routing, add the Codex workflow guide, and update contributor and wiki documentation to use Codex terminology and paths.
 
@@ -190,20 +190,20 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 **PR:** PR 1 — Replace Cursor workflow with Codex
 
-**Commit:** Port specialist agents to Codex
+**Commit:** Make Codex the documented workflow
 
 ### RED test (active commit)
 
-Add a Codex agent-definition contract test that fails when the reviewer or documentation steward is absent, malformed, or exceeds its intended scope and permissions.
+Add documentation-link and terminology contract coverage that fails when the Codex workflow guide or required contributor documentation is absent, stale, or points to Cursor-only workflow surfaces.
 
 ### Expected outcome
 
-Codex can use a read-only reviewer and a documentation-only steward from `.codex/agents/`, with their boundaries validated through `./scripts/dev`.
+`AGENTS.md`, the Codex workflow guide, contributor documentation, and relevant wiki references describe the Codex workflow while preserving the migration invariants.
 
 ### Explicit exclusions
 
-- Do not cut over broad documentation, remove Cursor compatibility, or add hooks.
-- Do not change application code, product documentation, Git hooks, or the Codex MCP configuration.
+- Do not remove Cursor compatibility, add hooks, or change application code or product documentation.
+- Do not change Git hooks, Codex MCP configuration, or specialist agent definitions.
 - Do not remove the existing Cursor configuration.
 
 ## Discoveries and replanning
@@ -219,6 +219,7 @@ Codex can use a read-only reviewer and a documentation-only steward from `.codex
 | PR 1 | Document the Codex migration contract | `8c8d7ac` | Added the approved delivery plan and marked the tooling initiative active. |
 | PR 1 | Add Codex project configuration | `187c635` | Added Recallium and Context7 project MCP configuration with gate validation. |
 | PR 1 | Port repository skills to Codex | `eaba444` | Added copied domain skills, `workflow-*` skills, and their validation contract. |
+| PR 1 | Port specialist agents to Codex | `a8cb615` | Added read-only reviewer and documentation-only steward definitions, workflow dispatch, and boundary validation. |
 
 ## Final validation
 
