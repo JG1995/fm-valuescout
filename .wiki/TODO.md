@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Codex workflow migration](./features/active/codex-workflow-migration.md) — replace Cursor-specific commands, agents, skills, rules, and MCP configuration while preserving the existing delivery contract
+- [Codex workflow migration](./features/active/codex-workflow-migration.md) — replace Cursor-specific workflow configuration while preserving the existing delivery contract
 
 ## Plan next
 

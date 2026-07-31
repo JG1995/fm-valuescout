@@ -99,7 +99,9 @@ prepare_controlled_checkout() {
     "$repo_root/tsconfig.node.json" "$repo_root/vite.config.ts" \
     "$repo_root/playwright.config.ts" "$repo_root/index.html" \
     "$repo_root/.gitignore" "$repo_root/.secretlintrc.json" \
-    "$repo_root/.secretlintignore" "$checkout/"
+    "$repo_root/.secretlintignore" "$repo_root/AGENTS.md" \
+    "$repo_root/README.md" "$repo_root/CONTRIBUTING.md" "$checkout/"
+  cp -R "$repo_root/.wiki" "$checkout/"
   cp -R "$repo_root/src" "$repo_root/public" "$repo_root/e2e" "$checkout/"
   rsync -a --exclude target "$repo_root/src-tauri/" "$checkout/src-tauri/"
 

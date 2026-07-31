@@ -160,7 +160,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 5 — Make Codex the documented workflow
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Reduce `AGENTS.md` to durable rules and routing, add the Codex workflow guide, and update contributor and wiki documentation to use Codex terminology and paths.
 
@@ -174,7 +174,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 6 — Remove Cursor compatibility
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Replace Cursor-specific contract scripts and CI fixture wiring, move disposable-work references, remove `.cursor/`, and eliminate stale live references.
 
@@ -190,21 +190,20 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 **PR:** PR 1 — Replace Cursor workflow with Codex
 
-**Commit:** Make Codex the documented workflow
+**Commit:** Remove Cursor compatibility
 
 ### RED test (active commit)
 
-Add documentation-link and terminology contract coverage that fails when the Codex workflow guide or required contributor documentation is absent, stale, or points to Cursor-only workflow surfaces.
+Replace Cursor-specific contract coverage and CI fixture wiring with Codex-only validation that fails while any live workflow surface still depends on `.cursor/`.
 
 ### Expected outcome
 
-`AGENTS.md`, the Codex workflow guide, contributor documentation, and relevant wiki references describe the Codex workflow while preserving the migration invariants.
+The repository validates only Codex workflow surfaces, disposable work uses `.work/`, and no live guidance or CI fixture depends on `.cursor/`.
 
 ### Explicit exclusions
 
-- Do not remove Cursor compatibility, add hooks, or change application code or product documentation.
-- Do not change Git hooks, Codex MCP configuration, or specialist agent definitions.
-- Do not remove the existing Cursor configuration.
+- Do not change application behavior, product documentation, Codex MCP configuration, or specialist agent definitions.
+- Do not add hooks or change Git approval boundaries.
 
 ## Discoveries and replanning
 
@@ -220,6 +219,7 @@ Add documentation-link and terminology contract coverage that fails when the Cod
 | PR 1 | Add Codex project configuration | `187c635` | Added Recallium and Context7 project MCP configuration with gate validation. |
 | PR 1 | Port repository skills to Codex | `eaba444` | Added copied domain skills, `workflow-*` skills, and their validation contract. |
 | PR 1 | Port specialist agents to Codex | `a8cb615` | Added read-only reviewer and documentation-only steward definitions, workflow dispatch, and boundary validation. |
+| PR 1 | Make Codex the documented workflow | hash pending checkpoint commit | Added Codex workflow guidance, contributor terminology, and documentation contract validation. |
 
 ## Final validation
 

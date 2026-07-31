@@ -4,7 +4,7 @@
 
 This document describes how **FM ValueScout** is constructed: stack, thin-frontend / thick-backend boundaries, build and test pipeline, and conventions enforced by tooling.
 
-Application layout follows [Bulletproof React](https://github.com/alan2207/bulletproof-react) adapted for TanStack Router and Query on the frontend, and feature modules under `src-tauri/src/features/` on the backend. Line-level rules live in `.cursor/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, and `vite.md`.
+Application layout follows [Bulletproof React](https://github.com/alan2207/bulletproof-react) adapted for TanStack Router and Query on the frontend, and feature modules under `src-tauri/src/features/` on the backend. Line-level rules live in `.agents/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, and `vite.md`.
 
 For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each default choice, see [.wiki/decisions/](./decisions/README.md).
 
@@ -12,7 +12,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 ## 1. Top-Level Shape
 
-**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), and **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)).
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Codex workflow (skills, specialist agents, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), and **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)).
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 
@@ -46,7 +46,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Player search:** Rust `features/search` owns `search_players` and `suggest_players` — parameterized SQLite queries against the active save's current snapshot (`players`, `player_role_scores`, JSON attribute columns). React `features/search` owns the `/search` route, virtualized results table, compact filter strip + editor modal, and top-bar global name search. Filter rules compile to a flat AND|OR AST in Rust; filters, combine mode, and sort live in TanStack Router search params. See [player-search](./features/completed/player-search.md).
 
-**Auth:** None in the template default — chosen per fork via `/stack`
+**Auth:** None in the template default — chosen per fork via `workflow-stack`
 
 **Distribution:** OS installers built by `tauri-action` on version-tag push (unsigned by default)
 
@@ -109,7 +109,8 @@ Fork chooses: auth, signing, auto-update, additional plugins
 
 ```text
 your-repo/
-├── .cursor/           # Commands, agents, skills, MCP config
+├── .agents/           # Repository skills
+├── .codex/            # Project agents, MCP config, and workflow guide
 ├── .wiki/             # Durable docs (this file, ADRs, TODO)
 ├── .husky/            # Git hooks (pre-commit → check-fast + conditional check-rust)
 ├── scripts/
@@ -265,7 +266,7 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 1. **Biome** — verify lint and format (`biome check`); fail on violations. Autofix via `./scripts/dev format` (also runs `cargo fmt`), not in `check`.
 2. **TypeScript** — `tsc -b`; fail on type errors.
 3. **secretlint** — `./scripts/dev secrets` (full tree, respects `.gitignore`); included in `check`. Optional `./scripts/dev secrets --staged` without lint-staged.
-4. **Template contracts** — `scripts/test-*.sh` via `./scripts/dev check` (Cursor config, agent definitions, CI and release workflow shape, dispatcher contract).
+4. **Template contracts** — `scripts/test-*.sh` via `./scripts/dev check` (Codex configuration, skills, agents, documentation, CI and release workflow shape, and dispatcher contract).
 5. **Rust** — `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test` in `src-tauri/`; gated behind `require_rust_toolchain` (requires `cargo` on PATH).
 6. **Vitest** — `./scripts/dev test`; CI runs the full suite after check.
 7. **Playwright smoke** — `./scripts/dev smoke`; also invoked by the `scripts/dev` dispatcher contract inside `./scripts/dev check`. CI installs Chromium before check (smoke runs inside check, not as a separate workflow step). Requires `pnpm exec playwright install chromium` once after install locally.
@@ -289,7 +290,7 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 
 ### 3.4 Commit message convention
 
-[Conventional Commits 1.0.0](https://www.conventionalcommits.org/). See `.cursor/skills/conventional-commits/SKILL.md`.
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/). See `.agents/skills/conventional-commits/SKILL.md`.
 
 ---
 
@@ -316,7 +317,7 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `.github/workflows/check.yml` | CI — Rust toolchain, Tauri Linux deps, Playwright, check, test, `pnpm build` |
 | `.github/workflows/release.yml` | Tag-triggered multi-OS installer build via `tauri-action` |
 | `scripts/dev` | Stable `test` / `check` / `format` / `secrets` / `smoke` / `mutate` surface |
-| `.cursor/mcp.json` | Recallium and Context7 MCP servers |
+| `.codex/config.toml` | Recallium and Context7 MCP servers |
 | `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML |
 | `.vscode/settings.json` | Format on save (Biome / rust-analyzer); rust-analyzer linked to `src-tauri` |
 | `.gitignore` | Build, test, and tool artifacts; `.tanstack/` cache; `.env.*` except `.env.example`; `src-tauri/target/`; editor noise (`.idea/`, vim swap) |
@@ -561,7 +562,7 @@ Non-Windows hosts return `unsupportedPlatform` for bridge commands. Full FM atta
 
 ### 6.3 Test quality guidelines
 
-Test behaviour the user sees, not implementation details. Do not assert on Zustand or Query internal cache shape unless the contract is the subject. See `.cursor/skills/coding-standards/references/testing.md`.
+Test behaviour the user sees, not implementation details. Do not assert on Zustand or Query internal cache shape unless the contract is the subject. See `.agents/skills/coding-standards/references/testing.md`.
 
 ### 6.4 Playwright smoke scope
 
@@ -667,7 +668,7 @@ Each item links to an ADR with alternatives and consequences.
 - **Change visual language:** update [DESIGN.md](./DESIGN.md) first, then mirror tokens in `src/styles/global.css` `@theme`.
 - **Add persistence:** Migration in `db/migrations.rs`, service in `features/<feature>/service.rs`, commands in `commands.rs`. Open path stays `app_data_dir` + `APP_DB_FILE` via `db::open`.
 - **Change stack defaults:** Read ADRs, update decisions, then reconcile this file and scaffold configs.
-- **Coding standards detail:** `.cursor/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, `vite.md`
+- **Coding standards detail:** `.agents/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, `vite.md`
 
 ---
 
