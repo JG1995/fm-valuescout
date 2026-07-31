@@ -179,7 +179,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 4 — Roles tab and ScoreBadge
 
-**Status:** Active
+**Status:** Completed — `109456e`
 
 **Work:** Shared ScoreBadge (`table` / `card` / `hero`); Roles tab groups all scores by position family; Overview best-role hero badge; accessible names include role + tier.
 
@@ -194,7 +194,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 5 — Open profile from Search and Ctrl+K
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Search results: whole-row activation (click + Enter) navigates to `/players/$uid`; GlobalPlayerSearch hit activation navigates to profile instead of name filter; update tests and Playwright stubs/expectations; keyboard search-to-profile path.
 
@@ -210,19 +210,19 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 **PR:** 1 — Player profile page and entry points
 
-**Commit:** Roles tab and ScoreBadge
+**Commit:** Open profile from Search and Ctrl+K
 
 ### RED test (active commit)
 
-Vitest: Roles tab groups scores by position family; each role shows a ScoreBadge (or `—` for null); Overview shows a hero badge for the best non-null role; badge accessible name includes role and tier.
+Vitest: Search results whole-row click / Enter navigates to `/players/$uid`; GlobalPlayerSearch hit activation navigates to profile (not name `is` filter).
 
 ### Expected outcome
 
-Roles tab filled with family-grouped scores; shared ScoreBadge component; Overview best-role hero; no Search/Ctrl+K wiring.
+Search row and Ctrl+K open the player profile route; sanity list unchanged; smoke/stubs updated as needed.
 
 ### Explicit exclusions
 
-Search/Ctrl+K navigation, muting by familiarity, combined IP/OOP weights, radar/suitability.
+Sanity-list links; new nav-rail item; comparison / radar / suitability.
 
 ## Discoveries and replanning
 
@@ -230,6 +230,7 @@ Search/Ctrl+K navigation, muting by familiarity, combined IP/OOP weights, radar/
 - Commit 1: Query key documented as `["player", uid]` on the command (frontend invalidation lands with the route commit). Role scores returned in catalog order with catalog metadata; missing DB row → null score.
 - Commit 2: Profile page composition lives in `app/routes/players.$uid.tsx` (snapshot + player queries) so features stay free of cross-feature imports. Biome `useFilenamingConvention` overridden for TanStack `$param` route filenames. `playerKeys.all` invalidated on Load Data and active-save switch alongside search keys.
 - Commit 3: Visible attribute group membership is a static FE list in `attribute-groups.ts` aligned to FM Technical/Mental/Physical/Goalkeeping and `Fm263Layout` dump keys (not shared with search filter-registry — no cross-feature import).
+- Commit 4: Shared `ScoreBadge` in `src/components/ui/score-badge/` (`table`/`card`/`hero`/`muted`); position-family grouping in `position-families.ts` (primary family = first known tag); Overview best-role = highest non-null score, catalog-order ties; `role="img"` + aria-label for Biome a11y.
 
 ## Completed work
 
@@ -238,6 +239,7 @@ Search/Ctrl+K navigation, muting by familiarity, combined IP/OOP weights, radar/
 | 1 | get_player IPC for current-snapshot detail | `9bab503` | Rust `features/player`; null attrs/scores preserved |
 | 1 | Profile route and Overview tab | `f318171` | `/players/$uid` Overview + tab chrome; empty Attr/Roles panels |
 | 1 | Attributes tab | `42f64cb` | Grouped visible + Hidden + Personality; null → `—` |
+| 1 | Roles tab and ScoreBadge | `109456e` | Family-grouped roles; hero best-role; shared ScoreBadge |
 
 ## Final validation
 
