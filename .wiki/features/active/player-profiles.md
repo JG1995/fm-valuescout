@@ -133,7 +133,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 1 — get_player IPC for current-snapshot detail
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `9bab503`
 
 **Work:** Add Rust `get_player` command/service that loads one player by `uid` from the active save’s current snapshot, including attribute JSON maps and all `player_role_scores` joined with catalog display fields (`displayName`, `phase`, `positionTags`). Return null/not-found cleanly when missing. Register command; invalidate with snapshot/save keys from existing Load Data / set_active_save paths when wiring frontend later (document key in this commit if only Rust). Frontend types + query options stub optional if needed for RED — prefer Rust tests first.
 
@@ -149,7 +149,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 2 — Profile route and Overview tab
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add `/players/$uid` route with validated `tab` search param; loader prefetches player; Overview tab shows identity/basic fields with shared formatters; empty states for no snapshot / not found; tab chrome (Attributes/Roles can be empty panels). Page title = player name.
 
@@ -210,29 +210,30 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 **PR:** 1 — Player profile page and entry points
 
-**Commit:** get_player IPC for current-snapshot detail
+**Commit:** Profile route and Overview tab
 
 ### RED test (active commit)
 
-Rust service/command test: given a fixture snapshot with a known `uid`, `get_player` returns that player’s name and at least one role score row; unknown `uid` returns not-found; null attribute in JSON stays null in the DTO (not 0).
+Vitest: navigate to `/players/$uid` with mockIPC `get_player` returning a fixture; Overview shows player name and basic identity fields; unknown uid shows not-found empty state; `tab` search param selects Attributes/Roles chrome without full tab content.
 
 ### Expected outcome
 
-IPC `get_player` is registered and covered by Rust tests; no UI yet (or types only if required for compile).
+`/players/$uid` route with Overview tab and tab chrome; Attributes/Roles empty panels; no Search/Ctrl+K wiring yet.
 
 ### Explicit exclusions
 
-No React profile page, no Search navigation change, no schema migration.
+Full Attributes/Roles content, Search/Ctrl+K navigation, ScoreBadge (optional placeholder ok).
 
 ## Discoveries and replanning
 
 - Product decisions locked 2026-07-31: dedicated route; Overview/Attributes/Roles tabs; all roles by position family; attributes = visible+hidden+personality (+ basics); no suitability/radar; entry = Search row + Ctrl+K; not sanity list; defer comparison/history/weights/export.
+- Commit 1: Query key documented as `["player", uid]` on the command (frontend invalidation lands with the route commit). Role scores returned in catalog order with catalog metadata; missing DB row → null score.
 
 ## Completed work
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
-| — | — | — | — |
+| 1 | get_player IPC for current-snapshot detail | `9bab503` | Rust `features/player`; null attrs/scores preserved |
 
 ## Final validation
 
