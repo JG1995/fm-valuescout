@@ -198,7 +198,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 1 — Replace workflow contracts with product checks
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `50f86a2`
 
 **Work:** Remove fixed-inventory, fixed-wording, workflow-YAML, and dispatcher contract scripts. Keep `check` for static analysis, secret scanning, and Rust quality tests; make browser smoke explicit in CI; add `bridge-test` and a Windows CI job for the C# bridge suite.
 
@@ -213,7 +213,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 2 — Document product-focused validation
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Update contributor, architecture, bridge, and repository guidance to describe product-test ownership and remove workflow-contract terminology.
 
@@ -230,11 +230,11 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 **PR:** PR 2 — Focus validation on product behavior
 
-**Commit:** Commit 1 — Replace workflow contracts with product checks
+**Commit:** Commit 2 — Document product-focused validation
 
 ### Next step
 
-Implement Commit 1, then checkpoint it before moving to the documentation commit.
+Update repository documentation to describe product-focused validation, then checkpoint it before feature completion.
 
 ### Delivered outcome
 
@@ -256,6 +256,7 @@ The repository uses Codex-only guidance, disposable work uses `.work/`, and no l
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
+| PR 2 | Replace workflow contracts with product checks | `50f86a2` | Removed self-testing workflow contracts, kept code-quality checks, and added explicit browser and bridge product test coverage in CI. |
 | PR 1 | Document the Codex migration contract | `8c8d7ac` | Added the approved delivery plan and marked the tooling initiative active. |
 | PR 1 | Add Codex project configuration | `187c635` | Added Recallium and Context7 project MCP configuration with gate validation. |
 | PR 1 | Port repository skills to Codex | `eaba444` | Added copied domain skills, `workflow-*` skills, and their validation contract. |
