@@ -213,7 +213,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 2 — Document product-focused validation
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Update contributor, architecture, bridge, and repository guidance to describe product-test ownership and remove workflow-contract terminology.
 

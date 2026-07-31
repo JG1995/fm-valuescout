@@ -25,7 +25,7 @@ Calibrate depth to hobbyist solo-dev scope in `AGENTS.md`. Structural quality st
 | Il2CppInterop | Generated interop assemblies for FM types — machine-local, not vendored |
 | `System.Text.Json` | `request.json`, `status.json`, `dump.json` — no `BinaryFormatter` |
 | xUnit (or NUnit) | Unit tests under `bridge/Tests/` — fakes for memory and filesystem |
-| `dotnet build` / `dotnet test` | Windows host with local path overrides — Linux gate does not require `dotnet` |
+| `./scripts/dev bridge-test` | Bridge unit suite; runs in Windows CI and works on Linux/WSL with the .NET 6 SDK |
 
 Do not vendor BepInEx, FM interop DLLs, or game assemblies in git. Use `Directory.Build.props.example` + untracked `Directory.Build.user.props` for machine paths (ADR-0016).
 
@@ -184,7 +184,7 @@ Enable `<Nullable>enable</Nullable>` in the `.csproj`. Treat nullability warning
 - Enable `EnforceCodeStyleInBuild` when the bridge project stabilizes.
 - Run `dotnet format` before checkpoint on Windows when C# changed.
 
-Linux `./scripts/dev check` intentionally does not build the bridge — bridge validation is `dotnet build` / `dotnet test` on a Windows machine with local props configured.
+Linux `./scripts/dev check` intentionally does not build the bridge. Run `./scripts/dev bridge-test` with the .NET 6 SDK for bridge unit tests; FM attach validation still requires Windows and local game paths.
 
 ## Testing
 

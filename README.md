@@ -18,7 +18,7 @@ Install the [Rust toolchain](https://rustup.rs/) and Tauri Linux system packages
 
 Building the FM26 BepInEx plugin (Windows/.NET) is documented in [bridge/README.md](bridge/README.md).
 
-`pnpm tauri dev` is the default dev loop — WebView + Rust IPC with real SQLite persistence. `pnpm dev` serves the frontend only; IPC calls fail unless stubbed (tests and Playwright smoke use stubs). `./scripts/dev check` runs Biome, TypeScript, secretlint, repository contract tests, Playwright smoke, and `cargo fmt/clippy/test`. Run `pnpm exec playwright install chromium` once after install so smoke can run.
+`pnpm tauri dev` is the default dev loop — WebView + Rust IPC with real SQLite persistence. `pnpm dev` serves the frontend only; IPC calls fail unless stubbed (tests and Playwright smoke use stubs). `./scripts/dev check` runs Biome, TypeScript, secretlint, and `cargo fmt/clippy/test`. Run `pnpm exec playwright install chromium` once after install so smoke can run.
 
 ## Forking this template
 
@@ -28,7 +28,7 @@ The walking skeleton is already implemented — IPC health demo, SQLite persiste
 
 1. Install prerequisites — Node 24, pnpm, Rust, and Linux/WSL system packages ([ARCHITECTURE §11](.wiki/ARCHITECTURE.md)).
 2. `pnpm install` — installs Node packages and Husky hooks.
-3. `pnpm exec playwright install chromium` — once, so smoke and `./scripts/dev check` can run.
+3. `pnpm exec playwright install chromium` — once, so `./scripts/dev smoke` can run.
 4. `./scripts/dev check` and `./scripts/dev test` — confirm the gate is green before you build features.
 5. Install recommended editor extensions from [.vscode/extensions.json](.vscode/extensions.json) — Biome, rust-analyzer, Even Better TOML.
 6. ~~Rename the template identity~~ — done (`FM ValueScout` / `fm-valuescout`).
@@ -66,7 +66,8 @@ The workflow turns product notes into atomic, reviewed commits on trunk. After t
 - `pnpm dev` — frontend-only Vite dev server (IPC stub required for feature code)
 - `./scripts/dev test [args...]` — run `vitest run` (full suite or forwarded file patterns and flags)
 - `./scripts/dev check-fast` — fast pre-commit path (Biome, TypeScript, staged secretlint)
-- `./scripts/dev check` — full gate including contract tests, smoke contract, and Rust (CI runs this)
+- `./scripts/dev check` — code-quality gate: Biome, TypeScript, secretlint, and Rust (CI runs this)
+- `./scripts/dev bridge-test` — C# bridge unit tests (requires the .NET 6 SDK; CI runs them on Windows)
 - `./scripts/dev format [paths...]` — Biome lint/format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/`; optional paths forward to Biome only; run before checkpoint, not in CI
 - `./scripts/dev secrets [--staged]` — scan for secrets with secretlint (full tree or staged files only)
 - `./scripts/dev smoke` — Playwright smoke (`e2e/smoke.spec.ts`; stub IPC in Chromium, not real WebView or SQLite — see ARCHITECTURE §6.4; run `pnpm exec playwright install chromium` once after install)

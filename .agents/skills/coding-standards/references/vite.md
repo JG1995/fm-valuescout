@@ -69,7 +69,7 @@ Keep **toolchain logic in `vite.config.ts`**. Application code should not assume
 | `pnpm tauri build` | Production desktop installers |
 | `pnpm preview` | `vite preview` — WebView bundle only, no IPC |
 | `pnpm test` | `./scripts/dev test` → Vitest |
-| `pnpm check` | `./scripts/dev check` → Biome + `tsc -b` + secretlint + contracts + cargo when scaffolded |
+| `pnpm check` | `./scripts/dev check` → Biome + `tsc -b` + secretlint + Rust quality gates when scaffolded |
 
 Keep `package.json` scripts thin. Heavy orchestration belongs in `scripts/dev` or small shell wrappers under `scripts/`.
 
@@ -444,14 +444,15 @@ Full zone matrix (features cannot import from `app`, shared cannot import from `
 
 After scaffold:
 
-- **`check`** runs Biome verify (`biome check`), `tsc -b`, secretlint (via `run_secretlint_full_tree`), then existing `scripts/test-*.sh` contract tests.
+- **`check`** runs Biome verify (`biome check`), `tsc -b`, secretlint (via `run_secretlint_full_tree`), and Rust quality gates.
 - **`format`** runs **`biome check --write`** on the project or forwarded paths, then **`cargo fmt`** in `src-tauri/`. Path args apply to Biome only. Use before `$workflow-build` checkpoint staging — not in CI or Husky.
 - **`test`** with no arguments runs **`vitest run`** for the full suite.
 - **`test`** with arguments forwards to Vitest (file pattern or `--grep`).
 
-Do not require `DEV_TEST_COMMAND` env var for the normal path — invoke Vitest directly or via a repo script so forks clone and run one command.
+Invoke Vitest through the repository script so forks clone and run one command.
 
 - **`smoke`** runs Playwright (`e2e/smoke.spec.ts`). Requires `pnpm exec playwright install chromium` once after install. CI installs browsers with `--with-deps`.
+- **`bridge-test`** runs the C# bridge unit suite. It requires the .NET 6 SDK; CI runs it on Windows.
 - **`secrets`** runs `run_secretlint_full_tree` or `run_secretlint_staged` (`--staged` via `git diff --cached` and `secretlint --no-glob`). Same full-tree path as **`check`** after Biome and `tsc`.
 - **`mutate`** stays unconfigured until mutation tooling lands (exits 69).
 
@@ -465,7 +466,7 @@ Husky installs Git hooks on `pnpm install` via a `prepare` script at scaffold. *
 | `package.json` `"prepare"` | `"husky"` (or equivalent init) |
 | `.husky/pre-commit` | `./scripts/dev check-fast` (+ `check-rust` when `src-tauri/` staged) |
 
-Pre-commit runs **`check-fast`** — full-tree Biome (`biome check`) and TypeScript (`tsc -b`), plus **staged-only** secretlint (`./scripts/dev secrets --staged`). It does **not** run contract tests, full-tree secretlint, smoke, or Rust unless `src-tauri/` is staged (`check-rust`). CI and pre-merge validation use the full gate (`./scripts/dev check`). See [ADR-0011](../../../../.wiki/decisions/0011-husky-git-hooks.md) and [ADR-0012](../../../../.wiki/decisions/0012-secretlint.md).
+Pre-commit runs **`check-fast`** — full-tree Biome (`biome check`) and TypeScript (`tsc -b`), plus **staged-only** secretlint (`./scripts/dev secrets --staged`). It does **not** run full-tree secretlint, smoke, or Rust unless `src-tauri/` is staged (`check-rust`). CI and pre-merge validation run the full product suite separately from the full code-quality gate (`./scripts/dev check`). See [ADR-0011](../../../../.wiki/decisions/0011-husky-git-hooks.md) and [ADR-0012](../../../../.wiki/decisions/0012-secretlint.md).
 
 ## Scaffold checklist
 

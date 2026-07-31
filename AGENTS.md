@@ -75,6 +75,7 @@ For broad features, `workflow-plan-feature` produces a delivery plan (PRs and co
 ```bash
 ./scripts/dev test [target...]
 ./scripts/dev check
+./scripts/dev bridge-test
 ./scripts/dev format [paths...]
 ./scripts/dev secrets [--staged]
 ./scripts/dev smoke
@@ -82,9 +83,9 @@ For broad features, `workflow-plan-feature` produces a delivery plan (PRs and co
 ./scripts/dev bridge-install
 ```
 
-`check` is the commit gate: Biome verify (`biome check`), TypeScript, secretlint, repository contract checks, and the `scripts/dev` dispatcher contract (which runs Playwright smoke). Run `pnpm exec playwright install chromium` once after install so check can pass locally. `format` applies Biome lint and format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/` — run before staging at `workflow-build` and `workflow-checkpoint`; it is not part of the gate. Optional path args forward to Biome only. `secrets` runs secretlint on the full tree, or on staged files with `--staged` (no lint-staged). `smoke` runs the same Playwright suite directly (`e2e/smoke.spec.ts`). `mutate` is unsupported until mutation tooling is wired into `scripts/dev`. Never report an unsupported command as passed. `bridge-install` builds the C# FM plugin and copies `FmDataBridge.dll` into BepInEx plugins (see `bridge/README.md`; path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL Steam default).
+`check` is the commit gate: Biome verify (`biome check`), TypeScript, secretlint, and Rust format, lint, and tests. `bridge-test` runs the C# bridge unit suite and requires the .NET 6 SDK. Run `pnpm exec playwright install chromium` once after install, then use `smoke` for the Playwright product suite (`e2e/smoke.spec.ts`). `format` applies Biome lint and format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/` — run before staging at `workflow-build` and `workflow-checkpoint`; it is not part of the gate. Optional path args forward to Biome only. `secrets` runs secretlint on the full tree, or on staged files with `--staged` (no lint-staged). `mutate` is unsupported until mutation tooling is wired into `scripts/dev`. Never report an unsupported command as passed. `bridge-install` builds the C# FM plugin and copies `FmDataBridge.dll` into BepInEx plugins (see `bridge/README.md`; path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL Steam default).
 
-`test` runs `vitest run` (full suite or forwarded args). Override with `DEV_TEST_COMMAND` for contract tests. `check` runs Biome, TypeScript, secretlint, repository scripts, Codex workflow contracts, CI workflow contract, and dispatcher smoke.
+`test` runs `vitest run` (full suite or forwarded args). CI runs `check`, `test`, `smoke`, the Windows bridge suite, and the production build as separate product checks.
 
 Use stack-native commands only through the stable `scripts/dev` surface.
 

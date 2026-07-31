@@ -76,7 +76,7 @@ Both must be green.
 ### Optional improvements (if you have scope)
 
 1. **CONTRIBUTING.md** — note that `CI=true ./scripts/dev smoke` matches GitHub Actions Playwright settings (`retries`, `workers`, `reuseExistingServer` in `playwright.config.ts`).
-2. **`scripts/test-dev.sh`** — run smoke with `CI=true` so the dispatcher contract matches CI. Only if the template owners want local `check` to fully mirror GitHub.
+2. **Superseded:** workflow-contract tests were removed on 2026-07-31. CI now runs `./scripts/dev smoke` directly.
 
 Do **not** disable devtools for e2e unless the template explicitly wants that — scoping locators is the minimal fix.
 

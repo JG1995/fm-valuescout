@@ -20,7 +20,7 @@ Use **secretlint** (`secretlint` npm package) with **`@secretlint/secretlint-rul
 - Ignore: `.secretlintignore` (e.g. `pnpm-lock.yaml` and `src-tauri/Cargo.lock` false positives).
 - Full-tree scan: `pnpm exec secretlint "**/*"` (respects `.gitignore` by default since secretlint v13).
 - Staged scan: staged paths from `git diff --cached --name-only` passed to `secretlint --no-glob` via `./scripts/dev secrets --staged` for optional fast checks without lint-staged.
-- **Gate:** `./scripts/dev check` runs secretlint after Biome and `tsc`, before template contract tests. CI runs the same `./scripts/dev check` step.
+- **Gate:** `./scripts/dev check` runs secretlint after Biome and `tsc`. CI runs the same command.
 
 Do **not** add lint-staged. Do **not** require a system binary.
 

@@ -7,12 +7,12 @@ This template is designed to be forked, modified, and shipped. The workflow keep
 ```bash
 ./scripts/dev format
 ./scripts/dev check-fast   # Pre-commit runs this (+ check-rust for staged src-tauri/ files)
-./scripts/dev check        # Full gate — same surface as CI
+./scripts/dev check        # Code-quality gate — CI runs this before product suites
 ```
 
-`format` applies Biome fixes and `cargo fmt` before you stage. `check-fast` runs full-tree Biome and TypeScript plus staged secretlint. `check` runs the full contract, smoke, secretlint, and Rust gates.
+`format` applies Biome fixes and `cargo fmt` before you stage. `check-fast` runs full-tree Biome and TypeScript plus staged secretlint. `check` runs code-quality checks: Biome, TypeScript, secretlint, and Rust.
 
-CI runs `./scripts/dev check`, `./scripts/dev test`, then `pnpm build`. Do not weaken tests to make a gate pass. Run `pnpm exec playwright install chromium` once after `pnpm install` so the smoke contract can run.
+CI runs `./scripts/dev check`, `./scripts/dev test`, `./scripts/dev smoke`, the Windows bridge unit suite, then `pnpm build`. Do not weaken tests to make a gate pass. Run `pnpm exec playwright install chromium` once after `pnpm install` so smoke can run.
 
 ## Pre-commit hook
 

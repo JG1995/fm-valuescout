@@ -75,8 +75,8 @@ Note gaps explicitly for the reviewer and final report. Do not silently treat mi
 Run in order. **Do not dispatch feature review until `./scripts/dev check` and the test suite have been run and results are known.**
 
 0. **`./scripts/dev format`** — when the feature branch includes implementation or test changes; re-inspect the diff and include formatting fixes in the feature branch before gates.
-1. **Full test suite** — `./scripts/dev test` with no target (or the project's documented full-suite invocation when `DEV_TEST_COMMAND` is configured). Add ledger-listed targeted tests when the full suite does not cover them.
-2. **`./scripts/dev check`** — repository scripts and workspace configuration gate.
+1. **Full test suite** — `./scripts/dev test` with no target. Add ledger-listed targeted tests when the full suite does not cover them.
+2. **`./scripts/dev check`** — code-quality gate for Biome, TypeScript, secretlint, and Rust.
 3. **`./scripts/dev smoke`** — when configured; status **69** means unsupported — report as unsupported, not passed.
 4. **`./scripts/dev mutate <target>`** — when configured for critical logic touched by this feature; status **69** means unsupported.
 5. **Migration, preservation, rollback** — when the feature touches persistence or schema.

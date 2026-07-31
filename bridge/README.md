@@ -134,12 +134,11 @@ On first FM launch with BepInEx installed, BepInEx generates Il2CppInterop assem
 Linux `./scripts/dev check` does not require the .NET SDK and does not build this tree. Validate the bridge with:
 
 ```bash
-cd bridge
-dotnet test
-dotnet build
+./scripts/dev bridge-test
+cd bridge && dotnet build
 ```
 
-on a machine with the .NET 6 SDK (Windows for FM attach; Linux/WSL is enough for unit tests).
+on a machine with the .NET 6 SDK (Windows for FM attach; Linux/WSL is enough for unit tests). CI runs the bridge unit suite on Windows; full FM attach testing remains manual on Windows.
 
 ### Install into FM (WSL → Steam)
 

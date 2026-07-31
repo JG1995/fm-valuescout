@@ -10,7 +10,7 @@ Every commit should catch lint, type, and secret issues before they land on trun
 
 Bulletproof React uses **Husky** plus **lint-staged** to run ESLint and TypeScript on staged files only. This template uses **Biome** for lint and format.
 
-After the Tauri + Rust stack landed, running the **full** `./scripts/dev check` on every commit (contract tests, Playwright smoke contract, Rust gates) made local commits unnecessarily slow — often 40+ seconds on a healthy machine.
+After the Tauri + Rust stack landed, running the **full** `./scripts/dev check` on every commit (workflow contracts, browser smoke, and Rust gates) made local commits unnecessarily slow — often 40+ seconds on a healthy machine.
 
 ## Decision
 
@@ -25,7 +25,7 @@ The pre-commit hook runs a **fast** local gate:
 
 `check-fast` runs **full-tree** Biome (`biome check`) and TypeScript (`tsc -b`), plus **staged-only** secretlint (`./scripts/dev secrets --staged`).
 
-The **full** gate remains `./scripts/dev check` — Biome, TypeScript, full-tree secretlint, repository contract tests, Playwright smoke contract, and Rust gates. CI runs `check`, then `test`, then `pnpm build`. Run `check` manually before merge.
+The **full** code-quality gate remains `./scripts/dev check` — Biome, TypeScript, full-tree secretlint, and Rust gates. CI runs `check`, `test`, browser smoke, Windows bridge tests, then `pnpm build`. Run `check` manually before merge.
 
 Replace `scripts/hooks/` with `.husky/pre-commit` at scaffold. Remove the manual `core.hooksPath` setup from contributor docs.
 
@@ -62,13 +62,14 @@ Relies on discipline or `--no-verify`. Too easy to push broken commits from loca
 ### Negative
 
 - Husky is an extra devDependency and `.husky/` directory.
-- Local commits can skip contract tests and Rust (when `src-tauri/` is untouched) — CI must stay green on `main`.
+- Local commits can skip Rust when `src-tauri/` is untouched; CI runs the complete product suite on `main`.
 
 ### Follow-up
 
 - Done at scaffold (`41effa2`, `2c7f69c`) — `husky` in `devDependencies`, `"prepare": "husky"`, `.husky/pre-commit`.
 - Done at scaffold (`2c7f69c`) — `scripts/hooks/` removed.
 - Amended 2026-07-27 — `check-fast` + conditional `check-rust` on pre-commit; full `check` in CI.
+- Amended 2026-07-31 — remove workflow contract tests; run browser smoke and bridge tests as explicit CI product checks.
 
 ## Related work
 
