@@ -70,6 +70,15 @@ test.describe("walking skeleton smoke", () => {
     await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
   });
 
+  test("player profile route shows no-snapshot empty state from stubbed IPC", async ({
+    page,
+  }) => {
+    await page.goto("/players/42");
+
+    const main = page.getByRole("main");
+    await expect(main.getByText("No data loaded for this save")).toBeVisible();
+  });
+
   test("top bar exposes global player search", async ({ page }) => {
     await page.goto("/");
 

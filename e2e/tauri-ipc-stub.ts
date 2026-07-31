@@ -99,6 +99,10 @@ export async function stubTauriIpc(page: Page) {
             return [];
           }
 
+          if (cmd === "get_player") {
+            return null;
+          }
+
           if (cmd === "load_data") {
             return {
               requestId: "req-smoke",

@@ -149,7 +149,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 2 — Profile route and Overview tab
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add `/players/$uid` route with validated `tab` search param; loader prefetches player; Overview tab shows identity/basic fields with shared formatters; empty states for no snapshot / not found; tab chrome (Attributes/Roles can be empty panels). Page title = player name.
 
@@ -228,6 +228,7 @@ Full Attributes/Roles content, Search/Ctrl+K navigation, ScoreBadge (optional pl
 
 - Product decisions locked 2026-07-31: dedicated route; Overview/Attributes/Roles tabs; all roles by position family; attributes = visible+hidden+personality (+ basics); no suitability/radar; entry = Search row + Ctrl+K; not sanity list; defer comparison/history/weights/export.
 - Commit 1: Query key documented as `["player", uid]` on the command (frontend invalidation lands with the route commit). Role scores returned in catalog order with catalog metadata; missing DB row → null score.
+- Commit 2: Profile page composition lives in `app/routes/players.$uid.tsx` (snapshot + player queries) so features stay free of cross-feature imports. Biome `useFilenamingConvention` overridden for TanStack `$param` route filenames. `playerKeys.all` invalidated on Load Data and active-save switch alongside search keys.
 
 ## Completed work
 
