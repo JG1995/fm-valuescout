@@ -25,7 +25,7 @@ The pre-commit hook runs a **fast** local gate:
 
 `check-fast` runs **full-tree** Biome (`biome check`) and TypeScript (`tsc -b`), plus **staged-only** secretlint (`./scripts/dev secrets --staged`).
 
-The **full** code-quality gate remains `./scripts/dev check` — Biome, TypeScript, full-tree secretlint, and Rust gates. CI runs `check`, `test`, browser smoke, Windows bridge tests, then `pnpm build`. Run `check` manually before merge.
+The **full** code-quality gate remains `./scripts/dev check` — Biome, TypeScript, full-tree secretlint, and Rust gates. CI selects frontend, browser, Rust, and bridge checks from changed paths, then aggregates the applicable results in its required `check` status. Run `check` manually before merge.
 
 Replace `scripts/hooks/` with `.husky/pre-commit` at scaffold. Remove the manual `core.hooksPath` setup from contributor docs.
 
@@ -57,12 +57,12 @@ Relies on discipline or `--no-verify`. Too easy to push broken commits from loca
 
 - Hooks install automatically after `pnpm install` — no per-clone `core.hooksPath` step.
 - Pre-commit stays fast for docs and frontend-only changes.
-- CI and manual `./scripts/dev check` retain the full safety net.
+- Manual `./scripts/dev check` retains the full safety net; CI runs the applicable product suites for changed paths.
 
 ### Negative
 
 - Husky is an extra devDependency and `.husky/` directory.
-- Local commits can skip Rust when `src-tauri/` is untouched; CI runs the complete product suite on `main`.
+- Local commits can skip Rust when `src-tauri/` is untouched; CI runs the applicable product suites on `main`.
 
 ### Follow-up
 
@@ -70,6 +70,7 @@ Relies on discipline or `--no-verify`. Too easy to push broken commits from loca
 - Done at scaffold (`2c7f69c`) — `scripts/hooks/` removed.
 - Amended 2026-07-27 — `check-fast` + conditional `check-rust` on pre-commit; full `check` in CI.
 - Amended 2026-07-31 — remove workflow contract tests; run browser smoke and bridge tests as explicit CI product checks.
+- Amended 2026-07-31 — select CI product checks from changed paths; `check` aggregates applicable results.
 
 ## Related work
 

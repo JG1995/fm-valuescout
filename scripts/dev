@@ -7,11 +7,12 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install} [args...]
+Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
   check             Run Biome, TypeScript, secretlint, and Rust (fmt/clippy/test).
+  check-app         Run Biome, TypeScript, and full-tree secretlint.
   check-fast        Run Biome, TypeScript, and secretlint on staged files (pre-commit fast path).
   check-rust        Run cargo fmt --check, clippy, and test in src-tauri/.
   bridge-test       Run the C# bridge unit tests (requires the .NET 6 SDK).
@@ -187,6 +188,15 @@ run_check() {
   printf 'Repository quality checks passed.\n'
 }
 
+run_check_app() {
+  require_no_arguments check-app "$@"
+
+  DEV_COMMAND_LABEL=check-app
+  run_app_quality_gates
+
+  printf 'Application quality checks passed.\n'
+}
+
 run_format() {
   DEV_COMMAND_LABEL=format
   require_node_deps
@@ -298,6 +308,9 @@ case "$command" in
     ;;
   check)
     run_check "$@"
+    ;;
+  check-app)
+    run_check_app "$@"
     ;;
   check-fast)
     run_check_fast "$@"

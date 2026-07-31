@@ -66,7 +66,8 @@ The workflow turns product notes into atomic, reviewed commits on trunk. After t
 - `pnpm dev` — frontend-only Vite dev server (IPC stub required for feature code)
 - `./scripts/dev test [args...]` — run `vitest run` (full suite or forwarded file patterns and flags)
 - `./scripts/dev check-fast` — fast pre-commit path (Biome, TypeScript, staged secretlint)
-- `./scripts/dev check` — code-quality gate: Biome, TypeScript, secretlint, and Rust (CI runs this)
+- `./scripts/dev check` — full local code-quality gate: Biome, TypeScript, secretlint, and Rust
+- `./scripts/dev check-app` — frontend code-quality checks for CI: Biome, TypeScript, and secretlint
 - `./scripts/dev bridge-test` — C# bridge unit tests (requires the .NET 6 SDK; CI runs them on Windows)
 - `./scripts/dev format [paths...]` — Biome lint/format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/`; optional paths forward to Biome only; run before checkpoint, not in CI
 - `./scripts/dev secrets [--staged]` — scan for secrets with secretlint (full tree or staged files only)

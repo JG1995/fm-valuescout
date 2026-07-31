@@ -101,7 +101,7 @@ Fork chooses: auth, signing, auto-update, additional plugins
 - **Do not import across features** — compose features in route files.
 - **One invoke wrapper** — `src/lib/tauri-client.ts` is the sole `invoke` import site; feature `api/` folders call through it.
 - **No WebView SQL** — do not use `@tauri-apps/plugin-sql` from JavaScript for product features.
-- Use `./scripts/dev` for test and check commands — do not bypass with ad-hoc npm scripts in CI.
+- Use `./scripts/dev` for test and check commands — do not bypass with ad-hoc npm scripts in CI. `check-app` is the frontend-only CI gate; `check` remains the full local gate.
 
 ---
 
@@ -257,6 +257,7 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 | `./scripts/dev format` | Biome lint/format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/`; optional path args forward to Biome only |
 | `./scripts/dev secrets` | secretlint full-tree scan; `--staged` scans staged files only |
 | `./scripts/dev check` | Code-quality gate — Biome + `tsc -b` + secretlint + Rust |
+| `./scripts/dev check-app` | Frontend code-quality checks — Biome + `tsc -b` + secretlint |
 | `./scripts/dev check-fast` | Fast pre-commit path — Biome + `tsc -b` + secretlint `--staged` |
 | `./scripts/dev check-rust` | `cargo fmt --check`, clippy, and test in `src-tauri/` |
 | `./scripts/dev bridge-test` | C# bridge unit tests; requires the .NET 6 SDK |
@@ -269,21 +270,21 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 2. **TypeScript** — `tsc -b`; fail on type errors.
 3. **secretlint** — `./scripts/dev secrets` (full tree, respects `.gitignore`); included in `check`. Optional `./scripts/dev secrets --staged` without lint-staged.
 4. **Rust** — `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test` in `src-tauri/`; gated behind `require_rust_toolchain` (requires `cargo` on PATH).
-5. **Vitest** — `./scripts/dev test`; CI runs the full suite after check.
-6. **Playwright smoke** — `./scripts/dev smoke`; CI installs Chromium and runs it as a separate product-test step. Requires `pnpm exec playwright install chromium` once after install locally.
-7. **Bridge tests** — `./scripts/dev bridge-test`; CI runs the C# unit suite on Windows. Full FM attach tests remain manual on Windows.
+5. **Vitest** — `./scripts/dev test`; CI runs the full suite when frontend or CI files change.
+6. **Playwright smoke** — `./scripts/dev smoke`; CI installs Chromium and runs it when frontend or CI files change. Requires `pnpm exec playwright install chromium` once after install locally.
+7. **Bridge tests** — `./scripts/dev bridge-test`; CI runs the C# unit suite on Windows when bridge or CI files change. Full FM attach tests remain manual on Windows.
 
 `mutate` remains unconfigured until mutation targets exist.
 
 ### 3.3 Git hooks
 
-Pre-commit runs a **fast local gate** (`check-fast`); CI and pre-merge validation run the code-quality gate plus product suites.
+Pre-commit runs a **fast local gate** (`check-fast`); local pre-merge validation runs the full code-quality gate, while CI selects applicable product suites from changed paths.
 
 | Piece | Choice | Notes |
 | --- | --- | --- |
 | Hook runner | **Husky** | Installs on `pnpm install` via `prepare` script |
 | Pre-commit | `./scripts/dev check-fast` (+ `check-rust` when `src-tauri/` staged) | Full-tree Biome + `tsc`; staged secretlint only |
-| Code-quality gate (CI, manual) | `./scripts/dev check` | Biome + TypeScript + full secretlint + Rust |
+| Code-quality gate (manual) | `./scripts/dev check` | Biome + TypeScript + full secretlint + Rust |
 | lint-staged | **Not used** | Avoid split between staged lint and full gate |
 
 Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
@@ -314,9 +315,9 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `src-tauri/tauri.conf.json` | Product identity, CSP, build hooks |
 | `src-tauri/capabilities/default.json` | Main-window capability ACL |
 | `src-tauri/Cargo.toml` | Rust crate dependencies and features |
-| `.github/workflows/check.yml` | CI — Linux code-quality, Vitest, and Playwright checks; Windows bridge unit tests; production build |
+| `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, and bridge checks from changed paths; required `check` aggregates applicable results |
 | `.github/workflows/release.yml` | Tag-triggered multi-OS installer build via `tauri-action` |
-| `scripts/dev` | Stable `test` / `check` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` surface |
+| `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` surface |
 | `.codex/config.toml` | Recallium and Context7 MCP servers |
 | `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML |
 | `.vscode/settings.json` | Format on save (Biome / rust-analyzer); rust-analyzer linked to `src-tauri` |
@@ -574,7 +575,7 @@ Path resolution: FM_BRIDGE_PLUGINS → FM_STEAM_ROOT/BepInEx/plugins → default
 (same order as ./scripts/dev bridge-install). Developer build-and-copy from source stays on bridge-install.
 ```
 
-Non-Windows hosts return `unsupportedPlatform` for bridge install commands. Full FM attach tests are manual on Windows. Linux CI runs Rust, Vitest, and Playwright checks; Windows CI runs bridge unit tests.
+Non-Windows hosts return `unsupportedPlatform` for bridge install commands. Full FM attach tests are manual on Windows. CI runs Rust, frontend, browser, and bridge checks only when their source paths or CI configuration change.
 
 ---
 
@@ -767,10 +768,10 @@ pnpm exec playwright install chromium
 pnpm tauri dev
 ```
 
-Husky runs `./scripts/dev check-fast` on every commit (and `check-rust` when `src-tauri/` is staged). Run `./scripts/dev check` before merge — CI runs the full gate.
+Husky runs `./scripts/dev check-fast` on every commit (and `check-rust` when `src-tauri/` is staged). Run `./scripts/dev check` before merge — CI selects the applicable product suites.
 
 ### CI parity
 
-GitHub Actions uses Node 24, installs the Rust toolchain with `rustfmt` and `clippy`, caches `src-tauri/target`, installs Tauri Linux dependencies and Playwright Chromium with `--with-deps`, then runs `./scripts/dev check`, `./scripts/dev test`, `./scripts/dev smoke`, and `pnpm build`. A Windows job installs .NET 6 and runs `./scripts/dev bridge-test`. Match local Node major version for fewer surprises.
+GitHub Actions selects product checks from changed paths. Frontend changes run `./scripts/dev check-app` and `./scripts/dev test`, then browser smoke. Rust changes install the Rust toolchain and Tauri Linux dependencies before `./scripts/dev check-rust`. Bridge changes run `./scripts/dev bridge-test` on Windows. The required `check` status aggregates every applicable job. Match local Node major version for fewer surprises.
 
 Release builds run on `v*` tag push via `.github/workflows/release.yml` — Windows, Ubuntu, and both macOS architectures. Installers are unsigned draft assets until signing secrets are configured.

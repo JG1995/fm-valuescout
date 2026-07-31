@@ -10,7 +10,84 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      rust: ${{ steps.filter.outputs.rust }}
+      bridge: ${{ steps.filter.outputs.bridge }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'src/**'
+              - 'e2e/**'
+              - 'public/**'
+              - 'index.html'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'biome.json'
+              - '.secretlintrc.json'
+              - '.secretlintignore'
+              - 'tsconfig*.json'
+              - 'vite.config.ts'
+              - 'playwright.config.ts'
+            rust:
+              - 'src-tauri/**'
+              - 'src-tauri/Cargo.lock'
+            bridge:
+              - 'bridge/**'
+            ci:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - 'scripts/dev'
+
+  frontend-tests:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run application quality checks
+        run: ./scripts/dev check-app
+      - name: Run frontend tests
+        run: ./scripts/dev test
+
+  browser-smoke:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run browser smoke tests
+        run: ./scripts/dev smoke
+
+  rust:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,24 +106,13 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Run project gate
-        run: ./scripts/dev check
-      - name: Run tests
-        run: ./scripts/dev test
-      - name: Run browser smoke tests
-        run: ./scripts/dev smoke
-      - name: Production build
-        run: pnpm build
+
+      - name: Run Rust quality checks
+        run: ./scripts/dev check-rust
 
   bridge-tests:
+    needs: changes
+    if: needs.changes.outputs.bridge == 'true' || needs.changes.outputs.ci == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,3 +122,23 @@ jobs:
       - name: Run bridge unit tests
         shell: bash
         run: ./scripts/dev bridge-test
+
+  check:
+    if: always()
+    needs: [changes, frontend-tests, browser-smoke, rust, bridge-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm applicable product checks passed
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          FRONTEND_TESTS: ${{ needs.frontend-tests.result }}
+          BROWSER_SMOKE: ${{ needs.browser-smoke.result }}
+          RUST: ${{ needs.rust.result }}
+          BRIDGE_TESTS: ${{ needs.bridge-tests.result }}
+        run: |
+          for result in "$CHANGES" "$FRONTEND_TESTS" "$BROWSER_SMOKE" "$RUST" "$BRIDGE_TESTS"; do
+            case "$result" in
+              success|skipped) ;;
+              *) exit 1 ;;
+            esac
+          done

@@ -10,7 +10,7 @@ Committed secrets (.env, API keys, tokens) are high-impact and common. The templ
 
 [Gitleaks](https://github.com/gitleaks/gitleaks) is widely used but requires a separate binary install on each machine. This template is pnpm-first — dependencies should install on `pnpm install` without extra local setup.
 
-Husky runs `./scripts/dev check-fast` on every commit ([0011](./0011-husky-git-hooks.md)); CI runs the full `./scripts/dev check`. Secret scanning should use the same `./scripts/dev` surface as Biome and TypeScript, not a second hook model or lint-staged.
+Husky runs `./scripts/dev check-fast` on every commit ([0011](./0011-husky-git-hooks.md)); CI runs `./scripts/dev check-app` when frontend or CI files change. Secret scanning should use the same `./scripts/dev` surface as Biome and TypeScript, not a second hook model or lint-staged.
 
 ## Decision
 
@@ -20,7 +20,7 @@ Use **secretlint** (`secretlint` npm package) with **`@secretlint/secretlint-rul
 - Ignore: `.secretlintignore` (e.g. `pnpm-lock.yaml` and `src-tauri/Cargo.lock` false positives).
 - Full-tree scan: `pnpm exec secretlint "**/*"` (respects `.gitignore` by default since secretlint v13).
 - Staged scan: staged paths from `git diff --cached --name-only` passed to `secretlint --no-glob` via `./scripts/dev secrets --staged` for optional fast checks without lint-staged.
-- **Gate:** `./scripts/dev check` runs secretlint after Biome and `tsc`. CI runs the same command.
+- **Gate:** `./scripts/dev check` runs secretlint after Biome and `tsc`. `./scripts/dev check-app` exposes the same frontend checks for conditional CI.
 
 Do **not** add lint-staged. Do **not** require a system binary.
 
@@ -47,7 +47,7 @@ Relies on `workflow-security-audit` and discipline. Too easy to commit `.env` on
 ### Positive
 
 - Secret scan installs with `pnpm install` — no extra local tooling.
-- Same `./scripts/dev check` locally and in GitHub Actions.
+- Same frontend checks locally and in GitHub Actions; local `check` also includes Rust.
 - Pattern-based detection catches common credential formats before push.
 
 ### Negative
