@@ -16,6 +16,15 @@ import {
   setDumpRequestIpcMockMode,
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
 import {
+  resetPlannerIpcMock,
+  resolvePlannerClubFamilyIpcMock,
+  resolvePlannerClubsIpcMock,
+  resolvePlannerTacticIpcMock,
+  resolvePlannerTacticOptionsIpcMock,
+  resolveSavePlannerClubFamilyIpcMock,
+  resolveSavePlannerTacticIpcMock,
+} from "@/testing/planner-ipc-mock";
+import {
   resetGetPlayerOverride,
   resolveGetPlayerIpcMock,
 } from "@/testing/player-ipc-mock";
@@ -105,6 +114,30 @@ function registerIpcMocks() {
       return resolveGetPlayerIpcMock(args);
     }
 
+    if (cmd === "get_planner_club_family") {
+      return resolvePlannerClubFamilyIpcMock();
+    }
+
+    if (cmd === "list_planner_clubs") {
+      return resolvePlannerClubsIpcMock();
+    }
+
+    if (cmd === "save_planner_club_family") {
+      return resolveSavePlannerClubFamilyIpcMock(args);
+    }
+
+    if (cmd === "get_planner_tactic") {
+      return resolvePlannerTacticIpcMock();
+    }
+
+    if (cmd === "get_planner_tactic_options") {
+      return resolvePlannerTacticOptionsIpcMock();
+    }
+
+    if (cmd === "save_planner_tactic") {
+      return resolveSavePlannerTacticIpcMock(args);
+    }
+
     if (cmd === "load_data") {
       return resolveLoadDataIpcMock(args);
     }
@@ -140,5 +173,6 @@ afterEach(() => {
   resetSnapshotIpcMock();
   resetSearchPlayersOverride();
   resetGetPlayerOverride();
+  resetPlannerIpcMock();
   registerIpcMocks();
 });

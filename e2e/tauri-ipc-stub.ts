@@ -1,9 +1,15 @@
 import type { Page } from "@playwright/test";
 
-export async function stubTauriIpc(page: Page) {
+type SmokeStubOptions = {
+  plannerSnapshot?: boolean;
+};
+
+export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
+  const plannerSnapshot = options.plannerSnapshot ?? false;
   await page.addInitScript({
     content: `
       let demoValue = "";
+      const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
 
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
@@ -84,7 +90,24 @@ export async function stubTauriIpc(page: Page) {
           }
 
           if (cmd === "get_current_snapshot") {
-            return null;
+            return plannerSnapshot
+              ? {
+                  id: 1,
+                  saveId: 1,
+                  schemaVersion: 5,
+                  generatedAtUtc: "2026-07-28T15:00:00.000Z",
+                  gameVersion: "26.0.0",
+                  supportedGameVersion: "26.0.0",
+                  bridgeVersion: "0.1.0",
+                  protocolVersion: 1,
+                  gameDate: null,
+                  gameDateSource: "unknown",
+                  scanTruncated: false,
+                  maxAccepted: null,
+                  playerCount: 3,
+                  loadedAtUtc: "2026-07-28T15:05:00.000Z",
+                }
+              : null;
           }
 
           if (cmd === "list_sanity_players") {
@@ -101,6 +124,71 @@ export async function stubTauriIpc(page: Page) {
 
           if (cmd === "get_player") {
             return null;
+          }
+
+          if (cmd === "get_planner_club_family") {
+            return { primaryClub: null, sources: [] };
+          }
+
+          if (cmd === "list_planner_clubs") {
+            return plannerSnapshot
+              ? ["Barcelona", "Barca Athletic", "Barcelona U19"]
+              : [];
+          }
+
+          if (cmd === "save_planner_club_family") {
+            return { primaryClub: args?.primaryClub ?? null, sources: [] };
+          }
+
+          if (cmd === "get_planner_tactic") {
+            return {
+              ipWeight: 0.5,
+              lanes: [
+                ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
+                ["left_back", "DL", "full_back_ip", "DL", "holding_full_back_oop"],
+                ["left_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
+                ["right_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
+                ["right_back", "DR", "full_back_ip", "DR", "holding_full_back_oop"],
+                ["defensive_midfielder", "DM", "defensive_midfielder_ip", "DM", "screening_defensive_midfielder_oop"],
+                ["left_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
+                ["right_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
+                ["left_winger", "AML", "winger_ip", "ML", "tracking_wide_midfielder_oop"],
+                ["right_winger", "AMR", "winger_ip", "MR", "tracking_wide_midfielder_oop"],
+                ["centre_forward", "ST", "centre_forward_ip", "ST", "central_outlet_centre_forward_oop"],
+              ].map(([laneId, ipPosition, ipRoleId, oopPosition, oopRoleId]) => ({
+                laneId,
+                ipPosition,
+                ipRoleId,
+                oopPosition,
+                oopRoleId,
+              })),
+            };
+          }
+
+          if (cmd === "get_planner_tactic_options") {
+            return {
+              placements: ["GK", "DL", "DC", "DR", "DM", "MC", "ML", "MR", "AML", "AMR", "ST"],
+              roles: [
+                { roleId: "goalkeeper_ip", displayName: "Goalkeeper", phase: "in_possession", positionTags: ["GK"] },
+                { roleId: "line_holding_keeper_oop", displayName: "Line-Holding Keeper", phase: "out_of_possession", positionTags: ["GK"] },
+                { roleId: "full_back_ip", displayName: "Full-Back", phase: "in_possession", positionTags: ["DL", "DR"] },
+                { roleId: "holding_full_back_oop", displayName: "Holding Full-Back", phase: "out_of_possession", positionTags: ["DL", "DR"] },
+                { roleId: "centre_back_ip", displayName: "Centre-Back", phase: "in_possession", positionTags: ["DC"] },
+                { roleId: "covering_centre_back_oop", displayName: "Covering Centre-Back", phase: "out_of_possession", positionTags: ["DC"] },
+                { roleId: "defensive_midfielder_ip", displayName: "Defensive Midfielder", phase: "in_possession", positionTags: ["DM"] },
+                { roleId: "screening_defensive_midfielder_oop", displayName: "Screening Defensive Midfielder", phase: "out_of_possession", positionTags: ["DM"] },
+                { roleId: "central_midfielder_ip", displayName: "Central Midfielder", phase: "in_possession", positionTags: ["MC"] },
+                { roleId: "pressing_central_midfielder_oop", displayName: "Pressing Central Midfielder", phase: "out_of_possession", positionTags: ["MC"] },
+                { roleId: "winger_ip", displayName: "Winger", phase: "in_possession", positionTags: ["ML", "MR", "AML", "AMR"] },
+                { roleId: "tracking_wide_midfielder_oop", displayName: "Tracking Wide Midfielder", phase: "out_of_possession", positionTags: ["ML", "MR"] },
+                { roleId: "centre_forward_ip", displayName: "Centre Forward", phase: "in_possession", positionTags: ["ST"] },
+                { roleId: "central_outlet_centre_forward_oop", displayName: "Central Outlet Centre Forward", phase: "out_of_possession", positionTags: ["ST"] },
+              ],
+            };
+          }
+
+          if (cmd === "save_planner_tactic") {
+            return args?.tactic;
           }
 
           if (cmd === "load_data") {

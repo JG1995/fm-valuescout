@@ -5,6 +5,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Search,
+  UsersRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
 import { useLayoutStore } from "@/stores/use-layout-store";
@@ -16,11 +17,10 @@ type NavItem = {
   icon: LucideIcon;
 };
 
-// Only routes that exist. Planner and Optimizer join this list with their
-// features, not before — a rail of dead links is worse than a short rail.
 const navItems: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/search", label: "Search", icon: Search },
+  { to: "/planner", label: "Planner", icon: UsersRound },
 ];
 
 export function AppNavRail() {

@@ -70,6 +70,62 @@ test.describe("walking skeleton smoke", () => {
     await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
   });
 
+  test("planner route shows no-snapshot Load Data guidance", async ({
+    page,
+  }) => {
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("heading", { level: 1, name: "Squad Planner" }),
+    ).toBeVisible();
+    await expect(main.getByText("No data loaded for this save")).toBeVisible();
+    await expect(
+      main.getByText(/Use Load Data to scan Football Manager/i),
+    ).toBeVisible();
+  });
+
+  test("planner route shows first-use club setup for a loaded snapshot", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("heading", { level: 1, name: "Squad Planner" }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("combobox", { name: "Primary club" }),
+    ).toBeVisible();
+    await expect(main.getByText("Set up your club family")).toBeVisible();
+    await expect(
+      main.getByText("11 linked lanes · 50% IP score weight"),
+    ).toBeVisible();
+  });
+
+  test("planner tactic editor saves a linked phase adjustment", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("heading", { name: "Tactic editor" }),
+    ).toBeVisible();
+    await main
+      .getByRole("button", { name: "IP lane 1: GK, Goalkeeper" })
+      .press("Enter");
+
+    const weight = main.getByRole("slider", { name: "IP score weight" });
+    await weight.press("ArrowRight");
+    await expect(main.getByText("IP 51% / OOP 49%")).toBeVisible();
+    await main.getByRole("button", { name: "Save tactic" }).click();
+
+    await expect(main.getByRole("status")).toHaveText("Tactic saved.");
+  });
+
   test("player profile route shows no-snapshot empty state from stubbed IPC", async ({
     page,
   }) => {

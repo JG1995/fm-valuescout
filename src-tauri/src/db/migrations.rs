@@ -105,6 +105,49 @@ CREATE INDEX idx_player_role_scores_snapshot_role
     ON player_role_scores(snapshot_id, role_id);
 ";
 
+pub const PLANNER_CLUB_FAMILY_SQL: &str = "
+CREATE TABLE planner_club_settings (
+    save_id INTEGER PRIMARY KEY REFERENCES saves(id) ON DELETE CASCADE,
+    primary_club TEXT NOT NULL CHECK (trim(primary_club) <> '')
+);
+
+CREATE TABLE planner_club_sources (
+    id INTEGER PRIMARY KEY,
+    save_id INTEGER NOT NULL REFERENCES planner_club_settings(save_id) ON DELETE CASCADE,
+    team TEXT NOT NULL CHECK (team IN ('senior', 'reserves', 'youth')),
+    club_name TEXT NOT NULL CHECK (trim(club_name) <> ''),
+    team_level TEXT CHECK (team_level IS NULL OR team_level IN ('senior', 'reserve', 'youth')),
+    is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0, 1)),
+    UNIQUE (save_id, team, club_name, team_level)
+);
+
+CREATE INDEX idx_planner_club_sources_save_team
+    ON planner_club_sources(save_id, team);
+";
+
+pub const PLANNER_TACTIC_SQL: &str = "
+CREATE TABLE planner_tactics (
+    save_id INTEGER PRIMARY KEY REFERENCES saves(id) ON DELETE CASCADE,
+    ip_weight REAL NOT NULL DEFAULT 0.5 CHECK (ip_weight >= 0 AND ip_weight <= 1)
+);
+
+CREATE TABLE planner_tactic_lanes (
+    id INTEGER PRIMARY KEY,
+    save_id INTEGER NOT NULL REFERENCES planner_tactics(save_id) ON DELETE CASCADE,
+    lane_order INTEGER NOT NULL CHECK (lane_order >= 0 AND lane_order < 11),
+    lane_id TEXT NOT NULL CHECK (trim(lane_id) <> ''),
+    ip_position TEXT NOT NULL CHECK (trim(ip_position) <> ''),
+    ip_role_id TEXT NOT NULL CHECK (trim(ip_role_id) <> ''),
+    oop_position TEXT NOT NULL CHECK (trim(oop_position) <> ''),
+    oop_role_id TEXT NOT NULL CHECK (trim(oop_role_id) <> ''),
+    UNIQUE (save_id, lane_order),
+    UNIQUE (save_id, lane_id)
+);
+
+CREATE INDEX idx_planner_tactic_lanes_save_order
+    ON planner_tactic_lanes(save_id, lane_order);
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -121,6 +164,16 @@ pub fn all() -> &'static [Migration] {
             version: 3,
             description: "create_player_role_scores",
             sql: PLAYER_ROLE_SCORES_SQL,
+        },
+        Migration {
+            version: 4,
+            description: "create_planner_club_family",
+            sql: PLANNER_CLUB_FAMILY_SQL,
+        },
+        Migration {
+            version: 5,
+            description: "create_planner_tactic",
+            sql: PLANNER_TACTIC_SQL,
         },
     ]
 }
@@ -202,7 +255,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 3);
+        assert_eq!(version, 5);
 
         let table_name: String = conn
             .query_row(
@@ -241,7 +294,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 3);
+        assert_eq!(version, 5);
 
         let table_name: String = conn
             .query_row(
@@ -354,6 +407,8 @@ mod tests {
         assert_eq!(
             indexes,
             [
+                "idx_planner_club_sources_save_team",
+                "idx_planner_tactic_lanes_save_order",
                 "idx_player_role_scores_snapshot_role",
                 "idx_players_snapshot_ca",
                 "idx_players_snapshot_name",
@@ -446,14 +501,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 3);
+        assert_eq!(version, 5);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 3);
+        assert_eq!(migrations.len(), 5);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -463,5 +518,71 @@ mod tests {
         assert_eq!(migrations[2].version, 3);
         assert_eq!(migrations[2].description, "create_player_role_scores");
         assert_eq!(migrations[2].sql, PLAYER_ROLE_SCORES_SQL);
+        assert_eq!(migrations[3].version, 4);
+        assert_eq!(migrations[3].description, "create_planner_club_family");
+        assert_eq!(migrations[3].sql, PLANNER_CLUB_FAMILY_SQL);
+        assert_eq!(migrations[4].version, 5);
+        assert_eq!(migrations[4].description, "create_planner_tactic");
+        assert_eq!(migrations[4].sql, PLANNER_TACTIC_SQL);
+    }
+
+    #[test]
+    fn opening_fresh_db_applies_planner_club_family_schema() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("planner-migration-test.db"));
+
+        for expected_table in ["planner_club_settings", "planner_club_sources"] {
+            let table_name: String = conn
+                .query_row(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    [expected_table],
+                    |row| row.get(0),
+                )
+                .expect("read planner table from sqlite_master");
+            assert_eq!(table_name, expected_table);
+        }
+
+        assert_eq!(
+            table_columns(&conn, "planner_club_sources"),
+            [
+                "id",
+                "save_id",
+                "team",
+                "club_name",
+                "team_level",
+                "is_primary"
+            ]
+        );
+    }
+
+    #[test]
+    fn opening_fresh_db_applies_planner_tactic_schema() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("planner-tactic-migration-test.db"));
+
+        for expected_table in ["planner_tactics", "planner_tactic_lanes"] {
+            let table_name: String = conn
+                .query_row(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    [expected_table],
+                    |row| row.get(0),
+                )
+                .expect("read tactic table from sqlite_master");
+            assert_eq!(table_name, expected_table);
+        }
+
+        assert_eq!(
+            table_columns(&conn, "planner_tactic_lanes"),
+            [
+                "id",
+                "save_id",
+                "lane_order",
+                "lane_id",
+                "ip_position",
+                "ip_role_id",
+                "oop_position",
+                "oop_role_id"
+            ]
+        );
     }
 }
