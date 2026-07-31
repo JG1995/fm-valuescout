@@ -93,7 +93,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 ### PR 1 — Replace Cursor workflow with Codex
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional PR title:** `chore(workflow): replace Cursor configuration with Codex`
 
@@ -174,7 +174,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 6 — Remove Cursor compatibility
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `495edea`
 
 **Work:** Replace Cursor-specific contract scripts and CI fixture wiring, move disposable-work references, remove `.cursor/`, and eliminate stale live references.
 
@@ -188,19 +188,19 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 ## Active work
 
-**PR:** PR 1 — Replace Cursor workflow with Codex
+**PR:** PR 1 — Replace Cursor workflow with Codex — delivery complete
 
-**Commit:** Remove Cursor compatibility — completed pending checkpoint commit
+**Commit:** None
 
-### RED test (active commit)
+### Next step
 
-Replace Cursor-specific contract coverage and CI fixture wiring with Codex-only validation that fails while any live workflow surface still depends on `.cursor/`.
+Run `workflow-finish-feature` to complete final validation, feature review, and documentation reconciliation before archiving this ledger.
 
-### Expected outcome
+### Delivered outcome
 
 The repository validates only Codex workflow surfaces, disposable work uses `.work/`, and no live guidance or CI fixture depends on `.cursor/`.
 
-### Explicit exclusions
+### Preserved exclusions
 
 - Do not change application behavior, product documentation, Codex MCP configuration, or specialist agent definitions.
 - Do not add hooks or change Git approval boundaries.
@@ -220,6 +220,7 @@ The repository validates only Codex workflow surfaces, disposable work uses `.wo
 | PR 1 | Port repository skills to Codex | `eaba444` | Added copied domain skills, `workflow-*` skills, and their validation contract. |
 | PR 1 | Port specialist agents to Codex | `a8cb615` | Added read-only reviewer and documentation-only steward definitions, workflow dispatch, and boundary validation. |
 | PR 1 | Make Codex the documented workflow | `73b5dad` | Added Codex workflow guidance, contributor terminology, and documentation contract validation. |
+| PR 1 | Remove Cursor compatibility | `495edea` | Removed the retired Cursor surface and replaced its contracts with Codex-only validation. |
 
 ## Final validation
 
