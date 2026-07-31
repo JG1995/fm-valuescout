@@ -188,7 +188,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 ### PR 2 — Focus validation on product behavior
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional PR title:** `chore(validation): focus checks on product behavior`
 
@@ -213,7 +213,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 2 — Document product-focused validation
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `fff1268`
 
 **Work:** Update contributor, architecture, bridge, and repository guidance to describe product-test ownership and remove workflow-contract terminology.
 
@@ -228,13 +228,13 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 ## Active work
 
-**PR:** PR 2 — Focus validation on product behavior
+**PR:** PR 2 — Focus validation on product behavior — delivery complete
 
-**Commit:** Commit 2 — Document product-focused validation
+**Commit:** None
 
 ### Next step
 
-Update repository documentation to describe product-focused validation, then checkpoint it before feature completion.
+Run `workflow-finish-feature` to complete final validation, feature review, and documentation reconciliation before archiving this ledger.
 
 ### Delivered outcome
 
@@ -256,6 +256,7 @@ The repository uses Codex-only guidance, disposable work uses `.work/`, and no l
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
+| PR 2 | Document product-focused validation | `fff1268` | Reconciled guidance, architecture, and decision records with the product-focused validation model. |
 | PR 2 | Replace workflow contracts with product checks | `50f86a2` | Removed self-testing workflow contracts, kept code-quality checks, and added explicit browser and bridge product test coverage in CI. |
 | PR 1 | Document the Codex migration contract | `8c8d7ac` | Added the approved delivery plan and marked the tooling initiative active. |
 | PR 1 | Add Codex project configuration | `187c635` | Added Recallium and Context7 project MCP configuration with gate validation. |
