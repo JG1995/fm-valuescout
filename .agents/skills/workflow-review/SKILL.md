@@ -5,7 +5,7 @@ description: Review staged changes or a complete feature — functional bugs, ru
 
 ## Specialist dispatch
 
-Dispatch a separate read-only reviewer. Give the reviewer the active scope and require a full Review verdict with CRITICAL, HIGH, MEDIUM, and NITPICK tiers.
+Dispatch a separate named `reviewer` Codex agent. If named-agent dispatch is unavailable, use a generic read-only reviewer with the same instructions. Give the reviewer the active scope and require a full Review verdict with CRITICAL, HIGH, MEDIUM, and NITPICK tiers.
 
 ## Recallium
 

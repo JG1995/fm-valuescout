@@ -19,7 +19,7 @@ Broad wiki reconciliation belongs here or in `$workflow-finish-feature`, not aft
 
 ## Documentation Steward dispatch
 
-Dispatch a foreground generic documentation-only agent. Do not edit the worktree concurrently.
+Dispatch a foreground named `documentation-steward` Codex agent. If named-agent dispatch is unavailable, use a generic documentation-only agent with the same boundary. Do not edit the worktree concurrently.
 
 Do not run it in the background or edit the worktree concurrently. After it returns, inspect the complete documentation diff and run `./scripts/dev check`.
 

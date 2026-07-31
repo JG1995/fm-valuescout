@@ -60,7 +60,7 @@ Do **not** stop for manual `$workflow-checkpoint` at the end of build — contin
 
 For each checkpoint pass in the loop, follow `.agents/skills/workflow-checkpoint/SKILL.md` steps **1–11** (inspect, intrinsic docs, stage exact hunks, format, gate, reviewer subagent, commit message assessment, Recallium reconcile, present verdict).
 
-Use the same generic read-only reviewer selection as `$workflow-checkpoint`. Do not add a model pin.
+Use the same named `reviewer` Codex agent selection as `$workflow-checkpoint`. If named-agent dispatch is unavailable, use its generic read-only fallback. Do not add a model pin.
 
 Differences from manual `$workflow-checkpoint`:
 

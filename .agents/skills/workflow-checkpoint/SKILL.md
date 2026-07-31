@@ -51,7 +51,7 @@ Do not mirror the feature ledger or staged diff. Skip when unsure.
 6. Stage exact files or hunks only. Never use `git add .` or `git commit -a`.
 7. Run and inspect `git diff --cached --check`, `git diff --cached --stat`, and the complete staged diff.
 8. Run targeted tests and `./scripts/dev check`. Status 69 on smoke/mutate means unsupported, not passed.
-9. Require a separate generic read-only reviewer pass for non-trivial work. Give the reviewer the staged diff, active commit scope, applicable skills, and the required full Review verdict.
+9. Require a separate named `reviewer` Codex agent pass for non-trivial work. Give the reviewer the staged diff, active commit scope, applicable skills, and the required full Review verdict. If named-agent dispatch is unavailable, use a separate generic read-only reviewer with the same instructions.
 
     **CRITICAL** and **HIGH** block commit until fixed or **explicitly approved** by the developer.
 

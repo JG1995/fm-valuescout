@@ -88,7 +88,7 @@ Report pass/fail for each step. A failing gate or test suite blocks moving to re
 
 Require a **separate** reviewer pass — not self-review of implementation you wrote in this turn.
 
-Dispatch a separate generic read-only reviewer. Give the reviewer the feature ledger, planned spec, comparison base, and the full feature diff.
+Dispatch a separate named `reviewer` Codex agent. If named-agent dispatch is unavailable, use a generic read-only reviewer with the same instructions. Give the reviewer the feature ledger, planned spec, comparison base, and the full feature diff.
 
 **Present the full Review verdict to the developer.** Do **not** automatically fix findings. Delegate via **`$workflow-fix`** or explicit instructions, then re-run validation and review from step 3.
 
@@ -100,7 +100,7 @@ Only when **Blocking: No** on the feature-complete verdict, or the developer has
 
 Run **`$workflow-docs-review`** as a foreground Documentation Steward pass scoped to this feature.
 
-Dispatch a foreground generic documentation-only agent. Do not edit the worktree concurrently.
+Dispatch a foreground named `documentation-steward` Codex agent. If named-agent dispatch is unavailable, use a generic documentation-only agent with the same boundary. Do not edit the worktree concurrently.
 
 Do not run in the background or edit the worktree concurrently. After it returns, inspect the documentation diff and run `./scripts/dev check`.
 
