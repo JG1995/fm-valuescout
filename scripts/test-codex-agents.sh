@@ -19,6 +19,8 @@ repo_root = pathlib.Path(sys.argv[1])
 agents_dir = pathlib.Path(sys.argv[2])
 expected = {
     "reviewer": {
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "xhigh",
         "sandbox_mode": "read-only",
         "instruction_markers": (
             "review without changing files",
@@ -26,6 +28,8 @@ expected = {
         ),
     },
     "documentation-steward": {
+        "model": "gpt-5.6-terra",
+        "model_reasoning_effort": "medium",
         "sandbox_mode": "workspace-write",
         "instruction_markers": (
             ".wiki/**/*.md",
@@ -58,8 +62,9 @@ for name, requirements in expected.items():
         errors.append(f"{name}: name must match the agent identifier")
     if data.get("sandbox_mode") != requirements["sandbox_mode"]:
         errors.append(f"{name}: sandbox_mode must be {requirements['sandbox_mode']!r}")
-    if "model" in data or "model_reasoning_effort" in data:
-        errors.append(f"{name}: must inherit the parent model configuration")
+    for field in ("model", "model_reasoning_effort"):
+        if data.get(field) != requirements[field]:
+            errors.append(f"{name}: {field} must be {requirements[field]!r}")
 
     instructions = data.get("developer_instructions", "")
     if isinstance(instructions, str):

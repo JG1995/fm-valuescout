@@ -64,13 +64,13 @@ The human workflow guide will live at `.codex/README.md`. Disposable agent work 
 ### Assumptions
 
 - Codex becomes the only supported AI development workflow after cutover.
-- Specialist agents can inherit the parent Codex model initially.
+- Specialist agents can use explicit Codex model and reasoning pins.
 - Recallium and Context7 remain the required MCP servers.
 
 ### Decisions
 
 - Preserve the existing named workflow as Codex skills instead of reproducing Cursor slash commands.
-- Omit model pins from the first Codex agent definitions. Add supported pins only after evaluation shows a benefit.
+- Pin the reviewer and documentation steward after evaluating the workflow: both use `gpt-5.6-terra`; reviewer uses `xhigh` reasoning and documentation steward uses `medium`.
 - Do not add Codex hooks during this migration.
 - Keep the product development sequence unchanged while this tooling initiative is active.
 

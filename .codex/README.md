@@ -43,6 +43,8 @@ Dispatch specialist agents explicitly when the task needs their role:
 - `reviewer` reviews without changing files. Use it for each non-trivial staged change and for feature-complete review.
 - `documentation-steward` can update documentation and feature ledgers only. Use it after feature-complete review clears or for documentation reconciliation.
 
+Each definition pins its own model and reasoning effort. `reviewer` uses `gpt-5.6-terra` with `xhigh`; `documentation-steward` uses `gpt-5.6-terra` with `medium`. Do not override these settings when you dispatch either agent.
+
 If an agent is unavailable, follow the corresponding workflow skill in the main session and preserve the same boundary.
 
 ## MCP
