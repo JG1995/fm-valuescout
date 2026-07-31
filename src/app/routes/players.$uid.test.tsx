@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
@@ -137,5 +137,75 @@ describe("player profile route", () => {
     expect(
       await screen.findByText("No data loaded for this save"),
     ).toBeInTheDocument();
+  });
+
+  it("shows attribute groups with tabular values and em dash for nulls", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: {
+          Acceleration: 14,
+          Crossing: null,
+          Handling: 11,
+        },
+        hiddenAttributes: {
+          Consistency: null,
+          Dirtiness: 8,
+        },
+        personality: {
+          Ambition: 15,
+          Loyalty: null,
+        },
+      }),
+    );
+    renderProfileRoute("/players/42?tab=attributes");
+
+    expect(
+      await screen.findByRole("heading", { level: 3, name: "Technical" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Mental" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Physical" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Goalkeeping" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Hidden" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Personality" }),
+    ).toBeInTheDocument();
+
+    const technical = screen.getByRole("region", { name: "Technical" });
+    const crossingTerm = within(technical).getByText("Crossing");
+    expect(crossingTerm.parentElement).toHaveTextContent(/^Crossing—$/);
+
+    const physical = screen.getByRole("region", { name: "Physical" });
+    const accelerationTerm = within(physical).getByText("Acceleration");
+    expect(accelerationTerm.parentElement).toHaveTextContent(
+      /^Acceleration14$/,
+    );
+    expect(accelerationTerm.parentElement?.querySelector("dd")).toHaveClass(
+      "tabular-nums",
+    );
+
+    const hidden = screen.getByRole("region", { name: "Hidden" });
+    expect(
+      within(hidden).getByText("Consistency").parentElement,
+    ).toHaveTextContent(/^Consistency—$/);
+    expect(
+      within(hidden).getByText("Dirtiness").parentElement,
+    ).toHaveTextContent(/^Dirtiness8$/);
+
+    const personality = screen.getByRole("region", { name: "Personality" });
+    expect(
+      within(personality).getByText("Ambition").parentElement,
+    ).toHaveTextContent(/^Ambition15$/);
+    expect(
+      within(personality).getByText("Loyalty").parentElement,
+    ).toHaveTextContent(/^Loyalty—$/);
   });
 });

@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { getPlayerQueryOptions } from "@/features/player-profile/api/get-player-query-options";
+import { PlayerAttributesPanel } from "@/features/player-profile/components/player-attributes-panel";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
 import {
   PlayerProfileTabs,
@@ -97,9 +98,7 @@ function PlayerProfileContent({
       </div>
       <div {...profileTabPanelProps("attributes", tab)}>
         {tab === "attributes" ? (
-          <Panel title="Attributes">
-            <div className="min-h-16" />
-          </Panel>
+          <PlayerAttributesPanel player={player} />
         ) : null}
       </div>
       <div {...profileTabPanelProps("roles", tab)}>
