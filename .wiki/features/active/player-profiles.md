@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Active — delivery plan complete; run `/finish-feature`
 
 ## Intent
 
@@ -121,7 +121,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 ### PR 1 — Player profile page and entry points
 
-**Status:** Active
+**Status:** Implementation complete — run `/finish-feature`
 
 **Provisional PR title:** `feat(profile): add player profile page with attributes and role scores`
 
@@ -194,7 +194,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 5 — Open profile from Search and Ctrl+K
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `5b11eeb`
 
 **Work:** Search results: whole-row activation (click + Enter) navigates to `/players/$uid`; GlobalPlayerSearch hit activation navigates to profile instead of name filter; update tests and Playwright stubs/expectations; keyboard search-to-profile path.
 
@@ -210,15 +210,11 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 **PR:** 1 — Player profile page and entry points
 
-**Commit:** Open profile from Search and Ctrl+K
+**Commit:** None — delivery plan complete
 
-### RED test (active commit)
+### Next step
 
-Vitest: Search results whole-row click / Enter navigates to `/players/$uid`; GlobalPlayerSearch hit activation navigates to profile (not name `is` filter).
-
-### Expected outcome
-
-Search row and Ctrl+K open the player profile route; sanity list unchanged; smoke/stubs updated as needed.
+Run `/finish-feature` (full suite, feature-complete review, docs reconciliation).
 
 ### Explicit exclusions
 
@@ -241,6 +237,7 @@ Sanity-list links; new nav-rail item; comparison / radar / suitability.
 | 1 | Profile route and Overview tab | `f318171` | `/players/$uid` Overview + tab chrome; empty Attr/Roles panels |
 | 1 | Attributes tab | `42f64cb` | Grouped visible + Hidden + Personality; null → `—` |
 | 1 | Roles tab and ScoreBadge | `109456e` | Family-grouped roles; hero best-role; shared ScoreBadge |
+| 1 | Open profile from Search and Ctrl+K | `5b11eeb` | Search row + suggest → `/players/$uid`; arrow row focus |
 
 ## Final validation
 
