@@ -123,7 +123,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 #### Commit 1 — Configure club-family sources
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `31b091a`
 
 **Work:** Add save-scoped club-family persistence, distinct-club and source-management IPC, the `/planner` shell, nav entry, no-snapshot Load Data guidance, first-use primary-club setup, and editable Reserves/Youth associated-club sources. Seed the primary club's three team-level sources and keep missing mappings visible after refresh.
 
@@ -139,7 +139,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 #### Commit 2 — Persist the dual-phase tactic
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add the save-scoped tactic and 11 stable lane model, seed the default IP/OOP shapes with compatible general-purpose roles, expose phase-compatible role and placement options from the Rust scoring catalog, validate complete tactics and role-position compatibility, and persist the IP weight.
 
@@ -246,19 +246,19 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 **PR:** PR 1 — Create the club tactic
 
-**Commit:** Configure club-family sources
+**Commit:** Persist the dual-phase tactic
 
 ### RED test (active commit)
 
-Persist a primary club with the default Senior/Reserves/Youth filters, attach a differently named club to Reserves, reload the planner, and assert that both sources remain available only in the originating app save. This catches the two wrong behaviors most likely to exclude B-team players: reducing the organization to one club name or storing configuration against a replaceable snapshot.
+Persist an 11-lane dual-phase tactic with the default IP/OOP shapes, reload it, and assert that a second app save starts independently. Reject incomplete lanes, phase-incompatible roles, invalid role-position pairs, and IP weights outside 0–1.
 
 ### Expected outcome
 
-The Planner route points to Load Data when the active save has no snapshot. After data exists, it lets the user configure and revisit a save-scoped club family, including a separate B-team or youth club, with no tactic or squad assignment behavior yet.
+Each app save has one persisted 11-lane tactic with linked IP and OOP placements and roles, a valid default shape, and a saved IP/OOP weight. The Planner route can load that tactic without introducing strings, assignments, or editor UI yet.
 
 ### Explicit exclusions
 
-- Do not add tactic, string, assignment, or optimizer tables in this commit.
+- Do not add tactic editor UI, string, assignment, or optimizer tables in this commit.
 - Do not infer affiliated clubs from names.
 - Do not edit bridge schema v5 or memory scanning.
 
@@ -270,7 +270,7 @@ The Planner route points to Load Data when the active save has no snapshot. Afte
 
 | PR | Commit | Hash | Notes |
 | --- | --- | --- | --- |
-| — | — | — | No implementation started |
+| PR 1 | Configure club-family sources | `31b091a` | Added migration v4, save-scoped source persistence and validation, Planner route/setup UI, IPC, cache invalidation, and first-use smoke coverage. |
 
 ## Final validation
 
