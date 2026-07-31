@@ -18,7 +18,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 | 3 | Role scoring engine | [Completed](./features/completed/role-scoring-engine.md) | medium | One scoring model on ingest; primary/secondary bands; combined IP/OOP helper — **done** |
 | 4 | Player search | [Completed](./features/completed/player-search.md) | high | First full UI value path after Load Data; validates DB and scores — **done** |
 | 5 | Player profiles | [Completed](./features/completed/player-profiles.md) | high | Detail view from search; traditional scouting path — **done** |
-| 6 | Squad planner | CONCEPT | medium | Tactic + squad slots; same scores as search |
+| 6 | Squad planner | [Active](./features/active/squad-planner.md) | medium | Tactic + three-team squad strings; same scores as search — **in progress** |
 | 7 | Squad optimizer | CONCEPT | medium | Maximize combined team score; closes success vignette |
 
 **Dependency graph:**
@@ -52,11 +52,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-_None — plan the next feature with `workflow-plan-feature`._
+[Squad planner](./features/active/squad-planner.md) — shared dual-phase tactic; Senior, Reserves, and Youth depth strings; explicit club-family sources for separate B/youth clubs.
 
 ## Plan next
 
-Squad planner (order 6) — tactic + squad slots; same scores as search.
+Squad planner PR 1, commit 1 — configure club-family sources.
 
 ## Next
 
