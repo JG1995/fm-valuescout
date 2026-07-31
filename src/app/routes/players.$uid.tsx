@@ -11,6 +11,7 @@ import {
   PlayerProfileTabs,
   profileTabPanelProps,
 } from "@/features/player-profile/components/player-profile-tabs";
+import { PlayerRolesPanel } from "@/features/player-profile/components/player-roles-panel";
 import {
   type ProfileTab,
   parseProfileTab,
@@ -102,11 +103,7 @@ function PlayerProfileContent({
         ) : null}
       </div>
       <div {...profileTabPanelProps("roles", tab)}>
-        {tab === "roles" ? (
-          <Panel title="Roles">
-            <div className="min-h-16" />
-          </Panel>
-        ) : null}
+        {tab === "roles" ? <PlayerRolesPanel player={player} /> : null}
       </div>
     </div>
   );

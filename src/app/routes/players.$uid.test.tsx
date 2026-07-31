@@ -208,4 +208,53 @@ describe("player profile route", () => {
       within(personality).getByText("Loyalty").parentElement,
     ).toHaveTextContent(/^Loyalty—$/);
   });
+
+  it("shows a hero ScoreBadge for the best non-null role on Overview", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByLabelText("Deep-Lying Playmaker: 82, Starter"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Best role")).toBeInTheDocument();
+    expect(screen.getByText("Deep-Lying Playmaker")).toBeInTheDocument();
+  });
+
+  it("groups Roles by position family with card badges and em dash for nulls", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    renderProfileRoute("/players/42?tab=roles");
+
+    expect(
+      await screen.findByRole("heading", { level: 3, name: "Goalkeeper" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Centre-back" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Defensive midfield" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Central midfield" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Striker" }),
+    ).toBeInTheDocument();
+
+    const centreBack = screen.getByRole("region", { name: "Centre-back" });
+    expect(within(centreBack).getByText("Centre-Back")).toBeInTheDocument();
+    expect(within(centreBack).getByText("—")).toBeInTheDocument();
+
+    expect(
+      screen.getByLabelText("Deep-Lying Playmaker: 82, Starter"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Central Midfielder: 72, Starter"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Goalkeeper: 40, Fringe")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Advanced Forward: 55, Rotation"),
+    ).toBeInTheDocument();
+  });
 });

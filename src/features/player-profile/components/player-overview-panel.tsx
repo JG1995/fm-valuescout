@@ -1,6 +1,8 @@
 import { Panel } from "@/components/ui/panel/panel";
+import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { formatMissable, formatMoney, formatPlayerDob } from "@/utils/format";
 import type { PlayerDetail } from "../types/player-detail";
+import { bestRoleScore } from "../utils/position-families";
 
 type FieldProps = {
   label: string;
@@ -46,45 +48,65 @@ export function PlayerOverviewPanel({ player }: PlayerOverviewPanelProps) {
     flagLabel(player.setForRelease, "Set for release"),
     flagLabel(player.onLoan, "On loan"),
   ].filter((label): label is string => label !== null);
+  const bestRole = bestRoleScore(player.roleScores);
 
   return (
     <Panel title="Overview">
-      <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
-        <Field label="Name" value={player.name} />
-        <Field
-          label="Age / DOB"
-          value={formatPlayerDob(
-            player.birthYear,
-            player.birthDayOfYear,
-            player.age,
-          )}
-        />
-        <Field label="Nationality" value={nationality} />
-        <Field label="Club" value={formatMissable(player.club)} />
-        <Field label="Division" value={formatMissable(player.division)} />
-        <Field label="CA" value={player.ca} numeric />
-        <Field label="PA" value={player.pa} numeric />
-        <Field
-          label="Value"
-          value={
-            player.marketValueGbp === null
-              ? "—"
-              : formatMoney(player.marketValueGbp)
-          }
-          numeric
-        />
-        <Field
-          label="Height"
-          value={player.heightCm === null ? "—" : `${player.heightCm} cm`}
-          numeric
-        />
-        <Field
-          label="Preferred foot"
-          value={formatMissable(player.preferredFoot)}
-        />
-        {flags.length > 0 ? (
-          <Field label="Status" value={flags.join(" · ")} />
+      <div className="space-y-6">
+        {bestRole !== null ? (
+          <div className="flex items-center gap-4">
+            <ScoreBadge
+              score={bestRole.score}
+              roleName={bestRole.displayName}
+              variant="hero"
+            />
+            <div className="min-w-0">
+              <p className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
+                Best role
+              </p>
+              <p className="truncate text-body-md text-on-surface">
+                {bestRole.displayName}
+              </p>
+            </div>
+          </div>
         ) : null}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
+          <Field label="Name" value={player.name} />
+          <Field
+            label="Age / DOB"
+            value={formatPlayerDob(
+              player.birthYear,
+              player.birthDayOfYear,
+              player.age,
+            )}
+          />
+          <Field label="Nationality" value={nationality} />
+          <Field label="Club" value={formatMissable(player.club)} />
+          <Field label="Division" value={formatMissable(player.division)} />
+          <Field label="CA" value={player.ca} numeric />
+          <Field label="PA" value={player.pa} numeric />
+          <Field
+            label="Value"
+            value={
+              player.marketValueGbp === null
+                ? "—"
+                : formatMoney(player.marketValueGbp)
+            }
+            numeric
+          />
+          <Field
+            label="Height"
+            value={player.heightCm === null ? "—" : `${player.heightCm} cm`}
+            numeric
+          />
+          <Field
+            label="Preferred foot"
+            value={formatMissable(player.preferredFoot)}
+          />
+          {flags.length > 0 ? (
+            <Field label="Status" value={flags.join(" · ")} />
+          ) : null}
+        </div>
       </div>
     </Panel>
   );
