@@ -113,7 +113,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 ### PR 1 — Create the club tactic
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional PR title:** `feat(planner): create dual-phase club tactic`
 
@@ -155,7 +155,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 #### Commit 3 — Add the dual-phase tactic editor
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `a6a761c`
 
 **Work:** Add the planned IP, OOP, and side-by-side tactic views with editable pitch placements, phase-filtered role pickers, linked lane identity, IP/OOP weight control, complete loading/error states, and pointer plus keyboard operation. Save through the tactic IPC contract and show validation without losing the draft.
 
@@ -171,7 +171,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 ### PR 2 — Plan three-team squad depth
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional PR title:** `feat(planner): plan three-team squad depth`
 
@@ -181,7 +181,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 #### Commit 1 — Persist squad depth assignments
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add save-scoped ordered strings and assignments for the three fixed teams. Seed one string per team, enforce save-wide player uniqueness, retain last-known names across snapshot replacement, resolve current snapshot details and combined lane scores in Rust, and support add, remove, clear, assign, and move mutations.
 
@@ -244,24 +244,23 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 ## Active work
 
-**PR:** PR 1 — Create the club tactic
+**PR:** PR 2 — Plan three-team squad depth
 
-**Commit:** Add the dual-phase tactic editor
+**Commit:** Persist squad depth assignments
 
 ### RED test (active commit)
 
-Edit a linked lane through IP and OOP phase controls, reject an incompatible role before save, change the IP/OOP weight, and retain the draft when a tactic save fails.
+Persist default strings for Senior, Reserves, and Youth, add and remove ordered strings, reject removal of the final string, enforce save-wide player uniqueness and moves, retain last-known names after snapshot replacement, resolve combined lane scores, and preserve save isolation.
 
 ### Expected outcome
 
-The Planner route exposes a keyboard-operable editor for the shared tactic. Phase-filtered placement and role choices remain linked to each stable lane, the IP/OOP weight is editable, and a failed save leaves the current draft visible for correction.
+Rust persists the three-team depth-chart foundation with one seeded string per team, bounded string mutations, unique assignments, snapshot-surviving names, combined score resolution, and per-save isolation. The data remains ready for the later matrix and candidate-picker commits.
 
 ### Explicit exclusions
 
-- Do not add strings, assignments, candidate lists, or optimizer controls in this commit.
-- Do not add team instructions, set pieces, or multiple tactic presets.
-- Do not import or write tactics to Football Manager.
-- Do not infer affiliated clubs from names.
+- Do not build the depth-chart matrix or player picker in this commit.
+- Do not add optimized or automatic assignments.
+- Do not add custom string names or reorder controls.
 - Do not edit bridge schema v5 or memory scanning.
 
 ## Discoveries and replanning
@@ -274,6 +273,7 @@ The Planner route exposes a keyboard-operable editor for the shared tactic. Phas
 | --- | --- | --- | --- |
 | PR 1 | Configure club-family sources | `31b091a` | Added migration v4, save-scoped source persistence and validation, Planner route/setup UI, IPC, cache invalidation, and first-use smoke coverage. |
 | PR 1 | Persist the dual-phase tactic | `88925cc` | Added migration v5, save-scoped 11-lane tactic persistence, catalog-backed options, Rust validation, tactic IPC, and route loading/status coverage. |
+| PR 1 | Add the dual-phase tactic editor | `a6a761c` | Added linked IP/OOP/Both views, editable pitch lanes, compatible role filtering, keyboard controls, weight editing, save/error handling, and planner smoke coverage. |
 
 ## Final validation
 
