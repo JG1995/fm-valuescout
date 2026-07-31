@@ -1,11 +1,13 @@
 ---
 name: workflow-review
-description: Review staged changes or a complete feature — functional bugs, rules and architecture, project skills
+description: Run a fresh-context, profile-routed review of staged changes or a complete feature with evidence-backed findings
 ---
 
 ## Specialist dispatch
 
-Dispatch a separate named `reviewer` Codex agent. If named-agent dispatch is unavailable, use a generic read-only reviewer with the same instructions. Give the reviewer the active scope and require a full Review verdict with CRITICAL, HIGH, MEDIUM, and NITPICK tiers.
+Read `.agents/WORKFLOW.md`. Dispatch a separate fresh-context read-only reviewer with the model and effort assigned by the active commit's Review Demand. Use the named `reviewer` only when its pinned Terra xhigh profile matches; otherwise use a generic read-only reviewer that follows `.codex/agents/reviewer.toml`.
+
+Give the reviewer the original scope, relevant feature invariants and non-goals, implementation packet, commit-specific mandate, actual diff, validation results, and repository access. Do not initially provide implementation reasoning or self-review. Require the full evidence-shaped Review verdict from `.codex/agents/reviewer.toml`.
 
 ## Recallium
 
@@ -35,7 +37,7 @@ Use read-only inspection commands only. Do not edit, write, stage, unstage, comm
 
 **Skills:** Read `.agents/skills/coding-standards/SKILL.md` and `coding-standards/references/universal.md` plus matching stack refs. Scan `.agents/skills/` for other matching skills before judging conventions or structure.
 
-**Priorities:** Functional bugs and architecture/rules first; obvious safety only — not exhaustive hardening.
+**Priorities:** The commit-specific mandate, functional bugs, and architecture/rules first; obvious safety only — not exhaustive hardening. Retain a defect only when it has a violated contract, concrete execution path, and observable consequence. Put unsupported concerns under investigation notes.
 
 **Severity:** **CRITICAL** and **HIGH** block commit (commit mode) or merge readiness and `$workflow-finish-feature` documentation reconciliation (feature-complete mode) unless the developer explicitly approves proceeding.
 

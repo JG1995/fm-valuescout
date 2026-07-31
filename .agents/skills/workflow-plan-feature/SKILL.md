@@ -1,6 +1,6 @@
 ---
 name: workflow-plan-feature
-description: Plan one feature — PR and commit breakpoints, high-level work descriptions; per-feature from the development sequence
+description: Plan one feature from the development sequence with a durable ledger, PR and commit boundaries, implementation packets, validation contracts, and independent implementation/review profiles
 ---
 
 > Use **`$workflow-plan-feature`** for per-feature delivery planning in this repository.
@@ -11,7 +11,7 @@ Use the feature named by the developer when present. Otherwise, use the next fea
 
 ## Mandatory reads
 
-1. Read `AGENTS.md` and `.wiki/INDEX.md`.
+1. Read `AGENTS.md`, `.agents/WORKFLOW.md`, `.wiki/INDEX.md`, and `.wiki/features/active/README.md`.
 2. Read `.agents/skills/conventional-commits/SKILL.md` — provisional commit and PR titles must follow Conventional Commits.
 3. Read `.wiki/TODO.md` — development sequence and which feature is next.
 4. Read the feature source: `.wiki/features/planned/<slug>.md` when it exists; otherwise the CONCEPT MVP bullet and roadmap rationale for this feature.
@@ -20,6 +20,12 @@ Use the feature named by the developer when present. Otherwise, use the next fea
 7. Inspect repository read-only — current-state map for this feature only.
 
 Use Context7 MCP only when stack facts are needed for the plan — not for implementation detail.
+
+## Planning context
+
+Use a separate planning context when agent dispatch is available. The named `planner` supplies the default Sol High profile. When the feature meets the Sol xhigh conditions in `.agents/WORKFLOW.md`, use a generic planning agent at `gpt-5.6-sol` xhigh with the same role contract. If dispatch is unavailable, preserve the same planning-only boundary in the main context.
+
+Do not override a pinned named role. Inspect the returned ledger and repository evidence before accepting the plan.
 
 ## Recallium
 
@@ -54,6 +60,8 @@ Do not implement, stage, commit, or push.
 ## Planning rules (feature work)
 
 **High-level only.** Describe *what* to do and *why*, affected areas, validation, and dependencies. **No code examples** unless one short snippet is essential to disambiguate a boundary or contract.
+
+Use the complete ledger template in `.wiki/features/active/README.md`. For every pending or active commit, include the implementation packet, Capability Demand, Effort Demand, implementation profile, Review Demand, review profile, evidence threshold, escalation conditions, replanning conditions, and machine-readable execution metadata. Score implementation capability, implementation effort, and review demand independently. Apply hard floors after raw scoring and document the Luna punch-up when used.
 
 ### Trunk-based development
 
@@ -142,7 +150,7 @@ Present before or alongside the ledger:
 
 After the plan is coherent:
 
-1. Create or update `.wiki/features/active/<feature-slug>.md` using the ledger template — **delivery plan** with PRs and commits, not slice graphs.
+1. Create or update `.wiki/features/active/<feature-slug>.md` using the complete ledger template — **delivery plan** with PRs, commits, packets, and execution profiles, not slice graphs.
 2. Mark exactly **one commit** `Active` (the first commit of the first `Active` or `Pending` PR).
 3. Move the feature to **Active** in `.wiki/TODO.md` with a link to the ledger. Remove it from the development sequence table or mark it in progress.
 4. Stop. Do not `$workflow-build` unless the developer asks.

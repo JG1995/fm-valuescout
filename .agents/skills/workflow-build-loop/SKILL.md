@@ -58,9 +58,9 @@ Do **not** stop for manual `$workflow-checkpoint` at the end of build — contin
 
 ## Phase 2 — Automated checkpoint / fix loop
 
-For each checkpoint pass in the loop, follow `.agents/skills/workflow-checkpoint/SKILL.md` steps **1–11** (inspect, intrinsic docs, stage exact hunks, format, gate, reviewer subagent, commit message assessment, Recallium reconcile, present verdict).
+For each checkpoint pass in the loop, follow `.agents/skills/workflow-checkpoint/SKILL.md` steps **1–12** (inspect, intrinsic docs, stage exact hunks, format, gate, reviewer subagent, commit message assessment, Recallium reconcile, present verdict).
 
-Use the same named `reviewer` Codex agent selection as `$workflow-checkpoint`. If named-agent dispatch is unavailable, use its generic read-only fallback. Do not add a model pin.
+Use the exact review profile from the active commit as required by `$workflow-checkpoint`. Reuse the same fresh reviewer context for correction verification when possible. Do not replace the assigned profile with the named reviewer's default.
 
 Differences from manual `$workflow-checkpoint`:
 
@@ -78,13 +78,13 @@ Track and report in the final summary:
 When the loop exits successfully:
 
 1. Commit the staged content locally with the assessed message from the final checkpoint (Conventional Commits per `.agents/skills/conventional-commits/SKILL.md`). No approval wait.
-2. **Immediately** advance the active feature ledger per `.agents/skills/workflow-checkpoint/SKILL.md` step **15** — real hash, **Completed work** row, next commit `Active`, refresh **Active work**.
+2. **Immediately** advance the active feature ledger per `.agents/skills/workflow-checkpoint/SKILL.md` step **16** — real hash, **Completed work** row, next commit `Active`, refresh **Active work**.
 3. Commit ledger-only changes in a separate `docs(…)` commit. No second reviewer pass for ledger-only advancement.
 4. Report both hashes, gate evidence, final review verdict (including any NITPICK), and loop round count.
 
 ## Mandatory reads
 
-Same as `$workflow-build` plus `.agents/skills/workflow-checkpoint/SKILL.md` and `.agents/skills/workflow-fix/SKILL.md` for loop phases.
+Same as `$workflow-build` plus `.agents/WORKFLOW.md`, `.agents/skills/workflow-checkpoint/SKILL.md`, and `.agents/skills/workflow-fix/SKILL.md` for loop phases.
 
 **Coding standards:** Read `.agents/skills/coding-standards/SKILL.md`, `references/universal.md`, and `references/testing.md` when the commit adds or changes tests. Load matching stack references when `ARCHITECTURE.md` or touched files apply.
 

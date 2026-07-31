@@ -9,7 +9,7 @@ Use the developer-supplied feature or comparison base when present. Otherwise, u
 
 ## Mandatory reads
 
-Read `AGENTS.md`, `.wiki/INDEX.md`, the **active feature ledger**, the linked **planned feature spec** in `.wiki/features/planned/` when one exists, relevant `CONCEPT.md` bullets, and matching skills in `.agents/skills/`.
+Read `AGENTS.md`, `.agents/WORKFLOW.md`, `.wiki/INDEX.md`, the **active feature ledger**, the linked **planned feature spec** in `.wiki/features/planned/` when one exists, relevant `CONCEPT.md` bullets, and matching skills in `.agents/skills/`.
 
 Confirm the feature is **implementation-complete**: every commit in the delivery plan is `Completed — <hash>` (or `Removed — <reason>` with documented rationale). If work remains, stop and report what is still pending — do not run finish validation.
 
@@ -88,7 +88,9 @@ Report pass/fail for each step. A failing gate or test suite blocks moving to re
 
 Require a **separate** reviewer pass — not self-review of implementation you wrote in this turn.
 
-Dispatch a separate named `reviewer` Codex agent. If named-agent dispatch is unavailable, use a generic read-only reviewer with the same instructions. Give the reviewer the feature ledger, planned spec, comparison base, and the full feature diff.
+Dispatch a separate fresh-context reviewer with the feature review profile from the ledger. Use Sol Medium by default and Sol High for the high-risk conditions in `.agents/WORKFLOW.md`. Give the reviewer the complete ledger, planned spec, comparison base, full feature diff, commit review summaries, final validation results, and repository access. Do not initially frame implementation decisions as already justified.
+
+The feature mandate focuses on end-to-end intent, cross-commit interactions, feature invariants, duplicated abstractions, lifecycle paths that commit reviews could not see, temporary compatibility layers, and documentation accuracy. It does not repeat every commit review.
 
 **Present the full Review verdict to the developer.** Do **not** automatically fix findings. Delegate via **`$workflow-fix`** or explicit instructions, then re-run validation and review from step 3.
 
