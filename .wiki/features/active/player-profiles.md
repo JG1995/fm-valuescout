@@ -40,11 +40,11 @@ Give each player a dedicated profile page so the user can inspect identity, attr
 
 ## Current-state map
 
-- Relevant components: Search virtual table (row click no-op); `GlobalPlayerSearch` navigates to `/search` with name `is` filter; no `/players` route; Score Badge specced in DESIGN.md but not implemented.
+- Relevant components: Search virtual table opens `/players/$uid` on row click/Enter; `GlobalPlayerSearch` opens profile on hit activation; Score Badge implemented; `/players/$uid` route with Overview / Attributes / Roles.
 - Data model: `players` + `player_role_scores`; scoring catalog has `position_tags` per role.
 - Persistence and migrations: none required for MVP profile read.
-- Existing behavioral assumptions: Search filters/sort live in URL; Load Data / `set_active_save` invalidate snapshot + search keys.
-- Architectural seams: Rust `features/search` for list/suggest; new profile read IPC; React `features/player-profile` + thin route.
+- Existing behavioral assumptions: Search filters/sort live in URL; Load Data / `set_active_save` invalidate snapshot + search + player keys.
+- Architectural seams: Rust `features/player` for detail IPC; React `features/player-profile` + thin route; Search/GlobalPlayerSearch navigate by route path only.
 - Tests and validation: Vitest + mockIPC; `cargo test`; Playwright smoke stubs.
 - Primary risks: position-family assignment for multi-tag roles; attribute group membership lists; keeping frontend role labels aligned with catalog.
 
@@ -194,7 +194,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 5 — Open profile from Search and Ctrl+K
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Search results: whole-row activation (click + Enter) navigates to `/players/$uid`; GlobalPlayerSearch hit activation navigates to profile instead of name filter; update tests and Playwright stubs/expectations; keyboard search-to-profile path.
 
@@ -231,6 +231,7 @@ Sanity-list links; new nav-rail item; comparison / radar / suitability.
 - Commit 2: Profile page composition lives in `app/routes/players.$uid.tsx` (snapshot + player queries) so features stay free of cross-feature imports. Biome `useFilenamingConvention` overridden for TanStack `$param` route filenames. `playerKeys.all` invalidated on Load Data and active-save switch alongside search keys.
 - Commit 3: Visible attribute group membership is a static FE list in `attribute-groups.ts` aligned to FM Technical/Mental/Physical/Goalkeeping and `Fm263Layout` dump keys (not shared with search filter-registry — no cross-feature import).
 - Commit 4: Shared `ScoreBadge` in `src/components/ui/score-badge/` (`table`/`card`/`hero`/`muted`); position-family grouping in `position-families.ts` (primary family = first known tag); Overview best-role = highest non-null score, catalog-order ties; `role="img"` + aria-label for Biome a11y.
+- Commit 5: Search row click/Enter and GlobalPlayerSearch hit activation navigate to `/players/$uid` (no name-filter redirect); arrow keys move focus between results rows.
 
 ## Completed work
 

@@ -487,7 +487,8 @@ User opens Search (nav rail or /search)
   → SearchFilterBar — compact strip + SearchFilterEditorModal (shared Modal primitive)
   → SearchResultsPanel — TanStack Virtual table; useQueries fetches 50-row windows (offset/limit)
       as the virtualizer scrolls; total match count from IPC for scrollbar extent
-  → Row click: no-op until player profiles
+  → Whole-row click or Enter on a focused row navigates to /players/$uid;
+      Arrow Up/Down move row focus within the virtualized list
 
 search_players IPC (features/search/commands.rs)
   → offset (default 0), limit (default 50, max 200), sortBy, sortDir
@@ -506,7 +507,7 @@ suggest_players IPC
 GlobalPlayerSearch (AppTopBar, all routes)
   → Ctrl+K / Meta+K focus; 200ms debounce → suggest_players
   → Combobox + listbox; Escape clears input before closing
-  → Selecting a hit navigates to /search with name is filter (no profile route yet)
+  → Selecting a hit navigates to /players/$uid
 
 Cache invalidation: Load Data and set_active_save invalidate snapshot + search query keys
 ```

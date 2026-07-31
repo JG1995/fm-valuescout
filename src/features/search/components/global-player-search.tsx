@@ -5,12 +5,6 @@ import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/utils/cn";
 import { formatCount } from "@/utils/format";
 import { suggestPlayersQueryOptions } from "../api/suggest-players-query-options";
-import { createFilterRuleId, type FilterRule } from "../types/filter-rule";
-import {
-  DEFAULT_SEARCH_SORT_DIR,
-  DEFAULT_SEARCH_SORT_FIELD,
-} from "../types/search-sort";
-import { searchFiltersForUrl } from "../utils/search-url-search";
 
 export const SUGGEST_DEBOUNCE_MS = 200;
 
@@ -77,25 +71,15 @@ export function GlobalPlayerSearch() {
   const { data: hits = [] } = useQuery(suggestPlayersQueryOptions(debounced));
   const showPopover = open && debounced.length > 0 && hits.length > 0;
 
-  const activateHit = (name: string) => {
-    const rule: FilterRule = {
-      id: createFilterRuleId(),
-      field: "name",
-      op: "is",
-      value: { type: "text", value: name },
-    };
+  const activateHit = (uid: number) => {
     setValue("");
     setDebounced("");
     setOpen(false);
     setActiveIndex(0);
     void navigate({
-      to: "/search",
-      search: {
-        sort: DEFAULT_SEARCH_SORT_FIELD,
-        dir: DEFAULT_SEARCH_SORT_DIR,
-        filters: searchFiltersForUrl([rule]),
-        combine: "and",
-      },
+      to: "/players/$uid",
+      params: { uid: String(uid) },
+      search: { tab: "overview" },
     });
   };
 
@@ -183,7 +167,7 @@ export function GlobalPlayerSearch() {
               const hit = hits[activeIndex];
               if (hit) {
                 event.preventDefault();
-                activateHit(hit.name);
+                activateHit(hit.uid);
               }
             }
           }}
@@ -227,7 +211,7 @@ export function GlobalPlayerSearch() {
                 setActiveIndex(index);
               }}
               onClick={() => {
-                activateHit(hit.name);
+                activateHit(hit.uid);
               }}
             >
               <span>{hit.name}</span>

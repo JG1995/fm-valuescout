@@ -89,7 +89,7 @@ describe("top-bar global player search", () => {
     expect(options[1]).toHaveTextContent("Alexis Sanchez");
   });
 
-  it("navigates to /search with a name is filter when a hit is activated", async () => {
+  it("navigates to /players/$uid when a hit is activated", async () => {
     const user = userEvent.setup();
     setSuggestPlayersOverride([{ uid: 1, name: "Alex Morgan", ca: 160 }]);
     const { router } = renderWithProviders();
@@ -105,16 +105,7 @@ describe("top-bar global player search", () => {
     await user.click(option);
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/search");
-    });
-    expect(router.state.location.search).toMatchObject({
-      filters: [
-        expect.objectContaining({
-          field: "name",
-          op: "is",
-          value: "Alex Morgan",
-        }),
-      ],
+      expect(router.state.location.pathname).toBe("/players/1");
     });
   });
 
@@ -135,16 +126,7 @@ describe("top-bar global player search", () => {
     await user.keyboard("{ArrowDown}{Enter}");
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/search");
-    });
-    expect(router.state.location.search).toMatchObject({
-      filters: [
-        expect.objectContaining({
-          field: "name",
-          op: "is",
-          value: "Alexis Sanchez",
-        }),
-      ],
+      expect(router.state.location.pathname).toBe("/players/2");
     });
   });
 

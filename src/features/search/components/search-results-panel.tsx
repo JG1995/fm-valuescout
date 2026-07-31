@@ -1,7 +1,8 @@
 import { useQueries, useSuspenseQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronUp, SearchX } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import {
@@ -15,6 +16,7 @@ import {
   searchPlayersQueryOptions,
 } from "../api/search-players-query-options";
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
+import { filterValueToIpc } from "../types/filter-rule";
 import type { PlayerSummary } from "../types/player-summary";
 import type { SearchSortDir, SearchSortField } from "../types/search-sort";
 import {
@@ -30,6 +32,8 @@ import { completeFilterRules, getFilterField } from "../utils/filter-registry";
 
 /** Must match `--spacing-table-row-height-two-line` / `h-table-row-height-two-line`. */
 const ROW_HEIGHT = 40;
+/** Must match `--spacing-table-header-height` / sticky `<thead>` height. */
+const HEADER_HEIGHT = 32;
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
 const NUM_CELL =
@@ -198,13 +202,24 @@ function SearchResultsVirtualTable({
   columns: TableColumn[];
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
 }) {
+  const navigate = useNavigate();
   const parentRef = useRef<HTMLDivElement>(null);
+  const pageDataRef = useRef<
+    Array<{ page: number; players: PlayerSummary[] | undefined }>
+  >([]);
+  const [keyboardFocusIndex, setKeyboardFocusIndex] = useState(0);
   const columnCount = columns.length;
+  const clampedFocusIndex =
+    total <= 0 ? 0 : Math.min(keyboardFocusIndex, total - 1);
+  if (clampedFocusIndex !== keyboardFocusIndex) {
+    setKeyboardFocusIndex(clampedFocusIndex);
+  }
   const virtualizer = useVirtualizer({
     count: total,
     getScrollElement: () => parentRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 8,
+    scrollPaddingStart: HEADER_HEIGHT,
     // jsdom reports 0×0; fall back so tests and first paint still open a window.
     initialRect: { width: 1200, height: 600 },
     observeElementRect: (instance, cb) => {
@@ -234,6 +249,49 @@ function SearchResultsVirtualTable({
     },
   });
 
+  const openPlayer = (uid: number) => {
+    void navigate({
+      to: "/players/$uid",
+      params: { uid: String(uid) },
+      search: { tab: "overview" },
+    });
+  };
+
+  const focusRow = (index: number) => {
+    if (index < 0 || index >= total) {
+      return;
+    }
+    virtualizer.scrollToIndex(index, { align: "auto" });
+    const tryFocus = (attemptsLeft: number) => {
+      if (!playerAtIndex(pageDataRef.current, index)) {
+        if (attemptsLeft <= 0) {
+          return;
+        }
+        requestAnimationFrame(() => {
+          tryFocus(attemptsLeft - 1);
+        });
+        return;
+      }
+      setKeyboardFocusIndex(index);
+      const row = parentRef.current?.querySelector<HTMLElement>(
+        `[data-index="${index}"]`,
+      );
+      if (row) {
+        row.focus();
+        return;
+      }
+      if (attemptsLeft <= 0) {
+        return;
+      }
+      requestAnimationFrame(() => {
+        tryFocus(attemptsLeft - 1);
+      });
+    };
+    requestAnimationFrame(() => {
+      tryFocus(16);
+    });
+  };
+
   const virtualRows = virtualizer.getVirtualItems();
   const rangeStart = virtualRows[0]?.index ?? 0;
   const rangeEnd = virtualRows[virtualRows.length - 1]?.index ?? 0;
@@ -256,6 +314,14 @@ function SearchResultsVirtualTable({
     page,
     players: pageQueries[index]?.data?.players,
   }));
+  pageDataRef.current = pageData;
+
+  const visibleLoadedIndexes = virtualRows
+    .map((row) => row.index)
+    .filter((index) => playerAtIndex(pageData, index) !== undefined);
+  const tabStopIndex = visibleLoadedIndexes.includes(keyboardFocusIndex)
+    ? keyboardFocusIndex
+    : (visibleLoadedIndexes[0] ?? 0);
 
   const paddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
   const paddingBottom =
@@ -326,13 +392,43 @@ function SearchResultsVirtualTable({
           ) : null}
           {virtualRows.map((virtualRow) => {
             const player = playerAtIndex(pageData, virtualRow.index);
+            const isTabStop = virtualRow.index === tabStopIndex;
 
             return (
               <tr
                 key={virtualRow.key}
                 data-index={virtualRow.index}
-                className="border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high"
+                tabIndex={player ? (isTabStop ? 0 : -1) : undefined}
+                className={
+                  player
+                    ? "cursor-pointer border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+                    : "border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high"
+                }
                 style={{ height: `${virtualRow.size}px` }}
+                onFocus={() => {
+                  setKeyboardFocusIndex(virtualRow.index);
+                }}
+                onClick={() => {
+                  if (player) {
+                    openPlayer(player.uid);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    focusRow(virtualRow.index + 1);
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    focusRow(virtualRow.index - 1);
+                    return;
+                  }
+                  if (event.key === "Enter" && player) {
+                    event.preventDefault();
+                    openPlayer(player.uid);
+                  }
+                }}
               >
                 {columns.map((column) => {
                   if (column.dynamic) {
@@ -419,6 +515,17 @@ export function SearchResultsPanel({
       filterCombine,
     ),
   );
+  const listKey = useMemo(
+    () =>
+      [
+        filterCombine,
+        ...filters.map(
+          (rule) =>
+            `${rule.field}:${rule.op}:${String(filterValueToIpc(rule.value))}`,
+        ),
+      ].join("|"),
+    [filterCombine, filters],
+  );
 
   if (page.total === 0) {
     const appliedFilters = completeFilterRules(filters);
@@ -454,6 +561,7 @@ export function SearchResultsPanel({
         players · sorted by {sortLabel} ({dirLabel})
       </p>
       <SearchResultsVirtualTable
+        key={listKey}
         total={page.total}
         sortBy={sortBy}
         sortDir={sortDir}

@@ -132,6 +132,106 @@ describe("search route", () => {
     expect(bodyRows.length).toBeLessThan(80);
   });
 
+  it("navigates to /players/$uid when a results row is clicked", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Alex Morgan", 160)]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    await user.click(within(table).getByText("Alex Morgan"));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/players/160");
+    });
+  });
+
+  it("navigates to /players/$uid when Enter is pressed on a focused results row", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Alex Morgan", 160)]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const row = within(table)
+      .getAllByRole("row")
+      .find((candidate) => candidate.hasAttribute("data-index"));
+    expect(row).toBeDefined();
+    row?.focus();
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/players/160");
+    });
+  });
+
+  it("moves keyboard focus to the next results row on ArrowDown", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Alex Morgan", 160),
+      playerNamed("Alexis Sanchez", 145),
+    ]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const bodyRows = () =>
+      within(table)
+        .getAllByRole("row")
+        .filter((row) => row.hasAttribute("data-index"));
+
+    await waitFor(() => {
+      expect(bodyRows().length).toBeGreaterThanOrEqual(2);
+    });
+
+    const first = bodyRows()[0];
+    first.focus();
+    expect(first).toHaveFocus();
+
+    await user.keyboard("{ArrowDown}");
+
+    await waitFor(() => {
+      expect(bodyRows()[1]).toHaveFocus();
+    });
+  });
+
+  it("moves keyboard focus to the previous results row on ArrowUp", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Alex Morgan", 160),
+      playerNamed("Alexis Sanchez", 145),
+    ]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const bodyRows = () =>
+      within(table)
+        .getAllByRole("row")
+        .filter((row) => row.hasAttribute("data-index"));
+
+    await waitFor(() => {
+      expect(bodyRows().length).toBeGreaterThanOrEqual(2);
+    });
+
+    bodyRows()[1].focus();
+    expect(bodyRows()[1]).toHaveFocus();
+
+    await user.keyboard("{ArrowUp}");
+
+    await waitFor(() => {
+      expect(bodyRows()[0]).toHaveFocus();
+    });
+  });
+
   it("refetches already-cached search rows after Load Data", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
