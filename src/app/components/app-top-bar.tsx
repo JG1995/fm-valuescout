@@ -6,6 +6,7 @@ import { fieldClasses } from "@/components/ui/field/field-styles";
 import { LoadDataOutcome } from "@/features/memory-read/components/load-data-outcome";
 import { useLoadData } from "@/features/memory-read/hooks/use-load-data";
 import { useLoadDataPreferences } from "@/features/memory-read/stores/use-load-data-preferences";
+import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { GlobalPlayerSearch } from "@/features/search/components/global-player-search";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
@@ -34,6 +35,7 @@ export function AppTopBar() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
       void queryClient.invalidateQueries({ queryKey: searchKeys.all });
+      void queryClient.invalidateQueries({ queryKey: playerKeys.all });
     },
   });
 
@@ -55,6 +57,7 @@ export function AppTopBar() {
         <ActiveSaveSelect
           onSwitched={() => {
             void queryClient.invalidateQueries({ queryKey: searchKeys.all });
+            void queryClient.invalidateQueries({ queryKey: playerKeys.all });
           }}
         />
         <SnapshotFreshnessChip />

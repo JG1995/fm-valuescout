@@ -17,7 +17,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 | 2a | Bridge scan performance | [Completed](./features/completed/bridge-scan-performance.md) | medium-high | Block heap scanning, streaming dump, optimized ingest, unlimited default, UI cap controls — **done** |
 | 3 | Role scoring engine | [Completed](./features/completed/role-scoring-engine.md) | medium | One scoring model on ingest; primary/secondary bands; combined IP/OOP helper — **done** |
 | 4 | Player search | [Completed](./features/completed/player-search.md) | high | First full UI value path after Load Data; validates DB and scores — **done** |
-| 5 | Player profiles | CONCEPT | high | Detail view from search; traditional scouting path |
+| 5 | Player profiles | [Completed](./features/completed/player-profiles.md) | high | Detail view from search; traditional scouting path — **done** |
 | 6 | Squad planner | CONCEPT | medium | Tactic + squad slots; same scores as search |
 | 7 | Squad optimizer | CONCEPT | medium | Maximize combined team score; closes success vignette |
 
@@ -56,15 +56,16 @@ _None — plan the next feature with `workflow-plan-feature`._
 
 ## Plan next
 
-Player profiles (order 5) — detail view from search; traditional scouting path.
+Squad planner (order 6) — tactic + squad slots; same scores as search.
 
 ## Next
 
-Squad planner (order 6) — tactic + squad slots; same scores as search.
+Squad optimizer (order 7) — maximize combined team score; closes success vignette.
 
 ## Completed
 
 - [Codex workflow migration](./features/completed/codex-workflow-migration.md) — Codex-only repository guidance, specialist agents, and product-focused validation
+- [Player profiles](./features/completed/player-profiles.md) — `/players/$uid` with Overview / Attributes / Roles tabs; entry from Search row and Ctrl+K; ScoreBadge; position-family role grouping
 - [Player search](./features/completed/player-search.md) — `/search` route, virtualized table, operator filters (scalars through role scores), URL-persisted filter/sort state, global Ctrl+K name suggest
 - [Role scoring engine](./features/completed/role-scoring-engine.md) — FM26 IP/OOP catalog (68 roles), scores on ingest into `player_role_scores`, DLP IP sanity proof, `combine_role_scores` helper
 - [FM26 memory read](./features/completed/fm26-memory-read.md) — BepInEx bridge, file protocol, dump schema v5, Rust validation, bridge status + Load Data UI

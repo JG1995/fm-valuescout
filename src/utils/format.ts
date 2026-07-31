@@ -57,6 +57,14 @@ export function formatMissable(value: string | number | null | undefined) {
   return value === null || value === undefined || value === "" ? "—" : value;
 }
 
+/** Dump preferredFoot is lowercase (`right` / `left` / `either`); display title-cases. */
+export function formatPreferredFoot(value: string | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
 /**
  * Money per DESIGN.md — euro prefix, abbreviated by magnitude. Source values
  * are GBP from FM; display currency follows the design system.

@@ -1,0 +1,40 @@
+export type PlayerRoleScore = {
+  roleId: string;
+  displayName: string;
+  phase: string;
+  positionTags: string[];
+  score: number | null;
+};
+
+export type PlayerDetail = {
+  uid: number;
+  name: string;
+  age: number | null;
+  birthYear: number;
+  birthDayOfYear: number;
+  nationalities: string[];
+  heightCm: number | null;
+  preferredFoot: string;
+  positions: Record<string, number>;
+  attributes: Record<string, number | null>;
+  hiddenAttributes: Record<string, number | null>;
+  personality: Record<string, number | null>;
+  weeklyWageGbp: number | null;
+  contractExpiryYear: number | null;
+  contractExpiryDayOfYear: number | null;
+  transferListed: boolean | null;
+  loanListed: boolean | null;
+  notForSale: boolean | null;
+  setForRelease: boolean | null;
+  marketValueGbp: number | null;
+  reputationCurrent: number | null;
+  reputationWorld: number | null;
+  club: string | null;
+  parentClub: string | null;
+  onLoan: boolean | null;
+  division: string | null;
+  teamLevel: string | null;
+  ca: number;
+  pa: number;
+  roleScores: PlayerRoleScore[];
+};

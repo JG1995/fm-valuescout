@@ -16,6 +16,10 @@ import {
   setDumpRequestIpcMockMode,
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
 import {
+  resetGetPlayerOverride,
+  resolveGetPlayerIpcMock,
+} from "@/testing/player-ipc-mock";
+import {
   resetSearchPlayersOverride,
   resolveSearchPlayersIpcMock,
   resolveSuggestPlayersIpcMock,
@@ -97,6 +101,10 @@ function registerIpcMocks() {
       return resolveSuggestPlayersIpcMock(args);
     }
 
+    if (cmd === "get_player") {
+      return resolveGetPlayerIpcMock(args);
+    }
+
     if (cmd === "load_data") {
       return resolveLoadDataIpcMock(args);
     }
@@ -131,5 +139,6 @@ afterEach(() => {
   resetBridgeInstallIpcMock();
   resetSnapshotIpcMock();
   resetSearchPlayersOverride();
+  resetGetPlayerOverride();
   registerIpcMocks();
 });
