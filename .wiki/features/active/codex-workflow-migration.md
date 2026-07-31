@@ -160,7 +160,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 5 — Make Codex the documented workflow
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `73b5dad`
 
 **Work:** Reduce `AGENTS.md` to durable rules and routing, add the Codex workflow guide, and update contributor and wiki documentation to use Codex terminology and paths.
 
@@ -219,7 +219,7 @@ The repository validates only Codex workflow surfaces, disposable work uses `.wo
 | PR 1 | Add Codex project configuration | `187c635` | Added Recallium and Context7 project MCP configuration with gate validation. |
 | PR 1 | Port repository skills to Codex | `eaba444` | Added copied domain skills, `workflow-*` skills, and their validation contract. |
 | PR 1 | Port specialist agents to Codex | `a8cb615` | Added read-only reviewer and documentation-only steward definitions, workflow dispatch, and boundary validation. |
-| PR 1 | Make Codex the documented workflow | hash pending checkpoint commit | Added Codex workflow guidance, contributor terminology, and documentation contract validation. |
+| PR 1 | Make Codex the documented workflow | `73b5dad` | Added Codex workflow guidance, contributor terminology, and documentation contract validation. |
 
 ## Final validation
 
