@@ -5,6 +5,7 @@ import {
   formatMissable,
   formatMoney,
   formatPlayerDob,
+  formatPreferredFoot,
   formatRelativeAge,
 } from "@/utils/format";
 
@@ -48,6 +49,16 @@ describe("formatCount and formatMissable", () => {
     expect(formatMissable(null)).toBe("—");
     expect(formatMissable("")).toBe("—");
     expect(formatMissable(0)).toBe(0);
+  });
+});
+
+describe("formatPreferredFoot", () => {
+  it("title-cases dump values and treats blanks as missing", () => {
+    expect(formatPreferredFoot("right")).toBe("Right");
+    expect(formatPreferredFoot("LEFT")).toBe("Left");
+    expect(formatPreferredFoot("either")).toBe("Either");
+    expect(formatPreferredFoot("")).toBe("—");
+    expect(formatPreferredFoot(null)).toBe("—");
   });
 });
 

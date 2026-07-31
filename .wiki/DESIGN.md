@@ -180,7 +180,7 @@ spacing:
 
 > **Authority:** This document owns the visual language, design tokens, and UI decisions. It does not own product purpose ([CONCEPT.md](./CONCEPT.md)) or implemented system shape ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), and the **Search** surface (compact filter strip, editor modal, virtualized results table) are implemented. Debug and dashboard panels use this spec today. Player profiles, squad planner, and optimizer surfaces are specced in deferred sections and land with their features. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
+> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Search** surface (compact filter strip, editor modal, virtualized results table), and the **Player profile layout** (`/players/$uid` with Overview / Attributes / Roles tabs) are implemented. Squad planner and optimizer surfaces remain deferred. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 ## Brand & Style
 
@@ -540,13 +540,25 @@ Cross-cutting rules rather than components.
 - **Icons:** [Lucide](https://lucide.dev) via `lucide-react`, bundled. 16px in tables and chips, 20px in the rail and top bar, 24px in empty states. `strokeWidth` 1.5 and `currentColor` always, so an icon inherits its context. One icon set only, and no emoji as an icon anywhere.
 - **Motion:** 150ms ease-out for colour and opacity on hover, focus, and active. 200ms ease-out for overlay entrance; 150ms for exit. Nothing animates longer than 200ms, and layout, size, and position never animate on hover. Under `prefers-reduced-motion: reduce`, drop every transform and entrance animation and keep colour changes instant.
 
+### Player profile layout
+
+Dedicated route `/players/$uid` (not an inspector overlay). Comparison inspector remains unused until a later compare feature.
+
+- **Page header:** player name as `headline-lg` title; no secondary nav-rail item — profiles are reached from Search and global suggest. Back uses normal history (Search URL state already holds filters).
+- **Tabs:** segmented control under the header — **Overview** | **Attributes** | **Roles**. Active tab lives in the URL search param `tab` (`overview` | `attributes` | `roles`). One content panel below; do not stack all three sections on one scroll for MVP.
+- **Overview:** identity block in a Panel — the same basics the Search default columns show (name, age/DOB, nationality, club, division, CA, PA, market value) plus height, preferred foot, and contract/transfer fields when present. One **hero** Score Badge for the best non-null role score (label + accessible name). Initials monogram optional; no crest or portrait (data constraint).
+- **Attributes:** three (or four) sections inside one scrollable Panel, separated by hairlines or `stack-lg` — Visible attributes in FM-style groups (**Technical** / **Mental** / **Physical** / **Goalkeeping**), then **Hidden**, then **Personality**. Each attribute is a label + integer (1–20) with tabular figures; null → `—`. No radar chart in this feature.
+- **Roles:** sections headed by **position family** (Goalkeeper → … → Striker). Every catalog role appears; do not mute or hide by positional familiarity. Each row: role display name, IP/OOP phase as secondary text or chip, **card** Score Badge. Null score → `—` without a fake badge number.
+- **States:** no snapshot → EmptyState pointing at Load Data; unknown uid → “Player not in this snapshot”; loading skeletons match the active tab’s layout.
+- **Out of this layout for now:** position suitability map, radar charts, history/trend blocks, compare inspector, combined IP/OOP weight controls.
+
 ### Deferred specs
 
 These surfaces are not specced because their features are not planned yet. Spec them in this document during `/plan-feature` for the relevant feature, not before.
 
 - **Pitch view** (squad planner and optimizer — orders 6 and 7 in [TODO.md](./TODO.md)): position slots, drag targets, formation switching, and best-and-worst candidate highlighting.
-- **Player profile layout** (order 5): the arrangement of the attribute, role-score, and history blocks.
 - **Context menu:** deferred until a screen needs a right-click action. When it lands, it follows the Level 4 overlay rules and the `z-30` layer.
+- **Profile extensions:** position suitability map, attribute/role radar, comparison inspector, snapshot history on the profile.
 
 ---
 

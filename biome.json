@@ -38,6 +38,16 @@
   },
   "overrides": [
     {
+      "includes": ["src/app/routes/**/*$*.tsx", "src/app/routes/**/*$*.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useFilenamingConvention": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["src/features/**"],
       "linter": {
         "rules": {

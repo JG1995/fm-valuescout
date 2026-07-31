@@ -12,7 +12,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 ## 1. Top-Level Shape
 
-**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), and **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)).
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Cursor workflow (commands, skills, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)), and **player profiles** (dedicated `/players/$uid` route with Overview / Attributes / Roles tabs — [completed record](./features/completed/player-profiles.md)).
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 
@@ -24,7 +24,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Client UI state:** Zustand v5 (modals, layout chrome, selections not in the URL)
 
-**Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md). IBM Plex Sans/Mono self-hosted via `@fontsource`; Lucide icons via `lucide-react`. Shared primitives in `src/components/ui/` (Button, Panel, StatusChip, EmptyState, TextField, SelectField, **Modal**). App shell: `AppNavRail` + `AppTopBar` (**GlobalPlayerSearch**, active save, snapshot freshness, optional Load Data player-cap toggle/limit, **Load Data**); `useLayoutStore` persists nav-rail expansion; `useLoadDataPreferences` persists the Load Data cap toggle and limit. Player search results use **@tanstack/react-virtual** for row virtualization.
+**Styling:** Tailwind CSS v4 via `@tailwindcss/vite`; design tokens bridge to [DESIGN.md](./DESIGN.md). IBM Plex Sans/Mono self-hosted via `@fontsource`; Lucide icons via `lucide-react`. Shared primitives in `src/components/ui/` (Button, Panel, StatusChip, EmptyState, TextField, SelectField, **Modal**, **ScoreBadge**). App shell: `AppNavRail` + `AppTopBar` (**GlobalPlayerSearch**, active save, snapshot freshness, optional Load Data player-cap toggle/limit, **Load Data**); `useLayoutStore` persists nav-rail expansion; `useLoadDataPreferences` persists the Load Data cap toggle and limit. Player search results use **@tanstack/react-virtual** for row virtualization.
 
 **Language:** TypeScript (strict) on the frontend; Rust on the backend
 
@@ -45,6 +45,8 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 **Role scoring:** Rust `features/scoring` owns a static FM26 IP/OOP catalog (68 roles), `score_role`, and `combine_role_scores`. During snapshot ingest, `features/snapshot` computes and persists all role scores in the same transaction. See [role-scoring-engine](./features/completed/role-scoring-engine.md).
 
 **Player search:** Rust `features/search` owns `search_players` and `suggest_players` — parameterized SQLite queries against the active save's current snapshot (`players`, `player_role_scores`, JSON attribute columns). React `features/search` owns the `/search` route, virtualized results table, compact filter strip + editor modal, and top-bar global name search. Filter rules compile to a flat AND|OR AST in Rust; filters, combine mode, and sort live in TanStack Router search params. See [player-search](./features/completed/player-search.md).
+
+**Player profiles:** Rust `features/player` owns `get_player` — one player by `uid` from the active save's current snapshot, including attribute JSON maps and `player_role_scores` merged in-process with the scoring catalog (`displayName`, `phase`, `positionTags`). React `features/player-profile` owns Overview / Attributes / Roles tab panels; route `/players/$uid` with validated `tab` search param. Shared **ScoreBadge** (`table` / `card` / `hero` / `muted`) in `src/components/ui/score-badge/`. Search row activation and GlobalPlayerSearch navigate by route path only (no cross-feature imports). See [player-profiles](./features/completed/player-profiles.md).
 
 **Auth:** None in the template default — chosen per fork via `/stack`
 
@@ -487,7 +489,8 @@ User opens Search (nav rail or /search)
   → SearchFilterBar — compact strip + SearchFilterEditorModal (shared Modal primitive)
   → SearchResultsPanel — TanStack Virtual table; useQueries fetches 50-row windows (offset/limit)
       as the virtualizer scrolls; total match count from IPC for scrollbar extent
-  → Row click: no-op until player profiles
+  → Whole-row click or Enter on a focused row navigates to /players/$uid;
+      Arrow Up/Down move row focus within the virtualized list
 
 search_players IPC (features/search/commands.rs)
   → offset (default 0), limit (default 50, max 200), sortBy, sortDir
@@ -506,16 +509,52 @@ suggest_players IPC
 GlobalPlayerSearch (AppTopBar, all routes)
   → Ctrl+K / Meta+K focus; 200ms debounce → suggest_players
   → Combobox + listbox; Escape clears input before closing
-  → Selecting a hit navigates to /search with name is filter (no profile route yet)
+  → Selecting a hit navigates to /players/$uid
 
-Cache invalidation: Load Data and set_active_save invalidate snapshot + search query keys
+Cache invalidation: Load Data and set_active_save invalidate snapshot + search + player query keys (`playerKeys.all`)
 ```
 
 **Invariants:** `null` dump values never coerce to 0 for filter or display; role scores come from `player_role_scores` (not recomputed in the WebView). Basic columns are always shown; dynamic columns follow active non-basic filters (`position` presence excluded). Default sort CA descending.
 
 Truncated-scan warning: `SnapshotFreshnessChip` in the top bar reflects `scanTruncated`; Search results count line does not yet append a cap annotation — see [player-search](./features/completed/player-search.md) follow-up.
 
-### 5.8 Bridge plugin install path
+### 5.8 Player profile read path
+
+Profile reads the **active save's current snapshot** only. The WebView never opens SQLite; role scores are not recomputed in the WebView.
+
+```text
+User opens /players/$uid (from Search row, Enter on focused row, or GlobalPlayerSearch hit)
+  → Route loader: ensureQueryData(current snapshot + get_player)
+  → validateSearch normalizes tab (overview | attributes | roles) in URL search params
+  → Suspense fallback: tab-shaped loading skeletons (Overview grid, Attributes sections, Roles families)
+  → PlayerProfileTabs segmented control; one panel visible per tab
+
+get_player IPC (features/player/commands.rs)
+  → uid from route param
+  → query.rs: SELECT player scalars + JSON attribute maps for current snapshot;
+      SELECT role_id, score from player_role_scores; merge with in-process all_roles()
+      (displayName, phase, positionTags) in catalog order; missing DB score → null;
+      missing player row → null response (not-found empty state)
+  → Returns PlayerDetailDto (identity, attributes, hidden, personality, roleScores[])
+
+Overview tab
+  → identity block + hero ScoreBadge for best non-null role (catalog-order ties)
+  → preferredFoot title-cased for display
+
+Attributes tab
+  → static attribute-groups.ts membership (Technical / Mental / Physical / Goalkeeping, Hidden, Personality)
+  → null → —
+
+Roles tab
+  → position-families.ts groups all 68 roles by pitch family; every role shown
+  → card ScoreBadge per role; rolePhaseLabel maps in_possession/out_of_possession → IP/OOP
+
+Cache invalidation: Load Data and set_active_save invalidate snapshot + search + player query keys
+```
+
+**Invariants:** `null` dump/DB values never display as `0`. One scoring model shared with Search. No cross-feature component imports — routes compose; Search/GlobalPlayerSearch navigate by route path only.
+
+### 5.9 Bridge plugin install path
 
 ```text
 User opens home route
@@ -574,7 +613,7 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
 | Walking-skeleton UI with stubbed IPC: app shell (nav rail with Search, top bar with global search), status panels, demo-value form flow, Search route | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
-| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `search_players`, `suggest_players`, `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
+| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `search_players`, `suggest_players`, `get_player`, `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
 | Bridge panel, save switcher, snapshot overview, plugin install section, top-bar save selector, and Load Data button render with stubbed IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, SQLite ingest, or Steam-folder DLL install |
 
 | Concern | Owner in this template |
