@@ -91,7 +91,7 @@ prepare_controlled_checkout() {
   local checkout="$1"
 
   mkdir "$checkout"
-  cp -R "$repo_root/scripts" "$repo_root/.agents" "$repo_root/.codex" "$repo_root/.cursor" "$repo_root/.github" \
+  cp -R "$repo_root/scripts" "$repo_root/.agents" "$repo_root/.codex" "$repo_root/.github" \
     "$checkout"
   cp "$repo_root/package.json" "$repo_root/pnpm-lock.yaml" \
     "$repo_root/pnpm-workspace.yaml" "$repo_root/biome.json" \
@@ -176,7 +176,7 @@ if [[ "${CI_WORKFLOW_CONTROLLED_FAILURE:-}" != "1" ]]; then
   controlled_checkout="$tmp_dir/controlled-checkout"
   prepare_controlled_checkout "$controlled_checkout"
 
-  python3 - "$controlled_checkout/.cursor/agents/reviewer.md" <<'PY'
+  python3 - "$controlled_checkout/.codex/agents/reviewer.toml" <<'PY'
 import pathlib
 import re
 import sys
@@ -184,7 +184,7 @@ import sys
 path = pathlib.Path(sys.argv[1])
 content = path.read_text(encoding="utf-8")
 content = re.sub(
-    r'^description:.*\n',
+    r'^description\s*=.*\n',
     '',
     content,
     count=1,
@@ -199,7 +199,7 @@ PY
     fail "a controlled local fast-gate failure must return non-zero"
   fi
 
-  if ! grep -Fq 'missing required frontmatter field' "$tmp_dir/controlled-output"; then
+  if ! grep -Fq "missing required 'description'" "$tmp_dir/controlled-output"; then
     fail "controlled fast-gate failure must preserve its cause"
   fi
 fi

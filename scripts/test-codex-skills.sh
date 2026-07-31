@@ -10,6 +10,11 @@ if [[ ! -d "$skills_dir" ]]; then
   exit 1
 fi
 
+if [[ -e "$repo_root/.cursor" ]]; then
+  printf 'Retired Cursor workflow directory must not exist: %s\n' "$repo_root/.cursor" >&2
+  exit 1
+fi
+
 python3 - "$repo_root" "$skills_dir" <<'PY'
 import pathlib
 import re
@@ -45,6 +50,26 @@ workflow_skills = {
     "workflow-stack",
 }
 expected_skills = domain_skills | workflow_skills
+required_references = {
+    "coding-standards": {
+        "references/csharp.md",
+        "references/react.md",
+        "references/rust.md",
+        "references/tauri.md",
+        "references/testing.md",
+        "references/universal.md",
+        "references/vite.md",
+    },
+    "security-audit": {
+        "references/csharp.md",
+        "references/react.md",
+        "references/rust.md",
+        "references/tauri.md",
+        "references/testing.md",
+        "references/universal.md",
+        "references/vite.md",
+    },
+}
 found_skills = {path.name for path in skills_dir.iterdir() if path.is_dir()}
 errors = []
 
@@ -80,6 +105,11 @@ for name in sorted(expected_skills & found_skills):
     if ".cursor/" in content:
         errors.append(f"{name}: contains a Cursor path")
 
+for name, references in required_references.items():
+    for reference in sorted(references):
+        if not (skills_dir / name / reference).is_file():
+            errors.append(f"{name}: missing bundled reference {reference}")
+
 for name in sorted(workflow_skills & found_skills):
     content = (skills_dir / name / "SKILL.md").read_text(encoding="utf-8")
     for forbidden in ("${ARGUMENTS", "Task", "subagent_type:", "Cursor"):
@@ -102,16 +132,6 @@ for name, marker in scope_markers.items():
     content = (skills_dir / name / "SKILL.md").read_text(encoding="utf-8")
     if marker not in content:
         errors.append(f"{name}: does not preserve developer-supplied scope")
-
-for name in sorted(domain_skills & found_skills):
-    source = repo_root / ".cursor" / "skills" / name
-    target = skills_dir / name
-    for source_file in source.rglob("*"):
-        if not source_file.is_file():
-            continue
-        target_file = target / source_file.relative_to(source)
-        if not target_file.is_file():
-            errors.append(f"{name}: missing copied file {target_file.relative_to(target)}")
 
 if errors:
     print("Codex skill contract validation failed:")

@@ -174,7 +174,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 #### Commit 6 — Remove Cursor compatibility
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Replace Cursor-specific contract scripts and CI fixture wiring, move disposable-work references, remove `.cursor/`, and eliminate stale live references.
 
@@ -190,7 +190,7 @@ Add a validated `.codex/config.toml` with Recallium and Context7 while the exist
 
 **PR:** PR 1 — Replace Cursor workflow with Codex
 
-**Commit:** Remove Cursor compatibility
+**Commit:** Remove Cursor compatibility — completed pending checkpoint commit
 
 ### RED test (active commit)
 

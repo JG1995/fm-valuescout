@@ -40,7 +40,7 @@ Misses secrets when developers use `git commit --no-verify`. Local and CI must s
 
 ### No automated scanning
 
-Relies on `/security-audit` and discipline. Too easy to commit `.env` once.
+Relies on `workflow-security-audit` and discipline. Too easy to commit `.env` once.
 
 ## Consequences
 
@@ -53,7 +53,7 @@ Relies on `/security-audit` and discipline. Too easy to commit `.env` once.
 ### Negative
 
 - Heuristic rules can false-positive; allowlist via `.secretlintignore` when needed.
-- Does not replace `/security-audit` for auth, IDOR, or novel secret encodings.
+- Does not replace `workflow-security-audit` for auth, IDOR, or novel secret encodings.
 - Full-tree scan on every commit adds a small fixed cost to `./scripts/dev check`.
 - Staged scan uses GNU `xargs -r` — document portable alternatives for macOS forks if needed.
 

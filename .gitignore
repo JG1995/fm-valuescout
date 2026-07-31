@@ -1,5 +1,4 @@
-# Disposable agent scratch (workspace configuration is committed)
-.cursor/work/
+# Disposable agent scratch
 .work/
 
 # Dependencies (pnpm)

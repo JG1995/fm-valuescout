@@ -46,6 +46,8 @@ required = {
         "workflow-stack",
     ),
     ".wiki/features/active/README.md": ("workflow-plan-feature",),
+    ".gitignore": (".work/",),
+    ".gitattributes": ("Docs / Codex",),
 }
 forbidden = {
     "AGENTS.md": (".cursor/", "Cursor commands", "via Task"),
@@ -56,6 +58,11 @@ forbidden = {
     ".wiki/features/completed/README.md": ("`/finish-feature`", "`/docs-review`"),
     ".wiki/ARCHITECTURE.md": (".cursor/", "with a Cursor workflow", "via `/stack`"),
     ".wiki/features/active/README.md": ("`/plan-feature`",),
+    ".wiki/DESIGN.md": ("`/plan-feature`",),
+    ".wiki/decisions/0012-secretlint.md": ("`/security-audit`",),
+    ".wiki/decisions/0013-tauri-v2-desktop-shell.md": ("`/stack`",),
+    ".gitignore": (".cursor/work/",),
+    ".gitattributes": ("Docs / Cursor",),
 }
 errors = []
 for relative_path, markers in required.items():

@@ -542,7 +542,7 @@ Cross-cutting rules rather than components.
 
 ### Deferred specs
 
-These surfaces are not specced because their features are not planned yet. Spec them in this document during `/plan-feature` for the relevant feature, not before.
+These surfaces are not specced because their features are not planned yet. Spec them in this document during `workflow-plan-feature` for the relevant feature, not before.
 
 - **Pitch view** (squad planner and optimizer — orders 6 and 7 in [TODO.md](./TODO.md)): position slots, drag targets, formation switching, and best-and-worst candidate highlighting.
 - **Player profile layout** (order 5): the arrangement of the attribute, role-score, and history blocks.
