@@ -180,7 +180,7 @@ spacing:
 
 > **Authority:** This document owns the visual language, design tokens, and UI decisions. It does not own product purpose ([CONCEPT.md](./CONCEPT.md)) or implemented system shape ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Search** surface (compact filter strip, editor modal, virtualized results table), the **Player profile layout** (`/players/$uid` with Overview / Attributes / Roles tabs), and the first **Squad Planner** club-family setup surface (`/planner`) are implemented. The dual-phase tactic editor and depth-chart matrix remain planned. The optimizer surface remains deferred. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
+> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Search** surface (compact filter strip, editor modal, virtualized results table), the **Player profile layout** (`/players/$uid` with Overview / Attributes / Roles tabs), and the **Squad Planner** club-family setup surface plus dual-phase tactic editor (`/planner`) are implemented. The depth-chart matrix remains planned. The optimizer surface remains deferred. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 ## Brand & Style
 

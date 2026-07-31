@@ -155,7 +155,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 #### Commit 3 — Add the dual-phase tactic editor
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add the planned IP, OOP, and side-by-side tactic views with editable pitch placements, phase-filtered role pickers, linked lane identity, IP/OOP weight control, complete loading/error states, and pointer plus keyboard operation. Save through the tactic IPC contract and show validation without losing the draft.
 

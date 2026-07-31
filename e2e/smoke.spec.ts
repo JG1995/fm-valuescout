@@ -104,6 +104,28 @@ test.describe("walking skeleton smoke", () => {
     ).toBeVisible();
   });
 
+  test("planner tactic editor saves a linked phase adjustment", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("heading", { name: "Tactic editor" }),
+    ).toBeVisible();
+    await main
+      .getByRole("button", { name: "IP lane 1: GK, Goalkeeper" })
+      .press("Enter");
+
+    const weight = main.getByRole("slider", { name: "IP score weight" });
+    await weight.press("ArrowRight");
+    await expect(main.getByText("IP 51% / OOP 49%")).toBeVisible();
+    await main.getByRole("button", { name: "Save tactic" }).click();
+
+    await expect(main.getByRole("status")).toHaveText("Tactic saved.");
+  });
+
   test("player profile route shows no-snapshot empty state from stubbed IPC", async ({
     page,
   }) => {

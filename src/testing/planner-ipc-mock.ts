@@ -5,6 +5,7 @@ import type {
 import type {
   PlannerTactic,
   TacticOptions,
+  TacticRoleOption,
 } from "@/features/planner/types/tactic";
 
 const DEFAULT_CLUB_FAMILY: ClubFamily = {
@@ -85,12 +86,159 @@ const DEFAULT_TACTIC_OPTIONS: TacticOptions = {
     "AMR",
     "ST",
   ],
-  roles: [],
+  roles: [
+    tacticRole("goalkeeper_ip", "Goalkeeper", "in_possession", ["GK"]),
+    tacticRole(
+      "ball_playing_goalkeeper_ip",
+      "Ball-Playing Goalkeeper",
+      "in_possession",
+      ["GK"],
+    ),
+    tacticRole(
+      "line_holding_keeper_oop",
+      "Line-Holding Keeper",
+      "out_of_possession",
+      ["GK"],
+    ),
+    tacticRole("sweeper_keeper_oop", "Sweeper Keeper", "out_of_possession", [
+      "GK",
+    ]),
+    tacticRole("full_back_ip", "Full-Back", "in_possession", ["DL", "DR"]),
+    tacticRole("inside_full_back_ip", "Inside Full-Back", "in_possession", [
+      "DL",
+      "DR",
+    ]),
+    tacticRole(
+      "holding_full_back_oop",
+      "Holding Full-Back",
+      "out_of_possession",
+      ["DL", "DR"],
+    ),
+    tacticRole(
+      "pressing_full_back_oop",
+      "Pressing Full-Back",
+      "out_of_possession",
+      ["DL", "DR"],
+    ),
+    tacticRole("centre_back_ip", "Centre-Back", "in_possession", ["DC"]),
+    tacticRole(
+      "ball_playing_centre_back_ip",
+      "Ball-Playing Centre-Back",
+      "in_possession",
+      ["DC"],
+    ),
+    tacticRole(
+      "covering_centre_back_oop",
+      "Covering Centre-Back",
+      "out_of_possession",
+      ["DC"],
+    ),
+    tacticRole(
+      "stopping_centre_back_oop",
+      "Stopping Centre-Back",
+      "out_of_possession",
+      ["DC"],
+    ),
+    tacticRole(
+      "defensive_midfielder_ip",
+      "Defensive Midfielder",
+      "in_possession",
+      ["DM"],
+    ),
+    tacticRole(
+      "box_to_box_midfielder_ip",
+      "Box-to-Box Midfielder",
+      "in_possession",
+      ["DM", "MC"],
+    ),
+    tacticRole(
+      "deep_lying_playmaker_ip",
+      "Deep-Lying Playmaker",
+      "in_possession",
+      ["DM", "MC"],
+    ),
+    tacticRole(
+      "screening_defensive_midfielder_oop",
+      "Screening Defensive Midfielder",
+      "out_of_possession",
+      ["DM"],
+    ),
+    tacticRole(
+      "pressing_defensive_midfielder_oop",
+      "Pressing Defensive Midfielder",
+      "out_of_possession",
+      ["DM"],
+    ),
+    tacticRole("central_midfielder_ip", "Central Midfielder", "in_possession", [
+      "MC",
+    ]),
+    tacticRole("advanced_playmaker_ip", "Advanced Playmaker", "in_possession", [
+      "MC",
+    ]),
+    tacticRole(
+      "pressing_central_midfielder_oop",
+      "Pressing Central Midfielder",
+      "out_of_possession",
+      ["MC"],
+    ),
+    tacticRole("wide_midfielder_ip", "Wide Midfielder", "in_possession", [
+      "ML",
+      "MR",
+    ]),
+    tacticRole("winger_ip", "Winger", "in_possession", [
+      "ML",
+      "MR",
+      "AML",
+      "AMR",
+    ]),
+    tacticRole(
+      "tracking_wide_midfielder_oop",
+      "Tracking Wide Midfielder",
+      "out_of_possession",
+      ["ML", "MR"],
+    ),
+    tacticRole("inside_winger_ip", "Inside Winger", "in_possession", [
+      "ML",
+      "MR",
+      "AML",
+      "AMR",
+    ]),
+    tacticRole(
+      "inside_outlet_winger_oop",
+      "Inside Outlet Winger",
+      "out_of_possession",
+      ["AML", "AMR"],
+    ),
+    tacticRole("tracking_winger_oop", "Tracking Winger", "out_of_possession", [
+      "AML",
+      "AMR",
+    ]),
+    tacticRole("centre_forward_ip", "Centre Forward", "in_possession", ["ST"]),
+    tacticRole("deep_lying_forward_ip", "Deep-Lying Forward", "in_possession", [
+      "ST",
+    ]),
+    tacticRole(
+      "central_outlet_centre_forward_oop",
+      "Central Outlet Centre Forward",
+      "out_of_possession",
+      ["ST"],
+    ),
+  ],
 };
+
+function tacticRole(
+  roleId: string,
+  displayName: string,
+  phase: TacticRoleOption["phase"],
+  positionTags: string[],
+): TacticRoleOption {
+  return { roleId, displayName, phase, positionTags };
+}
 
 let clubFamily: ClubFamily = { ...DEFAULT_CLUB_FAMILY, sources: [] };
 let availableClubs: string[] = [];
 let tactic: PlannerTactic = cloneTactic(DEFAULT_TACTIC);
+let tacticSaveError: string | null = null;
 
 function cloneTactic(value: PlannerTactic): PlannerTactic {
   return {
@@ -103,6 +251,7 @@ export function resetPlannerIpcMock() {
   clubFamily = { ...DEFAULT_CLUB_FAMILY, sources: [] };
   availableClubs = [];
   tactic = cloneTactic(DEFAULT_TACTIC);
+  tacticSaveError = null;
 }
 
 export function setPlannerAvailableClubs(clubs: string[]) {
@@ -131,7 +280,14 @@ export function resolvePlannerTacticOptionsIpcMock() {
   };
 }
 
+export function setPlannerTacticSaveError(message: string | null) {
+  tacticSaveError = message;
+}
+
 export function resolveSavePlannerTacticIpcMock(args: unknown) {
+  if (tacticSaveError) {
+    throw tacticSaveError;
+  }
   const record = args as { tactic?: PlannerTactic };
   if (!record.tactic) {
     throw "Tactic is required";

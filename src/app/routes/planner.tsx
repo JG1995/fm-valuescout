@@ -1,4 +1,4 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useIsFetching, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DatabaseZap } from "lucide-react";
 import { Suspense } from "react";
@@ -6,10 +6,13 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { plannerClubFamilyQueryOptions } from "@/features/planner/api/get-planner-club-family-query-options";
 import { plannerClubsQueryOptions } from "@/features/planner/api/planner-clubs-query-options";
+import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { plannerTacticOptionsQueryOptions } from "@/features/planner/api/planner-tactic-options-query-options";
 import { plannerTacticQueryOptions } from "@/features/planner/api/planner-tactic-query-options";
 import { PlannerClubFamilyPanel } from "@/features/planner/components/planner-club-family-panel";
+import { PlannerTacticEditor } from "@/features/planner/components/planner-tactic-editor";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 
 export const Route = createFileRoute("/planner")({
   loader: ({ context: { queryClient } }) =>
@@ -24,8 +27,20 @@ export const Route = createFileRoute("/planner")({
 });
 
 function PlannerPageContent() {
-  const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
-  const { data: tactic } = useSuspenseQuery(plannerTacticQueryOptions);
+  const { data: snapshot, isRefetchError: snapshotRefreshError } =
+    useSuspenseQuery(currentSnapshotQueryOptions);
+  const { data: tactic, isRefetchError: tacticRefreshError } = useSuspenseQuery(
+    plannerTacticQueryOptions,
+  );
+  const { data: tacticOptions, isRefetchError: tacticOptionsRefreshError } =
+    useSuspenseQuery(plannerTacticOptionsQueryOptions);
+  const isPlannerRefreshing = useIsFetching({ queryKey: plannerKeys.all }) > 0;
+  const isSnapshotRefreshing =
+    useIsFetching({ queryKey: snapshotKeys.all }) > 0;
+  const activeSaveRefreshError =
+    snapshotRefreshError || tacticRefreshError || tacticOptionsRefreshError;
+  const isActiveSaveUnavailable =
+    isPlannerRefreshing || isSnapshotRefreshing || activeSaveRefreshError;
 
   if (!snapshot) {
     return (
@@ -40,15 +55,14 @@ function PlannerPageContent() {
 
   return (
     <>
-      <Panel title="Shared tactic" flush>
-        <div className="space-y-1 px-4 py-3 text-body-md text-on-surface-variant">
-          <p>One tactic will drive Senior, Reserves, and Youth.</p>
-          <p>
-            {tactic.lanes.length} linked lanes ·{" "}
-            {Math.round(tactic.ipWeight * 100)}% IP score weight
-          </p>
-        </div>
-      </Panel>
+      {/* Key the editor to the active save so its local draft cannot cross a save boundary. */}
+      <PlannerTacticEditor
+        key={snapshot.saveId}
+        activeSaveRefreshError={activeSaveRefreshError}
+        isActiveSaveUnavailable={isActiveSaveUnavailable}
+        tactic={tactic}
+        options={tacticOptions}
+      />
       <PlannerClubFamilyPanel />
     </>
   );
