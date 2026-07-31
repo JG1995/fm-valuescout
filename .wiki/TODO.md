@@ -17,7 +17,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 | 2a | Bridge scan performance | [Completed](./features/completed/bridge-scan-performance.md) | medium-high | Block heap scanning, streaming dump, optimized ingest, unlimited default, UI cap controls — **done** |
 | 3 | Role scoring engine | [Completed](./features/completed/role-scoring-engine.md) | medium | One scoring model on ingest; primary/secondary bands; combined IP/OOP helper — **done** |
 | 4 | Player search | [Completed](./features/completed/player-search.md) | high | First full UI value path after Load Data; validates DB and scores — **done** |
-| 5 | Player profiles | CONCEPT | high | Detail view from search; traditional scouting path |
+| 5 | Player profiles | [Active](./features/active/player-profiles.md) | high | Detail view from search; traditional scouting path — **in progress** |
 | 6 | Squad planner | CONCEPT | medium | Tactic + squad slots; same scores as search |
 | 7 | Squad optimizer | CONCEPT | medium | Maximize combined team score; closes success vignette |
 
@@ -52,15 +52,15 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-_None — plan next feature with `/plan-feature`._
+- [Player profiles](./features/active/player-profiles.md) (order 5) — `/players/$uid` with Overview / Attributes / Roles; entry from Search row and Ctrl+K.
 
 ## Plan next
 
-Player profiles (order 5) — detail view from search; traditional scouting path.
+Squad planner (order 6) — tactic + squad slots; same scores as search.
 
 ## Next
 
-Squad planner (order 6) — tactic + squad slots; same scores as search.
+Squad optimizer (order 7) — maximize combined team score; closes success vignette.
 
 ## Completed
 
