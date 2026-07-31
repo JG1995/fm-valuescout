@@ -133,7 +133,7 @@ Within a family: stable catalog order (or IP then OOP, then name) — pick one i
 
 #### Commit 1 — get_player IPC for current-snapshot detail
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add Rust `get_player` command/service that loads one player by `uid` from the active save’s current snapshot, including attribute JSON maps and all `player_role_scores` joined with catalog display fields (`displayName`, `phase`, `positionTags`). Return null/not-found cleanly when missing. Register command; invalidate with snapshot/save keys from existing Load Data / set_active_save paths when wiring frontend later (document key in this commit if only Rust). Frontend types + query options stub optional if needed for RED — prefer Rust tests first.
 
