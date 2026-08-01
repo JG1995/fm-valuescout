@@ -5,7 +5,7 @@ description: Run a fresh-context, profile-routed review of staged changes or a c
 
 ## Specialist dispatch
 
-Read `.agents/WORKFLOW.md`. Select the review profile from the invocation mode: use the active commit's profile for commit review and the ledger's feature review profile for feature-complete review. For non-trivial work without a ledger, use the named `reviewer` at its default Terra xhigh profile. Use the named `reviewer` only when its pinned profile matches; otherwise use a generic read-only reviewer that follows `.codex/agents/reviewer.toml`.
+Read `.agents/WORKFLOW.md`. Select the review profile from the invocation mode: use the active commit's profile for commit review and a generic **Sol High** reviewer for every feature-complete review. For non-trivial work without a ledger, use the named `reviewer` at its default Terra High profile. Use the named `reviewer` only when its pinned profile matches; otherwise use a generic read-only reviewer that follows `.codex/agents/reviewer.toml`.
 
 For commit review, give the reviewer the original commit scope, relevant invariants and non-goals, implementation packet when one exists, commit-specific mandate, staged diff, validation results, and repository access. For feature-complete review, give it the complete ledger, linked planned spec, comparison base, full feature diff, commit-review summaries, final validation results, and repository access. Do not initially provide implementation reasoning or self-review. Require the full evidence-shaped Review verdict from `.codex/agents/reviewer.toml`.
 

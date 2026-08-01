@@ -23,7 +23,7 @@ Trivial work can use a short work contract instead of a ledger. Keep the existin
 
 Use `workflow-plan-feature`. The planning context inspects the repository and creates one durable ledger in `.wiki/features/active/`.
 
-The default planning profile is **Sol High** (`gpt-5.6-sol`, `high`). Use Sol xhigh when several architectures remain plausible, persistence or migration design is unsettled, requirements conflict, security or concurrency boundaries change, repository ownership is unclear, or implementation discoveries require material replanning.
+The default planning profile is **Terra xhigh** (`gpt-5.6-terra`, `xhigh`) when the repository already supplies the architecture, feature boundary, and useful analogues. Use Sol High when several architectures remain plausible, persistence or migration design is unsettled, requirements conflict, security or concurrency boundaries change, repository ownership is unclear, or implementation discoveries require material replanning. Use Sol xhigh only when several Sol conditions coincide, a Sol High plan fails structurally, or the decision has difficult-to-reverse security, corruption, or data-loss consequences.
 
 The planner must:
 
@@ -67,7 +67,7 @@ Use only the stable commands in `AGENTS.md` and `./scripts/dev`. Status 69 means
 
 ### 4. Review in a fresh context
 
-Every non-trivial commit gets a separate read-only reviewer after deterministic validation. Dispatch the model and reasoning effort assigned by the commit's review profile. For non-trivial work without a ledger, use the repository's named `reviewer` at its default Terra xhigh profile. When a ledger assigns another profile, use a generic read-only reviewer with the same contract.
+Every non-trivial commit gets a separate read-only reviewer after deterministic validation. Dispatch the model and reasoning effort assigned by the commit's review profile. For non-trivial work without a ledger, use the repository's named `reviewer` at its default Terra High profile. When a ledger assigns another profile, use a generic read-only reviewer with the same contract.
 
 Give the reviewer:
 
@@ -88,7 +88,7 @@ Return a confirmed bounded execution defect to the original implementation model
 
 After one clear structural misunderstanding, do not retry the same model only with more effort. Escalate capability or return to planning.
 
-After two failed correction attempts on the same bounded defect, escalate model capability or return to planning. Do not continue an open-ended repair loop.
+After two failed correction attempts on the same bounded defect, use a third automated attempt only after increasing model capability or reasoning effort. After three failed attempts, stop the automated loop and return to planning or developer direction. Do not continue an open-ended repair loop.
 
 Use Sol High or xhigh replanning when a Known fact is disproved, an invariant or approved boundary must change, a required seam does not exist, a public or persisted contract changes materially, validation cannot be meaningful, the commit leaks into a later PR, a cross-feature dependency appears, or review exposes an architectural disagreement.
 
@@ -96,9 +96,9 @@ Replanning must update the uncertainty register, decisions, risks, affected impl
 
 ### 6. Finish the feature
 
-Use `workflow-finish-feature` after every planned commit is completed or explicitly removed with a reason.
+Use `workflow-finish-feature` after every planned commit is completed or explicitly removed with a reason. Use `workflow-finish-feature-loop` only when the developer manually opts into automatic feature-review corrections and local close-out commits.
 
-Run feature-level validation from the ledger, then dispatch a fresh feature-complete reviewer. The default is Sol Medium; use Sol High for security, concurrency, data-loss, destructive migration, difficult-to-reverse architecture, or similarly high-risk integration. The feature reviewer checks end-to-end intent and cross-commit interactions instead of repeating commit reviews.
+Run feature-level validation from the ledger, then dispatch a fresh **Sol High** feature-complete reviewer. This fixed profile reflects the breadth and close-out consequence of approving the whole feature. The feature reviewer checks end-to-end intent and cross-commit interactions instead of repeating commit reviews.
 
 After review clears, reconcile durable documentation and archive the ledger according to `.wiki/INDEX.md` and `.wiki/features/completed/README.md`.
 
@@ -134,13 +134,13 @@ Add the five values:
 
 | Total | Initial implementation model |
 | --- | --- |
-| 0–4 | Luna |
-| 5–8 | Terra |
-| 9–15 | Sol |
+| 0–5 | Luna |
+| 6–10 | Terra |
+| 11–15 | Sol |
 
 ### Luna punch-up exception
 
-Luna can handle a score of 5–6 when all of these conditions hold:
+Luna can handle a score of 6–7 when all of these conditions hold:
 
 - residual ambiguity and diagnostic uncertainty are each 0 or 1;
 - architecture is approved;
@@ -211,17 +211,20 @@ Score review independently from implementation. Each category is 0–3:
 
 | Total | Reviewer profile |
 | --- | --- |
-| 0–3 | Luna Medium or High, or deterministic validation only for truly mechanical work |
-| 4–6 | Terra High |
-| 7–9 | Terra xhigh |
-| 10–12 | Sol Medium or High |
-| 13–15 | Sol High or xhigh plus a bounded specialist review |
+| 0–3 | Luna Medium, or deterministic validation only for truly mechanical work |
+| 4–6 | Terra Medium |
+| 7–9 | Terra High |
+| 10–12 | Terra xhigh |
+| 13–14 | Sol High |
+| 15 | Sol xhigh plus a bounded specialist review |
 
 Use at least **Terra High** for persistence, state lifecycle, cache invalidation, external APIs, multiple frontend/backend layers, meaningful implementation discretion, or incomplete test coverage.
 
-Use at least **Terra xhigh** for existing-data migration, stale-state survival, uniqueness across mutations, retries, idempotency, partial failure, cancellation, ordering semantics, linked asynchronous states, or persistence plus cache plus UI reconciliation.
+Use at least **Terra xhigh** when existing-data migration, retries, idempotency, or partial failure is central. Also use it when two or more difficult lifecycle concerns combine — stale-state survival, uniqueness or ordering across mutations, cancellation, linked asynchronous states, and persistence plus cache plus UI reconciliation — and deterministic validation does not cover the interaction well. One well-tested lifecycle concern does not create an xhigh floor by itself.
 
-Use at least **Sol High** for authorization, credible corruption or data-loss risk, destructive migration, concurrency, cryptography, major public contracts, architectural contradiction, or difficult-to-reverse consequences.
+Use at least **Sol High** for authorization, credible corruption or hard-to-reconstruct data-loss risk, destructive migration, concurrency, cryptography, major public contracts, architectural contradiction, or difficult-to-reverse consequences.
+
+Use **Sol xhigh** only when Review Demand is 15, a Sol High review fails structurally, or several Sol High conditions combine with weak validation or an unresolved boundary. Do not carry an implementer's xhigh effort into review automatically; score review from its own mandate and evidence.
 
 For high-consequence work, the final adjudicator is normally at least as capable as the implementer.
 
@@ -263,7 +266,7 @@ For an active legacy ledger:
 
 Representative planned commit: **Add the three-team depth matrix** from `.wiki/features/active/squad-planner.md`.
 
-- **Implementation:** Luna xhigh. Capability Demand is 5: ambiguity 1, novelty 1, diagnosis 0, semantic risk 1, context synthesis 2. The Luna punch-up applies because the Rust read model and UI architecture are approved, the work is reversible, and deterministic React tests exist. Effort Demand is 10 after adjustments because the commit spans route and component composition, multiple display states, keyboard structure, and viewport behavior.
+- **Implementation:** Luna xhigh. Capability Demand is 5: ambiguity 1, novelty 1, diagnosis 0, semantic risk 1, context synthesis 2. This routes directly to Luna because the Rust read model and UI architecture are approved, the work is reversible, and deterministic React tests exist. Effort Demand is 10 after adjustments because the commit spans route and component composition, multiple display states, keyboard structure, and viewport behavior.
 - **Packet summary:** follow the existing Planner route, shared tactic editor, `ScoreBadge`, and route-test patterns; consume the Rust-owned read model; keep matrix state presentational; do not add picker mutations or string controls; validate team tabs, sticky lanes, overflow, scores, and unresolved states.
-- **Review:** Terra High. Review Demand is 6: consequence 1, hidden interactions 2, validation weakness 1, discretion 1, blast radius 1. The mandate challenges truthful unresolved/outside-pool rendering, shared tactic-row identity across tabs, keyboard reachability, horizontal overflow at the target viewport, and leakage of later picker or string-management scope.
+- **Review:** Terra High. Review Demand is 6: consequence 1, hidden interactions 2, validation weakness 1, discretion 1, blast radius 1. The frontend/backend integration floor overrides the raw Terra Medium score because the matrix consumes a Rust-owned read contract through IPC. The mandate challenges truthful unresolved/outside-pool rendering, shared tactic-row identity across tabs, keyboard reachability, horizontal overflow at the target viewport, and leakage of later picker or string-management scope.
 - **Escalation:** increase Luna effort if the planned ownership is correct but states or tests are incomplete. Escalate to Terra if the read model cannot support truthful rendering without local domain reconstruction. Replan with Sol if the matrix requires a new persisted contract or work assigned to the candidate-picker commit.

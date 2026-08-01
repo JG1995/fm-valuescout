@@ -728,7 +728,9 @@ execution_profile:
 
 ##### Review profile
 
-**Assigned reviewer:** Terra xhigh — `gpt-5.6-terra` at `xhigh`, fresh context.
+**Assigned reviewer:** Terra High — `gpt-5.6-terra` at `high`, fresh context.
+
+**Routing summary:** Review Demand 8 maps to Terra High under the revised review ladder. Rust already enforces final-string protection and isolated deletion, while targeted component tests and the browser smoke path cover the UI reconciliation contract.
 
 **Mandate:**
 
@@ -834,7 +836,7 @@ execution_profile:
     tool_coordination: 2
     adjustments: -1
     total: 8
-  reviewer: { model: gpt-5.6-terra, effort: xhigh, context_mode: fresh }
+  reviewer: { model: gpt-5.6-terra, effort: high, context_mode: fresh }
   review_demand:
     missed_defect_consequence: 2
     hidden_interaction_complexity: 2
@@ -842,7 +844,7 @@ execution_profile:
     architectural_discretion: 1
     blast_radius: 2
     total: 8
-    hard_floor: terra-xhigh-ordering-and-persistence-ui-reconciliation
+    hard_floor: terra-high-state-and-persistence
   review_mandate:
     - Verify isolated deletion, final-string protection, and ordinal updates.
     - Verify populated confirmation and lossless cancel or failure.
@@ -890,7 +892,7 @@ The Planner adds and removes ordered squad strings through equivalent visible an
 ### Assigned profiles
 
 - **Implementation:** Terra High — `gpt-5.6-terra` at `high`.
-- **Review:** Terra xhigh — `gpt-5.6-terra` at `xhigh`, fresh context.
+- **Review:** Terra High — `gpt-5.6-terra` at `high`, fresh context.
 
 ### Current blockers
 
@@ -903,6 +905,7 @@ The Planner adds and removes ordered squad strings through equivalent visible an
 ## Discoveries and replanning
 
 - **Planned:** Identify the managed club from current snapshot data. **Discovered:** Dump schema v5 has no manager or affiliation identity, and B teams can be separate clubs whose players report `teamLevel = senior`. **Why it matters:** Automatic affiliation would be unreliable. **Change:** Feature architecture changed to an explicit save-scoped club-family mapping. **Affected work:** PR 1 club setup and every later candidate-source query. **Routing impact:** Persistence and candidate commits require at least Terra because the authoritative source boundary spans save state and current snapshots.
+- **Planned:** Route reviews with the original model ladder and use Sol Medium for feature completion. **Discovered:** The original ladder promoted routine cross-layer review too quickly and carried implementation effort into review. **Why it matters:** It spent Sol and xhigh usage without a matching increase in consequence or uncertainty. **Change:** Commit 4 review moves from Terra xhigh to Terra High because Rust already owns the destructive invariants and deterministic UI and smoke checks cover the integration; feature-complete review moves to the fixed Sol High profile. **Affected work:** PR 2 commit 4 and feature close-out only; completed review history is unchanged. **Routing impact:** Lower routine commit-review usage and stronger fixed feature-close-out review.
 
 ## Completed work
 
@@ -921,7 +924,7 @@ At feature end: `./scripts/dev test`, `./scripts/dev check`, `./scripts/dev smok
 
 ### Feature review profile
 
-- **Reviewer:** Sol Medium — `gpt-5.6-sol` at `medium`, fresh context.
+- **Reviewer:** Sol High — `gpt-5.6-sol` at `high`, fresh context.
 - **Mandate:** Verify end-to-end club setup → tactic → three-team depth → candidate assignment → string management; cross-commit identity and cache behavior; snapshot survival; uniqueness; truthful unknown/unresolved state; keyboard equivalence; architecture and documentation consistency; and absence of temporary compatibility paths.
 
 ## Documentation impact

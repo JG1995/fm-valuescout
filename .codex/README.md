@@ -28,8 +28,9 @@ Use the named skill that matches the task. State the requested outcome in chat; 
 | Review | `workflow-review` | Read-only staged or feature review. |
 | Reconcile docs | `workflow-docs-review` | Documentation-only reconciliation. |
 | Finish a feature | `workflow-finish-feature` | Full validation, feature review, then documentation reconciliation. |
+| Finish a feature automatically | `workflow-finish-feature-loop` | Manual opt-in: Sol High feature review/fix loop, reconciliation, and local close-out commits. |
 
-`workflow-build-loop` is manual opt-in only. It may auto-commit after a clean review because naming the skill is explicit approval for that loop. `workflow-spike` and `workflow-security-audit` are optional, read-only or disposable investigations outside the main loop.
+`workflow-build-loop` and `workflow-finish-feature-loop` are manual opt-ins only. They may auto-commit after their blocking review tiers clear because naming either skill is explicit approval for its documented local commits. Each loop allows at most three fix rounds. `workflow-spike` and `workflow-security-audit` are optional, read-only or disposable investigations outside the main loop.
 
 ## Validation and Git
 
@@ -43,11 +44,11 @@ The active ledger selects work and model profiles. Capability Demand selects Lun
 
 Dispatch specialist agents explicitly when the task needs their role:
 
-- `planner` uses Sol High by default and writes feature ledgers without implementing product code.
-- `reviewer` is the default Terra xhigh read-only reviewer. Use it only when that profile matches the ledger; otherwise dispatch a generic read-only reviewer with the assigned model and the same contract.
+- `planner` uses Terra xhigh by default for established architecture and writes feature ledgers without implementing product code. Use a generic Sol planner when the canonical routing conditions require it.
+- `reviewer` is the default Terra High read-only reviewer. Use it only when that profile matches the ledger; otherwise dispatch a generic read-only reviewer with the assigned model and the same contract. Feature-complete review always uses a generic Sol High reviewer.
 - `documentation-steward` can update documentation and feature ledgers only. Use it after feature-complete review clears or for documentation reconciliation.
 
-Each named definition pins its default model and reasoning effort. `planner` uses `gpt-5.6-sol` with `high`; `reviewer` uses `gpt-5.6-terra` with `xhigh`; `documentation-steward` uses `gpt-5.6-terra` with `medium`. Do not override a pinned role. Use a generic agent when a ledger assigns another profile.
+Each named definition pins its default model and reasoning effort. `planner` uses `gpt-5.6-terra` with `xhigh`; `reviewer` uses `gpt-5.6-terra` with `high`; `documentation-steward` uses `gpt-5.6-terra` with `medium`. Do not override a pinned role. Use a generic agent when a ledger assigns another profile.
 
 If an agent is unavailable, follow the corresponding workflow skill in the main session and preserve the same boundary.
 
