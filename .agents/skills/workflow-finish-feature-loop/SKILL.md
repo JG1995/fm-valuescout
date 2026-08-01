@@ -31,7 +31,7 @@ validate feature
 → Sol High feature review 1
 → if CRITICAL | HIGH | MEDIUM: fix → validate → Sol High review 2
 → if still CRITICAL | HIGH | MEDIUM: fix → validate → Sol High review 3
-→ if the same finding survives both corrections: increase correction capability or effort before the third and final fix
+→ if the same finding survives both corrections: stop for a developer-selected main-session profile change
 → if still CRITICAL | HIGH | MEDIUM: fix → validate → Sol High review 4 (final)
 → if still CRITICAL | HIGH | MEDIUM: stop — do not commit or reconcile docs
 → if only NITPICK or none: commit reviewed corrections, reconcile docs, and commit docs
@@ -44,7 +44,7 @@ validate feature
 | MEDIUM | Auto-fix by default before feature close-out |
 | NITPICK | Fix only when the same verdict also has CRITICAL, HIGH, or MEDIUM; otherwise proceed without a fix round |
 
-Track findings by violated contract and execution path. After two failed correction attempts on the same finding, use the third attempt only with increased implementation capability or reasoning effort. The feature reviewer remains Sol High for every pass. Stop after three fix rounds even when different findings appear in later passes.
+Track findings by violated contract and execution path. After two failed correction attempts on the same finding, stop and report the required implementation capability or effort change so the developer can switch the main session. Do not dispatch a replacement implementer. The feature reviewer remains Sol High for every pass. Stop after three fix rounds even when different findings appear in later passes.
 
 ## Phase 1 — Validate and review
 
@@ -59,12 +59,12 @@ Require the evidence-shaped Review verdict from `.codex/agents/reviewer.toml`.
 When the verdict contains CRITICAL, HIGH, or MEDIUM findings and rounds remain:
 
 1. Validate each finding against its violated contract, execution path, consequence, and existing guards.
-2. Route a bounded finding owned by one completed commit to that commit's original implementation profile. Follow `.agents/skills/workflow-fix/SKILL.md` with the explicit feature-correction scope.
+2. Correct a bounded finding owned by one completed commit in the main session. Follow `.agents/skills/workflow-fix/SKILL.md` with that commit's explicit feature-correction scope.
 3. Include NITPICK findings in the same correction pass when the verdict is mixed.
 4. Stop and return to planning when a correction crosses commit boundaries or changes an invariant, persisted or public contract, architecture seam, validation contract, PR boundary, or later feature dependency.
 5. Keep corrections uncommitted during the loop. Review the complete feature including working-tree corrections with `git diff <base>`, `git status --short`, and the contents of any untracked correction files, or use an equivalent complete diff.
 6. Run the full validation sequence from `$workflow-finish-feature` after each correction round.
-7. Ask the same Sol High reviewer context to verify corrected findings and newly exposed paths. Start a fresh Sol High review only when the correction materially changes the feature architecture or review mandate.
+7. Ask the same Sol High reviewer context to verify corrected findings and newly exposed paths when available. Dispatch a fresh Sol High reviewer when that context is unavailable or when the correction materially changes the feature architecture or review mandate.
 
 Do not run `$workflow-fix` for a NITPICK-only verdict. Proceed to Phase 3.
 
