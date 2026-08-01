@@ -7,7 +7,7 @@ Let the user configure one FM26 tactic and manually organize a selected club fam
 ## Delivered behavior
 
 - `/planner` provides club-family setup, a shared dual-phase tactic editor, and a three-team depth matrix for the active app save.
-- The user selects a primary club and can attach explicit separate B-team or youth-club sources to Reserves or Youth. Sources can filter by `teamLevel`; missing configured clubs remain visible after a refresh.
+- The user selects a primary club and can attach explicit separate B-team or youth-club sources to Reserves or Youth. Every player at the primary club is eligible for all three Planner teams, and every player at an associated club is eligible for its target Planner team; dump `teamLevel` does not restrict either pool. Missing configured clubs remain visible after a refresh.
 - One save-scoped tactic has 11 linked IP/OOP lanes, a 4-3-3 DM IP / 4-1-4-1 DM OOP default, compatible catalog role choices, and a persisted IP weight.
 - Senior, Reserves, and Youth each start with one ordered string. Users can add strings without a product limit and can remove a string when its team retains another one. Populated removal requires confirmation.
 - Rust ranks slot candidates from the target team's configured club-family sources by combined IP/OOP score. The picker shows score evidence and an existing assignment location. Assigning an already assigned player requires confirmation to move that player.

@@ -103,7 +103,9 @@ describe("planner route", () => {
     ).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Add Youth source" }));
     expect(screen.getByLabelText("Youth club 1")).toBeInTheDocument();
-    expect(screen.getByLabelText("Youth player level 1")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Youth player level 1"),
+    ).not.toBeInTheDocument();
     expect(
       resolvePlannerClubFamilyIpcMock().sources.some(
         (source) =>

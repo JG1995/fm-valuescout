@@ -203,7 +203,6 @@ pub fn get_slot_candidates(
                    WHERE source.save_id = ?2
                      AND source.team = ?3
                      AND source.club_name = p.current_club
-                     AND (source.team_level IS NULL OR source.team_level = p.team_level)
                )",
         )
         .map_err(|error| error.to_string())?;
@@ -610,7 +609,6 @@ fn resolve_assignment(
                     WHERE source.save_id = ?1
                       AND source.team = ?2
                       AND source.club_name = p.current_club
-                      AND (source.team_level IS NULL OR source.team_level = p.team_level)
                 ),
                 ip.score,
                 oop.score
@@ -740,7 +738,6 @@ fn assignable_player_name(
                WHERE source.save_id = ?3
                  AND source.team = ?4
                  AND source.club_name = p.current_club
-                 AND (source.team_level IS NULL OR source.team_level = p.team_level)
            )",
         params![snapshot_id, player_uid, save_id, team.as_str()],
         |row| row.get(0),
@@ -895,11 +892,12 @@ mod tests {
                 .iter()
                 .map(|candidate| candidate.player_uid)
                 .collect::<Vec<_>>(),
-            [79, 78, 80]
+            [79, 78, 77, 80]
         );
         assert_eq!(candidates[0].combined_score, Some(80));
         assert_eq!(candidates[1].combined_score, Some(50));
         assert_eq!(candidates[2].combined_score, None);
+        assert_eq!(candidates[3].combined_score, None);
         assert_eq!(candidates[0].current_club, "Loan B FC");
         assert_eq!(
             candidates[1].assignment_location.as_ref().map(|location| (
@@ -935,6 +933,47 @@ mod tests {
         )
         .expect_err("reject an unbounded search");
         assert_eq!(error, "Candidate search must be at most 120 characters");
+    }
+
+    #[test]
+    fn team_level_does_not_restrict_the_primary_club_pool() {
+        let (_temp_dir, conn, save_id) = open_with_snapshot();
+
+        for team_level in [Some("senior"), None] {
+            conn.execute(
+                "UPDATE players SET team_level = ?1 WHERE current_club = 'Loan FC'",
+                params![team_level],
+            )
+            .expect("set team level");
+
+            for team in [
+                PlannerTeam::Senior,
+                PlannerTeam::Reserves,
+                PlannerTeam::Youth,
+            ] {
+                let candidates = get_slot_candidates(&conn, save_id, team, "goalkeeper", "")
+                    .expect("load candidates");
+
+                assert_eq!(
+                    candidates
+                        .iter()
+                        .map(|candidate| candidate.player_uid)
+                        .collect::<Vec<_>>(),
+                    [77]
+                );
+            }
+        }
+
+        let depth = get_depth(&conn, save_id).expect("load depth");
+        let youth_string_id = team_strings(&depth, PlannerTeam::Youth)[0].id;
+        assign_player(&conn, save_id, youth_string_id, "goalkeeper", 77)
+            .expect("assign senior-level player to youth planner team");
+
+        let depth = get_depth(&conn, save_id).expect("reload depth");
+        assert_eq!(
+            team_strings(&depth, PlannerTeam::Youth)[0].assignments[0].state,
+            AssignmentState::Resolved
+        );
     }
 
     #[test]

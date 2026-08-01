@@ -17,7 +17,6 @@ import type {
   ClubFamily,
   ClubSourceInput,
   PlannerTeam,
-  PlannerTeamLevel,
 } from "../types/club-family";
 
 type DraftSource = ClubSourceInput & { id: number };
@@ -30,12 +29,6 @@ const TEAM_LABELS: Record<PlannerTeam, string> = {
   youth: "Youth",
 };
 
-const LEVEL_LABELS: Record<PlannerTeamLevel, string> = {
-  senior: "Senior players",
-  reserve: "Reserves players",
-  youth: "Youth players",
-};
-
 function draftSources(family: ClubFamily): DraftSource[] {
   return family.sources
     .filter(
@@ -46,7 +39,7 @@ function draftSources(family: ClubFamily): DraftSource[] {
       id: source.id,
       team: source.team,
       clubName: source.clubName,
-      teamLevel: source.teamLevel,
+      teamLevel: null,
     }));
 }
 
@@ -300,8 +293,8 @@ export function PlannerClubFamilyPanel() {
             </div>
             {sources.length === 0 ? (
               <p className="text-body-sm text-on-surface-variant">
-                No associated clubs yet. The primary club supplies all three
-                team levels.
+                No associated clubs yet. Every primary-club player is available
+                to all three teams.
               </p>
             ) : (
               <div className="space-y-3">
@@ -312,7 +305,7 @@ export function PlannerClubFamilyPanel() {
                       .filter((item) => item.team === source.team).length + 1;
                   return (
                     <div
-                      className="grid gap-3 rounded-md border border-outline-variant p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
+                      className="grid gap-3 rounded-md border border-outline-variant p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
                       key={source.id}
                     >
                       <SelectField
@@ -336,29 +329,6 @@ export function PlannerClubFamilyPanel() {
                           </option>
                         ))}
                       </SelectField>
-                      <SelectField
-                        label={`${TEAM_LABELS[source.team]} player level ${teamSourceNumber}`}
-                        value={source.teamLevel ?? ""}
-                        onChange={(event) => {
-                          const teamLevel = event.target.value
-                            ? (event.target.value as PlannerTeamLevel)
-                            : null;
-                          setSources((current) =>
-                            current.map((item) =>
-                              item.id === source.id
-                                ? { ...item, teamLevel }
-                                : item,
-                            ),
-                          );
-                        }}
-                      >
-                        <option value="">All levels</option>
-                        {Object.entries(LEVEL_LABELS).map(([level, label]) => (
-                          <option key={level} value={level}>
-                            {label}
-                          </option>
-                        ))}
-                      </SelectField>
                       <Button
                         size="icon"
                         variant="ghost"
@@ -371,7 +341,7 @@ export function PlannerClubFamilyPanel() {
                         }}
                       />
                       {sourceIsMissing(source, availableClubs) ? (
-                        <p className="text-body-sm text-warning sm:col-span-2">
+                        <p className="text-body-sm text-warning">
                           This source is not in the current snapshot. It remains
                           saved until you replace it.
                         </p>
