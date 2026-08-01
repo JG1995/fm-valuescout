@@ -12,7 +12,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 ## 1. Top-Level Shape
 
-**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Codex workflow (skills, specialist agents, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)), and the first **Squad Planner** slice (save-scoped club-family setup at `/planner`).
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Codex workflow (skills, specialist agents, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest** (multi-save slots, Load Data scan+ingest into SQLite — [completed record](./features/completed/snapshot-ingest.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)), and **Squad Planner** (save-scoped club family, dual-phase tactic, and three-team depth chart at `/planner`).
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 
@@ -52,7 +52,9 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Planner tactic:** Rust `features/planner` also owns one save-scoped `planner_tactics` row and eleven ordered `planner_tactic_lanes` rows. `get_planner_tactic` seeds a validated 4-3-3 DM In-Possession / 4-1-4-1 DM Out-of-Possession tactic with compatible catalog roles; `get_planner_tactic_options` exposes catalog-backed placements and phase/position metadata; `save_planner_tactic` validates the complete linked tactic and its 0–1 IP weight before replacing the lane rows. React `features/planner` loads the tactic and options through TanStack Query; the editor keeps linked phase edits and score-weight drafts local until save.
 
-**Planner depth matrix:** Rust `features/planner` owns save-scoped `planner_strings` and `planner_assignments`, resolves assignment state and combined scores against the active snapshot, and exposes `get_planner_depth`. React `features/planner` loads the complete three-team read model through TanStack Query and renders keyboard-operable Senior, Reserves, and Youth tabs over one shared tactic matrix. Sticky lane labels and an overflow container keep ordered strings readable; React displays Rust-provided unresolved, outside-pool, and unknown-score states without recomputing domain values.
+**Planner depth:** Rust `features/planner` owns save-scoped `planner_strings` and `planner_assignments`. It creates one string for each of Senior, Reserves, and Youth; validates add, remove, clear, assign, and move mutations; keeps player UIDs unique across the save; and resolves assignments against the active snapshot. A resolved assignment has current identity and a combined score; an outside-pool assignment still resolves but no longer belongs to its team's configured sources; an unresolved assignment retains its last-known name when its UID is absent. Missing phase scores remain unknown. `get_planner_depth` returns the complete three-team read model, while `get_planner_slot_candidates` filters the target team's configured sources and ranks candidates by Rust-computed combined score with any current assignment location.
+
+React `features/planner` owns query, picker, confirmation, focus, menu, and presentation state. The `/planner` route composes club-family setup, the tactic editor, and the depth matrix after the snapshot is available. The matrix has keyboard-operable Senior, Reserves, and Youth tabs, sticky lane labels, horizontal overflow, and header menus available by button or right-click. Picker and string mutations reconcile the depth cache and invalidate candidate queries; tactic saves invalidate both because roles and weight change their results. Load Data, active-save changes, and club-family saves invalidate the entire Planner query tree. React displays Rust-provided unresolved, outside-pool, and unknown-score states without recomputing domain values.
 
 **Auth:** None in the template default — chosen per fork via `/stack`
 
@@ -496,7 +498,11 @@ User opens /planner
   → route loader: ensureQueryData(get_planner_depth)
   → get_planner_depth returns all three ordered team strings with current assignment state and combined score
   → React renders one selected team at a time over the depth read model; tabs change presentation state only
-  → Load Data and active-save changes invalidate the depth query with the planner tree
+  → get_planner_slot_candidates(team, laneId, search) returns Rust-ranked candidates from that team's configured sources
+  → add_planner_string, remove_planner_string, clear_planner_assignment, assign_planner_player, and move_planner_player validate and mutate in Rust
+  → player UIDs are unique per save; each team retains at least one string; populated-string removal is confirmed in React and still validated in Rust
+  → successful depth mutations reconcile the depth cache and invalidate candidate queries; tactic saves invalidate both
+  → Load Data, active-save changes, and club-family saves invalidate the Planner query tree
 ```
 
 `request_player_dump` remains registered for tests and low-level scan-only use; the **Load Data** button in `AppTopBar` calls `load_data`.
@@ -655,9 +661,9 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Playwright smoke covers | Playwright smoke does not cover |
 | --- | --- |
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
-| Walking-skeleton UI with stubbed IPC: app shell (nav rail with Search and Planner, top bar with global search), status panels, demo-value form flow, Search route, no-snapshot Planner route | Real `#[tauri::command]` handlers in Rust |
+| Walking-skeleton UI with stubbed IPC: app shell (nav rail with Search and Planner, top bar with global search), status panels, demo-value form flow, Search route, and Planner no-snapshot, first-use, tactic, and three-team string-add paths | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
-| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `search_players`, `suggest_players`, `get_player`, `get_planner_club_family`, `list_planner_clubs`, `save_planner_club_family`, `get_planner_tactic`, `get_planner_tactic_options`, `save_planner_tactic`, `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
+| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `get_current_snapshot`, `list_sanity_players`, `search_players`, `suggest_players`, `get_player`, Planner club-family and tactic commands, `get_planner_depth`, `add_planner_string`, `remove_planner_string`, and `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, or menu/tray integration |
 | Bridge panel, save switcher, snapshot overview, plugin install section, top-bar save selector, and Load Data button render with stubbed IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, SQLite ingest, or Steam-folder DLL install |
 
 | Concern | Owner in this template |
