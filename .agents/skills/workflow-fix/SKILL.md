@@ -1,6 +1,6 @@
 ---
 name: workflow-fix
-description: Address delegated review findings — same project skills as build; then checkpoint again (or continue the loop under $workflow-build-loop)
+description: Address delegated review findings, then checkpoint again or continue an active build or feature-finish loop
 ---
 
 Fix **delegated review findings** on the current commit. During feature completion, the developer may instead name one completed owning commit and its original implementation profile as the correction scope. This command does not advance the delivery plan to the next commit.
@@ -15,7 +15,7 @@ The developer may delegate narrowly (e.g. one HIGH item, or CRITICAL/HIGH only).
 
 If a finding is incorrect, say so and do not "fix" it by over-engineering.
 
-**NITPICK under `$workflow-build-loop`:** When the verdict is NITPICK-only, `$workflow-build-loop` does not invoke `$workflow-fix` — do not fix NITPICK items in that case. When the verdict mixes CRITICAL, HIGH, and/or MEDIUM with NITPICK, include the NITPICK items in the same fix pass. Outside `$workflow-build-loop`, NITPICK remains optional unless the developer delegates it.
+**NITPICK under an automated loop:** When the verdict is NITPICK-only, `$workflow-build-loop` and `$workflow-finish-feature-loop` do not invoke `$workflow-fix`. When the verdict mixes CRITICAL, HIGH, and/or MEDIUM with NITPICK, include the NITPICK items in the same fix pass. Outside an automated loop, NITPICK remains optional unless the developer delegates it.
 
 ## Mandatory reads
 
@@ -44,6 +44,7 @@ Skip save when unsure.
 | --- | --- |
 | `$workflow-build` | Implement the **active commit** from the plan (new work) |
 | `$workflow-build-loop` | Same as `$workflow-build`, then automated checkpoint/fix (manual opt-in only) |
+| `$workflow-finish-feature-loop` | Correct feature-complete findings inside the manual automated close-out loop |
 | `$workflow-fix` | Correct **delegated review findings** on the current commit |
 | `$workflow-checkpoint` | Stage, review, present; commit only when developer approves (unless `$workflow-build-loop` Phase 3) |
 
@@ -75,4 +76,6 @@ Use Context7 MCP for library facts when a finding involves external APIs.
 
 **When invoked under `$workflow-build-loop`:** do **not** stop or wait for the developer. Continue into the next automated `$workflow-checkpoint` pass in the same command invocation. `$workflow-build-loop` owns the loop; only exit when the loop contract says so (clean verdict, fix cap reached, or unrecoverable blocker).
 
-`$workflow-fix` never commits. Only **`$workflow-build-loop` Phase 3** auto-commits on loop success. Do not stage, commit, push, amend, rebase, squash, or rewrite history from `$workflow-fix` unless the developer explicitly asks outside an active `$workflow-build-loop` run.
+**When invoked under `$workflow-finish-feature-loop`:** do **not** stop or wait for the developer. Return to the loop's full validation and Sol High feature review. The parent loop owns staging and commits after review clears.
+
+`$workflow-fix` never commits. The active loop owns any success commits. Do not stage, commit, push, amend, rebase, squash, or rewrite history from `$workflow-fix` unless the developer explicitly asks outside an automated loop.

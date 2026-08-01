@@ -10,6 +10,35 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
     content: `
       let demoValue = "";
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
+      const plannerTactic = {
+        ipWeight: 0.5,
+        lanes: [
+          ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
+          ["left_back", "DL", "full_back_ip", "DL", "holding_full_back_oop"],
+          ["left_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
+          ["right_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
+          ["right_back", "DR", "full_back_ip", "DR", "holding_full_back_oop"],
+          ["defensive_midfielder", "DM", "defensive_midfielder_ip", "DM", "screening_defensive_midfielder_oop"],
+          ["left_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
+          ["right_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
+          ["left_winger", "AML", "winger_ip", "ML", "tracking_wide_midfielder_oop"],
+          ["right_winger", "AMR", "winger_ip", "MR", "tracking_wide_midfielder_oop"],
+          ["centre_forward", "ST", "centre_forward_ip", "ST", "central_outlet_centre_forward_oop"],
+        ].map(([laneId, ipPosition, ipRoleId, oopPosition, oopRoleId]) => ({
+          laneId,
+          ipPosition,
+          ipRoleId,
+          oopPosition,
+          oopRoleId,
+        })),
+      };
+      const plannerDepth = {
+        tactic: plannerTactic,
+        teams: ["senior", "reserves", "youth"].map((team, index) => ({
+          team,
+          strings: [{ id: index + 1, stringOrder: 0, assignments: [] }],
+        })),
+      };
 
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
@@ -141,28 +170,51 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_planner_tactic") {
-            return {
-              ipWeight: 0.5,
-              lanes: [
-                ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
-                ["left_back", "DL", "full_back_ip", "DL", "holding_full_back_oop"],
-                ["left_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
-                ["right_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
-                ["right_back", "DR", "full_back_ip", "DR", "holding_full_back_oop"],
-                ["defensive_midfielder", "DM", "defensive_midfielder_ip", "DM", "screening_defensive_midfielder_oop"],
-                ["left_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
-                ["right_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
-                ["left_winger", "AML", "winger_ip", "ML", "tracking_wide_midfielder_oop"],
-                ["right_winger", "AMR", "winger_ip", "MR", "tracking_wide_midfielder_oop"],
-                ["centre_forward", "ST", "centre_forward_ip", "ST", "central_outlet_centre_forward_oop"],
-              ].map(([laneId, ipPosition, ipRoleId, oopPosition, oopRoleId]) => ({
-                laneId,
-                ipPosition,
-                ipRoleId,
-                oopPosition,
-                oopRoleId,
-              })),
-            };
+            return plannerTactic;
+          }
+
+          if (cmd === "get_planner_depth") {
+            return plannerDepth;
+          }
+
+          if (cmd === "add_planner_string") {
+            const team = plannerDepth.teams.find(
+              (candidate) => candidate.team === args?.team,
+            );
+            if (!team) {
+              throw new Error("Planner team not found");
+            }
+            const id = Math.max(
+              ...plannerDepth.teams.flatMap((candidate) =>
+                candidate.strings.map((plannerString) => plannerString.id),
+              ),
+            ) + 1;
+            team.strings.push({ id, stringOrder: team.strings.length, assignments: [] });
+            return plannerDepth;
+          }
+
+          if (cmd === "remove_planner_string") {
+            const team = plannerDepth.teams.find((candidate) =>
+              candidate.strings.some(
+                (plannerString) => plannerString.id === args?.stringId,
+              ),
+            );
+            const plannerString = team?.strings.find(
+              (candidate) => candidate.id === args?.stringId,
+            );
+            if (!team || !plannerString) {
+              throw new Error("Planner string not found");
+            }
+            if (team.strings.length <= 1) {
+              throw new Error("The " + team.team + " team must keep at least one string");
+            }
+            if (plannerString.assignments.length > 0 && !args?.confirmPopulated) {
+              throw new Error("Removing a populated string requires confirmation");
+            }
+            team.strings = team.strings
+              .filter((candidate) => candidate.id !== plannerString.id)
+              .map((candidate, index) => ({ ...candidate, stringOrder: index }));
+            return plannerDepth;
           }
 
           if (cmd === "get_planner_tactic_options") {

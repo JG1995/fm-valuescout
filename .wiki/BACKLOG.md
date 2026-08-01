@@ -12,6 +12,8 @@ _None._
 
 ## Medium
 
+- **Reassess separate B-team and youth-club sources** — Initial live-dump research indicates that players can resolve to the correct primary club even when Football Manager shows the B team as a separate club elsewhere. **Research:** compare `currentClub` and `teamLevel` across representative saves with integrated and separate B/youth structures, then identify whether explicit associated-club mappings still recover any players. **Potential outcome:** remove associated-club source configuration if the dump consistently resolves every club-family player without it. **Completion:** record the evidence, decide whether to retain or remove the mappings, and update Planner behavior and documentation if removal is safe.
+
 - **Snapshot history per save** — MVP snapshot ingest keeps one **current** snapshot per save (replace-only-on-successful Load Data). Schema uses `snapshots` + players keyed by `snapshot_id` so history can be additive. **Trigger:** need to compare squads/attributes across game weeks or undo a bad load without rescanning FM. **Completion:** Load Data can retain prior snapshots; UI to browse/select a past snapshot for the active save; document retention limits if any.
 
 - **In-app BepInEx bootstrap** — Install BepInEx 6 IL2CPP into the Steam FM26 folder from the app, not only `FmDataBridge.dll`. DLL-only install is delivered ([bridge-plugin-install](./features/completed/bridge-plugin-install.md)); users without BepInEx still need a manual setup step. **Trigger:** onboarding friction or support burden from missing BepInEx. **Completion:** app bootstraps BepInEx (or equivalent guided install) on default Steam path; documented in bridge README; does not replace DLL-only remove/update semantics.

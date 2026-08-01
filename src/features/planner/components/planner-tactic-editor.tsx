@@ -113,12 +113,18 @@ export function PlannerTacticEditor({
 
   const save = useMutation({
     mutationFn: () => savePlannerTactic(draft),
-    onSuccess: (savedTactic) => {
+    onSuccess: async (savedTactic) => {
       const nextTactic = cloneTactic(savedTactic);
       setDraft(nextTactic);
       setLastSavedTactic(nextTactic);
       setSaveSucceeded(true);
       queryClient.setQueryData(plannerKeys.tactic(), nextTactic);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: plannerKeys.depth() }),
+        queryClient.invalidateQueries({
+          queryKey: plannerKeys.slotCandidates(),
+        }),
+      ]);
     },
   });
 

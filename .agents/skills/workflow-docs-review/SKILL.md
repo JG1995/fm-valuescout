@@ -5,17 +5,17 @@ description: Reconcile durable documentation with implemented repository state
 
 Reconcile durable documentation with implemented state for:
 
-The developer-supplied implemented change when present; otherwise, the active feature when finishing via `$workflow-finish-feature`.
+The developer-supplied implemented change when present; otherwise, the active feature when finishing via `$workflow-finish-feature` or `$workflow-finish-feature-loop`.
 
 ## Role in the workflow
 
 | When | Who invokes | Preconditions |
 | --- | --- | --- |
-| **Feature completion** | `$workflow-finish-feature` (step 5) | Implementation-complete; tests and gate run; **feature-complete review** clear (Blocking: No, or developer explicitly approved with findings recorded) |
+| **Feature completion** | `$workflow-finish-feature` or `$workflow-finish-feature-loop` | Implementation-complete; tests and gate run; **feature-complete review** clear (Blocking: No, or developer explicitly approved with findings recorded) |
 | **Architecture milestone** | Developer directly | Significant implemented structure change — e.g. first app landing after `$workflow-stack`, layer refactor — without a full `$workflow-finish-feature` pass |
 | **Not here** | `$workflow-build`, `$workflow-checkpoint` | Intrinsic docs only per commit — see `.agents/skills/workflow-build/SKILL.md` |
 
-Broad wiki reconciliation belongs here or in `$workflow-finish-feature`, not after every commit.
+Broad wiki reconciliation belongs here or in a finish-feature workflow, not after every commit.
 
 ## Documentation Steward dispatch
 

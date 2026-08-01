@@ -311,7 +311,7 @@ At feature end, define the complete test suite, static checks, smoke paths, manu
 
 ### Feature review profile
 
-- **Reviewer:** Sol Medium by default; Sol High for high-risk features.
+- **Reviewer:** Sol High — `gpt-5.6-sol` at `high`, fresh context. This profile is fixed for every feature-complete review.
 - **Mandate:** End-to-end intent, cross-commit integration, feature invariants, duplicated abstractions, lifecycle paths, temporary compatibility layers, and documentation accuracy.
 
 ## Documentation impact

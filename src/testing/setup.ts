@@ -17,10 +17,17 @@ import {
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
 import {
   resetPlannerIpcMock,
+  resolveAddPlannerStringIpcMock,
+  resolveAssignPlannerPlayerIpcMock,
+  resolveClearPlannerAssignmentIpcMock,
+  resolveMovePlannerPlayerIpcMock,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerClubsIpcMock,
+  resolvePlannerDepthIpcMock,
+  resolvePlannerSlotCandidatesIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
+  resolveRemovePlannerStringIpcMock,
   resolveSavePlannerClubFamilyIpcMock,
   resolveSavePlannerTacticIpcMock,
 } from "@/testing/planner-ipc-mock";
@@ -134,8 +141,36 @@ function registerIpcMocks() {
       return resolvePlannerTacticOptionsIpcMock();
     }
 
+    if (cmd === "get_planner_depth") {
+      return resolvePlannerDepthIpcMock();
+    }
+
+    if (cmd === "add_planner_string") {
+      return resolveAddPlannerStringIpcMock(args);
+    }
+
+    if (cmd === "remove_planner_string") {
+      return resolveRemovePlannerStringIpcMock(args);
+    }
+
+    if (cmd === "get_planner_slot_candidates") {
+      return resolvePlannerSlotCandidatesIpcMock(args);
+    }
+
     if (cmd === "save_planner_tactic") {
       return resolveSavePlannerTacticIpcMock(args);
+    }
+
+    if (cmd === "assign_planner_player") {
+      return resolveAssignPlannerPlayerIpcMock(args);
+    }
+
+    if (cmd === "clear_planner_assignment") {
+      return resolveClearPlannerAssignmentIpcMock(args);
+    }
+
+    if (cmd === "move_planner_player") {
+      return resolveMovePlannerPlayerIpcMock(args);
     }
 
     if (cmd === "load_data") {

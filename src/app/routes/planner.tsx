@@ -6,10 +6,12 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { plannerClubFamilyQueryOptions } from "@/features/planner/api/get-planner-club-family-query-options";
 import { plannerClubsQueryOptions } from "@/features/planner/api/planner-clubs-query-options";
+import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { plannerTacticOptionsQueryOptions } from "@/features/planner/api/planner-tactic-options-query-options";
 import { plannerTacticQueryOptions } from "@/features/planner/api/planner-tactic-query-options";
 import { PlannerClubFamilyPanel } from "@/features/planner/components/planner-club-family-panel";
+import { PlannerDepthMatrix } from "@/features/planner/components/planner-depth-matrix";
 import { PlannerTacticEditor } from "@/features/planner/components/planner-tactic-editor";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
@@ -22,6 +24,7 @@ export const Route = createFileRoute("/planner")({
       queryClient.ensureQueryData(plannerClubsQueryOptions),
       queryClient.ensureQueryData(plannerTacticQueryOptions),
       queryClient.ensureQueryData(plannerTacticOptionsQueryOptions),
+      queryClient.ensureQueryData(plannerDepthQueryOptions),
     ]),
   component: PlannerPage,
 });
@@ -34,11 +37,17 @@ function PlannerPageContent() {
   );
   const { data: tacticOptions, isRefetchError: tacticOptionsRefreshError } =
     useSuspenseQuery(plannerTacticOptionsQueryOptions);
+  const { data: depth, isRefetchError: depthRefreshError } = useSuspenseQuery(
+    plannerDepthQueryOptions,
+  );
   const isPlannerRefreshing = useIsFetching({ queryKey: plannerKeys.all }) > 0;
   const isSnapshotRefreshing =
     useIsFetching({ queryKey: snapshotKeys.all }) > 0;
   const activeSaveRefreshError =
-    snapshotRefreshError || tacticRefreshError || tacticOptionsRefreshError;
+    snapshotRefreshError ||
+    tacticRefreshError ||
+    tacticOptionsRefreshError ||
+    depthRefreshError;
   const isActiveSaveUnavailable =
     isPlannerRefreshing || isSnapshotRefreshing || activeSaveRefreshError;
 
@@ -55,6 +64,7 @@ function PlannerPageContent() {
 
   return (
     <>
+      <PlannerClubFamilyPanel />
       {/* Key the editor to the active save so its local draft cannot cross a save boundary. */}
       <PlannerTacticEditor
         key={snapshot.saveId}
@@ -63,7 +73,12 @@ function PlannerPageContent() {
         tactic={tactic}
         options={tacticOptions}
       />
-      <PlannerClubFamilyPanel />
+      <PlannerDepthMatrix
+        activeSaveId={snapshot.saveId}
+        depth={depth}
+        tactic={tactic}
+        options={tacticOptions}
+      />
     </>
   );
 }

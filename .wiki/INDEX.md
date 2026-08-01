@@ -19,7 +19,7 @@ This directory contains durable, version-controlled knowledge about this reposit
 1. **New project bootstrap** — fill `CONCEPT.md`, use `workflow-roadmap` when MVP direction is set (`workflow-stack` only when changing defaults); approve wiki updates before building.
 2. **Per-feature planning** — create one active feature ledger with `workflow-plan-feature` and mark exactly one commit `Active`.
 3. **Per commit** — update documentation intrinsic to the atomic outcome during `workflow-build` and `workflow-checkpoint`.
-4. **Feature completion** — use `workflow-finish-feature` (tests, feature-complete review, then documentation reconciliation).
+4. **Feature completion** — use `workflow-finish-feature`, or manually opt into `workflow-finish-feature-loop`, for tests, Sol High feature-complete review, and documentation reconciliation.
 5. **Archive** — condense and move a completed ledger to `features/completed/`.
 6. **Cleanup** — remove disposable notes from `.work/`.
 

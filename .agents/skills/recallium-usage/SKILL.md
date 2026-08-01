@@ -71,6 +71,7 @@ Each command defines a **## Recallium** section — follow it for the active pha
 | `$workflow-fix` | Prior decisions behind findings | Durable remediation context |
 | `$workflow-checkpoint` | Before presenting checkpoint | New snapshot memories when constraints, roadmap, or non-obvious learnings changed — not ledger mirrors |
 | `$workflow-finish-feature` | Feature decisions and constraints | New close-out snapshots when final constraints, roadmap, or feature-wide learnings changed — not ledger mirrors |
+| `$workflow-finish-feature-loop` | Same as `$workflow-finish-feature`; refresh context before each correction round when needed | Same close-out triggers after the loop clears |
 | `$workflow-spike` | Prior experiments on the question | Spike conclusion |
 | `$workflow-docs-review` | Prior decisions affecting reconciliation | Rare — prefer wiki |
 | `$workflow-review` | Context behind findings | Do not save |

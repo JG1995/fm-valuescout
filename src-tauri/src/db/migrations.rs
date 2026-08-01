@@ -148,6 +148,33 @@ CREATE INDEX idx_planner_tactic_lanes_save_order
     ON planner_tactic_lanes(save_id, lane_order);
 ";
 
+pub const PLANNER_DEPTH_SQL: &str = "
+CREATE TABLE planner_strings (
+    id INTEGER PRIMARY KEY,
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    team TEXT NOT NULL CHECK (team IN ('senior', 'reserves', 'youth')),
+    string_order INTEGER NOT NULL CHECK (string_order >= 0),
+    UNIQUE (save_id, team, string_order)
+);
+
+CREATE INDEX idx_planner_strings_save_team_order
+    ON planner_strings(save_id, team, string_order);
+
+CREATE TABLE planner_assignments (
+    id INTEGER PRIMARY KEY,
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    string_id INTEGER NOT NULL REFERENCES planner_strings(id) ON DELETE CASCADE,
+    lane_id TEXT NOT NULL CHECK (trim(lane_id) <> ''),
+    player_uid INTEGER NOT NULL,
+    last_known_name TEXT NOT NULL CHECK (trim(last_known_name) <> ''),
+    UNIQUE (save_id, player_uid),
+    UNIQUE (string_id, lane_id)
+);
+
+CREATE INDEX idx_planner_assignments_string
+    ON planner_assignments(string_id);
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -174,6 +201,11 @@ pub fn all() -> &'static [Migration] {
             version: 5,
             description: "create_planner_tactic",
             sql: PLANNER_TACTIC_SQL,
+        },
+        Migration {
+            version: 6,
+            description: "create_planner_depth",
+            sql: PLANNER_DEPTH_SQL,
         },
     ]
 }
@@ -255,7 +287,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
 
         let table_name: String = conn
             .query_row(
@@ -294,7 +326,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
 
         let table_name: String = conn
             .query_row(
@@ -407,7 +439,9 @@ mod tests {
         assert_eq!(
             indexes,
             [
+                "idx_planner_assignments_string",
                 "idx_planner_club_sources_save_team",
+                "idx_planner_strings_save_team_order",
                 "idx_planner_tactic_lanes_save_order",
                 "idx_player_role_scores_snapshot_role",
                 "idx_players_snapshot_ca",
@@ -501,14 +535,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 5);
+        assert_eq!(migrations.len(), 6);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -524,6 +558,9 @@ mod tests {
         assert_eq!(migrations[4].version, 5);
         assert_eq!(migrations[4].description, "create_planner_tactic");
         assert_eq!(migrations[4].sql, PLANNER_TACTIC_SQL);
+        assert_eq!(migrations[5].version, 6);
+        assert_eq!(migrations[5].description, "create_planner_depth");
+        assert_eq!(migrations[5].sql, PLANNER_DEPTH_SQL);
     }
 
     #[test]
@@ -582,6 +619,39 @@ mod tests {
                 "ip_role_id",
                 "oop_position",
                 "oop_role_id"
+            ]
+        );
+    }
+
+    #[test]
+    fn opening_fresh_db_applies_planner_depth_schema() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("planner-depth-migration-test.db"));
+
+        for expected_table in ["planner_strings", "planner_assignments"] {
+            let table_name: String = conn
+                .query_row(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    [expected_table],
+                    |row| row.get(0),
+                )
+                .expect("read depth table from sqlite_master");
+            assert_eq!(table_name, expected_table);
+        }
+
+        assert_eq!(
+            table_columns(&conn, "planner_strings"),
+            ["id", "save_id", "team", "string_order"]
+        );
+        assert_eq!(
+            table_columns(&conn, "planner_assignments"),
+            [
+                "id",
+                "save_id",
+                "string_id",
+                "lane_id",
+                "player_uid",
+                "last_known_name"
             ]
         );
     }

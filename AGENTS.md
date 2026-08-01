@@ -63,9 +63,9 @@ The development cycle follows a repeating loop. Invoke the Codex workflow skills
 3. **Checkpoint** (`workflow-checkpoint`) — stage exact changes, run the gate, present evidence and review, wait for approval, commit locally.
 4. **Fix** (`workflow-fix`) — when review blocks, address delegated findings (default: CRITICAL, HIGH, and MEDIUM), then checkpoint again.
 5. **Reassess** — update the delivery plan and select the next commit; repeat from build until the plan is done.
-6. **Finish feature** (`workflow-finish-feature`) — when every planned commit is done: full tests, feature-complete review, then documentation reconciliation.
+6. **Finish feature** (`workflow-finish-feature`) — when every planned commit is done: full tests, a Sol High feature-complete review, then documentation reconciliation.
 
-**Optional:** **`workflow-build-loop`** — manual opt-in only; never suggest or run automatically. Same as `workflow-build` for one commit, then an automated checkpoint/fix loop (up to five fix rounds) and auto-commit when only NITPICK remains. NITPICK-only verdicts skip `workflow-fix`; mixed verdicts fix NITPICK alongside CRITICAL/HIGH/MEDIUM. Typing `$workflow-build-loop` is explicit approval to commit on loop success without a separate checkpoint approval step.
+**Optional:** **`workflow-build-loop`** and **`workflow-finish-feature-loop`** are manual opt-ins only; never suggest or run them automatically. `workflow-build-loop` runs one commit through an automated checkpoint/fix loop. `workflow-finish-feature-loop` runs feature validation through an automated feature-review/fix loop and documentation reconciliation. Both allow up to three fix rounds and auto-commit only after the blocking review tiers clear. NITPICK-only verdicts skip `workflow-fix`; mixed verdicts fix NITPICK alongside CRITICAL/HIGH/MEDIUM. Typing either loop skill is explicit approval for its documented local commits without a separate checkpoint approval step.
 
 The user never invokes these skills directly on a trivial change — they just describe the fix and you follow the full loop internally.
 
@@ -104,7 +104,7 @@ For non-trivial behaviour:
 
 Prompts guide the workflow. Deterministic commands and tests provide evidence. Do not weaken, delete, skip, or broadly rewrite tests merely to make a change pass.
 
-Increase reasoning effort when the model has the right architecture but incomplete execution. Increase model capability after a structural misunderstanding or two failed correction attempts on the same bounded defect. Stop and replan when a Known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes. Use optional `workflow-spike` only for a genuine runtime unknown. Every non-trivial staged change requires a separate fresh-context read-only reviewer pass with the ledger-assigned review profile, or the default Terra xhigh reviewer when no ledger exists.
+Increase reasoning effort when the model has the right architecture but incomplete execution. After two failed correction attempts on the same bounded defect, use the third and final automated attempt only with increased capability or effort. Stop after three failed attempts, or replan sooner when a Known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes. Use optional `workflow-spike` only for a genuine runtime unknown. Every non-trivial staged change requires a separate fresh-context read-only reviewer pass with the ledger-assigned review profile, or the default Terra High reviewer when no ledger exists. Every feature-complete review uses Sol High.
 
 ## Design and execution
 

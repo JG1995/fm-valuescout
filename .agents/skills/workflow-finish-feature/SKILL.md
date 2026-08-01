@@ -1,11 +1,13 @@
 ---
 name: workflow-finish-feature
-description: Validate a complete feature end-to-end, feature review, then documentation reconciliation
+description: Validate a complete feature end-to-end, run a Sol High feature review, then reconcile documentation
 ---
 
 Complete feature-level validation and reconciliation for:
 
 Use the developer-supplied feature or comparison base when present. Otherwise, use the active feature ledger and establish the comparison base from repository evidence (merge base with trunk, first feature commit, or named branch). Ask before proceeding if ambiguous.
+
+This is the manual close-out path. It reports feature-review findings without fixing or committing them automatically. Use `$workflow-finish-feature-loop` only when the developer explicitly opts into the automated three-round correction loop and local close-out commits.
 
 ## Mandatory reads
 
@@ -88,7 +90,7 @@ Report pass/fail for each step. A failing gate or test suite blocks moving to re
 
 Require a **separate** reviewer pass — not self-review of implementation you wrote in this turn.
 
-Dispatch a separate fresh-context reviewer with the feature review profile from the ledger. Use Sol Medium by default and Sol High for the high-risk conditions in `.agents/WORKFLOW.md`. Give the reviewer the complete ledger, planned spec, comparison base, full feature diff, commit review summaries, final validation results, and repository access. Do not initially frame implementation decisions as already justified.
+Dispatch a separate fresh-context **generic** reviewer at **Sol High** (`gpt-5.6-sol`, `high`). Do not use the named reviewer because its pinned Terra High profile is for commit review. The feature-complete profile is fixed even when an older ledger records another profile. Give the reviewer the complete ledger, planned spec, comparison base, full feature diff, commit review summaries, final validation results, and repository access. Do not initially frame implementation decisions as already justified.
 
 The feature mandate focuses on end-to-end intent, cross-commit interactions, feature invariants, duplicated abstractions, lifecycle paths that commit reviews could not see, temporary compatibility layers, and documentation accuracy. It does not repeat every commit review.
 

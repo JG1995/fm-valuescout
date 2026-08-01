@@ -23,7 +23,7 @@ Use Context7 MCP only when stack facts are needed for the plan — not for imple
 
 ## Planning context
 
-Use a separate planning context when agent dispatch is available. The named `planner` supplies the default Sol High profile. When the feature meets the Sol xhigh conditions in `.agents/WORKFLOW.md`, use a generic planning agent at `gpt-5.6-sol` xhigh with the same role contract. If dispatch is unavailable, preserve the same planning-only boundary in the main context.
+Use a separate planning context when agent dispatch is available. The named `planner` supplies the default Terra xhigh profile for features with established architecture and useful repository analogues. Use a generic Sol High planning agent when the feature meets the Sol conditions in `.agents/WORKFLOW.md`, and Sol xhigh only for the canonical exceptional conditions. If dispatch is unavailable, preserve the same planning-only boundary in the main context.
 
 Do not override a pinned named role. Inspect the returned ledger and repository evidence before accepting the plan.
 
@@ -49,6 +49,7 @@ Skip save when unsure.
 | `$workflow-build-loop` | **Manual opt-in:** same as `$workflow-build`, then automated checkpoint/fix loop + auto-commit |
 | `$workflow-fix` | **Delegated review findings** on the current commit (default: CRITICAL, HIGH, MEDIUM) |
 | `$workflow-checkpoint` | Stage, review report, commit after approval |
+| `$workflow-finish-feature-loop` | **Manual opt-in:** feature validation, Sol High review/fix loop, documentation reconciliation, and local close-out commits |
 
 Do not implement, stage, commit, or push.
 
