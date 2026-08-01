@@ -67,7 +67,7 @@ Use only the stable commands in `AGENTS.md` and `./scripts/dev`. Status 69 means
 
 ### 4. Review in a fresh context
 
-Every non-trivial commit gets a separate read-only reviewer after deterministic validation. Dispatch the model and reasoning effort assigned by the commit's review profile. The repository's named `reviewer` is the default Terra xhigh role; use a generic read-only reviewer with the same contract when the ledger assigns another profile.
+Every non-trivial commit gets a separate read-only reviewer after deterministic validation. Dispatch the model and reasoning effort assigned by the commit's review profile. For non-trivial work without a ledger, use the repository's named `reviewer` at its default Terra xhigh profile. When a ledger assigns another profile, use a generic read-only reviewer with the same contract.
 
 Give the reviewer:
 
@@ -87,6 +87,8 @@ The reviewer follows the commit-specific mandate and reconstructs intended behav
 Return a confirmed bounded execution defect to the original implementation model. Increase reasoning effort when ownership, abstractions, and the governing invariant are correct but branches, tests, or integration details are incomplete. Increase model capability when the implementer chose the wrong abstraction, misunderstood ownership or an invariant, patched a symptom, or invented repository assumptions.
 
 After one clear structural misunderstanding, do not retry the same model only with more effort. Escalate capability or return to planning.
+
+After two failed correction attempts on the same bounded defect, escalate model capability or return to planning. Do not continue an open-ended repair loop.
 
 Use Sol High or xhigh replanning when a Known fact is disproved, an invariant or approved boundary must change, a required seam does not exist, a public or persisted contract changes materially, validation cannot be meaningful, the commit leaks into a later PR, a cross-feature dependency appears, or review exposes an architectural disagreement.
 

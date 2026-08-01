@@ -92,7 +92,7 @@ Dispatch a separate fresh-context reviewer with the feature review profile from 
 
 The feature mandate focuses on end-to-end intent, cross-commit interactions, feature invariants, duplicated abstractions, lifecycle paths that commit reviews could not see, temporary compatibility layers, and documentation accuracy. It does not repeat every commit review.
 
-**Present the full Review verdict to the developer.** Do **not** automatically fix findings. Delegate via **`$workflow-fix`** or explicit instructions, then re-run validation and review from step 3.
+**Present the full Review verdict to the developer.** Do **not** automatically fix findings. For a finding owned by one completed commit, delegate the correction to that commit's original implementation profile with the relevant packet and finding. Use **`$workflow-fix`** only with that explicit feature-correction scope. Return to Sol planning when a finding crosses commit boundaries or changes an invariant, persisted contract, validation contract, PR boundary, or later work. Then re-run validation and review from step 3.
 
 **CRITICAL** and **HIGH** block documentation reconciliation and merge readiness until fixed or **explicitly approved** by the developer.
 

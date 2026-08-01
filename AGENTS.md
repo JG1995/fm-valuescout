@@ -104,7 +104,7 @@ For non-trivial behaviour:
 
 Prompts guide the workflow. Deterministic commands and tests provide evidence. Do not weaken, delete, skip, or broadly rewrite tests merely to make a change pass.
 
-Increase reasoning effort when the model has the right architecture but incomplete execution. Increase model capability after a structural misunderstanding. Stop and replan when a Known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes. Use optional `workflow-spike` only for a genuine runtime unknown. Every non-trivial staged change requires a separate fresh-context read-only reviewer pass with the ledger-assigned review profile.
+Increase reasoning effort when the model has the right architecture but incomplete execution. Increase model capability after a structural misunderstanding or two failed correction attempts on the same bounded defect. Stop and replan when a Known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes. Use optional `workflow-spike` only for a genuine runtime unknown. Every non-trivial staged change requires a separate fresh-context read-only reviewer pass with the ledger-assigned review profile, or the default Terra xhigh reviewer when no ledger exists.
 
 ## Design and execution
 

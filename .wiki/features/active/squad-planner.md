@@ -51,7 +51,7 @@ Let the user model one FM26 tactic and organize the selected club family into Se
 
 - **Relevant components:** `AppNavRail` exposes Dashboard, Search, and Planner. The `/planner` route currently owns the no-snapshot state and club-family setup panel. Shared `Panel`, `Modal`, `Button`, `SelectField`, `EmptyState`, and `ScoreBadge` primitives cover most planned UI.
 - **Data model:** `players` already stores `current_club`, `parent_club`, `team_level`, positions, and player UID. `player_role_scores` stores every IP/OOP role score for the current snapshot.
-- **Persistence and migrations:** SQLite migration v4 is current. Snapshot replacement cascade-deletes players and role scores, while `planner_club_settings` and `planner_club_sources` stay save-scoped without snapshot foreign keys.
+- **Persistence and migrations:** SQLite migration v5 is current. Snapshot replacement cascade-deletes players and role scores, while `planner_club_settings`, `planner_club_sources`, and the shared tactic stay save-scoped without snapshot foreign keys.
 - **Existing behavioral assumptions:** one app save is active; all player reads use its current snapshot; Load Data and save switching invalidate snapshot, planner, search, and profile query trees.
 - **Architectural seams:** React feature code belongs in `src/features/planner`; Rust persistence and queries belong in `src-tauri/src/features/planner`; the route composes planner and snapshot context without cross-feature imports.
 - **Test ownership:** Vitest + RTL own route and interaction behavior; Rust tests own migrations, validation, uniqueness, persistence, and score joins; Playwright smoke owns the browser Planner path with stubbed IPC.
@@ -561,7 +561,7 @@ execution_profile:
 
 ##### Review profile
 
-**Assigned reviewer:** Sol Medium — `gpt-5.6-sol` at `medium`, fresh context.
+**Assigned reviewer:** Sol xhigh — `gpt-5.6-sol` at `xhigh`, fresh context. Review Demand 10 selects Sol, while xhigh effort preserves the Terra xhigh hard floor for persistence, cache, UI reconciliation, and uniqueness across mutations.
 
 **Mandate:**
 
@@ -669,7 +669,7 @@ execution_profile:
     tool_coordination: 3
     adjustments: -2
     total: 10
-  reviewer: { model: gpt-5.6-sol, effort: medium, context_mode: fresh }
+  reviewer: { model: gpt-5.6-sol, effort: xhigh, context_mode: fresh }
   review_demand:
     missed_defect_consequence: 2
     hidden_interaction_complexity: 3

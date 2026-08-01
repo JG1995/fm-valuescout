@@ -3,7 +3,7 @@ name: workflow-fix
 description: Address delegated review findings — same project skills as build; then checkpoint again (or continue the loop under $workflow-build-loop)
 ---
 
-Fix **delegated review findings** on the current commit. This command does not advance the delivery plan to the next commit.
+Fix **delegated review findings** on the current commit. During feature completion, the developer may instead name one completed owning commit and its original implementation profile as the correction scope. This command does not advance the delivery plan to the next commit.
 
 ## What to fix
 
@@ -48,6 +48,8 @@ Skip save when unsure.
 | `$workflow-checkpoint` | Stage, review, present; commit only when developer approves (unless `$workflow-build-loop` Phase 3) |
 
 Do not mark the active commit completed, activate the next commit, or implement planned work not required by the delegated findings.
+
+For an explicitly delegated feature-complete correction, replace "current commit" with the named completed owning commit throughout this skill. Replan instead when the finding crosses commit boundaries or changes a governing contract.
 
 ## Before editing
 

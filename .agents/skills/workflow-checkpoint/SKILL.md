@@ -51,7 +51,7 @@ Do not mirror the feature ledger or staged diff. Skip when unsure.
 6. Stage exact files or hunks only. Never use `git add .` or `git commit -a`.
 7. Run and inspect `git diff --cached --check`, `git diff --cached --stat`, and the complete staged diff.
 8. Run targeted tests and `./scripts/dev check`. Status 69 on smoke/mutate means unsupported, not passed.
-9. Require a separate fresh-context read-only reviewer pass for non-trivial work. Dispatch the exact model and effort from the active commit's review profile. Use the named `reviewer` only when its pinned Terra xhigh profile matches; otherwise use a generic read-only agent that follows `.codex/agents/reviewer.toml`. Give it the original commit specification, relevant invariants and non-goals, implementation packet, review mandate, staged diff, validation results, applicable skills, and repository access. Do not initially give it the implementer's reasoning, self-review, or a defense of the design.
+9. Require a separate fresh-context read-only reviewer pass for non-trivial work. Dispatch the exact model and effort from the active commit's review profile. When no ledger exists, use the named `reviewer` at its default Terra xhigh profile. Use the named `reviewer` only when its pinned profile matches; otherwise use a generic read-only agent that follows `.codex/agents/reviewer.toml`. Give it the original commit specification, relevant invariants and non-goals, implementation packet when one exists, review mandate, staged diff, validation results, applicable skills, and repository access. Do not initially give it the implementer's reasoning, self-review, or a defense of the design.
 
     **CRITICAL** and **HIGH** block commit until fixed or **explicitly approved** by the developer.
 
