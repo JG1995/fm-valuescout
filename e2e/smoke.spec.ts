@@ -126,6 +126,23 @@ test.describe("walking skeleton smoke", () => {
     await expect(main.getByRole("status")).toHaveText("Tactic saved.");
   });
 
+  test("planner depth adds strings for Senior, Reserves, and Youth", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    for (const team of ["Senior", "Reserves", "Youth"]) {
+      await main.getByRole("tab", { name: team }).click();
+      await main.getByRole("button", { name: "Manage 1st string" }).click();
+      await main.getByRole("menuitem", { name: "Add string" }).click();
+      await expect(
+        main.getByRole("columnheader", { name: "2nd string" }),
+      ).toBeVisible();
+    }
+  });
+
   test("player profile route shows no-snapshot empty state from stubbed IPC", async ({
     page,
   }) => {

@@ -32,6 +32,13 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           oopRoleId,
         })),
       };
+      const plannerDepth = {
+        tactic: plannerTactic,
+        teams: ["senior", "reserves", "youth"].map((team, index) => ({
+          team,
+          strings: [{ id: index + 1, stringOrder: 0, assignments: [] }],
+        })),
+      };
 
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
@@ -167,13 +174,47 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_planner_depth") {
-            return {
-              tactic: plannerTactic,
-              teams: ["senior", "reserves", "youth"].map((team, index) => ({
-                team,
-                strings: [{ id: index + 1, stringOrder: 0, assignments: [] }],
-              })),
-            };
+            return plannerDepth;
+          }
+
+          if (cmd === "add_planner_string") {
+            const team = plannerDepth.teams.find(
+              (candidate) => candidate.team === args?.team,
+            );
+            if (!team) {
+              throw new Error("Planner team not found");
+            }
+            const id = Math.max(
+              ...plannerDepth.teams.flatMap((candidate) =>
+                candidate.strings.map((plannerString) => plannerString.id),
+              ),
+            ) + 1;
+            team.strings.push({ id, stringOrder: team.strings.length, assignments: [] });
+            return plannerDepth;
+          }
+
+          if (cmd === "remove_planner_string") {
+            const team = plannerDepth.teams.find((candidate) =>
+              candidate.strings.some(
+                (plannerString) => plannerString.id === args?.stringId,
+              ),
+            );
+            const plannerString = team?.strings.find(
+              (candidate) => candidate.id === args?.stringId,
+            );
+            if (!team || !plannerString) {
+              throw new Error("Planner string not found");
+            }
+            if (team.strings.length <= 1) {
+              throw new Error("The " + team.team + " team must keep at least one string");
+            }
+            if (plannerString.assignments.length > 0 && !args?.confirmPopulated) {
+              throw new Error("Removing a populated string requires confirmation");
+            }
+            team.strings = team.strings
+              .filter((candidate) => candidate.id !== plannerString.id)
+              .map((candidate, index) => ({ ...candidate, stringOrder: index }));
+            return plannerDepth;
           }
 
           if (cmd === "get_planner_tactic_options") {

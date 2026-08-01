@@ -18,10 +18,13 @@ import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import {
+  getPlannerAddStringIpcMockCalls,
   getPlannerDepthIpcMockCalls,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
+  setPlannerAddStringError,
+  setPlannerAddStringPending,
   setPlannerAssignmentError,
   setPlannerAvailableClubs,
   setPlannerDepthIpcMock,
@@ -696,6 +699,169 @@ describe("planner route", () => {
     expect(
       screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
     ).toBeInTheDocument();
+  });
+
+  it("manages ordered strings from equivalent header menus", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = withSecondSeniorString(resolvePlannerDepthIpcMock());
+    depth.teams = depth.teams.map((team) =>
+      team.team === "senior"
+        ? {
+            ...team,
+            strings: team.strings.map((plannerString, index) =>
+              index === 0
+                ? {
+                    ...plannerString,
+                    assignments: [
+                      {
+                        id: 201,
+                        laneId: "goalkeeper",
+                        playerUid: 77,
+                        lastKnownName: "Senior Keeper",
+                        currentName: "Senior Keeper",
+                        state: "resolved",
+                        combinedScore: 82,
+                      },
+                    ],
+                  }
+                : plannerString,
+            ),
+          }
+        : team,
+    );
+    setPlannerDepthIpcMock(depth);
+    renderPlannerRoute();
+
+    const firstHeader = await screen.findByRole("button", {
+      name: "Manage 1st string",
+    });
+    firstHeader.focus();
+    await user.keyboard("{Enter}");
+    const firstMenu = screen.getByRole("menu", { name: "1st string actions" });
+    await user.click(
+      within(firstMenu).getByRole("menuitem", { name: "Add string" }),
+    );
+    expect(
+      await screen.findByRole("columnheader", { name: "3rd string" }),
+    ).toBeInTheDocument();
+
+    const secondHeader = screen.getByRole("button", {
+      name: "Manage 2nd string",
+    });
+    await user.pointer({ target: secondHeader, keys: "[MouseRight]" });
+    const secondMenu = screen.getByRole("menu", { name: "2nd string actions" });
+    await user.click(
+      within(secondMenu).getByRole("menuitem", { name: "Remove string" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("columnheader", { name: "3rd string" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("columnheader", { name: "2nd string" }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.activeElement).toHaveAccessibleName("Manage 2nd string"),
+    );
+
+    await user.click(firstHeader);
+    await user.click(
+      within(
+        screen.getByRole("menu", { name: "1st string actions" }),
+      ).getByRole("menuitem", { name: "Remove string" }),
+    );
+    const confirmation = screen.getByRole("dialog", {
+      name: "Remove 1st string?",
+    });
+    expect(confirmation).toHaveTextContent("Senior Keeper");
+    await user.click(
+      within(confirmation).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(firstHeader));
+    expect(
+      screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
+    ).toBeInTheDocument();
+
+    setPlannerAssignmentError("Remove failed");
+    await user.click(firstHeader);
+    await user.click(
+      within(
+        screen.getByRole("menu", { name: "1st string actions" }),
+      ).getByRole("menuitem", { name: "Remove string" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Remove string" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Remove failed");
+    await waitFor(() => expect(document.activeElement).toBe(firstHeader));
+    expect(
+      screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
+    ).toBeInTheDocument();
+
+    setPlannerAssignmentError(null);
+    await user.click(firstHeader);
+    await user.click(
+      within(
+        screen.getByRole("menu", { name: "1st string actions" }),
+      ).getByRole("menuitem", { name: "Remove string" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Remove string" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /Senior Keeper, Resolved/ }),
+      ).not.toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "Manage 1st string" }));
+    expect(
+      within(
+        screen.getByRole("menu", { name: "1st string actions" }),
+      ).getByRole("menuitem", { name: "Remove string" }),
+    ).toBeDisabled();
+  });
+
+  it("keeps focus on the originating header when adding a string fails", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(
+      withSecondSeniorString(resolvePlannerDepthIpcMock()),
+    );
+    setPlannerAddStringError("Add failed");
+    renderPlannerRoute();
+
+    const firstHeader = await screen.findByRole("button", {
+      name: "Manage 1st string",
+    });
+    await user.click(firstHeader);
+    await user.click(
+      within(
+        screen.getByRole("menu", { name: "1st string actions" }),
+      ).getByRole("menuitem", { name: "Add string" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Add failed");
+    await waitFor(() => expect(document.activeElement).toBe(firstHeader));
+    expect(
+      screen.getByRole("columnheader", { name: "2nd string" }),
+    ).toBeInTheDocument();
+  });
+
+  it("starts one add mutation while the header action is pending", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerAddStringPending(true);
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage 1st string" }),
+    );
+    const addButton = screen.getByRole("menuitem", { name: "Add string" });
+    await user.click(addButton);
+    await user.click(addButton);
+
+    expect(getPlannerAddStringIpcMockCalls()).toBe(1);
   });
 });
 

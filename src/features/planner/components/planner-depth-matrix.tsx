@@ -1,6 +1,13 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Ellipsis, Plus, Trash2 } from "lucide-react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button/button";
+import { Modal } from "@/components/ui/modal/modal";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
+import { addPlannerString } from "../api/add-planner-string";
+import { plannerKeys } from "../api/planner-keys";
+import { removePlannerString } from "../api/remove-planner-string";
 import { PLANNER_TEAMS, type PlannerTeam } from "../types/club-family";
 import type {
   PlannerAssignment,
@@ -89,6 +96,94 @@ function assignmentStateLabel(
   return "Resolved";
 }
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function PlannerStringHeader({
+  plannerString,
+  canRemove,
+  menuOpen,
+  onOpenMenu,
+  onCloseMenu,
+  onAdd,
+  onRemove,
+  addDisabled,
+  triggerRef,
+}: {
+  plannerString: PlannerString;
+  canRemove: boolean;
+  menuOpen: boolean;
+  onOpenMenu: () => void;
+  onCloseMenu: () => void;
+  onAdd: () => void;
+  onRemove: () => void;
+  addDisabled: boolean;
+  triggerRef: (element: HTMLButtonElement | null) => void;
+}) {
+  const label = ordinal(plannerString.stringOrder);
+
+  return (
+    <th
+      scope="col"
+      className="min-w-52 border-b border-outline-variant px-3 py-2 text-right font-mono text-mono-sm text-on-surface tabular-nums"
+    >
+      <div className="relative flex items-center justify-between gap-2">
+        <span>{label}</span>
+        <button
+          ref={triggerRef}
+          type="button"
+          aria-label={`Manage ${label}`}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          onClick={() => (menuOpen ? onCloseMenu() : onOpenMenu())}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            onOpenMenu();
+          }}
+        >
+          <Ellipsis aria-hidden="true" size={16} strokeWidth={1.5} />
+        </button>
+        {menuOpen ? (
+          <div
+            role="menu"
+            aria-label={`${label} actions`}
+            className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                onCloseMenu();
+              }
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              disabled={addDisabled}
+              className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-label-md text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45"
+              onClick={onAdd}
+            >
+              <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
+              Add string
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!canRemove}
+              className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-label-md text-error hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45"
+              onClick={onRemove}
+            >
+              <Trash2 aria-hidden="true" size={16} strokeWidth={1.5} />
+              Remove string
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </th>
+  );
+}
+
 function AssignmentCell({
   team,
   laneId,
@@ -161,11 +256,27 @@ function PlannerDepthTable({
   tactic,
   options,
   onOpen,
+  openStringId,
+  onOpenStringMenu,
+  onCloseStringMenu,
+  onAddString,
+  onRemoveString,
+  addDisabled,
+  stringHeaderRef,
 }: {
   teamDepth: PlannerDepthTeam;
   tactic: PlannerDepth["tactic"];
   options: TacticOptions;
   onOpen: (target: PlannerSlotTarget) => void;
+  openStringId: number | null;
+  onOpenStringMenu: (stringId: number) => void;
+  onCloseStringMenu: () => void;
+  onAddString: (team: PlannerTeam, stringId: number) => void;
+  onRemoveString: (plannerString: PlannerString) => void;
+  addDisabled: boolean;
+  stringHeaderRef: (
+    stringId: number,
+  ) => (element: HTMLButtonElement | null) => void;
 }) {
   const teamLabel = TEAM_LABELS[teamDepth.team];
 
@@ -190,13 +301,18 @@ function PlannerDepthTable({
               Tactic lane
             </th>
             {teamDepth.strings.map((plannerString) => (
-              <th
-                scope="col"
-                className="min-w-52 border-b border-outline-variant px-3 py-2 text-right font-mono text-mono-sm text-on-surface tabular-nums"
+              <PlannerStringHeader
                 key={plannerString.id}
-              >
-                {ordinal(plannerString.stringOrder)}
-              </th>
+                plannerString={plannerString}
+                canRemove={teamDepth.strings.length > 1}
+                menuOpen={openStringId === plannerString.id}
+                onOpenMenu={() => onOpenStringMenu(plannerString.id)}
+                onCloseMenu={onCloseStringMenu}
+                onAdd={() => onAddString(teamDepth.team, plannerString.id)}
+                onRemove={() => onRemoveString(plannerString)}
+                addDisabled={addDisabled}
+                triggerRef={stringHeaderRef(plannerString.id)}
+              />
             ))}
           </tr>
         </thead>
@@ -255,7 +371,16 @@ export function PlannerDepthMatrix({
   const [picker, setPicker] = useState<PlannerSlotTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
+  const [stringError, setStringError] = useState<string | null>(null);
+  const [openStringId, setOpenStringId] = useState<number | null>(null);
+  const [removalTarget, setRemovalTarget] = useState<PlannerString | null>(
+    null,
+  );
+  const [removalOpen, setRemovalOpen] = useState(false);
+  const queryClient = useQueryClient();
   const closeTimerRef = useRef<number | null>(null);
+  const removalTimerRef = useRef<number | null>(null);
+  const stringHeaderRefs = useRef(new Map<number, HTMLButtonElement>());
   const tabRefs = useRef<Record<PlannerTeam, HTMLButtonElement | null>>({
     senior: null,
     reserves: null,
@@ -266,6 +391,9 @@ export function PlannerDepthMatrix({
     return () => {
       if (closeTimerRef.current !== null) {
         window.clearTimeout(closeTimerRef.current);
+      }
+      if (removalTimerRef.current !== null) {
+        window.clearTimeout(removalTimerRef.current);
       }
     };
   }, []);
@@ -298,6 +426,99 @@ export function PlannerDepthMatrix({
     tabRefs.current[next]?.focus();
   };
 
+  const returnToStringHeader = (
+    stringId: number,
+    clearRemovalTarget = false,
+  ) => {
+    if (removalTimerRef.current !== null) {
+      window.clearTimeout(removalTimerRef.current);
+    }
+    removalTimerRef.current = window.setTimeout(() => {
+      stringHeaderRefs.current.get(stringId)?.focus();
+      if (clearRemovalTarget) {
+        setRemovalTarget(null);
+      }
+      removalTimerRef.current = null;
+    }, 200);
+  };
+
+  const completeStringAction = (stringId: number) => {
+    setOpenStringId(null);
+    setRemovalOpen(false);
+    returnToStringHeader(stringId, true);
+  };
+
+  const addString = useMutation({
+    mutationFn: ({ team }: { team: PlannerTeam; originStringId: number }) =>
+      addPlannerString(team),
+    onSuccess: (nextDepth, { team }) => {
+      queryClient.setQueryData(plannerKeys.depth(), nextDepth);
+      setOpenStringId(null);
+      const teamDepth = nextDepth.teams.find(
+        (candidate) => candidate.team === team,
+      );
+      const addedString = teamDepth?.strings.at(-1);
+      if (addedString) {
+        returnToStringHeader(addedString.id);
+      }
+    },
+    onError: (error, { originStringId }) => {
+      setStringError(errorMessage(error));
+      setOpenStringId(null);
+      returnToStringHeader(originStringId);
+    },
+  });
+
+  const removeString = useMutation({
+    mutationFn: ({
+      plannerString,
+      confirmPopulated,
+    }: {
+      plannerString: PlannerString;
+      confirmPopulated: boolean;
+    }) => removePlannerString(plannerString.id, confirmPopulated),
+    onSuccess: (nextDepth, variables) => {
+      queryClient.setQueryData(plannerKeys.depth(), nextDepth);
+      const team = depth.teams.find((candidate) =>
+        candidate.strings.some(
+          (plannerString) => plannerString.id === variables.plannerString.id,
+        ),
+      );
+      const remainingStrings = nextDepth.teams.find(
+        (candidate) => candidate.team === team?.team,
+      )?.strings;
+      const focusTarget = remainingStrings?.at(
+        Math.min(
+          variables.plannerString.stringOrder,
+          (remainingStrings.length ?? 1) - 1,
+        ),
+      );
+      completeStringAction(focusTarget?.id ?? variables.plannerString.id);
+    },
+    onError: (error, variables) => {
+      setStringError(errorMessage(error));
+      completeStringAction(variables.plannerString.id);
+    },
+  });
+
+  const requestRemoveString = (plannerString: PlannerString) => {
+    setStringError(null);
+    if (plannerString.assignments.length === 0) {
+      removeString.mutate({ plannerString, confirmPopulated: false });
+      return;
+    }
+    setOpenStringId(null);
+    setRemovalTarget(plannerString);
+    setRemovalOpen(true);
+  };
+
+  const closeRemoval = () => {
+    if (!removalTarget) {
+      return;
+    }
+    completeStringAction(removalTarget.id);
+  };
+
   if (depth.teams.length === 0) {
     return null;
   }
@@ -308,6 +529,11 @@ export function PlannerDepthMatrix({
         {pickerError ? (
           <p className="text-body-sm text-error" role="alert">
             {pickerError}
+          </p>
+        ) : null}
+        {stringError ? (
+          <p className="text-body-sm text-error" role="alert">
+            {stringError}
           </p>
         ) : null}
         <div
@@ -362,6 +588,22 @@ export function PlannerDepthMatrix({
                 tactic={tactic}
                 options={options}
                 onOpen={openPicker}
+                openStringId={openStringId}
+                onOpenStringMenu={setOpenStringId}
+                onCloseStringMenu={() => setOpenStringId(null)}
+                onAddString={(team, originStringId) => {
+                  setStringError(null);
+                  addString.mutate({ team, originStringId });
+                }}
+                onRemoveString={requestRemoveString}
+                addDisabled={addString.isPending}
+                stringHeaderRef={(stringId) => (element) => {
+                  if (element) {
+                    stringHeaderRefs.current.set(stringId, element);
+                  } else {
+                    stringHeaderRefs.current.delete(stringId);
+                  }
+                }}
               />
             </div>
           );
@@ -375,6 +617,42 @@ export function PlannerDepthMatrix({
           onClose={closePicker}
           onMutationError={setPickerError}
         />
+      ) : null}
+      {removalTarget ? (
+        <Modal
+          open={removalOpen}
+          title={`Remove ${ordinal(removalTarget.stringOrder)}?`}
+          variant="destructive"
+          onClose={closeRemoval}
+          footer={
+            <>
+              <Button variant="secondary" onClick={closeRemoval}>
+                Cancel
+              </Button>
+              <Button
+                disabled={removeString.isPending}
+                onClick={() =>
+                  removeString.mutate({
+                    plannerString: removalTarget,
+                    confirmPopulated: true,
+                  })
+                }
+              >
+                {removeString.isPending ? "Removing…" : "Remove string"}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-body-md text-on-surface-variant">
+            This removes {ordinal(removalTarget.stringOrder)} and its{" "}
+            {removalTarget.assignments.length} assignment
+            {removalTarget.assignments.length === 1 ? "" : "s"}:{" "}
+            {removalTarget.assignments
+              .map((assignment) => assignmentName(assignment))
+              .join(", ")}
+            .
+          </p>
+        </Modal>
       ) : null}
     </Panel>
   );

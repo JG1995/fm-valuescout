@@ -17,6 +17,7 @@ import {
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
 import {
   resetPlannerIpcMock,
+  resolveAddPlannerStringIpcMock,
   resolveAssignPlannerPlayerIpcMock,
   resolveClearPlannerAssignmentIpcMock,
   resolveMovePlannerPlayerIpcMock,
@@ -26,6 +27,7 @@ import {
   resolvePlannerSlotCandidatesIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
+  resolveRemovePlannerStringIpcMock,
   resolveSavePlannerClubFamilyIpcMock,
   resolveSavePlannerTacticIpcMock,
 } from "@/testing/planner-ipc-mock";
@@ -141,6 +143,14 @@ function registerIpcMocks() {
 
     if (cmd === "get_planner_depth") {
       return resolvePlannerDepthIpcMock();
+    }
+
+    if (cmd === "add_planner_string") {
+      return resolveAddPlannerStringIpcMock(args);
+    }
+
+    if (cmd === "remove_planner_string") {
+      return resolveRemovePlannerStringIpcMock(args);
     }
 
     if (cmd === "get_planner_slot_candidates") {
