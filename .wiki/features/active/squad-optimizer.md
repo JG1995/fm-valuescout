@@ -328,7 +328,7 @@ execution_profile:
 
 #### Commit 2 — Add the Rust squad optimizer
 
-**Status:** Active
+**Status:** Completed — `3b15a08`
 
 **Work:** Add a Rust-owned Planner optimizer mutation and IPC command. In one transaction, preserve manual rows, delete prior optimizer rows, read the current snapshot/tactic/club-family sources, allocate exact per-string maximum-weight matches in strict priority order, persist optimizer rows, and return reconciled depth.
 
@@ -510,7 +510,7 @@ execution_profile:
 
 #### Commit 3 — Add selected-team Clear Squad
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add the confirmed selected-team Clear Squad mutation through Rust, Planner API, and the depth matrix. The action clears all assignments for the selected team after a destructive confirmation, preserves other teams, reconciles depth and candidates, and exposes the design-system destructive Button variant with pending, success, and error feedback.
 
@@ -867,27 +867,27 @@ execution_profile:
 
 **PR:** PR 1 — Add squad optimization
 
-**Commit:** Commit 2 — Add the Rust squad optimizer
+**Commit:** Commit 3 — Add selected-team Clear Squad
 
 ### RED test (active commit)
 
-Create a pure matching case where greedy lane selection loses the best total for one string. Add service tests that manual UIDs are reserved across the save and that reruns replace only optimizer rows. These tests fail if optimizer allocation violates exactness, priority, or manual retention.
+Create a Rust test that proves an unconfirmed request and an incorrect team scope cannot delete assignments. Add route coverage for confirmation, keyboard operation, pending/error/success feedback, other-team preservation, query reconciliation, candidate invalidation, and focus return.
 
 ### Expected outcome
 
-Rust optimizes all configured team strings in strict priority order, preserves manual rows, replaces only prior optimizer rows atomically, and returns the existing reconciled Planner depth. React behavior remains unchanged.
+Clear Squad deletes every assignment in the selected team only after Rust confirms the request. React uses the existing destructive Modal and Button, refreshes depth and candidates after success, and preserves visible assignments after cancellation or failure.
 
 ### Explicit exclusions
 
-- No Optimize button, frontend fetcher, cache update, or browser interaction.
-- No Clear Squad behavior or Button styling.
-- No change to manual-picker eligibility or provenance UI.
-- No transfer recommendations, custom constraints, string reordering, or matching dependency.
+- No Optimize UI control or browser smoke interaction for Optimize.
+- No optimizer algorithm or change to its provenance behavior.
+- No change to string removal, single-slot clearing, club-family scope, tactic controls, or provenance UI.
+- No global all-team clear, optimizer-only clear, undo history, or toast framework.
 
 ### Assigned profiles
 
-- **Implementation:** Terra xhigh — `gpt-5.6-terra`.
-- **Review:** Terra xhigh — `gpt-5.6-terra`, fresh context.
+- **Implementation:** Terra high — `gpt-5.6-terra`.
+- **Review:** Terra high — `gpt-5.6-terra`, fresh context.
 
 ### Current blockers
 
@@ -895,7 +895,7 @@ Rust optimizes all configured team strings in strict priority order, preserves m
 
 ### Discoveries that may require replanning
 
-- Native WebView checks remain environment-dependent, but the active migration commit has complete Rust-owned validation paths.
+- Native WebView checks remain environment-dependent, but the active clear-team commit has Rust and route validation paths.
 
 ## Discoveries and replanning
 
@@ -907,6 +907,7 @@ Rust optimizes all configured team strings in strict priority order, preserves m
 | PR | Commit | Hash | Notes | Implementer | Reviewer | Deviations |
 | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Persist assignment provenance | `4cd14f0` | v7 defaults legacy rows to manual; manual assign and move persist manual provenance. | Terra xhigh (`gpt-5.6-terra`) | Terra xhigh (`gpt-5.6-terra`) | None. |
+| PR 1 | Commit 2 — Add the Rust squad optimizer | `3b15a08` | Atomic Rust optimizer with exact score/fill/UID matching and an existing-boundary Planner command. | Terra xhigh (`gpt-5.6-terra`) | Terra high (`gpt-5.6-terra`) | Added a source-scope regression test during one MEDIUM review-fix round. |
 
 ## Final validation
 
