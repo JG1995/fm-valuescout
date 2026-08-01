@@ -120,7 +120,7 @@ Commit 1 moves the existing Rust depth and optimizer implementation plus its cha
 
 #### Commit 1 — Split Planner depth and optimizer modules
 
-**Status:** Active
+**Status:** Completed — `6a0e0a0`
 
 **Work:** Replace `src-tauri/src/features/planner/depth.rs` with cohesive sibling `planner::depth` and `planner::optimizer` modules. Keep depth reads and mutations under `depth`, move candidate loading, eligibility, the optimizer transaction, and the exact matcher under `optimizer`, adjust only private command imports, and separate the existing Rust characterization tests by capability.
 
@@ -301,7 +301,7 @@ execution_profile:
 
 #### Commit 2 — Split Planner depth matrix controls
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Decompose `planner-depth-matrix.tsx` into Planner-owned presentational table, Optimize controls, and Clear Squad control components. Retain `PlannerDepthMatrix` as the composition point for selected-team, picker, string-menu, removal, focus, mutation coordination, depth-cache replacement, and candidate invalidation behavior.
 
@@ -485,20 +485,20 @@ execution_profile:
 
 **PR:** Planner Module Refactor
 
-**Commit:** Split Planner depth and optimizer modules
+**Commit:** Split Planner depth matrix controls
 
 ### RED test (active commit)
 
-No new RED test is appropriate. This commit is a behavior-preserving move of existing Rust code and test code, not a behavioral change. The existing matcher, optimizer transaction, candidate, assignment, snapshot, and save-isolation tests are characterization evidence; a new deliberately failing behavioral test would invent a contract. Run the targeted baseline before moving code and keep those tests green after each move.
+No new RED test is appropriate. This commit is a behavior-preserving React move of existing matrix markup and control wiring, not a behavioral change. The current Planner route and smoke tests characterize the matrix, keyboard tabs, menus, focus, Clear Squad, and Optimize paths. A new deliberately failing behavior test would invent a contract.
 
 ### Expected outcome
 
-The existing Planner depth and optimizer command behavior compiles and passes its current characterization tests after the oversized source and test block become cohesive private Planner modules.
+The Planner depth matrix stays the single interaction coordinator while Planner-owned table, Optimize, and Clear Squad components receive the current state and callbacks without changing behavior.
 
 ### Explicit exclusions
 
-- No frontend, route, query, stub, smoke, schema, migration, command, DTO, or product behavior change.
-- No new dependency, trait, repository, public abstraction, top-level optimizer feature, or optimizer rule change.
+- No Rust, command, DTO, migration, optimizer, query-key, cache-policy, route, stub, visual, wording, keyboard, focus, accessibility, confirmation, pending, success, error, or product behavior change.
+- No new API fetcher, cache store, state library, hook, dependency, design-system primitive, route, or cross-feature import.
 
 ### Assigned profiles
 
@@ -511,7 +511,7 @@ The existing Planner depth and optimizer command behavior compiles and passes it
 
 ### Discoveries that may require replanning
 
-- None. The implementation must stop rather than change a command, DTO, schema, transaction, or optimizer invariant to make the module split compile.
+- None. The implementation must stop rather than move cache coordination from `PlannerDepthMatrix`, change existing cache behavior, or require a frontend cross-feature import.
 
 ## Discoveries and replanning
 
@@ -521,7 +521,7 @@ The existing Planner depth and optimizer command behavior compiles and passes it
 
 | PR | Commit | Hash | Notes | Implementer | Reviewer | Deviations |
 | --- | --- | --- | --- | --- | --- | --- |
-| — | — | — | No implementation commits yet | — | — | — |
+| PR 1 | Split Planner depth and optimizer modules | `6a0e0a0` | Extracted Planner-private optimizer logic and split real-SQLite depth and optimizer characterization tests. | Terra High | Terra High, fresh | None |
 
 ## Final validation
 
