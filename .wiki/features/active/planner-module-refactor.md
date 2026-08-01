@@ -108,7 +108,7 @@ Commit 1 moves the existing Rust depth and optimizer implementation plus its cha
 
 ### PR 1 — Planner Module Refactor
 
-**Status:** Active
+**Status:** Completed — implementation commits complete; feature close-out pending
 
 **Provisional PR title:** `refactor(planner): decompose planner modules`
 
@@ -301,7 +301,7 @@ execution_profile:
 
 #### Commit 2 — Split Planner depth matrix controls
 
-**Status:** Active
+**Status:** Completed — `e325d79`
 
 **Work:** Decompose `planner-depth-matrix.tsx` into Planner-owned presentational table, Optimize controls, and Clear Squad control components. Retain `PlannerDepthMatrix` as the composition point for selected-team, picker, string-menu, removal, focus, mutation coordination, depth-cache replacement, and candidate invalidation behavior.
 
@@ -483,35 +483,11 @@ execution_profile:
 
 ## Active work
 
-**PR:** Planner Module Refactor
+**PR:** Planner Module Refactor — implementation complete
 
-**Commit:** Split Planner depth matrix controls
+**Commit:** None — run `$workflow-finish-feature` for feature validation, review, and documentation reconciliation
 
-### RED test (active commit)
-
-No new RED test is appropriate. This commit is a behavior-preserving React move of existing matrix markup and control wiring, not a behavioral change. The current Planner route and smoke tests characterize the matrix, keyboard tabs, menus, focus, Clear Squad, and Optimize paths. A new deliberately failing behavior test would invent a contract.
-
-### Expected outcome
-
-The Planner depth matrix stays the single interaction coordinator while Planner-owned table, Optimize, and Clear Squad components receive the current state and callbacks without changing behavior.
-
-### Explicit exclusions
-
-- No Rust, command, DTO, migration, optimizer, query-key, cache-policy, route, stub, visual, wording, keyboard, focus, accessibility, confirmation, pending, success, error, or product behavior change.
-- No new API fetcher, cache store, state library, hook, dependency, design-system primitive, route, or cross-feature import.
-
-### Assigned profiles
-
-- **Implementation:** Terra High — `gpt-5.6-terra` at `high`
-- **Review:** Terra High — `gpt-5.6-terra` at `high`, fresh context
-
-### Current blockers
-
-- None.
-
-### Discoveries that may require replanning
-
-- None. The implementation must stop rather than move cache coordination from `PlannerDepthMatrix`, change existing cache behavior, or require a frontend cross-feature import.
+All planned implementation commits are complete. Do not start new work in this feature ledger. The next step is `$workflow-finish-feature` for the specified feature-level validation, Sol High review, documentation reconciliation, and archival.
 
 ## Discoveries and replanning
 
@@ -522,6 +498,7 @@ The Planner depth matrix stays the single interaction coordinator while Planner-
 | PR | Commit | Hash | Notes | Implementer | Reviewer | Deviations |
 | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 | Split Planner depth and optimizer modules | `6a0e0a0` | Extracted Planner-private optimizer logic and split real-SQLite depth and optimizer characterization tests. | Terra High | Terra High, fresh | None |
+| PR 1 | Split Planner depth matrix controls | `e325d79` | Extracted Planner-local table, optimizer, and clear-team presentation while retaining matrix mutation and cache coordination. | Terra High | Terra High, fresh | None |
 
 ## Final validation
 
