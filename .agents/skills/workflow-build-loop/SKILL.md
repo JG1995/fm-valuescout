@@ -28,6 +28,7 @@ $workflow-build
 → $workflow-checkpoint (review 1)
 → if CRITICAL | HIGH | MEDIUM: $workflow-fix → $workflow-checkpoint (review 2)
 → if still CRITICAL | HIGH | MEDIUM: $workflow-fix → $workflow-checkpoint (review 3)
+→ if the same finding survives both correction attempts: escalate capability or replan before another fix
 → if still CRITICAL | HIGH | MEDIUM: $workflow-fix → $workflow-checkpoint (review 4)
 → if still CRITICAL | HIGH | MEDIUM: $workflow-fix → $workflow-checkpoint (review 5)
 → if still CRITICAL | HIGH | MEDIUM: $workflow-fix → $workflow-checkpoint (review 6 — final)
@@ -37,9 +38,9 @@ $workflow-build
 
 | Finding tier | In loop | Blocks manual `$workflow-checkpoint` commit? |
 | --- | --- | --- |
-| CRITICAL | Auto-fix; stop without commit if still present after 5 fix rounds | Yes |
-| HIGH | Auto-fix; stop without commit if still present after 5 fix rounds | Yes |
-| MEDIUM | Auto-fix by default (same as `$workflow-fix` with no args); stop without commit if still present after 5 fix rounds | No — developer may approve commit with MEDIUM in manual `$workflow-checkpoint` |
+| CRITICAL | Auto-fix; escalate or replan if the same finding survives 2 correction attempts; stop without commit if still present after 5 fix rounds | Yes |
+| HIGH | Auto-fix; escalate or replan if the same finding survives 2 correction attempts; stop without commit if still present after 5 fix rounds | Yes |
+| MEDIUM | Auto-fix by default; escalate or replan if the same finding survives 2 correction attempts; stop without commit if still present after 5 fix rounds | No — developer may approve commit with MEDIUM in manual `$workflow-checkpoint` |
 | NITPICK | Fix only when the same verdict also has CRITICAL, HIGH, or MEDIUM; otherwise leave as-is and exit | No |
 
 **NITPICK-only verdicts:** When a review lists **only** NITPICK findings (no CRITICAL, HIGH, or MEDIUM), do **not** run `$workflow-fix`. Proceed directly to Phase 3 (auto-commit).
@@ -58,14 +59,15 @@ Do **not** stop for manual `$workflow-checkpoint` at the end of build — contin
 
 ## Phase 2 — Automated checkpoint / fix loop
 
-For each checkpoint pass in the loop, follow `.agents/skills/workflow-checkpoint/SKILL.md` steps **1–11** (inspect, intrinsic docs, stage exact hunks, format, gate, reviewer subagent, commit message assessment, Recallium reconcile, present verdict).
+For each checkpoint pass in the loop, follow `.agents/skills/workflow-checkpoint/SKILL.md` steps **1–12** (inspect, intrinsic docs, stage exact hunks, format, gate, reviewer subagent, commit message assessment, Recallium reconcile, present verdict).
 
-Use the same named `reviewer` Codex agent selection as `$workflow-checkpoint`. If named-agent dispatch is unavailable, use its generic read-only fallback. Do not add a model pin.
+Use the exact review profile from the active commit as required by `$workflow-checkpoint`. Reuse the same fresh reviewer context for correction verification when possible. Do not replace the assigned profile with the named reviewer's default.
 
 Differences from manual `$workflow-checkpoint`:
 
 - **Do not wait for developer approval** between loop iterations.
 - When the verdict still has CRITICAL, HIGH, or MEDIUM and fix rounds remain, run `$workflow-fix` with default delegation (**CRITICAL**, **HIGH**, and **MEDIUM** from that verdict) per `.agents/skills/workflow-fix/SKILL.md`. When the same verdict also lists NITPICK items, include them in that `$workflow-fix` pass. Include the **build-loop carve-out** (continue to the next checkpoint; do not stop for the developer).
+- Track findings by violated contract and execution path. If the same finding survives two correction attempts, do not run a third attempt with the same implementation profile. Escalate model capability under `.agents/WORKFLOW.md`, or stop and return to planning when the finding is structural or the required profile is unavailable. The five-round cap remains the absolute limit across all profiles and findings.
 - When the verdict is NITPICK-only or empty, proceed to Phase 3 — do **not** run `$workflow-fix` for NITPICK-only.
 
 Track and report in the final summary:
@@ -78,13 +80,13 @@ Track and report in the final summary:
 When the loop exits successfully:
 
 1. Commit the staged content locally with the assessed message from the final checkpoint (Conventional Commits per `.agents/skills/conventional-commits/SKILL.md`). No approval wait.
-2. **Immediately** advance the active feature ledger per `.agents/skills/workflow-checkpoint/SKILL.md` step **15** — real hash, **Completed work** row, next commit `Active`, refresh **Active work**.
+2. **Immediately** advance the active feature ledger per `.agents/skills/workflow-checkpoint/SKILL.md` step **16** — real hash, **Completed work** row, next commit `Active`, refresh **Active work**.
 3. Commit ledger-only changes in a separate `docs(…)` commit. No second reviewer pass for ledger-only advancement.
 4. Report both hashes, gate evidence, final review verdict (including any NITPICK), and loop round count.
 
 ## Mandatory reads
 
-Same as `$workflow-build` plus `.agents/skills/workflow-checkpoint/SKILL.md` and `.agents/skills/workflow-fix/SKILL.md` for loop phases.
+Same as `$workflow-build` plus `.agents/WORKFLOW.md`, `.agents/skills/workflow-checkpoint/SKILL.md`, and `.agents/skills/workflow-fix/SKILL.md` for loop phases.
 
 **Coding standards:** Read `.agents/skills/coding-standards/SKILL.md`, `references/universal.md`, and `references/testing.md` when the commit adds or changes tests. Load matching stack references when `ARCHITECTURE.md` or touched files apply.
 

@@ -1,6 +1,6 @@
 ---
 name: workflow-build
-description: Implement the active commit (default) or an explicitly requested feature run — RED/GREEN, then checkpoint and plan update
+description: Implement the active commit with its assigned model profile and implementation packet — RED/GREEN, validation, handoff, then checkpoint
 ---
 
 ## Execution mode
@@ -15,7 +15,9 @@ Full-feature mode does **not** skip review, squash commits, or merge PRs without
 
 ## Mandatory reads
 
-Read `AGENTS.md`, `.wiki/INDEX.md`, the active feature ledger when one exists, and relevant implementation and tests.
+Read `AGENTS.md`, `.agents/WORKFLOW.md`, `.wiki/INDEX.md`, the active feature ledger when one exists, and relevant implementation and tests.
+
+For a planned commit, read its implementation packet, execution metadata, validation contract, escalation conditions, and relevant feature invariants before inspecting implementation. Verify each named repository pattern before copying it.
 
 **Coding standards:** Read `.agents/skills/coding-standards/SKILL.md`, `references/universal.md`, and `references/testing.md` when this commit adds or changes tests. Load matching files from `coding-standards/references/` when `ARCHITECTURE.md` or the touched stack applies. Scan `.agents/skills/` for other matching skills (UI patterns, domain conventions) and read each matching `SKILL.md`.
 
@@ -35,13 +37,14 @@ Skip save when unsure.
 
 ## Before editing
 
-1. Restate the active commit's **work** description and explicit exclusions from the ledger.
+1. Restate the active commit's **work** description, governing invariants, implementation packet, assigned profile, and explicit exclusions from the ledger.
 2. Produce an Impact Map: changed behaviour, likely implementation location, existing protection, missing test, and expected failure mechanism.
 3. When the commit needs tests (see `coding-standards/references/testing.md`), run the **test quality gate** on the planned RED test before writing it: what failure it prevents, whether wrong implementation would fail, and whether it exercises real behaviour.
 4. Identify the smallest meaningful failing test that passes the gate — or document why tests are skipped.
 5. Identify required contract, integration, migration, smoke, and mutation/perturbation checks.
 6. Apply the decision ladder from `.agents/skills/minimalism/SKILL.md` and coding standards from `.agents/skills/coding-standards/`. State which ladder rung you stopped at and why.
-7. Escalate before implementation when persistence, schema, migration, authentication, concurrency, security, or a public API decision is unresolved. Read `.wiki/ARCHITECTURE.md`, scan `.agents/skills/` for matching skills, search Recallium per **## Recallium**. If the question needs a **runtime probe**, use optional **`$workflow-spike`**; if still blocked, **ask the developer** — do not implement on assumptions.
+7. Confirm the current implementation context matches the ledger's assigned model and effort. If it does not, dispatch a separate worker with that exact profile and the active packet, or stop and report why dispatch is unavailable. Do not silently substitute another profile.
+8. Escalate before implementation when persistence, schema, migration, authentication, concurrency, security, or a public API decision is unresolved. Read `.wiki/ARCHITECTURE.md`, scan `.agents/skills/` for matching skills, search Recallium per **## Recallium**. If the question needs a **runtime probe**, use optional **`$workflow-spike`**; if still blocked, **ask the developer** — do not implement on assumptions.
 
 ## Follow the plan — or say why not
 
@@ -57,6 +60,8 @@ If repository evidence shows the plan is **wrong, incomplete, or not feasible** 
 - **Update the active ledger** in the same work session (before `$workflow-checkpoint`): record the deviation under **Discoveries and replanning**, adjust affected commits or PRs, and note the rationale. The checkpoint commit should include that ledger update when the deviation affects delivery shape.
 
 Do not silently drift from the plan. Do not pretend the original plan still applies when it does not.
+
+Apply the active packet's stop conditions. Stop and replan instead of inventing a new architecture when a Known fact is false, a required seam is absent, an invariant or exclusion cannot hold, a public or persisted contract changes unexpectedly, meaningful validation cannot be built, later-PR work is required, or a cross-feature dependency appears.
 
 ## Implementation
 
@@ -78,7 +83,8 @@ Use Context7 MCP (`resolve-library-id`, then `query-docs`) for current library d
 ## After implementation (default one-commit mode)
 
 1. Report RED/GREEN evidence, gate results, and any discoveries affecting the remaining plan.
-2. Update the ledger: confirm active commit outcome matches plan or record deviation (see above). Do not mark the commit completed until `$workflow-checkpoint` commits — use `Completed — hash pending checkpoint commit` only when staging for checkpoint.
-3. **Stop.** Tell the developer to run **`$workflow-checkpoint`** for review and the local commit. Review after each commit is the default — do not commit without that pass unless the developer explicitly overrides.
+2. Provide the implementation handoff required by `.agents/WORKFLOW.md`: files changed, behavior, tests, commands, unresolved uncertainty, packet deviations, and escalation or replanning status.
+3. Update the ledger: confirm active commit outcome matches plan or record deviation (see above). Do not mark the commit completed until `$workflow-checkpoint` commits — use `Completed — hash pending checkpoint commit` only when staging for checkpoint.
+4. **Stop.** Tell the developer to run **`$workflow-checkpoint`** for review and the local commit. Review after each commit is the default — do not commit without that pass unless the developer explicitly overrides.
 
 Do not stage, commit, push, amend, rebase, squash, or rewrite history in `$workflow-build` unless the developer explicitly asks you to checkpoint in this turn.

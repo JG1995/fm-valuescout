@@ -25,7 +25,7 @@ Do not run it in the background or edit the worktree concurrently. After it retu
 
 ## Mandatory reads (manual fallback or parent command)
 
-Read `AGENTS.md`, `.wiki/INDEX.md`, the **technical-writing** skill (`.agents/skills/technical-writing/SKILL.md`), the active feature ledger when one exists, the linked **planned spec** when present, relevant `CONCEPT.md` bullets, and implementation evidence:
+Read `AGENTS.md`, `.agents/WORKFLOW.md`, `.wiki/INDEX.md`, the **technical-writing** skill (`.agents/skills/technical-writing/SKILL.md`), the active feature ledger when one exists, the linked **planned spec** when present, relevant `CONCEPT.md` bullets, and implementation evidence:
 
 - **Feature completion** — `git diff <base>...HEAD` for the feature (same base as `$workflow-finish-feature`), plus the feature-complete **Review verdict** when invoked from there
 - **Other scope** — branch diff, recent commits, or files named by the developer

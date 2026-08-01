@@ -3,7 +3,7 @@ name: workflow-fix
 description: Address delegated review findings — same project skills as build; then checkpoint again (or continue the loop under $workflow-build-loop)
 ---
 
-Fix **delegated review findings** on the current commit. This command does not advance the delivery plan to the next commit.
+Fix **delegated review findings** on the current commit. During feature completion, the developer may instead name one completed owning commit and its original implementation profile as the correction scope. This command does not advance the delivery plan to the next commit.
 
 ## What to fix
 
@@ -19,7 +19,7 @@ If a finding is incorrect, say so and do not "fix" it by over-engineering.
 
 ## Mandatory reads
 
-1. Read `AGENTS.md` and `.wiki/INDEX.md`.
+1. Read `AGENTS.md`, `.agents/WORKFLOW.md`, and `.wiki/INDEX.md`.
 2. Read the **Review verdict** being addressed (from chat or arguments).
 3. Read the **active feature ledger** when one exists — active commit, out of scope, delivery plan context.
 4. Read `.wiki/ARCHITECTURE.md` when findings touch structure or layers.
@@ -49,17 +49,21 @@ Skip save when unsure.
 
 Do not mark the active commit completed, activate the next commit, or implement planned work not required by the delegated findings.
 
+For an explicitly delegated feature-complete correction, replace "current commit" with the named completed owning commit throughout this skill. Replan instead when the finding crosses commit boundaries or changes a governing contract.
+
 ## Before editing
 
 1. List each delegated finding you will address (by verdict tier and title).
 2. For each: state the intended correction and how you will verify it.
-3. Apply the Decision Ladder from `AGENTS.md` and matching skills. Do not add abstractions beyond what the finding requires.
+3. Classify each correction using `.agents/WORKFLOW.md`: return bounded execution errors to the original model; increase effort for incomplete execution on a sound design; increase model capability for a structural misunderstanding; replan when a correction changes an invariant, boundary, contract, validation plan, PR split, or later commit.
+4. Apply the Decision Ladder from `AGENTS.md` and matching skills. Do not add abstractions beyond what the finding requires.
 
 ## Implementation
 
 - Fix the **functional or architectural issue** described in each finding. Match project skills and wiki architecture.
 - **Tests:** add or adjust tests only when a finding requires proof (missing behavioural test, wrong assertion, mock hiding behaviour). Use RED → GREEN when a new test is needed; otherwise run affected tests after the fix.
 - Run `./scripts/dev format` when findings are Biome format or import-order only; otherwise run affected tests and `./scripts/dev check`. Smoke/mutate: report unsupported (status 69), never as passed.
+- After a correction, ask the same reviewer context to verify the corrected findings and newly exposed paths when available. Restart the complete independent review only when the fix materially changes the commit.
 
 Use Context7 MCP for library facts when a finding involves external APIs.
 

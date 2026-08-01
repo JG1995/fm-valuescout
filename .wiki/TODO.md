@@ -56,7 +56,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Plan next
 
-Squad planner PR 1, commit 1 — configure club-family sources.
+Squad planner PR 2, commit 1 — persist squad depth assignments.
 
 ## Next
 

@@ -11,7 +11,7 @@ Use the developer-supplied commit scope when present. Otherwise, use the complet
 
 ## Mandatory reads
 
-Read `AGENTS.md`, `.wiki/INDEX.md`, the active feature ledger when one exists, **`.agents/skills/coding-standards/SKILL.md`**, **`coding-standards/references/universal.md`**, **`coding-standards/references/testing.md`** when the staged work includes tests, and matching stack or project references before staging or review.
+Read `AGENTS.md`, `.agents/WORKFLOW.md`, `.wiki/INDEX.md`, the active feature ledger when one exists, **`.agents/skills/coding-standards/SKILL.md`**, **`coding-standards/references/universal.md`**, **`coding-standards/references/testing.md`** when the staged work includes tests, and matching stack or project references before staging or review.
 
 ## Recallium
 
@@ -51,30 +51,30 @@ Do not mirror the feature ledger or staged diff. Skip when unsure.
 6. Stage exact files or hunks only. Never use `git add .` or `git commit -a`.
 7. Run and inspect `git diff --cached --check`, `git diff --cached --stat`, and the complete staged diff.
 8. Run targeted tests and `./scripts/dev check`. Status 69 on smoke/mutate means unsupported, not passed.
-9. Require a separate named `reviewer` Codex agent pass for non-trivial work. Give the reviewer the staged diff, active commit scope, applicable skills, and the required full Review verdict. If named-agent dispatch is unavailable, use a separate generic read-only reviewer with the same instructions.
+9. Require a separate fresh-context read-only reviewer pass for non-trivial work. Dispatch the exact model and effort from the active commit's review profile. When no ledger exists, use the named `reviewer` at its default Terra xhigh profile. Use the named `reviewer` only when its pinned profile matches; otherwise use a generic read-only agent that follows `.codex/agents/reviewer.toml`. Give it the original commit specification, relevant invariants and non-goals, implementation packet when one exists, review mandate, staged diff, validation results, applicable skills, and repository access. Do not initially give it the implementer's reasoning, self-review, or a defense of the design.
 
     **CRITICAL** and **HIGH** block commit until fixed or **explicitly approved** by the developer.
 
-9. **Present the reviewer report to the developer** — include the full **Review verdict** (all tiers, Blocking status, plan scope note). Do **not** automatically fix CRITICAL, HIGH, or other findings in `$workflow-checkpoint`. The developer delegates fixes via **`$workflow-fix`**, manual edit, or explicit instructions — then runs `$workflow-checkpoint` again.
+10. **Present the reviewer report to the developer** — include the full evidence-shaped **Review verdict**: all tiers, Blocking status, validation gaps, investigation notes, architectural conformance, plan scope note, and recommendation. Do **not** automatically fix CRITICAL, HIGH, or other findings in `$workflow-checkpoint`. The developer delegates fixes via **`$workflow-fix`**, manual edit, or explicit instructions — then runs `$workflow-checkpoint` again.
 
-10. **Assess the commit message** — do not invent a new subject from scratch when the plan already has one:
+11. **Assess the commit message** — do not invent a new subject from scratch when the plan already has one:
     - Start from the active commit's **Provisional commit** in the feature ledger (set by `$workflow-plan-feature`).
     - Compare it to the staged diff per `.agents/skills/conventional-commits/SKILL.md`: does it describe the actual outcome after this commit?
     - If yes: present it as **unchanged** — use this message at commit unless the developer overrides.
     - If no (plan divergence, scope shift, wrong type/scope, or message no longer matches staged work): present a **revised** message and state briefly why the provisional no longer fits. Update the ledger **Provisional commit** when the revision reflects plan change, not mere wording polish.
     - If there is no ledger or no provisional for this commit: derive one message from the staged outcome using the conventional-commits skill.
 
-11. Present the complete checkpoint package: outcome, staged files, RED/GREEN evidence, gate results, the **Review verdict** (verbatim), documentation impact, risks, the **commit message assessment** (provisional, unchanged or revised with reason), and **Recallium** (`no update` / `new #… (type, one-line why)` / `skipped — Recallium unavailable`). If the plan diverged, summarize the deviation.
+12. Present the complete checkpoint package: outcome, staged files, RED/GREEN evidence, gate results, the **Review verdict** (verbatim), documentation impact, risks, the **commit message assessment** (provisional, unchanged or revised with reason), and **Recallium** (`no update` / `new #… (type, one-line why)` / `skipped — Recallium unavailable`). If the plan diverged, summarize the deviation.
 
-12. **Stop and wait for explicit developer approval.** If **Blocking: Yes** and the developer has not explicitly approved proceeding with blocking findings recorded, do not commit. Unstaging or editing code to address review findings without developer direction is not part of this command.
+13. **Stop and wait for explicit developer approval.** If **Blocking: Yes** and the developer has not explicitly approved proceeding with blocking findings recorded, do not commit. Unstaging or editing code to address review findings without developer direction is not part of this command.
 
-13. Only after explicit developer approval, commit locally with the approved message. Never push, amend, rebase, squash, or rewrite history.
+14. Only after explicit developer approval, commit locally with the approved message. Never push, amend, rebase, squash, or rewrite history.
 
-14. Report the resulting hash.
+15. Report the resulting hash.
 
-15. **Ledger advancement (immediate follow-up commit).** When an active feature ledger tracks this work, update it right after the content commit succeeds — do not leave the update unstaged for a later ask:
+16. **Ledger advancement (immediate follow-up commit).** When an active feature ledger tracks this work, update it right after the content commit succeeds — do not leave the update unstaged for a later ask:
     - Replace `Completed — hash pending checkpoint commit` with `Completed — \`<hash>\``.
-    - Add the row to **Completed work**.
+    - Add the row to **Completed work**, including the actual implementation and review profiles used plus meaningful deviations.
     - Mark the next planned commit `Active` (or close the PR / activate the next PR when appropriate).
     - Refresh **Active work** (RED test, expected outcome, exclusions) for that next commit.
     - Stage **only** the ledger file(s), commit immediately with a short `docs(…)` message (e.g. `docs(memory-read): record commit N hash and activate commit N+1`).

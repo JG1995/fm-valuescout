@@ -24,7 +24,7 @@ At feature completion, do not begin until feature-complete review is clear or th
 
 ## Mandatory reads
 
-1. `AGENTS.md` and `.wiki/INDEX.md`.
+1. `AGENTS.md`, `.agents/WORKFLOW.md`, and `.wiki/INDEX.md`.
 2. The active feature ledger when one exists.
 3. The planned feature spec when linked.
 4. Relevant `CONCEPT.md` bullets.
@@ -50,7 +50,7 @@ Before editing, list documents requiring change, reviewed but unchanged document
 
 ## Feature completion checklist
 
-When evidence requires it, condense and move the ledger to `.wiki/features/completed/`, update `.wiki/TODO.md`, update implemented architecture only, update product or design docs only when behavior changed their boundaries, remove or redirect duplicate planned specs, and update root documentation when commands, setup, or contributor workflow changed.
+When evidence requires it, condense and move the ledger to `.wiki/features/completed/`, preserve verified implementation/review profiles and meaningful deviations in Completed work, update `.wiki/TODO.md`, update implemented architecture only, update product or design docs only when behavior changed their boundaries, remove or redirect duplicate planned specs, and update root documentation when commands, setup, or contributor workflow changed.
 
 ## Output contract
 

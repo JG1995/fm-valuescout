@@ -32,7 +32,7 @@ Every commit message uses [Conventional Commits 1.0.0](https://www.conventionalc
 
 ## Use the Codex workflow for non-trivial work
 
-The workflow is documented in [.codex/README.md](.codex/README.md). Development is trunk-based: short-lived branches merge to `main` frequently, and every commit is atomic.
+The workflow overview is in [.codex/README.md](.codex/README.md), and the canonical lifecycle and model-routing policy is in [.agents/WORKFLOW.md](.agents/WORKFLOW.md). Development is trunk-based: short-lived branches merge to `main` frequently, and every commit is atomic.
 
 ### New project bootstrap
 
@@ -48,9 +48,9 @@ Building the FM26 BepInEx plugin is separate from the Linux gate. See [bridge/RE
 
 ### Per-feature loop
 
-1. `workflow-plan-feature` — create a delivery plan with atomic commits. Trivial changes skip the ledger.
-2. `workflow-build` — write a meaningful failing test, make the smallest passing change, and refactor while green.
-3. `workflow-checkpoint` — stage exact files, run the gate, dispatch the read-only reviewer, and present evidence.
+1. `workflow-plan-feature` — create a delivery plan with atomic commits, implementation packets, and separate implementation/review profiles. Trivial changes skip the ledger.
+2. `workflow-build` — use the active commit's assigned profile and packet, write a meaningful failing test, make the smallest passing change, and refactor while green.
+3. `workflow-checkpoint` — stage exact files, run the gate, dispatch the assigned reviewer in a fresh context, and present evidence-backed findings.
 4. `workflow-fix` — address blocking review findings, then checkpoint again.
 5. Approve the local commit and reassess the remaining delivery plan.
 6. `workflow-finish-feature` — run full validation, feature review, then documentation reconciliation.
