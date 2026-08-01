@@ -376,7 +376,7 @@ execution_profile:
 
 #### Commit 2 — Add the three-team depth matrix
 
-**Status:** Active
+**Status:** Completed — `6b4e36b`
 
 **Work:** Render Senior, Reserves, and Youth tabs over one shared tactic matrix. Keep tactic lanes sticky, strings horizontally scrollable, cells keyboard reachable, and player identity plus combined score honest for missing, outside-pool, and unresolved assignments.
 
@@ -539,7 +539,7 @@ execution_profile:
 
 #### Commit 3 — Assign players by slot fit
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add the searchable slot-fit picker backed by the configured club family. Rank candidates by combined score for the selected tactic lane, show IP/OOP evidence and current assignment location, support assignment and confirmed moves, and restore focus to the originating cell.
 
@@ -871,26 +871,26 @@ execution_profile:
 
 **PR:** PR 2 — Plan three-team squad depth
 
-**Commit:** Add the three-team depth matrix
+**Commit:** Assign players by slot fit
 
 ### RED test (active commit)
 
-Render Senior, Reserves, and Youth over the shared tactic lanes; verify ordered string columns, keyboard-operable tabs and cells, truthful unknown scores, and visible unresolved and outside-pool assignments.
+Add a searchable slot-fit picker for a matrix cell; verify configured club-family scope, combined-score ordering, unknown-score evidence, current assignment location, confirmed moves, cancellation, failure retention, and focus restoration.
 
 ### Expected outcome
 
-The Planner presents the Rust-owned depth read model as a sticky-lane, horizontally scrollable, keyboard-operable three-team matrix without reconstructing assignment state or scores in React.
+The Planner opens a Rust-ranked slot-fit picker from each matrix cell, assigns unassigned players, confirms moves for already assigned players, and reconciles the matrix without client-side ranking or uniqueness logic.
 
 ### Explicit exclusions
 
-- Do not add player-picker, string-mutation, or assignment-mutation UI.
-- Do not add automatic gap analysis or optimization.
-- Do not change Rust persistence, tactic behavior, or shared design tokens.
+- Do not search outside the configured club family.
+- Do not add automated lineup selection or multi-slot optimization.
+- Do not add drag-only interaction or change string-management behavior.
 
 ### Assigned profiles
 
-- **Implementation:** Luna xhigh — `gpt-5.6-luna` at `xhigh`.
-- **Review:** Terra High — `gpt-5.6-terra` at `high`, fresh context.
+- **Implementation:** Terra xhigh — `gpt-5.6-terra` at `xhigh`.
+- **Review:** Sol xhigh — `gpt-5.6-sol` at `xhigh`, fresh context.
 
 ### Current blockers
 
@@ -898,7 +898,7 @@ The Planner presents the Rust-owned depth read model as a sticky-lane, horizonta
 
 ### Discoveries that may require replanning
 
-- None. The active packet's stop conditions cover assignment-state distinction, stable lane and string identity, and frontend-only rendering.
+- None. The active packet's stop conditions cover candidate scope, score ordering, atomic moves, cache reconciliation, and focus restoration.
 
 ## Discoveries and replanning
 
@@ -912,6 +912,7 @@ The Planner presents the Rust-owned depth read model as a sticky-lane, horizonta
 | PR 1 | Persist the dual-phase tactic | `88925cc` | Added migration v5, save-scoped 11-lane tactic persistence, catalog-backed options, Rust validation, tactic IPC, and route loading/status coverage. | unknown (pre-routing) | unknown (pre-routing) | None recorded. |
 | PR 1 | Add the dual-phase tactic editor | `a6a761c` | Added linked IP/OOP/Both views, editable pitch lanes, compatible role filtering, keyboard controls, weight editing, save/error handling, and planner smoke coverage. | unknown (pre-routing) | unknown (pre-routing) | None recorded. |
 | PR 2 | Persist squad depth assignments | `1fb57c8` | Added migration v6, save-scoped strings and assignments, snapshot-aware assignment state and scores, transactional depth mutations, and Planner IPC. | Terra xhigh | Terra xhigh | Reindexed strings after deletion to preserve contiguous display order. |
+| PR 2 | Add the three-team depth matrix | `6b4e36b` | Added the typed depth query and keyboard-operable Senior, Reserves, and Youth matrix with ordered strings, sticky lane headers, horizontal overflow, and truthful assignment states. | Luna xhigh | Terra High | Added depth-query invalidation after tactic saves so Rust-computed scores refresh with the active tactic. |
 
 ## Final validation
 
