@@ -8,6 +8,7 @@ use super::depth::{
     self as depth_service, PlannerAssignment, PlannerAssignmentLocation, PlannerDepth,
     PlannerDepthTeam, PlannerSlotCandidate, PlannerString, PlannerTeam,
 };
+use super::optimizer;
 use super::service::{self as planner_service, ClubFamily, ClubSourceInput};
 use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
 
@@ -387,7 +388,7 @@ pub fn optimize_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, Stri
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
-    Ok(depth_service::optimize_depth(&conn, save_id)?.into())
+    Ok(optimizer::optimize_depth(&conn, save_id)?.into())
 }
 
 #[tauri::command]

@@ -50,9 +50,13 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 **Parallel tracks:** After player search (order 4), profiles (5) and squad planner shell (6, without optimizer) can overlap once tactic modeling is specced.
 
+## Active
+
+No active planned work.
+
 ## Next
 
-The approved MVP sequence is complete. Select future work from [BACKLOG.md](./BACKLOG.md) when it is ready for planning.
+The approved MVP sequence and Planner maintenance refactor are complete. Select future work from [BACKLOG.md](./BACKLOG.md) when it is ready for planning.
 
 ## Completed
 
@@ -60,6 +64,7 @@ The approved MVP sequence is complete. Select future work from [BACKLOG.md](./BA
 - [Player profiles](./features/completed/player-profiles.md) — `/players/$uid` with Overview / Attributes / Roles tabs; entry from Search row and Ctrl+K; ScoreBadge; position-family role grouping
 - [Squad planner](./features/completed/squad-planner.md) — save-scoped club family, one dual-phase tactic, and Senior / Reserves / Youth depth strings with manual player assignment
 - [Squad optimizer](./features/completed/squad-optimizer.md) — exact team/string allocation by combined score, persisted assignment provenance, and selected-team Clear Squad
+- [Planner module refactor](./features/completed/planner-module-refactor.md) — behavior-preserving Planner-private Rust and React component decomposition
 - [Player search](./features/completed/player-search.md) — `/search` route, virtualized table, operator filters (scalars through role scores), URL-persisted filter/sort state, global Ctrl+K name suggest
 - [Role scoring engine](./features/completed/role-scoring-engine.md) — FM26 IP/OOP catalog (68 roles), scores on ingest into `player_role_scores`, DLP IP sanity proof, `combine_role_scores` helper
 - [FM26 memory read](./features/completed/fm26-memory-read.md) — BepInEx bridge, file protocol, dump schema v5, Rust validation, bridge status + Load Data UI

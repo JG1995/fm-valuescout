@@ -1,24 +1,20 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Ellipsis, Plus, Trash2 } from "lucide-react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button/button";
-import { Modal } from "@/components/ui/modal/modal";
 import { Panel } from "@/components/ui/panel/panel";
-import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { addPlannerString } from "../api/add-planner-string";
 import { clearPlannerTeam } from "../api/clear-planner-team";
 import { optimizePlannerDepth } from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
 import { removePlannerString } from "../api/remove-planner-string";
 import { PLANNER_TEAMS, type PlannerTeam } from "../types/club-family";
-import type {
-  PlannerAssignment,
-  PlannerDepth,
-  PlannerDepthTeam,
-  PlannerString,
-} from "../types/depth";
+import type { PlannerDepth, PlannerString } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
-import { laneLabel, phasePosition, roleLabel } from "../utils/tactic-editor";
+import { PlannerClearTeamControl } from "./planner-clear-team-control";
+import {
+  PlannerDepthTable,
+  PlannerStringRemovalConfirmation,
+} from "./planner-depth-table";
+import { PlannerOptimizerControls } from "./planner-optimizer-controls";
 import {
   PlannerSlotFitPicker,
   type PlannerSlotTarget,
@@ -52,310 +48,8 @@ function nextTeam(team: PlannerTeam, key: string): PlannerTeam | null {
   return null;
 }
 
-function ordinal(value: number): string {
-  const number = value + 1;
-  const suffix =
-    number % 100 >= 11 && number % 100 <= 13
-      ? "th"
-      : number % 10 === 1
-        ? "st"
-        : number % 10 === 2
-          ? "nd"
-          : number % 10 === 3
-            ? "rd"
-            : "th";
-  return `${number}${suffix} string`;
-}
-
-function assignmentForLane(
-  plannerString: PlannerString,
-  laneId: string,
-): PlannerAssignment | undefined {
-  return plannerString.assignments.find(
-    (assignment) => assignment.laneId === laneId,
-  );
-}
-
-function assignmentName(assignment: PlannerAssignment | undefined): string {
-  if (!assignment) {
-    return "Empty";
-  }
-  return assignment.currentName ?? assignment.lastKnownName;
-}
-
-function assignmentStateLabel(
-  assignment: PlannerAssignment | undefined,
-): string {
-  if (!assignment) {
-    return "Empty";
-  }
-  if (assignment.state === "outside_pool") {
-    return "Outside pool";
-  }
-  if (assignment.state === "unresolved") {
-    return "Unresolved";
-  }
-  return "Resolved";
-}
-
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
-}
-
-function PlannerStringHeader({
-  plannerString,
-  canRemove,
-  menuOpen,
-  onOpenMenu,
-  onCloseMenu,
-  onAdd,
-  onRemove,
-  addDisabled,
-  triggerRef,
-}: {
-  plannerString: PlannerString;
-  canRemove: boolean;
-  menuOpen: boolean;
-  onOpenMenu: () => void;
-  onCloseMenu: () => void;
-  onAdd: () => void;
-  onRemove: () => void;
-  addDisabled: boolean;
-  triggerRef: (element: HTMLButtonElement | null) => void;
-}) {
-  const label = ordinal(plannerString.stringOrder);
-
-  return (
-    <th
-      scope="col"
-      className="min-w-52 border-b border-outline-variant px-3 py-2 text-right font-mono text-mono-sm text-on-surface tabular-nums"
-      onContextMenu={(event) => {
-        event.preventDefault();
-        onOpenMenu();
-      }}
-    >
-      <div className="relative flex items-center justify-between gap-2">
-        <span>{label}</span>
-        <button
-          ref={triggerRef}
-          type="button"
-          aria-label={`Manage ${label}`}
-          aria-expanded={menuOpen}
-          aria-haspopup="menu"
-          className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          onClick={() => (menuOpen ? onCloseMenu() : onOpenMenu())}
-        >
-          <Ellipsis aria-hidden="true" size={16} strokeWidth={1.5} />
-        </button>
-        {menuOpen ? (
-          <div
-            role="menu"
-            aria-label={`${label} actions`}
-            className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                onCloseMenu();
-              }
-            }}
-          >
-            <button
-              type="button"
-              role="menuitem"
-              disabled={addDisabled}
-              className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-label-md text-on-surface hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45"
-              onClick={onAdd}
-            >
-              <Plus aria-hidden="true" size={16} strokeWidth={1.5} />
-              Add string
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              disabled={!canRemove}
-              className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-label-md text-error hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45"
-              onClick={onRemove}
-            >
-              <Trash2 aria-hidden="true" size={16} strokeWidth={1.5} />
-              Remove string
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </th>
-  );
-}
-
-function AssignmentCell({
-  team,
-  laneId,
-  laneName,
-  plannerString,
-  onOpen,
-}: {
-  team: PlannerTeam;
-  laneId: string;
-  laneName: string;
-  plannerString: PlannerString;
-  onOpen: (target: PlannerSlotTarget) => void;
-}) {
-  const stringLabel = ordinal(plannerString.stringOrder);
-  const assignment = assignmentForLane(plannerString, laneId);
-  const name = assignmentName(assignment);
-  const state = assignmentStateLabel(assignment);
-  const score = assignment?.combinedScore ?? null;
-  const ariaLabel = assignment
-    ? `${TEAM_LABELS[team]}, ${stringLabel}, ${laneName}, ${name}, ${state}, score ${score ?? "—"}`
-    : `${TEAM_LABELS[team]}, ${stringLabel}, ${laneName}, Empty`;
-
-  return (
-    <td className="min-w-52 border-b border-outline-variant px-3 py-2 align-top">
-      <button
-        type="button"
-        className="w-full rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-        aria-label={ariaLabel}
-        onClick={() =>
-          onOpen({
-            team,
-            stringId: plannerString.id,
-            stringOrder: plannerString.stringOrder,
-            laneId,
-            laneName,
-            occupantName: assignment ? name : null,
-          })
-        }
-      >
-        <span className="block space-y-1">
-          <span
-            className="block truncate text-body-sm text-on-surface"
-            title={name}
-          >
-            {name}
-          </span>
-          {assignment?.state === "outside_pool" ? (
-            <span className="block text-label-sm text-warning">
-              Outside pool
-            </span>
-          ) : null}
-          {assignment?.state === "unresolved" ? (
-            <span className="block text-label-sm text-warning">Unresolved</span>
-          ) : null}
-          {score === null ? (
-            <span className="font-mono text-mono-sm text-on-surface-variant">
-              —
-            </span>
-          ) : (
-            <ScoreBadge score={score} roleName="Combined role score" />
-          )}
-        </span>
-      </button>
-    </td>
-  );
-}
-
-function PlannerDepthTable({
-  teamDepth,
-  tactic,
-  options,
-  onOpen,
-  openStringId,
-  onOpenStringMenu,
-  onCloseStringMenu,
-  onAddString,
-  onRemoveString,
-  addDisabled,
-  stringHeaderRef,
-}: {
-  teamDepth: PlannerDepthTeam;
-  tactic: PlannerDepth["tactic"];
-  options: TacticOptions;
-  onOpen: (target: PlannerSlotTarget) => void;
-  openStringId: number | null;
-  onOpenStringMenu: (stringId: number) => void;
-  onCloseStringMenu: () => void;
-  onAddString: (team: PlannerTeam, stringId: number) => void;
-  onRemoveString: (plannerString: PlannerString) => void;
-  addDisabled: boolean;
-  stringHeaderRef: (
-    stringId: number,
-  ) => (element: HTMLButtonElement | null) => void;
-}) {
-  const teamLabel = TEAM_LABELS[teamDepth.team];
-
-  return (
-    <section
-      className="overflow-x-auto rounded-lg border border-outline-variant"
-      aria-label={`${teamLabel} squad depth matrix`}
-    >
-      <table
-        className="min-w-max w-full border-collapse text-left"
-        aria-label={`${teamLabel} squad depth matrix`}
-      >
-        <caption className="sr-only">
-          {teamLabel} squad depth using the shared tactic
-        </caption>
-        <thead>
-          <tr className="bg-surface-container-high">
-            <th
-              scope="col"
-              className="sticky left-0 z-10 min-w-52 border-b border-r border-outline-variant bg-surface-container-high px-3 py-2 text-label-md text-on-surface"
-            >
-              Tactic lane
-            </th>
-            {teamDepth.strings.map((plannerString) => (
-              <PlannerStringHeader
-                key={plannerString.id}
-                plannerString={plannerString}
-                canRemove={teamDepth.strings.length > 1}
-                menuOpen={openStringId === plannerString.id}
-                onOpenMenu={() => onOpenStringMenu(plannerString.id)}
-                onCloseMenu={onCloseStringMenu}
-                onAdd={() => onAddString(teamDepth.team, plannerString.id)}
-                onRemove={() => onRemoveString(plannerString)}
-                addDisabled={addDisabled}
-                triggerRef={stringHeaderRef(plannerString.id)}
-              />
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {tactic.lanes.map((lane, index) => (
-            <tr key={lane.laneId} aria-label={laneLabel(lane.laneId)}>
-              <th
-                scope="row"
-                className="sticky left-0 z-10 min-w-52 border-b border-r border-outline-variant bg-surface-container px-3 py-2 align-top"
-              >
-                <span className="block text-label-md text-on-surface">
-                  {laneLabel(lane.laneId)}
-                </span>
-                <span className="block font-mono text-mono-sm text-on-surface-variant tabular-nums">
-                  Lane {index + 1}
-                </span>
-                <span className="block text-body-sm text-on-surface-variant">
-                  IP: {phasePosition(lane, "ip")} ·{" "}
-                  {roleLabel(lane, "ip", options)}
-                </span>
-                <span className="block text-body-sm text-on-surface-variant">
-                  OOP: {phasePosition(lane, "oop")} ·{" "}
-                  {roleLabel(lane, "oop", options)}
-                </span>
-              </th>
-              {teamDepth.strings.map((plannerString) => (
-                <AssignmentCell
-                  key={plannerString.id}
-                  team={teamDepth.team}
-                  laneId={lane.laneId}
-                  laneName={laneLabel(lane.laneId)}
-                  plannerString={plannerString}
-                  onOpen={onOpen}
-                />
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </section>
-  );
 }
 
 export function PlannerDepthMatrix({
@@ -586,11 +280,9 @@ export function PlannerDepthMatrix({
       flush
       actions={
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button
-            disabled={optimize.isPending}
-            loading={optimize.isPending}
-            loadingLabel="Optimizing…"
-            onClick={() => {
+          <PlannerOptimizerControls
+            pending={optimize.isPending}
+            onOptimize={() => {
               if (optimize.isPending) {
                 return;
               }
@@ -598,16 +290,18 @@ export function PlannerDepthMatrix({
               setOptimizeStatus(null);
               optimize.mutate();
             }}
-          >
-            Optimize squads
-          </Button>
-          <Button
-            variant="destructive"
+          />
+          <PlannerClearTeamControl
+            selectedTeam={selectedTeam}
+            target={clearTeamTarget}
+            open={clearTeamOpen}
+            pending={clearTeam.isPending}
             disabled={clearTeam.isPending || optimize.isPending}
-            onClick={requestClearTeam}
-          >
-            Clear {TEAM_LABELS[selectedTeam]} squad
-          </Button>
+            error={clearTeamError}
+            onRequest={requestClearTeam}
+            onClose={closeClearTeam}
+            onConfirm={(team) => clearTeam.mutate(team)}
+          />
         </div>
       }
     >
@@ -686,6 +380,7 @@ export function PlannerDepthMatrix({
             >
               <PlannerDepthTable
                 teamDepth={teamDepth}
+                teamLabel={TEAM_LABELS[team]}
                 tactic={tactic}
                 options={options}
                 onOpen={openPicker}
@@ -719,79 +414,15 @@ export function PlannerDepthMatrix({
           onMutationError={setPickerError}
         />
       ) : null}
-      {removalTarget ? (
-        <Modal
-          open={removalOpen}
-          title={`Remove ${ordinal(removalTarget.stringOrder)}?`}
-          variant="destructive"
-          onClose={closeRemoval}
-          footer={
-            <>
-              <Button variant="secondary" onClick={closeRemoval}>
-                Cancel
-              </Button>
-              <Button
-                disabled={removeString.isPending}
-                onClick={() =>
-                  removeString.mutate({
-                    plannerString: removalTarget,
-                    confirmPopulated: true,
-                  })
-                }
-              >
-                {removeString.isPending ? "Removing…" : "Remove string"}
-              </Button>
-            </>
-          }
-        >
-          <p className="text-body-md text-on-surface-variant">
-            This removes {ordinal(removalTarget.stringOrder)} and its{" "}
-            {removalTarget.assignments.length} assignment
-            {removalTarget.assignments.length === 1 ? "" : "s"}:{" "}
-            {removalTarget.assignments
-              .map((assignment) => assignmentName(assignment))
-              .join(", ")}
-            .
-          </p>
-        </Modal>
-      ) : null}
-      {clearTeamTarget ? (
-        <Modal
-          open={clearTeamOpen}
-          title={`Clear ${TEAM_LABELS[clearTeamTarget]} squad?`}
-          variant="destructive"
-          onClose={closeClearTeam}
-          footer={
-            <>
-              <Button
-                variant="secondary"
-                disabled={clearTeam.isPending}
-                onClick={closeClearTeam}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                loading={clearTeam.isPending}
-                loadingLabel="Clearing…"
-                onClick={() => clearTeam.mutate(clearTeamTarget)}
-              >
-                Clear {TEAM_LABELS[clearTeamTarget]} squad
-              </Button>
-            </>
-          }
-        >
-          <p className="text-body-md text-on-surface-variant">
-            This clears every assignment from the {TEAM_LABELS[clearTeamTarget]}{" "}
-            squad.
-          </p>
-          {clearTeamError ? (
-            <p className="mt-3 text-body-sm text-error" role="alert">
-              {clearTeamError}
-            </p>
-          ) : null}
-        </Modal>
-      ) : null}
+      <PlannerStringRemovalConfirmation
+        target={removalTarget}
+        open={removalOpen}
+        pending={removeString.isPending}
+        onClose={closeRemoval}
+        onConfirm={(plannerString) =>
+          removeString.mutate({ plannerString, confirmPopulated: true })
+        }
+      />
     </Panel>
   );
 }
