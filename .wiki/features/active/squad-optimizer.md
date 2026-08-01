@@ -154,7 +154,7 @@ Commit 1 makes retained Planner assignments distinguish manual from replaceable 
 
 #### Commit 1 — Persist assignment provenance
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add save-scoped persisted provenance to Planner assignments. Existing rows become manual by migration default. New manual assign and move paths write manual provenance while retaining all current uniqueness, snapshot-resolution, and manual-picker behavior.
 

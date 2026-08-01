@@ -762,8 +762,8 @@ fn insert_assignment(
 ) -> Result<(), String> {
     tx.execute(
         "INSERT INTO planner_assignments (
-             save_id, string_id, lane_id, player_uid, last_known_name
-         ) VALUES (?1, ?2, ?3, ?4, ?5)",
+             save_id, string_id, lane_id, player_uid, last_known_name, provenance
+         ) VALUES (?1, ?2, ?3, ?4, ?5, 'manual')",
         params![save_id, string_id, lane_id, player_uid, last_known_name],
     )
     .map_err(|error| error.to_string())?;
@@ -813,6 +813,15 @@ mod tests {
             .find(|team_depth| team_depth.team == team)
             .expect("team depth")
             .strings
+    }
+
+    fn assignment_provenance(conn: &Connection, player_uid: i64) -> String {
+        conn.query_row(
+            "SELECT provenance FROM planner_assignments WHERE player_uid = ?1",
+            [player_uid],
+            |row| row.get(0),
+        )
+        .expect("read assignment provenance")
     }
 
     fn add_picker_candidates(temp_dir: &tempfile::TempDir, conn: &mut Connection, save_id: i64) {
@@ -994,6 +1003,22 @@ mod tests {
             .teams
             .iter()
             .all(|team| team.strings[0].string_order == 0));
+    }
+
+    #[test]
+    fn assign_and_move_player_persist_manual_provenance() {
+        let (_temp_dir, conn, save_id) = open_with_snapshot();
+        let depth = get_depth(&conn, save_id).expect("create planner depth");
+        let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+        let second_string_id = add_string(&conn, save_id, PlannerTeam::Senior)
+            .expect("add destination string")
+            .id;
+
+        assign_player(&conn, save_id, first_string_id, "goalkeeper", 77).expect("assign player");
+        assert_eq!(assignment_provenance(&conn, 77), "manual");
+
+        move_player(&conn, save_id, second_string_id, "goalkeeper", 77).expect("move player");
+        assert_eq!(assignment_provenance(&conn, 77), "manual");
     }
 
     #[test]

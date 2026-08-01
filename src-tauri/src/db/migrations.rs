@@ -175,6 +175,12 @@ CREATE INDEX idx_planner_assignments_string
     ON planner_assignments(string_id);
 ";
 
+pub const PLANNER_ASSIGNMENT_PROVENANCE_SQL: &str = "
+ALTER TABLE planner_assignments
+    ADD COLUMN provenance TEXT NOT NULL DEFAULT 'manual'
+    CHECK (provenance IN ('manual', 'optimizer'));
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -206,6 +212,11 @@ pub fn all() -> &'static [Migration] {
             version: 6,
             description: "create_planner_depth",
             sql: PLANNER_DEPTH_SQL,
+        },
+        Migration {
+            version: 7,
+            description: "add_planner_assignment_provenance",
+            sql: PLANNER_ASSIGNMENT_PROVENANCE_SQL,
         },
     ]
 }
@@ -287,7 +298,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
 
         let table_name: String = conn
             .query_row(
@@ -297,6 +308,48 @@ mod tests {
             )
             .expect("read sqlite_master");
         assert_eq!(table_name, "demo_value");
+    }
+
+    #[test]
+    fn migrates_v6_planner_assignments_to_manual_provenance() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("planner-v6-migration-test.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 6) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v6");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES (?1)", ["Legacy save"])
+            .expect("insert legacy save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_strings (save_id, team, string_order) VALUES (?1, 'senior', 0)",
+            [save_id],
+        )
+        .expect("insert legacy string");
+        let string_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_assignments (
+                 save_id, string_id, lane_id, player_uid, last_known_name
+             ) VALUES (?1, ?2, 'goalkeeper', 77, 'Legacy Player')",
+            params![save_id, string_id],
+        )
+        .expect("insert legacy assignment");
+
+        apply(&conn).expect("migrate legacy assignment");
+
+        let provenance: String = conn
+            .query_row(
+                "SELECT provenance FROM planner_assignments WHERE player_uid = 77",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migrated assignment provenance");
+        assert_eq!(provenance, "manual");
     }
 
     #[test]
@@ -326,7 +379,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
 
         let table_name: String = conn
             .query_row(
@@ -535,14 +588,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 6);
+        assert_eq!(version, 7);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 6);
+        assert_eq!(migrations.len(), 7);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -561,6 +614,12 @@ mod tests {
         assert_eq!(migrations[5].version, 6);
         assert_eq!(migrations[5].description, "create_planner_depth");
         assert_eq!(migrations[5].sql, PLANNER_DEPTH_SQL);
+        assert_eq!(migrations[6].version, 7);
+        assert_eq!(
+            migrations[6].description,
+            "add_planner_assignment_provenance"
+        );
+        assert_eq!(migrations[6].sql, PLANNER_ASSIGNMENT_PROVENANCE_SQL);
     }
 
     #[test]
@@ -651,7 +710,8 @@ mod tests {
                 "string_id",
                 "lane_id",
                 "player_uid",
-                "last_known_name"
+                "last_known_name",
+                "provenance"
             ]
         );
     }
