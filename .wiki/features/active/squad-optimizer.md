@@ -154,7 +154,7 @@ Commit 1 makes retained Planner assignments distinguish manual from replaceable 
 
 #### Commit 1 — Persist assignment provenance
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `4cd14f0`
 
 **Work:** Add save-scoped persisted provenance to Planner assignments. Existing rows become manual by migration default. New manual assign and move paths write manual provenance while retaining all current uniqueness, snapshot-resolution, and manual-picker behavior.
 
@@ -328,7 +328,7 @@ execution_profile:
 
 #### Commit 2 — Add the Rust squad optimizer
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add a Rust-owned Planner optimizer mutation and IPC command. In one transaction, preserve manual rows, delete prior optimizer rows, read the current snapshot/tactic/club-family sources, allocate exact per-string maximum-weight matches in strict priority order, persist optimizer rows, and return reconciled depth.
 
@@ -867,22 +867,22 @@ execution_profile:
 
 **PR:** PR 1 — Add squad optimization
 
-**Commit:** Commit 1 — Persist assignment provenance
+**Commit:** Commit 2 — Add the Rust squad optimizer
 
 ### RED test (active commit)
 
-Create a v6-shaped Planner assignment, apply the new migration, and assert that the row is manual. Then prove that assigning and moving a player writes manual provenance. These tests fail if a future Optimize run would be allowed to replace prior user work; they do not merely inspect that a column exists.
+Create a pure matching case where greedy lane selection loses the best total for one string. Add service tests that manual UIDs are reserved across the save and that reruns replace only optimizer rows. These tests fail if optimizer allocation violates exactness, priority, or manual retention.
 
 ### Expected outcome
 
-The current Planner continues to behave identically, but every existing and newly manual assignment is durably distinguishable from a future optimizer row. The next commit can replace only optimizer-created rows without guessing intent.
+Rust optimizes all configured team strings in strict priority order, preserves manual rows, replaces only prior optimizer rows atomically, and returns the existing reconciled Planner depth. React behavior remains unchanged.
 
 ### Explicit exclusions
 
-- No optimizer command or allocation logic.
-- No frontend provenance field or control.
-- No Clear Squad action.
-- No change to existing manual picker, club-family, tactic, score, or snapshot behavior.
+- No Optimize button, frontend fetcher, cache update, or browser interaction.
+- No Clear Squad behavior or Button styling.
+- No change to manual-picker eligibility or provenance UI.
+- No transfer recommendations, custom constraints, string reordering, or matching dependency.
 
 ### Assigned profiles
 
@@ -906,7 +906,7 @@ The current Planner continues to behave identically, but every existing and newl
 
 | PR | Commit | Hash | Notes | Implementer | Reviewer | Deviations |
 | --- | --- | --- | --- | --- | --- | --- |
-| — | — | — | No implementation has started. | — | — | — |
+| PR 1 | Commit 1 — Persist assignment provenance | `4cd14f0` | v7 defaults legacy rows to manual; manual assign and move persist manual provenance. | Terra xhigh (`gpt-5.6-terra`) | Terra xhigh (`gpt-5.6-terra`) | None. |
 
 ## Final validation
 
