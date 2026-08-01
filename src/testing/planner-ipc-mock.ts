@@ -241,6 +241,7 @@ function tacticRole(
 
 let clubFamily: ClubFamily = { ...DEFAULT_CLUB_FAMILY, sources: [] };
 let availableClubs: string[] = [];
+let clubFamilySaveCalls = 0;
 let tactic: PlannerTactic = cloneTactic(DEFAULT_TACTIC);
 let depth: PlannerDepth = buildDefaultDepth();
 let depthFetchCount = 0;
@@ -296,6 +297,7 @@ function buildDefaultDepth(): PlannerDepth {
 export function resetPlannerIpcMock() {
   clubFamily = { ...DEFAULT_CLUB_FAMILY, sources: [] };
   availableClubs = [];
+  clubFamilySaveCalls = 0;
   tactic = cloneTactic(DEFAULT_TACTIC);
   depth = buildDefaultDepth();
   depthFetchCount = 0;
@@ -316,6 +318,10 @@ export function resolvePlannerClubFamilyIpcMock(): ClubFamily {
     ...clubFamily,
     sources: clubFamily.sources.map((source) => ({ ...source })),
   };
+}
+
+export function getPlannerClubFamilySaveCalls() {
+  return clubFamilySaveCalls;
 }
 
 export function resolvePlannerClubsIpcMock() {
@@ -607,6 +613,7 @@ export function resolveSavePlannerTacticIpcMock(args: unknown) {
 }
 
 export function resolveSavePlannerClubFamilyIpcMock(args: unknown): ClubFamily {
+  clubFamilySaveCalls += 1;
   const record = args as {
     primaryClub?: unknown;
     sources?: unknown;

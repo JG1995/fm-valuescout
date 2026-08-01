@@ -25,6 +25,7 @@ import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import {
   getPlannerAddStringIpcMockCalls,
+  getPlannerClubFamilySaveCalls,
   getPlannerDepthIpcMockCalls,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerDepthIpcMock,
@@ -80,8 +81,11 @@ describe("planner route", () => {
     setPlannerAvailableClubs(["Barcelona", "Barca Athletic", "Barcelona U19"]);
     renderPlannerRoute();
 
-    const primaryClub = await screen.findByLabelText("Primary club");
-    await user.selectOptions(primaryClub, "Barcelona");
+    const primaryClub = await screen.findByRole("combobox", {
+      name: "Primary club",
+    });
+    await user.type(primaryClub, "Barcelona");
+    await user.click(await screen.findByRole("option", { name: "Barcelona" }));
     await user.click(screen.getByRole("button", { name: "Save club family" }));
 
     const addReserves = await screen.findByRole("button", {
@@ -114,6 +118,103 @@ describe("planner route", () => {
     expect(
       screen.getByText("11 linked lanes · 50% IP score weight"),
     ).toBeInTheDocument();
+  });
+
+  it("filters primary clubs and selects a club from the results", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["FC København", "Brøndby IF", "Copenhagen City"]);
+    renderPlannerRoute();
+
+    const primaryClub = await screen.findByRole("combobox", {
+      name: "Primary club",
+    });
+    await user.type(primaryClub, "en");
+
+    const suggestions = await screen.findByRole("listbox", {
+      name: "Club suggestions",
+    });
+    expect(
+      within(suggestions).getByRole("option", { name: "FC København" }),
+    ).toBeInTheDocument();
+    expect(
+      within(suggestions).getByRole("option", { name: "Copenhagen City" }),
+    ).toBeInTheDocument();
+    expect(
+      within(suggestions).queryByRole("option", { name: "Brøndby IF" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(suggestions).getByRole("option", { name: "FC København" }),
+    );
+
+    expect(primaryClub).toHaveValue("FC København");
+    expect(
+      screen.getByRole("button", { name: "Save club family" }),
+    ).toBeEnabled();
+  });
+
+  it("does not submit a stale club family for an unmatched primary-club search", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    const primaryClub = await screen.findByRole("combobox", {
+      name: "Primary club",
+    });
+    await user.type(primaryClub, "Barcelona");
+    await user.click(await screen.findByRole("option", { name: "Barcelona" }));
+    await user.click(screen.getByRole("button", { name: "Save club family" }));
+    await waitFor(() => expect(getPlannerClubFamilySaveCalls()).toBe(1));
+
+    await user.clear(primaryClub);
+    await user.type(primaryClub, "No matching club");
+    await user.keyboard("{Enter}");
+
+    expect(getPlannerClubFamilySaveCalls()).toBe(1);
+    expect(
+      screen.getByRole("button", { name: "Save club family" }),
+    ).toBeDisabled();
+  });
+
+  it("selects the highlighted primary club with the keyboard", async () => {
+    const scrollIntoView = vi.fn();
+    const scrollDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    try {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setPlannerAvailableClubs(["Barcelona", "Barca Athletic"]);
+      renderPlannerRoute();
+
+      const primaryClub = await screen.findByRole("combobox", {
+        name: "Primary club",
+      });
+      await user.type(primaryClub, "bar");
+      scrollIntoView.mockClear();
+      await user.keyboard("{ArrowDown}");
+
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+      await user.keyboard("{Enter}");
+      expect(primaryClub).toHaveValue("Barca Athletic");
+    } finally {
+      if (scrollDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollIntoView",
+          scrollDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
   });
 
   it("renders first-use club-family setup before downstream planner panels", async () => {
