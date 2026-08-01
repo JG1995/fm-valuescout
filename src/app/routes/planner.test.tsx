@@ -1222,12 +1222,11 @@ describe("planner route", () => {
         screen.getByRole("dialog", { name: "Clear Senior squad?" }),
       ).getByRole("button", { name: "Clear Senior squad" }),
     );
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Clear squad failed",
-    );
     expect(
-      screen.getByRole("dialog", { name: "Clear Senior squad?" }),
-    ).toBeInTheDocument();
+      await within(
+        screen.getByRole("dialog", { name: "Clear Senior squad?" }),
+      ).findByRole("alert"),
+    ).toHaveTextContent("Clear squad failed");
     expect(
       screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
     ).toBeInTheDocument();

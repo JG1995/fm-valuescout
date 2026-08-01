@@ -622,11 +622,6 @@ export function PlannerDepthMatrix({
             {stringError}
           </p>
         ) : null}
-        {clearTeamError ? (
-          <p className="text-body-sm text-error" role="alert">
-            {clearTeamError}
-          </p>
-        ) : null}
         {clearTeamStatus ? (
           <p className="text-body-sm text-success" role="status">
             {clearTeamStatus}
@@ -790,6 +785,11 @@ export function PlannerDepthMatrix({
             This clears every assignment from the {TEAM_LABELS[clearTeamTarget]}{" "}
             squad.
           </p>
+          {clearTeamError ? (
+            <p className="mt-3 text-body-sm text-error" role="alert">
+              {clearTeamError}
+            </p>
+          ) : null}
         </Modal>
       ) : null}
     </Panel>
