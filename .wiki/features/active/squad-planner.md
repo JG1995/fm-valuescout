@@ -539,7 +539,7 @@ execution_profile:
 
 #### Commit 3 — Assign players by slot fit
 
-**Status:** Active
+**Status:** Completed — `b60e2aa`
 
 **Work:** Add the searchable slot-fit picker backed by the configured club family. Rank candidates by combined score for the selected tactic lane, show IP/OOP evidence and current assignment location, support assignment and confirmed moves, and restore focus to the originating cell.
 
@@ -706,7 +706,7 @@ execution_profile:
 
 #### Commit 4 — Manage squad string columns
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add strings from the matrix header, expose add/remove actions through right-click and the visible header menu, renumber ordinal labels after removal, confirm destructive removal of populated strings, and complete the browser smoke path for all three teams.
 
@@ -871,26 +871,26 @@ execution_profile:
 
 **PR:** PR 2 — Plan three-team squad depth
 
-**Commit:** Assign players by slot fit
+**Commit:** Manage squad string columns
 
 ### RED test (active commit)
 
-Add a searchable slot-fit picker for a matrix cell; verify configured club-family scope, combined-score ordering, unknown-score evidence, current assignment location, confirmed moves, cancellation, failure retention, and focus restoration.
+Add string-header controls; verify pointer and keyboard menus, add-after behavior, ordinal renumbering, last-string protection, populated-removal confirmation, cancellation, failure retention, focus return, and the Planner smoke flow across all three teams.
 
 ### Expected outcome
 
-The Planner opens a Rust-ranked slot-fit picker from each matrix cell, assigns unassigned players, confirms moves for already assigned players, and reconciles the matrix without client-side ranking or uniqueness logic.
+The Planner adds and removes ordered squad strings through equivalent visible and context-menu actions, protects the final string in Rust, confirms populated removal, restores focus, and completes the three-team browser smoke path.
 
 ### Explicit exclusions
 
-- Do not search outside the configured club family.
-- Do not add automated lineup selection or multi-slot optimization.
-- Do not add drag-only interaction or change string-management behavior.
+- Do not add custom string names or reorder controls.
+- Do not add a fixed maximum string count.
+- Do not add optimizer controls or gap recommendations.
 
 ### Assigned profiles
 
-- **Implementation:** Terra xhigh — `gpt-5.6-terra` at `xhigh`.
-- **Review:** Sol xhigh — `gpt-5.6-sol` at `xhigh`, fresh context.
+- **Implementation:** Terra High — `gpt-5.6-terra` at `high`.
+- **Review:** Terra xhigh — `gpt-5.6-terra` at `xhigh`, fresh context.
 
 ### Current blockers
 
@@ -898,7 +898,7 @@ The Planner opens a Rust-ranked slot-fit picker from each matrix cell, assigns u
 
 ### Discoveries that may require replanning
 
-- None. The active packet's stop conditions cover candidate scope, score ordering, atomic moves, cache reconciliation, and focus restoration.
+- None. The active packet's stop conditions cover final-string protection, isolated deletion, accessible action parity, ordering, and persistence boundaries.
 
 ## Discoveries and replanning
 
@@ -913,6 +913,7 @@ The Planner opens a Rust-ranked slot-fit picker from each matrix cell, assigns u
 | PR 1 | Add the dual-phase tactic editor | `a6a761c` | Added linked IP/OOP/Both views, editable pitch lanes, compatible role filtering, keyboard controls, weight editing, save/error handling, and planner smoke coverage. | unknown (pre-routing) | unknown (pre-routing) | None recorded. |
 | PR 2 | Persist squad depth assignments | `1fb57c8` | Added migration v6, save-scoped strings and assignments, snapshot-aware assignment state and scores, transactional depth mutations, and Planner IPC. | Terra xhigh | Terra xhigh | Reindexed strings after deletion to preserve contiguous display order. |
 | PR 2 | Add the three-team depth matrix | `6b4e36b` | Added the typed depth query and keyboard-operable Senior, Reserves, and Youth matrix with ordered strings, sticky lane headers, horizontal overflow, and truthful assignment states. | Luna xhigh | Terra High | Added depth-query invalidation after tactic saves so Rust-computed scores refresh with the active tactic. |
+| PR 2 | Assign players by slot fit | `b60e2aa` | Added Rust-ranked club-family slot candidates, typed picker mutations, confirmation, and focus-safe matrix reconciliation. | Terra xhigh | Sol xhigh | Review added complete candidate-query invalidation and an occupied-cell clear-first flow; the browser IPC stub gained depth data for the existing Planner smoke path. |
 
 ## Final validation
 
