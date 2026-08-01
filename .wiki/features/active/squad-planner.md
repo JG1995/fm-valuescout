@@ -51,7 +51,7 @@ Let the user model one FM26 tactic and organize the selected club family into Se
 
 - **Relevant components:** `AppNavRail` exposes Dashboard, Search, and Planner. The `/planner` route currently owns the no-snapshot state and club-family setup panel. Shared `Panel`, `Modal`, `Button`, `SelectField`, `EmptyState`, and `ScoreBadge` primitives cover most planned UI.
 - **Data model:** `players` already stores `current_club`, `parent_club`, `team_level`, positions, and player UID. `player_role_scores` stores every IP/OOP role score for the current snapshot.
-- **Persistence and migrations:** SQLite migration v5 is current. Snapshot replacement cascade-deletes players and role scores, while `planner_club_settings`, `planner_club_sources`, and the shared tactic stay save-scoped without snapshot foreign keys.
+- **Persistence and migrations:** SQLite migration v6 is current. Snapshot replacement cascade-deletes players and role scores, while `planner_club_settings`, `planner_club_sources`, the shared tactic, strings, and assignments stay save-scoped without snapshot foreign keys.
 - **Existing behavioral assumptions:** one app save is active; all player reads use its current snapshot; Load Data and save switching invalidate snapshot, planner, search, and profile query trees.
 - **Architectural seams:** React feature code belongs in `src/features/planner`; Rust persistence and queries belong in `src-tauri/src/features/planner`; the route composes planner and snapshot context without cross-feature imports.
 - **Test ownership:** Vitest + RTL own route and interaction behavior; Rust tests own migrations, validation, uniqueness, persistence, and score joins; Playwright smoke owns the browser Planner path with stubbed IPC.
@@ -209,7 +209,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 #### Commit 1 — Persist squad depth assignments
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `1fb57c8`
 
 **Work:** Add save-scoped ordered strings and assignments for the three fixed teams. Seed one string per team, enforce save-wide player uniqueness, retain last-known names across snapshot replacement, resolve current snapshot details and combined lane scores in Rust, and support add, remove, clear, assign, and move mutations.
 
@@ -376,7 +376,7 @@ execution_profile:
 
 #### Commit 2 — Add the three-team depth matrix
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Render Senior, Reserves, and Youth tabs over one shared tactic matrix. Keep tactic lanes sticky, strings horizontally scrollable, cells keyboard reachable, and player identity plus combined score honest for missing, outside-pool, and unresolved assignments.
 
@@ -871,27 +871,26 @@ execution_profile:
 
 **PR:** PR 2 — Plan three-team squad depth
 
-**Commit:** Persist squad depth assignments
+**Commit:** Add the three-team depth matrix
 
 ### RED test (active commit)
 
-Persist default strings for Senior, Reserves, and Youth, add and remove ordered strings, reject removal of the final string, enforce save-wide player uniqueness and moves, retain last-known names after snapshot replacement, resolve combined lane scores, and preserve save isolation.
+Render Senior, Reserves, and Youth over the shared tactic lanes; verify ordered string columns, keyboard-operable tabs and cells, truthful unknown scores, and visible unresolved and outside-pool assignments.
 
 ### Expected outcome
 
-Rust persists the three-team depth-chart foundation with one seeded string per team, bounded string mutations, unique assignments, snapshot-surviving names, combined score resolution, and per-save isolation. The data remains ready for the later matrix and candidate-picker commits.
+The Planner presents the Rust-owned depth read model as a sticky-lane, horizontally scrollable, keyboard-operable three-team matrix without reconstructing assignment state or scores in React.
 
 ### Explicit exclusions
 
-- Do not build the depth-chart matrix or player picker in this commit.
-- Do not add optimized or automatic assignments.
-- Do not add custom string names or reorder controls.
-- Do not edit bridge schema v5 or memory scanning.
+- Do not add player-picker, string-mutation, or assignment-mutation UI.
+- Do not add automatic gap analysis or optimization.
+- Do not change Rust persistence, tactic behavior, or shared design tokens.
 
 ### Assigned profiles
 
-- **Implementation:** Terra xhigh — `gpt-5.6-terra` at `xhigh`.
-- **Review:** Terra xhigh — `gpt-5.6-terra` at `xhigh`, fresh context.
+- **Implementation:** Luna xhigh — `gpt-5.6-luna` at `xhigh`.
+- **Review:** Terra High — `gpt-5.6-terra` at `high`, fresh context.
 
 ### Current blockers
 
@@ -899,7 +898,7 @@ Rust persists the three-team depth-chart foundation with one seeded string per t
 
 ### Discoveries that may require replanning
 
-- None. The active packet's stop conditions cover stable tactic-lane identity, snapshot survival, and transactional uniqueness.
+- None. The active packet's stop conditions cover assignment-state distinction, stable lane and string identity, and frontend-only rendering.
 
 ## Discoveries and replanning
 
@@ -912,6 +911,7 @@ Rust persists the three-team depth-chart foundation with one seeded string per t
 | PR 1 | Configure club-family sources | `31b091a` | Added migration v4, save-scoped source persistence and validation, Planner route/setup UI, IPC, cache invalidation, and first-use smoke coverage. | unknown (pre-routing) | unknown (pre-routing) | Explicit club-family mapping replaced unreliable inferred affiliation during planning. |
 | PR 1 | Persist the dual-phase tactic | `88925cc` | Added migration v5, save-scoped 11-lane tactic persistence, catalog-backed options, Rust validation, tactic IPC, and route loading/status coverage. | unknown (pre-routing) | unknown (pre-routing) | None recorded. |
 | PR 1 | Add the dual-phase tactic editor | `a6a761c` | Added linked IP/OOP/Both views, editable pitch lanes, compatible role filtering, keyboard controls, weight editing, save/error handling, and planner smoke coverage. | unknown (pre-routing) | unknown (pre-routing) | None recorded. |
+| PR 2 | Persist squad depth assignments | `1fb57c8` | Added migration v6, save-scoped strings and assignments, snapshot-aware assignment state and scores, transactional depth mutations, and Planner IPC. | Terra xhigh | Terra xhigh | Reindexed strings after deletion to preserve contiguous display order. |
 
 ## Final validation
 
