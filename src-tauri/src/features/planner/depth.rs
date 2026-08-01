@@ -9,6 +9,8 @@ const PLANNER_TEAMS: [PlannerTeam; 3] = [
     PlannerTeam::Reserves,
     PlannerTeam::Youth,
 ];
+const MAX_SLOT_CANDIDATES: usize = 100;
+const MAX_CANDIDATE_SEARCH_LEN: usize = 120;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlannerTeam {
@@ -62,6 +64,25 @@ pub struct PlannerAssignment {
     pub current_name: Option<String>,
     pub state: AssignmentState,
     pub combined_score: Option<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannerAssignmentLocation {
+    pub team: PlannerTeam,
+    pub string_id: i64,
+    pub string_order: i64,
+    pub lane_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannerSlotCandidate {
+    pub player_uid: i64,
+    pub name: String,
+    pub current_club: String,
+    pub ip_score: Option<u8>,
+    pub oop_score: Option<u8>,
+    pub combined_score: Option<u8>,
+    pub assignment_location: Option<PlannerAssignmentLocation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,6 +155,137 @@ pub fn get_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String
     }
 
     Ok(PlannerDepth { tactic, teams })
+}
+
+pub fn get_slot_candidates(
+    conn: &Connection,
+    save_id: i64,
+    team: PlannerTeam,
+    lane_id: &str,
+    search: &str,
+) -> Result<Vec<PlannerSlotCandidate>, String> {
+    let search = normalize_candidate_search(search)?;
+    let tactic = ensure_depth(conn, save_id)?;
+    let lane = find_lane(&tactic, lane_id)?;
+    let snapshot_id = current_snapshot_id(conn, save_id)?
+        .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
+
+    let mut statement = conn
+        .prepare(
+            "SELECT
+                p.uid,
+                p.name,
+                p.current_club,
+                ip.score,
+                oop.score,
+                assignment_string.team,
+                assignment_string.id,
+                assignment_string.string_order,
+                assignment.lane_id
+             FROM players p
+             LEFT JOIN player_role_scores ip
+               ON ip.snapshot_id = p.snapshot_id
+              AND ip.uid = p.uid
+              AND ip.role_id = ?4
+             LEFT JOIN player_role_scores oop
+               ON oop.snapshot_id = p.snapshot_id
+              AND oop.uid = p.uid
+              AND oop.role_id = ?5
+             LEFT JOIN planner_assignments assignment
+               ON assignment.save_id = ?2
+              AND assignment.player_uid = p.uid
+             LEFT JOIN planner_strings assignment_string
+               ON assignment_string.id = assignment.string_id
+             WHERE p.snapshot_id = ?1
+               AND EXISTS(
+                   SELECT 1
+                   FROM planner_club_sources source
+                   WHERE source.save_id = ?2
+                     AND source.team = ?3
+                     AND source.club_name = p.current_club
+                     AND (source.team_level IS NULL OR source.team_level = p.team_level)
+               )",
+        )
+        .map_err(|error| error.to_string())?;
+    let candidates = statement
+        .query_map(
+            params![
+                snapshot_id,
+                save_id,
+                team.as_str(),
+                lane.ip_role_id,
+                lane.oop_role_id,
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<u8>>(3)?,
+                    row.get::<_, Option<u8>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<i64>>(6)?,
+                    row.get::<_, Option<i64>>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                ))
+            },
+        )
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    let mut candidates = candidates
+        .into_iter()
+        .filter(|(_, name, _, _, _, _, _, _, _)| name.to_lowercase().contains(&search))
+        .map(
+            |(
+                player_uid,
+                name,
+                current_club,
+                ip_score,
+                oop_score,
+                assignment_team,
+                assignment_string_id,
+                assignment_string_order,
+                assignment_lane_id,
+            )| {
+                let assignment_location = match (
+                    assignment_team,
+                    assignment_string_id,
+                    assignment_string_order,
+                    assignment_lane_id,
+                ) {
+                    (Some(team), Some(string_id), Some(string_order), Some(lane_id)) => {
+                        Some(PlannerAssignmentLocation {
+                            team: PlannerTeam::parse(&team)?,
+                            string_id,
+                            string_order,
+                            lane_id,
+                        })
+                    }
+                    _ => None,
+                };
+                Ok(PlannerSlotCandidate {
+                    player_uid,
+                    name,
+                    current_club,
+                    ip_score,
+                    oop_score,
+                    combined_score: combine_role_scores(ip_score, oop_score, tactic.ip_weight),
+                    assignment_location,
+                })
+            },
+        )
+        .collect::<Result<Vec<_>, String>>()?;
+    candidates.sort_by(|left, right| {
+        right
+            .combined_score
+            .cmp(&left.combined_score)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+            .then_with(|| left.player_uid.cmp(&right.player_uid))
+    });
+    candidates.truncate(MAX_SLOT_CANDIDATES);
+    Ok(candidates)
 }
 
 pub fn add_string(
@@ -326,6 +478,16 @@ pub fn move_player(
         &last_known_name,
     )?;
     tx.commit().map_err(|error| error.to_string())
+}
+
+fn normalize_candidate_search(search: &str) -> Result<String, String> {
+    let search = search.trim();
+    if search.chars().count() > MAX_CANDIDATE_SEARCH_LEN {
+        return Err(format!(
+            "Candidate search must be at most {MAX_CANDIDATE_SEARCH_LEN} characters"
+        ));
+    }
+    Ok(search.to_lowercase())
 }
 
 fn ensure_depth(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
@@ -621,8 +783,8 @@ mod tests {
     use crate::features::snapshot;
 
     use super::{
-        add_string, assign_player, clear_assignment, get_depth, move_player, remove_string,
-        AssignmentState, PlannerTeam,
+        add_string, assign_player, clear_assignment, get_depth, get_slot_candidates, move_player,
+        remove_string, AssignmentState, PlannerTeam,
     };
 
     fn open_with_snapshot() -> (tempfile::TempDir, Connection, i64) {
@@ -654,6 +816,125 @@ mod tests {
             .find(|team_depth| team_depth.team == team)
             .expect("team depth")
             .strings
+    }
+
+    fn add_picker_candidates(temp_dir: &tempfile::TempDir, conn: &mut Connection, save_id: i64) {
+        let dump_path = temp_dir.path().join("picker-candidates.json");
+        let mut dump: serde_json::Value =
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v5.json"))
+                .expect("parse golden dump");
+        let original = dump["players"][0].clone();
+        let mut reserve = original.clone();
+        reserve["uid"] = serde_json::Value::Number(78.into());
+        reserve["name"] = serde_json::Value::String("Reserve Player".to_string());
+        reserve["teamLevel"] = serde_json::Value::String("reserve".to_string());
+        let mut b_team = original.clone();
+        b_team["uid"] = serde_json::Value::Number(79.into());
+        b_team["name"] = serde_json::Value::String("B Team Player".to_string());
+        b_team["currentClub"] = serde_json::Value::String("Loan B FC".to_string());
+        let mut unknown = b_team.clone();
+        unknown["uid"] = serde_json::Value::Number(80.into());
+        unknown["name"] = serde_json::Value::String("Unknown Score Player".to_string());
+        dump["players"] = serde_json::Value::Array(vec![original, reserve, b_team, unknown]);
+        dump["playerCount"] = serde_json::Value::Number(4.into());
+        std::fs::write(
+            &dump_path,
+            serde_json::to_string(&dump).expect("serialize picker candidates"),
+        )
+        .expect("write picker candidates");
+        snapshot::ingest::ingest_dump_file_for_save(conn, save_id, &dump_path)
+            .expect("ingest picker candidates");
+        service::save_club_family(
+            conn,
+            save_id,
+            "Loan FC",
+            &[ClubSourceInput {
+                team: "reserves".to_string(),
+                club_name: "Loan B FC".to_string(),
+                team_level: None,
+            }],
+        )
+        .expect("configure B-team source");
+    }
+
+    #[test]
+    fn returns_ranked_candidates_from_the_target_team_club_family() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+                params![save_id],
+                |row| row.get(0),
+            )
+            .expect("current snapshot");
+        conn.execute(
+            "UPDATE player_role_scores
+             SET score = CASE uid
+                 WHEN 78 THEN 50
+                 WHEN 79 THEN 80
+                 WHEN 80 THEN NULL
+                 ELSE score
+             END
+             WHERE snapshot_id = ?1
+               AND role_id IN ('goalkeeper_ip', 'line_holding_keeper_oop')",
+            params![snapshot_id],
+        )
+        .expect("set candidate scores");
+        let depth = get_depth(&conn, save_id).expect("create planner depth");
+        let reserve_string_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
+        assign_player(&conn, save_id, reserve_string_id, "goalkeeper", 78)
+            .expect("assign reserve player");
+
+        let candidates =
+            get_slot_candidates(&conn, save_id, PlannerTeam::Reserves, "goalkeeper", "")
+                .expect("load reserve candidates");
+
+        assert_eq!(
+            candidates
+                .iter()
+                .map(|candidate| candidate.player_uid)
+                .collect::<Vec<_>>(),
+            [79, 78, 80]
+        );
+        assert_eq!(candidates[0].combined_score, Some(80));
+        assert_eq!(candidates[1].combined_score, Some(50));
+        assert_eq!(candidates[2].combined_score, None);
+        assert_eq!(candidates[0].current_club, "Loan B FC");
+        assert_eq!(
+            candidates[1].assignment_location.as_ref().map(|location| (
+                location.team.as_str(),
+                location.string_id,
+                location.lane_id.as_str()
+            )),
+            Some(("reserves", reserve_string_id, "goalkeeper"))
+        );
+
+        let searched = get_slot_candidates(
+            &conn,
+            save_id,
+            PlannerTeam::Reserves,
+            "goalkeeper",
+            "b team",
+        )
+        .expect("search reserve candidates");
+        assert_eq!(
+            searched
+                .iter()
+                .map(|candidate| candidate.player_uid)
+                .collect::<Vec<_>>(),
+            [79]
+        );
+
+        let error = get_slot_candidates(
+            &conn,
+            save_id,
+            PlannerTeam::Reserves,
+            "goalkeeper",
+            &"x".repeat(121),
+        )
+        .expect_err("reject an unbounded search");
+        assert_eq!(error, "Candidate search must be at most 120 characters");
     }
 
     #[test]

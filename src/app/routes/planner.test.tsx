@@ -6,10 +6,13 @@ import {
 } from "@tanstack/react-router";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
-import type { PlannerDepth } from "@/features/planner/types/depth";
+import type {
+  PlannerDepth,
+  PlannerSlotCandidate,
+} from "@/features/planner/types/depth";
 import type { PlannerTactic } from "@/features/planner/types/tactic";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
@@ -19,15 +22,17 @@ import {
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
+  setPlannerAssignmentError,
   setPlannerAvailableClubs,
   setPlannerDepthIpcMock,
+  setPlannerSlotCandidates,
   setPlannerTacticSaveError,
 } from "@/testing/planner-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 
-function renderPlannerRoute() {
+function renderPlannerRoute({ staleTime = 0 }: { staleTime?: number } = {}) {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: { queries: { retry: false, staleTime } },
   });
   const router = createRouter({
     routeTree,
@@ -330,11 +335,12 @@ describe("planner route", () => {
         name: /Missing Centre-Back/,
       }),
     ).toBeInTheDocument();
-    expect(
-      within(matrix).getByRole("button", {
-        name: /No Score Player, Resolved, score —/,
-      }),
-    ).toBeInTheDocument();
+    const unavailableCell = within(matrix).getByRole("button", {
+      name: /No Score Player, Resolved, score —/,
+    });
+    expect(unavailableCell).not.toBeDisabled();
+    unavailableCell.focus();
+    expect(document.activeElement).toBe(unavailableCell);
     expect(within(matrix).getAllByText("—").length).toBeGreaterThan(0);
 
     const seniorTab = screen.getByRole("tab", { name: "Senior" });
@@ -354,7 +360,422 @@ describe("planner route", () => {
     cell.focus();
     expect(document.activeElement).toBe(cell);
   });
+
+  it("opens a slot-fit picker from an empty matrix cell", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    const cell = await screen.findByRole("button", {
+      name: /Senior, 1st string, Goalkeeper, Empty/,
+    });
+    await user.click(cell);
+
+    expect(
+      screen.getByRole("dialog", { name: "Find a player for Goalkeeper" }),
+    ).toBeInTheDocument();
+  });
+
+  it("searches null-score candidates and assigns the keyboard selection", async () => {
+    const scrollIntoView = vi.fn();
+    const scrollDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    try {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setPlannerAvailableClubs(["Barcelona"]);
+      setPlannerSlotCandidates([
+        slotCandidate({
+          playerUid: 77,
+          name: "First Keeper",
+          currentClub: "Barcelona",
+          ipScore: 90,
+          oopScore: 80,
+          combinedScore: 85,
+        }),
+        slotCandidate({
+          playerUid: 78,
+          name: "B Team Keeper",
+          currentClub: "Barca Athletic",
+          ipScore: null,
+          oopScore: 70,
+          combinedScore: null,
+        }),
+      ]);
+      renderPlannerRoute();
+
+      const cell = await screen.findByRole("button", {
+        name: /Senior, 1st string, Goalkeeper, Empty/,
+      });
+      await user.click(cell);
+      const search = screen.getByRole("combobox", {
+        name: "Search squad candidates",
+      });
+      await user.type(search, "Keeper");
+      const bTeam = await screen.findByRole("option", {
+        name: /B Team Keeper/,
+      });
+      expect(bTeam).toHaveTextContent("IP — · OOP 70");
+      expect(bTeam).toHaveTextContent("—");
+      expect(
+        screen.getByRole("option", { name: /First Keeper/ }),
+      ).toBeInTheDocument();
+      scrollIntoView.mockClear();
+      await user.keyboard("{ArrowDown}");
+      expect(bTeam).toHaveAttribute("aria-selected", "true");
+      await waitFor(() =>
+        expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" }),
+      );
+
+      await user.keyboard("{Enter}");
+
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      );
+      expect(
+        screen.getByRole("button", { name: /B Team Keeper, Resolved/ }),
+      ).toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).toBe(cell));
+    } finally {
+      if (scrollDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollIntoView",
+          scrollDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
+  });
+
+  it("refreshes 60-second cached candidates after assigning a player", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(
+      withSecondSeniorString(resolvePlannerDepthIpcMock()),
+    );
+    setPlannerSlotCandidates([
+      slotCandidate({
+        playerUid: 77,
+        name: "Cache Keeper",
+        currentClub: "Barcelona",
+        ipScore: 85,
+        oopScore: 75,
+        combinedScore: 80,
+      }),
+    ]);
+    renderPlannerRoute({ staleTime: 60_000 });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /Senior, 1st string, Goalkeeper, Empty/,
+      }),
+    );
+    await user.click(
+      await screen.findByRole("option", { name: /Cache Keeper/ }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /Senior, 2nd string, Goalkeeper, Empty/,
+      }),
+    );
+    const cacheKeeper = await screen.findByRole("option", {
+      name: /Cache Keeper/,
+    });
+    expect(cacheKeeper).toHaveTextContent(
+      "Assigned: Senior · 1st string · Goalkeeper",
+    );
+    await user.click(cacheKeeper);
+
+    expect(
+      screen.getByRole("dialog", { name: "Move Cache Keeper?" }),
+    ).toHaveTextContent(
+      "Move Cache Keeper from Senior · 1st string · Goalkeeper to Senior · 2nd string · Goalkeeper?",
+    );
+  });
+
+  it("requires confirmation before clearing an occupied slot", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(
+      withSecondReserveString(
+        withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
+      ),
+    );
+    setPlannerSlotCandidates([
+      slotCandidate({
+        playerUid: 77,
+        name: "Reserve Keeper",
+        currentClub: "Barcelona",
+        ipScore: 85,
+        oopScore: 75,
+        combinedScore: 80,
+      }),
+    ]);
+    renderPlannerRoute({ staleTime: 60_000 });
+
+    await user.click(await screen.findByRole("tab", { name: "Reserves" }));
+    const occupiedCell = screen.getByRole("button", {
+      name: /Reserves, 1st string, Goalkeeper, Reserve Keeper, Resolved/,
+    });
+    const emptyCell = screen.getByRole("button", {
+      name: /Reserves, 2nd string, Goalkeeper, Empty/,
+    });
+
+    await user.click(emptyCell);
+    expect(
+      await screen.findByRole("option", { name: /Reserve Keeper/ }),
+    ).toHaveTextContent("Assigned: Reserves · 1st string · Goalkeeper");
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    await user.click(occupiedCell);
+    const clearDialog = screen.getByRole("dialog", {
+      name: "Clear Reserve Keeper?",
+    });
+    expect(clearDialog).toHaveTextContent(
+      "Reserve Keeper is assigned to Reserves · 1st string · Goalkeeper. It must be cleared before assigning or moving a player.",
+    );
+    expect(within(clearDialog).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(within(clearDialog).queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(document.activeElement).toBe(occupiedCell));
+    expect(occupiedCell).toHaveTextContent("Reserve Keeper");
+
+    occupiedCell.focus();
+    await user.keyboard("{Enter}");
+    setPlannerAssignmentError("Clear failed");
+    await user.click(screen.getByRole("button", { name: "Clear slot" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Clear failed");
+    await waitFor(() => expect(document.activeElement).toBe(occupiedCell));
+    expect(occupiedCell).toHaveTextContent("Reserve Keeper");
+
+    setPlannerAssignmentError(null);
+    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("button", { name: "Clear slot" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(occupiedCell).toHaveAccessibleName(
+      /Reserves, 1st string, Goalkeeper, Empty/,
+    );
+    await waitFor(() => expect(document.activeElement).toBe(occupiedCell));
+
+    await user.click(emptyCell);
+    expect(
+      await screen.findByRole("option", { name: /Reserve Keeper/ }),
+    ).toHaveTextContent("Unassigned");
+  });
+
+  it("confirms moves for assigned players before reconciling the depth matrix", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = withReserveGoalkeeper(resolvePlannerDepthIpcMock());
+    setPlannerDepthIpcMock(depth);
+    setPlannerSlotCandidates([
+      slotCandidate({
+        playerUid: 77,
+        name: "Reserve Keeper",
+        currentClub: "Barcelona",
+        ipScore: 85,
+        oopScore: 75,
+        combinedScore: 80,
+        assignmentLocation: {
+          team: "reserves",
+          stringId: 2,
+          stringOrder: 0,
+          laneId: "goalkeeper",
+        },
+      }),
+    ]);
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /Senior, 1st string, Goalkeeper, Empty/,
+      }),
+    );
+    await user.click(
+      await screen.findByRole("option", { name: /Reserve Keeper/ }),
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: "Move Reserve Keeper?" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Move Reserve Keeper?" }),
+    ).toHaveTextContent(
+      "Move Reserve Keeper from Reserves · 1st string · Goalkeeper to Senior · 1st string · Goalkeeper?",
+    );
+    const depthFetchesBeforeMove = getPlannerDepthIpcMockCalls();
+    await user.click(screen.getByRole("button", { name: "Confirm move" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(getPlannerDepthIpcMockCalls()).toBeGreaterThan(
+        depthFetchesBeforeMove,
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Reserves" }));
+    expect(
+      screen.getByRole("button", {
+        name: /Reserves, 1st string, Goalkeeper, Empty/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("cancels and fails without changing assignments, then restores the origin focus", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(withReserveGoalkeeper(resolvePlannerDepthIpcMock()));
+    setPlannerSlotCandidates([
+      slotCandidate({
+        playerUid: 77,
+        name: "Reserve Keeper",
+        currentClub: "Barcelona",
+        ipScore: 85,
+        oopScore: 75,
+        combinedScore: 80,
+        assignmentLocation: {
+          team: "reserves",
+          stringId: 2,
+          stringOrder: 0,
+          laneId: "goalkeeper",
+        },
+      }),
+    ]);
+    renderPlannerRoute();
+
+    const cell = await screen.findByRole("button", {
+      name: /Senior, 1st string, Goalkeeper, Empty/,
+    });
+    cell.focus();
+    await user.keyboard("{Enter}");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(document.activeElement).toBe(cell));
+
+    setPlannerAssignmentError("Move failed");
+    await user.keyboard("{Enter}");
+    await user.click(
+      await screen.findByRole("option", { name: /Reserve Keeper/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Confirm move" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Move failed");
+    await waitFor(() => expect(document.activeElement).toBe(cell));
+    expect(
+      screen.getByRole("button", {
+        name: /Senior, 1st string, Goalkeeper, Empty/,
+      }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Reserves" }));
+    expect(
+      screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
+    ).toBeInTheDocument();
+  });
 });
+
+function slotCandidate(
+  candidate: Partial<PlannerSlotCandidate> &
+    Pick<PlannerSlotCandidate, "playerUid" | "name">,
+): PlannerSlotCandidate {
+  return {
+    playerUid: candidate.playerUid,
+    name: candidate.name,
+    currentClub: candidate.currentClub ?? "Barcelona",
+    ipScore: candidate.ipScore ?? null,
+    oopScore: candidate.oopScore ?? null,
+    combinedScore: candidate.combinedScore ?? null,
+    assignmentLocation: candidate.assignmentLocation ?? null,
+  };
+}
+
+function withReserveGoalkeeper(depth: PlannerDepth): PlannerDepth {
+  return {
+    ...depth,
+    teams: depth.teams.map((team) =>
+      team.team === "reserves"
+        ? {
+            ...team,
+            strings: [
+              {
+                ...team.strings[0],
+                assignments: [
+                  {
+                    id: 201,
+                    laneId: "goalkeeper",
+                    playerUid: 77,
+                    lastKnownName: "Reserve Keeper",
+                    currentName: "Reserve Keeper",
+                    state: "resolved",
+                    combinedScore: 80,
+                  },
+                ],
+              },
+            ],
+          }
+        : team,
+    ),
+  };
+}
+
+function withSecondSeniorString(depth: PlannerDepth): PlannerDepth {
+  return {
+    ...depth,
+    teams: depth.teams.map((team) =>
+      team.team === "senior"
+        ? {
+            ...team,
+            strings: [
+              ...team.strings,
+              { id: 4, stringOrder: 1, assignments: [] },
+            ],
+          }
+        : team,
+    ),
+  };
+}
+
+function withSecondReserveString(depth: PlannerDepth): PlannerDepth {
+  return {
+    ...depth,
+    teams: depth.teams.map((team) =>
+      team.team === "reserves"
+        ? {
+            ...team,
+            strings: [
+              ...team.strings,
+              { id: 4, stringOrder: 1, assignments: [] },
+            ],
+          }
+        : team,
+    ),
+  };
+}
 
 function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
   return {

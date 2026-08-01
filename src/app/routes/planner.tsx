@@ -73,6 +73,7 @@ function PlannerPageContent() {
         options={tacticOptions}
       />
       <PlannerDepthMatrix
+        activeSaveId={snapshot.saveId}
         depth={depth}
         tactic={tactic}
         options={tacticOptions}

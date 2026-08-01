@@ -5,8 +5,8 @@ use crate::db::Db;
 use crate::features::snapshot::service;
 
 use super::depth::{
-    self as depth_service, PlannerAssignment, PlannerDepth, PlannerDepthTeam, PlannerString,
-    PlannerTeam,
+    self as depth_service, PlannerAssignment, PlannerAssignmentLocation, PlannerDepth,
+    PlannerDepthTeam, PlannerSlotCandidate, PlannerString, PlannerTeam,
 };
 use super::service::{self as planner_service, ClubFamily, ClubSourceInput};
 use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
@@ -201,6 +201,54 @@ impl From<PlannerAssignment> for PlannerAssignmentDto {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PlannerAssignmentLocationDto {
+    pub team: String,
+    pub string_id: i64,
+    pub string_order: i64,
+    pub lane_id: String,
+}
+
+impl From<PlannerAssignmentLocation> for PlannerAssignmentLocationDto {
+    fn from(location: PlannerAssignmentLocation) -> Self {
+        Self {
+            team: location.team.as_str().to_string(),
+            string_id: location.string_id,
+            string_order: location.string_order,
+            lane_id: location.lane_id,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerSlotCandidateDto {
+    pub player_uid: i64,
+    pub name: String,
+    pub current_club: String,
+    pub ip_score: Option<u8>,
+    pub oop_score: Option<u8>,
+    pub combined_score: Option<u8>,
+    pub assignment_location: Option<PlannerAssignmentLocationDto>,
+}
+
+impl From<PlannerSlotCandidate> for PlannerSlotCandidateDto {
+    fn from(candidate: PlannerSlotCandidate) -> Self {
+        Self {
+            player_uid: candidate.player_uid,
+            name: candidate.name,
+            current_club: candidate.current_club,
+            ip_score: candidate.ip_score,
+            oop_score: candidate.oop_score,
+            combined_score: candidate.combined_score,
+            assignment_location: candidate
+                .assignment_location
+                .map(PlannerAssignmentLocationDto::from),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlannerStringDto {
     pub id: i64,
     pub string_order: i64,
@@ -331,6 +379,26 @@ pub fn get_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
     Ok(depth_service::get_depth(&conn, save_id)?.into())
+}
+
+#[tauri::command]
+pub fn get_planner_slot_candidates(
+    team: String,
+    lane_id: String,
+    search: String,
+    db: State<'_, Db>,
+) -> Result<Vec<PlannerSlotCandidateDto>, String> {
+    let team = PlannerTeam::parse(&team)?;
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    depth_service::get_slot_candidates(&conn, save_id, team, &lane_id, &search).map(|candidates| {
+        candidates
+            .into_iter()
+            .map(PlannerSlotCandidateDto::from)
+            .collect()
+    })
 }
 
 #[tauri::command]

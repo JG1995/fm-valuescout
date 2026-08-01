@@ -2,7 +2,10 @@ import type {
   ClubFamily,
   ClubSourceInput,
 } from "@/features/planner/types/club-family";
-import type { PlannerDepth } from "@/features/planner/types/depth";
+import type {
+  PlannerDepth,
+  PlannerSlotCandidate,
+} from "@/features/planner/types/depth";
 import type {
   PlannerTactic,
   TacticOptions,
@@ -242,6 +245,8 @@ let tactic: PlannerTactic = cloneTactic(DEFAULT_TACTIC);
 let depth: PlannerDepth = buildDefaultDepth();
 let depthFetchCount = 0;
 let tacticSaveError: string | null = null;
+let slotCandidates: PlannerSlotCandidate[] = [];
+let assignmentError: string | null = null;
 
 function cloneTactic(value: PlannerTactic): PlannerTactic {
   return {
@@ -266,6 +271,15 @@ function cloneDepth(value: PlannerDepth): PlannerDepth {
   };
 }
 
+function cloneSlotCandidates(value: PlannerSlotCandidate[]) {
+  return value.map((candidate) => ({
+    ...candidate,
+    assignmentLocation: candidate.assignmentLocation
+      ? { ...candidate.assignmentLocation }
+      : null,
+  }));
+}
+
 function buildDefaultDepth(): PlannerDepth {
   return {
     tactic: cloneTactic(DEFAULT_TACTIC),
@@ -283,6 +297,8 @@ export function resetPlannerIpcMock() {
   depth = buildDefaultDepth();
   depthFetchCount = 0;
   tacticSaveError = null;
+  slotCandidates = [];
+  assignmentError = null;
 }
 
 export function setPlannerAvailableClubs(clubs: string[]) {
@@ -322,6 +338,169 @@ export function getPlannerDepthIpcMockCalls() {
 
 export function setPlannerDepthIpcMock(value: PlannerDepth) {
   depth = cloneDepth(value);
+}
+
+export function setPlannerSlotCandidates(value: PlannerSlotCandidate[]) {
+  slotCandidates = cloneSlotCandidates(value);
+}
+
+export function setPlannerAssignmentError(message: string | null) {
+  assignmentError = message;
+}
+
+export function resolvePlannerSlotCandidatesIpcMock(args: unknown) {
+  const search =
+    typeof args === "object" &&
+    args !== null &&
+    "search" in args &&
+    typeof args.search === "string"
+      ? args.search.trim().toLowerCase()
+      : "";
+  return cloneSlotCandidates(
+    slotCandidates
+      .filter((candidate) => candidate.name.toLowerCase().includes(search))
+      .map((candidate) => ({
+        ...candidate,
+        assignmentLocation: assignmentLocation(candidate.playerUid),
+      })),
+  );
+}
+
+function assignmentLocation(playerUid: number) {
+  for (const team of depth.teams) {
+    for (const plannerString of team.strings) {
+      const assignment = plannerString.assignments.find(
+        (candidate) => candidate.playerUid === playerUid,
+      );
+      if (assignment) {
+        return {
+          team: team.team,
+          stringId: plannerString.id,
+          stringOrder: plannerString.stringOrder,
+          laneId: assignment.laneId,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+type PlannerAssignmentIpcArgs = {
+  stringId: number;
+  laneId: string;
+  playerUid: number;
+};
+
+type PlannerSlotIpcArgs = {
+  stringId: number;
+  laneId: string;
+};
+
+function plannerSlotArgs(args: unknown): PlannerSlotIpcArgs {
+  if (
+    typeof args !== "object" ||
+    args === null ||
+    !("stringId" in args) ||
+    !("laneId" in args) ||
+    typeof args.stringId !== "number" ||
+    typeof args.laneId !== "string"
+  ) {
+    throw "Invalid planner slot";
+  }
+  return { stringId: args.stringId, laneId: args.laneId };
+}
+
+function plannerAssignmentArgs(args: unknown): PlannerAssignmentIpcArgs {
+  if (
+    typeof args !== "object" ||
+    args === null ||
+    !("stringId" in args) ||
+    !("laneId" in args) ||
+    !("playerUid" in args) ||
+    typeof args.stringId !== "number" ||
+    typeof args.laneId !== "string" ||
+    typeof args.playerUid !== "number"
+  ) {
+    throw "Invalid planner assignment";
+  }
+  return {
+    stringId: args.stringId,
+    laneId: args.laneId,
+    playerUid: args.playerUid,
+  };
+}
+
+function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
+  if (assignmentError) {
+    throw assignmentError;
+  }
+  const { stringId, laneId, playerUid } = plannerAssignmentArgs(args);
+  const target = depth.teams
+    .flatMap((team) => team.strings)
+    .find((plannerString) => plannerString.id === stringId);
+  if (!target) {
+    throw "Planner string not found";
+  }
+  if (target.assignments.some((assignment) => assignment.laneId === laneId)) {
+    throw "Planner cell is already occupied";
+  }
+  const existing = depth.teams
+    .flatMap((team) => team.strings)
+    .flatMap((plannerString) => plannerString.assignments)
+    .find((assignment) => assignment.playerUid === playerUid);
+  if (existing && !move) {
+    throw `Player ${playerUid} is already assigned`;
+  }
+  if (!existing && move) {
+    throw `Player ${playerUid} is not assigned`;
+  }
+  if (existing) {
+    for (const team of depth.teams) {
+      for (const plannerString of team.strings) {
+        plannerString.assignments = plannerString.assignments.filter(
+          (assignment) => assignment.playerUid !== playerUid,
+        );
+      }
+    }
+  }
+  const candidate = slotCandidates.find(
+    (slotCandidate) => slotCandidate.playerUid === playerUid,
+  );
+  target.assignments.push({
+    id: -playerUid,
+    laneId,
+    playerUid,
+    lastKnownName: candidate?.name ?? `Player ${playerUid}`,
+    currentName: candidate?.name ?? `Player ${playerUid}`,
+    state: "resolved",
+    combinedScore: candidate?.combinedScore ?? null,
+  });
+  return cloneDepth(depth);
+}
+
+export function resolveAssignPlannerPlayerIpcMock(args: unknown) {
+  return resolvePlannerAssignmentIpcMock(args, false);
+}
+
+export function resolveMovePlannerPlayerIpcMock(args: unknown) {
+  return resolvePlannerAssignmentIpcMock(args, true);
+}
+
+export function resolveClearPlannerAssignmentIpcMock(args: unknown) {
+  if (assignmentError) {
+    throw assignmentError;
+  }
+  const { stringId, laneId } = plannerSlotArgs(args);
+  const target = depth.teams
+    .flatMap((team) => team.strings)
+    .find((plannerString) => plannerString.id === stringId);
+  if (!target) {
+    throw "Planner string not found";
+  }
+  target.assignments = target.assignments.filter(
+    (assignment) => assignment.laneId !== laneId,
+  );
+  return cloneDepth(depth);
 }
 
 export function setPlannerTacticSaveError(message: string | null) {

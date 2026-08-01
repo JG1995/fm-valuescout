@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { PLANNER_TEAMS, type PlannerTeam } from "../types/club-family";
@@ -10,6 +10,10 @@ import type {
 } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
 import { laneLabel, phasePosition, roleLabel } from "../utils/tactic-editor";
+import {
+  PlannerSlotFitPicker,
+  type PlannerSlotTarget,
+} from "./planner-slot-fit-picker";
 
 const TEAM_LABELS: Record<PlannerTeam, string> = {
   senior: "Senior",
@@ -90,18 +94,22 @@ function AssignmentCell({
   laneId,
   laneName,
   plannerString,
+  onOpen,
 }: {
   team: PlannerTeam;
   laneId: string;
   laneName: string;
   plannerString: PlannerString;
+  onOpen: (target: PlannerSlotTarget) => void;
 }) {
   const stringLabel = ordinal(plannerString.stringOrder);
   const assignment = assignmentForLane(plannerString, laneId);
   const name = assignmentName(assignment);
   const state = assignmentStateLabel(assignment);
   const score = assignment?.combinedScore ?? null;
-  const ariaLabel = `${TEAM_LABELS[team]}, ${stringLabel}, ${laneName}, ${name}, ${state}, score ${score ?? "—"}`;
+  const ariaLabel = assignment
+    ? `${TEAM_LABELS[team]}, ${stringLabel}, ${laneName}, ${name}, ${state}, score ${score ?? "—"}`
+    : `${TEAM_LABELS[team]}, ${stringLabel}, ${laneName}, Empty`;
 
   return (
     <td className="min-w-52 border-b border-outline-variant px-3 py-2 align-top">
@@ -109,6 +117,16 @@ function AssignmentCell({
         type="button"
         className="w-full rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         aria-label={ariaLabel}
+        onClick={() =>
+          onOpen({
+            team,
+            stringId: plannerString.id,
+            stringOrder: plannerString.stringOrder,
+            laneId,
+            laneName,
+            occupantName: assignment ? name : null,
+          })
+        }
       >
         <span className="block space-y-1">
           <span
@@ -142,10 +160,12 @@ function PlannerDepthTable({
   teamDepth,
   tactic,
   options,
+  onOpen,
 }: {
   teamDepth: PlannerDepthTeam;
   tactic: PlannerDepth["tactic"];
   options: TacticOptions;
+  onOpen: (target: PlannerSlotTarget) => void;
 }) {
   const teamLabel = TEAM_LABELS[teamDepth.team];
 
@@ -209,6 +229,7 @@ function PlannerDepthTable({
                   laneId={lane.laneId}
                   laneName={laneLabel(lane.laneId)}
                   plannerString={plannerString}
+                  onOpen={onOpen}
                 />
               ))}
             </tr>
@@ -223,17 +244,49 @@ export function PlannerDepthMatrix({
   depth,
   tactic,
   options,
+  activeSaveId,
 }: {
   depth: PlannerDepth;
   tactic: PlannerDepth["tactic"];
   options: TacticOptions;
+  activeSaveId: number;
 }) {
   const [selectedTeam, setSelectedTeam] = useState<PlannerTeam>("senior");
+  const [picker, setPicker] = useState<PlannerSlotTarget | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
   const tabRefs = useRef<Record<PlannerTeam, HTMLButtonElement | null>>({
     senior: null,
     reserves: null,
     youth: null,
   });
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current !== null) {
+        window.clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, []);
+
+  const openPicker = (target: PlannerSlotTarget) => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setPickerError(null);
+    setPicker(target);
+    setPickerOpen(true);
+  };
+
+  const closePicker = () => {
+    setPickerOpen(false);
+    closeTimerRef.current = window.setTimeout(() => {
+      setPicker(null);
+      closeTimerRef.current = null;
+    }, 200);
+  };
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const next = nextTeam(selectedTeam, event.key);
@@ -252,6 +305,11 @@ export function PlannerDepthMatrix({
   return (
     <Panel title="Squad depth" flush>
       <div className="space-y-4 p-4">
+        {pickerError ? (
+          <p className="text-body-sm text-error" role="alert">
+            {pickerError}
+          </p>
+        ) : null}
         <div
           role="tablist"
           aria-label="Squad planner teams"
@@ -303,11 +361,21 @@ export function PlannerDepthMatrix({
                 teamDepth={teamDepth}
                 tactic={tactic}
                 options={options}
+                onOpen={openPicker}
               />
             </div>
           );
         })}
       </div>
+      {picker ? (
+        <PlannerSlotFitPicker
+          activeSaveId={activeSaveId}
+          open={pickerOpen}
+          target={picker}
+          onClose={closePicker}
+          onMutationError={setPickerError}
+        />
+      ) : null}
     </Panel>
   );
 }

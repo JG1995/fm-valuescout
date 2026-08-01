@@ -17,9 +17,13 @@ import {
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
 import {
   resetPlannerIpcMock,
+  resolveAssignPlannerPlayerIpcMock,
+  resolveClearPlannerAssignmentIpcMock,
+  resolveMovePlannerPlayerIpcMock,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerClubsIpcMock,
   resolvePlannerDepthIpcMock,
+  resolvePlannerSlotCandidatesIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
   resolveSavePlannerClubFamilyIpcMock,
@@ -139,8 +143,24 @@ function registerIpcMocks() {
       return resolvePlannerDepthIpcMock();
     }
 
+    if (cmd === "get_planner_slot_candidates") {
+      return resolvePlannerSlotCandidatesIpcMock(args);
+    }
+
     if (cmd === "save_planner_tactic") {
       return resolveSavePlannerTacticIpcMock(args);
+    }
+
+    if (cmd === "assign_planner_player") {
+      return resolveAssignPlannerPlayerIpcMock(args);
+    }
+
+    if (cmd === "clear_planner_assignment") {
+      return resolveClearPlannerAssignmentIpcMock(args);
+    }
+
+    if (cmd === "move_planner_player") {
+      return resolveMovePlannerPlayerIpcMock(args);
     }
 
     if (cmd === "load_data") {

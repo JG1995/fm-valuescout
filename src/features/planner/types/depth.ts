@@ -28,3 +28,20 @@ export type PlannerDepth = {
   tactic: PlannerTactic;
   teams: PlannerDepthTeam[];
 };
+
+export type PlannerAssignmentLocation = {
+  team: PlannerTeam;
+  stringId: number;
+  stringOrder: number;
+  laneId: string;
+};
+
+export type PlannerSlotCandidate = {
+  playerUid: number;
+  name: string;
+  currentClub: string;
+  ipScore: number | null;
+  oopScore: number | null;
+  combinedScore: number | null;
+  assignmentLocation: PlannerAssignmentLocation | null;
+};

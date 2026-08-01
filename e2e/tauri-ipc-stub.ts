@@ -10,6 +10,28 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
     content: `
       let demoValue = "";
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
+      const plannerTactic = {
+        ipWeight: 0.5,
+        lanes: [
+          ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
+          ["left_back", "DL", "full_back_ip", "DL", "holding_full_back_oop"],
+          ["left_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
+          ["right_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
+          ["right_back", "DR", "full_back_ip", "DR", "holding_full_back_oop"],
+          ["defensive_midfielder", "DM", "defensive_midfielder_ip", "DM", "screening_defensive_midfielder_oop"],
+          ["left_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
+          ["right_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
+          ["left_winger", "AML", "winger_ip", "ML", "tracking_wide_midfielder_oop"],
+          ["right_winger", "AMR", "winger_ip", "MR", "tracking_wide_midfielder_oop"],
+          ["centre_forward", "ST", "centre_forward_ip", "ST", "central_outlet_centre_forward_oop"],
+        ].map(([laneId, ipPosition, ipRoleId, oopPosition, oopRoleId]) => ({
+          laneId,
+          ipPosition,
+          ipRoleId,
+          oopPosition,
+          oopRoleId,
+        })),
+      };
 
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
@@ -141,26 +163,15 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_planner_tactic") {
+            return plannerTactic;
+          }
+
+          if (cmd === "get_planner_depth") {
             return {
-              ipWeight: 0.5,
-              lanes: [
-                ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
-                ["left_back", "DL", "full_back_ip", "DL", "holding_full_back_oop"],
-                ["left_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
-                ["right_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
-                ["right_back", "DR", "full_back_ip", "DR", "holding_full_back_oop"],
-                ["defensive_midfielder", "DM", "defensive_midfielder_ip", "DM", "screening_defensive_midfielder_oop"],
-                ["left_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
-                ["right_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
-                ["left_winger", "AML", "winger_ip", "ML", "tracking_wide_midfielder_oop"],
-                ["right_winger", "AMR", "winger_ip", "MR", "tracking_wide_midfielder_oop"],
-                ["centre_forward", "ST", "centre_forward_ip", "ST", "central_outlet_centre_forward_oop"],
-              ].map(([laneId, ipPosition, ipRoleId, oopPosition, oopRoleId]) => ({
-                laneId,
-                ipPosition,
-                ipRoleId,
-                oopPosition,
-                oopRoleId,
+              tactic: plannerTactic,
+              teams: ["senior", "reserves", "youth"].map((team, index) => ({
+                team,
+                strings: [{ id: index + 1, stringOrder: 0, assignments: [] }],
               })),
             };
           }
