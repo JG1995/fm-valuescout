@@ -1,0 +1,298 @@
+use rusqlite::params;
+
+use super::depth::{add_string, assign_player, get_depth, PlannerTeam};
+use super::optimizer::{match_lanes, optimize_depth, OptimizerCandidate};
+use super::test_support::{
+    add_picker_candidates, assigned_player_uid, assignment_provenance, open_with_snapshot,
+    set_player_age, set_player_positions, set_right_winger_scores, set_role_score, team_strings,
+};
+
+#[test]
+fn matcher_finds_the_best_total_instead_of_greedily_filling_the_first_lane() {
+    let candidates = [
+        OptimizerCandidate {
+            player_uid: 10,
+            last_known_name: "Flexible player".to_string(),
+            lane_scores: vec![Some(100), Some(99)],
+        },
+        OptimizerCandidate {
+            player_uid: 20,
+            last_known_name: "First-lane specialist".to_string(),
+            lane_scores: vec![Some(98), None],
+        },
+    ];
+
+    assert_eq!(match_lanes(&[0, 1], &candidates), [Some(1), Some(0)]);
+}
+
+#[test]
+fn matcher_prefers_a_zero_score_player_to_a_blank_lane() {
+    let candidates = [OptimizerCandidate {
+        player_uid: 10,
+        last_known_name: "Zero-score player".to_string(),
+        lane_scores: vec![Some(0)],
+    }];
+
+    assert_eq!(match_lanes(&[0], &candidates), [Some(0)]);
+}
+
+#[test]
+fn matcher_breaks_equal_scores_by_lowest_uid_in_lane_order() {
+    let candidates = [
+        OptimizerCandidate {
+            player_uid: 20,
+            last_known_name: "Second UID".to_string(),
+            lane_scores: vec![Some(50), Some(50)],
+        },
+        OptimizerCandidate {
+            player_uid: 10,
+            last_known_name: "First UID".to_string(),
+            lane_scores: vec![Some(50), Some(50)],
+        },
+    ];
+
+    assert_eq!(match_lanes(&[0, 1], &candidates), [Some(1), Some(0)]);
+}
+
+#[test]
+fn optimizer_reserves_manual_players_before_automatic_allocation() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_right_winger_scores(&conn, save_id, 77, Some(100));
+    set_right_winger_scores(&conn, save_id, 78, Some(90));
+
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let senior_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, senior_string_id, "goalkeeper", 77)
+        .expect("preserve the manual player");
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+    let senior_assignments = &team_strings(&optimized, PlannerTeam::Senior)[0].assignments;
+    assert!(senior_assignments
+        .iter()
+        .any(|assignment| assignment.player_uid == 77 && assignment.lane_id == "goalkeeper"));
+    assert!(senior_assignments
+        .iter()
+        .any(|assignment| assignment.player_uid == 78 && assignment.lane_id == "right_winger"));
+}
+
+#[test]
+fn optimizer_keeps_senior_priority_over_a_higher_global_total() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_player_age(&conn, save_id, 77, Some(18));
+    set_player_age(&conn, save_id, 78, Some(24));
+    set_right_winger_scores(&conn, save_id, 77, Some(100));
+    set_right_winger_scores(&conn, save_id, 78, Some(90));
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
+        Some(77)
+    );
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
+        None
+    );
+}
+
+#[test]
+fn optimizer_allocates_strings_in_ascending_order_within_a_team() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    let second_string_id = add_string(&conn, save_id, PlannerTeam::Senior)
+        .expect("add second string")
+        .id;
+    set_right_winger_scores(&conn, save_id, 77, Some(100));
+    set_right_winger_scores(&conn, save_id, 78, Some(90));
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+    let senior_strings = team_strings(&optimized, PlannerTeam::Senior);
+
+    assert_eq!(senior_strings[0].id, first_string_id);
+    assert_eq!(senior_strings[1].id, second_string_id);
+    assert_eq!(
+        senior_strings[0]
+            .assignments
+            .iter()
+            .find(|assignment| assignment.lane_id == "right_winger")
+            .map(|assignment| assignment.player_uid),
+        Some(77)
+    );
+    assert_eq!(
+        senior_strings[1]
+            .assignments
+            .iter()
+            .find(|assignment| assignment.lane_id == "right_winger")
+            .map(|assignment| assignment.player_uid),
+        Some(78)
+    );
+}
+
+#[test]
+fn optimizer_requires_age_both_positions_and_complete_scores() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let senior_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, senior_string_id, "right_winger", 77)
+        .expect("occupy the senior lane manually");
+
+    set_player_age(&conn, save_id, 78, None);
+    set_right_winger_scores(&conn, save_id, 78, Some(100));
+    set_player_age(&conn, save_id, 79, Some(23));
+    set_right_winger_scores(&conn, save_id, 79, Some(0));
+    set_player_age(&conn, save_id, 80, Some(23));
+    set_player_positions(&conn, save_id, 80, r#"{"AMR": 18}"#);
+    set_right_winger_scores(&conn, save_id, 80, Some(100));
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
+        Some(79)
+    );
+    assert!(!optimized
+        .teams
+        .iter()
+        .flat_map(|team| &team.strings)
+        .flat_map(|planner_string| &planner_string.assignments)
+        .any(|assignment| assignment.player_uid == 78 || assignment.player_uid == 80));
+}
+
+#[test]
+fn optimizer_limits_attached_club_sources_to_their_configured_team() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_right_winger_scores(&conn, save_id, 77, None);
+    set_right_winger_scores(&conn, save_id, 78, None);
+    set_player_age(&conn, save_id, 79, Some(18));
+    set_right_winger_scores(&conn, save_id, 79, Some(100));
+    set_right_winger_scores(&conn, save_id, 80, None);
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
+        None
+    );
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
+        Some(79)
+    );
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Youth, "right_winger"),
+        None
+    );
+}
+
+#[test]
+fn optimizer_does_not_load_scores_outside_configured_club_family() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id: i64 = conn
+        .query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .expect("current snapshot");
+    conn.execute(
+        "UPDATE players SET current_club = 'Other FC' WHERE snapshot_id = ?1 AND uid = 80",
+        params![snapshot_id],
+    )
+    .expect("exclude player from configured sources");
+    conn.execute_batch("PRAGMA ignore_check_constraints = ON")
+        .expect("allow invalid non-source score");
+    conn.execute(
+        "UPDATE player_role_scores SET score = 'invalid' WHERE snapshot_id = ?1 AND uid = 80",
+        params![snapshot_id],
+    )
+    .expect("set invalid non-source score");
+    conn.execute_batch("PRAGMA ignore_check_constraints = OFF")
+        .expect("restore score constraints");
+
+    optimize_depth(&conn, save_id).expect("ignore scores outside configured sources");
+}
+
+#[test]
+fn optimizer_excludes_players_with_a_missing_role_score() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_player_age(&conn, save_id, 78, Some(23));
+    set_right_winger_scores(&conn, save_id, 78, Some(100));
+    set_role_score(&conn, save_id, 78, "winger_ip", None);
+    set_player_age(&conn, save_id, 79, Some(23));
+    set_right_winger_scores(&conn, save_id, 79, Some(50));
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
+        Some(79)
+    );
+    assert!(!optimized
+        .teams
+        .iter()
+        .flat_map(|team| &team.strings)
+        .flat_map(|planner_string| &planner_string.assignments)
+        .any(|assignment| assignment.player_uid == 78));
+}
+
+#[test]
+fn optimizer_replaces_only_prior_optimizer_assignments() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_right_winger_scores(&conn, save_id, 77, Some(90));
+    let first = optimize_depth(&conn, save_id).expect("run first optimization");
+    assert_eq!(
+        assigned_player_uid(&first, PlannerTeam::Senior, "right_winger"),
+        Some(77)
+    );
+    assert_eq!(assignment_provenance(&conn, 77), "optimizer");
+
+    let senior_string_id = team_strings(&first, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, senior_string_id, "goalkeeper", 78)
+        .expect("add a manual assignment");
+    set_right_winger_scores(&conn, save_id, 77, None);
+
+    let rerun = optimize_depth(&conn, save_id).expect("rerun optimization");
+    assert_eq!(
+        assigned_player_uid(&rerun, PlannerTeam::Senior, "right_winger"),
+        None
+    );
+    assert_eq!(assignment_provenance(&conn, 78), "manual");
+}
+
+#[test]
+fn optimizer_rolls_back_replacement_when_an_insert_fails() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    set_right_winger_scores(&conn, save_id, 77, Some(90));
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let senior_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    conn.execute(
+        "INSERT INTO planner_assignments (
+             save_id, string_id, lane_id, player_uid, last_known_name, provenance
+         ) VALUES (?1, ?2, 'right_winger', 77, 'Existing optimizer row', 'optimizer')",
+        params![save_id, senior_string_id],
+    )
+    .expect("seed optimizer assignment");
+    conn.execute_batch(
+        "CREATE TRIGGER fail_optimizer_assignment
+         BEFORE INSERT ON planner_assignments
+         WHEN NEW.provenance = 'optimizer'
+         BEGIN
+             SELECT RAISE(ABORT, 'forced optimizer failure');
+         END;",
+    )
+    .expect("create failing trigger");
+
+    let error = optimize_depth(&conn, save_id).expect_err("roll back failed optimization");
+
+    assert!(error.contains("forced optimizer failure"));
+    assert_eq!(assignment_provenance(&conn, 77), "optimizer");
+}
