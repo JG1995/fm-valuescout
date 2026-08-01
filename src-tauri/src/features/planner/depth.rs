@@ -474,13 +474,23 @@ fn load_optimizer_candidates(
 ) -> Result<Vec<OptimizerCandidate>, String> {
     let mut score_statement = tx
         .prepare(
-            "SELECT uid, role_id, score
-             FROM player_role_scores
-             WHERE snapshot_id = ?1",
+            "SELECT scores.uid, scores.role_id, scores.score
+             FROM players player
+             CROSS JOIN player_role_scores scores
+             WHERE player.snapshot_id = ?1
+               AND EXISTS(
+                   SELECT 1
+                   FROM planner_club_sources source
+                   WHERE source.save_id = ?2
+                     AND source.team = ?3
+                     AND source.club_name = player.current_club
+               )
+               AND scores.snapshot_id = player.snapshot_id
+               AND scores.uid = player.uid",
         )
         .map_err(|error| error.to_string())?;
     let role_scores = score_statement
-        .query_map(params![snapshot_id], |row| {
+        .query_map(params![snapshot_id, save_id, team.as_str()], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -1654,6 +1664,35 @@ mod tests {
             assigned_player_uid(&optimized, PlannerTeam::Youth, "right_winger"),
             None
         );
+    }
+
+    #[test]
+    fn optimizer_does_not_load_scores_outside_configured_club_family() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+                params![save_id],
+                |row| row.get(0),
+            )
+            .expect("current snapshot");
+        conn.execute(
+            "UPDATE players SET current_club = 'Other FC' WHERE snapshot_id = ?1 AND uid = 80",
+            params![snapshot_id],
+        )
+        .expect("exclude player from configured sources");
+        conn.execute_batch("PRAGMA ignore_check_constraints = ON")
+            .expect("allow invalid non-source score");
+        conn.execute(
+            "UPDATE player_role_scores SET score = 'invalid' WHERE snapshot_id = ?1 AND uid = 80",
+            params![snapshot_id],
+        )
+        .expect("set invalid non-source score");
+        conn.execute_batch("PRAGMA ignore_check_constraints = OFF")
+            .expect("restore score constraints");
+
+        optimize_depth(&conn, save_id).expect("ignore scores outside configured sources");
     }
 
     #[test]
