@@ -19,7 +19,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 | 4 | Player search | [Completed](./features/completed/player-search.md) | high | First full UI value path after Load Data; validates DB and scores — **done** |
 | 5 | Player profiles | [Completed](./features/completed/player-profiles.md) | high | Detail view from search; traditional scouting path — **done** |
 | 6 | Squad planner | [Completed](./features/completed/squad-planner.md) | medium | Save-scoped club family, dual-phase tactic, and three-team depth chart — **done** |
-| 7 | Squad optimizer | CONCEPT | medium | Maximize combined team score; closes success vignette |
+| 7 | [Squad optimizer](./features/active/squad-optimizer.md) | [Active ledger](./features/active/squad-optimizer.md) | medium | Maximize combined team score; closes success vignette |
 
 **Dependency graph:**
 
@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Next
 
-Squad optimizer (order 7) — maximize combined team score; closes success vignette.
+[Squad optimizer](./features/active/squad-optimizer.md) (order 7, Active) — maximize combined team score; closes success vignette.
 
 ## Completed
 
