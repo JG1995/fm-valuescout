@@ -689,7 +689,7 @@ execution_profile:
 
 #### Commit 4 — Add Optimize controls and smoke coverage
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `0750551`
 
 **Work:** Expose the Rust optimizer through the Planner feature API and a primary **Optimize** action beside the existing selected-team **Clear Squad** action. Add status and cache reconciliation, update stubs, and add browser smoke coverage for the final Planner control path.
 
@@ -865,36 +865,7 @@ execution_profile:
 
 ## Active work
 
-**PR:** PR 1 — Add squad optimization
-
-**Commit:** Commit 4 — Add Optimize controls and smoke coverage
-
-### RED test (active commit)
-
-Create route and smoke RED coverage proving Optimize calls the Rust command, prevents duplicate requests, reports pending/error/success truthfully, replaces depth, invalidates candidate locations, and remains keyboard reachable beside selected-team Clear Squad.
-
-### Expected outcome
-
-Optimize remains Rust-owned: React invokes the existing command, displays the returned depth, invalidates candidate locations, and leaves post-optimization blanks honest. Clear Squad remains selected-team-only and destructive.
-
-### Explicit exclusions
-
-- No optimizer algorithm, matching rules, eligibility policy, provenance behavior, or Rust changes.
-- No transfer-gap recommendations, manual-lock UI, new visual system, dependencies, routes, or native-WebView automation claims.
-- No change to Clear Squad scope, string removal, single-slot clearing, club-family scope, tactic controls, or cache-key ownership.
-
-### Assigned profiles
-
-- **Implementation:** Luna high — `gpt-5.6-luna`.
-- **Review:** Terra high — `gpt-5.6-terra`, fresh context.
-
-### Current blockers
-
-- None.
-
-### Discoveries that may require replanning
-
-- Native WebView checks remain environment-dependent; browser smoke continues to cover only the Vite IPC stub path.
+Implementation is complete through PR 1, Commit 4 (`0750551`). Run `$workflow-finish-feature` for feature-level validation, Sol High review, and documentation reconciliation.
 
 ## Discoveries and replanning
 
@@ -908,7 +879,7 @@ Optimize remains Rust-owned: React invokes the existing command, displays the re
 | PR 1 | Commit 1 — Persist assignment provenance | `4cd14f0` | v7 defaults legacy rows to manual; manual assign and move persist manual provenance. | Terra xhigh (`gpt-5.6-terra`) | Terra xhigh (`gpt-5.6-terra`) | None. |
 | PR 1 | Commit 2 — Add the Rust squad optimizer | `3b15a08` | Atomic Rust optimizer with exact score/fill/UID matching and an existing-boundary Planner command. | Terra xhigh (`gpt-5.6-terra`) | Terra high (`gpt-5.6-terra`) | Added a source-scope regression test during one MEDIUM review-fix round. |
 | PR 1 | Commit 3 — Add selected-team Clear Squad | `5947fb1` | Server-confirmed selected-team clearing with depth/candidate reconciliation and destructive UI feedback. | Terra high (`gpt-5.6-terra`) | Terra high (`gpt-5.6-terra`) | Added optimizer-provenance coverage during one MEDIUM review-fix round. |
-| PR 1 | Commit 4 — Add Optimize controls and smoke coverage | `pending checkpoint commit` | Frontend Optimize mutation with depth/candidate reconciliation, pending/error/success feedback, and Vite IPC smoke coverage. | Luna high (`gpt-5.6-luna`) | Terra high (`gpt-5.6-terra`) | None. |
+| PR 1 | Commit 4 — Add Optimize controls and smoke coverage | `0750551` | Frontend Optimize mutation with depth/candidate reconciliation, pending/error/success feedback, and Vite IPC smoke coverage. | Luna high (`gpt-5.6-luna`) | Terra high (`gpt-5.6-terra`) | None. |
 
 ## Final validation
 
