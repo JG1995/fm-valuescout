@@ -510,7 +510,7 @@ execution_profile:
 
 #### Commit 3 — Add selected-team Clear Squad
 
-**Status:** Active
+**Status:** Completed `5947fb1`
 
 **Work:** Add the confirmed selected-team Clear Squad mutation through Rust, Planner API, and the depth matrix. The action clears all assignments for the selected team after a destructive confirmation, preserves other teams, reconciles depth and candidates, and exposes the design-system destructive Button variant with pending, success, and error feedback.
 
@@ -689,7 +689,7 @@ execution_profile:
 
 #### Commit 4 — Add Optimize controls and smoke coverage
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Expose the Rust optimizer through the Planner feature API and a primary **Optimize** action beside the existing selected-team **Clear Squad** action. Add status and cache reconciliation, update stubs, and add browser smoke coverage for the final Planner control path.
 
@@ -867,26 +867,25 @@ execution_profile:
 
 **PR:** PR 1 — Add squad optimization
 
-**Commit:** Commit 3 — Add selected-team Clear Squad
+**Commit:** Commit 4 — Add Optimize controls and smoke coverage
 
 ### RED test (active commit)
 
-Create a Rust test that proves an unconfirmed request and an incorrect team scope cannot delete assignments. Add route coverage for confirmation, keyboard operation, pending/error/success feedback, other-team preservation, query reconciliation, candidate invalidation, and focus return.
+Create route and smoke RED coverage proving Optimize calls the Rust command, prevents duplicate requests, reports pending/error/success truthfully, replaces depth, invalidates candidate locations, and remains keyboard reachable beside selected-team Clear Squad.
 
 ### Expected outcome
 
-Clear Squad deletes every assignment in the selected team only after Rust confirms the request. React uses the existing destructive Modal and Button, refreshes depth and candidates after success, and preserves visible assignments after cancellation or failure.
+Optimize remains Rust-owned: React invokes the existing command, displays the returned depth, invalidates candidate locations, and leaves post-optimization blanks honest. Clear Squad remains selected-team-only and destructive.
 
 ### Explicit exclusions
 
-- No Optimize UI control or browser smoke interaction for Optimize.
-- No optimizer algorithm or change to its provenance behavior.
-- No change to string removal, single-slot clearing, club-family scope, tactic controls, or provenance UI.
-- No global all-team clear, optimizer-only clear, undo history, or toast framework.
+- No optimizer algorithm, matching rules, eligibility policy, provenance behavior, or Rust changes.
+- No transfer-gap recommendations, manual-lock UI, new visual system, dependencies, routes, or native-WebView automation claims.
+- No change to Clear Squad scope, string removal, single-slot clearing, club-family scope, tactic controls, or cache-key ownership.
 
 ### Assigned profiles
 
-- **Implementation:** Terra high — `gpt-5.6-terra`.
+- **Implementation:** Luna high — `gpt-5.6-luna`.
 - **Review:** Terra high — `gpt-5.6-terra`, fresh context.
 
 ### Current blockers
@@ -895,7 +894,7 @@ Clear Squad deletes every assignment in the selected team only after Rust confir
 
 ### Discoveries that may require replanning
 
-- Native WebView checks remain environment-dependent, but the active clear-team commit has Rust and route validation paths.
+- Native WebView checks remain environment-dependent; browser smoke continues to cover only the Vite IPC stub path.
 
 ## Discoveries and replanning
 
@@ -908,6 +907,7 @@ Clear Squad deletes every assignment in the selected team only after Rust confir
 | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Persist assignment provenance | `4cd14f0` | v7 defaults legacy rows to manual; manual assign and move persist manual provenance. | Terra xhigh (`gpt-5.6-terra`) | Terra xhigh (`gpt-5.6-terra`) | None. |
 | PR 1 | Commit 2 — Add the Rust squad optimizer | `3b15a08` | Atomic Rust optimizer with exact score/fill/UID matching and an existing-boundary Planner command. | Terra xhigh (`gpt-5.6-terra`) | Terra high (`gpt-5.6-terra`) | Added a source-scope regression test during one MEDIUM review-fix round. |
+| PR 1 | Commit 3 — Add selected-team Clear Squad | `5947fb1` | Server-confirmed selected-team clearing with depth/candidate reconciliation and destructive UI feedback. | Terra high (`gpt-5.6-terra`) | Terra high (`gpt-5.6-terra`) | Added optimizer-provenance coverage during one MEDIUM review-fix round. |
 
 ## Final validation
 
