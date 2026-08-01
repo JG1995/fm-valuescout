@@ -197,7 +197,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 ### PR 2 — Plan three-team squad depth
 
-**Status:** Active
+**Status:** Completed — feature close-out pending
 
 **Provisional PR title:** `feat(planner): plan three-team squad depth`
 
@@ -706,7 +706,7 @@ execution_profile:
 
 #### Commit 4 — Manage squad string columns
 
-**Status:** Active
+**Status:** Completed — `edd0133`
 
 **Work:** Add strings from the matrix header, expose add/remove actions through right-click and the visible header menu, renumber ordinal labels after removal, confirm destructive removal of populated strings, and complete the browser smoke path for all three teams.
 
@@ -871,28 +871,26 @@ execution_profile:
 
 ## Active work
 
-**PR:** PR 2 — Plan three-team squad depth
+**PR:** PR 2 — Plan three-team squad depth (implementation complete)
 
-**Commit:** Manage squad string columns
+**Commit:** Feature close-out
 
-### RED test (active commit)
+### Required close-out validation
 
-Add string-header controls; verify pointer and keyboard menus, add-after behavior, ordinal renumbering, last-string protection, populated-removal confirmation, cancellation, failure retention, focus return, and the Planner smoke flow across all three teams.
+Run the full Planner workflow through `$workflow-finish-feature` or `$workflow-finish-feature-loop`: full tests, Sol High feature review, documentation reconciliation, and the manual viewport and representative-save checks in Final validation.
 
 ### Expected outcome
 
-The Planner adds and removes ordered squad strings through equivalent visible and context-menu actions, protects the final string in Rust, confirms populated removal, restores focus, and completes the three-team browser smoke path.
+The completed Squad Planner has a verified feature close-out and representative durable documentation.
 
 ### Explicit exclusions
 
-- Do not add custom string names or reorder controls.
-- Do not add a fixed maximum string count.
-- Do not add optimizer controls or gap recommendations.
+- Do not begin Squad Optimizer work.
+- Do not add custom string names, reorder controls, or a fixed string maximum during close-out.
 
 ### Assigned profiles
 
-- **Implementation:** Terra High — `gpt-5.6-terra` at `high`.
-- **Review:** Terra High — `gpt-5.6-terra` at `high`, fresh context.
+- **Feature review:** Sol High — `gpt-5.6-sol` at `high`, fresh context.
 
 ### Current blockers
 
@@ -900,7 +898,7 @@ The Planner adds and removes ordered squad strings through equivalent visible an
 
 ### Discoveries that may require replanning
 
-- None. The active packet's stop conditions cover final-string protection, isolated deletion, accessible action parity, ordering, and persistence boundaries.
+- None. All planned implementation commits are complete.
 
 ## Discoveries and replanning
 
@@ -917,6 +915,7 @@ The Planner adds and removes ordered squad strings through equivalent visible an
 | PR 2 | Persist squad depth assignments | `1fb57c8` | Added migration v6, save-scoped strings and assignments, snapshot-aware assignment state and scores, transactional depth mutations, and Planner IPC. | Terra xhigh | Terra xhigh | Reindexed strings after deletion to preserve contiguous display order. |
 | PR 2 | Add the three-team depth matrix | `6b4e36b` | Added the typed depth query and keyboard-operable Senior, Reserves, and Youth matrix with ordered strings, sticky lane headers, horizontal overflow, and truthful assignment states. | Luna xhigh | Terra High | Added depth-query invalidation after tactic saves so Rust-computed scores refresh with the active tactic. |
 | PR 2 | Assign players by slot fit | `b60e2aa` | Added Rust-ranked club-family slot candidates, typed picker mutations, confirmation, and focus-safe matrix reconciliation. | Terra xhigh | Sol xhigh | Review added complete candidate-query invalidation and an occupied-cell clear-first flow; the browser IPC stub gained depth data for the existing Planner smoke path. |
+| PR 2 | Manage squad string columns | `edd0133` | Added local header menus and typed add/remove mutations, populated-removal confirmation, ordinal reconciliation, error-safe focus restoration, and three-team smoke coverage. | Terra High | Terra High | Review round 1 fixed failed-add focus restoration and duplicate add activation. |
 
 ## Final validation
 
