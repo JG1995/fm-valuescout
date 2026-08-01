@@ -40,7 +40,7 @@ React features/planner + /planner route
 - Club relationships are explicit mappings, not inferred from names. The dump has no stable club identity or affiliation relationship, and separate B teams can report `teamLevel = senior`.
 - Planner rows belong to app saves, not snapshots. Snapshot replacement changes current player details and scores but does not delete Planner intent.
 - Rust owns persistence, validation, candidate scope, combined-score calculation, ordering, and player uniqueness. React owns only transient presentation and interaction state.
-- There is one shared tactic per app save. Automatic assignment, custom string names, string reordering, and Squad Optimizer behavior remain out of scope.
+- There is one shared tactic per app save. Custom string names and string reordering remain out of scope. Automatic assignment is delivered by the subsequent [Squad Optimizer](./squad-optimizer.md) feature.
 
 ## Migration and operational implications
 
@@ -62,5 +62,5 @@ React features/planner + /planner route
 
 ## Follow-up
 
-- **Next feature:** [Squad Optimizer](../../TODO.md) (order 7) — automate lineup selection against the shared tactic and combined scores.
-- **Deferred:** automatic squad assignment, gap recommendations, tactic libraries, custom string names, string reordering, club-affiliation inference, and snapshot history.
+- **Follow-on feature:** [Squad Optimizer](./squad-optimizer.md) adds automatic lineup selection against the shared tactic and combined scores.
+- **Deferred:** gap recommendations, tactic libraries, custom string names, string reordering, club-affiliation inference, and snapshot history.
