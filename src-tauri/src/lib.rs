@@ -46,6 +46,12 @@ pub fn run() {
             features::planner::commands::get_planner_tactic,
             features::planner::commands::get_planner_tactic_options,
             features::planner::commands::save_planner_tactic,
+            features::planner::commands::get_planner_depth,
+            features::planner::commands::add_planner_string,
+            features::planner::commands::remove_planner_string,
+            features::planner::commands::clear_planner_assignment,
+            features::planner::commands::assign_planner_player,
+            features::planner::commands::move_planner_player,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

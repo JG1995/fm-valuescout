@@ -209,7 +209,7 @@ PR 1, commit 1: open Planner, choose Barcelona as the primary club, attach Barç
 
 #### Commit 1 — Persist squad depth assignments
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add save-scoped ordered strings and assignments for the three fixed teams. Seed one string per team, enforce save-wide player uniqueness, retain last-known names across snapshot replacement, resolve current snapshot details and combined lane scores in Rust, and support add, remove, clear, assign, and move mutations.
 

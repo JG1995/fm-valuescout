@@ -4,6 +4,10 @@ use tauri::State;
 use crate::db::Db;
 use crate::features::snapshot::service;
 
+use super::depth::{
+    self as depth_service, PlannerAssignment, PlannerDepth, PlannerDepthTeam, PlannerString,
+    PlannerTeam,
+};
 use super::service::{self as planner_service, ClubFamily, ClubSourceInput};
 use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
 
@@ -169,6 +173,94 @@ impl From<TacticOptions> for TacticOptionsDto {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerAssignmentDto {
+    pub id: i64,
+    pub lane_id: String,
+    pub player_uid: i64,
+    pub last_known_name: String,
+    pub current_name: Option<String>,
+    pub state: String,
+    pub combined_score: Option<u8>,
+}
+
+impl From<PlannerAssignment> for PlannerAssignmentDto {
+    fn from(assignment: PlannerAssignment) -> Self {
+        Self {
+            id: assignment.id,
+            lane_id: assignment.lane_id,
+            player_uid: assignment.player_uid,
+            last_known_name: assignment.last_known_name,
+            current_name: assignment.current_name,
+            state: assignment.state.as_str().to_string(),
+            combined_score: assignment.combined_score,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerStringDto {
+    pub id: i64,
+    pub string_order: i64,
+    pub assignments: Vec<PlannerAssignmentDto>,
+}
+
+impl From<PlannerString> for PlannerStringDto {
+    fn from(planner_string: PlannerString) -> Self {
+        Self {
+            id: planner_string.id,
+            string_order: planner_string.string_order,
+            assignments: planner_string
+                .assignments
+                .into_iter()
+                .map(PlannerAssignmentDto::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerDepthTeamDto {
+    pub team: String,
+    pub strings: Vec<PlannerStringDto>,
+}
+
+impl From<PlannerDepthTeam> for PlannerDepthTeamDto {
+    fn from(team: PlannerDepthTeam) -> Self {
+        Self {
+            team: team.team.as_str().to_string(),
+            strings: team
+                .strings
+                .into_iter()
+                .map(PlannerStringDto::from)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerDepthDto {
+    pub tactic: PlannerTacticDto,
+    pub teams: Vec<PlannerDepthTeamDto>,
+}
+
+impl From<PlannerDepth> for PlannerDepthDto {
+    fn from(depth: PlannerDepth) -> Self {
+        Self {
+            tactic: depth.tactic.into(),
+            teams: depth
+                .teams
+                .into_iter()
+                .map(PlannerDepthTeamDto::from)
+                .collect(),
+        }
+    }
+}
+
 #[tauri::command]
 pub fn get_planner_club_family(db: State<'_, Db>) -> Result<ClubFamilyDto, String> {
     let conn =
@@ -230,4 +322,82 @@ pub fn save_planner_tactic(
     let tactic = PlannerTactic::from(tactic);
     tactic_service::save_tactic(&conn, save_id, &tactic)?;
     Ok(tactic.into())
+}
+
+#[tauri::command]
+pub fn get_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    Ok(depth_service::get_depth(&conn, save_id)?.into())
+}
+
+#[tauri::command]
+pub fn add_planner_string(team: String, db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
+    let team = PlannerTeam::parse(&team)?;
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    depth_service::add_string(&conn, save_id, team)?;
+    Ok(depth_service::get_depth(&conn, save_id)?.into())
+}
+
+#[tauri::command]
+pub fn remove_planner_string(
+    string_id: i64,
+    confirm_populated: bool,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    depth_service::remove_string(&conn, save_id, string_id, confirm_populated)?;
+    Ok(depth_service::get_depth(&conn, save_id)?.into())
+}
+
+#[tauri::command]
+pub fn clear_planner_assignment(
+    string_id: i64,
+    lane_id: String,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    depth_service::clear_assignment(&conn, save_id, string_id, &lane_id)?;
+    Ok(depth_service::get_depth(&conn, save_id)?.into())
+}
+
+#[tauri::command]
+pub fn assign_planner_player(
+    string_id: i64,
+    lane_id: String,
+    player_uid: i64,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    depth_service::assign_player(&conn, save_id, string_id, &lane_id, player_uid)?;
+    Ok(depth_service::get_depth(&conn, save_id)?.into())
+}
+
+#[tauri::command]
+pub fn move_planner_player(
+    string_id: i64,
+    lane_id: String,
+    player_uid: i64,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    depth_service::move_player(&conn, save_id, string_id, &lane_id, player_uid)?;
+    Ok(depth_service::get_depth(&conn, save_id)?.into())
 }
