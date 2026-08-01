@@ -50,9 +50,13 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 **Parallel tracks:** After player search (order 4), profiles (5) and squad planner shell (6, without optimizer) can overlap once tactic modeling is specced.
 
+## Active
+
+- [Planner Module Refactor](./features/active/planner-module-refactor.md) — behavior-preserving internal Planner depth/optimizer and depth-matrix decomposition in two focused commits.
+
 ## Next
 
-The approved MVP sequence is complete. Select future work from [BACKLOG.md](./BACKLOG.md) when it is ready for planning.
+The approved MVP sequence is complete. Complete the active Planner maintenance feature, then select future work from [BACKLOG.md](./BACKLOG.md) when it is ready for planning.
 
 ## Completed
 
