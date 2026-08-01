@@ -28,6 +28,7 @@ import {
   getPlannerClearTeamIpcMockCalls,
   getPlannerClubFamilySaveCalls,
   getPlannerDepthIpcMockCalls,
+  getPlannerOptimizeIpcMockCalls,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
@@ -38,6 +39,9 @@ import {
   setPlannerClearTeamError,
   setPlannerClearTeamPending,
   setPlannerDepthIpcMock,
+  setPlannerOptimizeDepth,
+  setPlannerOptimizeError,
+  setPlannerOptimizePending,
   setPlannerSlotCandidates,
   setPlannerTacticSaveError,
 } from "@/testing/planner-ipc-mock";
@@ -1272,6 +1276,88 @@ describe("planner route", () => {
     expect(getPlannerClearTeamIpcMockCalls()).toBe(1);
     expect(confirmButton).toBeDisabled();
     expect(confirmButton).toHaveAccessibleName("Clearing…");
+  });
+
+  it("optimizes every squad and reconciles depth and candidates", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const optimizedDepth = withReserveGoalkeeper(resolvePlannerDepthIpcMock());
+    setPlannerOptimizeDepth(optimizedDepth);
+    setPlannerSlotCandidates([
+      slotCandidate({ playerUid: 77, name: "Reserve Keeper" }),
+    ]);
+    renderPlannerRoute({ staleTime: 60_000 });
+
+    const seniorCell = await screen.findByRole("button", {
+      name: /Senior, 1st string, Goalkeeper, Empty/,
+    });
+    await user.click(seniorCell);
+    expect(
+      await screen.findByRole("option", { name: /Reserve Keeper/ }),
+    ).toHaveTextContent("Unassigned");
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    const optimizeButton = await screen.findByRole("button", {
+      name: "Optimize squads",
+    });
+    await user.click(optimizeButton);
+
+    await waitFor(() =>
+      expect(screen.getByText("Squads optimized.")).toBeInTheDocument(),
+    );
+    expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
+    await user.click(screen.getByRole("tab", { name: "Reserves" }));
+    expect(
+      screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Senior" }));
+    await user.click(seniorCell);
+    expect(
+      await screen.findByRole("option", { name: /Reserve Keeper/ }),
+    ).toHaveTextContent("Assigned: Reserves · 1st string · Goalkeeper");
+  });
+
+  it("keeps the depth unchanged and reports optimizer errors", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerOptimizeError("Optimize failed");
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize squads" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Optimize failed",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: /Senior, 1st string, Goalkeeper, Empty/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("prevents duplicate optimizer runs while pending", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerOptimizePending(true);
+    renderPlannerRoute();
+
+    const optimizeButton = await screen.findByRole("button", {
+      name: "Optimize squads",
+    });
+    await user.click(optimizeButton);
+    await user.click(optimizeButton);
+
+    expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
+    expect(optimizeButton).toBeDisabled();
+    expect(optimizeButton).toHaveAccessibleName("Optimizing…");
   });
 });
 

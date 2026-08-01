@@ -22,6 +22,7 @@ import {
   resolveClearPlannerAssignmentIpcMock,
   resolveClearPlannerTeamIpcMock,
   resolveMovePlannerPlayerIpcMock,
+  resolveOptimizePlannerDepthIpcMock,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerClubsIpcMock,
   resolvePlannerDepthIpcMock,
@@ -156,6 +157,10 @@ function registerIpcMocks() {
 
     if (cmd === "clear_planner_team") {
       return resolveClearPlannerTeamIpcMock(args);
+    }
+
+    if (cmd === "optimize_planner_depth") {
+      return resolveOptimizePlannerDepthIpcMock(args);
     }
 
     if (cmd === "get_planner_slot_candidates") {

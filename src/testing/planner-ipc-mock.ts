@@ -254,6 +254,10 @@ let addStringCalls = 0;
 let clearTeamError: string | null = null;
 let clearTeamPending = false;
 let clearTeamCalls = 0;
+let optimizeDepth: PlannerDepth | null = null;
+let optimizeError: string | null = null;
+let optimizePending = false;
+let optimizeCalls = 0;
 
 function cloneTactic(value: PlannerTactic): PlannerTactic {
   return {
@@ -313,6 +317,10 @@ export function resetPlannerIpcMock() {
   clearTeamError = null;
   clearTeamPending = false;
   clearTeamCalls = 0;
+  optimizeDepth = null;
+  optimizeError = null;
+  optimizePending = false;
+  optimizeCalls = 0;
 }
 
 export function setPlannerAvailableClubs(clubs: string[]) {
@@ -388,6 +396,22 @@ export function setPlannerClearTeamPending(value: boolean) {
 
 export function getPlannerClearTeamIpcMockCalls() {
   return clearTeamCalls;
+}
+
+export function setPlannerOptimizeDepth(value: PlannerDepth | null) {
+  optimizeDepth = value ? cloneDepth(value) : null;
+}
+
+export function setPlannerOptimizeError(message: string | null) {
+  optimizeError = message;
+}
+
+export function setPlannerOptimizePending(value: boolean) {
+  optimizePending = value;
+}
+
+export function getPlannerOptimizeIpcMockCalls() {
+  return optimizeCalls;
 }
 
 export function resolvePlannerSlotCandidatesIpcMock(args: unknown) {
@@ -645,6 +669,27 @@ export function resolveClearPlannerTeamIpcMock(args: unknown) {
     ...plannerString,
     assignments: [],
   }));
+  return cloneDepth(depth);
+}
+
+export function resolveOptimizePlannerDepthIpcMock(args: unknown) {
+  optimizeCalls += 1;
+  if (
+    args !== undefined &&
+    args !== null &&
+    (typeof args !== "object" || Object.keys(args).length > 0)
+  ) {
+    throw "Optimizer does not accept arguments";
+  }
+  if (optimizeError) {
+    throw optimizeError;
+  }
+  if (optimizePending) {
+    return new Promise<PlannerDepth>(() => {});
+  }
+  if (optimizeDepth) {
+    depth = cloneDepth(optimizeDepth);
+  }
   return cloneDepth(depth);
 }
 

@@ -7,6 +7,7 @@ import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { addPlannerString } from "../api/add-planner-string";
 import { clearPlannerTeam } from "../api/clear-planner-team";
+import { optimizePlannerDepth } from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
 import { removePlannerString } from "../api/remove-planner-string";
 import { PLANNER_TEAMS, type PlannerTeam } from "../types/club-family";
@@ -384,6 +385,8 @@ export function PlannerDepthMatrix({
   const [clearTeamOpen, setClearTeamOpen] = useState(false);
   const [clearTeamError, setClearTeamError] = useState<string | null>(null);
   const [clearTeamStatus, setClearTeamStatus] = useState<string | null>(null);
+  const [optimizeError, setOptimizeError] = useState<string | null>(null);
+  const [optimizeStatus, setOptimizeStatus] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const closeTimerRef = useRef<number | null>(null);
   const removalTimerRef = useRef<number | null>(null);
@@ -538,6 +541,21 @@ export function PlannerDepthMatrix({
     },
   });
 
+  const optimize = useMutation({
+    mutationFn: optimizePlannerDepth,
+    onSuccess: async (nextDepth) => {
+      queryClient.setQueryData(plannerKeys.depth(), nextDepth);
+      await queryClient.invalidateQueries({
+        queryKey: plannerKeys.slotCandidates(),
+      });
+      setOptimizeError(null);
+      setOptimizeStatus("Squads optimized.");
+    },
+    onError: (error) => {
+      setOptimizeError(errorMessage(error));
+    },
+  });
+
   const requestClearTeam = () => {
     setClearTeamError(null);
     setClearTeamStatus(null);
@@ -567,13 +585,30 @@ export function PlannerDepthMatrix({
       title="Squad depth"
       flush
       actions={
-        <Button
-          variant="destructive"
-          disabled={clearTeam.isPending}
-          onClick={requestClearTeam}
-        >
-          Clear {TEAM_LABELS[selectedTeam]} squad
-        </Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            disabled={optimize.isPending}
+            loading={optimize.isPending}
+            loadingLabel="Optimizing…"
+            onClick={() => {
+              if (optimize.isPending) {
+                return;
+              }
+              setOptimizeError(null);
+              setOptimizeStatus(null);
+              optimize.mutate();
+            }}
+          >
+            Optimize squads
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={clearTeam.isPending || optimize.isPending}
+            onClick={requestClearTeam}
+          >
+            Clear {TEAM_LABELS[selectedTeam]} squad
+          </Button>
+        </div>
       }
     >
       <div className="space-y-4 p-4">
@@ -595,6 +630,16 @@ export function PlannerDepthMatrix({
         {clearTeamStatus ? (
           <p className="text-body-sm text-success" role="status">
             {clearTeamStatus}
+          </p>
+        ) : null}
+        {optimizeError ? (
+          <p className="text-body-sm text-error" role="alert">
+            {optimizeError}
+          </p>
+        ) : null}
+        {optimizeStatus ? (
+          <p className="text-body-sm text-success" role="status">
+            {optimizeStatus}
           </p>
         ) : null}
         <div

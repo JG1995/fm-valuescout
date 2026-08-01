@@ -143,6 +143,23 @@ test.describe("walking skeleton smoke", () => {
     }
   });
 
+  test("planner depth optimizes squads and shows the reconciled matrix", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Optimize squads" }).click();
+    await expect(main.getByRole("status")).toHaveText("Squads optimized.");
+    await main.getByRole("tab", { name: "Reserves" }).click();
+    await expect(
+      main.getByRole("button", {
+        name: /Reserves, 1st string, Goalkeeper, Optimized Keeper, Resolved/,
+      }),
+    ).toBeVisible();
+  });
+
   test("player profile route shows no-snapshot empty state from stubbed IPC", async ({
     page,
   }) => {
