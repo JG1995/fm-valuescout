@@ -43,7 +43,7 @@ Skip save when unsure.
 4. Identify the smallest meaningful failing test that passes the gate — or document why tests are skipped.
 5. Identify required contract, integration, migration, smoke, and mutation/perturbation checks.
 6. Apply the decision ladder from `.agents/skills/minimalism/SKILL.md` and coding standards from `.agents/skills/coding-standards/`. State which ladder rung you stopped at and why.
-7. Confirm the current implementation context matches the ledger's assigned model and effort. If it does not, dispatch a separate worker with that exact profile and the active packet, or stop and report why dispatch is unavailable. Do not silently substitute another profile.
+7. Treat the main session as the assigned implementation context. Assume its model and effort match the ledger because the developer selects them before invoking the workflow. Do not inspect or infer the runtime profile, and do not dispatch implementation work for model routing. If the developer explicitly says the profile is wrong, stop before editing and report the profile required by the ledger.
 8. Escalate before implementation when persistence, schema, migration, authentication, concurrency, security, or a public API decision is unresolved. Read `.wiki/ARCHITECTURE.md`, scan `.agents/skills/` for matching skills, search Recallium per **## Recallium**. If the question needs a **runtime probe**, use optional **`$workflow-spike`**; if still blocked, **ask the developer** — do not implement on assumptions.
 
 ## Follow the plan — or say why not

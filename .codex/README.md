@@ -22,7 +22,7 @@ Use the named skill that matches the task. State the requested outcome in chat; 
 | Choose a stack | `workflow-stack` | Proposed stack and architecture; wait for approval before writing docs. |
 | Order MVP work | `workflow-roadmap` | Dependency-aware sequence in `.wiki/TODO.md` after approval. |
 | Plan a feature | `workflow-plan-feature` | Active ledger with packets and separate implementation/review profiles for every commit. |
-| Build a commit | `workflow-build` | Assigned implementer follows the active packet through RED → GREEN → REFACTOR. |
+| Build a commit | `workflow-build` | Main session follows the active packet through RED → GREEN → REFACTOR. |
 | Checkpoint a commit | `workflow-checkpoint` | Exact staging, validation, independent review, and local commit after approval. |
 | Address review findings | `workflow-fix` | Focused remediation, then another checkpoint. |
 | Review | `workflow-review` | Read-only staged or feature review. |
@@ -48,11 +48,13 @@ Dispatch specialist agents explicitly when the task needs their role:
 - `reviewer` is the default Terra High read-only reviewer. Use it only when that profile matches the ledger; otherwise dispatch a generic read-only reviewer with the assigned model and the same contract. Feature-complete review always uses a generic Sol High reviewer.
 - `documentation-steward` can update documentation and feature ledgers only. Use it after feature-complete review clears or for documentation reconciliation.
 
-Each named definition pins its default model and reasoning effort. `planner` uses `gpt-5.6-terra` with `xhigh`; `reviewer` uses `gpt-5.6-terra` with `high`; `documentation-steward` uses `gpt-5.6-terra` with `medium`. Do not override a pinned role. Use a generic agent when a ledger assigns another profile.
+The main session implements active commits and review fixes. Assume the developer selected the implementation model and effort recorded in the ledger. Do not inspect the main session's runtime profile or dispatch a builder for model routing.
 
-If an agent is unavailable, follow the corresponding workflow skill in the main session and preserve the same boundary.
+Each named definition pins its default model and reasoning effort. `planner` uses `gpt-5.6-terra` with `xhigh`; `reviewer` uses `gpt-5.6-terra` with `high`; `documentation-steward` uses `gpt-5.6-terra` with `medium`. Do not override a pinned role. Use a generic reviewer when the ledger assigns a different review profile.
 
-Implementation and review must use separate contexts. Start review from the original commit contract, packet, diff, and validation results. Do not lead with the implementer's reasoning or self-review.
+If the planner or documentation steward is unavailable, follow the corresponding workflow skill in the main session and preserve the same boundary. If a reviewer is unavailable, stop and report the missing review capability; do not replace independent review with main-session self-review.
+
+Every initial review of non-trivial work must use a separate fresh context. Start it from the original commit contract, packet, diff, and validation results. Do not lead with the implementer's reasoning or self-review. After the main session applies fixes, ask the same reviewer context to verify the corrected findings and newly exposed paths when it remains available. Dispatch another fresh reviewer when that context is unavailable or when the correction materially changes the scope, architecture, or review mandate.
 
 ## MCP
 

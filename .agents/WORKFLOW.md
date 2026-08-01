@@ -9,7 +9,7 @@ Use this default path for non-trivial feature work:
 ```text
 planning context
   → durable feature ledger
-  → active commit implementer
+  → main-session implementer
   → deterministic validation
   → fresh-context commit reviewer
   → correction, escalation, or replanning
@@ -37,7 +37,7 @@ The planner must:
 
 ### 2. Implement one commit
 
-Use `workflow-build` or the manually requested `workflow-build-loop`. The implementer receives only the active commit, relevant feature context, and repository access.
+Use `workflow-build` or the manually requested `workflow-build-loop`. The main session implements the active commit and any later review fixes. Assume the developer selected the implementation model and reasoning effort recorded in the ledger. Do not inspect or infer the main session's runtime profile, and do not dispatch a separate implementation agent for model routing.
 
 Before editing, the implementer must read:
 
@@ -82,13 +82,15 @@ Do not initially give the reviewer the implementer's chain of reasoning, self-re
 
 The reviewer follows the commit-specific mandate and reconstructs intended behavior from the ledger and code. It checks guards and tests before retaining a finding.
 
+After the main session corrects findings, reuse the same reviewer context when available to verify those findings and newly exposed paths. Dispatch a new fresh reviewer when that context is unavailable or when the correction materially changes the scope, architecture, or review mandate. Never replace independent review with main-session self-review.
+
 ### 5. Correct, escalate, or replan
 
-Return a confirmed bounded execution defect to the original implementation model. Increase reasoning effort when ownership, abstractions, and the governing invariant are correct but branches, tests, or integration details are incomplete. Increase model capability when the implementer chose the wrong abstraction, misunderstood ownership or an invariant, patched a symptom, or invented repository assumptions.
+The main session corrects confirmed bounded execution defects. Increase reasoning effort when ownership, abstractions, and the governing invariant are correct but branches, tests, or integration details are incomplete. Increase model capability when the implementer chose the wrong abstraction, misunderstood ownership or an invariant, patched a symptom, or invented repository assumptions. When a correction requires a different implementation profile, stop and report the required profile so the developer can switch the main session; do not dispatch a replacement implementer.
 
 After one clear structural misunderstanding, do not retry the same model only with more effort. Escalate capability or return to planning.
 
-After two failed correction attempts on the same bounded defect, use a third automated attempt only after increasing model capability or reasoning effort. After three failed attempts, stop the automated loop and return to planning or developer direction. Do not continue an open-ended repair loop.
+After two failed correction attempts on the same bounded defect, stop and report the capability or effort required for a third attempt so the developer can switch the main session. After three failed attempts, stop the automated loop and return to planning or developer direction. Do not continue an open-ended repair loop.
 
 Use Sol High or xhigh replanning when a Known fact is disproved, an invariant or approved boundary must change, a required seam does not exist, a public or persisted contract changes materially, validation cannot be meaningful, the commit leaks into a later PR, a cross-feature dependency appears, or review exposes an architectural disagreement.
 

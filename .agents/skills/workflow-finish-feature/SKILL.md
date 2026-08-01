@@ -94,7 +94,7 @@ Dispatch a separate fresh-context **generic** reviewer at **Sol High** (`gpt-5.6
 
 The feature mandate focuses on end-to-end intent, cross-commit interactions, feature invariants, duplicated abstractions, lifecycle paths that commit reviews could not see, temporary compatibility layers, and documentation accuracy. It does not repeat every commit review.
 
-**Present the full Review verdict to the developer.** Do **not** automatically fix findings. For a finding owned by one completed commit, delegate the correction to that commit's original implementation profile with the relevant packet and finding. Use **`$workflow-fix`** only with that explicit feature-correction scope. Return to Sol planning when a finding crosses commit boundaries or changes an invariant, persisted contract, validation contract, PR boundary, or later work. Then re-run validation and review from step 3.
+**Present the full Review verdict to the developer.** Do **not** automatically fix findings. When the developer delegates a finding owned by one completed commit, correct it in the main session with that commit's packet and the relevant finding. Use **`$workflow-fix`** only with that explicit feature-correction scope. Return to Sol planning when a finding crosses commit boundaries or changes an invariant, persisted contract, validation contract, PR boundary, or later work. Then re-run validation and ask the same feature reviewer to verify the correction when available. Dispatch a fresh feature reviewer when that context is unavailable or when the correction materially changes the feature architecture or review mandate.
 
 **CRITICAL** and **HIGH** block documentation reconciliation and merge readiness until fixed or **explicitly approved** by the developer.
 

@@ -25,8 +25,10 @@ import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import {
   getPlannerAddStringIpcMockCalls,
+  getPlannerClearTeamIpcMockCalls,
   getPlannerClubFamilySaveCalls,
   getPlannerDepthIpcMockCalls,
+  getPlannerOptimizeIpcMockCalls,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
@@ -34,7 +36,12 @@ import {
   setPlannerAddStringPending,
   setPlannerAssignmentError,
   setPlannerAvailableClubs,
+  setPlannerClearTeamError,
+  setPlannerClearTeamPending,
   setPlannerDepthIpcMock,
+  setPlannerOptimizeDepth,
+  setPlannerOptimizeError,
+  setPlannerOptimizePending,
   setPlannerSlotCandidates,
   setPlannerTacticSaveError,
 } from "@/testing/planner-ipc-mock";
@@ -1137,6 +1144,219 @@ describe("planner route", () => {
     await user.click(addButton);
 
     expect(getPlannerAddStringIpcMockCalls()).toBe(1);
+  });
+
+  it("confirms clearing only the selected squad and reconciles its candidates", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = withSecondSeniorString(
+      withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
+    );
+    depth.teams = depth.teams.map((team) =>
+      team.team === "senior"
+        ? {
+            ...team,
+            strings: team.strings.map((plannerString, index) => ({
+              ...plannerString,
+              assignments:
+                index === 0
+                  ? [
+                      {
+                        id: 78,
+                        laneId: "goalkeeper",
+                        playerUid: 78,
+                        lastKnownName: "Senior Keeper",
+                        currentName: "Senior Keeper",
+                        state: "resolved",
+                        combinedScore: 80,
+                      },
+                    ]
+                  : [],
+            })),
+          }
+        : team,
+    );
+    setPlannerDepthIpcMock(depth);
+    setPlannerSlotCandidates([
+      slotCandidate({ playerUid: 78, name: "Senior Keeper" }),
+      slotCandidate({ playerUid: 77, name: "Reserve Keeper" }),
+    ]);
+    renderPlannerRoute({ staleTime: 60_000 });
+
+    const secondSeniorCell = await screen.findByRole("button", {
+      name: /Senior, 2nd string, Goalkeeper, Empty/,
+    });
+    await user.click(secondSeniorCell);
+    expect(
+      await screen.findByRole("option", { name: /Senior Keeper/ }),
+    ).toHaveTextContent("Assigned: Senior · 1st string · Goalkeeper");
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    const clearButton = await screen.findByRole("button", {
+      name: "Clear Senior squad",
+    });
+    clearButton.focus();
+    await user.keyboard("{Enter}");
+    const confirmation = screen.getByRole("dialog", {
+      name: "Clear Senior squad?",
+    });
+    expect(confirmation).toHaveTextContent(
+      "This clears every assignment from the Senior squad.",
+    );
+    await user.click(
+      within(confirmation).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(clearButton));
+    expect(
+      screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
+    ).toBeInTheDocument();
+
+    setPlannerClearTeamError("Clear squad failed");
+    await user.click(clearButton);
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: "Clear Senior squad?" }),
+      ).getByRole("button", { name: "Clear Senior squad" }),
+    );
+    expect(
+      await within(
+        screen.getByRole("dialog", { name: "Clear Senior squad?" }),
+      ).findByRole("alert"),
+    ).toHaveTextContent("Clear squad failed");
+    expect(
+      screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
+    ).toBeInTheDocument();
+
+    setPlannerClearTeamError(null);
+    const confirmButton = within(
+      screen.getByRole("dialog", { name: "Clear Senior squad?" }),
+    ).getByRole("button", { name: "Clear Senior squad" });
+    await user.click(confirmButton);
+    expect(getPlannerClearTeamIpcMockCalls()).toBe(2);
+    expect(
+      await screen.findByText("Senior squad cleared."),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /Senior Keeper, Resolved/ }),
+      ).not.toBeInTheDocument(),
+    );
+    await user.click(secondSeniorCell);
+    expect(
+      await screen.findByRole("option", { name: /Senior Keeper/ }),
+    ).toHaveTextContent("Unassigned");
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("tab", { name: "Reserves" }));
+    expect(
+      screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("prevents duplicate selected-squad clears while confirmation is pending", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerClearTeamPending(true);
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Clear Senior squad" }),
+    );
+    const confirmButton = within(
+      screen.getByRole("dialog", { name: "Clear Senior squad?" }),
+    ).getByRole("button", { name: "Clear Senior squad" });
+    await user.click(confirmButton);
+    await user.click(confirmButton);
+
+    expect(getPlannerClearTeamIpcMockCalls()).toBe(1);
+    expect(confirmButton).toBeDisabled();
+    expect(confirmButton).toHaveAccessibleName("Clearing…");
+  });
+
+  it("optimizes every squad and reconciles depth and candidates", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const optimizedDepth = withReserveGoalkeeper(resolvePlannerDepthIpcMock());
+    setPlannerOptimizeDepth(optimizedDepth);
+    setPlannerSlotCandidates([
+      slotCandidate({ playerUid: 77, name: "Reserve Keeper" }),
+    ]);
+    renderPlannerRoute({ staleTime: 60_000 });
+
+    const seniorCell = await screen.findByRole("button", {
+      name: /Senior, 1st string, Goalkeeper, Empty/,
+    });
+    await user.click(seniorCell);
+    expect(
+      await screen.findByRole("option", { name: /Reserve Keeper/ }),
+    ).toHaveTextContent("Unassigned");
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    const optimizeButton = await screen.findByRole("button", {
+      name: "Optimize squads",
+    });
+    await user.click(optimizeButton);
+
+    await waitFor(() =>
+      expect(screen.getByText("Squads optimized.")).toBeInTheDocument(),
+    );
+    expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
+    await user.click(screen.getByRole("tab", { name: "Reserves" }));
+    expect(
+      screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Senior" }));
+    await user.click(seniorCell);
+    expect(
+      await screen.findByRole("option", { name: /Reserve Keeper/ }),
+    ).toHaveTextContent("Assigned: Reserves · 1st string · Goalkeeper");
+  });
+
+  it("keeps the depth unchanged and reports optimizer errors", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerOptimizeError("Optimize failed");
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize squads" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Optimize failed",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: /Senior, 1st string, Goalkeeper, Empty/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("prevents duplicate optimizer runs while pending", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerOptimizePending(true);
+    renderPlannerRoute();
+
+    const optimizeButton = await screen.findByRole("button", {
+      name: "Optimize squads",
+    });
+    await user.click(optimizeButton);
+    await user.click(optimizeButton);
+
+    expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
+    expect(optimizeButton).toBeDisabled();
+    expect(optimizeButton).toHaveAccessibleName("Optimizing…");
   });
 });
 

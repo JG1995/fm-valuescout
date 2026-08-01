@@ -1,8 +1,10 @@
+use std::collections::{HashMap, HashSet, VecDeque};
+
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::features::scoring::combine::combine_role_scores;
 
-use super::tactic::{self, PlannerTactic, TacticLane};
+use super::tactic::{self, PlannerTactic, TacticLane, TACTIC_LANE_COUNT};
 
 const PLANNER_TEAMS: [PlannerTeam; 3] = [
     PlannerTeam::Senior,
@@ -102,6 +104,504 @@ pub struct PlannerDepthTeam {
 pub struct PlannerDepth {
     pub tactic: PlannerTactic,
     pub teams: Vec<PlannerDepthTeam>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OptimizerCandidate {
+    player_uid: i64,
+    last_known_name: String,
+    lane_scores: Vec<Option<u8>>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+struct MatchObjective {
+    total_score: i64,
+    filled_lanes: i64,
+    uid_tie_break: [i64; TACTIC_LANE_COUNT],
+}
+
+impl MatchObjective {
+    fn add(self, other: Self) -> Self {
+        Self {
+            total_score: self.total_score + other.total_score,
+            filled_lanes: self.filled_lanes + other.filled_lanes,
+            uid_tie_break: std::array::from_fn(|index| {
+                self.uid_tie_break[index] + other.uid_tie_break[index]
+            }),
+        }
+    }
+
+    fn negated(self) -> Self {
+        Self {
+            total_score: -self.total_score,
+            filled_lanes: -self.filled_lanes,
+            uid_tie_break: std::array::from_fn(|index| -self.uid_tie_break[index]),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct MatchEdge {
+    to: usize,
+    reverse: usize,
+    capacity: usize,
+    objective: MatchObjective,
+}
+
+#[derive(Debug)]
+struct MatchGraph {
+    edges: Vec<Vec<MatchEdge>>,
+}
+
+impl MatchGraph {
+    fn new(node_count: usize) -> Self {
+        Self {
+            edges: vec![Vec::new(); node_count],
+        }
+    }
+
+    fn add_edge(&mut self, from: usize, to: usize, objective: MatchObjective) -> usize {
+        let edge_index = self.edges[from].len();
+        let reverse_index = self.edges[to].len();
+        self.edges[from].push(MatchEdge {
+            to,
+            reverse: reverse_index,
+            capacity: 1,
+            objective,
+        });
+        self.edges[to].push(MatchEdge {
+            to: from,
+            reverse: edge_index,
+            capacity: 0,
+            objective: objective.negated(),
+        });
+        edge_index
+    }
+
+    fn send_max_flow(&mut self, source: usize, sink: usize, target_flow: usize) -> usize {
+        let mut flow = 0;
+
+        while flow < target_flow {
+            let mut best = vec![None; self.edges.len()];
+            let mut previous = vec![None; self.edges.len()];
+            let mut queued = vec![false; self.edges.len()];
+            let mut queue = VecDeque::from([source]);
+            best[source] = Some(MatchObjective::default());
+            queued[source] = true;
+
+            while let Some(node) = queue.pop_front() {
+                queued[node] = false;
+                let Some(node_objective) = best[node] else {
+                    continue;
+                };
+
+                for (edge_index, edge) in self.edges[node].iter().enumerate() {
+                    if edge.capacity == 0 {
+                        continue;
+                    }
+                    let objective = node_objective.add(edge.objective);
+                    if best[edge.to].is_some_and(|existing| existing >= objective) {
+                        continue;
+                    }
+                    best[edge.to] = Some(objective);
+                    previous[edge.to] = Some((node, edge_index));
+                    if !queued[edge.to] {
+                        queue.push_back(edge.to);
+                        queued[edge.to] = true;
+                    }
+                }
+            }
+
+            if best[sink].is_none() {
+                break;
+            }
+
+            let mut node = sink;
+            while node != source {
+                let (from, edge_index) = previous[node].expect("path reaches source");
+                let reverse = self.edges[from][edge_index].reverse;
+                self.edges[from][edge_index].capacity -= 1;
+                self.edges[node][reverse].capacity += 1;
+                node = from;
+            }
+            flow += 1;
+        }
+
+        flow
+    }
+}
+
+fn match_lanes(lane_indices: &[usize], candidates: &[OptimizerCandidate]) -> Vec<Option<usize>> {
+    let lane_count = lane_indices.len();
+    let source = 0;
+    let lane_start = source + 1;
+    let player_start = lane_start + lane_count;
+    let blank_start = player_start + candidates.len();
+    let sink = blank_start + lane_count;
+    let mut graph = MatchGraph::new(sink + 1);
+    let mut candidate_ranks = vec![0_i64; candidates.len()];
+    let mut candidate_indices = (0..candidates.len()).collect::<Vec<_>>();
+    candidate_indices.sort_by_key(|&index| candidates[index].player_uid);
+    for (rank, candidate_index) in candidate_indices.into_iter().enumerate() {
+        candidate_ranks[candidate_index] = rank as i64 + 1;
+    }
+    let blank_rank = candidates.len() as i64 + 1;
+    let mut candidate_edges = vec![Vec::new(); lane_count];
+
+    for (local_lane_index, &lane_index) in lane_indices.iter().enumerate() {
+        let lane_node = lane_start + local_lane_index;
+        graph.add_edge(source, lane_node, MatchObjective::default());
+        graph.add_edge(
+            lane_node,
+            blank_start + local_lane_index,
+            MatchObjective {
+                uid_tie_break: std::array::from_fn(|index| {
+                    i64::from(index == lane_index) * -blank_rank
+                }),
+                ..MatchObjective::default()
+            },
+        );
+        graph.add_edge(
+            blank_start + local_lane_index,
+            sink,
+            MatchObjective::default(),
+        );
+
+        for (candidate_index, candidate) in candidates.iter().enumerate() {
+            let Some(score) = candidate.lane_scores.get(lane_index).copied().flatten() else {
+                continue;
+            };
+            let edge_index = graph.add_edge(
+                lane_node,
+                player_start + candidate_index,
+                MatchObjective {
+                    total_score: i64::from(score),
+                    filled_lanes: 1,
+                    uid_tie_break: std::array::from_fn(|index| {
+                        i64::from(index == lane_index) * -candidate_ranks[candidate_index]
+                    }),
+                },
+            );
+            candidate_edges[local_lane_index].push((candidate_index, edge_index));
+        }
+    }
+
+    for candidate_index in 0..candidates.len() {
+        graph.add_edge(
+            player_start + candidate_index,
+            sink,
+            MatchObjective::default(),
+        );
+    }
+    debug_assert_eq!(graph.send_max_flow(source, sink, lane_count), lane_count);
+
+    candidate_edges
+        .into_iter()
+        .enumerate()
+        .map(|(local_lane_index, edges)| {
+            let lane_node = lane_start + local_lane_index;
+            edges.into_iter().find_map(|(candidate_index, edge_index)| {
+                (graph.edges[lane_node][edge_index].capacity == 0).then_some(candidate_index)
+            })
+        })
+        .collect()
+}
+
+#[derive(Clone, Copy)]
+enum AssignmentProvenance {
+    Manual,
+    Optimizer,
+}
+
+impl AssignmentProvenance {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Manual => "manual",
+            Self::Optimizer => "optimizer",
+        }
+    }
+}
+
+pub fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
+    let tactic = ensure_depth(conn, save_id)?;
+    let snapshot_id = current_snapshot_id(conn, save_id)?
+        .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let manual_assignments = load_manual_assignments(&tx, save_id)?;
+    let mut reserved_uids = manual_assignments
+        .iter()
+        .map(|assignment| assignment.player_uid)
+        .collect::<HashSet<_>>();
+    let mut manual_lanes = HashMap::<i64, HashSet<String>>::new();
+    for assignment in manual_assignments {
+        manual_lanes
+            .entry(assignment.string_id)
+            .or_default()
+            .insert(assignment.lane_id);
+    }
+
+    tx.execute(
+        "DELETE FROM planner_assignments WHERE save_id = ?1 AND provenance = 'optimizer'",
+        params![save_id],
+    )
+    .map_err(|error| error.to_string())?;
+
+    let strings = load_ordered_strings(&tx, save_id)?;
+    for team in PLANNER_TEAMS {
+        let candidates = load_optimizer_candidates(&tx, save_id, snapshot_id, team, &tactic)?;
+        for planner_string in strings
+            .iter()
+            .filter(|planner_string| planner_string.team == team)
+        {
+            let occupied_lanes = manual_lanes.get(&planner_string.id);
+            let lane_indices = tactic
+                .lanes
+                .iter()
+                .enumerate()
+                .filter_map(|(index, lane)| {
+                    (!occupied_lanes.is_some_and(|lanes| lanes.contains(&lane.lane_id)))
+                        .then_some(index)
+                })
+                .collect::<Vec<_>>();
+            let available_candidates = candidates
+                .iter()
+                .filter(|candidate| !reserved_uids.contains(&candidate.player_uid))
+                .cloned()
+                .collect::<Vec<_>>();
+            let matches = match_lanes(&lane_indices, &available_candidates);
+
+            for (lane_index, candidate_index) in lane_indices.into_iter().zip(matches) {
+                let Some(candidate_index) = candidate_index else {
+                    continue;
+                };
+                let candidate = &available_candidates[candidate_index];
+                insert_assignment(
+                    &tx,
+                    save_id,
+                    planner_string.id,
+                    &tactic.lanes[lane_index].lane_id,
+                    candidate.player_uid,
+                    &candidate.last_known_name,
+                    AssignmentProvenance::Optimizer,
+                )?;
+                reserved_uids.insert(candidate.player_uid);
+            }
+        }
+    }
+
+    tx.commit().map_err(|error| error.to_string())?;
+    get_depth(conn, save_id)
+}
+
+struct ManualAssignment {
+    string_id: i64,
+    lane_id: String,
+    player_uid: i64,
+}
+
+struct OrderedPlannerString {
+    id: i64,
+    team: PlannerTeam,
+}
+
+fn load_manual_assignments(
+    tx: &rusqlite::Transaction<'_>,
+    save_id: i64,
+) -> Result<Vec<ManualAssignment>, String> {
+    let mut statement = tx
+        .prepare(
+            "SELECT string_id, lane_id, player_uid
+             FROM planner_assignments
+             WHERE save_id = ?1 AND provenance = 'manual'",
+        )
+        .map_err(|error| error.to_string())?;
+    let assignments = statement
+        .query_map(params![save_id], |row| {
+            Ok(ManualAssignment {
+                string_id: row.get(0)?,
+                lane_id: row.get(1)?,
+                player_uid: row.get(2)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(assignments)
+}
+
+fn load_ordered_strings(
+    tx: &rusqlite::Transaction<'_>,
+    save_id: i64,
+) -> Result<Vec<OrderedPlannerString>, String> {
+    let mut statement = tx
+        .prepare(
+            "SELECT id, team
+             FROM planner_strings
+             WHERE save_id = ?1
+             ORDER BY CASE team
+                 WHEN 'senior' THEN 0
+                 WHEN 'reserves' THEN 1
+                 WHEN 'youth' THEN 2
+             END, string_order",
+        )
+        .map_err(|error| error.to_string())?;
+    let strings = statement
+        .query_map(params![save_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    strings
+        .into_iter()
+        .map(|(id, team)| {
+            Ok(OrderedPlannerString {
+                id,
+                team: PlannerTeam::parse(&team)?,
+            })
+        })
+        .collect()
+}
+
+fn load_optimizer_candidates(
+    tx: &rusqlite::Transaction<'_>,
+    save_id: i64,
+    snapshot_id: i64,
+    team: PlannerTeam,
+    tactic: &PlannerTactic,
+) -> Result<Vec<OptimizerCandidate>, String> {
+    let mut score_statement = tx
+        .prepare(
+            "SELECT scores.uid, scores.role_id, scores.score
+             FROM players player
+             CROSS JOIN player_role_scores scores
+             WHERE player.snapshot_id = ?1
+               AND EXISTS(
+                   SELECT 1
+                   FROM planner_club_sources source
+                   WHERE source.save_id = ?2
+                     AND source.team = ?3
+                     AND source.club_name = player.current_club
+               )
+               AND scores.snapshot_id = player.snapshot_id
+               AND scores.uid = player.uid",
+        )
+        .map_err(|error| error.to_string())?;
+    let role_scores = score_statement
+        .query_map(params![snapshot_id, save_id, team.as_str()], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<u8>>(2)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .fold(
+            HashMap::<i64, HashMap<String, Option<u8>>>::new(),
+            |mut scores, row| {
+                scores.entry(row.0).or_default().insert(row.1, row.2);
+                scores
+            },
+        );
+
+    let mut player_statement = tx
+        .prepare(
+            "SELECT p.uid, p.name, p.age, p.positions_json
+             FROM players p
+             WHERE p.snapshot_id = ?1
+               AND EXISTS(
+                   SELECT 1
+                   FROM planner_club_sources source
+                   WHERE source.save_id = ?2
+                     AND source.team = ?3
+                     AND source.club_name = p.current_club
+               )
+             ORDER BY p.uid",
+        )
+        .map_err(|error| error.to_string())?;
+    let players = player_statement
+        .query_map(params![snapshot_id, save_id, team.as_str()], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    players
+        .into_iter()
+        .filter(|(_, _, age, _)| is_age_eligible(team, *age))
+        .map(|(player_uid, last_known_name, _, positions_json)| {
+            let positions =
+                serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&positions_json)
+                    .map_err(|error| error.to_string())?;
+            let lane_scores = tactic
+                .lanes
+                .iter()
+                .map(|lane| {
+                    is_suitable_for_lane(&positions, lane)
+                        .then(|| {
+                            let player_scores = role_scores.get(&player_uid)?;
+                            combine_role_scores(
+                                player_scores
+                                    .get(lane.ip_role_id.as_str())
+                                    .copied()
+                                    .flatten(),
+                                player_scores
+                                    .get(lane.oop_role_id.as_str())
+                                    .copied()
+                                    .flatten(),
+                                tactic.ip_weight,
+                            )
+                        })
+                        .flatten()
+                })
+                .collect::<Vec<_>>();
+            Ok(OptimizerCandidate {
+                player_uid,
+                last_known_name,
+                lane_scores,
+            })
+        })
+        .filter_map(|candidate| match candidate {
+            Ok(candidate) if candidate.lane_scores.iter().any(Option::is_some) => {
+                Some(Ok(candidate))
+            }
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect()
+}
+
+fn is_age_eligible(team: PlannerTeam, age: Option<i64>) -> bool {
+    match team {
+        PlannerTeam::Senior => true,
+        PlannerTeam::Reserves => age.is_some_and(|age| age <= 23),
+        PlannerTeam::Youth => age.is_some_and(|age| age <= 18),
+    }
+}
+
+fn is_suitable_for_lane(
+    positions: &serde_json::Map<String, serde_json::Value>,
+    lane: &TacticLane,
+) -> bool {
+    let has_suitability = |position: &str| {
+        positions
+            .get(position)
+            .and_then(serde_json::Value::as_i64)
+            .is_some_and(|suitability| suitability >= 15)
+    };
+    has_suitability(&lane.ip_position)
+        && (lane.ip_position == lane.oop_position || has_suitability(&lane.oop_position))
 }
 
 pub fn get_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
@@ -391,6 +891,31 @@ pub fn remove_string(
     tx.commit().map_err(|error| error.to_string())
 }
 
+pub fn clear_team(
+    conn: &Connection,
+    save_id: i64,
+    team: PlannerTeam,
+    confirmed: bool,
+) -> Result<(), String> {
+    if !confirmed {
+        return Err("Clearing a squad requires confirmation".to_string());
+    }
+    ensure_depth(conn, save_id)?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    tx.execute(
+        "DELETE FROM planner_assignments
+         WHERE save_id = ?1
+           AND string_id IN (
+             SELECT id FROM planner_strings WHERE save_id = ?1 AND team = ?2
+           )",
+        params![save_id, team.as_str()],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.commit().map_err(|error| error.to_string())
+}
+
 pub fn clear_assignment(
     conn: &Connection,
     save_id: i64,
@@ -435,6 +960,7 @@ pub fn assign_player(
         lane_id,
         player_uid,
         &last_known_name,
+        AssignmentProvenance::Manual,
     )?;
     tx.commit().map_err(|error| error.to_string())
 }
@@ -475,6 +1001,7 @@ pub fn move_player(
         lane_id,
         player_uid,
         &last_known_name,
+        AssignmentProvenance::Manual,
     )?;
     tx.commit().map_err(|error| error.to_string())
 }
@@ -759,12 +1286,20 @@ fn insert_assignment(
     lane_id: &str,
     player_uid: i64,
     last_known_name: &str,
+    provenance: AssignmentProvenance,
 ) -> Result<(), String> {
     tx.execute(
         "INSERT INTO planner_assignments (
-             save_id, string_id, lane_id, player_uid, last_known_name
-         ) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![save_id, string_id, lane_id, player_uid, last_known_name],
+             save_id, string_id, lane_id, player_uid, last_known_name, provenance
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            save_id,
+            string_id,
+            lane_id,
+            player_uid,
+            last_known_name,
+            provenance.as_str(),
+        ],
     )
     .map_err(|error| error.to_string())?;
     Ok(())
@@ -780,8 +1315,9 @@ mod tests {
     use crate::features::snapshot;
 
     use super::{
-        add_string, assign_player, clear_assignment, get_depth, get_slot_candidates, move_player,
-        remove_string, AssignmentState, PlannerTeam,
+        add_string, assign_player, clear_assignment, clear_team, get_depth, get_slot_candidates,
+        match_lanes, move_player, optimize_depth, remove_string, AssignmentState,
+        OptimizerCandidate, PlannerTeam,
     };
 
     fn open_with_snapshot() -> (tempfile::TempDir, Connection, i64) {
@@ -813,6 +1349,100 @@ mod tests {
             .find(|team_depth| team_depth.team == team)
             .expect("team depth")
             .strings
+    }
+
+    fn assignment_provenance(conn: &Connection, player_uid: i64) -> String {
+        conn.query_row(
+            "SELECT provenance FROM planner_assignments WHERE player_uid = ?1",
+            [player_uid],
+            |row| row.get(0),
+        )
+        .expect("read assignment provenance")
+    }
+
+    fn current_snapshot_id(conn: &Connection, save_id: i64) -> i64 {
+        conn.query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            [save_id],
+            |row| row.get(0),
+        )
+        .expect("current snapshot")
+    }
+
+    fn set_right_winger_scores(
+        conn: &Connection,
+        save_id: i64,
+        player_uid: i64,
+        score: Option<u8>,
+    ) {
+        let snapshot_id = current_snapshot_id(conn, save_id);
+        conn.execute(
+            "UPDATE player_role_scores
+             SET score = ?1
+             WHERE snapshot_id = ?2
+               AND uid = ?3
+               AND role_id IN ('winger_ip', 'tracking_wide_midfielder_oop')",
+            params![score, snapshot_id, player_uid],
+        )
+        .expect("set right-winger scores");
+    }
+
+    fn set_role_score(
+        conn: &Connection,
+        save_id: i64,
+        player_uid: i64,
+        role_id: &str,
+        score: Option<u8>,
+    ) {
+        conn.execute(
+            "UPDATE player_role_scores
+             SET score = ?1
+             WHERE snapshot_id = ?2 AND uid = ?3 AND role_id = ?4",
+            params![
+                score,
+                current_snapshot_id(conn, save_id),
+                player_uid,
+                role_id
+            ],
+        )
+        .expect("set role score");
+    }
+
+    fn set_player_age(conn: &Connection, save_id: i64, player_uid: i64, age: Option<i64>) {
+        conn.execute(
+            "UPDATE players SET age = ?1 WHERE snapshot_id = ?2 AND uid = ?3",
+            params![age, current_snapshot_id(conn, save_id), player_uid],
+        )
+        .expect("set player age");
+    }
+
+    fn set_player_positions(
+        conn: &Connection,
+        save_id: i64,
+        player_uid: i64,
+        positions_json: &str,
+    ) {
+        conn.execute(
+            "UPDATE players SET positions_json = ?1 WHERE snapshot_id = ?2 AND uid = ?3",
+            params![
+                positions_json,
+                current_snapshot_id(conn, save_id),
+                player_uid
+            ],
+        )
+        .expect("set player positions");
+    }
+
+    fn assigned_player_uid(
+        depth: &super::PlannerDepth,
+        team: PlannerTeam,
+        lane_id: &str,
+    ) -> Option<i64> {
+        team_strings(depth, team)
+            .iter()
+            .flat_map(|planner_string| &planner_string.assignments)
+            .find(|assignment| assignment.lane_id == lane_id)
+            .map(|assignment| assignment.player_uid)
     }
 
     fn add_picker_candidates(temp_dir: &tempfile::TempDir, conn: &mut Connection, save_id: i64) {
@@ -852,6 +1482,296 @@ mod tests {
             }],
         )
         .expect("configure B-team source");
+    }
+
+    #[test]
+    fn matcher_finds_the_best_total_instead_of_greedily_filling_the_first_lane() {
+        let candidates = [
+            OptimizerCandidate {
+                player_uid: 10,
+                last_known_name: "Flexible player".to_string(),
+                lane_scores: vec![Some(100), Some(99)],
+            },
+            OptimizerCandidate {
+                player_uid: 20,
+                last_known_name: "First-lane specialist".to_string(),
+                lane_scores: vec![Some(98), None],
+            },
+        ];
+
+        assert_eq!(match_lanes(&[0, 1], &candidates), [Some(1), Some(0)]);
+    }
+
+    #[test]
+    fn matcher_prefers_a_zero_score_player_to_a_blank_lane() {
+        let candidates = [OptimizerCandidate {
+            player_uid: 10,
+            last_known_name: "Zero-score player".to_string(),
+            lane_scores: vec![Some(0)],
+        }];
+
+        assert_eq!(match_lanes(&[0], &candidates), [Some(0)]);
+    }
+
+    #[test]
+    fn matcher_breaks_equal_scores_by_lowest_uid_in_lane_order() {
+        let candidates = [
+            OptimizerCandidate {
+                player_uid: 20,
+                last_known_name: "Second UID".to_string(),
+                lane_scores: vec![Some(50), Some(50)],
+            },
+            OptimizerCandidate {
+                player_uid: 10,
+                last_known_name: "First UID".to_string(),
+                lane_scores: vec![Some(50), Some(50)],
+            },
+        ];
+
+        assert_eq!(match_lanes(&[0, 1], &candidates), [Some(1), Some(0)]);
+    }
+
+    #[test]
+    fn optimizer_reserves_manual_players_before_automatic_allocation() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        set_right_winger_scores(&conn, save_id, 77, Some(100));
+        set_right_winger_scores(&conn, save_id, 78, Some(90));
+
+        let depth = get_depth(&conn, save_id).expect("create planner depth");
+        let senior_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+        assign_player(&conn, save_id, senior_string_id, "goalkeeper", 77)
+            .expect("preserve the manual player");
+
+        let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+        let senior_assignments = &team_strings(&optimized, PlannerTeam::Senior)[0].assignments;
+        assert!(senior_assignments
+            .iter()
+            .any(|assignment| assignment.player_uid == 77 && assignment.lane_id == "goalkeeper"));
+        assert!(senior_assignments
+            .iter()
+            .any(|assignment| assignment.player_uid == 78 && assignment.lane_id == "right_winger"));
+    }
+
+    #[test]
+    fn optimizer_keeps_senior_priority_over_a_higher_global_total() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        set_player_age(&conn, save_id, 77, Some(18));
+        set_player_age(&conn, save_id, 78, Some(24));
+        set_right_winger_scores(&conn, save_id, 77, Some(100));
+        set_right_winger_scores(&conn, save_id, 78, Some(90));
+
+        let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+
+        assert_eq!(
+            assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
+            Some(77)
+        );
+        assert_eq!(
+            assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
+            None
+        );
+    }
+
+    #[test]
+    fn optimizer_allocates_strings_in_ascending_order_within_a_team() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        let depth = get_depth(&conn, save_id).expect("create planner depth");
+        let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+        let second_string_id = add_string(&conn, save_id, PlannerTeam::Senior)
+            .expect("add second string")
+            .id;
+        set_right_winger_scores(&conn, save_id, 77, Some(100));
+        set_right_winger_scores(&conn, save_id, 78, Some(90));
+
+        let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+        let senior_strings = team_strings(&optimized, PlannerTeam::Senior);
+
+        assert_eq!(senior_strings[0].id, first_string_id);
+        assert_eq!(senior_strings[1].id, second_string_id);
+        assert_eq!(
+            senior_strings[0]
+                .assignments
+                .iter()
+                .find(|assignment| assignment.lane_id == "right_winger")
+                .map(|assignment| assignment.player_uid),
+            Some(77)
+        );
+        assert_eq!(
+            senior_strings[1]
+                .assignments
+                .iter()
+                .find(|assignment| assignment.lane_id == "right_winger")
+                .map(|assignment| assignment.player_uid),
+            Some(78)
+        );
+    }
+
+    #[test]
+    fn optimizer_requires_age_both_positions_and_complete_scores() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        let depth = get_depth(&conn, save_id).expect("create planner depth");
+        let senior_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+        assign_player(&conn, save_id, senior_string_id, "right_winger", 77)
+            .expect("occupy the senior lane manually");
+
+        set_player_age(&conn, save_id, 78, None);
+        set_right_winger_scores(&conn, save_id, 78, Some(100));
+        set_player_age(&conn, save_id, 79, Some(23));
+        set_right_winger_scores(&conn, save_id, 79, Some(0));
+        set_player_age(&conn, save_id, 80, Some(23));
+        set_player_positions(&conn, save_id, 80, r#"{"AMR": 18}"#);
+        set_right_winger_scores(&conn, save_id, 80, Some(100));
+
+        let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+
+        assert_eq!(
+            assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
+            Some(79)
+        );
+        assert!(!optimized
+            .teams
+            .iter()
+            .flat_map(|team| &team.strings)
+            .flat_map(|planner_string| &planner_string.assignments)
+            .any(|assignment| assignment.player_uid == 78 || assignment.player_uid == 80));
+    }
+
+    #[test]
+    fn optimizer_limits_attached_club_sources_to_their_configured_team() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        set_right_winger_scores(&conn, save_id, 77, None);
+        set_right_winger_scores(&conn, save_id, 78, None);
+        set_player_age(&conn, save_id, 79, Some(18));
+        set_right_winger_scores(&conn, save_id, 79, Some(100));
+        set_right_winger_scores(&conn, save_id, 80, None);
+
+        let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+
+        assert_eq!(
+            assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
+            None
+        );
+        assert_eq!(
+            assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
+            Some(79)
+        );
+        assert_eq!(
+            assigned_player_uid(&optimized, PlannerTeam::Youth, "right_winger"),
+            None
+        );
+    }
+
+    #[test]
+    fn optimizer_does_not_load_scores_outside_configured_club_family() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+                params![save_id],
+                |row| row.get(0),
+            )
+            .expect("current snapshot");
+        conn.execute(
+            "UPDATE players SET current_club = 'Other FC' WHERE snapshot_id = ?1 AND uid = 80",
+            params![snapshot_id],
+        )
+        .expect("exclude player from configured sources");
+        conn.execute_batch("PRAGMA ignore_check_constraints = ON")
+            .expect("allow invalid non-source score");
+        conn.execute(
+            "UPDATE player_role_scores SET score = 'invalid' WHERE snapshot_id = ?1 AND uid = 80",
+            params![snapshot_id],
+        )
+        .expect("set invalid non-source score");
+        conn.execute_batch("PRAGMA ignore_check_constraints = OFF")
+            .expect("restore score constraints");
+
+        optimize_depth(&conn, save_id).expect("ignore scores outside configured sources");
+    }
+
+    #[test]
+    fn optimizer_excludes_players_with_a_missing_role_score() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        set_player_age(&conn, save_id, 78, Some(23));
+        set_right_winger_scores(&conn, save_id, 78, Some(100));
+        set_role_score(&conn, save_id, 78, "winger_ip", None);
+        set_player_age(&conn, save_id, 79, Some(23));
+        set_right_winger_scores(&conn, save_id, 79, Some(50));
+
+        let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
+
+        assert_eq!(
+            assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
+            Some(79)
+        );
+        assert!(!optimized
+            .teams
+            .iter()
+            .flat_map(|team| &team.strings)
+            .flat_map(|planner_string| &planner_string.assignments)
+            .any(|assignment| assignment.player_uid == 78));
+    }
+
+    #[test]
+    fn optimizer_replaces_only_prior_optimizer_assignments() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        set_right_winger_scores(&conn, save_id, 77, Some(90));
+        let first = optimize_depth(&conn, save_id).expect("run first optimization");
+        assert_eq!(
+            assigned_player_uid(&first, PlannerTeam::Senior, "right_winger"),
+            Some(77)
+        );
+        assert_eq!(assignment_provenance(&conn, 77), "optimizer");
+
+        let senior_string_id = team_strings(&first, PlannerTeam::Senior)[0].id;
+        assign_player(&conn, save_id, senior_string_id, "goalkeeper", 78)
+            .expect("add a manual assignment");
+        set_right_winger_scores(&conn, save_id, 77, None);
+
+        let rerun = optimize_depth(&conn, save_id).expect("rerun optimization");
+        assert_eq!(
+            assigned_player_uid(&rerun, PlannerTeam::Senior, "right_winger"),
+            None
+        );
+        assert_eq!(assignment_provenance(&conn, 78), "manual");
+    }
+
+    #[test]
+    fn optimizer_rolls_back_replacement_when_an_insert_fails() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        set_right_winger_scores(&conn, save_id, 77, Some(90));
+        let depth = get_depth(&conn, save_id).expect("create planner depth");
+        let senior_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+        conn.execute(
+            "INSERT INTO planner_assignments (
+                 save_id, string_id, lane_id, player_uid, last_known_name, provenance
+             ) VALUES (?1, ?2, 'right_winger', 77, 'Existing optimizer row', 'optimizer')",
+            params![save_id, senior_string_id],
+        )
+        .expect("seed optimizer assignment");
+        conn.execute_batch(
+            "CREATE TRIGGER fail_optimizer_assignment
+             BEFORE INSERT ON planner_assignments
+             WHEN NEW.provenance = 'optimizer'
+             BEGIN
+                 SELECT RAISE(ABORT, 'forced optimizer failure');
+             END;",
+        )
+        .expect("create failing trigger");
+
+        let error = optimize_depth(&conn, save_id).expect_err("roll back failed optimization");
+
+        assert!(error.contains("forced optimizer failure"));
+        assert_eq!(assignment_provenance(&conn, 77), "optimizer");
     }
 
     #[test]
@@ -997,6 +1917,22 @@ mod tests {
     }
 
     #[test]
+    fn assign_and_move_player_persist_manual_provenance() {
+        let (_temp_dir, conn, save_id) = open_with_snapshot();
+        let depth = get_depth(&conn, save_id).expect("create planner depth");
+        let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+        let second_string_id = add_string(&conn, save_id, PlannerTeam::Senior)
+            .expect("add destination string")
+            .id;
+
+        assign_player(&conn, save_id, first_string_id, "goalkeeper", 77).expect("assign player");
+        assert_eq!(assignment_provenance(&conn, 77), "manual");
+
+        move_player(&conn, save_id, second_string_id, "goalkeeper", 77).expect("move player");
+        assert_eq!(assignment_provenance(&conn, 77), "manual");
+    }
+
+    #[test]
     fn adds_ordered_strings_and_rejects_removing_the_final_string() {
         let (_temp_dir, conn, save_id) = open_with_snapshot();
         let first = get_depth(&conn, save_id).expect("create planner depth");
@@ -1050,6 +1986,58 @@ mod tests {
         assert_eq!(strings.len(), 1);
         assert_eq!(strings[0].id, remaining.id);
         assert!(strings[0].assignments.is_empty());
+    }
+
+    #[test]
+    fn clearing_a_team_requires_confirmation_and_preserves_other_teams() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        let depth = get_depth(&conn, save_id).expect("create planner depth");
+        let senior_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+        let reserve_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
+        assign_player(&conn, save_id, senior_id, "goalkeeper", 77).expect("assign senior keeper");
+        assign_player(&conn, save_id, reserve_id, "goalkeeper", 78).expect("assign reserve keeper");
+        conn.execute(
+            "INSERT INTO planner_assignments (
+                save_id, string_id, lane_id, player_uid, last_known_name, provenance
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 'optimizer')",
+            params![save_id, senior_id, "left_back", 79, "Senior optimizer"],
+        )
+        .expect("assign senior optimizer row");
+        conn.execute(
+            "INSERT INTO planner_assignments (
+                save_id, string_id, lane_id, player_uid, last_known_name, provenance
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 'optimizer')",
+            params![save_id, reserve_id, "left_back", 80, "Reserve optimizer"],
+        )
+        .expect("assign reserve optimizer row");
+
+        let error = clear_team(&conn, save_id, PlannerTeam::Senior, false)
+            .expect_err("require confirmation");
+        assert!(error.contains("requires confirmation"));
+        assert_eq!(
+            team_strings(
+                &get_depth(&conn, save_id).expect("reload after rejected clear"),
+                PlannerTeam::Senior,
+            )[0]
+            .assignments
+            .len(),
+            2
+        );
+
+        clear_team(&conn, save_id, PlannerTeam::Senior, true).expect("clear senior team");
+        let reloaded = get_depth(&conn, save_id).expect("reload after clear");
+        assert!(team_strings(&reloaded, PlannerTeam::Senior)[0]
+            .assignments
+            .is_empty());
+        assert_eq!(
+            team_strings(&reloaded, PlannerTeam::Reserves)[0]
+                .assignments
+                .iter()
+                .map(|assignment| assignment.player_uid)
+                .collect::<Vec<_>>(),
+            [78, 80]
+        );
     }
 
     #[test]

@@ -177,6 +177,27 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             return plannerDepth;
           }
 
+          if (cmd === "optimize_planner_depth") {
+            const reserves = plannerDepth.teams.find(
+              (team) => team.team === "reserves",
+            );
+            if (!reserves) {
+              throw new Error("Planner team not found");
+            }
+            reserves.strings[0].assignments = [
+              {
+                id: 77,
+                laneId: "goalkeeper",
+                playerUid: 77,
+                lastKnownName: "Optimized Keeper",
+                currentName: "Optimized Keeper",
+                state: "resolved",
+                combinedScore: 82,
+              },
+            ];
+            return plannerDepth;
+          }
+
           if (cmd === "add_planner_string") {
             const team = plannerDepth.teams.find(
               (candidate) => candidate.team === args?.team,

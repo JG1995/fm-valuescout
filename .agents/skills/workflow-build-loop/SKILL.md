@@ -28,7 +28,7 @@ $workflow-build
 → $workflow-checkpoint (review 1)
 → if CRITICAL | HIGH | MEDIUM: $workflow-fix → $workflow-checkpoint (review 2)
 → if still CRITICAL | HIGH | MEDIUM: $workflow-fix → $workflow-checkpoint (review 3)
-→ if the same finding survives both correction attempts: escalate capability or effort before the third and final fix
+→ if the same finding survives both correction attempts: stop for a developer-selected main-session profile change
 → if still CRITICAL | HIGH | MEDIUM: $workflow-fix → $workflow-checkpoint (review 4 — final)
 → if still CRITICAL | HIGH | MEDIUM: stop — report verdict, do not commit
 → if only NITPICK or none: auto-commit content + ledger advancement
@@ -36,9 +36,9 @@ $workflow-build
 
 | Finding tier | In loop | Blocks manual `$workflow-checkpoint` commit? |
 | --- | --- | --- |
-| CRITICAL | Auto-fix; increase capability or effort before a third attempt on the same finding; stop without commit if still present after 3 fix rounds | Yes |
-| HIGH | Auto-fix; increase capability or effort before a third attempt on the same finding; stop without commit if still present after 3 fix rounds | Yes |
-| MEDIUM | Auto-fix by default; increase capability or effort before a third attempt on the same finding; stop without commit if still present after 3 fix rounds | No — developer may approve commit with MEDIUM in manual `$workflow-checkpoint` |
+| CRITICAL | Auto-fix; stop for a developer-selected main-session profile change before a third attempt on the same finding; stop without commit if still present after 3 fix rounds | Yes |
+| HIGH | Auto-fix; stop for a developer-selected main-session profile change before a third attempt on the same finding; stop without commit if still present after 3 fix rounds | Yes |
+| MEDIUM | Auto-fix by default; stop for a developer-selected main-session profile change before a third attempt on the same finding; stop without commit if still present after 3 fix rounds | No — developer may approve commit with MEDIUM in manual `$workflow-checkpoint` |
 | NITPICK | Fix only when the same verdict also has CRITICAL, HIGH, or MEDIUM; otherwise leave as-is and exit | No |
 
 **NITPICK-only verdicts:** When a review lists **only** NITPICK findings (no CRITICAL, HIGH, or MEDIUM), do **not** run `$workflow-fix`. Proceed directly to Phase 3 (auto-commit).
@@ -51,7 +51,7 @@ $workflow-build
 
 ## Phase 1 — Build
 
-Follow `.agents/skills/workflow-build/SKILL.md` in full through implementation, format, gate, and ledger updates for the active commit.
+Follow `.agents/skills/workflow-build/SKILL.md` in full through implementation, format, gate, and ledger updates for the active commit. The main session performs the implementation and all correction rounds.
 
 Do **not** stop for manual `$workflow-checkpoint` at the end of build — continue into Phase 2 in the **same command invocation** (do not wait for the developer between phases).
 
@@ -65,7 +65,7 @@ Differences from manual `$workflow-checkpoint`:
 
 - **Do not wait for developer approval** between loop iterations.
 - When the verdict still has CRITICAL, HIGH, or MEDIUM and fix rounds remain, run `$workflow-fix` with default delegation (**CRITICAL**, **HIGH**, and **MEDIUM** from that verdict) per `.agents/skills/workflow-fix/SKILL.md`. When the same verdict also lists NITPICK items, include them in that `$workflow-fix` pass. Include the **build-loop carve-out** (continue to the next checkpoint; do not stop for the developer).
-- Track findings by violated contract and execution path. If the same finding survives two correction attempts, do not run the third and final attempt with the same profile. Increase model capability or reasoning effort under `.agents/WORKFLOW.md`, or stop and return to planning when the finding is structural or the required profile is unavailable. The three-round cap remains the absolute limit across all profiles and findings.
+- Track findings by violated contract and execution path. If the same finding survives two correction attempts, do not dispatch another implementer for the third attempt. Stop the loop and report the required capability or effort change so the developer can switch the main session. Return to planning when the finding is structural. The three-round cap remains the absolute limit across all profiles and findings.
 - When the verdict is NITPICK-only or empty, proceed to Phase 3 — do **not** run `$workflow-fix` for NITPICK-only.
 
 Track and report in the final summary:

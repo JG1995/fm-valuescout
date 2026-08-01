@@ -6,6 +6,8 @@ import { Modal } from "@/components/ui/modal/modal";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { addPlannerString } from "../api/add-planner-string";
+import { clearPlannerTeam } from "../api/clear-planner-team";
+import { optimizePlannerDepth } from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
 import { removePlannerString } from "../api/remove-planner-string";
 import { PLANNER_TEAMS, type PlannerTeam } from "../types/club-family";
@@ -377,6 +379,14 @@ export function PlannerDepthMatrix({
     null,
   );
   const [removalOpen, setRemovalOpen] = useState(false);
+  const [clearTeamTarget, setClearTeamTarget] = useState<PlannerTeam | null>(
+    null,
+  );
+  const [clearTeamOpen, setClearTeamOpen] = useState(false);
+  const [clearTeamError, setClearTeamError] = useState<string | null>(null);
+  const [clearTeamStatus, setClearTeamStatus] = useState<string | null>(null);
+  const [optimizeError, setOptimizeError] = useState<string | null>(null);
+  const [optimizeStatus, setOptimizeStatus] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const closeTimerRef = useRef<number | null>(null);
   const removalTimerRef = useRef<number | null>(null);
@@ -515,6 +525,50 @@ export function PlannerDepthMatrix({
     setRemovalOpen(true);
   };
 
+  const clearTeam = useMutation({
+    mutationFn: (team: PlannerTeam) => clearPlannerTeam(team, true),
+    onSuccess: async (nextDepth, team) => {
+      queryClient.setQueryData(plannerKeys.depth(), nextDepth);
+      await queryClient.invalidateQueries({
+        queryKey: plannerKeys.slotCandidates(),
+      });
+      setClearTeamError(null);
+      setClearTeamStatus(`${TEAM_LABELS[team]} squad cleared.`);
+      setClearTeamOpen(false);
+    },
+    onError: (error) => {
+      setClearTeamError(errorMessage(error));
+    },
+  });
+
+  const optimize = useMutation({
+    mutationFn: optimizePlannerDepth,
+    onSuccess: async (nextDepth) => {
+      queryClient.setQueryData(plannerKeys.depth(), nextDepth);
+      await queryClient.invalidateQueries({
+        queryKey: plannerKeys.slotCandidates(),
+      });
+      setOptimizeError(null);
+      setOptimizeStatus("Squads optimized.");
+    },
+    onError: (error) => {
+      setOptimizeError(errorMessage(error));
+    },
+  });
+
+  const requestClearTeam = () => {
+    setClearTeamError(null);
+    setClearTeamStatus(null);
+    setClearTeamTarget(selectedTeam);
+    setClearTeamOpen(true);
+  };
+
+  const closeClearTeam = () => {
+    if (!clearTeam.isPending) {
+      setClearTeamOpen(false);
+    }
+  };
+
   const closeRemoval = () => {
     if (!removalTarget) {
       return;
@@ -527,7 +581,36 @@ export function PlannerDepthMatrix({
   }
 
   return (
-    <Panel title="Squad depth" flush>
+    <Panel
+      title="Squad depth"
+      flush
+      actions={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button
+            disabled={optimize.isPending}
+            loading={optimize.isPending}
+            loadingLabel="Optimizing…"
+            onClick={() => {
+              if (optimize.isPending) {
+                return;
+              }
+              setOptimizeError(null);
+              setOptimizeStatus(null);
+              optimize.mutate();
+            }}
+          >
+            Optimize squads
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={clearTeam.isPending || optimize.isPending}
+            onClick={requestClearTeam}
+          >
+            Clear {TEAM_LABELS[selectedTeam]} squad
+          </Button>
+        </div>
+      }
+    >
       <div className="space-y-4 p-4">
         {pickerError ? (
           <p className="text-body-sm text-error" role="alert">
@@ -537,6 +620,21 @@ export function PlannerDepthMatrix({
         {stringError ? (
           <p className="text-body-sm text-error" role="alert">
             {stringError}
+          </p>
+        ) : null}
+        {clearTeamStatus ? (
+          <p className="text-body-sm text-success" role="status">
+            {clearTeamStatus}
+          </p>
+        ) : null}
+        {optimizeError ? (
+          <p className="text-body-sm text-error" role="alert">
+            {optimizeError}
+          </p>
+        ) : null}
+        {optimizeStatus ? (
+          <p className="text-body-sm text-success" role="status">
+            {optimizeStatus}
           </p>
         ) : null}
         <div
@@ -655,6 +753,43 @@ export function PlannerDepthMatrix({
               .join(", ")}
             .
           </p>
+        </Modal>
+      ) : null}
+      {clearTeamTarget ? (
+        <Modal
+          open={clearTeamOpen}
+          title={`Clear ${TEAM_LABELS[clearTeamTarget]} squad?`}
+          variant="destructive"
+          onClose={closeClearTeam}
+          footer={
+            <>
+              <Button
+                variant="secondary"
+                disabled={clearTeam.isPending}
+                onClick={closeClearTeam}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                loading={clearTeam.isPending}
+                loadingLabel="Clearing…"
+                onClick={() => clearTeam.mutate(clearTeamTarget)}
+              >
+                Clear {TEAM_LABELS[clearTeamTarget]} squad
+              </Button>
+            </>
+          }
+        >
+          <p className="text-body-md text-on-surface-variant">
+            This clears every assignment from the {TEAM_LABELS[clearTeamTarget]}{" "}
+            squad.
+          </p>
+          {clearTeamError ? (
+            <p className="mt-3 text-body-sm text-error" role="alert">
+              {clearTeamError}
+            </p>
+          ) : null}
         </Modal>
       ) : null}
     </Panel>

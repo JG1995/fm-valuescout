@@ -3,7 +3,7 @@ name: workflow-fix
 description: Address delegated review findings, then checkpoint again or continue an active build or feature-finish loop
 ---
 
-Fix **delegated review findings** on the current commit. During feature completion, the developer may instead name one completed owning commit and its original implementation profile as the correction scope. This command does not advance the delivery plan to the next commit.
+Fix **delegated review findings** on the current commit in the main session. During feature completion, the developer may instead name one completed owning commit and its implementation packet as the correction scope. This command does not advance the delivery plan to the next commit.
 
 ## What to fix
 
@@ -56,7 +56,7 @@ For an explicitly delegated feature-complete correction, replace "current commit
 
 1. List each delegated finding you will address (by verdict tier and title).
 2. For each: state the intended correction and how you will verify it.
-3. Classify each correction using `.agents/WORKFLOW.md`: return bounded execution errors to the original model; increase effort for incomplete execution on a sound design; increase model capability for a structural misunderstanding; replan when a correction changes an invariant, boundary, contract, validation plan, PR split, or later commit.
+3. Classify each correction using `.agents/WORKFLOW.md`: correct bounded execution errors in the main session; increase effort for incomplete execution on a sound design; increase model capability for a structural misunderstanding; replan when a correction changes an invariant, boundary, contract, validation plan, PR split, or later commit. If the required implementation profile changes, stop and report it so the developer can switch the main session.
 4. Apply the Decision Ladder from `AGENTS.md` and matching skills. Do not add abstractions beyond what the finding requires.
 
 ## Implementation
