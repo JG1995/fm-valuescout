@@ -127,6 +127,10 @@ function PlannerStringHeader({
     <th
       scope="col"
       className="min-w-52 border-b border-outline-variant px-3 py-2 text-right font-mono text-mono-sm text-on-surface tabular-nums"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onOpenMenu();
+      }}
     >
       <div className="relative flex items-center justify-between gap-2">
         <span>{label}</span>
@@ -138,10 +142,6 @@ function PlannerStringHeader({
           aria-haspopup="menu"
           className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           onClick={() => (menuOpen ? onCloseMenu() : onOpenMenu())}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            onOpenMenu();
-          }}
         >
           <Ellipsis aria-hidden="true" size={16} strokeWidth={1.5} />
         </button>
@@ -477,8 +477,11 @@ export function PlannerDepthMatrix({
       plannerString: PlannerString;
       confirmPopulated: boolean;
     }) => removePlannerString(plannerString.id, confirmPopulated),
-    onSuccess: (nextDepth, variables) => {
+    onSuccess: async (nextDepth, variables) => {
       queryClient.setQueryData(plannerKeys.depth(), nextDepth);
+      await queryClient.invalidateQueries({
+        queryKey: plannerKeys.slotCandidates(),
+      });
       const team = depth.teams.find((candidate) =>
         candidate.strings.some(
           (plannerString) => plannerString.id === variables.plannerString.id,

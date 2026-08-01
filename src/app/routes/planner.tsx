@@ -64,6 +64,7 @@ function PlannerPageContent() {
 
   return (
     <>
+      <PlannerClubFamilyPanel />
       {/* Key the editor to the active save so its local draft cannot cross a save boundary. */}
       <PlannerTacticEditor
         key={snapshot.saveId}
@@ -78,7 +79,6 @@ function PlannerPageContent() {
         tactic={tactic}
         options={tacticOptions}
       />
-      <PlannerClubFamilyPanel />
     </>
   );
 }

@@ -119,7 +119,12 @@ export function PlannerTacticEditor({
       setLastSavedTactic(nextTactic);
       setSaveSucceeded(true);
       queryClient.setQueryData(plannerKeys.tactic(), nextTactic);
-      await queryClient.invalidateQueries({ queryKey: plannerKeys.depth() });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: plannerKeys.depth() }),
+        queryClient.invalidateQueries({
+          queryKey: plannerKeys.slotCandidates(),
+        }),
+      ]);
     },
   });
 

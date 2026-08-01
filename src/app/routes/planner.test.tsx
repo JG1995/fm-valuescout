@@ -4,7 +4,13 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
@@ -110,6 +116,34 @@ describe("planner route", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders first-use club-family setup before downstream planner panels", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    const clubSetup = await screen.findByRole("heading", {
+      level: 2,
+      name: "Set up your club family",
+    });
+    const tacticEditor = screen.getByRole("heading", {
+      level: 2,
+      name: "Tactic editor",
+    });
+    const squadDepth = screen.getByRole("heading", {
+      level: 2,
+      name: "Squad depth",
+    });
+
+    expect(
+      clubSetup.compareDocumentPosition(tacticEditor) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(
+      clubSetup.compareDocumentPosition(squadDepth) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+  });
+
   it("edits linked IP and OOP lanes with filtered roles and weight control", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -201,6 +235,55 @@ describe("planner route", () => {
     );
     expect(weight).toHaveValue("55");
     expect(resolvePlannerTacticIpcMock().ipWeight).toBe(0.5);
+  });
+
+  it("refreshes 60-second cached candidates after saving a tactic", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerSlotCandidates([
+      slotCandidate({
+        playerUid: 77,
+        name: "Old tactic fit",
+        currentClub: "Barcelona",
+        ipScore: 85,
+        oopScore: 75,
+        combinedScore: 80,
+      }),
+    ]);
+    renderPlannerRoute({ staleTime: 60_000 });
+
+    const cell = await screen.findByRole("button", {
+      name: /Senior, 1st string, Goalkeeper, Empty/,
+    });
+    await user.click(cell);
+    expect(
+      await screen.findByRole("option", { name: /Old tactic fit/ }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    setPlannerSlotCandidates([
+      slotCandidate({
+        playerUid: 77,
+        name: "Updated tactic fit",
+        currentClub: "Barcelona",
+        ipScore: 90,
+        oopScore: 80,
+        combinedScore: 85,
+      }),
+    ]);
+    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    weight.focus();
+    await user.keyboard("{ArrowRight}");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    await user.click(cell);
+    expect(
+      await screen.findByRole("option", { name: /Updated tactic fit/ }),
+    ).toBeInTheDocument();
   });
 
   it("resets a dirty tactic draft when the active save changes", async () => {
@@ -508,6 +591,80 @@ describe("planner route", () => {
     ).toHaveTextContent(
       "Move Cache Keeper from Senior · 1st string · Goalkeeper to Senior · 2nd string · Goalkeeper?",
     );
+  });
+
+  it("refreshes 60-second cached candidates after removing a populated string", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = withSecondSeniorString(resolvePlannerDepthIpcMock());
+    depth.teams = depth.teams.map((team) =>
+      team.team === "senior"
+        ? {
+            ...team,
+            strings: team.strings.map((plannerString, index) =>
+              index === 0
+                ? {
+                    ...plannerString,
+                    assignments: [
+                      {
+                        id: 201,
+                        laneId: "goalkeeper",
+                        playerUid: 77,
+                        lastKnownName: "String Keeper",
+                        currentName: "String Keeper",
+                        state: "resolved",
+                        combinedScore: 82,
+                      },
+                    ],
+                  }
+                : plannerString,
+            ),
+          }
+        : team,
+    );
+    setPlannerDepthIpcMock(depth);
+    setPlannerSlotCandidates([
+      slotCandidate({
+        playerUid: 77,
+        name: "String Keeper",
+        currentClub: "Barcelona",
+        ipScore: 85,
+        oopScore: 75,
+        combinedScore: 80,
+      }),
+    ]);
+    renderPlannerRoute({ staleTime: 60_000 });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /Senior, 2nd string, Goalkeeper, Empty/,
+      }),
+    );
+    expect(
+      await screen.findByRole("option", { name: /String Keeper/ }),
+    ).toHaveTextContent("Assigned: Senior · 1st string · Goalkeeper");
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Manage 1st string" }));
+    await user.click(
+      within(
+        screen.getByRole("menu", { name: "1st string actions" }),
+      ).getByRole("menuitem", { name: "Remove string" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Remove string" }));
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /Senior, 1st string, Goalkeeper, Empty/,
+      }),
+    );
+    expect(
+      await screen.findByRole("option", { name: /String Keeper/ }),
+    ).toHaveTextContent("Unassigned");
   });
 
   it("requires confirmation before clearing an occupied slot", async () => {
@@ -818,6 +975,21 @@ describe("planner route", () => {
         screen.getByRole("menu", { name: "1st string actions" }),
       ).getByRole("menuitem", { name: "Remove string" }),
     ).toBeDisabled();
+  });
+
+  it("opens the string menu from the whole header context menu", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    const header = await screen.findByRole("columnheader", {
+      name: "1st string",
+    });
+
+    expect(fireEvent.contextMenu(header)).toBe(false);
+    expect(
+      screen.getByRole("menu", { name: "1st string actions" }),
+    ).toBeInTheDocument();
   });
 
   it("keeps focus on the originating header when adding a string fails", async () => {
