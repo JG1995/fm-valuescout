@@ -881,6 +881,31 @@ pub fn remove_string(
     tx.commit().map_err(|error| error.to_string())
 }
 
+pub fn clear_team(
+    conn: &Connection,
+    save_id: i64,
+    team: PlannerTeam,
+    confirmed: bool,
+) -> Result<(), String> {
+    if !confirmed {
+        return Err("Clearing a squad requires confirmation".to_string());
+    }
+    ensure_depth(conn, save_id)?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    tx.execute(
+        "DELETE FROM planner_assignments
+         WHERE save_id = ?1
+           AND string_id IN (
+             SELECT id FROM planner_strings WHERE save_id = ?1 AND team = ?2
+           )",
+        params![save_id, team.as_str()],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.commit().map_err(|error| error.to_string())
+}
+
 pub fn clear_assignment(
     conn: &Connection,
     save_id: i64,
@@ -1280,9 +1305,9 @@ mod tests {
     use crate::features::snapshot;
 
     use super::{
-        add_string, assign_player, clear_assignment, get_depth, get_slot_candidates, match_lanes,
-        move_player, optimize_depth, remove_string, AssignmentState, OptimizerCandidate,
-        PlannerTeam,
+        add_string, assign_player, clear_assignment, clear_team, get_depth, get_slot_candidates,
+        match_lanes, move_player, optimize_depth, remove_string, AssignmentState,
+        OptimizerCandidate, PlannerTeam,
     };
 
     fn open_with_snapshot() -> (tempfile::TempDir, Connection, i64) {
@@ -1922,6 +1947,58 @@ mod tests {
         assert_eq!(strings.len(), 1);
         assert_eq!(strings[0].id, remaining.id);
         assert!(strings[0].assignments.is_empty());
+    }
+
+    #[test]
+    fn clearing_a_team_requires_confirmation_and_preserves_other_teams() {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        let depth = get_depth(&conn, save_id).expect("create planner depth");
+        let senior_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+        let reserve_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
+        assign_player(&conn, save_id, senior_id, "goalkeeper", 77).expect("assign senior keeper");
+        assign_player(&conn, save_id, reserve_id, "goalkeeper", 78).expect("assign reserve keeper");
+        conn.execute(
+            "INSERT INTO planner_assignments (
+                save_id, string_id, lane_id, player_uid, last_known_name, provenance
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 'optimizer')",
+            params![save_id, senior_id, "left_back", 79, "Senior optimizer"],
+        )
+        .expect("assign senior optimizer row");
+        conn.execute(
+            "INSERT INTO planner_assignments (
+                save_id, string_id, lane_id, player_uid, last_known_name, provenance
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 'optimizer')",
+            params![save_id, reserve_id, "left_back", 80, "Reserve optimizer"],
+        )
+        .expect("assign reserve optimizer row");
+
+        let error = clear_team(&conn, save_id, PlannerTeam::Senior, false)
+            .expect_err("require confirmation");
+        assert!(error.contains("requires confirmation"));
+        assert_eq!(
+            team_strings(
+                &get_depth(&conn, save_id).expect("reload after rejected clear"),
+                PlannerTeam::Senior,
+            )[0]
+            .assignments
+            .len(),
+            2
+        );
+
+        clear_team(&conn, save_id, PlannerTeam::Senior, true).expect("clear senior team");
+        let reloaded = get_depth(&conn, save_id).expect("reload after clear");
+        assert!(team_strings(&reloaded, PlannerTeam::Senior)[0]
+            .assignments
+            .is_empty());
+        assert_eq!(
+            team_strings(&reloaded, PlannerTeam::Reserves)[0]
+                .assignments
+                .iter()
+                .map(|assignment| assignment.player_uid)
+                .collect::<Vec<_>>(),
+            [78, 80]
+        );
     }
 
     #[test]

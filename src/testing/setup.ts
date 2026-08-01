@@ -20,6 +20,7 @@ import {
   resolveAddPlannerStringIpcMock,
   resolveAssignPlannerPlayerIpcMock,
   resolveClearPlannerAssignmentIpcMock,
+  resolveClearPlannerTeamIpcMock,
   resolveMovePlannerPlayerIpcMock,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerClubsIpcMock,
@@ -151,6 +152,10 @@ function registerIpcMocks() {
 
     if (cmd === "remove_planner_string") {
       return resolveRemovePlannerStringIpcMock(args);
+    }
+
+    if (cmd === "clear_planner_team") {
+      return resolveClearPlannerTeamIpcMock(args);
     }
 
     if (cmd === "get_planner_slot_candidates") {

@@ -32,4 +32,12 @@ describe("Button", () => {
     expect(screen.getByText("Load Data")).toBeInTheDocument();
     expect(screen.getByText("Scanning…")).toBeInTheDocument();
   });
+
+  it("uses the error token for destructive actions", () => {
+    render(<Button variant="destructive">Clear squad</Button>);
+
+    expect(screen.getByRole("button", { name: "Clear squad" })).toHaveClass(
+      "bg-error",
+    );
+  });
 });

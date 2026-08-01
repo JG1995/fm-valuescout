@@ -436,6 +436,21 @@ pub fn remove_planner_string(
 }
 
 #[tauri::command]
+pub fn clear_planner_team(
+    team: String,
+    confirmed: bool,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let team = PlannerTeam::parse(&team)?;
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    depth_service::clear_team(&conn, save_id, team, confirmed)?;
+    Ok(depth_service::get_depth(&conn, save_id)?.into())
+}
+
+#[tauri::command]
 pub fn clear_planner_assignment(
     string_id: i64,
     lane_id: String,

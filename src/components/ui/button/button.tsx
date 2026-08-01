@@ -3,7 +3,7 @@ import { LoaderCircle } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/utils/cn";
 
-type ButtonVariant = "primary" | "secondary" | "ghost";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "destructive";
 type ButtonSize = "default" | "lg" | "icon";
 
 type ButtonBaseProps = Omit<
@@ -37,6 +37,7 @@ const variantClasses: Record<ButtonVariant, string> = {
     "border border-outline text-on-surface hover:bg-surface-container-high active:bg-surface-container-highest",
   ghost:
     "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface active:bg-surface-container-highest",
+  destructive: "bg-error text-on-error hover:bg-error/90 active:bg-error/80",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
