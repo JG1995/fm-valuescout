@@ -19,6 +19,7 @@ import {
   resetPlannerIpcMock,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerClubsIpcMock,
+  resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
   resolveSavePlannerClubFamilyIpcMock,
@@ -132,6 +133,10 @@ function registerIpcMocks() {
 
     if (cmd === "get_planner_tactic_options") {
       return resolvePlannerTacticOptionsIpcMock();
+    }
+
+    if (cmd === "get_planner_depth") {
+      return resolvePlannerDepthIpcMock();
     }
 
     if (cmd === "save_planner_tactic") {

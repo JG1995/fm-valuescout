@@ -36,7 +36,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
-**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v5: `saves`, `snapshots`, `players`, `player_role_scores`, save-scoped planner club-family sources, and the shared planner tactic).
+**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v6: `saves`, `snapshots`, `players`, `player_role_scores`, and save-scoped Planner club-family, tactic, depth-string, and assignment rows).
 
 **FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), `status.json` / `dump.json` / diagnostics with phase timings. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
@@ -50,7 +50,9 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Planner club family:** Rust `features/planner` owns save-scoped `planner_club_settings` and `planner_club_sources`, current-snapshot club discovery, and validation for `get_planner_club_family`, `list_planner_clubs`, and `save_planner_club_family`. React `features/planner` owns the `/planner` setup panel. The primary club seeds Senior, Reserves, and Youth sources with matching `teamLevel` filters; attached sources preserve explicit separate B-team or youth club mappings. App-shell save switching and Load Data invalidate planner queries alongside snapshot and player queries.
 
-**Planner tactic:** Rust `features/planner` also owns one save-scoped `planner_tactics` row and eleven ordered `planner_tactic_lanes` rows. `get_planner_tactic` seeds a validated 4-3-3 DM In-Possession / 4-1-4-1 DM Out-of-Possession tactic with compatible catalog roles; `get_planner_tactic_options` exposes catalog-backed placements and phase/position metadata; `save_planner_tactic` validates the complete linked tactic and its 0–1 IP weight before replacing the lane rows. React `features/planner` loads the tactic and options through TanStack Query; the editor is deferred to the next commit.
+**Planner tactic:** Rust `features/planner` also owns one save-scoped `planner_tactics` row and eleven ordered `planner_tactic_lanes` rows. `get_planner_tactic` seeds a validated 4-3-3 DM In-Possession / 4-1-4-1 DM Out-of-Possession tactic with compatible catalog roles; `get_planner_tactic_options` exposes catalog-backed placements and phase/position metadata; `save_planner_tactic` validates the complete linked tactic and its 0–1 IP weight before replacing the lane rows. React `features/planner` loads the tactic and options through TanStack Query; the editor keeps linked phase edits and score-weight drafts local until save.
+
+**Planner depth matrix:** Rust `features/planner` owns save-scoped `planner_strings` and `planner_assignments`, resolves assignment state and combined scores against the active snapshot, and exposes `get_planner_depth`. React `features/planner` loads the complete three-team read model through TanStack Query and renders keyboard-operable Senior, Reserves, and Youth tabs over one shared tactic matrix. Sticky lane labels and an overflow container keep ordered strings readable; React displays Rust-provided unresolved, outside-pool, and unknown-score states without recomputing domain values.
 
 **Auth:** None in the template default — chosen per fork via `/stack`
 
@@ -428,7 +430,7 @@ User clicks Load Data (AppTopBar)
   → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
 
-**Saves model** (migrations v2–v5, `src-tauri/src/db/migrations.rs`):
+**Saves model** (migrations v2–v6, `src-tauri/src/db/migrations.rs`):
 
 | Table | Role |
 | --- | --- |
@@ -440,6 +442,8 @@ User clicks Load Data (AppTopBar)
 | `planner_club_sources` | Primary and attached club sources assigned to Senior, Reserves, or Youth, with an optional `team_level` filter. Source rows reference the save, not a snapshot. |
 | `planner_tactics` | One shared tactic per save. Stores the in-possession score weight and survives current-snapshot replacement. |
 | `planner_tactic_lanes` | Eleven ordered, stable lanes per tactic. Each lane links an IP placement and role to an OOP placement and role; both role references are validated against the scoring catalog. |
+| `planner_strings` | Ordered depth-chart strings for Senior, Reserves, and Youth. Rows reference the save, not a snapshot, and each team keeps at least one string. |
+| `planner_assignments` | Save-wide unique player assignments to a tactic lane and string. Rows retain the player UID and last-known name while current snapshot resolution changes. |
 
 **Query and save-management IPC** (`features/snapshot/commands.rs`):
 
@@ -483,6 +487,16 @@ User opens /planner
   → save_planner_tactic receives the complete 11-lane draft and IP weight
   → Rust rejects incomplete lanes, unknown or phase-incompatible roles, unsupported positions, and weights outside 0–1
   → planner query keys remain save-scoped and are invalidated with the rest of the planner tree on save/snapshot changes
+```
+
+**Planner depth IPC** (`features/planner/commands.rs`):
+
+```text
+User opens /planner
+  → route loader: ensureQueryData(get_planner_depth)
+  → get_planner_depth returns all three ordered team strings with current assignment state and combined score
+  → React renders one selected team at a time over the depth read model; tabs change presentation state only
+  → Load Data and active-save changes invalidate the depth query with the planner tree
 ```
 
 `request_player_dump` remains registered for tests and low-level scan-only use; the **Load Data** button in `AppTopBar` calls `load_data`.

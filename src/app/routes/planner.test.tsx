@@ -9,14 +9,18 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
+import type { PlannerDepth } from "@/features/planner/types/depth";
 import type { PlannerTactic } from "@/features/planner/types/tactic";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import {
+  getPlannerDepthIpcMockCalls,
   resolvePlannerClubFamilyIpcMock,
+  resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
   setPlannerAvailableClubs,
+  setPlannerDepthIpcMock,
   setPlannerTacticSaveError,
 } from "@/testing/planner-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
@@ -164,6 +168,9 @@ describe("planner route", () => {
       oopPosition: "DL",
       oopRoleId: "holding_full_back_oop",
     });
+    await waitFor(() =>
+      expect(getPlannerDepthIpcMockCalls()).toBeGreaterThan(1),
+    );
   });
 
   it("retains the edited tactic draft when save fails", async () => {
@@ -287,4 +294,121 @@ describe("planner route", () => {
     await user.click(saveButton);
     expect(resolvePlannerTacticIpcMock().ipWeight).toBe(0.5);
   });
+
+  it("renders shared lanes, ordered strings, keyboard tabs, and truthful assignment states", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = resolvePlannerDepthIpcMock();
+    setPlannerDepthIpcMock(withDepthAssignments(depth));
+    renderPlannerRoute();
+
+    const matrix = await screen.findByRole("region", {
+      name: "Senior squad depth matrix",
+    });
+    expect(matrix).toHaveClass("overflow-x-auto");
+    expect(
+      within(matrix).getByRole("columnheader", { name: "1st string" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("columnheader", { name: "2nd string" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("row", { name: /Goalkeeper/ }),
+    ).toBeInTheDocument();
+    expect(within(matrix).getByText("IP: GK · Goalkeeper")).toBeInTheDocument();
+    expect(
+      within(matrix).getByText("OOP: GK · Line-Holding Keeper"),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("img", { name: /Combined role score: 82/ }),
+    ).toBeInTheDocument();
+    expect(within(matrix).getByText("Outside pool")).toBeInTheDocument();
+    expect(within(matrix).getByText("Unresolved")).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("button", {
+        name: /Missing Centre-Back/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("button", {
+        name: /No Score Player, Resolved, score —/,
+      }),
+    ).toBeInTheDocument();
+    expect(within(matrix).getAllByText("—").length).toBeGreaterThan(0);
+
+    const seniorTab = screen.getByRole("tab", { name: "Senior" });
+    seniorTab.focus();
+    await user.keyboard("{ArrowRight}");
+    const reservesTab = screen.getByRole("tab", { name: "Reserves" });
+    expect(reservesTab).toHaveAttribute("aria-selected", "true");
+    expect(document.activeElement).toBe(reservesTab);
+    expect(
+      screen.getByRole("region", { name: "Reserves squad depth matrix" }),
+    ).toBeInTheDocument();
+
+    const cell = screen.getAllByRole("button", {
+      name: /Reserves, 1st string, Goalkeeper, Empty/,
+    })[0];
+    expect(cell).not.toBeDisabled();
+    cell.focus();
+    expect(document.activeElement).toBe(cell);
+  });
 });
+
+function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
+  return {
+    ...depth,
+    teams: depth.teams.map((team) =>
+      team.team === "senior"
+        ? {
+            ...team,
+            strings: [
+              {
+                ...team.strings[0],
+                assignments: [
+                  {
+                    id: 101,
+                    laneId: "goalkeeper",
+                    playerUid: 77,
+                    lastKnownName: "Alex Keeper",
+                    currentName: "Alex Keeper",
+                    state: "resolved",
+                    combinedScore: 82,
+                  },
+                  {
+                    id: 102,
+                    laneId: "left_back",
+                    playerUid: 78,
+                    lastKnownName: "Outside Full-Back",
+                    currentName: "Outside Full-Back",
+                    state: "outside_pool",
+                    combinedScore: 61,
+                  },
+                  {
+                    id: 103,
+                    laneId: "left_centre_back",
+                    playerUid: 79,
+                    lastKnownName: "Missing Centre-Back",
+                    currentName: null,
+                    state: "unresolved",
+                    combinedScore: null,
+                  },
+                  {
+                    id: 104,
+                    laneId: "right_back",
+                    playerUid: 80,
+                    lastKnownName: "No Score Player",
+                    currentName: "No Score Player",
+                    state: "resolved",
+                    combinedScore: null,
+                  },
+                ],
+              },
+              { id: 4, stringOrder: 1, assignments: [] },
+            ],
+          }
+        : team,
+    ),
+  };
+}

@@ -2,6 +2,7 @@ import type {
   ClubFamily,
   ClubSourceInput,
 } from "@/features/planner/types/club-family";
+import type { PlannerDepth } from "@/features/planner/types/depth";
 import type {
   PlannerTactic,
   TacticOptions,
@@ -238,6 +239,8 @@ function tacticRole(
 let clubFamily: ClubFamily = { ...DEFAULT_CLUB_FAMILY, sources: [] };
 let availableClubs: string[] = [];
 let tactic: PlannerTactic = cloneTactic(DEFAULT_TACTIC);
+let depth: PlannerDepth = buildDefaultDepth();
+let depthFetchCount = 0;
 let tacticSaveError: string | null = null;
 
 function cloneTactic(value: PlannerTactic): PlannerTactic {
@@ -247,10 +250,38 @@ function cloneTactic(value: PlannerTactic): PlannerTactic {
   };
 }
 
+function cloneDepth(value: PlannerDepth): PlannerDepth {
+  return {
+    tactic: cloneTactic(value.tactic),
+    teams: value.teams.map((team) => ({
+      team: team.team,
+      strings: team.strings.map((plannerString) => ({
+        id: plannerString.id,
+        stringOrder: plannerString.stringOrder,
+        assignments: plannerString.assignments.map((assignment) => ({
+          ...assignment,
+        })),
+      })),
+    })),
+  };
+}
+
+function buildDefaultDepth(): PlannerDepth {
+  return {
+    tactic: cloneTactic(DEFAULT_TACTIC),
+    teams: ["senior", "reserves", "youth"].map((team, index) => ({
+      team: team as PlannerDepth["teams"][number]["team"],
+      strings: [{ id: index + 1, stringOrder: 0, assignments: [] }],
+    })),
+  };
+}
+
 export function resetPlannerIpcMock() {
   clubFamily = { ...DEFAULT_CLUB_FAMILY, sources: [] };
   availableClubs = [];
   tactic = cloneTactic(DEFAULT_TACTIC);
+  depth = buildDefaultDepth();
+  depthFetchCount = 0;
   tacticSaveError = null;
 }
 
@@ -278,6 +309,19 @@ export function resolvePlannerTacticOptionsIpcMock() {
     placements: [...DEFAULT_TACTIC_OPTIONS.placements],
     roles: [...DEFAULT_TACTIC_OPTIONS.roles],
   };
+}
+
+export function resolvePlannerDepthIpcMock(): PlannerDepth {
+  depthFetchCount += 1;
+  return cloneDepth(depth);
+}
+
+export function getPlannerDepthIpcMockCalls() {
+  return depthFetchCount;
+}
+
+export function setPlannerDepthIpcMock(value: PlannerDepth) {
+  depth = cloneDepth(value);
 }
 
 export function setPlannerTacticSaveError(message: string | null) {
