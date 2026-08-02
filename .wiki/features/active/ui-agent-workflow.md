@@ -26,7 +26,7 @@ Provide a safe, developer-only way for Codex to control the real Tauri applicati
 - There is no live-database mode. Product mutations affect only the temporary database.
 - Product code continues to use real Rust IPC and Rust-owned SQLite. The feature adds no product-facing test IPC commands and no WebView SQL path.
 - The upstream Rust and Node packages are version-pinned. Dependency updates repeat the runtime and release-boundary checks.
-- The upstream control surface is trusted developer tooling. Its arbitrary JavaScript and direct IPC tools do not grant authority to access FM, manage plugins, confirm external destructive actions, or change Git state.
+- The upstream control surface is trusted developer tooling. Its arbitrary JavaScript and IPC-related tools do not grant authority to access FM, manage plugins, confirm external destructive actions, or change Git state.
 - Screenshots, logs, temporary databases, and spike artifacts remain under ignored `.work/` or operating-system temporary storage.
 - UI-polish work preserves behavior, accessibility, feature-import boundaries, and data ownership unless the developer explicitly broadens the task.
 - Normal Git approval rules still govern commits, pushes, and history changes.
@@ -52,7 +52,7 @@ Provide a safe, developer-only way for Codex to control the real Tauri applicati
 - Sample data: The repository tracks no SQLite database. `src-tauri/src/features/memory_read/fixtures/golden_dump_v5.json` is a valid schema-v5 dump with one player. It is sufficient for automated startup and IPC proof, but not representative UI-polish coverage.
 - Existing behavioral assumptions: `pnpm tauri dev` is the only current full-stack development loop. `./scripts/dev smoke` drives Chromium against Vite with stubbed IPC and does not exercise the native WebView, Rust commands, capabilities, or SQLite.
 - Architectural seams: Cargo optional dependencies and a `ui-agent` feature can gate Rust plugin wiring; Tauri `--config` can merge a UI-agent-only configuration overlay; a development-only application-data override belongs in shared `db/`; orchestration belongs under developer tooling rather than a product feature; Codex can start a project-scoped STDIO MCP server from `.codex/config.toml` in a trusted project.
-- Upstream integration: `hypothesi/mcp-server-tauri` supplies the Node STDIO MCP server and Rust Tauri bridge. It exposes screenshots, DOM and accessibility snapshots, interaction, window management, logs, JavaScript execution, and IPC tools through a loopback WebSocket connection.
+- Upstream integration: `hypothesi/mcp-server-tauri` supplies the Node STDIO MCP server and Rust Tauri bridge. It exposes screenshots, DOM and accessibility snapshots, interaction, window management, logs, JavaScript execution, and IPC-related tools through a loopback WebSocket connection.
 - Upstream limits: The bridge defaults to all-interface binding unless configured otherwise, has no application-level authentication in the inspected WebSocket path, exposes a broader tool set than originally planned, and uses an `html2canvas` fallback for Linux screenshots.
 - Test ownership: Rust unit tests own database-path, dump validation, and snapshot ingest semantics; tooling tests own argument validation, temporary-profile isolation, startup failure, and cleanup; configuration inspection owns feature/release exclusion; a bounded real-environment check owns the upstream bridge, WSL WebView, HMR, logs, screenshot quality, and IPC proof.
 - Authoritative validation commands: `./scripts/dev test`, `./scripts/dev check`, and `./scripts/dev smoke`; manual `./scripts/dev ui-agent` proof is required because the existing smoke suite cannot cover the native runtime.
@@ -78,7 +78,7 @@ The spike may change provider-specific startup details or the exact capability o
 - `hypothesi/mcp-server-tauri` provides a Tauri v2 Rust bridge plus a Node STDIO MCP server with the required inspection, interaction, screenshot, log, window, and IPC capabilities.
 - The bridge can be configured for `127.0.0.1`; its default configuration binds to `0.0.0.0`.
 - The inspected upstream WebSocket path accepts and dispatches commands without an application-level authentication handshake. Loopback, debug-only compilation, trusted-project use, and temporary data therefore form the safety boundary.
-- The upstream server exposes arbitrary JavaScript and direct IPC in addition to the narrower actions originally planned.
+- The upstream server exposes arbitrary JavaScript and IPC-related tools in addition to the narrower actions originally planned. In version 0.12.0, its advertised command executor does not dispatch application-defined Tauri commands; real product IPC remains accessible through WebView JavaScript and `window.__TAURI__.core.invoke`.
 - Linux screenshots fall back to browser-side `html2canvas` rather than native WebView capture.
 - Tauri supports merging a development-flavour configuration through `tauri dev --config`.
 - Codex supports project-scoped STDIO MCP servers through `.codex/config.toml` in trusted projects.
@@ -110,13 +110,8 @@ The spike may change provider-specific startup details or the exact capability o
 
 ### Unknowns
 
-- Can the upstream bridge and MCP server control this exact WSL Tauri development application through Vite hot reload? — blocks: next commit
-- Can the UI-agent-only configuration overlay contain `withGlobalTauri` and bridge capabilities without affecting ordinary or release builds? — blocks: next commit
-- Does the upstream server reconnect truthfully after frontend reload and Rust-triggered application restart? — blocks: validation
-- Are Linux `html2canvas` screenshots visually faithful enough for UI-polish decisions in this application? — blocks: next commit
-- Can frontend and Rust logs be distinguished and read with useful ordering? — blocks: validation
-- Does the upstream DOM snapshot expose enough accessibility information for keyboard and focus review? — blocks: validation
-- Does project-scoped Codex configuration need any extra startup instruction beyond invoking `driver_session` after the app launches? — blocks: validation
+- Does the upstream server reconnect truthfully after a Rust-triggered application restart? — blocks: validation
+- Does project-scoped Codex configuration need any extra startup instruction beyond opening a fresh task and invoking `driver_session` after the app launches? — blocks: validation
 
 ## Gating spike
 
@@ -207,7 +202,7 @@ PR 1 commit 1 is the walking skeleton: an isolated real Tauri runtime plus the p
 
 #### Commit 1 — Integrate the isolated Tauri MCP runtime
 
-**Status:** Active
+**Status:** Completed
 
 **Work:** Add a pinned optional `tauri-plugin-mcp-bridge` dependency behind the `ui-agent` Cargo feature and register it only in non-release UI-agent builds with explicit loopback configuration. Add a UI-agent-only Tauri configuration and capability overlay. Add a development-only application-data override. Extend `scripts/dev` with the two-mode launcher that validates an optional absolute dump path, creates a temporary profile, seeds its migrated database through the existing Rust snapshot ingest service, starts Tauri with Vite hot reload and the UI-agent overlay, and cleans up on exit. Pin and register the upstream Node STDIO MCP server in project Codex configuration.
 
@@ -270,7 +265,7 @@ PR 1 commit 1 is the walking skeleton: an isolated real Tauri runtime plus the p
 
 ###### Expected change surface
 
-- **Likely modified:** `scripts/dev`, `package.json`, `pnpm-lock.yaml`, `.codex/config.toml`, `.codex/README.md`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/src/lib.rs`, and `src-tauri/src/db/mod.rs`.
+- **Likely modified:** `scripts/dev`, `vite.config.ts`, `package.json`, `pnpm-lock.yaml`, `.codex/config.toml`, `.codex/README.md`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/src/lib.rs`, and `src-tauri/src/db/mod.rs`.
 - **Likely added:** A UI-agent Tauri config overlay, a UI-agent capability file or equivalent isolated permission configuration, and a small developer-tooling module with focused tests if Bash alone obscures lifecycle behavior.
 - **Ownership boundaries:** The launcher owns the temporary profile and app process; Rust `db/` owns path resolution and startup seed ingest; `lib.rs` owns optional bridge registration; the upstream Node process owns MCP and driver-session state; the product frontend remains unchanged.
 - **Do not change without replanning:** Database schema, snapshot ingest semantics, product IPC, FM bridge behavior, default app-data path, ordinary capabilities, release workflow, upstream tool surface, or the two-mode command contract.
@@ -409,7 +404,7 @@ execution_profile:
 
 #### Commit 2 — Add the live UI-polish workflow
 
-**Status:** Pending
+**Status:** Active
 
 **Work:** Add a concise manually invoked `$workflow-ui-polish` repository skill. It connects through the upstream Tauri MCP tools, maps relevant routes and states organically, captures initial evidence, prioritizes the highest-value visual and interaction improvements, edits one cohesive batch at a time, re-inspects after hot reload, checks target viewports and accessibility paths, runs focused and repository validation, and presents before/after screenshots plus remaining concerns.
 
@@ -597,48 +592,55 @@ execution_profile:
 
 **PR:** PR 1 — Add live Tauri UI agent workflow
 
-**Commit:** Commit 1 — Integrate the isolated Tauri MCP runtime
+**Commit:** Commit 2 — Add the live UI-polish workflow
 
 ### RED test (active commit)
 
-Given an absolute valid dump path, UI-agent startup creates and migrates a fresh temporary profile, ingests the dump through the existing Rust snapshot path, and starts the loopback bridge only after a real snapshot query succeeds. An invalid dump must fail without a controllable session. A featureless ordinary or release build must not contain the bridge registration or UI-agent configuration. This catches separate seed logic, readiness before ingest, normal-profile resolution, public binding, and release leakage.
+Given a manually invoked UI-polish request and a connected isolated Tauri session, a fresh task can follow the skill from initial semantic and visual inspection through one cohesive safe UI edit, hot-reload re-inspection, both target viewports, keyboard/focus/overflow/error/log checks, repository validation, and a before/after handoff without gaining Git, FM/plugin, external-destructive, product-behavior, or architecture authority. This catches an undiscoverable skill, stale-session actions, visual-only approval, missing accessibility checks, duplicated workflow policy, and authority creep.
 
 ### Expected outcome
 
-After the gating spike succeeds, the repository can start the real Tauri development application with the `ui-agent` feature, UI-agent-only config overlay, Vite hot reload, loopback MCP bridge, pinned upstream STDIO server, and either an empty migrated database or a temporary database seeded from a dump. Ordinary and release builds remain unchanged.
+The repository has a concise manually invoked `$workflow-ui-polish` skill that uses the runtime from commit 1 for open-ended UI judgment, requires truthful live re-inspection after each cohesive edit batch, preserves existing product and authority boundaries, validates the result, and presents before/after evidence plus remaining concerns.
 
 ### Explicit exclusions
 
-- Do not build a custom MCP server, WebDriver layer, session format, or filtering wrapper.
-- Do not add the UI-polish skill in commit 1.
-- Do not add live database mode, representative sample data, product IPC, frontend behavior, CI, scenarios, visual baselines, or FM/plugin actions.
+- Do not make product UI changes as part of the workflow commit or its forward test.
+- Do not add automatic commits, custom control tools, scenarios, visual baselines, CI, or representative sample data.
+- Do not broaden authority to product behavior, architecture, live databases, Git, external destructive actions, or FM/plugin operations.
 
 ### Assigned profiles
 
-- **Implementation:** Sol xhigh — `gpt-5.6-sol` at `xhigh`
+- **Implementation:** Terra High — `gpt-5.6-terra` at `high`
 - **Review:** Sol High — `gpt-5.6-sol` at `high`
 
 ### Current blockers
 
-- The gating `$workflow-spike` has not yet proved the pinned upstream bridge/server, config-overlay isolation, HMR, Linux screenshot fidelity, logs, loopback binding, and real IPC contract in WSL. Do not run `$workflow-build` until its verdict is `supported` or compatible `conditional` and the exact conditions are recorded here.
+- None. A realistic developer dump remains preferable for populated-layout coverage, but the tracked golden dump can forward-test workflow mechanics without making representative-layout claims.
 
 ### Discoveries that may require replanning
 
-- Record the spike's compatible Rust and Node versions, commands, Codex startup behavior, config and capability overlay, bound address, HMR/reconnect behavior, screenshot limitations, DOM/accessibility usefulness, log path, and any unavailable upstream tools before build.
+- Replan if the skill needs new MCP tools, command modes, product IPC, automatic Git authority, a scenario framework, or a custom wrapper to support safe organic exploration.
 
 ## Discoveries and replanning
 
 - The initial plan proposed WebdriverIO plus a project-owned STDIO MCP server and session metadata. The developer selected `hypothesi/mcp-server-tauri`, which already supplies the Rust bridge, persistent STDIO MCP server, screenshots, DOM snapshots, interaction, windows, logs, and IPC tools. The plan now uses that integration directly, removes the custom MCP and WebDriver layers, removes session metadata, and reduces the PR from three commits to two. The removed custom-control commit was assigned Sol max implementation and Sol High review; no equivalent custom implementation remains.
-- The upstream integration simplifies implementation but broadens the trusted development surface. Its bridge defaults to all-interface binding, the inspected WebSocket path has no application-level authentication, and the MCP tools include arbitrary JavaScript and direct IPC. Removing the custom server lowers the implementation from Sol max to Sol xhigh, but the local authorization boundary keeps a Sol implementation floor and Sol High review focused on loopback binding, release exclusion, temporary data, truthful capabilities, and dependency pinning.
+- The upstream integration simplifies implementation but broadens the trusted development surface. Its bridge defaults to all-interface binding, the inspected WebSocket path has no application-level authentication, and the MCP tools include arbitrary JavaScript plus IPC-related operations. Removing the custom server lowers the implementation from Sol max to Sol xhigh, but the local authorization boundary keeps a Sol implementation floor and Sol High review focused on loopback binding, release exclusion, temporary data, truthful capabilities, and dependency pinning.
 - The initial runtime plan accepted an optional SQLite database and copied it into the temporary profile. The developer chose the smaller `--dump` contract because Windows and WSL use separate application-data roots and the repository already owns validated transactional dump ingest in Rust. Commit 1 seeds a fresh temporary database through that existing path.
 - Repository inspection found no tracked SQLite database. The tracked schema-v5 golden dump contains one player and is suitable for automated seed and IPC proof only. Realistic UI-polish coverage requires an explicit developer-supplied dump, typically accessed from WSL through the mounted Windows filesystem. The plan does not add a synthetic database or silently reuse local WSL state.
 - Real WebView e2e was previously deferred in `.wiki/BACKLOG.md` until stubbed smoke tests became insufficient. The developer has promoted a broader live UI-agent workflow, so the backlog item is superseded by this ledger rather than becoming a required CI e2e suite.
+- The 2026-08-02 gating spike returned `conditional` for `tauri-plugin-mcp-bridge = 0.12.0` and `@hypothesi/tauri-mcp-server = 0.12.0` on the repository's Rust 1.97.1 and Tauri 2.11 toolchain. The bridge compiled, connected through the pinned upstream CLI, bound only to `127.0.0.1:9223`, and remained absent from a featureless release binary. An inline Tauri config overlay successfully confined `withGlobalTauri` and `mcp-bridge:default` to UI-agent mode.
+- The spike produced useful Linux screenshots and DOM/accessibility snapshots, exercised click, typing, keyboard, resize, and console-log tools, and observed a React Fast Refresh update without losing the driver session. Rust startup and migration diagnostics remained available in the launcher output. A WSL locale rejection captured by the bridge caused Vite 8 console forwarding to crash while serializing the error, so WSL UI-agent mode sets Vite `server.forwardConsole` to `false`; ordinary and non-WSL UI-agent modes retain Vite's current behavior, and MCP console capture plus launcher output own diagnostics in WSL UI-agent mode.
+- Bridge registration must occur dynamically after migrations and optional dump ingest. Builder-level registration exposed the control endpoint before startup preparation; delayed `app.handle().plugin(...)` registration started the endpoint only after a valid golden dump was queryable, while an invalid dump failed before any bridge listener existed.
+- Version 0.12.0 advertises an IPC command executor but does not implement dispatch to application-defined Tauri commands. The spike proved real product IPC with WebView JavaScript calling `window.__TAURI__.core.invoke('search_players', ...)`. Commit 1 and the UI-polish workflow must describe this limitation truthfully rather than depend on the unsupported executor.
+- The golden dump's source hash remained unchanged while a product IPC mutation changed only the temporary SQLite database. This satisfies the read-only seed and isolated-mutation boundary without copying or opening any developer database.
+- Commit 1 landed as `8c0f209`. The pinned 0.12.0 integration passed the focused 11-test launcher/configuration suite, `./scripts/dev test` (156 tests), `./scripts/dev check` (198 Rust tests passed, 2 ignored), feature-specific Rust tests, a featureless release build, release-with-feature rejection, dependency/binary exclusion inspection, and a real golden-dump WSL session covering loopback connection, screenshot, DOM/accessibility inspection, resize, product IPC, isolated mutation, shutdown, and cleanup. The fresh Sol High review retained one WSL-scoping finding; the first fix round added host detection and a three-mode Vite configuration test, after which re-review was clean.
+- Two repeated empty-session native retries stalled in the WSL WebKit environment before Tauri setup, migration, or plugin registration ran; automated empty-profile launcher coverage and existing migration tests passed. After the native run, Playwright smoke retained all 7 read-only checks but 5 click-based checks timed out awaiting a stable render frame; a fresh Sol High reviewer found no staged-patch causal path because smoke does not inherit launcher state and no product UI or smoke files changed. Repeat both native checks in a fresh WSL session during feature completion rather than representing them as passed.
 
 ## Completed work
 
 | PR | Commit | Hash | Notes | Implementer | Reviewer | Deviations |
 | --- | --- | --- | --- | --- | --- | --- |
-| — | — | — | No implementation completed | — | — | — |
+| PR 1 | 1 | `8c0f209` | Added the isolated two-mode launcher, temporary Rust-owned database and dump ingest, pinned loopback MCP bridge/server, UI-agent-only Tauri overlay, WSL-scoped Vite workaround, project MCP registration, and focused tests. | Sol xhigh | Sol High; clean after one fix round | Empty native retry and click-based smoke checks were blocked by degraded WSL renderer state before staged application logic; evidence and required reruns are recorded above. |
 
 ## Final validation
 
