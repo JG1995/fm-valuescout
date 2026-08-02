@@ -65,6 +65,8 @@ Context7 provides current library documentation. Use it for library APIs and con
 
 The pinned local `@hypothesi/tauri-mcp-cli` provides trusted live Tauri UI control. Use it only with the isolated UI-agent session described below.
 
+Codebase Memory provides indexed architecture, call-path, semantic-search, and change-impact queries through its standalone `codebase-memory-mcp cli` command. It is intentionally not registered as a Codex MCP server. Use `$codebase-memory` for its CLI workflow and fall back to `rg` plus direct source inspection when the binary or index is unavailable.
+
 ### Live Tauri UI control
 
 The project pins `@hypothesi/tauri-mcp-cli` for trusted, local UI-polish work. Start one of these application sessions in another terminal:
