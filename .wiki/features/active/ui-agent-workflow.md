@@ -190,7 +190,7 @@ PR 1 commit 1 is the walking skeleton: an isolated real Tauri runtime plus the p
 
 ### PR 1 — Add live Tauri UI agent workflow
 
-**Status:** Active
+**Status:** Completed — pending feature validation
 
 **Provisional PR title:** `feat(ui-agent): add live Tauri UI workflow`
 
@@ -404,7 +404,7 @@ execution_profile:
 
 #### Commit 2 — Add the live UI-polish workflow
 
-**Status:** Completed — hash pending checkpoint commit
+**Status:** Completed — `aad3d12`
 
 **Work:** Add a concise manually invoked `$workflow-ui-polish` repository skill. It connects through the upstream Tauri MCP tools, maps relevant routes and states organically, captures initial evidence, prioritizes the highest-value visual and interaction improvements, edits one cohesive batch at a time, re-inspects after hot reload, checks target viewports and accessibility paths, runs focused and repository validation, and presents before/after screenshots plus remaining concerns.
 
@@ -590,36 +590,7 @@ execution_profile:
 
 ## Active work
 
-**PR:** PR 1 — Add live Tauri UI agent workflow
-
-**Commit:** Commit 2 — Add the live UI-polish workflow
-
-### RED test (active commit)
-
-Given a manually invoked UI-polish request and a connected isolated Tauri session, a fresh task can follow the skill from initial semantic and visual inspection through one cohesive safe UI edit, hot-reload re-inspection, both target viewports, keyboard/focus/overflow/error/log checks, repository validation, and a before/after handoff without gaining Git, FM/plugin, external-destructive, product-behavior, or architecture authority. This catches an undiscoverable skill, stale-session actions, visual-only approval, missing accessibility checks, duplicated workflow policy, and authority creep.
-
-### Expected outcome
-
-The repository has a concise manually invoked `$workflow-ui-polish` skill that uses the runtime from commit 1 for open-ended UI judgment, requires truthful live re-inspection after each cohesive edit batch, preserves existing product and authority boundaries, validates the result, and presents before/after evidence plus remaining concerns.
-
-### Explicit exclusions
-
-- Do not make product UI changes as part of the workflow commit or its forward test.
-- Do not add automatic commits, custom control tools, scenarios, visual baselines, CI, or representative sample data.
-- Do not broaden authority to product behavior, architecture, live databases, Git, external destructive actions, or FM/plugin operations.
-
-### Assigned profiles
-
-- **Implementation:** Terra High — `gpt-5.6-terra` at `high`
-- **Review:** Sol High — `gpt-5.6-sol` at `high`
-
-### Current blockers
-
-- None. A realistic developer dump remains preferable for populated-layout coverage, but the tracked golden dump can forward-test workflow mechanics without making representative-layout claims.
-
-### Discoveries that may require replanning
-
-- Replan if the skill needs new MCP tools, command modes, product IPC, automatic Git authority, a scenario framework, or a custom wrapper to support safe organic exploration.
+No implementation commit is active. Run `$workflow-finish-feature` before closing PR 1. It must repeat the fresh-task live UI-polish proof with a connected isolated session and, when available, a realistic developer-supplied dump. It must also rerun the deferred native empty-session and smoke checks in a fresh WSL session.
 
 ## Discoveries and replanning
 
@@ -642,6 +613,7 @@ The repository has a concise manually invoked `$workflow-ui-polish` skill that u
 | PR | Commit | Hash | Notes | Implementer | Reviewer | Deviations |
 | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 | 1 | `8c0f209` | Added the isolated two-mode launcher, temporary Rust-owned database and dump ingest, pinned loopback MCP bridge/server, UI-agent-only Tauri overlay, WSL-scoped Vite workaround, project MCP registration, and focused tests. | Sol xhigh | Sol High; clean after one fix round | Empty native retry and click-based smoke checks were blocked by degraded WSL renderer state before staged application logic; evidence and required reruns are recorded above. |
+| PR 1 | 2 | `aad3d12` | Added the manual live UI-polish skill and its Codex discoverability entry. | Terra High | Sol High; clean | Fresh-task live proof and representative dump were unavailable; smoke again passed 7 read-only checks while 5 click checks timed out in the known WSL renderer state. |
 
 ## Final validation
 
