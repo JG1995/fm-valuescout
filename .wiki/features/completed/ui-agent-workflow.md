@@ -40,11 +40,11 @@ Provide trusted, developer-only control of the real Tauri application for live U
 - `./scripts/dev smoke` passed: 12 Playwright checks.
 - A featureless `pnpm tauri build --no-bundle` passed.
 - A golden-dump native launch migrated and ingested the temporary database and listened only on `127.0.0.1:9223`.
-- Fresh Sol High feature review found no blocking, CRITICAL, HIGH, MEDIUM, or NITPICK findings.
+- A fresh empty-profile native run migrated v1–v7, connected through the CLI with the expected application identity and repository path, returned `null` from `get_current_snapshot`, stopped with scoped cleanup, and removed its temporary profile.
+- Fresh Sol High feature review found no blocking, CRITICAL, HIGH, or MEDIUM findings. Its sole documentation NITPICK was reconciled in this record.
 
 ## Follow-up
 
-- Repeat a fresh WSL empty-profile lifecycle, including a second run.
 - Verify the ordinary featureless development runtime in a fresh native session.
-- Run an upstream CLI control proof that covers HMR, restart, both viewports, accessibility, and log forwarding.
+- Repeat the upstream CLI control proof for React HMR, Rust restart and reconnect, click, and scroll interaction.
 - Use a realistic developer dump before drawing conclusions about populated layouts.
