@@ -52,11 +52,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No active planned work.
+- [UI agent workflow](./features/active/ui-agent-workflow.md) — isolated real Tauri runtime, pinned upstream Tauri MCP controls, and a manually invoked live UI-polish workflow; implementation is blocked on the ledger's WSL integration spike
 
 ## Next
 
-The approved MVP sequence and Planner maintenance refactor are complete. Select future work from [BACKLOG.md](./BACKLOG.md) when it is ready for planning.
+Complete the active UI agent workflow, then select future work from [BACKLOG.md](./BACKLOG.md) when it is ready for planning.
 
 ## Completed
 
