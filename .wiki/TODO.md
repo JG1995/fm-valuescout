@@ -52,15 +52,16 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [UI agent workflow](./features/active/ui-agent-workflow.md) — implementation is complete for the isolated real Tauri runtime, pinned upstream Tauri MCP controls, and manually invoked live UI-polish workflow; feature close-out is in progress
+No active planned work.
 
 ## Next
 
-Complete the active UI agent workflow, then select future work from [BACKLOG.md](./BACKLOG.md) when it is ready for planning.
+The approved MVP sequence and UI agent workflow are complete. Select future work from [BACKLOG.md](./BACKLOG.md) when it is ready for planning.
 
 ## Completed
 
 - [Codex workflow migration](./features/completed/codex-workflow-migration.md) — Codex-only repository guidance, specialist agents, and product-focused validation
+- [UI agent workflow](./features/completed/ui-agent-workflow.md) — isolated real Tauri sessions with loopback-only upstream MCP control and a manual live UI-polish workflow
 - [Player profiles](./features/completed/player-profiles.md) — `/players/$uid` with Overview / Attributes / Roles tabs; entry from Search row and Ctrl+K; ScoreBadge; position-family role grouping
 - [Squad planner](./features/completed/squad-planner.md) — save-scoped club family, one dual-phase tactic, and Senior / Reserves / Youth depth strings with manual player assignment
 - [Squad optimizer](./features/completed/squad-optimizer.md) — exact team/string allocation by combined score, persisted assignment provenance, and selected-team Clear Squad

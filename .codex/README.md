@@ -8,7 +8,7 @@ This repository uses Codex for AI-assisted development. The workflow keeps imple
 - `.agents/WORKFLOW.md` contains the canonical planning, model-routing, review, escalation, and replanning policy.
 - `.agents/skills/` contains reusable domain and workflow skills.
 - `.codex/agents/` contains the `planner`, default `reviewer`, and `documentation-steward` specialist definitions.
-- `.codex/config.toml` contains the project MCP servers for Recallium and Context7.
+- `.codex/config.toml` contains the project MCP servers for Recallium, Context7, and trusted local Tauri UI control.
 - `.work/` contains disposable notes and experiment artifacts. It is ignored and is not project truth.
 
 Codex loads `AGENTS.md` from the repository root. Start a new task after changing repository guidance so the updated instructions are loaded.
@@ -63,6 +63,8 @@ Recallium stores durable project context under the project name `fm-valuescout`.
 
 Context7 provides current library documentation. Use it for library APIs and configuration details instead of guessing.
 
+The pinned local `@hypothesi/tauri-mcp-server` provides trusted live Tauri UI control. Use it only with the isolated UI-agent session described below.
+
 ### Live Tauri UI control
 
 The project also pins `@hypothesi/tauri-mcp-server` for trusted, local UI-polish work. Start a new Codex task after installing dependencies or changing `.codex/config.toml` so Codex loads the project MCP server, then start one of these application sessions in another terminal:
@@ -74,6 +76,6 @@ The project also pins `@hypothesi/tauri-mcp-server` for trusted, local UI-polish
 
 Each run creates and later removes a temporary application-data directory. The optional dump remains read-only and is ingested through the application's Rust snapshot service before the loopback bridge starts. There is no live-database mode.
 
-Use the upstream `driver_session` tool to connect after the application is ready. The server exposes broad trusted-development capabilities, including arbitrary WebView JavaScript. Version 0.12.0 does not dispatch application-defined commands through its advertised IPC command executor; use WebView JavaScript with `window.__TAURI__.core.invoke(...)` when a UI-polish check needs real product IPC. Frontend console messages are available through the MCP log tools, while Rust startup and migration messages remain in the launcher terminal.
+Use the upstream `driver_session` tool to connect after the application is ready. Before any broad control, confirm that its status reports `identifier: app.fmvaluescout` and a `cwd` that matches this repository. If another app owns the default port, retarget the session to the port reported by the launcher and verify both values again. The server exposes broad trusted-development capabilities, including arbitrary WebView JavaScript. Version 0.12.0 does not dispatch application-defined commands through its advertised IPC command executor; use WebView JavaScript with `window.__TAURI__.core.invoke(...)` when a UI-polish check needs real product IPC. Frontend console messages are available through the MCP log tools, while Rust startup and migration messages remain in the launcher terminal.
 
 Invoke `$workflow-ui-polish` only for an explicit live UI-polish request. It requires a connected isolated session, uses before/after evidence, checks both target window sizes plus keyboard and focus behavior, and leaves Git and external actions under the normal approval rules.

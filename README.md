@@ -84,6 +84,7 @@ Project MCP servers in [.codex/config.toml](.codex/config.toml):
 
 - **recallium** — persistent project memory at `http://10.189.1.195:8001/mcp`
 - **context7** — current library documentation
+- **tauri-mcp** — pinned trusted local control for isolated live Tauri UI sessions
 
 Trust the repository in Codex before using project-level MCP servers.
 
@@ -91,7 +92,7 @@ Trust the repository in Codex before using project-level MCP servers.
 
 - [Forking checklist](#forking-this-template) — prerequisites, rename table, CONCEPT → roadmap → feature planning
 - [Codex workflow](.codex/README.md) — MCP, skills, specialist agents, planning, build, checkpoint, and feature completion
-- [Codex MCP](.codex/config.toml) — Recallium and Context7
+- [Codex MCP](.codex/config.toml) — Recallium, Context7, and trusted local Tauri UI control
 - [Contributing](CONTRIBUTING.md) — gate, commits, fork-merge workflow
 - [Development contract](AGENTS.md) — how to make changes
 - [Scripts](scripts/dev) — the stable command surface
