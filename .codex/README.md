@@ -29,6 +29,7 @@ Use the named skill that matches the task. State the requested outcome in chat; 
 | Reconcile docs | `workflow-docs-review` | Documentation-only reconciliation. |
 | Finish a feature | `workflow-finish-feature` | Full validation, feature review, then documentation reconciliation. |
 | Finish a feature automatically | `workflow-finish-feature-loop` | Manual opt-in: Sol High feature review/fix loop, reconciliation, and local close-out commits. |
+| Polish a live Tauri UI | `workflow-ui-polish` | Manual opt-in: inspect an isolated running app, make cohesive UI improvements, and present visual evidence. |
 
 `workflow-build-loop` and `workflow-finish-feature-loop` are manual opt-ins only. They may auto-commit after their blocking review tiers clear because naming either skill is explicit approval for its documented local commits. Each loop allows at most three fix rounds. `workflow-spike` and `workflow-security-audit` are optional, read-only or disposable investigations outside the main loop.
 
@@ -61,3 +62,20 @@ Every initial review of non-trivial work must use a separate fresh context. Star
 Recallium stores durable project context under the project name `fm-valuescout`. Search it before non-obvious decisions and save only context that is not already recorded in the repository.
 
 Context7 provides current library documentation. Use it for library APIs and configuration details instead of guessing.
+
+The pinned local `@hypothesi/tauri-mcp-cli` provides trusted live Tauri UI control. Use it only with the isolated UI-agent session described below.
+
+### Live Tauri UI control
+
+The project pins `@hypothesi/tauri-mcp-cli` for trusted, local UI-polish work. Start one of these application sessions in another terminal:
+
+```bash
+./scripts/dev ui-agent
+./scripts/dev ui-agent --dump /absolute/path/dump.json
+```
+
+Each run creates and later removes a temporary application-data directory. The optional dump remains read-only and is ingested through the application's Rust snapshot service before the loopback bridge starts. There is no live-database mode.
+
+Use `pnpm exec tauri-mcp driver-session start --json` to connect after the application is ready, and use the matching `status` and `stop` subcommands to manage the session. Before any broad control, confirm that status reports `identifier: app.fmvaluescout` and a `cwd` that matches this repository. If another app owns the default port, retarget the session to the port reported by the launcher and verify both values again. The CLI exposes broad trusted-development capabilities, including arbitrary WebView JavaScript. Version 0.12.0 does not dispatch application-defined commands through its advertised IPC command executor; use `window.__TAURI__.core.invoke(...)` through `webview-execute-js` when a UI-polish check needs real product IPC. Frontend console messages are available through `read-logs`, while Rust startup and migration messages remain in the launcher terminal.
+
+Invoke `$workflow-ui-polish` only for an explicit live UI-polish request. It requires a connected isolated session, uses before/after evidence, checks both target window sizes plus keyboard and focus behavior, and leaves Git and external actions under the normal approval rules.

@@ -22,16 +22,17 @@
     "@fontsource/ibm-plex-sans": "^5.3.0",
     "@tanstack/react-query": "^5.90.2",
     "@tanstack/react-router": "^1.132.31",
+    "@tanstack/react-virtual": "^3.13.12",
     "@tauri-apps/api": "^2.11.1",
     "lucide-react": "^1.27.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.1.13",
-    "zustand": "^5.0.8",
-    "@tanstack/react-virtual": "^3.13.12"
+    "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.2.4",
+    "@hypothesi/tauri-mcp-cli": "0.12.0",
     "@playwright/test": "^1.62.0",
     "@secretlint/secretlint-rule-preset-recommend": "^13.0.4",
     "@tailwindcss/vite": "^4.1.13",
