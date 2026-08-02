@@ -64,6 +64,8 @@ React `features/planner` owns query, picker, confirmation, focus, menu, and pres
 
 **Live UI control:** `./scripts/dev ui-agent` starts a development-only, real Tauri application with a new temporary application-data directory. `--dump /absolute/path/dump.json` validates and ingests a read-only dump through the normal Rust snapshot service before the control bridge starts. The pinned `tauri-plugin-mcp-bridge` and `@hypothesi/tauri-mcp-cli` 0.12.0 integration is enabled only by the non-release `ui-agent` Cargo feature and Tauri configuration overlay, and binds to `127.0.0.1`. It does not expose a live product database or enter ordinary or release builds. A trusted Codex task can use the upstream CLI session to inspect and polish the UI; see [.codex/README.md](../.codex/README.md) and [ui-agent-workflow](./features/completed/ui-agent-workflow.md).
 
+**Agent code exploration:** Codebase Memory runs only as the local `codebase-memory-mcp cli` command for indexed repository discovery. It is not a Codex MCP server; its binary and `.codebase-memory/` index are workstation state, not repository architecture. See [.codex/README.md](../.codex/README.md).
+
 **Client env validation:** not shipped in the template default — forks can add `src/config/env.ts` with Zod for `VITE_*` when needed (see `vite.md`; `.env.example` documents optional variables)
 
 **Lint / format / types:** Biome + `tsc -b`; secretlint in `./scripts/dev check`; Rust `cargo fmt`, `clippy`, and `test` in the same gate
