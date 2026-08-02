@@ -62,7 +62,7 @@ React `features/planner` owns query, picker, confirmation, focus, menu, and pres
 
 **Testing:** Vitest + jsdom + React Testing Library with `mockIPC` (`./scripts/dev test`); Playwright smoke with IPC stub (`./scripts/dev smoke`, `e2e/smoke.spec.ts`); Rust unit tests (`cargo test` inside `./scripts/dev check`); C# bridge unit tests (`./scripts/dev bridge-test` in Windows CI)
 
-**Live UI control:** `./scripts/dev ui-agent` starts a development-only, real Tauri application with a new temporary application-data directory. `--dump /absolute/path/dump.json` validates and ingests a read-only dump through the normal Rust snapshot service before the control bridge starts. The pinned `tauri-plugin-mcp-bridge` and `@hypothesi/tauri-mcp-server` 0.12.0 integration is enabled only by the non-release `ui-agent` Cargo feature and Tauri configuration overlay, and binds to `127.0.0.1`. It does not expose a live product database or enter ordinary or release builds. A trusted Codex task can use the upstream session to inspect and polish the UI; see [.codex/README.md](../.codex/README.md) and [ui-agent-workflow](./features/completed/ui-agent-workflow.md).
+**Live UI control:** `./scripts/dev ui-agent` starts a development-only, real Tauri application with a new temporary application-data directory. `--dump /absolute/path/dump.json` validates and ingests a read-only dump through the normal Rust snapshot service before the control bridge starts. The pinned `tauri-plugin-mcp-bridge` and `@hypothesi/tauri-mcp-cli` 0.12.0 integration is enabled only by the non-release `ui-agent` Cargo feature and Tauri configuration overlay, and binds to `127.0.0.1`. It does not expose a live product database or enter ordinary or release builds. A trusted Codex task can use the upstream CLI session to inspect and polish the UI; see [.codex/README.md](../.codex/README.md) and [ui-agent-workflow](./features/completed/ui-agent-workflow.md).
 
 **Client env validation:** not shipped in the template default — forks can add `src/config/env.ts` with Zod for `VITE_*` when needed (see `vite.md`; `.env.example` documents optional variables)
 
@@ -329,7 +329,7 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, and bridge checks from changed paths; required `check` aggregates applicable results |
 | `.github/workflows/release.yml` | Tag-triggered multi-OS installer build via `tauri-action` |
 | `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` / `ui-agent` surface |
-| `.codex/config.toml` | Recallium, Context7, and the pinned trusted local Tauri MCP server |
+| `.codex/config.toml` | Recallium and Context7 MCP servers |
 | `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML |
 | `.vscode/settings.json` | Format on save (Biome / rust-analyzer); rust-analyzer linked to `src-tauri` |
 | `.gitignore` | Build, test, and tool artifacts; `.tanstack/` cache; `.env.*` except `.env.example`; `src-tauri/target/`; editor noise (`.idea/`, vim swap) |
@@ -677,7 +677,7 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Command validation, services, migrations, SQLite | `cargo test` in `./scripts/dev check` |
 | Bridge scan, dump writers, file protocol | `./scripts/dev bridge-test` in Windows CI (fakes; no FM attach) |
 | Full-stack manual verification | `pnpm tauri dev` |
-| Trusted live UI inspection and polish | `./scripts/dev ui-agent` plus the upstream MCP session; manual, isolated, and developer-invoked |
+| Trusted live UI inspection and polish | `./scripts/dev ui-agent` plus the upstream CLI session; manual, isolated, and developer-invoked |
 
 Green smoke does **not** prove SQLite persistence works in production or the native Tauri WebView control path. Rust unit tests own the database; smoke owns browser UI with a stub. The UI-agent workflow provides a manual native check when that boundary matters.
 

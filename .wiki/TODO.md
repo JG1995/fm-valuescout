@@ -61,7 +61,7 @@ The approved MVP sequence and UI agent workflow are complete. Select future work
 ## Completed
 
 - [Codex workflow migration](./features/completed/codex-workflow-migration.md) — Codex-only repository guidance, specialist agents, and product-focused validation
-- [UI agent workflow](./features/completed/ui-agent-workflow.md) — isolated real Tauri sessions with loopback-only upstream MCP control and a manual live UI-polish workflow
+- [UI agent workflow](./features/completed/ui-agent-workflow.md) — isolated real Tauri sessions with loopback-only upstream CLI control and a manual live UI-polish workflow
 - [Player profiles](./features/completed/player-profiles.md) — `/players/$uid` with Overview / Attributes / Roles tabs; entry from Search row and Ctrl+K; ScoreBadge; position-family role grouping
 - [Squad planner](./features/completed/squad-planner.md) — save-scoped club family, one dual-phase tactic, and Senior / Reserves / Youth depth strings with manual player assignment
 - [Squad optimizer](./features/completed/squad-optimizer.md) — exact team/string allocation by combined score, persisted assignment provenance, and selected-team Clear Squad

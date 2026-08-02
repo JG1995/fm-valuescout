@@ -78,21 +78,22 @@ The workflow turns product notes into atomic, reviewed commits on trunk. After t
 - `workflow-security-audit` — optional read-only security audit before deploy or after auth, payments, or sensitive data (not in the main loop)
 - Dispatch the named `reviewer` or `documentation-steward` agent when their specialist boundary applies
 
-## Codex MCP
+## Codex integrations
 
 Project MCP servers in [.codex/config.toml](.codex/config.toml):
 
 - **recallium** — persistent project memory at `http://10.189.1.195:8001/mcp`
 - **context7** — current library documentation
-- **tauri-mcp** — pinned trusted local control for isolated live Tauri UI sessions
 
 Trust the repository in Codex before using project-level MCP servers.
+
+The pinned `@hypothesi/tauri-mcp-cli` provides trusted local control of isolated live Tauri UI sessions through `$workflow-ui-polish`.
 
 ## Documents
 
 - [Forking checklist](#forking-this-template) — prerequisites, rename table, CONCEPT → roadmap → feature planning
 - [Codex workflow](.codex/README.md) — MCP, skills, specialist agents, planning, build, checkpoint, and feature completion
-- [Codex MCP](.codex/config.toml) — Recallium, Context7, and trusted local Tauri UI control
+- [Codex MCP](.codex/config.toml) — Recallium and Context7
 - [Contributing](CONTRIBUTING.md) — gate, commits, fork-merge workflow
 - [Development contract](AGENTS.md) — how to make changes
 - [Scripts](scripts/dev) — the stable command surface

@@ -199,7 +199,7 @@ describe("UI-agent configuration isolation", () => {
     ]);
   });
 
-  it("pins both upstream packages and uses the installed MCP executable", () => {
+  it("pins the upstream bridge and CLI without registering a Codex MCP server", () => {
     const packageJson = JSON.parse(
       readFileSync(path.join(repoRoot, "package.json"), "utf8"),
     );
@@ -211,15 +211,37 @@ describe("UI-agent configuration isolation", () => {
       path.join(repoRoot, ".codex", "config.toml"),
       "utf8",
     );
+    const workflowSkill = readFileSync(
+      path.join(
+        repoRoot,
+        ".agents",
+        "skills",
+        "workflow-ui-polish",
+        "SKILL.md",
+      ),
+      "utf8",
+    );
 
-    expect(packageJson.devDependencies["@hypothesi/tauri-mcp-server"]).toBe(
+    expect(packageJson.devDependencies["@hypothesi/tauri-mcp-cli"]).toBe(
       "0.12.0",
     );
+    expect(
+      packageJson.devDependencies["@hypothesi/tauri-mcp-server"],
+    ).toBeUndefined();
     expect(cargoToml).toContain(
       'tauri-plugin-mcp-bridge = { version = "=0.12.0", optional = true }',
     );
-    expect(codexConfig).toContain('command = "pnpm"');
-    expect(codexConfig).toContain('args = ["exec", "mcp-server-tauri"]');
-    expect(codexConfig).not.toContain("npx");
+    expect(codexConfig).not.toContain("[mcp_servers.tauri]");
+    expect(workflowSkill).toContain("pnpm exec tauri-mcp");
+    expect(workflowSkill).toContain(
+      "node_modules/@hypothesi/tauri-mcp-cli/skills/tauri-mcp-cli/SKILL.md",
+    );
+    expect(workflowSkill).toContain("driver-session");
+    expect(workflowSkill).toContain("connected: true");
+    expect(workflowSkill).toContain(
+      "driver-session stop --app-identifier app.fmvaluescout",
+    );
+    expect(workflowSkill).toContain("Never issue an unscoped");
+    expect(workflowSkill).toContain("--json");
   });
 });
