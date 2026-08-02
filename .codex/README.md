@@ -61,3 +61,16 @@ Every initial review of non-trivial work must use a separate fresh context. Star
 Recallium stores durable project context under the project name `fm-valuescout`. Search it before non-obvious decisions and save only context that is not already recorded in the repository.
 
 Context7 provides current library documentation. Use it for library APIs and configuration details instead of guessing.
+
+### Live Tauri UI control
+
+The project also pins `@hypothesi/tauri-mcp-server` for trusted, local UI-polish work. Start a new Codex task after installing dependencies or changing `.codex/config.toml` so Codex loads the project MCP server, then start one of these application sessions in another terminal:
+
+```bash
+./scripts/dev ui-agent
+./scripts/dev ui-agent --dump /absolute/path/dump.json
+```
+
+Each run creates and later removes a temporary application-data directory. The optional dump remains read-only and is ingested through the application's Rust snapshot service before the loopback bridge starts. There is no live-database mode.
+
+Use the upstream `driver_session` tool to connect after the application is ready. The server exposes broad trusted-development capabilities, including arbitrary WebView JavaScript. Version 0.12.0 does not dispatch application-defined commands through its advertised IPC command executor; use WebView JavaScript with `window.__TAURI__.core.invoke(...)` when a UI-polish check needs real product IPC. Frontend console messages are available through the MCP log tools, while Rust startup and migration messages remain in the launcher terminal.
