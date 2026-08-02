@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codebase Memory"
+  short_description: "Explore indexed code structure through the CLI"
+  default_prompt: "Use $codebase-memory to trace this behavior through the repository."
