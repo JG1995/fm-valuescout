@@ -29,6 +29,7 @@ Use the named skill that matches the task. State the requested outcome in chat; 
 | Reconcile docs | `workflow-docs-review` | Documentation-only reconciliation. |
 | Finish a feature | `workflow-finish-feature` | Full validation, feature review, then documentation reconciliation. |
 | Finish a feature automatically | `workflow-finish-feature-loop` | Manual opt-in: Sol High feature review/fix loop, reconciliation, and local close-out commits. |
+| Polish a live Tauri UI | `workflow-ui-polish` | Manual opt-in: inspect an isolated running app, make cohesive UI improvements, and present visual evidence. |
 
 `workflow-build-loop` and `workflow-finish-feature-loop` are manual opt-ins only. They may auto-commit after their blocking review tiers clear because naming either skill is explicit approval for its documented local commits. Each loop allows at most three fix rounds. `workflow-spike` and `workflow-security-audit` are optional, read-only or disposable investigations outside the main loop.
 
@@ -74,3 +75,5 @@ The project also pins `@hypothesi/tauri-mcp-server` for trusted, local UI-polish
 Each run creates and later removes a temporary application-data directory. The optional dump remains read-only and is ingested through the application's Rust snapshot service before the loopback bridge starts. There is no live-database mode.
 
 Use the upstream `driver_session` tool to connect after the application is ready. The server exposes broad trusted-development capabilities, including arbitrary WebView JavaScript. Version 0.12.0 does not dispatch application-defined commands through its advertised IPC command executor; use WebView JavaScript with `window.__TAURI__.core.invoke(...)` when a UI-polish check needs real product IPC. Frontend console messages are available through the MCP log tools, while Rust startup and migration messages remain in the launcher terminal.
+
+Invoke `$workflow-ui-polish` only for an explicit live UI-polish request. It requires a connected isolated session, uses before/after evidence, checks both target window sizes plus keyboard and focus behavior, and leaves Git and external actions under the normal approval rules.

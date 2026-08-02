@@ -404,7 +404,7 @@ execution_profile:
 
 #### Commit 2 — Add the live UI-polish workflow
 
-**Status:** Active
+**Status:** Completed — hash pending checkpoint commit
 
 **Work:** Add a concise manually invoked `$workflow-ui-polish` repository skill. It connects through the upstream Tauri MCP tools, maps relevant routes and states organically, captures initial evidence, prioritizes the highest-value visual and interaction improvements, edits one cohesive batch at a time, re-inspects after hot reload, checks target viewports and accessibility paths, runs focused and repository validation, and presents before/after screenshots plus remaining concerns.
 
@@ -635,6 +635,7 @@ The repository has a concise manually invoked `$workflow-ui-polish` skill that u
 - The golden dump's source hash remained unchanged while a product IPC mutation changed only the temporary SQLite database. This satisfies the read-only seed and isolated-mutation boundary without copying or opening any developer database.
 - Commit 1 landed as `8c0f209`. The pinned 0.12.0 integration passed the focused 11-test launcher/configuration suite, `./scripts/dev test` (156 tests), `./scripts/dev check` (198 Rust tests passed, 2 ignored), feature-specific Rust tests, a featureless release build, release-with-feature rejection, dependency/binary exclusion inspection, and a real golden-dump WSL session covering loopback connection, screenshot, DOM/accessibility inspection, resize, product IPC, isolated mutation, shutdown, and cleanup. The fresh Sol High review retained one WSL-scoping finding; the first fix round added host detection and a three-mode Vite configuration test, after which re-review was clean.
 - Two repeated empty-session native retries stalled in the WSL WebKit environment before Tauri setup, migration, or plugin registration ran; automated empty-profile launcher coverage and existing migration tests passed. After the native run, Playwright smoke retained all 7 read-only checks but 5 click-based checks timed out awaiting a stable render frame; a fresh Sol High reviewer found no staged-patch causal path because smoke does not inherit launcher state and no product UI or smoke files changed. Repeat both native checks in a fresh WSL session during feature completion rather than representing them as passed.
+- Commit 2 adds the manual UI-polish skill and its discoverability entry. The system task that authored the skill was created before the project MCP server was available, so it cannot perform a fresh MCP forward test; no realistic developer dump was supplied. The skill requires a fresh task and a connected isolated session, and feature completion must repeat the live proof. The smoke rerun again passed all 7 read-only checks and timed out on the same 5 click checks while waiting for a stable render frame; this documentation-only patch changes neither product UI nor smoke code.
 
 ## Completed work
 
