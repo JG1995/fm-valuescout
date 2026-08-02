@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [UI agent workflow](./features/active/ui-agent-workflow.md) — isolated real Tauri runtime, pinned upstream Tauri MCP controls, and a manually invoked live UI-polish workflow; implementation is blocked on the ledger's WSL integration spike
+- [UI agent workflow](./features/active/ui-agent-workflow.md) — implementation is complete for the isolated real Tauri runtime, pinned upstream Tauri MCP controls, and manually invoked live UI-polish workflow; feature close-out is in progress
 
 ## Next
 

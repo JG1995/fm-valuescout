@@ -11,8 +11,8 @@ Use the real application as the design reference. Make purposeful visual and int
 
 1. Confirm the developer explicitly requested live UI polish.
 2. Confirm a fresh Codex task has loaded the project MCP server and the developer has started `./scripts/dev ui-agent` in another terminal. Use `./scripts/dev ui-agent --dump /absolute/path/dump.json` only when the developer supplied that dump.
-3. Use upstream `driver_session` to confirm a connected session. Do not infer readiness from files, ports, or a previous screenshot.
-4. If the session is absent, reloading, or disconnected, pause live actions. Report the state and reconnect before taking a fresh DOM snapshot.
+3. Start or inspect the upstream `driver_session`, then require its status to report `identifier: app.fmvaluescout` and a `cwd` that matches this repository. Do not use screenshots, JavaScript, interaction, IPC, or other broad control tools until both values match. If another app owns the default port, stop that session and reconnect to the FM ValueScout port reported by the launcher, then verify the metadata again. Do not infer readiness from files, ports, or a previous screenshot.
+4. If the session is absent, reloading, disconnected, or targets another app, pause live actions. Report the state and reconnect before taking a fresh DOM snapshot.
 
 Use the tracked golden dump only to prove the workflow mechanics. Do not claim that its one-player layout represents a populated save.
 
