@@ -46,7 +46,7 @@ Possible for tiny apps. Real products quickly add modals, sidebars, and cross-pa
 ### Follow-up
 
 - Done at scaffold (`fc11b5a`) — layout store in `src/stores/use-layout-store.ts`.
-- State boundaries documented in `coding-standards/references/react.md`.
+- State boundaries follow the React reference in the installed `coding-standards` skill.
 
 ## Related work
 

@@ -570,7 +570,7 @@ Dedicated route `/planner`. The planner shows club-family setup, the shared dual
 
 ### Deferred specs
 
-These surfaces are not specced because their features are not planned yet. Spec them in this document during `workflow-plan-feature` for the relevant feature, not before.
+These surfaces are not specced because their features are not planned yet. Spec them in this document during `$workflow-plan-feature` for the relevant feature, not before.
 
 - **Optimizer extensions:** formation comparison, best-and-worst candidate highlighting, gap recommendations, and custom optimization controls.
 - **Profile extensions:** position suitability map, attribute/role radar, comparison inspector, snapshot history on the profile.

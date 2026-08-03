@@ -1,10 +1,5 @@
 mod db;
 mod features;
-#[cfg(all(debug_assertions, feature = "ui-agent"))]
-mod ui_agent;
-
-#[cfg(all(feature = "ui-agent", not(debug_assertions)))]
-compile_error!("the ui-agent feature is available only in non-release builds");
 
 use tauri::Manager;
 
@@ -22,17 +17,7 @@ pub fn run() {
 
             let db_path = db::resolve_db_path(app.handle())?;
             let db = db::open(&db_path)?;
-
-            #[cfg(all(debug_assertions, feature = "ui-agent"))]
-            let mut db = db;
-
-            #[cfg(all(debug_assertions, feature = "ui-agent"))]
-            ui_agent::prepare_from_environment(&mut db)?;
-
             app.manage(db);
-
-            #[cfg(all(debug_assertions, feature = "ui-agent"))]
-            app.handle().plugin(ui_agent::plugin())?;
 
             Ok(())
         })

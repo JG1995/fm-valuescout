@@ -4,7 +4,7 @@
 
 This document describes how **FM ValueScout** is constructed: stack, thin-frontend / thick-backend boundaries, build and test pipeline, and conventions enforced by tooling.
 
-Application layout follows [Bulletproof React](https://github.com/alan2207/bulletproof-react) adapted for TanStack Router and Query on the frontend, and feature modules under `src-tauri/src/features/` on the backend. Line-level rules live in `.agents/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, and `vite.md`.
+Application layout follows [Bulletproof React](https://github.com/alan2207/bulletproof-react) adapted for TanStack Router and Query on the frontend, and feature modules under `src-tauri/src/features/` on the backend. Line-level rules come from the installed `coding-standards` skill and its React, Tauri, Rust, and Vite references.
 
 For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each default choice, see [.wiki/decisions/](./decisions/README.md).
 
@@ -62,11 +62,7 @@ React `features/planner` owns query, picker, confirmation, focus, menu, and pres
 
 **Testing:** Vitest + jsdom + React Testing Library with `mockIPC` (`./scripts/dev test`); Playwright smoke with IPC stub (`./scripts/dev smoke`, `e2e/smoke.spec.ts`); Rust unit tests (`cargo test` inside `./scripts/dev check`); C# bridge unit tests (`./scripts/dev bridge-test` in Windows CI)
 
-**Live UI control:** `./scripts/dev ui-agent` starts a development-only, real Tauri application with a new temporary application-data directory. `--dump /absolute/path/dump.json` validates and ingests a read-only dump through the normal Rust snapshot service before the control bridge starts. The pinned `tauri-plugin-mcp-bridge` and `@hypothesi/tauri-mcp-cli` 0.12.0 integration is enabled only by the non-release `ui-agent` Cargo feature and Tauri configuration overlay, and binds to `127.0.0.1`. It does not expose a live product database or enter ordinary or release builds. A trusted Codex task can use the upstream CLI session to inspect and polish the UI; see [.codex/README.md](../.codex/README.md) and [ui-agent-workflow](./features/completed/ui-agent-workflow.md).
-
-**Agent code exploration:** Codebase Memory runs only as the local `codebase-memory-mcp cli` command for indexed repository discovery. It is not a Codex MCP server; its binary and `.codebase-memory/` index are workstation state, not repository architecture. See [.codex/README.md](../.codex/README.md).
-
-**Client env validation:** not shipped in the template default — forks can add `src/config/env.ts` with Zod for `VITE_*` when needed (see `vite.md`; `.env.example` documents optional variables)
+**Client env validation:** not shipped in the template default — forks can add `src/config/env.ts` with Zod for `VITE_*` when needed (follow the Vite reference in the installed `coding-standards` skill; `.env.example` documents optional variables)
 
 **Lint / format / types:** Biome + `tsc -b`; secretlint in `./scripts/dev check`; Rust `cargo fmt`, `clippy`, and `test` in the same gate
 
@@ -123,7 +119,7 @@ Fork chooses: auth, signing, auto-update, additional plugins
 
 ```text
 your-repo/
-├── .agents/           # Repository skills
+├── .agents/           # Project workflow policy
 ├── .codex/            # Project agents, MCP config, and workflow guide
 ├── .wiki/             # Durable docs (this file, ADRs, TODO)
 ├── .husky/            # Git hooks (pre-commit → check-fast + conditional check-rust)
@@ -275,7 +271,6 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 | `./scripts/dev bridge-test` | C# bridge unit tests; requires the .NET 6 SDK |
 | `./scripts/dev smoke` | Playwright (`e2e/smoke.spec.ts`); starts Vite via `playwright.config.ts` when needed |
 | `./scripts/dev bridge-install` | Build `bridge/` and copy `FmDataBridge.dll` into Steam `BepInEx/plugins` (Windows path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL default) |
-| `./scripts/dev ui-agent [--dump /absolute/path/dump.json]` | Start an isolated real Tauri development session for trusted live UI inspection; the optional dump seeds its temporary database through normal Rust ingest |
 
 ### 3.2 Validation gate
 
@@ -304,7 +299,7 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 
 ### 3.4 Commit message convention
 
-[Conventional Commits 1.0.0](https://www.conventionalcommits.org/). See `.agents/skills/conventional-commits/SKILL.md`.
+[Conventional Commits 1.0.0](https://www.conventionalcommits.org/). Load the installed `conventional-commits` skill before writing a message.
 
 ---
 
@@ -330,8 +325,8 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `src-tauri/Cargo.toml` | Rust crate dependencies and features |
 | `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, and bridge checks from changed paths; required `check` aggregates applicable results |
 | `.github/workflows/release.yml` | Tag-triggered multi-OS installer build via `tauri-action` |
-| `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` / `ui-agent` surface |
-| `.codex/config.toml` | Recallium and Context7 MCP servers |
+| `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` surface |
+| `.codex/config.toml` | Context7 MCP and shell-environment configuration |
 | `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML |
 | `.vscode/settings.json` | Format on save (Biome / rust-analyzer); rust-analyzer linked to `src-tauri` |
 | `.gitignore` | Build, test, and tool artifacts; `.tanstack/` cache; `.env.*` except `.env.example`; `src-tauri/target/`; editor noise (`.idea/`, vim swap) |
@@ -647,7 +642,6 @@ Non-Windows hosts return `unsupportedPlatform` for bridge install commands. Full
 - **E2E / smoke** — Playwright in `e2e/` with `tauri-ipc-stub.ts`; `./scripts/dev smoke` runs walking-skeleton checks. Vitest excludes `e2e/**`.
 - **Rust unit tests** — `#[cfg(test)]` modules in `src-tauri/src/`; run via `cargo test` in the gate.
 - **Bridge unit tests** — `bridge/Tests/` run through `./scripts/dev bridge-test` in Windows CI.
-- **Live UI-agent runtime** — launcher and Rust tests cover temporary-profile isolation, dump seeding, cleanup, and bridge gating. A manual trusted Codex session covers real WebView control and is not a CI suite.
 
 ### 6.2 What each layer covers
 
@@ -659,7 +653,7 @@ Non-Windows hosts return `unsupportedPlatform` for bridge install commands. Full
 
 ### 6.3 Test quality guidelines
 
-Test behaviour the user sees, not implementation details. Do not assert on Zustand or Query internal cache shape unless the contract is the subject. See `.agents/skills/coding-standards/references/testing.md`.
+Test behaviour the user sees, not implementation details. Do not assert on Zustand or Query internal cache shape unless the contract is the subject. Follow the testing reference in the installed `coding-standards` skill.
 
 ### 6.4 Playwright smoke scope
 
@@ -679,9 +673,9 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 | Command validation, services, migrations, SQLite | `cargo test` in `./scripts/dev check` |
 | Bridge scan, dump writers, file protocol | `./scripts/dev bridge-test` in Windows CI (fakes; no FM attach) |
 | Full-stack manual verification | `pnpm tauri dev` |
-| Trusted live UI inspection and polish | `./scripts/dev ui-agent` plus the upstream CLI session; manual, isolated, and developer-invoked |
+| Automated real WebView e2e | Deferred — see [BACKLOG.md](./BACKLOG.md) (tauri-driver) |
 
-Green smoke does **not** prove SQLite persistence works in production or the native Tauri WebView control path. Rust unit tests own the database; smoke owns browser UI with a stub. The UI-agent workflow provides a manual native check when that boundary matters.
+Green smoke does **not** prove SQLite persistence works in production. Rust unit tests own the database; smoke owns browser UI with a stub.
 
 ---
 
@@ -763,7 +757,7 @@ Each item links to an ADR with alternatives and consequences.
 - **Change visual language:** update [DESIGN.md](./DESIGN.md) first, then mirror tokens in `src/styles/global.css` `@theme`.
 - **Add persistence:** Migration in `db/migrations.rs`, service in `features/<feature>/service.rs`, commands in `commands.rs`. Open path stays `app_data_dir` + `APP_DB_FILE` via `db::open`.
 - **Change stack defaults:** Read ADRs, update decisions, then reconcile this file and scaffold configs.
-- **Coding standards detail:** `.agents/skills/coding-standards/references/react.md`, `tauri.md`, `rust.md`, `vite.md`
+- **Coding standards detail:** load the installed `coding-standards` skill and its React, Tauri, Rust, and Vite references
 
 ---
 

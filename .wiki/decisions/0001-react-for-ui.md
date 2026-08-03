@@ -42,7 +42,7 @@ Vue is mature and approachable. This template already commits to the React-focus
 ### Follow-up
 
 - Done at scaffold (`41effa2`, `fc11b5a`) — React 19 pinned in `package.json`.
-- Component patterns documented in `coding-standards/references/react.md`.
+- Component patterns follow the React reference in the installed `coding-standards` skill.
 
 ## Related work
 

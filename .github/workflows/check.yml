@@ -41,7 +41,6 @@ jobs:
               - 'tsconfig*.json'
               - 'vite.config.ts'
               - 'playwright.config.ts'
-              - 'scripts/ui-agent*'
             rust:
               - 'src-tauri/**'
               - 'src-tauri/Cargo.lock'

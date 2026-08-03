@@ -45,7 +45,7 @@ Single-file backend. Scales poorly as features grow. Rejected — feature folder
 
 ### Events instead of commands for request/response work
 
-Tauri events fit fire-and-forget notifications. RPC-shaped work (Query cache, error handling) stays on commands. Mixed model documented in `coding-standards/references/tauri.md`.
+Tauri events fit fire-and-forget notifications. RPC-shaped work (Query cache, error handling) stays on commands. The mixed model follows the Tauri reference in the installed `coding-standards` skill.
 
 ## Consequences
 

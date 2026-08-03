@@ -1,274 +1,133 @@
 # Adaptive Development Workflow
 
-This document is the canonical policy for planning, implementation, validation, review, escalation, and replanning. `AGENTS.md` owns standing repository rules. `.agents/skills/workflow-*/SKILL.md` files own phase procedures. `.wiki/features/active/README.md` owns the reusable feature-ledger template.
+This document defines shared planning, implementation, validation, review, escalation, and PR-boundary policy. `AGENTS.md` owns standing repository rules. Installed `workflow-*` skills own phase procedures. `.wiki/features/active/README.md` owns the feature-ledger template.
+
+## Invocation policy
+
+Every `workflow-*` skill requires explicit user invocation. Do not select one from an ordinary natural-language request. In Codex, select the skill through `/skills` or mention `$workflow-<name>`. Every workflow skill must set `policy.allow_implicit_invocation: false` in `agents/openai.yaml` and repeat the boundary in its description.
 
 ## Lifecycle
 
-Use this default path for non-trivial feature work:
-
 ```text
-planning context
-  → durable feature ledger
-  → main-session implementer
-  → deterministic validation
-  → fresh-context commit reviewer
+feature plan
+  → implement one commit
+  → project-defined validation
+  → fresh-context commit review
   → correction, escalation, or replanning
+  → PR publication and merge boundary
   → feature-complete validation and review
-  → documentation reconciliation and ledger archival
+  → documentation reconciliation
 ```
 
-Trivial work can use a short work contract instead of a ledger. Keep the existing approval and Git rules in `AGENTS.md`; this policy does not grant permission to commit, push, or rewrite history.
+Trivial work can use a short work contract instead of a feature ledger. Workflow invocation does not grant Git authority except for the two loop permissions centralized in `AGENTS.md`.
 
-### 1. Plan
+Every phase uses the repository as project memory. Read the `project-context` skill for the targeted inspection order and documentation routing. Update the narrowest durable owner in the phase that makes the information true.
 
-Use `workflow-plan-feature`. The planning context inspects the repository and creates one durable ledger in `.wiki/features/active/`.
+## 1. Plan
 
-The default planning profile is **Terra xhigh** (`gpt-5.6-terra`, `xhigh`) when the repository already supplies the architecture, feature boundary, and useful analogues. Use Sol High when several architectures remain plausible, persistence or migration design is unsettled, requirements conflict, security or concurrency boundaries change, repository ownership is unclear, or implementation discoveries require material replanning. Use Sol xhigh only when several Sol conditions coincide, a Sol High plan fails structurally, or the decision has difficult-to-reverse security, corruption, or data-loss consequences.
+Use `$workflow-plan-feature`. Create one ledger in `.wiki/features/active/` and ground it in actual files, symbols, tests, commands, current-state documents, ADRs, and debug reports.
 
-The planner must:
+The plan must:
 
-- ground the current-state map and implementation packets in actual files, symbols, tests, and commands;
 - distinguish invariants from implementation preferences;
 - split work into independently reviewable, trunk-safe PRs and commits;
-- assign an implementation profile and a separate review profile to every pending or active commit;
-- define validation, stop conditions, escalation conditions, and a commit-specific review mandate;
-- mark exactly one commit `Active`;
-- write discoveries back to the ledger instead of leaving them in chat context.
+- give each commit a bounded implementation packet, implementation profile, review profile, validation commands, stop conditions, and review mandate;
+- identify exact PR dependencies and publication boundaries;
+- mark exactly one commit `Active` inside the active PR;
+- absorb accepted content from a planned feature spec into the ledger and delete the promoted spec;
+- keep discoveries and material deviations in the ledger.
 
-### 2. Implement one commit
+Use **Terra xhigh** for planning when the architecture and feature boundary are established. Use **Sol High** when several architectures remain plausible, persistence or migration design is unsettled, requirements conflict, security or concurrency boundaries change, ownership is unclear, or implementation discoveries require material replanning. Reserve **Sol xhigh** for several combined Sol conditions or difficult-to-reverse security, corruption, or data-loss consequences.
 
-Use `workflow-build` or the manually requested `workflow-build-loop`. The main session implements the active commit and any later review fixes. Assume the developer selected the implementation model and reasoning effort recorded in the ledger. Do not inspect or infer the main session's runtime profile, and do not dispatch a separate implementation agent for model routing.
+## 2. Implement one commit
 
-Before editing, the implementer must read:
+Use `$workflow-build` or the manually requested `$workflow-build-loop`. The main session implements the active commit and later review fixes. Do not dispatch a separate implementation agent only to satisfy model routing.
 
-- the active commit work and exclusions;
-- its governing requirements and invariants;
-- its implementation packet and execution profile;
-- the named repository patterns and relevant surrounding code;
-- the validation contract and stop conditions.
+Before editing, read the active work, governing requirements, invariants, exclusions, implementation packet, named analogues, validation commands, and stop conditions. Verify analogues before copying them. Start with the planned RED test or smallest failing proof when practical. Implement only the active commit.
 
-The implementer verifies named analogues before copying them, starts with the planned RED test or smallest failing proof when practical, implements only the active commit, validates incrementally, and reviews the diff against the active invariants.
+The implementation handoff states files changed, behavior implemented, tests changed, commands run, unresolved uncertainty, packet deviations, and escalation or replanning status.
 
-The implementation handoff must state files changed, behavior implemented, tests added or changed, commands run, unresolved uncertainty, material deviations from the packet, and whether escalation or replanning occurred. This self-review does not replace independent review.
+## 3. Validate
 
-### 3. Validate
+Use the project-defined commands recorded in the active commit, from cheapest to broadest:
 
-Use the validation ladder in the active commit from cheapest to broadest:
-
-1. Targeted unit or component tests.
+1. Targeted tests or a focused reproducible proof.
 2. Affected module tests.
-3. Integration tests.
-4. Static analysis or type checking.
-5. `./scripts/dev check`.
-6. `./scripts/dev smoke` when browser behavior changes.
-7. Manual or real-environment checks only where automation cannot prove the contract.
+3. Integration or end-to-end tests.
+4. Static analysis, formatting, or type checking.
+5. The project's documented commit gate.
+6. Manual or real-environment checks only where automation cannot prove the contract.
 
-Use only the stable commands in `AGENTS.md` and `./scripts/dev`. Status 69 means unsupported, not passed. A command result is evidence; an agent's confidence is not.
+Use the stable `./scripts/dev` commands documented in `AGENTS.md`. Do not claim a command passed when it was unavailable, unsupported, skipped, or replaced with weaker evidence. A command result is evidence; confidence is not.
 
-### 4. Review in a fresh context
+## 4. Review in a fresh context
 
-Every non-trivial commit gets a separate read-only reviewer after deterministic validation. Dispatch the model and reasoning effort assigned by the commit's review profile. For non-trivial work without a ledger, use the repository's named `reviewer` at its default Terra High profile. When a ledger assigns another profile, use a generic read-only reviewer with the same contract.
+Every non-trivial commit gets a separate read-only reviewer after deterministic validation. Use the review profile in the ledger. Without a ledger, use the named `reviewer` at its default profile. When the ledger assigns another profile, use a generic read-only reviewer with the same contract.
 
-Give the reviewer:
+Give the reviewer the original commit specification, relevant invariants and non-goals, implementation packet, staged diff, validation results, review mandate, and repository access. Do not initially give the implementer's reasoning or defense.
 
-- the original commit specification;
-- relevant invariants and non-goals;
-- the implementation packet;
-- the actual staged diff;
-- validation results;
-- repository access.
+After corrections, reuse the same reviewer context when available. Start a fresh review when that context is unavailable or the correction materially changes scope, architecture, or mandate. Main-session self-review does not replace independent review.
 
-Do not initially give the reviewer the implementer's chain of reasoning, self-review, or a defense of the chosen design. Give implementation notes only after the independent pass when they are needed to resolve disputed intent.
-
-The reviewer follows the commit-specific mandate and reconstructs intended behavior from the ledger and code. It checks guards and tests before retaining a finding.
-
-After the main session corrects findings, reuse the same reviewer context when available to verify those findings and newly exposed paths. Dispatch a new fresh reviewer when that context is unavailable or when the correction materially changes the scope, architecture, or review mandate. Never replace independent review with main-session self-review.
-
-### 5. Correct, escalate, or replan
-
-The main session corrects confirmed bounded execution defects. Increase reasoning effort when ownership, abstractions, and the governing invariant are correct but branches, tests, or integration details are incomplete. Increase model capability when the implementer chose the wrong abstraction, misunderstood ownership or an invariant, patched a symptom, or invented repository assumptions. When a correction requires a different implementation profile, stop and report the required profile so the developer can switch the main session; do not dispatch a replacement implementer.
-
-After one clear structural misunderstanding, do not retry the same model only with more effort. Escalate capability or return to planning.
-
-After two failed correction attempts on the same bounded defect, stop and report the capability or effort required for a third attempt so the developer can switch the main session. After three failed attempts, stop the automated loop and return to planning or developer direction. Do not continue an open-ended repair loop.
-
-Use Sol High or xhigh replanning when a Known fact is disproved, an invariant or approved boundary must change, a required seam does not exist, a public or persisted contract changes materially, validation cannot be meaningful, the commit leaks into a later PR, a cross-feature dependency appears, or review exposes an architectural disagreement.
-
-Replanning must update the uncertainty register, decisions, risks, affected implementation packets, model and review assignments, and delivery order. Preserve completed history and record why the plan changed.
-
-### 6. Finish the feature
-
-Use `workflow-finish-feature` after every planned commit is completed or explicitly removed with a reason. Use `workflow-finish-feature-loop` only when the developer manually opts into automatic feature-review corrections and local close-out commits.
-
-Run feature-level validation from the ledger, then dispatch a fresh **Sol High** feature-complete reviewer. This fixed profile reflects the breadth and close-out consequence of approving the whole feature. The feature reviewer checks end-to-end intent and cross-commit interactions instead of repeating commit reviews.
-
-After review clears, reconcile durable documentation and archive the ledger according to `.wiki/INDEX.md` and `.wiki/features/completed/README.md`.
-
-## Model roles
-
-Model capability answers **what must be understood**. Reasoning effort answers **how extensively the selected model must explore and verify it**. Score them independently.
-
-### Luna: executor
-
-Use **Luna** (`gpt-5.6-luna`) when the solution is sufficiently defined and the main challenge is execution and verification. Typical work includes planned UI, established CRUD, repetitive multi-file changes, explicit tests, mechanical refactors, known-cause fixes, and long but bounded implementation with deterministic feedback.
-
-### Terra: engineer and diagnostician
-
-Use **Terra** (`gpt-5.6-terra`) when the outcome is defined but the implementation requires local design judgment. Typical work includes persistence invariants, state lifecycle, cache invalidation, cross-layer integration, bounded diagnosis, asynchronous state, compatibility, and several plausible repository-consistent implementations.
-
-### Sol: architect and high-consequence reasoner
-
-Use **Sol** (`gpt-5.6-sol`) when the framing, invariant, or solution is uncertain or the consequences justify stronger judgment. Typical work includes architecture, conflicting requirements, novel boundaries, concurrency, security, destructive migration, corruption or data-loss risk, public contract strategy, and material replanning.
-
-## Capability Demand
-
-Score each category from 0 to 3:
-
-| Category | 0 | 1 | 2 | 3 |
-| --- | --- | --- | --- | --- |
-| Residual requirement ambiguity | Exact behavior | Minor local choices | Several design choices | Conflicting or unclear requirements |
-| Architectural novelty | Exact analogue | Known pattern in a new place | New abstraction or boundary | Novel cross-cutting architecture |
-| Diagnostic uncertainty | None | Cause strongly indicated | Cause uncertain but bounded | Broad or systemic unknown |
-| Semantic and consequence risk | Cosmetic or easy reversal | Local behavior | Persistence, compatibility, or contract | Security, corruption, data loss, or irreversible impact |
-| Context synthesis | One or two files | One cohesive module | Several layers, languages, or subsystems | Multiple services, repositories, runtimes, or external systems |
-
-Add the five values:
-
-| Total | Initial implementation model |
-| --- | --- |
-| 0–5 | Luna |
-| 6–10 | Terra |
-| 11–15 | Sol |
-
-### Luna punch-up exception
-
-Luna can handle a score of 6–7 when all of these conditions hold:
-
-- residual ambiguity and diagnostic uncertainty are each 0 or 1;
-- architecture is approved;
-- deterministic validation exists;
-- the change is reversible;
-- the score comes mainly from breadth or cross-layer volume;
-- the implementation packet names useful repository patterns;
-- failure can be detected before merge.
-
-Use Luna xhigh or max and set `luna_punch_up_applied: true`. Do not use more Luna effort to hide an architectural misunderstanding.
-
-## Effort Demand
-
-Score each category from 0 to 3:
-
-| Category | 0 | 1 | 2 | 3 |
-| --- | --- | --- | --- | --- |
-| Implementation breadth | Tiny change | A few files | Several modules | Large or long-horizon commit |
-| Branch and failure-path density | Straight line | A few alternatives | Many edges or failures | Complex temporal or combinatorial state |
-| Repository discovery | Exact files known | Clear analogue | Meaningful exploration | Architecture reconstruction |
-| Validation weakness | Fast and strong | Good with minor gaps | Slow or integration-heavy | Weak, manual, flaky, or unavailable |
-| Tool and environment coordination | Edit only | Edit plus one check | Several tools or runtimes | Repeated experiments, services, or external systems |
-
-Apply these adjustments, then clamp the total to 0–15:
-
-- Subtract one for an exact named analogue.
-- Subtract one for fast deterministic coverage.
-- Subtract one when expected files and ownership boundaries are known.
-- Subtract one when execution order is explicit.
-- Add one for slow, flaky, or mostly manual tests.
-- Add one for crossing a language or process boundary.
-- Add one for a poorly documented external dependency.
-- Add one after a non-trivial failed attempt.
-- Add one when historical data or backward compatibility must be preserved.
-
-| Adjusted total | Reasoning effort |
-| --- | --- |
-| 0 | none |
-| 1–3 | low |
-| 4–6 | medium |
-| 7–9 | high |
-| 10–12 | xhigh |
-| 13–15 | max |
-
-Use at least low for autonomous mutation.
-
-## Implementation hard floors
-
-Use at least **Terra High** when the root cause is unknown, persistence semantics change, cache invalidation is central, state survives reload or partial failure, several asynchronous states interact, a third-party API must be discovered, or no useful repository analogue exists.
-
-Use at least **Terra xhigh** when existing data migrates, uniqueness or ordering spans several mutation types, retry or idempotency matters, frontend state plus IPC or API plus persistence plus cache interact, critical behavior lacks adequate tests, or stale references must survive replacement.
-
-Use at least **Sol High** when authorization boundaries change, realistic data loss or corruption is possible, concurrency or distributed consistency is central, requirements conflict, a novel boundary is required, the change is difficult to reverse, a foundational planning fact is false, or a lower-tier model misunderstood the task structurally.
-
-Lower a hard floor only with a concrete repository-specific justification in the ledger.
-
-## Review Demand
-
-Score review independently from implementation. Each category is 0–3:
-
-| Category | 0 | 1 | 2 | 3 |
-| --- | --- | --- | --- | --- |
-| Consequence of a missed defect | Cosmetic | Local and reversible | Persistent or significant user-visible failure | Security, corruption, data loss, irreversible impact, or outage |
-| Hidden interaction complexity | Straight line | A few branches | Lifecycle or cross-layer interaction | Concurrency, retries, temporal state, or partial failure |
-| Validation weakness | Fast and nearly exhaustive | Strong with minor gaps | Partial or integration-heavy | Weak, manual, flaky, or unobservable |
-| Architectural discretion | Exact pattern | Minor local choices | Several plausible implementations | Novel or unresolved boundary |
-| Blast radius | Isolated unit | One module | Several layers | Shared contract, historical data, external system, or repository-wide behavior |
-
-| Total | Reviewer profile |
-| --- | --- |
-| 0–3 | Luna Medium, or deterministic validation only for truly mechanical work |
-| 4–6 | Terra Medium |
-| 7–9 | Terra High |
-| 10–12 | Terra xhigh |
-| 13–14 | Sol High |
-| 15 | Sol xhigh plus a bounded specialist review |
-
-Use at least **Terra High** for persistence, state lifecycle, cache invalidation, external APIs, multiple frontend/backend layers, meaningful implementation discretion, or incomplete test coverage.
-
-Use at least **Terra xhigh** when existing-data migration, retries, idempotency, or partial failure is central. Also use it when two or more difficult lifecycle concerns combine — stale-state survival, uniqueness or ordering across mutations, cancellation, linked asynchronous states, and persistence plus cache plus UI reconciliation — and deterministic validation does not cover the interaction well. One well-tested lifecycle concern does not create an xhigh floor by itself.
-
-Use at least **Sol High** for authorization, credible corruption or hard-to-reconstruct data-loss risk, destructive migration, concurrency, cryptography, major public contracts, architectural contradiction, or difficult-to-reverse consequences.
-
-Use **Sol xhigh** only when Review Demand is 15, a Sol High review fails structurally, or several Sol High conditions combine with weak validation or an unresolved boundary. Do not carry an implementer's xhigh effort into review automatically; score review from its own mandate and evidence.
-
-For high-consequence work, the final adjudicator is normally at least as capable as the implementer.
-
-## Review mandate and evidence
-
-Each commit gets a mandate with approximately three to eight concrete concerns derived from its invariants, failure paths, boundaries, lifecycle, error handling, validation, accessibility, compatibility, or data integrity.
-
-Retain a defect only when all three are present:
+Retain a defect only when the reviewer identifies:
 
 1. A violated requirement or invariant.
 2. A concrete execution path.
 3. An observable incorrect consequence.
 
-Every retained finding must include severity, file and location, violated contract, execution path, consequence, existing guard considered, a reproduction or precise missing test, and confidence. Put plausible but unproven concerns under investigation notes. Exclude style-only comments unless style or repository convention is part of the commit contract.
+Every finding includes severity, location, violated contract, execution path, consequence, existing guard considered, reproduction or missing test, and confidence. Put plausible but unproven concerns under investigation notes.
 
-The reviewer distinguishes confirmed defects, missing tests with concrete failure scenarios, investigation notes, and architectural disagreements. It recommends one of: accept, correct locally, escalate capability, or replan.
+Keep the owning commit `Active` through review and correction. Advance delivery state only after no CRITICAL, HIGH, or MEDIUM finding remains, or after the developer explicitly accepts committing with the remaining findings recorded.
 
-Optional specialist reviewers may generate candidates for distinct concerns such as lifecycle, persistence, accessibility, or security. Agreement is not proof. A stronger reviewer or adjudicator must validate every retained candidate against code, tests, requirements, and invariants. Prefer three distinct mandates to five generic reviews.
+## 5. Correct, escalate, or replan
 
-## Correction and adjudication
+Correct bounded execution defects in the main session. Increase reasoning effort when the ownership and abstraction are correct but branches, tests, or integration details are incomplete. Increase model capability when the implementation chose the wrong abstraction, misunderstood ownership or an invariant, patched a symptom, or invented project facts.
 
-After a correction, rerun targeted and affected broad validation. Ask the reviewer to verify the corrected findings and newly exposed paths. Repeat the whole review only when the correction materially changes the commit.
+After two failed corrections for the same defect, stop and request a profile change or replan. Replan when a known fact is disproved, an invariant or approved boundary changes, a required seam does not exist, a public or persisted contract changes materially, validation cannot be meaningful, work crosses a PR boundary, or review exposes an architectural disagreement.
 
-Invoke Sol adjudication when the reviewer and implementer disagree about architecture, a high-severity finding remains disputed, or fixing a finding would change an invariant, persisted contract, PR boundary, or later commit.
+Replanning updates the uncertainty register, decisions, risks, affected packets, profiles, and delivery order. Preserve completed history and record why the plan changed.
+
+## 6. Respect PR boundaries
+
+The ledger owns publication state as well as implementation state.
+
+- Work on one active PR at a time.
+- When its final commit clears checkpoint, mark the PR `Ready for publication` and stop. Do not activate the next PR.
+- Record the PR number or URL when published and the merge commit or equivalent immutable ref when merged.
+- Mark a dependent PR `Awaiting prior PR merge` until its dependencies are merged.
+- Activate the next PR only after its dependencies are recorded as merged.
+- Do not merge, push, publish, or rewrite history without explicit developer approval.
+
+For the final implementation PR, run `$workflow-finish-feature` after all planned commits are complete and all earlier PRs are merged. The final PR can remain unmerged while feature review and documentation reconciliation run. Scope feature review to the exact recorded commit and PR refs, not an assumed `base...HEAD` range.
+
+## 7. Finish the feature
+
+Use `$workflow-finish-feature` after every planned commit is completed or removed with a reason. Use `$workflow-finish-feature-loop` only when the developer explicitly opts into automatic review corrections and the local commits described by that skill.
+
+Run the ledger's feature-level validation, then dispatch a fresh **Sol High** feature reviewer. Review the exact recorded implementation set, including merged earlier PRs and the final PR's recorded commits. The reviewer checks end-to-end intent and cross-commit interactions rather than repeating each commit review.
+
+After review clears, reconcile durable documentation, condense and archive the ledger, and prepare the final PR for publication. Record the final PR and merge ref when the merge occurs; do not claim the feature is merged before repository evidence shows it.
+
+## Model routing
+
+Choose profiles with short repository-specific reasons. Do not calculate numeric scores unless a project supplies a validator or consumer for them.
+
+### Implementation profiles
+
+- **Luna:** Use for defined, reversible execution with strong validation and useful analogues. Increase effort for breadth, many branches, or slow feedback.
+- **Terra:** Use when the outcome is defined but local design judgment, diagnosis, persistence, lifecycle, or cross-layer integration is material.
+- **Sol:** Use when the framing, invariant, architecture, or solution remains uncertain, or when security, concurrency, corruption, data loss, or irreversible change raises the consequence.
+
+Use at least Terra High for unknown root cause, meaningful persistence semantics, cache invalidation, several asynchronous states, third-party API discovery, or missing analogues. Use at least Terra xhigh for existing-data migration, retry or idempotency behavior, or several interacting persistence, cache, API, and UI layers. Use at least Sol High for authorization boundaries, credible corruption or data-loss risk, concurrency, conflicting requirements, novel boundaries, or difficult-to-reverse changes.
+
+### Review profiles
+
+- **Luna Medium:** Mechanical work with strong deterministic validation and little discretion.
+- **Terra Medium or High:** Ordinary behavioral work; use High for persistence, lifecycle, external APIs, cross-layer behavior, or incomplete coverage.
+- **Terra xhigh:** Existing-data migration, retries, idempotency, or difficult partial-failure behavior.
+- **Sol High:** Authorization, corruption or data-loss risk, destructive migration, concurrency, cryptography, major public contracts, or architectural contradiction.
+
+The final feature reviewer is always Sol High unless project guidance requires a stronger profile.
 
 ## Incremental migration
 
-Do not rewrite completed feature history to match this schema.
-
-For an active legacy ledger:
-
-1. Preserve existing intent, decisions, discoveries, completed hashes, and plan deviations.
-2. Add complete packets and execution profiles to the active commit before implementation continues.
-3. Add profiles to pending commits before each becomes active. Prefer migrating all pending commits during the same planning pass when repository evidence is already loaded.
-4. Add implementation and review model columns to Completed work. Use `unknown (pre-routing)` when the historical model cannot be verified.
-5. Record migration under Discoveries and replanning only when it changes delivery order, scope, architecture, or an assignment. Schema-only enrichment does not rewrite history.
-
-## Worked example: Squad Planner depth matrix
-
-Representative planned commit: **Add the three-team depth matrix** from `.wiki/features/active/squad-planner.md`.
-
-- **Implementation:** Luna xhigh. Capability Demand is 5: ambiguity 1, novelty 1, diagnosis 0, semantic risk 1, context synthesis 2. This routes directly to Luna because the Rust read model and UI architecture are approved, the work is reversible, and deterministic React tests exist. Effort Demand is 10 after adjustments because the commit spans route and component composition, multiple display states, keyboard structure, and viewport behavior.
-- **Packet summary:** follow the existing Planner route, shared tactic editor, `ScoreBadge`, and route-test patterns; consume the Rust-owned read model; keep matrix state presentational; do not add picker mutations or string controls; validate team tabs, sticky lanes, overflow, scores, and unresolved states.
-- **Review:** Terra High. Review Demand is 6: consequence 1, hidden interactions 2, validation weakness 1, discretion 1, blast radius 1. The frontend/backend integration floor overrides the raw Terra Medium score because the matrix consumes a Rust-owned read contract through IPC. The mandate challenges truthful unresolved/outside-pool rendering, shared tactic-row identity across tabs, keyboard reachability, horizontal overflow at the target viewport, and leakage of later picker or string-management scope.
-- **Escalation:** increase Luna effort if the planned ownership is correct but states or tests are incomplete. Escalate to Terra if the read model cannot support truthful rendering without local domain reconstruction. Replan with Sol if the matrix requires a new persisted contract or work assigned to the candidate-picker commit.
+Do not rewrite completed feature history to match a new schema. For a legacy active ledger, preserve intent, decisions, discoveries, completed refs, and deviations. Add missing packets, profiles, validation commands, review mandates, and PR state only for active and pending work.
