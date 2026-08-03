@@ -48,10 +48,10 @@ Let the user tune optimization for each linked tactic lane instead of applying o
 
 ## Current-state map
 
-- Relevant components: `src/features/planner/components/planner-tactic-editor.tsx` owns the tactic draft and current global weight control; `planner-tactic-pitch.tsx` owns phase-specific lane selection and role controls; `planner-depth-matrix.tsx` owns the Optimize mutation; `src/app/routes/planner.test.tsx` and `e2e/` cover the user path.
-- Data model: `PlannerTactic` currently owns one `ipWeight`; each stable `TacticLane` owns linked IP/OOP positions and role IDs only.
-- Persistence and migrations: migration v5 created `planner_tactics.ip_weight` plus `planner_tactic_lanes`; v6 added strings and assignments; v7 added assignment provenance. Planner assignments identify lanes by stable text ID and do not reference the tactic tables.
-- Existing behavioral assumptions: combined scores use the one tactic weight; the optimizer reserves all manual UIDs, processes Senior then Reserves then Youth and ordered strings, and runs an exact matcher for all remaining lanes in each string.
+- Relevant components: `src/features/planner/components/planner-tactic-editor.tsx` owns the tactic draft and selected-lane weight control; `planner-tactic-pitch.tsx` owns phase-specific lane selection and role controls; `planner-depth-matrix.tsx` owns the Optimize mutation; `src/app/routes/planner.test.tsx` and `e2e/` cover the user path.
+- Data model: each stable `TacticLane` owns its IP/OOP positions, role IDs, and `ipWeight`; `PlannerTactic` is the eleven-lane collection.
+- Persistence and migrations: migration v8 removes the obsolete `planner_tactics` parent table and resets tactic rows into save-scoped `planner_tactic_lanes` with `ip_weight`; v6 added strings and assignments; v7 added assignment provenance. Planner assignments identify lanes by stable text ID and do not reference the tactic tables.
+- Existing behavioral assumptions: combined scores use the target lane's weight; the optimizer reserves all manual UIDs, processes Senior then Reserves then Youth and ordered strings, and runs an exact matcher for all remaining lanes in each string.
 - Architectural seams: `tactic.rs` validates and persists the full tactic; `depth.rs` calculates displayed assignment and picker scores; Planner-private `optimizer.rs` loads candidates and owns matching; `commands.rs` maps the typed IPC contract; React calls IPC through `src/lib/tauri-client.ts`.
 - Player-foot input: the bridge and snapshot schema expose `left`, `right`, `either`, or an empty string. The bridge emits `either` when both decoded foot attributes are at least 14.
 - Project validation commands: `./scripts/dev test [target...]`, `./scripts/dev check`, and `./scripts/dev smoke`. `./scripts/dev mutate` remains unsupported.
@@ -133,7 +133,7 @@ PR 1, commit 1 replaces the global weight with a lane-owned weight through SQLit
 
 #### Commit 1 — Use per-lane scoring weights
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): use per-lane scoring weights`
 
@@ -172,7 +172,7 @@ PR 1, commit 1 replaces the global weight with a lane-owned weight through SQLit
 
 #### Commit 2 — Prioritize ranked tactic lanes
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): prioritize ranked tactic lanes`
 
@@ -252,21 +252,20 @@ PR 1, commit 1 replaces the global weight with a lane-owned weight through SQLit
 
 **PR:** PR 1 — Per-lane optimizer preferences
 
-**Commit:** Use per-lane scoring weights
+**Commit:** Prioritize ranked tactic lanes
 
 ### RED proof
 
-Add the smallest Rust migration and Planner tactic/depth tests that open a v7 database, preserve a seeded assignment while resetting tactic rows, save two lanes with different weights, reload them, and show that the same phase scores produce different combined scores. Before implementation, the migration/version assertion and lane-owned DTO/score assertions must fail for the missing v8 schema and behavior.
+Add the smallest Rust optimizer test with one ranked lane and one flexible candidate that proves the ranked lane takes that candidate before the exact matcher allocates the remaining unranked lanes. Add the all-unranked control fixture proving the existing exact allocation result is unchanged. Before implementation, the rank-bearing DTO, validation, and allocation-order assertions must fail for the missing lane priority.
 
-Add a focused Planner route test that edits one selected lane's weight, saves, and verifies the IPC tactic draft changes only that lane. It must fail because the current editor exposes only one root `ipWeight`.
+Add a focused Planner route test that sets a rank on one selected lane, saves, and reloads it. It must fail because the current selected-lane editor and IPC contract have no priority field.
 
 ### Expected outcome
 
-The repository has no authoritative squad-wide tactic weight. A save owns eleven validated tactic lanes with individual weights, and one lane can be edited, saved, reloaded, and scored without changing another lane.
+An optional, unique rank is saved on each lane. Within a string, the optimizer reserves eligible players for ranked lanes in ascending rank order, then leaves unranked lanes to the existing exact matcher; all-null ranks retain the current allocation result.
 
 ### Explicit exclusions
 
-- Do not add priority fields or allocation.
 - Do not add preferred-foot fields or rules.
 - Do not refactor unrelated Planner components or scoring modules.
 - Do not change manual assignment, age, suitability, team, string, or club-family behavior.
@@ -282,7 +281,7 @@ The repository has no authoritative squad-wide tactic weight. A save owns eleven
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| — | — | — | No completed implementation | Not run | None |
+| PR 1 | Use per-lane scoring weights | Pending record | Terra xhigh | Terra xhigh, accepted | None |
 
 ## Final validation
 

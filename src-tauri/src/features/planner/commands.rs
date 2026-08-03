@@ -70,6 +70,7 @@ impl From<ClubFamily> for ClubFamilyDto {
 #[serde(rename_all = "camelCase")]
 pub struct TacticLaneDto {
     pub lane_id: String,
+    pub ip_weight: f64,
     pub ip_position: String,
     pub ip_role_id: String,
     pub oop_position: String,
@@ -80,6 +81,7 @@ impl From<TacticLaneDto> for TacticLane {
     fn from(lane: TacticLaneDto) -> Self {
         Self {
             lane_id: lane.lane_id,
+            ip_weight: lane.ip_weight,
             ip_position: lane.ip_position,
             ip_role_id: lane.ip_role_id,
             oop_position: lane.oop_position,
@@ -91,14 +93,12 @@ impl From<TacticLaneDto> for TacticLane {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlannerTacticInputDto {
-    pub ip_weight: f64,
     pub lanes: Vec<TacticLaneDto>,
 }
 
 impl From<PlannerTacticInputDto> for PlannerTactic {
     fn from(input: PlannerTacticInputDto) -> Self {
         Self {
-            ip_weight: input.ip_weight,
             lanes: input.lanes.into_iter().map(TacticLane::from).collect(),
         }
     }
@@ -108,6 +108,7 @@ impl From<PlannerTacticInputDto> for PlannerTactic {
 #[serde(rename_all = "camelCase")]
 pub struct TacticLaneResponseDto {
     pub lane_id: String,
+    pub ip_weight: f64,
     pub ip_position: String,
     pub ip_role_id: String,
     pub oop_position: String,
@@ -117,19 +118,18 @@ pub struct TacticLaneResponseDto {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlannerTacticDto {
-    pub ip_weight: f64,
     pub lanes: Vec<TacticLaneResponseDto>,
 }
 
 impl From<PlannerTactic> for PlannerTacticDto {
     fn from(tactic: PlannerTactic) -> Self {
         Self {
-            ip_weight: tactic.ip_weight,
             lanes: tactic
                 .lanes
                 .into_iter()
                 .map(|lane| TacticLaneResponseDto {
                     lane_id: lane.lane_id,
+                    ip_weight: lane.ip_weight,
                     ip_position: lane.ip_position,
                     ip_role_id: lane.ip_role_id,
                     oop_position: lane.oop_position,

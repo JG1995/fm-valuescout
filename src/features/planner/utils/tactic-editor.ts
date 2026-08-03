@@ -90,7 +90,6 @@ export function roleLabel(
 
 export function cloneTactic(tactic: PlannerTactic): PlannerTactic {
   return {
-    ipWeight: tactic.ipWeight,
     lanes: tactic.lanes.map((lane) => ({ ...lane })),
   };
 }
@@ -106,18 +105,18 @@ export function validateTacticDraft(
   tactic: PlannerTactic,
   options: TacticOptions,
 ): string | null {
-  if (
-    !Number.isFinite(tactic.ipWeight) ||
-    tactic.ipWeight < 0 ||
-    tactic.ipWeight > 1
-  ) {
-    return "IP score weight must be between 0% and 100%.";
-  }
   if (tactic.lanes.length !== TACTIC_LANE_IDS.length) {
     return `The tactic must contain ${TACTIC_LANE_IDS.length} linked lanes.`;
   }
 
   for (const [index, lane] of tactic.lanes.entries()) {
+    if (
+      !Number.isFinite(lane.ipWeight) ||
+      lane.ipWeight < 0 ||
+      lane.ipWeight > 1
+    ) {
+      return `Lane ${index + 1} IP score weight must be between 0% and 100%.`;
+    }
     for (const phase of ["ip", "oop"] as const) {
       const position = phasePosition(lane, phase);
       const role = options.roles.find(

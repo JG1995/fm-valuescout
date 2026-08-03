@@ -181,6 +181,28 @@ ALTER TABLE planner_assignments
     CHECK (provenance IN ('manual', 'optimizer'));
 ";
 
+pub const PLANNER_LANE_WEIGHTS_SQL: &str = "
+DROP TABLE planner_tactic_lanes;
+DROP TABLE planner_tactics;
+
+CREATE TABLE planner_tactic_lanes (
+    id INTEGER PRIMARY KEY,
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    lane_order INTEGER NOT NULL CHECK (lane_order >= 0 AND lane_order < 11),
+    lane_id TEXT NOT NULL CHECK (trim(lane_id) <> ''),
+    ip_weight REAL NOT NULL DEFAULT 0.5 CHECK (ip_weight >= 0 AND ip_weight <= 1),
+    ip_position TEXT NOT NULL CHECK (trim(ip_position) <> ''),
+    ip_role_id TEXT NOT NULL CHECK (trim(ip_role_id) <> ''),
+    oop_position TEXT NOT NULL CHECK (trim(oop_position) <> ''),
+    oop_role_id TEXT NOT NULL CHECK (trim(oop_role_id) <> ''),
+    UNIQUE (save_id, lane_order),
+    UNIQUE (save_id, lane_id)
+);
+
+CREATE INDEX idx_planner_tactic_lanes_save_order
+    ON planner_tactic_lanes(save_id, lane_order);
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -217,6 +239,11 @@ pub fn all() -> &'static [Migration] {
             version: 7,
             description: "add_planner_assignment_provenance",
             sql: PLANNER_ASSIGNMENT_PROVENANCE_SQL,
+        },
+        Migration {
+            version: 8,
+            description: "move_tactic_weight_to_lanes",
+            sql: PLANNER_LANE_WEIGHTS_SQL,
         },
     ]
 }
@@ -298,7 +325,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
 
         let table_name: String = conn
             .query_row(
@@ -353,6 +380,94 @@ mod tests {
     }
 
     #[test]
+    fn migrates_v7_tactics_to_lane_weights_without_deleting_assignments() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("planner-v7-migration-test.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 7) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v7");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES (?1)", ["Legacy save"])
+            .expect("insert legacy save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_tactics (save_id, ip_weight) VALUES (?1, 0.7)",
+            [save_id],
+        )
+        .expect("insert legacy tactic");
+        conn.execute(
+            "INSERT INTO planner_tactic_lanes (
+                 save_id, lane_order, lane_id, ip_position, ip_role_id, oop_position, oop_role_id
+             ) VALUES (?1, 0, 'goalkeeper', 'GK', 'goalkeeper_ip', 'GK', 'line_holding_keeper_oop')",
+            [save_id],
+        )
+        .expect("insert legacy lane");
+        conn.execute(
+            "INSERT INTO planner_strings (save_id, team, string_order) VALUES (?1, 'senior', 0)",
+            [save_id],
+        )
+        .expect("insert legacy string");
+        let string_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_assignments (
+                 save_id, string_id, lane_id, player_uid, last_known_name
+             ) VALUES (?1, ?2, 'goalkeeper', 77, 'Legacy Player')",
+            params![save_id, string_id],
+        )
+        .expect("insert legacy assignment");
+
+        apply(&conn).expect("migrate legacy tactic");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user version");
+        assert_eq!(version, 8);
+        let tactic_table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'planner_tactics'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check removed tactic table");
+        assert!(!tactic_table_exists);
+        let lane_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM planner_tactic_lanes", [], |row| {
+                row.get(0)
+            })
+            .expect("count reset tactic lanes");
+        assert_eq!(lane_count, 0);
+        let assignment_name: String = conn
+            .query_row(
+                "SELECT last_known_name FROM planner_assignments WHERE player_uid = 77",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read preserved assignment");
+        assert_eq!(assignment_name, "Legacy Player");
+        let foreign_key_parent: String = conn
+            .query_row(
+                "SELECT \"table\" FROM pragma_foreign_key_list('planner_tactic_lanes')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read lane foreign key");
+        assert_eq!(foreign_key_parent, "saves");
+        let foreign_key_errors: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .expect("check foreign keys");
+        assert_eq!(foreign_key_errors, 0);
+    }
+
+    #[test]
     fn opening_fresh_db_applies_snapshot_schema_tables() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("snapshot-migration-test.db");
@@ -379,7 +494,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
 
         let table_name: String = conn
             .query_row(
@@ -588,14 +703,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 7);
+        assert_eq!(migrations.len(), 8);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -620,6 +735,9 @@ mod tests {
             "add_planner_assignment_provenance"
         );
         assert_eq!(migrations[6].sql, PLANNER_ASSIGNMENT_PROVENANCE_SQL);
+        assert_eq!(migrations[7].version, 8);
+        assert_eq!(migrations[7].description, "move_tactic_weight_to_lanes");
+        assert_eq!(migrations[7].sql, PLANNER_LANE_WEIGHTS_SQL);
     }
 
     #[test]
@@ -656,16 +774,16 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("planner-tactic-migration-test.db"));
 
-        for expected_table in ["planner_tactics", "planner_tactic_lanes"] {
-            let table_name: String = conn
-                .query_row(
-                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
-                    [expected_table],
-                    |row| row.get(0),
-                )
-                .expect("read tactic table from sqlite_master");
-            assert_eq!(table_name, expected_table);
-        }
+        let tactic_table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'planner_tactics'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check removed tactic table");
+        assert!(!tactic_table_exists);
 
         assert_eq!(
             table_columns(&conn, "planner_tactic_lanes"),
@@ -674,6 +792,7 @@ mod tests {
                 "save_id",
                 "lane_order",
                 "lane_id",
+                "ip_weight",
                 "ip_position",
                 "ip_role_id",
                 "oop_position",

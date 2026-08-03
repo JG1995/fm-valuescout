@@ -11,7 +11,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       let demoValue = "";
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
       const plannerTactic = {
-        ipWeight: 0.5,
         lanes: [
           ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
           ["left_back", "DL", "full_back_ip", "DL", "holding_full_back_oop"],
@@ -26,6 +25,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           ["centre_forward", "ST", "centre_forward_ip", "ST", "central_outlet_centre_forward_oop"],
         ].map(([laneId, ipPosition, ipRoleId, oopPosition, oopRoleId]) => ({
           laneId,
+          ipWeight: 0.5,
           ipPosition,
           ipRoleId,
           oopPosition,

@@ -452,7 +452,7 @@ fn load_optimizer_candidates(
                                     .get(lane.oop_role_id.as_str())
                                     .copied()
                                     .flatten(),
-                                tactic.ip_weight,
+                                lane.ip_weight,
                             )
                         })
                         .flatten()

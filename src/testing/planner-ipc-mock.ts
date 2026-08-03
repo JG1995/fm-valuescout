@@ -18,7 +18,6 @@ const DEFAULT_CLUB_FAMILY: ClubFamily = {
 };
 
 const DEFAULT_TACTIC: PlannerTactic = {
-  ipWeight: 0.5,
   lanes: [
     ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
     ["left_back", "DL", "full_back_ip", "DL", "holding_full_back_oop"],
@@ -69,6 +68,7 @@ const DEFAULT_TACTIC: PlannerTactic = {
     ],
   ].map(([laneId, ipPosition, ipRoleId, oopPosition, oopRoleId]) => ({
     laneId,
+    ipWeight: 0.5,
     ipPosition,
     ipRoleId,
     oopPosition,
@@ -261,7 +261,6 @@ let optimizeCalls = 0;
 
 function cloneTactic(value: PlannerTactic): PlannerTactic {
   return {
-    ipWeight: value.ipWeight,
     lanes: value.lanes.map((lane) => ({ ...lane })),
   };
 }

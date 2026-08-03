@@ -7,6 +7,7 @@ import { savePlannerTactic } from "../api/save-planner-tactic";
 import type { PlannerTactic, TacticOptions } from "../types/tactic";
 import {
   cloneTactic,
+  laneLabel,
   phasePosition,
   phaseRoleId,
   rolesForPhase,
@@ -91,6 +92,7 @@ export function PlannerTacticEditor({
   );
   const [saveSucceeded, setSaveSucceeded] = useState(false);
   const weightId = useId();
+  const selectedLaneHeadingId = useId();
   const viewButtonRefs = useRef<Record<TacticView, HTMLButtonElement | null>>({
     ip: null,
     oop: null,
@@ -129,11 +131,29 @@ export function PlannerTacticEditor({
   });
 
   const validationError = validateTacticDraft(draft, options);
+  const selectedLane = draft.lanes.find(
+    (lane) => lane.laneId === selectedLaneId,
+  );
+  const selectedLaneNumber = selectedLane
+    ? draft.lanes.findIndex((lane) => lane.laneId === selectedLaneId) + 1
+    : 0;
 
   const updateDraft = (nextDraft: PlannerTactic) => {
     save.reset();
     setSaveSucceeded(false);
     setDraft(nextDraft);
+  };
+
+  const updateSelectedLaneWeight = (ipWeight: number) => {
+    if (!selectedLane) {
+      return;
+    }
+    updateDraft({
+      ...draft,
+      lanes: draft.lanes.map((lane) =>
+        lane.laneId === selectedLane.laneId ? { ...lane, ipWeight } : lane,
+      ),
+    });
   };
 
   const updatePosition = (
@@ -210,59 +230,14 @@ export function PlannerTacticEditor({
       }
     >
       <div className="space-y-5 p-4">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="space-y-1">
-            <p className="text-body-md text-on-surface-variant">
-              {draft.lanes.length} linked lanes ·{" "}
-              {Math.round(draft.ipWeight * 100)}% IP score weight
-            </p>
-            <p className="text-body-sm text-on-surface-variant">
-              The same lane identity links the In-Possession and
-              Out-of-Possession shapes.
-            </p>
-          </div>
-          <div className="space-y-1">
-            <label
-              className="block text-right text-label-md text-on-surface-variant"
-              htmlFor={weightId}
-            >
-              IP/OOP score weight
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                id={weightId}
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={Math.round(draft.ipWeight * 100)}
-                aria-label="IP score weight"
-                aria-valuetext={`IP ${Math.round(draft.ipWeight * 100)}%, OOP ${Math.round((1 - draft.ipWeight) * 100)}%`}
-                className="h-2 w-40 cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                onKeyDown={(event) => {
-                  const next = nextWeight(
-                    Math.round(draft.ipWeight * 100),
-                    event.key,
-                  );
-                  if (next === null) {
-                    return;
-                  }
-                  event.preventDefault();
-                  updateDraft({ ...draft, ipWeight: next / 100 });
-                }}
-                onChange={(event) => {
-                  updateDraft({
-                    ...draft,
-                    ipWeight: Number(event.target.value) / 100,
-                  });
-                }}
-              />
-              <span className="whitespace-nowrap font-mono text-mono-sm text-on-surface tabular-nums">
-                IP {Math.round(draft.ipWeight * 100)}% / OOP{" "}
-                {Math.round((1 - draft.ipWeight) * 100)}%
-              </span>
-            </div>
-          </div>
+        <div className="space-y-1">
+          <p className="text-body-md text-on-surface-variant">
+            {draft.lanes.length} linked lanes
+          </p>
+          <p className="text-body-sm text-on-surface-variant">
+            The same lane identity links the In-Possession and Out-of-Possession
+            shapes.
+          </p>
         </div>
 
         <fieldset
@@ -319,6 +294,61 @@ export function PlannerTacticEditor({
           <p className="text-body-sm text-success" role="status">
             Tactic saved.
           </p>
+        ) : null}
+
+        {selectedLane ? (
+          <section
+            className="flex flex-wrap items-end justify-between gap-4 rounded-lg border border-outline-variant bg-surface-container-high p-3"
+            aria-labelledby={selectedLaneHeadingId}
+          >
+            <div>
+              <h3
+                id={selectedLaneHeadingId}
+                className="text-label-lg text-on-surface"
+              >
+                Lane {selectedLaneNumber} · {laneLabel(selectedLane.laneId)}
+              </h3>
+            </div>
+            <div className="space-y-1">
+              <label
+                className="block text-right text-label-md text-on-surface-variant"
+                htmlFor={weightId}
+              >
+                IP/OOP score weight
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  id={weightId}
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={Math.round(selectedLane.ipWeight * 100)}
+                  aria-label={`Lane ${selectedLaneNumber} IP score weight`}
+                  aria-valuetext={`IP ${Math.round(selectedLane.ipWeight * 100)}%, OOP ${Math.round((1 - selectedLane.ipWeight) * 100)}%`}
+                  className="h-2 w-40 cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  onKeyDown={(event) => {
+                    const next = nextWeight(
+                      Math.round(selectedLane.ipWeight * 100),
+                      event.key,
+                    );
+                    if (next === null) {
+                      return;
+                    }
+                    event.preventDefault();
+                    updateSelectedLaneWeight(next / 100);
+                  }}
+                  onChange={(event) =>
+                    updateSelectedLaneWeight(Number(event.target.value) / 100)
+                  }
+                />
+                <span className="whitespace-nowrap font-mono text-mono-sm text-on-surface tabular-nums">
+                  IP {Math.round(selectedLane.ipWeight * 100)}% / OOP{" "}
+                  {Math.round((1 - selectedLane.ipWeight) * 100)}%
+                </span>
+              </div>
+            </div>
+          </section>
         ) : null}
 
         <div

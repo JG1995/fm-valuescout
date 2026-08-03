@@ -124,9 +124,7 @@ describe("planner route", () => {
     expect(
       within(screen.getByRole("main")).getByText(/Associated clubs/),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("11 linked lanes · 50% IP score weight"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("11 linked lanes")).toBeInTheDocument();
   });
 
   it("filters primary clubs and selects a club from the results", async () => {
@@ -303,7 +301,12 @@ describe("planner route", () => {
     expect(oopRole).toHaveValue("");
     await user.selectOptions(oopRole, "holding_full_back_oop");
 
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
+    expect(
+      screen.getAllByRole("slider", { name: "Lane 1 IP score weight" }),
+    ).toHaveLength(1);
     weight.focus();
     await user.keyboard(
       "{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}",
@@ -313,13 +316,14 @@ describe("planner route", () => {
 
     await user.click(screen.getByRole("button", { name: "Save tactic" }));
 
-    expect(resolvePlannerTacticIpcMock()).toMatchObject({ ipWeight: 0.55 });
     expect(resolvePlannerTacticIpcMock().lanes[0]).toMatchObject({
+      ipWeight: 0.55,
       ipPosition: "DL",
       ipRoleId: "full_back_ip",
       oopPosition: "DL",
       oopRoleId: "holding_full_back_oop",
     });
+    expect(resolvePlannerTacticIpcMock().lanes[1].ipWeight).toBe(0.5);
     await waitFor(() =>
       expect(getPlannerDepthIpcMockCalls()).toBeGreaterThan(1),
     );
@@ -333,7 +337,9 @@ describe("planner route", () => {
     renderPlannerRoute();
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     weight.focus();
     await user.keyboard(
       "{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}",
@@ -344,7 +350,28 @@ describe("planner route", () => {
       "Tactic save failed",
     );
     expect(weight).toHaveValue("55");
-    expect(resolvePlannerTacticIpcMock().ipWeight).toBe(0.5);
+    expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
+  });
+
+  it("saves only the selected lane score weight", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await user.click(
+      screen.getByRole("button", { name: "IP lane 2: DL, Full-Back" }),
+    );
+    const weight = screen.getByRole("slider", {
+      name: "Lane 2 IP score weight",
+    });
+    weight.focus();
+    await user.keyboard("{ArrowRight}");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
+    expect(resolvePlannerTacticIpcMock().lanes[1].ipWeight).toBe(0.51);
   });
 
   it("refreshes 60-second cached candidates after saving a tactic", async () => {
@@ -385,7 +412,9 @@ describe("planner route", () => {
         combinedScore: 85,
       }),
     ]);
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     weight.focus();
     await user.keyboard("{ArrowRight}");
     await user.click(screen.getByRole("button", { name: "Save tactic" }));
@@ -403,7 +432,9 @@ describe("planner route", () => {
     const { queryClient } = renderPlannerRoute();
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     weight.focus();
     await user.keyboard(
       "{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}",
@@ -412,7 +443,9 @@ describe("planner route", () => {
 
     queryClient.setQueryData(plannerKeys.tactic(), {
       ...resolvePlannerTacticIpcMock(),
-      ipWeight: 0.2,
+      lanes: resolvePlannerTacticIpcMock().lanes.map((lane, index) =>
+        index === 0 ? { ...lane, ipWeight: 0.2 } : lane,
+      ),
     });
     const snapshot = queryClient.getQueryData<SnapshotSummary>(
       snapshotKeys.current(),
@@ -427,7 +460,7 @@ describe("planner route", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("slider", { name: "IP score weight" }),
+        screen.getByRole("slider", { name: "Lane 1 IP score weight" }),
       ).toHaveValue("20"),
     );
   });
@@ -439,7 +472,9 @@ describe("planner route", () => {
     const { queryClient } = renderPlannerRoute();
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     weight.focus();
     await user.keyboard(
       "{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}",
@@ -461,7 +496,7 @@ describe("planner route", () => {
       "Refreshing active save",
     );
     await user.click(saveButton);
-    expect(resolvePlannerTacticIpcMock().ipWeight).toBe(0.5);
+    expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
 
     resolveRefresh(resolvePlannerTacticIpcMock());
     await refreshRequest;
@@ -475,7 +510,9 @@ describe("planner route", () => {
     const { queryClient } = renderPlannerRoute();
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     weight.focus();
     await user.keyboard(
       "{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}",
@@ -493,7 +530,7 @@ describe("planner route", () => {
       "Could not refresh the active save",
     );
     await user.click(saveButton);
-    expect(resolvePlannerTacticIpcMock().ipWeight).toBe(0.5);
+    expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
   });
 
   it("renders shared lanes, ordered strings, keyboard tabs, and truthful assignment states", async () => {

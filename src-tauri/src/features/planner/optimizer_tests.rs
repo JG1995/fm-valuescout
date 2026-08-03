@@ -2,6 +2,7 @@ use rusqlite::params;
 
 use super::depth::{add_string, assign_player, get_depth, PlannerTeam};
 use super::optimizer::{match_lanes, optimize_depth, OptimizerCandidate};
+use super::tactic;
 use super::test_support::{
     add_picker_candidates, assigned_player_uid, assignment_provenance, open_with_snapshot,
     set_player_age, set_player_positions, set_right_winger_scores, set_role_score, team_strings,
@@ -74,6 +75,57 @@ fn optimizer_reserves_manual_players_before_automatic_allocation() {
     assert!(senior_assignments
         .iter()
         .any(|assignment| assignment.player_uid == 78 && assignment.lane_id == "right_winger"));
+}
+
+#[test]
+fn optimizer_uses_the_weight_for_each_tactic_lane() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id: i64 = conn
+        .query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .expect("current snapshot");
+    conn.execute(
+        "UPDATE player_role_scores
+         SET score = NULL
+         WHERE snapshot_id = ?1
+           AND uid IN (77, 78)
+           AND role_id NOT IN ('winger_ip', 'tracking_wide_midfielder_oop')",
+        [snapshot_id],
+    )
+    .expect("limit candidates to the right-winger lane");
+    set_role_score(&conn, save_id, 77, "winger_ip", Some(100));
+    set_role_score(&conn, save_id, 77, "tracking_wide_midfielder_oop", Some(0));
+    set_role_score(&conn, save_id, 78, "winger_ip", Some(0));
+    set_role_score(
+        &conn,
+        save_id,
+        78,
+        "tracking_wide_midfielder_oop",
+        Some(100),
+    );
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[9].ip_weight = 1.0;
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save IP-heavy lane");
+
+    let ip_heavy = optimize_depth(&conn, save_id).expect("optimize IP-heavy tactic");
+
+    assert_eq!(
+        assigned_player_uid(&ip_heavy, PlannerTeam::Senior, "right_winger"),
+        Some(77)
+    );
+
+    tactic.lanes[9].ip_weight = 0.0;
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save OOP-heavy lane");
+    let oop_heavy = optimize_depth(&conn, save_id).expect("optimize OOP-heavy tactic");
+
+    assert_eq!(
+        assigned_player_uid(&oop_heavy, PlannerTeam::Senior, "right_winger"),
+        Some(78)
+    );
 }
 
 #[test]

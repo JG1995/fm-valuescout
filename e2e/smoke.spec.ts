@@ -99,9 +99,7 @@ test.describe("walking skeleton smoke", () => {
       main.getByRole("combobox", { name: "Primary club" }),
     ).toBeVisible();
     await expect(main.getByText("Set up your club family")).toBeVisible();
-    await expect(
-      main.getByText("11 linked lanes · 50% IP score weight"),
-    ).toBeVisible();
+    await expect(main.getByText("11 linked lanes")).toBeVisible();
   });
 
   test("planner tactic editor saves a linked phase adjustment", async ({
@@ -118,7 +116,9 @@ test.describe("walking skeleton smoke", () => {
       .getByRole("button", { name: "IP lane 1: GK, Goalkeeper" })
       .press("Enter");
 
-    const weight = main.getByRole("slider", { name: "IP score weight" });
+    const weight = main.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     await weight.press("ArrowRight");
     await expect(main.getByText("IP 51% / OOP 49%")).toBeVisible();
     await main.getByRole("button", { name: "Save tactic" }).click();
