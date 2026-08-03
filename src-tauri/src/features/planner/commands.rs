@@ -71,6 +71,7 @@ impl From<ClubFamily> for ClubFamilyDto {
 pub struct TacticLaneDto {
     pub lane_id: String,
     pub ip_weight: f64,
+    pub importance_rank: Option<u8>,
     pub ip_position: String,
     pub ip_role_id: String,
     pub oop_position: String,
@@ -82,6 +83,7 @@ impl From<TacticLaneDto> for TacticLane {
         Self {
             lane_id: lane.lane_id,
             ip_weight: lane.ip_weight,
+            importance_rank: lane.importance_rank,
             ip_position: lane.ip_position,
             ip_role_id: lane.ip_role_id,
             oop_position: lane.oop_position,
@@ -109,6 +111,7 @@ impl From<PlannerTacticInputDto> for PlannerTactic {
 pub struct TacticLaneResponseDto {
     pub lane_id: String,
     pub ip_weight: f64,
+    pub importance_rank: Option<u8>,
     pub ip_position: String,
     pub ip_role_id: String,
     pub oop_position: String,
@@ -130,6 +133,7 @@ impl From<PlannerTactic> for PlannerTacticDto {
                 .map(|lane| TacticLaneResponseDto {
                     lane_id: lane.lane_id,
                     ip_weight: lane.ip_weight,
+                    importance_rank: lane.importance_rank,
                     ip_position: lane.ip_position,
                     ip_role_id: lane.ip_role_id,
                     oop_position: lane.oop_position,

@@ -1,10 +1,15 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { SelectField } from "@/components/ui/field/select-field";
 import { Panel } from "@/components/ui/panel/panel";
 import { plannerKeys } from "../api/planner-keys";
 import { savePlannerTactic } from "../api/save-planner-tactic";
-import type { PlannerTactic, TacticOptions } from "../types/tactic";
+import {
+  type PlannerTactic,
+  TACTIC_LANE_IDS,
+  type TacticOptions,
+} from "../types/tactic";
 import {
   cloneTactic,
   laneLabel,
@@ -152,6 +157,20 @@ export function PlannerTacticEditor({
       ...draft,
       lanes: draft.lanes.map((lane) =>
         lane.laneId === selectedLane.laneId ? { ...lane, ipWeight } : lane,
+      ),
+    });
+  };
+
+  const updateSelectedLaneRank = (importanceRank: number | null) => {
+    if (!selectedLane) {
+      return;
+    }
+    updateDraft({
+      ...draft,
+      lanes: draft.lanes.map((lane) =>
+        lane.laneId === selectedLane.laneId
+          ? { ...lane, importanceRank }
+          : lane,
       ),
     });
   };
@@ -348,6 +367,22 @@ export function PlannerTacticEditor({
                 </span>
               </div>
             </div>
+            <SelectField
+              label={`Lane ${selectedLaneNumber} importance rank`}
+              value={selectedLane.importanceRank?.toString() ?? ""}
+              onChange={(event) =>
+                updateSelectedLaneRank(
+                  event.target.value === "" ? null : Number(event.target.value),
+                )
+              }
+            >
+              <option value="">No rank</option>
+              {TACTIC_LANE_IDS.map((laneId, index) => (
+                <option key={laneId} value={index + 1}>
+                  {index + 1}
+                </option>
+              ))}
+            </SelectField>
           </section>
         ) : null}
 

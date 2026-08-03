@@ -61,6 +61,9 @@ fn optimizer_reserves_manual_players_before_automatic_allocation() {
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(90));
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[0].importance_rank = Some(1);
+    tactic::save_tactic(&conn, save_id, &tactic).expect("rank manually occupied lane");
 
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let senior_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
@@ -129,6 +132,137 @@ fn optimizer_uses_the_weight_for_each_tactic_lane() {
 }
 
 #[test]
+fn optimizer_uses_the_exact_matcher_when_lanes_are_unranked() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id: i64 = conn
+        .query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .expect("current snapshot");
+    conn.execute(
+        "UPDATE player_role_scores
+         SET score = NULL
+         WHERE snapshot_id = ?1
+           AND uid IN (77, 78)
+           AND role_id NOT IN ('inside_forward_ip', 'winger_ip', 'tracking_wide_midfielder_oop')",
+        [snapshot_id],
+    )
+    .expect("limit candidates to conflicting winger lanes");
+    set_role_score(&conn, save_id, 77, "inside_forward_ip", Some(100));
+    set_role_score(&conn, save_id, 77, "winger_ip", Some(98));
+    set_role_score(
+        &conn,
+        save_id,
+        77,
+        "tracking_wide_midfielder_oop",
+        Some(100),
+    );
+    set_role_score(&conn, save_id, 78, "inside_forward_ip", Some(98));
+    set_role_score(&conn, save_id, 78, "winger_ip", None);
+    set_role_score(&conn, save_id, 78, "tracking_wide_midfielder_oop", Some(98));
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[8].ip_position = "AMR".to_string();
+    tactic.lanes[8].oop_position = "MR".to_string();
+    tactic.lanes[8].ip_role_id = "inside_forward_ip".to_string();
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save conflicting unranked lanes");
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize unranked tactic");
+
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "left_winger"),
+        Some(78)
+    );
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
+        Some(77)
+    );
+}
+
+#[test]
+fn optimizer_assigns_ranked_lanes_in_ascending_order() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id: i64 = conn
+        .query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .expect("current snapshot");
+    conn.execute(
+        "UPDATE player_role_scores
+         SET score = NULL
+         WHERE snapshot_id = ?1
+           AND uid IN (77, 78)
+           AND role_id NOT IN ('winger_ip', 'tracking_wide_midfielder_oop')",
+        [snapshot_id],
+    )
+    .expect("limit candidates to conflicting winger lanes");
+    set_right_winger_scores(&conn, save_id, 77, Some(100));
+    set_right_winger_scores(&conn, save_id, 78, Some(100));
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[8].ip_position = "AMR".to_string();
+    tactic.lanes[8].oop_position = "MR".to_string();
+    tactic.lanes[8].importance_rank = Some(11);
+    tactic.lanes[9].importance_rank = Some(1);
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save ranked tactic");
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize ranked tactic");
+
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
+        Some(77)
+    );
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "left_winger"),
+        Some(78)
+    );
+}
+
+#[test]
+fn optimizer_leaves_a_ranked_lane_blank_without_reserving_candidates() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id: i64 = conn
+        .query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .expect("current snapshot");
+    conn.execute(
+        "UPDATE player_role_scores
+         SET score = NULL
+         WHERE snapshot_id = ?1
+           AND uid IN (77, 78)
+           AND role_id NOT IN ('winger_ip', 'tracking_wide_midfielder_oop')",
+        [snapshot_id],
+    )
+    .expect("limit candidates to the right-winger lane");
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 18, "MR": 18}"#);
+    set_player_positions(&conn, save_id, 78, r#"{"AMR": 18, "MR": 18}"#);
+    set_right_winger_scores(&conn, save_id, 77, Some(100));
+    set_right_winger_scores(&conn, save_id, 78, Some(90));
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[0].importance_rank = Some(1);
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save rank with no eligible player");
+
+    let optimized = optimize_depth(&conn, save_id).expect("optimize ranked tactic");
+
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "goalkeeper"),
+        None
+    );
+    assert_eq!(
+        assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
+        Some(77)
+    );
+}
+
+#[test]
 fn optimizer_keeps_senior_priority_over_a_higher_global_total() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
@@ -136,6 +270,9 @@ fn optimizer_keeps_senior_priority_over_a_higher_global_total() {
     set_player_age(&conn, save_id, 78, Some(24));
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(90));
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[9].importance_rank = Some(1);
+    tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
 
     let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
 
@@ -160,6 +297,9 @@ fn optimizer_allocates_strings_in_ascending_order_within_a_team() {
         .id;
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(90));
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[9].importance_rank = Some(1);
+    tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
 
     let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
     let senior_strings = team_strings(&optimized, PlannerTeam::Senior);

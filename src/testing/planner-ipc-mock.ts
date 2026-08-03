@@ -69,6 +69,7 @@ const DEFAULT_TACTIC: PlannerTactic = {
   ].map(([laneId, ipPosition, ipRoleId, oopPosition, oopRoleId]) => ({
     laneId,
     ipWeight: 0.5,
+    importanceRank: null,
     ipPosition,
     ipRoleId,
     oopPosition,

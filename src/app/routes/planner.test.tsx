@@ -374,6 +374,62 @@ describe("planner route", () => {
     expect(resolvePlannerTacticIpcMock().lanes[1].ipWeight).toBe(0.51);
   });
 
+  it("saves and reloads the selected lane importance rank", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await user.click(
+      screen.getByRole("button", { name: "IP lane 2: DL, Full-Back" }),
+    );
+    const rank = screen.getByRole("combobox", {
+      name: "Lane 2 importance rank",
+    });
+    await user.selectOptions(rank, "3");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    expect(resolvePlannerTacticIpcMock().lanes[0].importanceRank).toBeNull();
+    expect(resolvePlannerTacticIpcMock().lanes[1].importanceRank).toBe(3);
+    expect(rank).toHaveValue("3");
+  });
+
+  it("shows duplicate importance ranks inline and retains them after a failed save", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerTacticSaveError("Tactic save failed");
+    renderPlannerRoute();
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Lane 1 importance rank" }),
+      "1",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "IP lane 2: DL, Full-Back" }),
+    );
+    const duplicateRank = screen.getByRole("combobox", {
+      name: "Lane 2 importance rank",
+    });
+    await user.selectOptions(duplicateRank, "1");
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Importance rank 1 is already used.",
+    );
+    expect(screen.getByRole("button", { name: "Save tactic" })).toBeDisabled();
+
+    await user.selectOptions(duplicateRank, "2");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Tactic save failed",
+    );
+    expect(duplicateRank).toHaveValue("2");
+    expect(resolvePlannerTacticIpcMock().lanes[1].importanceRank).toBeNull();
+  });
+
   it("refreshes 60-second cached candidates after saving a tactic", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

@@ -203,6 +203,15 @@ CREATE INDEX idx_planner_tactic_lanes_save_order
     ON planner_tactic_lanes(save_id, lane_order);
 ";
 
+pub const PLANNER_LANE_IMPORTANCE_RANKS_SQL: &str = "
+ALTER TABLE planner_tactic_lanes
+    ADD COLUMN importance_rank INTEGER CHECK (importance_rank IS NULL OR (importance_rank >= 1 AND importance_rank <= 11));
+
+CREATE UNIQUE INDEX idx_planner_tactic_lanes_save_importance_rank
+    ON planner_tactic_lanes(save_id, importance_rank)
+    WHERE importance_rank IS NOT NULL;
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -244,6 +253,11 @@ pub fn all() -> &'static [Migration] {
             version: 8,
             description: "move_tactic_weight_to_lanes",
             sql: PLANNER_LANE_WEIGHTS_SQL,
+        },
+        Migration {
+            version: 9,
+            description: "add_planner_lane_importance_ranks",
+            sql: PLANNER_LANE_IMPORTANCE_RANKS_SQL,
         },
     ]
 }
@@ -325,7 +339,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
 
         let table_name: String = conn
             .query_row(
@@ -426,7 +440,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -468,6 +482,40 @@ mod tests {
     }
 
     #[test]
+    fn migrates_v8_tactic_lanes_with_no_importance_rank() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("planner-v8-migration-test.db"))
+            .expect("open test db");
+        for migration in all().iter().filter(|migration| migration.version <= 8) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v8");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES (?1)", ["Legacy save"])
+            .expect("insert legacy save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_tactic_lanes (
+                 save_id, lane_order, lane_id, ip_weight, ip_position, ip_role_id, oop_position, oop_role_id
+             ) VALUES (?1, 0, 'goalkeeper', 0.5, 'GK', 'goalkeeper_ip', 'GK', 'line_holding_keeper_oop')",
+            [save_id],
+        )
+        .expect("insert v8 lane");
+
+        apply(&conn).expect("migrate v8 tactic lane");
+
+        let importance_rank: Option<i64> = conn
+            .query_row(
+                "SELECT importance_rank FROM planner_tactic_lanes WHERE save_id = ?1",
+                [save_id],
+                |row| row.get(0),
+            )
+            .expect("read migrated importance rank");
+        assert_eq!(importance_rank, None);
+    }
+
+    #[test]
     fn opening_fresh_db_applies_snapshot_schema_tables() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("snapshot-migration-test.db");
@@ -494,7 +542,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
 
         let table_name: String = conn
             .query_row(
@@ -610,6 +658,7 @@ mod tests {
                 "idx_planner_assignments_string",
                 "idx_planner_club_sources_save_team",
                 "idx_planner_strings_save_team_order",
+                "idx_planner_tactic_lanes_save_importance_rank",
                 "idx_planner_tactic_lanes_save_order",
                 "idx_player_role_scores_snapshot_role",
                 "idx_players_snapshot_ca",
@@ -703,14 +752,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 8);
+        assert_eq!(migrations.len(), 9);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -738,6 +787,12 @@ mod tests {
         assert_eq!(migrations[7].version, 8);
         assert_eq!(migrations[7].description, "move_tactic_weight_to_lanes");
         assert_eq!(migrations[7].sql, PLANNER_LANE_WEIGHTS_SQL);
+        assert_eq!(migrations[8].version, 9);
+        assert_eq!(
+            migrations[8].description,
+            "add_planner_lane_importance_ranks"
+        );
+        assert_eq!(migrations[8].sql, PLANNER_LANE_IMPORTANCE_RANKS_SQL);
     }
 
     #[test]
@@ -796,8 +851,32 @@ mod tests {
                 "ip_position",
                 "ip_role_id",
                 "oop_position",
-                "oop_role_id"
+                "oop_role_id",
+                "importance_rank"
             ]
+        );
+    }
+
+    #[test]
+    fn planner_lane_importance_ranks_are_unique_when_set() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("planner-rank-migration-test.db"));
+        conn.execute("INSERT INTO saves (name) VALUES (?1)", ["Test save"])
+            .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        let insert_lane = "INSERT INTO planner_tactic_lanes (
+             save_id, lane_order, lane_id, ip_weight, ip_position, ip_role_id, oop_position, oop_role_id, importance_rank
+         ) VALUES (?1, ?2, ?3, 0.5, 'GK', 'goalkeeper_ip', 'GK', 'line_holding_keeper_oop', ?4)";
+        conn.execute(insert_lane, params![save_id, 0, "goalkeeper", 1])
+            .expect("insert ranked lane");
+
+        let error = conn
+            .execute(insert_lane, params![save_id, 1, "left_back", 1])
+            .expect_err("reject duplicate non-null importance rank");
+
+        assert_eq!(
+            error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::ConstraintViolation)
         );
     }
 

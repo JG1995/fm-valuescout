@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use rusqlite::{params, Connection};
@@ -257,14 +258,53 @@ pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerD
                         .then_some(index)
                 })
                 .collect::<Vec<_>>();
+            let mut ranked_lane_indices = lane_indices
+                .iter()
+                .copied()
+                .filter(|&index| tactic.lanes[index].importance_rank.is_some())
+                .collect::<Vec<_>>();
+            ranked_lane_indices.sort_by_key(|&index| tactic.lanes[index].importance_rank);
+
+            for lane_index in ranked_lane_indices {
+                let candidate = candidates
+                    .iter()
+                    .filter(|candidate| !reserved_uids.contains(&candidate.player_uid))
+                    .filter_map(|candidate| {
+                        candidate
+                            .lane_scores
+                            .get(lane_index)
+                            .copied()
+                            .flatten()
+                            .map(|score| (candidate, score))
+                    })
+                    .max_by_key(|(candidate, score)| (*score, Reverse(candidate.player_uid)));
+                let Some((candidate, _)) = candidate else {
+                    continue;
+                };
+                insert_assignment(
+                    &tx,
+                    save_id,
+                    planner_string.id,
+                    &tactic.lanes[lane_index].lane_id,
+                    candidate.player_uid,
+                    &candidate.last_known_name,
+                    AssignmentProvenance::Optimizer,
+                )?;
+                reserved_uids.insert(candidate.player_uid);
+            }
+
+            let unranked_lane_indices = lane_indices
+                .into_iter()
+                .filter(|&index| tactic.lanes[index].importance_rank.is_none())
+                .collect::<Vec<_>>();
             let available_candidates = candidates
                 .iter()
                 .filter(|candidate| !reserved_uids.contains(&candidate.player_uid))
                 .cloned()
                 .collect::<Vec<_>>();
-            let matches = match_lanes(&lane_indices, &available_candidates);
+            let matches = match_lanes(&unranked_lane_indices, &available_candidates);
 
-            for (lane_index, candidate_index) in lane_indices.into_iter().zip(matches) {
+            for (lane_index, candidate_index) in unranked_lane_indices.into_iter().zip(matches) {
                 let Some(candidate_index) = candidate_index else {
                     continue;
                 };

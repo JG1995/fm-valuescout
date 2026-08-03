@@ -121,6 +121,9 @@ test.describe("walking skeleton smoke", () => {
     });
     await weight.press("ArrowRight");
     await expect(main.getByText("IP 51% / OOP 49%")).toBeVisible();
+    await main
+      .getByRole("combobox", { name: "Lane 1 importance rank" })
+      .selectOption("1");
     await main.getByRole("button", { name: "Save tactic" }).click();
 
     await expect(main.getByRole("status")).toHaveText("Tactic saved.");

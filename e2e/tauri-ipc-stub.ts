@@ -26,6 +26,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         ].map(([laneId, ipPosition, ipRoleId, oopPosition, oopRoleId]) => ({
           laneId,
           ipWeight: 0.5,
+          importanceRank: null,
           ipPosition,
           ipRoleId,
           oopPosition,

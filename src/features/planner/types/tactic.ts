@@ -15,6 +15,7 @@ export const TACTIC_LANE_IDS = [
 export type TacticLane = {
   laneId: string;
   ipWeight: number;
+  importanceRank: number | null;
   ipPosition: string;
   ipRoleId: string;
   oopPosition: string;

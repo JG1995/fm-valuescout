@@ -109,6 +109,7 @@ export function validateTacticDraft(
     return `The tactic must contain ${TACTIC_LANE_IDS.length} linked lanes.`;
   }
 
+  const importanceRanks = new Set<number>();
   for (const [index, lane] of tactic.lanes.entries()) {
     if (
       !Number.isFinite(lane.ipWeight) ||
@@ -116,6 +117,23 @@ export function validateTacticDraft(
       lane.ipWeight > 1
     ) {
       return `Lane ${index + 1} IP score weight must be between 0% and 100%.`;
+    }
+    if (
+      lane.importanceRank !== null &&
+      (!Number.isInteger(lane.importanceRank) ||
+        lane.importanceRank < 1 ||
+        lane.importanceRank > TACTIC_LANE_IDS.length)
+    ) {
+      return `Lane ${index + 1} importance rank must be between 1 and ${TACTIC_LANE_IDS.length}.`;
+    }
+    if (
+      lane.importanceRank !== null &&
+      importanceRanks.has(lane.importanceRank)
+    ) {
+      return `Importance rank ${lane.importanceRank} is already used.`;
+    }
+    if (lane.importanceRank !== null) {
+      importanceRanks.add(lane.importanceRank);
     }
     for (const phase of ["ip", "oop"] as const) {
       const position = phasePosition(lane, phase);

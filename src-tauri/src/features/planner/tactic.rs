@@ -23,6 +23,7 @@ pub const DEFAULT_LANE_IDS: [&str; TACTIC_LANE_COUNT] = [
 pub struct TacticLane {
     pub lane_id: String,
     pub ip_weight: f64,
+    pub importance_rank: Option<u8>,
     pub ip_position: String,
     pub ip_role_id: String,
     pub oop_position: String,
@@ -143,6 +144,7 @@ pub fn default_tactic() -> PlannerTactic {
             .map(|lane| TacticLane {
                 lane_id: lane.lane_id.to_string(),
                 ip_weight: 0.5,
+                importance_rank: None,
                 ip_position: lane.ip_position.to_string(),
                 ip_role_id: lane.ip_role_id.to_string(),
                 oop_position: lane.oop_position.to_string(),
@@ -186,13 +188,14 @@ pub fn save_tactic(conn: &Connection, save_id: i64, tactic: &PlannerTactic) -> R
     for (lane_order, lane) in tactic.lanes.iter().enumerate() {
         tx.execute(
             "INSERT INTO planner_tactic_lanes (
-                 save_id, lane_order, lane_id, ip_weight, ip_position, ip_role_id, oop_position, oop_role_id
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 save_id, lane_order, lane_id, ip_weight, importance_rank, ip_position, ip_role_id, oop_position, oop_role_id
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 save_id,
                 lane_order as i64,
                 lane.lane_id,
                 lane.ip_weight,
+                lane.importance_rank,
                 lane.ip_position,
                 lane.ip_role_id,
                 lane.oop_position,
@@ -236,7 +239,7 @@ pub fn get_tactic_options() -> TacticOptions {
 fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
     let mut statement = conn
         .prepare(
-            "SELECT lane_id, ip_weight, ip_position, ip_role_id, oop_position, oop_role_id
+            "SELECT lane_id, ip_weight, importance_rank, ip_position, ip_role_id, oop_position, oop_role_id
              FROM planner_tactic_lanes
              WHERE save_id = ?1
              ORDER BY lane_order",
@@ -247,10 +250,11 @@ fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String>
             Ok(TacticLane {
                 lane_id: row.get(0)?,
                 ip_weight: row.get(1)?,
-                ip_position: row.get(2)?,
-                ip_role_id: row.get(3)?,
-                oop_position: row.get(4)?,
-                oop_role_id: row.get(5)?,
+                importance_rank: row.get(2)?,
+                ip_position: row.get(3)?,
+                ip_role_id: row.get(4)?,
+                oop_position: row.get(5)?,
+                oop_role_id: row.get(6)?,
             })
         })
         .map_err(|error| error.to_string())?
@@ -283,6 +287,7 @@ fn validate_tactic(tactic: &PlannerTactic) -> Result<(), String> {
         ));
     }
 
+    let mut importance_ranks = HashSet::new();
     for (index, lane) in tactic.lanes.iter().enumerate() {
         let expected_lane_id = DEFAULT_LANE_IDS[index];
         if lane.lane_id != expected_lane_id {
@@ -296,6 +301,17 @@ fn validate_tactic(tactic: &PlannerTactic) -> Result<(), String> {
                 "Lane `{}` IP weight must be between 0 and 1",
                 lane.lane_id
             ));
+        }
+        if let Some(rank) = lane.importance_rank {
+            if !(1..=TACTIC_LANE_COUNT as u8).contains(&rank) {
+                return Err(format!(
+                    "Lane `{}` importance rank must be between 1 and {TACTIC_LANE_COUNT}",
+                    lane.lane_id
+                ));
+            }
+            if !importance_ranks.insert(rank) {
+                return Err("Importance ranks must be unique".to_string());
+            }
         }
         validate_role(
             &lane.lane_id,
@@ -410,6 +426,30 @@ mod tests {
             get_tactic(&conn, second_save_id).expect("reload second tactic"),
             second
         );
+    }
+
+    #[test]
+    fn persists_gapped_importance_ranks_and_rejects_invalid_values() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        let mut tactic = get_tactic(&conn, save_id).expect("load default tactic");
+        tactic.lanes[0].importance_rank = Some(3);
+        tactic.lanes[1].importance_rank = Some(11);
+
+        save_tactic(&conn, save_id, &tactic).expect("save gapped ranks");
+
+        let reloaded = get_tactic(&conn, save_id).expect("reload tactic");
+        assert_eq!(reloaded.lanes[0].importance_rank, Some(3));
+        assert_eq!(reloaded.lanes[1].importance_rank, Some(11));
+
+        tactic.lanes[2].importance_rank = Some(3);
+        let duplicate_error =
+            save_tactic(&conn, save_id, &tactic).expect_err("reject duplicate rank");
+        assert!(duplicate_error.contains("Importance ranks must be unique"));
+
+        tactic.lanes[2].importance_rank = Some(12);
+        let range_error =
+            save_tactic(&conn, save_id, &tactic).expect_err("reject out-of-range rank");
+        assert!(range_error.contains("between 1 and 11"));
     }
 
     #[test]

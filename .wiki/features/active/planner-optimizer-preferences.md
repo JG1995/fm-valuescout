@@ -172,7 +172,7 @@ PR 1, commit 1 replaces the global weight with a lane-owned weight through SQLit
 
 #### Commit 2 — Prioritize ranked tactic lanes
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): prioritize ranked tactic lanes`
 
@@ -211,7 +211,7 @@ PR 1, commit 1 replaces the global weight with a lane-owned weight through SQLit
 
 #### Commit 3 — Apply preferred-foot optimizer rules
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): apply preferred-foot optimizer rules`
 
@@ -252,23 +252,21 @@ PR 1, commit 1 replaces the global weight with a lane-owned weight through SQLit
 
 **PR:** PR 1 — Per-lane optimizer preferences
 
-**Commit:** Prioritize ranked tactic lanes
+**Commit:** Apply preferred-foot optimizer rules
 
 ### RED proof
 
-Add the smallest Rust optimizer test with one ranked lane and one flexible candidate that proves the ranked lane takes that candidate before the exact matcher allocates the remaining unranked lanes. Add the all-unranked control fixture proving the existing exact allocation result is unchanged. Before implementation, the rank-bearing DTO, validation, and allocation-order assertions must fail for the missing lane priority.
-
-Add a focused Planner route test that sets a rank on one selected lane, saves, and reloads it. It must fail because the current selected-lane editor and IPC contract have no priority field.
+Add Rust optimizer fixtures for every tactic-foot and player-foot mapping, a strict mismatch blank lane, a five-point soft-preference reversal, the zero floor, and manual override behavior in both ranked and exact paths. Add a focused Planner route test that saves the selected lane's foot and mode settings and retains its draft after a failed save. Before implementation, the tactic-foot fields, optimizer mismatch behavior, and new control assertions must fail.
 
 ### Expected outcome
 
-An optional, unique rank is saved on each lane. Within a string, the optimizer reserves eligible players for ranked lanes in ascending rank order, then leaves unranked lanes to the existing exact matcher; all-null ranks retain the current allocation result.
+Each lane saves an unrestricted, left, right, or both-foot rule and Preferred or Strict mode. Strict mismatches are ineligible for optimizer allocation; soft mismatches lose five allocation points without changing visible combined scores or manual assignments.
 
 ### Explicit exclusions
 
-- Do not add preferred-foot fields or rules.
-- Do not refactor unrelated Planner components or scoring modules.
-- Do not change manual assignment, age, suitability, team, string, or club-family behavior.
+- Do not filter or reject manual picker candidates.
+- Do not persist adjusted optimizer scores or change displayed combined role scores.
+- Do not make the penalty configurable or read richer foot-strength data.
 
 ## Discoveries and replanning
 
@@ -282,6 +280,7 @@ An optional, unique rank is saved on each lane. Within a string, the optimizer r
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Use per-lane scoring weights | Pending record | Terra xhigh | Terra xhigh, accepted | None |
+| PR 1 | Prioritize ranked tactic lanes | Pending record | Terra xhigh | Terra xhigh, accepted | None |
 
 ## Final validation
 
