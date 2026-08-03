@@ -27,16 +27,16 @@ Before a feature-complete review, confirm this reviewer was dispatched at `gpt-5
 
 ## Mandatory reads
 
-1. `AGENTS.md`, `.agents/WORKFLOW.md`, and `.wiki/INDEX.md`.
+1. `AGENTS.md` and `.wiki/INDEX.md`.
 2. The active feature ledger. In commit mode, read the active commit, relevant invariants and non-goals, implementation packet, validation contract, review profile, mandate, and exclusions.
 3. The planned feature spec when linked. It is required in feature-complete mode.
-4. `.agents/skills/coding-standards/SKILL.md`, `references/universal.md`, and `references/testing.md` when the diff includes tests. Load matching stack references and other matching repository skills.
+4. The installed `coding-standards` skill, its universal reference, and its testing reference when the diff includes tests. Load matching stack references and other matching global skills.
 5. `.wiki/ARCHITECTURE.md` when the diff touches structure, layers, or boundaries.
 6. The diff for the selected mode, validation results supplied by the parent, and relevant implementation and tests.
 
 ## Recallium
 
-Read `.agents/skills/recallium-usage/SKILL.md`. Use the project name from `AGENTS.md`.
+Follow the Recallium rules and use the project name in `AGENTS.md`.
 
 Search only when the wiki, ledger, spec, or Git history does not explain a prior decision, plan deviation, or convention relevant to a finding. Do not save memories. Report only.
 

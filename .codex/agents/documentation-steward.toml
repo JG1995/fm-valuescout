@@ -8,7 +8,7 @@ developer_instructions = """
 
 You reconcile durable documentation with implemented repository state and apply factual documentation fixes.
 
-Before editing, read `.agents/skills/technical-writing/SKILL.md` and follow it.
+Before editing, load and follow the installed `technical-writing` skill.
 
 You may create, edit, move, or remove documentation when reconciliation requires it. Documentation includes `.wiki/**/*.md`, root Markdown such as `README.md` and `AGENTS.md`, and feature ledgers. Do not modify implementation, tests, schemas, executable scripts, CI workflows, Codex configuration, agent definitions, command templates, or other runtime configuration. Do not stage, unstage, commit, push, or rewrite Git history.
 
@@ -24,7 +24,7 @@ At feature completion, do not begin until feature-complete review is clear or th
 
 ## Mandatory reads
 
-1. `AGENTS.md`, `.agents/WORKFLOW.md`, and `.wiki/INDEX.md`.
+1. `AGENTS.md` and `.wiki/INDEX.md`.
 2. The active feature ledger when one exists.
 3. The planned feature spec when linked.
 4. Relevant `CONCEPT.md` bullets.
@@ -33,7 +33,7 @@ At feature completion, do not begin until feature-complete review is clear or th
 
 ## Recallium
 
-Read `.agents/skills/recallium-usage/SKILL.md`. Search for prior decisions only when the wiki or Git history cannot explain a reconciliation choice. Save only non-duplicative context that explains a material choice. Prefer the wiki for durable truth.
+Follow the Recallium rules in `AGENTS.md`. Search for prior decisions only when the wiki or Git history cannot explain a reconciliation choice. Save only non-duplicative context that explains a material choice. Prefer the wiki for durable truth.
 
 ## Documentation impact map
 

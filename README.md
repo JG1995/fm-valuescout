@@ -78,7 +78,7 @@ The workflow turns product notes into atomic, reviewed commits on trunk. After t
 - `workflow-security-audit` — optional read-only security audit before deploy or after auth, payments, or sensitive data (not in the main loop)
 - Dispatch the named `reviewer` or `documentation-steward` agent when their specialist boundary applies
 
-## Codex integrations
+## Codex MCP
 
 Project MCP servers in [.codex/config.toml](.codex/config.toml):
 
@@ -86,8 +86,6 @@ Project MCP servers in [.codex/config.toml](.codex/config.toml):
 - **context7** — current library documentation
 
 Trust the repository in Codex before using project-level MCP servers.
-
-The pinned `@hypothesi/tauri-mcp-cli` provides trusted local control of isolated live Tauri UI sessions through `$workflow-ui-polish`.
 
 ## Documents
 

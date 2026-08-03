@@ -23,7 +23,7 @@ Route loaders may call `queryClient.ensureQueryData` or `prefetchQuery`. Compone
 - `refetchOnReconnect: false`
 - `retry: false` for queries
 
-Forks override per `queryOptions` when a resource needs HTTP-style refetch or retry (hybrid apps, remote APIs). See `coding-standards/references/react.md` § Desktop Query defaults.
+Forks override per `queryOptions` when a resource needs HTTP-style refetch or retry (hybrid apps, remote APIs). Follow the React reference in the installed `coding-standards` skill.
 
 ## Alternatives considered
 

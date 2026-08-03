@@ -6,7 +6,7 @@ Replace the repository's Cursor-specific development workflow with a Codex-nativ
 
 ## Delivered behavior
 
-- Repository guidance uses `AGENTS.md`, `.agents/skills/`, `.codex/agents/`, and `.codex/config.toml`.
+- Repository guidance uses `AGENTS.md`, installed global skills, `.codex/agents/`, and `.codex/config.toml`.
 - The named workflow remains available for planning, test-first implementation, checkpoint review, fixes, feature completion, spikes, and security audits.
 - `reviewer` is read-only and uses `gpt-5.6-terra` with `xhigh` reasoning. `documentation-steward` edits documentation only and uses `gpt-5.6-terra` with `medium` reasoning.
 - `.work/` holds ignored disposable artifacts. Recallium and Context7 remain project MCP servers.
@@ -16,7 +16,7 @@ Replace the repository's Cursor-specific development workflow with a Codex-nativ
 
 ```text
 AGENTS.md                         repository rules and routing
-.agents/skills/                   reusable workflow and domain skills
+installed global skills          reusable workflow and domain procedures
 .codex/agents/                    reviewer and documentation-steward roles
 .codex/config.toml                Recallium and Context7 configuration
 .work/                            ignored disposable work
@@ -28,7 +28,7 @@ scripts/dev + CI                  product validation and code-quality checks
 
 ## Important decisions
 
-- Keep repository-owned `workflow-*` skills instead of Cursor slash commands or user-level custom prompts.
+- Use installed global `workflow-*` skills instead of repository copies, Cursor slash commands, or user-level custom prompts.
 - Do not add Codex hooks. Existing scripts, Git hooks, and CI own deterministic enforcement.
 - Remove the retired Cursor surface after Codex migration rather than maintain dual configuration.
 - Focus validation on product behavior and code quality. Do not maintain workflow self-tests for skill counts, agent prose, or CI YAML wording.

@@ -6,7 +6,7 @@ Create a ledger with `workflow-plan-feature`. Keep exactly **one commit** marked
 
 ## Canonical workflow
 
-Read [`.agents/WORKFLOW.md`](../../../.agents/WORKFLOW.md) before creating or changing a ledger. It owns model routing, review evidence, escalation, and migration rules. This file owns the reusable ledger schema.
+Read [`AGENTS.md`](../../../AGENTS.md) and load the installed `workflow-plan-feature` skill before creating or changing a ledger. `AGENTS.md` owns repository-specific model routing, review evidence, escalation, and migration rules. This file owns the reusable ledger schema.
 
 ## Status vocabulary
 
@@ -270,7 +270,7 @@ execution_profile:
 
 ### RED test (active commit)
 
-What the smallest failing test should assert — and **what wrong behavior it would catch** (test quality gate in `coding-standards/references/testing.md`). Skip only when the commit is trivial per that reference.
+What the smallest failing test should assert — and **what wrong behavior it would catch** (test quality gate in the installed `coding-standards` skill). Skip only when the commit is trivial per that skill.
 
 ### Expected outcome
 

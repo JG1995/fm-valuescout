@@ -1,6 +1,6 @@
 # Development Contract
 
-This file contains the standing repository contract. Detailed procedures belong in `.agents/skills/`. Project facts belong in `.wiki/`. Hard validation belongs in repository commands, tests, and CI.
+This file contains the standing repository contract. Detailed procedures come from the installed global skills. Project facts belong in `.wiki/`. Hard validation belongs in repository commands, tests, and CI.
 
 ## Project scope
 
@@ -39,7 +39,7 @@ For ordinary work, inspect the relevant code and tests before changing them.
 
 Plans are provisional. Reassess remaining commits after each one. Ask only product questions that repository evidence or a bounded technical spike cannot answer.
 
-**Unresolved structural decisions** (persistence, schema, migration, authentication, concurrency, security, public API, or layer boundaries): read `.wiki/ARCHITECTURE.md`, scan `.agents/skills/` for skills whose description matches the work (architecture, stack, coding standards), search Recallium. If docs and inspection are insufficient and the question needs a **runtime probe**, use optional `workflow-spike` — otherwise **ask the developer**. Do not guess and do not implement.
+**Unresolved structural decisions** (persistence, schema, migration, authentication, concurrency, security, public API, or layer boundaries): read `.wiki/ARCHITECTURE.md`, scan the available global skills for descriptions that match the work (architecture, stack, coding standards), and search Recallium. If docs and inspection are insufficient and the question needs a **runtime probe**, use optional `workflow-spike` — otherwise **ask the developer**. Do not guess and do not implement.
 
 ## Guidance layers
 
@@ -48,8 +48,8 @@ Keep guidance in the narrowest appropriate layer:
 - `.wiki/CONCEPT.md` owns product purpose and boundaries.
 - `.wiki/ARCHITECTURE.md` owns the current implemented system, including its stack and operational constraints.
 - `.wiki/features/active/` owns current multi-commit feature intent and delivery plans (PRs and commits).
-- `.agents/WORKFLOW.md` owns the canonical planning, model-routing, review-evidence, escalation, and replanning policy.
-- `.agents/skills/` owns named workflow procedures and reusable, task- or stack-specific operating guidance, when needed.
+- `AGENTS.md` owns the repository-specific planning, model-routing, review-evidence, escalation, and replanning policy.
+- Installed global skills own named workflow procedures and reusable task- or stack-specific operating guidance.
 - `.codex/agents/` owns specialist role prompts. It must not duplicate this contract.
 
 Do not treat `.work/` as project truth. Do not document proposed behaviour as implemented. Use the existing wiki ownership rules rather than duplicating facts across documents.
@@ -71,7 +71,7 @@ The user never invokes these skills directly on a trivial change — they just d
 
 For broad features, `workflow-plan-feature` produces a delivery plan (PRs and commits) before the first `workflow-build` cycle. `workflow-stack` and `workflow-roadmap` precede this for new projects.
 
-Model capability and reasoning effort are separate choices. Score Capability Demand and Effort Demand for implementation, then score Review Demand independently. Use the exact profile recorded in the active ledger. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. See `.agents/WORKFLOW.md` for scoring, hard floors, the Luna punch-up exception, evidence requirements, and escalation routes.
+Model capability and reasoning effort are separate choices. Score Capability Demand and Effort Demand for implementation, then score Review Demand independently. Use the exact profile recorded in the active ledger. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. Follow the relevant global workflow skill for scoring, hard floors, the Luna punch-up exception, evidence requirements, and escalation routes.
 
 ## Commands and validation
 
@@ -176,7 +176,7 @@ Strong verification lets you loop without asking for clarification.
 
 If the explanation is longer than the code, delete the explanation.
 
-Exceptions: commit messages (Conventional Commits per `.agents/skills/conventional-commits/SKILL.md` — explain *why* in the body when the reason is not obvious from the diff), security decisions, architectural notes in durable docs, and explicit user requests for detail.
+Exceptions: commit messages (use the global `conventional-commits` skill and explain *why* in the body when the reason is not obvious from the diff), security decisions, architectural notes in durable docs, and explicit user requests for detail.
 
 **Honesty boundaries.** Do not claim per-repo line savings — the unbuilt version is imaginary, so there is no baseline. Do not claim a performance improvement without before-and-after measurements. Do not claim 100% test coverage from line coverage alone. Do not call a change a bug fix unless you confirmed the old behaviour was wrong.
 

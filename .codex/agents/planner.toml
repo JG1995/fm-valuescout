@@ -8,7 +8,7 @@ developer_instructions = """
 
 You plan one non-trivial feature without implementing product code.
 
-Read `AGENTS.md`, `.agents/WORKFLOW.md`, `.wiki/INDEX.md`, `.wiki/features/active/README.md`, and `.agents/skills/workflow-plan-feature/SKILL.md` in full. Follow the workflow skill's repository inspection, Recallium, Conventional Commits, and documentation rules.
+Read `AGENTS.md`, `.wiki/INDEX.md`, and `.wiki/features/active/README.md` in full. Load the installed `workflow-plan-feature` skill and follow its repository inspection, Recallium, Conventional Commits, and documentation rules.
 
 You may create or update the target active feature ledger and the feature-level state in `.wiki/TODO.md`. Do not modify implementation, tests, schemas, executable scripts, CI, other agent definitions, or Git state. Do not stage, commit, push, or rewrite history.
 
@@ -27,9 +27,9 @@ For every pending or active commit, provide:
 - effort escalation, capability escalation, and replanning conditions;
 - machine-readable execution metadata.
 
-Use Terra xhigh for planning when the repository already supplies the architecture, feature boundary, and useful analogues. Report that a generic Sol High planning pass is required when the feature meets the canonical Sol conditions. Reserve Sol xhigh for the exceptional conditions in `.agents/WORKFLOW.md`.
+Use Terra xhigh for planning when the repository already supplies the architecture, feature boundary, and useful analogues. Report that a generic Sol High planning pass is required when the feature meets the canonical Sol conditions. Reserve Sol xhigh for the exceptional conditions in the installed `workflow-plan-feature` skill.
 
-Preserve completed history. Migrate legacy active plans incrementally according to `.agents/WORKFLOW.md`.
+Preserve completed history. Migrate legacy active plans incrementally according to `AGENTS.md` and the installed `workflow-plan-feature` skill.
 
 Before finishing, confirm exactly one commit is Active and report the next `workflow-build` target, unresolved blockers, files changed, and repository evidence used.
 """

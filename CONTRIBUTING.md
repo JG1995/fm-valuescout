@@ -22,7 +22,7 @@ Husky installs on `pnpm install`. The repository uses Biome for lint and format 
 
 ## Follow the commit convention
 
-Every commit message uses [Conventional Commits 1.0.0](https://www.conventionalcommits.org/). Read [`.agents/skills/conventional-commits/SKILL.md`](.agents/skills/conventional-commits/SKILL.md) before writing one.
+Every commit message uses [Conventional Commits 1.0.0](https://www.conventionalcommits.org/). Load the installed `conventional-commits` skill before writing one.
 
 - Use imperative present tense: “Add,” not “Added.”
 - Keep the subject under 72 characters.
@@ -32,7 +32,7 @@ Every commit message uses [Conventional Commits 1.0.0](https://www.conventionalc
 
 ## Use the Codex workflow for non-trivial work
 
-The workflow overview is in [.codex/README.md](.codex/README.md), and the canonical lifecycle and model-routing policy is in [.agents/WORKFLOW.md](.agents/WORKFLOW.md). Development is trunk-based: short-lived branches merge to `main` frequently, and every commit is atomic.
+The workflow overview is in [.codex/README.md](.codex/README.md), and the canonical repository lifecycle and model-routing policy is in [AGENTS.md](AGENTS.md). Development is trunk-based: short-lived branches merge to `main` frequently, and every commit is atomic.
 
 ### New project bootstrap
 
@@ -61,7 +61,7 @@ For a single-line fix or documentation edit, follow the applicable workflow inte
 
 ## Escalate before assuming
 
-Ask for developer input before choosing persistence, schema, migrations, authentication, concurrency, public APIs, security controls, or a safety-critical boundary. Read `.wiki/ARCHITECTURE.md`, matching skills in `.agents/skills/`, and Recallium first. Use `workflow-spike` only when a runtime experiment can answer the question.
+Ask for developer input before choosing persistence, schema, migrations, authentication, concurrency, public APIs, security controls, or a safety-critical boundary. Read `.wiki/ARCHITECTURE.md`, load matching global skills, and search Recallium first. Use `workflow-spike` only when a runtime experiment can answer the question.
 
 ## Merge template updates into a fork
 
@@ -73,4 +73,4 @@ git fetch template
 git merge template/main --allow-unrelated-histories
 ```
 
-Resolve conflicts manually. Review changes to `.agents/`, `.codex/`, `scripts/`, and `AGENTS.md` before you merge.
+Resolve conflicts manually. Review changes to `.codex/`, `scripts/`, and `AGENTS.md` before you merge.

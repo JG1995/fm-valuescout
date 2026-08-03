@@ -1,9 +1,6 @@
 # Disposable agent scratch
 .work/
 
-# Local Codebase Memory index artifact
-.codebase-memory/
-
 # Dependencies (pnpm)
 node_modules/
 .pnpm-store/

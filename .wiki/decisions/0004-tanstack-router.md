@@ -48,7 +48,7 @@ A single-page shell avoids routing setup. Almost every real desktop product adds
 
 - Done at scaffold (`fc11b5a`) — `defaultPreloadStaleTime: 0` in router config.
 - Done later — `@tanstack/react-router-devtools` gated on `import.meta.env.DEV` in the root route.
-- Route and loader patterns documented in `coding-standards/references/react.md`.
+- Route and loader patterns follow the React reference in the installed `coding-standards` skill.
 
 ## Related work
 

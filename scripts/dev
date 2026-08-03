@@ -7,7 +7,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install|ui-agent} [args...]
+Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
@@ -24,8 +24,6 @@ Commands:
   bridge-install    Build bridge/ with dotnet and copy FmDataBridge.dll into FM BepInEx/plugins.
                     Path: FM_BRIDGE_PLUGINS, or FM_STEAM_ROOT/BepInEx/plugins, or the default
                     Steam FM26 path under /mnt/c (WSL).
-  ui-agent [--dump /absolute/path/dump.json]
-                    Start the real app with loopback UI control and a temporary database.
 
 Unsupported mutation checks exit with status 69.
 EOF
@@ -234,13 +232,6 @@ run_test() {
   )
 }
 
-run_ui_agent() {
-  DEV_COMMAND_LABEL=ui-agent
-  require_node_deps
-  require_rust_toolchain
-  "$repo_root/scripts/ui-agent" "$@"
-}
-
 ensure_dotnet() {
   if command -v dotnet >/dev/null 2>&1; then
     return 0
@@ -349,9 +340,6 @@ case "$command" in
     ;;
   bridge-install)
     run_bridge_install "$@"
-    ;;
-  ui-agent)
-    run_ui_agent "$@"
     ;;
   *)
     printf 'Unknown command: %s\n' "$command" >&2
