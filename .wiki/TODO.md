@@ -52,11 +52,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No active planned work.
+- [Planner optimizer preferences](./features/active/planner-optimizer-preferences.md) — per-lane IP/OOP weights, position priority, and preferred-foot rules
 
 ## Next
 
-The approved MVP sequence and Planner maintenance refactor are complete. Select future work from [BACKLOG.md](./BACKLOG.md) when it is ready for planning.
+The approved MVP sequence and Planner maintenance refactor are complete. Finish the active Planner optimizer preferences before selecting unrelated future work from [BACKLOG.md](./BACKLOG.md).
 
 ## Completed
 
