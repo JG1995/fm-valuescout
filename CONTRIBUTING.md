@@ -32,7 +32,7 @@ Every commit message uses [Conventional Commits 1.0.0](https://www.conventionalc
 
 ## Use the Codex workflow for non-trivial work
 
-The workflow overview is in [.codex/README.md](.codex/README.md), and the canonical repository lifecycle and model-routing policy is in [AGENTS.md](AGENTS.md). Development is trunk-based: short-lived branches merge to `main` frequently, and every commit is atomic.
+The workflow overview is in [.codex/README.md](.codex/README.md). [AGENTS.md](AGENTS.md) owns standing repository rules, and [.agents/WORKFLOW.md](.agents/WORKFLOW.md) owns lifecycle and model-routing policy. Development is trunk-based: short-lived branches merge to `main` frequently, and every commit is atomic.
 
 ### New project bootstrap
 
@@ -40,28 +40,28 @@ See [README — Forking this template](README.md#forking-this-template) for setu
 
 1. Run `./scripts/dev check` and `./scripts/dev test` before feature work.
 2. Fill `.wiki/CONCEPT.md` with MVP scope.
-3. Use `workflow-stack` only when you change the default stack.
-4. Use `workflow-roadmap` to approve the development sequence in `TODO.md`.
-5. Use `workflow-plan-feature` for the feature named in **Plan next**.
+3. Use `$workflow-stack` only when you change the default stack.
+4. Use `$workflow-roadmap` to approve the development sequence in `TODO.md`.
+5. Use `$workflow-plan-feature` for the feature named in **Plan next**.
 
 Building the FM26 BepInEx plugin is separate from the Linux gate. See [bridge/README.md](bridge/README.md).
 
 ### Per-feature loop
 
-1. `workflow-plan-feature` — create a delivery plan with atomic commits, implementation packets, and separate implementation/review profiles. Trivial changes skip the ledger.
-2. `workflow-build` — use the active commit's assigned profile and packet, write a meaningful failing test, make the smallest passing change, and refactor while green.
-3. `workflow-checkpoint` — stage exact files, run the gate, dispatch the assigned reviewer in a fresh context, and present evidence-backed findings.
-4. `workflow-fix` — address blocking review findings, then checkpoint again.
+1. `$workflow-plan-feature` — create a delivery plan with atomic commits, implementation packets, and separate implementation and review profiles. Trivial changes skip the ledger.
+2. `$workflow-build` — use the active commit's assigned profile and packet, write a meaningful failing test, make the smallest passing change, and refactor while green.
+3. `$workflow-checkpoint` — stage exact files, run the gate, dispatch the assigned reviewer in a fresh context, and present evidence-backed findings.
+4. `$workflow-fix` — address delegated review findings, then checkpoint again.
 5. Approve the local commit and reassess the remaining delivery plan.
-6. `workflow-finish-feature` — run full validation, feature review, then documentation reconciliation.
+6. `$workflow-finish-feature` — run full validation, feature review, then documentation reconciliation.
 
-`workflow-build-loop` is manual opt-in. It can automate checkpoint and fix rounds, then commit when only NITPICK findings remain. Use `workflow-spike` only when a runtime experiment is necessary. Use `workflow-security-audit` before deployment or after sensitive changes.
+`$workflow-build-loop` is manual opt-in. It can automate checkpoint and fix rounds, then commit when only NITPICK findings remain. Use `$workflow-spike` only when a runtime experiment is necessary. Use `$workflow-security-audit` before deployment or after sensitive changes.
 
 For a single-line fix or documentation edit, follow the applicable workflow internally without naming every skill.
 
 ## Escalate before assuming
 
-Ask for developer input before choosing persistence, schema, migrations, authentication, concurrency, public APIs, security controls, or a safety-critical boundary. Read `.wiki/ARCHITECTURE.md`, load matching global skills, and search Recallium first. Use `workflow-spike` only when a runtime experiment can answer the question.
+Ask for developer input before choosing persistence, schema, migrations, authentication, concurrency, public APIs, security controls, or a safety-critical boundary. Read `.wiki/ARCHITECTURE.md`, relevant feature records, ADRs, debug reports, and matching installed skills first. Use `$workflow-spike` only when a runtime experiment can answer the question.
 
 ## Merge template updates into a fork
 
@@ -73,4 +73,4 @@ git fetch template
 git merge template/main --allow-unrelated-histories
 ```
 
-Resolve conflicts manually. Review changes to `.codex/`, `scripts/`, and `AGENTS.md` before you merge.
+Resolve conflicts manually. Review changes to `.agents/WORKFLOW.md`, `.codex/`, `scripts/`, and `AGENTS.md` before you merge.

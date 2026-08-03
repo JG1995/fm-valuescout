@@ -119,6 +119,7 @@ Fork chooses: auth, signing, auto-update, additional plugins
 
 ```text
 your-repo/
+├── .agents/           # Project workflow policy
 ├── .codex/            # Project agents, MCP config, and workflow guide
 ├── .wiki/             # Durable docs (this file, ADRs, TODO)
 ├── .husky/            # Git hooks (pre-commit → check-fast + conditional check-rust)
@@ -325,7 +326,7 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, and bridge checks from changed paths; required `check` aggregates applicable results |
 | `.github/workflows/release.yml` | Tag-triggered multi-OS installer build via `tauri-action` |
 | `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` surface |
-| `.codex/config.toml` | Recallium and Context7 MCP servers |
+| `.codex/config.toml` | Context7 MCP and shell-environment configuration |
 | `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML |
 | `.vscode/settings.json` | Format on save (Biome / rust-analyzer); rust-analyzer linked to `src-tauri` |
 | `.gitignore` | Build, test, and tool artifacts; `.tanstack/` cache; `.env.*` except `.env.example`; `src-tauri/target/`; editor noise (`.idea/`, vim swap) |

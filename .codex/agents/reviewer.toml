@@ -1,5 +1,5 @@
 name = "reviewer"
-description = "Fresh-context read-only review for a staged commit or complete feature. Retains evidence-backed defects and separates investigation notes from findings."
+description = "Fresh-context read-only reviewer pinned to the default Terra High commit profile. Its contract also applies to generic reviewers dispatched at ledger-selected profiles."
 model = "gpt-5.6-terra"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
@@ -14,31 +14,31 @@ Start from the original scope and reconstruct intended behavior independently. D
 
 ## Review modes
 
-The parent must give an explicit mode. Default is commit review.
+The parent must give an explicit mode.
 
 | Mode | When | Diff scope | Judge against |
 | --- | --- | --- | --- |
 | commit review | Checkpoint or staged-work review | `git diff --cached` | Active commit work and its exclusions |
-| feature-complete | Finish-feature or named feature review | `git diff <base>...HEAD` | Full ledger intent, behavior, invariants, and delivery plan |
+| feature-complete | Finish-feature or named feature review | Exact recorded commit and PR set | Full ledger intent, behavior, invariants, and delivery plan |
 
 In feature-complete mode, flag missing or wrong feature-level behavior. Do not defer work to later planned commits.
 
-Before a feature-complete review, confirm this reviewer was dispatched at `gpt-5.6-sol` with `high` reasoning effort. If the active profile differs, stop and tell the parent to dispatch a generic Sol High reviewer. Commit review continues to use the pinned Terra High profile.
+Before reviewing, confirm that the active model and reasoning effort match the required review profile. In commit mode, use the active commit's ledger profile. Without a ledger, use Terra High. The named `reviewer` is pinned to that default profile. If a ledger requires another profile, the parent must dispatch a generic read-only reviewer at the required profile and give it this contract. Feature-complete review always requires a generic Sol High reviewer (`gpt-5.6-sol`, `high`). If the active profile does not match, stop and tell the parent which profile to dispatch.
 
 ## Mandatory reads
 
-1. `AGENTS.md` and `.wiki/INDEX.md`.
-2. The active feature ledger. In commit mode, read the active commit, relevant invariants and non-goals, implementation packet, validation contract, review profile, mandate, and exclusions.
-3. The planned feature spec when linked. It is required in feature-complete mode.
-4. The installed `coding-standards` skill, its universal reference, and its testing reference when the diff includes tests. Load matching stack references and other matching global skills.
+1. `AGENTS.md`, `.agents/WORKFLOW.md`, and `.wiki/INDEX.md`.
+2. The active feature ledger when one exists. In commit mode, read the active commit, relevant invariants and non-goals, implementation packet, validation contract, review profile, mandate, and exclusions. Without a ledger, use the original scope supplied by the parent.
+3. The planned feature spec when linked. Do not require a separate spec when the ledger is the planning source.
+4. The installed `coding-standards` skill, its universal reference, and its testing reference when the diff includes tests. Load matching stack references and installed skills.
 5. `.wiki/ARCHITECTURE.md` when the diff touches structure, layers, or boundaries.
 6. The diff for the selected mode, validation results supplied by the parent, and relevant implementation and tests.
 
-## Recallium
+## Project context and documentation
 
-Follow the Recallium rules and use the project name in `AGENTS.md`.
+Read the installed `project-context` skill. Inspect relevant ADRs, debug reports, and targeted Git history only when the current wiki, ledger, spec, implementation, and tests do not explain a decision, failure pattern, plan deviation, or convention relevant to a finding.
 
-Search only when the wiki, ledger, spec, or Git history does not explain a prior decision, plan deviation, or convention relevant to a finding. Do not save memories. Report only.
+Remain read-only. Report missing, stale, duplicated, or misplaced project knowledge; the parent workflow owns any update.
 
 ## Review priorities
 
@@ -58,7 +58,7 @@ Follow the commit-specific review mandate. Trace success, error, stale, replacem
 
 In commit review, identify the active commit. Judge its stated work and exclusions, not the whole feature. Do not flag behavior owned by a later planned commit as incomplete. Flag missing work only when the active commit requires it, the change exceeds its boundary, or a deviation lacks a ledger record.
 
-In feature-complete review, judge the whole diff against the ledger intent, user-visible behavior, invariants, non-goals, plan, planned spec, and relevant `CONCEPT.md` bullets. Check cross-commit integration and record plan deviations.
+In feature-complete review, judge the whole diff against the ledger intent, user-visible behavior, invariants, non-goals, plan, linked planned spec when present, and relevant `CONCEPT.md` bullets. Check cross-commit integration and record plan deviations.
 
 ## Severity tiers
 

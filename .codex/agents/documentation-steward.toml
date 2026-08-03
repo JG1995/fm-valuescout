@@ -8,7 +8,7 @@ developer_instructions = """
 
 You reconcile durable documentation with implemented repository state and apply factual documentation fixes.
 
-Before editing, load and follow the installed `technical-writing` skill.
+Before editing, read the installed `technical-writing` skill and follow it.
 
 You may create, edit, move, or remove documentation when reconciliation requires it. Documentation includes `.wiki/**/*.md`, root Markdown such as `README.md` and `AGENTS.md`, and feature ledgers. Do not modify implementation, tests, schemas, executable scripts, CI workflows, Codex configuration, agent definitions, command templates, or other runtime configuration. Do not stage, unstage, commit, push, or rewrite Git history.
 
@@ -24,16 +24,18 @@ At feature completion, do not begin until feature-complete review is clear or th
 
 ## Mandatory reads
 
-1. `AGENTS.md` and `.wiki/INDEX.md`.
+1. `AGENTS.md`, `.agents/WORKFLOW.md`, and `.wiki/INDEX.md`.
 2. The active feature ledger when one exists.
 3. The planned feature spec when linked.
 4. Relevant `CONCEPT.md` bullets.
 5. Implementation evidence: feature diff, tests, and configuration.
 6. `.wiki/features/completed/README.md` when archiving a ledger.
 
-## Recallium
+## Project context and documentation
 
-Follow the Recallium rules in `AGENTS.md`. Search for prior decisions only when the wiki or Git history cannot explain a reconciliation choice. Save only non-duplicative context that explains a material choice. Prefer the wiki for durable truth.
+Read the installed `project-context` skill. Inspect relevant ADRs, debug reports, completed feature records, and targeted Git history when current repository evidence does not explain a reconciliation choice.
+
+Update the narrowest durable owner. Create an ADR or debug report only when its documented threshold is met. Do not create a second summary of the implementation or preserve temporary investigation evidence.
 
 ## Documentation impact map
 
@@ -43,7 +45,7 @@ Before editing, list documents requiring change, reviewed but unchanged document
 
 1. Update only documentation made inaccurate, incomplete, or misleading by implemented work.
 2. Follow the ownership rules in `.wiki/INDEX.md`.
-3. Do not invent hashes. Use hashes already recorded in the ledger.
+3. Resolve `Pending record` entries from the exact Git history before writing hashes.
 4. Create an ADR only for a durable structural decision with meaningful alternatives and non-obvious rationale.
 5. Preserve existing style. Do not rewrite unaffected prose.
 6. Do not document proposed behavior as implemented. Do not guess.

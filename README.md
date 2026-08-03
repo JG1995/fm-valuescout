@@ -2,7 +2,7 @@
 
 A React + Tauri desktop application with a test-driven, AI-assisted development workflow in Codex.
 
-The template ships a React + Tauri v2 walking skeleton (thin frontend, thick Rust backend, SQLite via IPC) with TanStack Router/Query, Zustand, Tailwind v4, Vitest with `mockIPC`, Playwright smoke, Biome, and Rust `cargo fmt/clippy/test` in the gate — plus `./scripts/dev` wiring, durable documentation, Codex skills, specialist agents, and MCP configuration.
+The template ships a React + Tauri v2 walking skeleton (thin frontend, thick Rust backend, SQLite via IPC) with TanStack Router/Query, Zustand, Tailwind v4, Vitest with `mockIPC`, Playwright smoke, Biome, and Rust `cargo fmt/clippy/test` in the gate — plus `./scripts/dev` wiring, durable documentation, installed Codex skills, specialist agents, and MCP configuration.
 
 ## Quick start
 
@@ -22,7 +22,7 @@ Building the FM26 BepInEx plugin (Windows/.NET) is documented in [bridge/README.
 
 ## Forking this template
 
-The walking skeleton is already implemented — IPC health demo, SQLite persistence, tests, and CI gates. You do not need `workflow-stack` unless you change the default stack.
+The walking skeleton is already implemented — IPC health demo, SQLite persistence, tests, and CI gates. You do not need `$workflow-stack` unless you change the default stack.
 
 ### New project checklist
 
@@ -32,14 +32,14 @@ The walking skeleton is already implemented — IPC health demo, SQLite persiste
 4. `./scripts/dev check` and `./scripts/dev test` — confirm the gate is green before you build features.
 5. Install recommended editor extensions from [.vscode/extensions.json](.vscode/extensions.json) — Biome, rust-analyzer, Even Better TOML.
 6. ~~Rename the template identity~~ — done (`FM ValueScout` / `fm-valuescout`).
-7. ~~Recallium `project_name` in `AGENTS.md`~~ — done (`fm-valuescout`).
+7. ~~Configure durable project knowledge~~ — done (repository-owned wiki, feature records, ADRs, and debug reports).
 8. Fill [.wiki/CONCEPT.md](.wiki/CONCEPT.md) — especially MVP scope and boundaries.
-9. Use `workflow-roadmap` when CONCEPT has real bullets — approve the sequence in [.wiki/TODO.md](.wiki/TODO.md).
-10. Use `workflow-plan-feature` on **Plan next** (or the first sequence row), then the build loop below.
+9. Use `$workflow-roadmap` when CONCEPT has real bullets — approve the sequence in [.wiki/TODO.md](.wiki/TODO.md).
+10. Use `$workflow-plan-feature` on **Plan next** (or the first sequence row), then the build loop below.
 
-Skip `workflow-stack` when you keep this template's defaults. Use it only when you need to change stack choices and reconcile [.wiki/ARCHITECTURE.md](.wiki/ARCHITECTURE.md) §1.
+Skip `$workflow-stack` when you keep this template's defaults. Use it only when you need to change stack choices and reconcile [.wiki/ARCHITECTURE.md](.wiki/ARCHITECTURE.md) §1.
 
-Optional before `workflow-roadmap`: add feature specs in `.wiki/features/planned/<slug>.md` when you can describe user-visible behavior — CONCEPT bullets alone suffice for a provisional sequence.
+Optional before `$workflow-roadmap`: add feature specs in `.wiki/features/planned/<slug>.md` when you can describe user-visible behavior — CONCEPT bullets alone suffice for a provisional sequence.
 
 ### Rename checklist (completed)
 
@@ -57,7 +57,7 @@ Identity set to **FM ValueScout** (`fm-valuescout`, Tauri identifier `app.fmvalu
 
 ## Development loop
 
-The workflow turns product notes into atomic, reviewed commits on trunk. After the [forking checklist](#forking-this-template), each feature is planned with `workflow-plan-feature`, built one commit at a time (`workflow-build` → `workflow-checkpoint`, with `workflow-fix` when review blocks), and closed with `workflow-finish-feature`. See [.codex/README.md](.codex/README.md) for the full cycle.
+The workflow turns product notes into atomic, reviewed commits on trunk. After the [forking checklist](#forking-this-template), each feature is planned with `$workflow-plan-feature`, built one commit at a time (`$workflow-build` → `$workflow-checkpoint`, with `$workflow-fix` for delegated findings), and closed with `$workflow-finish-feature`. See [.codex/README.md](.codex/README.md) for the full cycle.
 
 ## Commands
 
@@ -73,25 +73,24 @@ The workflow turns product notes into atomic, reviewed commits on trunk. After t
 - `./scripts/dev secrets [--staged]` — scan for secrets with secretlint (full tree or staged files only)
 - `./scripts/dev smoke` — Playwright smoke (`e2e/smoke.spec.ts`; stub IPC in Chromium, not real WebView or SQLite — see ARCHITECTURE §6.4; run `pnpm exec playwright install chromium` once after install)
 - `./scripts/dev mutate <target>` — scoped mutation tests (not configured yet)
-- `workflow-stack`, `workflow-roadmap`, `workflow-plan-feature`, `workflow-build`, `workflow-build-loop` (manual opt-in), `workflow-fix`, `workflow-checkpoint`, `workflow-review`, `workflow-docs-review`, `workflow-finish-feature` — core workflow (see [.codex/README.md](.codex/README.md))
-- `workflow-spike` — optional disposable experiment when a technical question needs runtime evidence (not in the main loop)
-- `workflow-security-audit` — optional read-only security audit before deploy or after auth, payments, or sensitive data (not in the main loop)
+- `$workflow-stack`, `$workflow-roadmap`, `$workflow-plan-feature`, `$workflow-build`, `$workflow-build-loop` (manual opt-in), `$workflow-fix`, `$workflow-checkpoint`, `$workflow-review`, `$workflow-docs-review`, `$workflow-finish-feature` — explicit core workflows (see [.codex/README.md](.codex/README.md))
+- `$workflow-spike` — optional disposable experiment when a technical question needs runtime evidence (not in the main loop)
+- `$workflow-security-audit` — optional read-only security audit before deploy or after auth, payments, or sensitive data (not in the main loop)
 - Dispatch the named `reviewer` or `documentation-steward` agent when their specialist boundary applies
 
 ## Codex MCP
 
 Project MCP servers in [.codex/config.toml](.codex/config.toml):
 
-- **recallium** — persistent project memory at `http://10.189.1.195:8001/mcp`
 - **context7** — current library documentation
 
-Trust the repository in Codex before using project-level MCP servers.
+Codebase Memory is an optional globally registered MCP. Treat its index as advisory and keep durable project knowledge in the repository.
 
 ## Documents
 
 - [Forking checklist](#forking-this-template) — prerequisites, rename table, CONCEPT → roadmap → feature planning
 - [Codex workflow](.codex/README.md) — MCP, skills, specialist agents, planning, build, checkpoint, and feature completion
-- [Codex MCP](.codex/config.toml) — Recallium and Context7
+- [Codex MCP](.codex/config.toml) — Context7 and shell-environment configuration
 - [Contributing](CONTRIBUTING.md) — gate, commits, fork-merge workflow
 - [Development contract](AGENTS.md) — how to make changes
 - [Scripts](scripts/dev) — the stable command surface
