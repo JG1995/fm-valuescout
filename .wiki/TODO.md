@@ -52,11 +52,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- [Planner workspace redesign](./features/active/planner-workspace-redesign.md) — separate Squad, Tactic, and Club setup workspaces; unify tactic lane controls; and compact the populated squad matrix
 
 ## Next
 
-The approved MVP sequence and Planner maintenance work are complete. Select future work from [BACKLOG.md](./BACKLOG.md) when ready.
+Complete the active Planner workspace redesign before selecting more work from [BACKLOG.md](./BACKLOG.md).
 
 ## Completed
 
