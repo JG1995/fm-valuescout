@@ -8,6 +8,7 @@ import { savePlannerTactic } from "../api/save-planner-tactic";
 import {
   type PlannerTactic,
   TACTIC_LANE_IDS,
+  type TacticLane,
   type TacticOptions,
 } from "../types/tactic";
 import {
@@ -170,6 +171,43 @@ export function PlannerTacticEditor({
       lanes: draft.lanes.map((lane) =>
         lane.laneId === selectedLane.laneId
           ? { ...lane, importanceRank }
+          : lane,
+      ),
+    });
+  };
+
+  const updateSelectedLaneFoot = (
+    preferredFoot: TacticLane["preferredFoot"],
+  ) => {
+    if (!selectedLane) {
+      return;
+    }
+    updateDraft({
+      ...draft,
+      lanes: draft.lanes.map((lane) =>
+        lane.laneId === selectedLane.laneId
+          ? {
+              ...lane,
+              preferredFoot,
+              footPreference:
+                preferredFoot === "any" ? "preferred" : lane.footPreference,
+            }
+          : lane,
+      ),
+    });
+  };
+
+  const updateSelectedLaneFootPreference = (
+    footPreference: TacticLane["footPreference"],
+  ) => {
+    if (!selectedLane) {
+      return;
+    }
+    updateDraft({
+      ...draft,
+      lanes: draft.lanes.map((lane) =>
+        lane.laneId === selectedLane.laneId
+          ? { ...lane, footPreference }
           : lane,
       ),
     });
@@ -382,6 +420,33 @@ export function PlannerTacticEditor({
                   {index + 1}
                 </option>
               ))}
+            </SelectField>
+            <SelectField
+              label={`Lane ${selectedLaneNumber} preferred foot`}
+              value={selectedLane.preferredFoot}
+              onChange={(event) =>
+                updateSelectedLaneFoot(
+                  event.target.value as TacticLane["preferredFoot"],
+                )
+              }
+            >
+              <option value="any">Either</option>
+              <option value="left">Left</option>
+              <option value="right">Right</option>
+              <option value="both">Both</option>
+            </SelectField>
+            <SelectField
+              label={`Lane ${selectedLaneNumber} foot preference`}
+              value={selectedLane.footPreference}
+              disabled={selectedLane.preferredFoot === "any"}
+              onChange={(event) =>
+                updateSelectedLaneFootPreference(
+                  event.target.value as TacticLane["footPreference"],
+                )
+              }
+            >
+              <option value="preferred">Preferred</option>
+              <option value="strict">Strict</option>
             </SelectField>
           </section>
         ) : null}

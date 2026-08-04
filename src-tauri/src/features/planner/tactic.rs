@@ -24,6 +24,8 @@ pub struct TacticLane {
     pub lane_id: String,
     pub ip_weight: f64,
     pub importance_rank: Option<u8>,
+    pub preferred_foot: String,
+    pub foot_preference: String,
     pub ip_position: String,
     pub ip_role_id: String,
     pub oop_position: String,
@@ -145,6 +147,8 @@ pub fn default_tactic() -> PlannerTactic {
                 lane_id: lane.lane_id.to_string(),
                 ip_weight: 0.5,
                 importance_rank: None,
+                preferred_foot: "any".to_string(),
+                foot_preference: "preferred".to_string(),
                 ip_position: lane.ip_position.to_string(),
                 ip_role_id: lane.ip_role_id.to_string(),
                 oop_position: lane.oop_position.to_string(),
@@ -188,14 +192,20 @@ pub fn save_tactic(conn: &Connection, save_id: i64, tactic: &PlannerTactic) -> R
     for (lane_order, lane) in tactic.lanes.iter().enumerate() {
         tx.execute(
             "INSERT INTO planner_tactic_lanes (
-                 save_id, lane_order, lane_id, ip_weight, importance_rank, ip_position, ip_role_id, oop_position, oop_role_id
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 save_id, lane_order, lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 save_id,
                 lane_order as i64,
                 lane.lane_id,
                 lane.ip_weight,
                 lane.importance_rank,
+                lane.preferred_foot,
+                if lane.preferred_foot == "any" {
+                    "preferred"
+                } else {
+                    &lane.foot_preference
+                },
                 lane.ip_position,
                 lane.ip_role_id,
                 lane.oop_position,
@@ -239,7 +249,7 @@ pub fn get_tactic_options() -> TacticOptions {
 fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
     let mut statement = conn
         .prepare(
-            "SELECT lane_id, ip_weight, importance_rank, ip_position, ip_role_id, oop_position, oop_role_id
+            "SELECT lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id
              FROM planner_tactic_lanes
              WHERE save_id = ?1
              ORDER BY lane_order",
@@ -251,10 +261,12 @@ fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String>
                 lane_id: row.get(0)?,
                 ip_weight: row.get(1)?,
                 importance_rank: row.get(2)?,
-                ip_position: row.get(3)?,
-                ip_role_id: row.get(4)?,
-                oop_position: row.get(5)?,
-                oop_role_id: row.get(6)?,
+                preferred_foot: row.get(3)?,
+                foot_preference: row.get(4)?,
+                ip_position: row.get(5)?,
+                ip_role_id: row.get(6)?,
+                oop_position: row.get(7)?,
+                oop_role_id: row.get(8)?,
             })
         })
         .map_err(|error| error.to_string())?
@@ -312,6 +324,21 @@ fn validate_tactic(tactic: &PlannerTactic) -> Result<(), String> {
             if !importance_ranks.insert(rank) {
                 return Err("Importance ranks must be unique".to_string());
             }
+        }
+        if !matches!(
+            lane.preferred_foot.as_str(),
+            "any" | "left" | "right" | "both"
+        ) {
+            return Err(format!(
+                "Lane `{}` preferred foot must be Either, Left, Right, or Both",
+                lane.lane_id
+            ));
+        }
+        if !matches!(lane.foot_preference.as_str(), "preferred" | "strict") {
+            return Err(format!(
+                "Lane `{}` foot preference must be Preferred or Strict",
+                lane.lane_id
+            ));
         }
         validate_role(
             &lane.lane_id,
@@ -450,6 +477,24 @@ mod tests {
         let range_error =
             save_tactic(&conn, save_id, &tactic).expect_err("reject out-of-range rank");
         assert!(range_error.contains("between 1 and 11"));
+    }
+
+    #[test]
+    fn persists_lane_foot_preferences_and_rejects_unknown_values() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        let mut tactic = get_tactic(&conn, save_id).expect("load default tactic");
+        tactic.lanes[0].preferred_foot = "both".to_string();
+        tactic.lanes[0].foot_preference = "strict".to_string();
+
+        save_tactic(&conn, save_id, &tactic).expect("save foot preference");
+
+        let reloaded = get_tactic(&conn, save_id).expect("reload tactic");
+        assert_eq!(reloaded.lanes[0].preferred_foot, "both");
+        assert_eq!(reloaded.lanes[0].foot_preference, "strict");
+
+        tactic.lanes[0].preferred_foot = "unknown".to_string();
+        let error = save_tactic(&conn, save_id, &tactic).expect_err("reject unknown foot");
+        assert!(error.contains("preferred foot"));
     }
 
     #[test]

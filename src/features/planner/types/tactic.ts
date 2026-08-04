@@ -16,6 +16,8 @@ export type TacticLane = {
   laneId: string;
   ipWeight: number;
   importanceRank: number | null;
+  preferredFoot: "any" | "left" | "right" | "both";
+  footPreference: "preferred" | "strict";
   ipPosition: string;
   ipRoleId: string;
   oopPosition: string;

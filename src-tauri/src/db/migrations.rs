@@ -212,6 +212,16 @@ CREATE UNIQUE INDEX idx_planner_tactic_lanes_save_importance_rank
     WHERE importance_rank IS NOT NULL;
 ";
 
+pub const PLANNER_LANE_FOOT_PREFERENCES_SQL: &str = "
+ALTER TABLE planner_tactic_lanes
+    ADD COLUMN preferred_foot TEXT NOT NULL DEFAULT 'any'
+    CHECK (preferred_foot IN ('any', 'left', 'right', 'both'));
+
+ALTER TABLE planner_tactic_lanes
+    ADD COLUMN foot_preference TEXT NOT NULL DEFAULT 'preferred'
+    CHECK (foot_preference IN ('preferred', 'strict'));
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -258,6 +268,11 @@ pub fn all() -> &'static [Migration] {
             version: 9,
             description: "add_planner_lane_importance_ranks",
             sql: PLANNER_LANE_IMPORTANCE_RANKS_SQL,
+        },
+        Migration {
+            version: 10,
+            description: "add_planner_lane_foot_preferences",
+            sql: PLANNER_LANE_FOOT_PREFERENCES_SQL,
         },
     ]
 }
@@ -339,7 +354,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 9);
+        assert_eq!(version, 10);
 
         let table_name: String = conn
             .query_row(
@@ -440,7 +455,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 9);
+        assert_eq!(version, 10);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -482,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v8_tactic_lanes_with_no_importance_rank() {
+    fn migrates_v8_tactic_lanes_with_default_rank_and_foot_preferences() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = Connection::open(temp_dir.path().join("planner-v8-migration-test.db"))
             .expect("open test db");
@@ -505,14 +520,18 @@ mod tests {
 
         apply(&conn).expect("migrate v8 tactic lane");
 
-        let importance_rank: Option<i64> = conn
-            .query_row(
-                "SELECT importance_rank FROM planner_tactic_lanes WHERE save_id = ?1",
+        let (importance_rank, preferred_foot, foot_preference): (Option<i64>, String, String) =
+            conn.query_row(
+                "SELECT importance_rank, preferred_foot, foot_preference
+                 FROM planner_tactic_lanes
+                 WHERE save_id = ?1",
                 [save_id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
-            .expect("read migrated importance rank");
+            .expect("read migrated lane preferences");
         assert_eq!(importance_rank, None);
+        assert_eq!(preferred_foot, "any");
+        assert_eq!(foot_preference, "preferred");
     }
 
     #[test]
@@ -542,7 +561,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 9);
+        assert_eq!(version, 10);
 
         let table_name: String = conn
             .query_row(
@@ -752,14 +771,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 9);
+        assert_eq!(version, 10);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 9);
+        assert_eq!(migrations.len(), 10);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -793,6 +812,12 @@ mod tests {
             "add_planner_lane_importance_ranks"
         );
         assert_eq!(migrations[8].sql, PLANNER_LANE_IMPORTANCE_RANKS_SQL);
+        assert_eq!(migrations[9].version, 10);
+        assert_eq!(
+            migrations[9].description,
+            "add_planner_lane_foot_preferences"
+        );
+        assert_eq!(migrations[9].sql, PLANNER_LANE_FOOT_PREFERENCES_SQL);
     }
 
     #[test]
@@ -852,7 +877,9 @@ mod tests {
                 "ip_role_id",
                 "oop_position",
                 "oop_role_id",
-                "importance_rank"
+                "importance_rank",
+                "preferred_foot",
+                "foot_preference"
             ]
         );
     }

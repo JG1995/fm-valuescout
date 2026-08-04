@@ -395,6 +395,53 @@ describe("planner route", () => {
     expect(rank).toHaveValue("3");
   });
 
+  it("saves the selected lane foot rule and disables its mode for Either", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    const preferredFoot = screen.getByRole("combobox", {
+      name: "Lane 1 preferred foot",
+    });
+    const footPreference = screen.getByRole("combobox", {
+      name: "Lane 1 foot preference",
+    });
+    expect(footPreference).toBeDisabled();
+
+    await user.selectOptions(preferredFoot, "both");
+    expect(footPreference).toBeEnabled();
+    await user.selectOptions(footPreference, "strict");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    expect(resolvePlannerTacticIpcMock().lanes[0]).toMatchObject({
+      preferredFoot: "both",
+      footPreference: "strict",
+    });
+  });
+
+  it("retains an edited foot rule after a failed save", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerTacticSaveError("Tactic save failed");
+    renderPlannerRoute();
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    const preferredFoot = screen.getByRole("combobox", {
+      name: "Lane 1 preferred foot",
+    });
+    await user.selectOptions(preferredFoot, "left");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Tactic save failed",
+    );
+    expect(preferredFoot).toHaveValue("left");
+    expect(resolvePlannerTacticIpcMock().lanes[0].preferredFoot).toBe("any");
+  });
+
   it("shows duplicate importance ranks inline and retains them after a failed save", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

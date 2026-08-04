@@ -117,7 +117,7 @@ PR 1, commit 1 replaces the global weight with a lane-owned weight through SQLit
 
 ### PR 1 — Per-lane optimizer preferences
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -252,7 +252,7 @@ PR 1, commit 1 replaces the global weight with a lane-owned weight through SQLit
 
 **PR:** PR 1 — Per-lane optimizer preferences
 
-**Commit:** Apply preferred-foot optimizer rules
+**Commit:** None — PR 1 is ready for publication
 
 ### RED proof
 
@@ -281,6 +281,7 @@ Each lane saves an unrestricted, left, right, or both-foot rule and Preferred or
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Use per-lane scoring weights | Pending record | Terra xhigh | Terra xhigh, accepted | None |
 | PR 1 | Prioritize ranked tactic lanes | Pending record | Terra xhigh | Terra xhigh, accepted | None |
+| PR 1 | Apply preferred-foot optimizer rules | Pending record | Terra High | Terra High, clear after 1 fix round | None |
 
 ## Final validation
 

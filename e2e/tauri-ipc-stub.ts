@@ -27,6 +27,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           laneId,
           ipWeight: 0.5,
           importanceRank: null,
+          preferredFoot: "any",
+          footPreference: "preferred",
           ipPosition,
           ipRoleId,
           oopPosition,

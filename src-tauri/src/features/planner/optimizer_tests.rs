@@ -1,11 +1,14 @@
 use rusqlite::params;
 
 use super::depth::{add_string, assign_player, get_depth, PlannerTeam};
-use super::optimizer::{match_lanes, optimize_depth, OptimizerCandidate};
+use super::optimizer::{
+    allocation_score, foot_matches, match_lanes, optimize_depth, OptimizerCandidate,
+};
 use super::tactic;
 use super::test_support::{
     add_picker_candidates, assigned_player_uid, assignment_provenance, open_with_snapshot,
-    set_player_age, set_player_positions, set_right_winger_scores, set_role_score, team_strings,
+    set_player_age, set_player_positions, set_player_preferred_foot, set_right_winger_scores,
+    set_role_score, team_strings,
 };
 
 #[test]
@@ -53,6 +56,42 @@ fn matcher_breaks_equal_scores_by_lowest_uid_in_lane_order() {
     ];
 
     assert_eq!(match_lanes(&[0, 1], &candidates), [Some(1), Some(0)]);
+}
+
+#[test]
+fn two_footed_players_match_every_restricted_foot_rule() {
+    for (player_foot, preferred_foot, expected) in [
+        ("left", "any", true),
+        ("right", "any", true),
+        ("either", "any", true),
+        ("", "any", true),
+        ("left", "left", true),
+        ("right", "left", false),
+        ("either", "left", true),
+        ("", "left", false),
+        ("left", "right", false),
+        ("right", "right", true),
+        ("either", "right", true),
+        ("", "right", false),
+        ("left", "both", false),
+        ("right", "both", false),
+        ("either", "both", true),
+        ("", "both", false),
+    ] {
+        assert_eq!(
+            foot_matches(player_foot, preferred_foot),
+            expected,
+            "{player_foot:?} against {preferred_foot:?}",
+        );
+    }
+}
+
+#[test]
+fn soft_foot_mismatches_are_capped_at_zero() {
+    let mut lane = tactic::default_tactic().lanes.remove(0);
+    lane.preferred_foot = "right".to_string();
+
+    assert_eq!(allocation_score(3, "left", &lane), Some(0));
 }
 
 #[test]
@@ -129,6 +168,82 @@ fn optimizer_uses_the_weight_for_each_tactic_lane() {
         assigned_player_uid(&oop_heavy, PlannerTeam::Senior, "right_winger"),
         Some(78)
     );
+}
+
+#[test]
+fn optimizer_applies_strict_and_preferred_foot_rules_without_changing_manual_assignments() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id = super::test_support::current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE player_role_scores
+         SET score = NULL
+         WHERE snapshot_id = ?1
+           AND uid IN (77, 78)
+           AND role_id NOT IN ('winger_ip', 'tracking_wide_midfielder_oop')",
+        [snapshot_id],
+    )
+    .expect("limit candidates to the right-winger lane");
+    set_right_winger_scores(&conn, save_id, 77, Some(100));
+    set_right_winger_scores(&conn, save_id, 78, Some(98));
+    set_player_preferred_foot(&conn, save_id, 77, "left");
+    set_player_preferred_foot(&conn, save_id, 78, "right");
+
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[9].preferred_foot = "right".to_string();
+    tactic.lanes[9].foot_preference = "preferred".to_string();
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save soft preference");
+
+    let soft = optimize_depth(&conn, save_id).expect("optimize soft preference");
+    assert_eq!(
+        assigned_player_uid(&soft, PlannerTeam::Senior, "right_winger"),
+        Some(78)
+    );
+
+    tactic.lanes[9].foot_preference = "strict".to_string();
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save strict preference");
+    let strict = optimize_depth(&conn, save_id).expect("optimize strict preference");
+    assert_eq!(
+        assigned_player_uid(&strict, PlannerTeam::Senior, "right_winger"),
+        Some(78)
+    );
+
+    tactic.lanes[9].importance_rank = Some(1);
+    tactic.lanes[9].foot_preference = "preferred".to_string();
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save ranked soft preference");
+    let ranked_soft = optimize_depth(&conn, save_id).expect("optimize ranked soft preference");
+    assert_eq!(
+        assigned_player_uid(&ranked_soft, PlannerTeam::Senior, "right_winger"),
+        Some(78)
+    );
+
+    tactic.lanes[9].foot_preference = "strict".to_string();
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save ranked strict preference");
+    let ranked_strict = optimize_depth(&conn, save_id).expect("optimize ranked strict preference");
+    assert_eq!(
+        assigned_player_uid(&ranked_strict, PlannerTeam::Senior, "right_winger"),
+        Some(78)
+    );
+
+    set_player_preferred_foot(&conn, save_id, 78, "left");
+    let strict_blank = optimize_depth(&conn, save_id).expect("optimize ranked strict mismatch");
+    assert_eq!(
+        assigned_player_uid(&strict_blank, PlannerTeam::Senior, "right_winger"),
+        None
+    );
+
+    let depth = get_depth(&conn, save_id).expect("load depth");
+    let senior_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    tactic.lanes[0].preferred_foot = "right".to_string();
+    tactic.lanes[0].foot_preference = "strict".to_string();
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save strict goalkeeper preference");
+    assign_player(&conn, save_id, senior_string_id, "goalkeeper", 77)
+        .expect("assign manual left-footed player");
+    let rerun = optimize_depth(&conn, save_id).expect("rerun optimization");
+    assert!(team_strings(&rerun, PlannerTeam::Senior)[0]
+        .assignments
+        .iter()
+        .any(|assignment| assignment.lane_id == "goalkeeper" && assignment.player_uid == 77));
 }
 
 #[test]

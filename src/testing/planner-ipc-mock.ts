@@ -70,6 +70,8 @@ const DEFAULT_TACTIC: PlannerTactic = {
     laneId,
     ipWeight: 0.5,
     importanceRank: null,
+    preferredFoot: "any",
+    footPreference: "preferred",
     ipPosition,
     ipRoleId,
     oopPosition,

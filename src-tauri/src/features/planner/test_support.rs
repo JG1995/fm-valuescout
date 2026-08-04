@@ -119,6 +119,23 @@ pub(super) fn set_player_positions(
     .expect("set player positions");
 }
 
+pub(super) fn set_player_preferred_foot(
+    conn: &Connection,
+    save_id: i64,
+    player_uid: i64,
+    preferred_foot: &str,
+) {
+    conn.execute(
+        "UPDATE players SET preferred_foot = ?1 WHERE snapshot_id = ?2 AND uid = ?3",
+        params![
+            preferred_foot,
+            current_snapshot_id(conn, save_id),
+            player_uid
+        ],
+    )
+    .expect("set player preferred foot");
+}
+
 pub(super) fn assigned_player_uid(
     depth: &PlannerDepth,
     team: PlannerTeam,

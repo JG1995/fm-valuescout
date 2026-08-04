@@ -124,6 +124,12 @@ test.describe("walking skeleton smoke", () => {
     await main
       .getByRole("combobox", { name: "Lane 1 importance rank" })
       .selectOption("1");
+    await main
+      .getByRole("combobox", { name: "Lane 1 preferred foot" })
+      .selectOption("left");
+    await main
+      .getByRole("combobox", { name: "Lane 1 foot preference" })
+      .selectOption("strict");
     await main.getByRole("button", { name: "Save tactic" }).click();
 
     await expect(main.getByRole("status")).toHaveText("Tactic saved.");
