@@ -119,8 +119,7 @@ Fork chooses: auth, signing, auto-update, additional plugins
 
 ```text
 your-repo/
-├── .agents/           # Project workflow policy
-├── .codex/            # Project agents, MCP config, and workflow guide
+├── .codex/            # Project workflow policy, agents, MCP config, and guide
 ├── .wiki/             # Durable docs (this file, ADRs, TODO)
 ├── .husky/            # Git hooks (pre-commit → check-fast + conditional check-rust)
 ├── scripts/

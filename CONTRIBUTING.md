@@ -32,7 +32,7 @@ Every commit message uses [Conventional Commits 1.0.0](https://www.conventionalc
 
 ## Use the Codex workflow for non-trivial work
 
-The workflow overview is in [.codex/README.md](.codex/README.md). [AGENTS.md](AGENTS.md) owns standing repository rules, and [.agents/WORKFLOW.md](.agents/WORKFLOW.md) owns lifecycle and model-routing policy. Development is trunk-based: short-lived branches merge to `main` frequently, and every commit is atomic.
+The workflow overview is in [.codex/README.md](.codex/README.md). [AGENTS.md](AGENTS.md) owns standing repository rules, and [.codex/WORKFLOW.md](.codex/WORKFLOW.md) owns lifecycle and model-routing policy. Development is trunk-based: short-lived branches merge to `main` frequently, and every commit is atomic.
 
 ### New project bootstrap
 
@@ -73,4 +73,4 @@ git fetch template
 git merge template/main --allow-unrelated-histories
 ```
 
-Resolve conflicts manually. Review changes to `.agents/WORKFLOW.md`, `.codex/`, `scripts/`, and `AGENTS.md` before you merge.
+Resolve conflicts manually. Review changes to `.codex/WORKFLOW.md`, `.codex/`, `scripts/`, and `AGENTS.md` before you merge.
