@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Planner workspace redesign](./features/active/planner-workspace-redesign.md) — separate Squad, Tactic, and Club setup workspaces; unify tactic lane controls; and compact the populated squad matrix
+- [Planner workspace redesign](./features/active/planner-workspace-redesign.md) — separate Planner workspaces, present linked tactical positions in football terms, and adapt the populated matrix between all-team and selected-team layouts
 
 ## Next
 

@@ -6,7 +6,7 @@ Active
 
 ## Intent
 
-Make Squad Planner a focused desktop workspace instead of one long page of equally weighted setup, tactic, and squad panels. The redesign puts the selected squad and its Optimize action first for configured saves while keeping tactic and club-family editing close at hand.
+Make Squad Planner a focused desktop workspace instead of one long page of equally weighted setup, tactic, and squad panels. The redesign puts squad decisions first, describes linked tactical positions in football terms instead of internal lane terminology, and uses available desktop width to show the three teams together when the matrix remains readable.
 
 ## User-visible behavior
 
@@ -15,11 +15,16 @@ Make Squad Planner a focused desktop workspace instead of one long page of equal
 - The page header identifies the configured primary club when one exists. Only the active workspace is visible and exposed to assistive technology.
 - Arrow keys, Home, and End move between workspace tabs. Tab changes replace the current URL search state so the selected workspace survives reload without adding noisy browser-history entries.
 - Switching workspaces preserves unsaved club-family and tactic drafts, selected tactic lane, and selected Planner team. Switching the active app save keeps the existing reset and refresh behavior.
-- The Tactic workspace shows the IP, OOP, or Both pitch view beside one selected-lane inspector. The inspector contains the lane's score weight, importance rank, preferred-foot rule, and the visible phase position and role controls.
+- The Tactic workspace shows the IP, OOP, or Both pitch view beside one selected-position inspector. The inspector contains the linked position's score weight, importance rank, preferred-foot rule, and the visible phase position and role controls.
 - In Both view, IP and OOP pitches remain side by side at the supported desktop widths. The editor has one clear primary action: **Save tactic**.
-- The Squad workspace puts Senior, Reserves, and Youth selection, **Optimize squads**, and selected-team **Clear Squad** in one compact toolbar above the matrix.
-- Squad matrix rows use a compact two-line lane summary and align each player name with the combined score. The matrix owns overflow when its strings or rows exceed the available workspace instead of pushing unrelated workspaces down the page.
+- The Squad workspace keeps Senior, Reserves, and Youth presentation controls with **Optimize squads** in one compact toolbar above the matrix.
+- Squad matrix rows use a compact two-line position-and-role summary and align each player name with the combined score. The matrix owns overflow when its strings or rows exceed the available workspace instead of pushing unrelated workspaces down the page.
 - Successful squad actions use one compact latest-status region. Errors remain visible near the affected control and retain their existing accessible alert behavior.
+- User-facing Planner copy does not expose lane IDs, lane numbers, or static labels such as **Left winger**. Tactic pitches, the inspector, the squad matrix, player-assignment flows, confirmations, validation, and accessible names describe the current linked IP/OOP positions and roles, with a spatial qualifier only when it is needed to distinguish positions.
+- Focusing, hovering, or selecting a tactical position on either pitch emphasizes its linked counterpart without relying on a shared number.
+- When the Squad workspace can preserve readable position and assignment widths, one semantic matrix shows Senior, Reserves, and Youth as grouped columns with their ordered strings beneath them. When the available Planner width or string count cannot preserve those widths, the existing team tabs show one team at a time.
+- The matrix keeps position context and player scores close to the data they describe. Team boundaries and row focus remain visible across the combined view.
+- **Optimize squads** remains global. **Clear Squad** is placed in the affected team's table header and always names that team before confirmation in both combined and single-team layouts.
 
 ## Invariants
 
@@ -27,6 +32,7 @@ Make Squad Planner a focused desktop workspace instead of one long page of equal
 - IPC command names, query keys, cache reconciliation, SQLite schema, migrations, tactic payloads, and Planner DTOs do not change.
 - Senior, Reserves, and Youth remain the fixed teams. Strings remain ordered and unlimited, and each team keeps at least one string.
 - One save-scoped tactic with eleven stable linked lanes remains shared by all teams.
+- Stable lane IDs and lane order remain internal Planner identities. User-facing labels derive from the current tactic draft or returned tactic and do not redefine persistence identity.
 - Manual and optimized assignment provenance, save-wide player uniqueness, selected-team clearing, and manual-assignment precedence remain unchanged.
 - Missing phase scores render as `—`. Outside-pool and unresolved assignments remain occupied and visibly warned.
 - Tactic and club-family drafts survive workspace changes. Failed saves retain the draft. An active-save change cannot carry a draft into the next save.
@@ -42,12 +48,14 @@ Make Squad Planner a focused desktop workspace instead of one long page of equal
 - No mobile or narrow-window design. The product remains desktop-only at a 1280×800 minimum and a 1600×900 design viewport.
 - No generic shared tabs or workspace framework. Planner follows the existing profile-tab pattern within its feature boundary.
 - No accordion fallback or permanent three-pane cockpit.
+- No user-defined display labels, persisted position names, manual matrix-layout preference, or new tactic-link identifier.
+- No rename of internal `TacticLane`, `laneId`, Rust fields, database columns, or optimizer terminology that does not appear in the UI.
 
 ## Current-state map
 
-- Relevant components: `src/app/routes/planner.tsx` loads all Planner queries and vertically renders `PlannerClubFamilyPanel`, `PlannerTacticEditor`, then `PlannerDepthMatrix`; `src/app/components/app-shell-layout.tsx` gives the main region page-level vertical scrolling.
-- Tactic presentation: `src/features/planner/components/planner-tactic-editor.tsx` owns the draft, phase view, selected lane, global lane controls, validation, and save mutation. `planner-tactic-pitch.tsx` renders each pitch and duplicates a phase-specific lane-control card beside it.
-- Squad presentation: `planner-depth-matrix.tsx` owns team selection, mutations, picker and menu state, and separate success and error messages. `planner-depth-table.tsx` renders sticky lane labels, horizontal overflow, four-line lane headers, and vertically stacked assignment content.
+- Relevant components: `src/app/routes/planner.tsx` loads all Planner queries and owns URL-backed Squad, Tactic, and Club setup workspaces. It keeps `PlannerClubFamilyPanel`, `PlannerTacticEditor`, and `PlannerDepthMatrix` mounted in labelled hidden tab panels; `src/app/components/app-shell-layout.tsx` gives the main region page-level vertical scrolling.
+- Tactic presentation: `src/features/planner/components/planner-tactic-editor.tsx` owns the draft, phase view, selected lane ID, validation, and save mutation. `planner-tactic-pitch.tsx` renders each pitch with numbered lane buttons, while `planner-tactic-inspector.tsx` renders one selected-lane inspector. `src/features/planner/utils/tactic-editor.ts` maps stable lane IDs to static labels and emits lane-number validation copy, so edited positions can disagree with their visible label.
+- Squad presentation: `planner-depth-matrix.tsx` owns selected-team state, mutations, picker and menu state, and one latest squad-action status. `planner-depth-table.tsx` renders one selected team at a time with sticky lane and string headers, bounded two-axis overflow, compact rows, and static lane labels. `planner-slot-fit-picker.tsx` reuses those labels in assignment locations and confirmations.
 - Club-family presentation: `planner-club-family-panel.tsx` owns a local draft and invalidates the Planner query tree after save.
 - Existing analogue: `/players/$uid` validates a `tab` search parameter, replaces URL search state on tab changes, and uses an accessible roving-tabindex `PlayerProfileTabs` component with hidden tab panels.
 - Data model: save-scoped club settings, tactic lanes, strings, and assignments remain unchanged.
@@ -55,7 +63,7 @@ Make Squad Planner a focused desktop workspace instead of one long page of equal
 - Existing behavioral assumptions: the tactic editor is keyed by active save to prevent cross-save draft leakage; Planner workspace components already own their transient interaction state; query invalidation after saves and mutations is established.
 - Tests: `src/app/routes/planner.test.tsx` covers Planner route behavior and interactions; `e2e/smoke.spec.ts` covers no-snapshot, first-use setup, tactic save, string management, and optimizer paths through stubbed IPC.
 - Project validation commands: `./scripts/dev test [target...]`, `./scripts/dev check`, and `./scripts/dev smoke`. `./scripts/dev mutate` is unsupported and is not acceptance evidence.
-- Primary risks: losing local drafts when workspaces hide, creating nested-scroll traps, compressing warnings or long role names beyond legibility, and preserving accessible focus and announcements while controls move.
+- Primary risks: keeping number-free tactical-position names truthful and distinguishable; preserving linked pitch emphasis and accessible names; avoiding focus loss when a string mutation changes responsive matrix mode; keeping complex team/string headers understandable; and preventing nested-scroll or sticky-header failures.
 
 ## Feature architecture
 
@@ -63,9 +71,9 @@ The existing `/planner` route remains the only Planner page and continues to loa
 
 All three workspace components stay mounted while their tab panels use the native `hidden` attribute. This keeps current component-owned draft and selection state without a new store or lifted state. The existing active-save key continues to reset the tactic editor at the save boundary.
 
-`PlannerTacticEditor` remains the draft and mutation owner. Pitch rendering becomes presentation-only, while one Planner-local selected-lane inspector renders the global lane settings and the controls for the phase or phases visible in the selected tactic view. No tactic state or validation moves across the frontend/backend boundary.
+`PlannerTacticEditor` remains the draft and mutation owner. Pitch rendering stays presentation-only, while one Planner-local selected-position inspector renders the shared settings and the controls for the phase or phases visible in the selected tactic view. A Planner-local display helper derives user-facing descriptions from the current IP/OOP positions and roles and adds a deterministic spatial qualifier when positions would otherwise be ambiguous. Stable lane IDs continue to link both pitches, assignments, and save payloads but do not appear in user-facing copy. Focus, hover, and selection use the existing linked identity to emphasize the same tactical position on both pitches.
 
-`PlannerDepthMatrix` remains the squad interaction coordinator. It composes one compact team/action/status toolbar and gives `PlannerDepthTable` the available workspace. The table keeps semantic table markup, the sticky lane column, string header menus, cell accessible names, and focus behavior while reducing row content to a consistent compact layout.
+`PlannerDepthMatrix` remains the squad interaction coordinator. It composes the compact team/action/status area, derives whether all teams fit from the matrix's available width and current string counts, and gives `PlannerDepthTable` one active presentation mode. The table uses one semantic grouped-header model: wide mode shows team column groups with ordered strings beneath them, while constrained mode shows the selected team and its tabs. Both modes keep one sticky position column, string header menus, explicit team-scoped Clear Squad actions, cell accessible names, and focus restoration. The layout does not duplicate interactive tables or add global state.
 
 The implementation uses existing React, TanStack Router, Tailwind, Panel, Button, field, Modal, and ScoreBadge patterns. It adds no dependency and does not require an ADR because it applies established route-state and feature-boundary decisions.
 
@@ -73,10 +81,11 @@ The implementation uses existing React, TanStack Router, Tailwind, Panel, Button
 
 ### Known
 
-- The populated Planner screenshot supplied on 2026-08-04 shows club setup, the full dual-pitch tactic editor, and the squad matrix stacked in one long document. The squad output begins below both configuration workspaces.
+- The original populated Planner screenshot supplied on 2026-08-04 showed club setup, the full dual-pitch tactic editor, and the squad matrix stacked in one long document. Commits 1 through 3 replaced that composition with workspaces and a compact bounded matrix.
+- A second populated screenshot supplied on 2026-08-04 shows the implemented Squad workspace at about 1920px wide. The first column expands across roughly half the matrix, role and score context sit far apart, and the static **Left winger** label conflicts with lane 9's current AMC position.
 - The app targets a 1280×800 minimum and a 1600×900 design viewport.
 - PR [#30](https://github.com/JG1995/fm-valuescout/pull/30) merged Planner optimizer preferences into `main` as `1c4ec088246d6563e1ff05636af8928b4f5a290f` on 2026-08-04.
-- The repository has no active feature ledger and no planned spec for this redesign.
+- The feature branch is `feat/planner-workspace-redesign`. It is published at `origin/feat/planner-workspace-redesign`, remains unmerged, and has no PR ref recorded.
 - The removed UI-agent command is unavailable. Browser smoke uses stubbed IPC and does not prove native WebView or live SQLite behavior.
 
 ### Assumptions
@@ -85,42 +94,47 @@ The implementation uses existing React, TanStack Router, Tailwind, Panel, Button
 - A URL search parameter is the correct owner for the visible workspace because the state is reload-relevant and the profile route already establishes the pattern.
 - Keeping hidden workspaces mounted is acceptable for three already-loaded Planner components and is simpler than a new client store or draft-lifting boundary.
 - Existing design tokens and primitives are sufficient. The problem is hierarchy and composition, not branding.
+- Current phase positions, roles, and stable linked identity contain enough information to produce truthful user-facing descriptions without a persisted display label.
+- The common two-string-per-team case can show all three teams at the supplied wide viewport once the position and assignment columns stop absorbing unused width. Constrained widths and larger string counts should retain the single-team presentation.
 
 ### Decisions
 
-- Deliver the redesign in one PR with three atomic commits. The commits share one route, one test surface, and one visual acceptance pass, so a second PR would add publication overhead without an independent merge boundary.
+- Deliver the redesign in one PR with five atomic commits. The two added commits remain on the unpublished and unmerged feature branch, share the same Planner components, tests, and visual acceptance surface, and do not create an independent merge boundary.
 - Use `squad`, `tactic`, and `clubs` as the URL values and **Squad**, **Tactic**, and **Club setup** as the visible labels.
 - Use `replace: true` for workspace changes, matching the player-profile tab route.
 - Keep inactive workspaces mounted inside hidden tab panels to preserve transient state.
 - Keep the tactic inspector visible beside the pitch area. Both view shows two pitch boards and one inspector, not one inspector per pitch.
 - Let the squad matrix own horizontal overflow and bounded vertical overflow. Do not constrain the entire route with an arbitrary pixel height.
+- Keep stable lane IDs and order as internal persistence and linking contracts. Remove the word **lane**, lane numbers, and static lane-ID labels from normal Planner copy. Use current IP/OOP positions and roles, plus a deterministic spatial qualifier only when needed to distinguish linked positions.
+- Use linked focus, hover, and selection emphasis across the IP and OOP pitches instead of visible numeric correspondence.
+- Show all teams only when the Planner matrix container can preserve the existing readable minimum widths for the current strings. Otherwise show the selected team through the existing tabs. Do not add a manual layout toggle or persisted layout preference.
+- Put each destructive Clear Squad action in the affected team's table header in both display modes. Keep Optimize squads as the one global primary action.
 - Update the relevant current-state `DESIGN.md` and `ARCHITECTURE.md` text only in the implementation or reconciliation step that makes each statement true.
 - Do not create an ADR. The feature uses accepted React, Router, Tailwind, and Planner boundaries.
 - For this experiment, use Luna Max for every implementation profile in this ledger. Keep Sol High for every review profile, including the final feature-complete review. This overrides the repository defaults for this ledger only.
 
 ### Unknowns
 
-- The final compact row height and inspector width need populated visual inspection at both target viewports. These measurements do not block the workspace-navigation commit.
+- The exact fit threshold for combined-team mode needs populated visual inspection with representative one-, two-, and three-string teams at 1280×800, 1600×900, and the supplied wide viewport. This does not block the terminology commit because the threshold must preserve existing token-backed minimum widths rather than introduce a new product contract.
 - Native Tauri viewport inspection remains manual unless a supported repository command is added by separate, explicitly approved tooling work.
 
 ### Risks
 
-- Conditional rendering could unmount an editor and discard a draft. The tab-panel contract and tests must prove preservation.
-- Hiding all but one workspace changes existing tests and smoke paths that assume all controls are visible at once.
-- A bounded matrix can create nested scrolling or obscure focused rows if sticky headers and focus scrolling are not verified together.
-- Compact lane and assignment rows can hide long role or player names. Truncation must retain `title` and accessible names.
-- Moving success and error regions can create duplicate or missed screen-reader announcements.
-- Two pitches plus one inspector can overflow when the navigation rail is expanded at 1280×800.
+- Two linked positions can share the same phase placement or role. User-facing descriptions must stay distinguishable without falling back to lane numbers or static position labels.
+- Removing numeric pitch markers can make the IP/OOP relationship unclear unless focus, hover, selection, and accessible descriptions emphasize the linked counterpart together.
+- A string add or removal can cross the combined/single-team fit threshold. The acted-on team and string header must remain visible and receive restored focus after the responsive mode changes.
+- Multi-row team and string headers can lose programmatic context if group and column associations are only visual.
+- Wider combined tables can recreate the original long eye path unless the sticky position column, assignment widths, score proximity, team separators, and row focus treatment are validated with populated data.
 
 ## Walking skeleton
 
-Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable Squad, Tactic, and Club setup tabs while preserving the existing three workspace components and their behavior. This proves the information architecture before the two dense workspaces are recomposed.
+Commit 1 remains the feature walking skeleton: it replaced vertical workspace stacking with URL-backed, keyboard-operable Squad, Tactic, and Club setup tabs while preserving the existing three workspace components and their behavior. For the added scope, commit 4 establishes truthful linked-position language across the existing surfaces before commit 5 changes the matrix's team composition.
 
 ## Delivery plan
 
 ### PR 1 — Redesign Squad Planner workspace
 
-**Status:** Ready for publication
+**Status:** Active
 
 **PR ref:** Not published
 
@@ -128,7 +142,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 **Provisional PR title:** `feat(planner): redesign squad planner workspace`
 
-**Purpose:** Deliver the complete Planner information-architecture and density redesign in one review surface without changing Planner domain behavior.
+**Purpose:** Deliver the complete Planner information architecture, truthful tactical-position language, and adaptive three-team depth overview in one review surface without changing Planner domain behavior.
 
 **Depends on:** Planner optimizer preferences PR #30, merged as `1c4ec088246d6563e1ff05636af8928b4f5a290f`. Start implementation from a refreshed `main` on a new short-lived branch.
 
@@ -261,48 +275,131 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 - Verify one latest success announcement does not suppress errors or create duplicate live-region output.
 - Reject optimizer, persistence, backend, new-data, virtualization, and unrelated styling changes.
 
+#### Commit 4 — Present linked tactical positions
+
+**Status:** Active
+
+**Provisional commit:** `feat(planner): present linked tactical positions`
+
+**Work:** Replace user-facing lane names and numbers with current IP/OOP position-and-role descriptions across the tactic pitches, selected-position inspector, squad matrix, player picker, confirmations, validation, and accessible names. Add linked focus, hover, and selection emphasis between both pitches so the relationship remains clear without numeric markers. Update focused tests, smoke coverage, and the implemented terminology contract in `DESIGN.md`.
+
+**Out of scope:**
+
+- Internal `TacticLane`, `laneId`, stable ordering, Rust fields, persistence, DTOs, save payloads, assignments, optimizer logic, or rank semantics.
+- Adaptive all-team matrix composition, team action placement, column geometry, or responsive thresholds from commit 5.
+- User-defined tactical-position labels, role abbreviations, formations, drag-and-drop, or new tactic data.
+
+**Implementation packet:**
+
+- Owners and files: `src/features/planner/utils/tactic-editor.ts`; `planner-tactic-editor.tsx`; `planner-tactic-pitch.tsx`; `planner-tactic-inspector.tsx`; `planner-depth-table.tsx`; `planner-slot-fit-picker.tsx`; `src/app/routes/planner.test.tsx`; `e2e/smoke.spec.ts`; the Planner terminology and accessibility bullets in `.wiki/DESIGN.md`; the React Planner composition paragraph in `.wiki/ARCHITECTURE.md`; and this ledger for progress evidence.
+- Existing patterns to verify: current `phasePosition` and `roleLabel` derivation; shared `selectedLaneId` and `aria-pressed` state across both pitches; stable `TACTIC_LANE_IDS` order; matrix cell accessible names; picker `slotLocation` and move-confirmation copy; truncation plus `title`; and selected-position draft updates before save.
+- Constraints and invariants: user-facing descriptions come from the current draft in Tactic and the returned tactic in Squad; they update immediately after phase edits; stable lane IDs remain the only persisted and mutation identity; mirrored or duplicate placements receive deterministic human spatial context without numeric lane fallback; importance rank remains a separate 1–11 value; all visible controls and validation errors use position-focused labels; linked emphasis is not conveyed by color alone.
+- Dependencies and ordering: commits 1 through 3 are complete. This semantic foundation lands before commit 5 reuses the same position descriptions as shared row headers in the adaptive matrix.
+
+**Implementation profile:** Luna Max — the data and state seams are established, but one truthful descriptor must stay synchronized across draft editing, pitch linking, matrix locations, confirmations, and accessibility without changing internal contracts.
+
+**Review profile:** Sol High — review must detect semantic ambiguity, stale draft-derived labels, inaccessible duplicate names, broken linked emphasis, and any accidental public or persisted lane-contract change across several Planner surfaces.
+
+**Validation:**
+
+- RED then GREEN: `./scripts/dev test src/app/routes/planner.test.tsx`
+- Browser control paths: `./scripts/dev smoke`
+- Commit gate: `./scripts/dev check`
+- Manual populated evidence at 1280×800 and 1600×900: no normal Planner surface exposes lane numbers, static lane-ID position labels, or lane-focused instructions; editing a position updates pitch, inspector, and validation context immediately; focus, hover, and selection identify the linked counterpart in Both view; duplicate placements remain distinguishable by visible text and accessible name.
+
+**Stop conditions:** Stop and replan if unique number-free descriptions require a persisted label, lane-ID or DTO change, or invented football semantics that conflict with the current phase data; if linked emphasis requires moving tactic draft ownership or adding global state; or if validation cannot name an invalid position without exposing an internal identifier.
+
+**Review mandate:**
+
+- Verify the supplied lane 9 case is described from its current AMC positions and roles and never as **Left winger**.
+- Verify all pitch buttons, inspector headings and controls, matrix row headers and cells, picker locations, confirmations, and validation errors avoid user-facing lane terminology and numbers.
+- Verify descriptions update from unsaved tactic drafts and reset at the established save boundary.
+- Verify mirrored and duplicate phase placements remain distinguishable without relying on color or DOM order alone.
+- Verify focus, hover, and selection keep the same linked identity emphasized across IP and OOP while keyboard operation and visible focus remain intact.
+- Verify tactic payloads, rank values, mutations, query invalidation, and assignment locations still use unchanged internal lane IDs.
+- Reject internal DTO/database renames, new persisted display data, generic naming frameworks, or unrelated copy cleanup.
+
+#### Commit 5 — Show all teams when the matrix fits
+
+**Status:** Pending
+
+**Provisional commit:** `feat(planner): adapt squad matrix to available width`
+
+**Work:** Make the Squad matrix show Senior, Reserves, and Youth as grouped columns in one semantic table when the Planner container can preserve readable position and assignment widths. Retain the selected-team tabs when the current strings do not fit, move Clear Squad into the affected team's group header, constrain scan distances, and preserve all existing string, assignment, mutation, warning, overflow, and focus behavior. Update route tests, wide and constrained smoke paths, and the implemented matrix contract in `DESIGN.md` and `ARCHITECTURE.md`.
+
+**Out of scope:**
+
+- Team, string, assignment, candidate, optimizer, scoring, persistence, IPC, cache, or Rust behavior.
+- A manual All teams toggle, saved layout preference, custom breakpoints in the global app shell, table virtualization, column reordering, or string reordering.
+- Tactic or Club setup changes beyond consuming the position descriptions completed in commit 4.
+
+**Implementation packet:**
+
+- Owners and files: `src/features/planner/components/planner-depth-matrix.tsx`; `planner-depth-table.tsx`; `planner-clear-team-control.tsx`; one Planner-local fit helper only if needed to keep measurement separate from mutations; `src/app/routes/planner.test.tsx`; `e2e/smoke.spec.ts`; `e2e/tauri-ipc-stub.ts` only for representative multi-team strings and assignments; the Squad matrix bullets in `.wiki/DESIGN.md`; the React Planner composition paragraph in `.wiki/ARCHITECTURE.md`; and this ledger for progress evidence.
+- Existing patterns to verify: `PLANNER_TEAMS` order and roving team tabs; complete `PlannerDepth.teams` read model; token-backed string minimum widths; sticky header and first-column layering; string header menus and focus refs; Clear Squad confirmation and trigger restoration; latest action status; assignment-cell accessible names; ScoreBadge; and nav-rail width changes.
+- Constraints and invariants: combined mode uses one table with team column groups and ordered string headers; constrained mode exposes only the selected team's group plus the existing tabs; the fit decision uses actual Planner container space and current string counts, not viewport width alone; no duplicate interactive matrix exists in the accessibility tree; one sticky position-and-role column stays bounded; scores remain close to names; team boundaries and row focus are visible without color-only meaning; adding or removing a string can change mode without losing the acted-on team or focus target; Optimize remains global; each Clear Squad trigger names and clears only its own team.
+- Dependencies and ordering: commit 4 supplies the shared truthful position descriptions. Do not duplicate descriptor logic in the responsive table.
+
+**Implementation profile:** Luna Max — the matrix data and mutations are established, but responsive fit, grouped semantic headers, mutation-driven mode changes, sticky layering, and focus restoration create a broad presentation integration surface.
+
+**Review profile:** Sol High — deterministic tests cannot alone prove wide-table scan quality, responsive mode changes, WebView sticky behavior, or complex header accessibility, so review must combine code, interaction, and populated visual evidence.
+
+**Validation:**
+
+- RED then GREEN: `./scripts/dev test src/app/routes/planner.test.tsx`
+- Browser control paths at constrained and explicit wide viewports: `./scripts/dev smoke`
+- Commit gate: `./scripts/dev check`
+- Manual populated evidence at 1280×800, 1600×900, and the supplied wide viewport: 1280 keeps a usable selected-team table; the wide common two-string case shows all teams without document overflow; the 1600 result follows actual available width with collapsed and expanded navigation; one-, two-, and three-string combinations keep readable headers, visible scroll cues, and stable focus; names, scores, warnings, menus, and team-specific Clear Squad actions remain usable.
+
+**Stop conditions:** Stop and replan if combined mode requires changing Planner DTOs or app-shell width ownership; if readable minimum widths cannot show the common two-string case at the supplied wide viewport; if mode changes cannot preserve the acted-on team and focus after string mutations; if grouped headers cannot retain correct programmatic associations; or if sticky context fails in the supported WebView.
+
+**Review mandate:**
+
+- Verify the combined table renders Senior, Reserves, and Youth in stable order with each team's real strings and assignments under the correct group header.
+- Verify the fit decision responds to matrix container width, navigation-rail expansion, and string-count changes without a manual preference or duplicated interactive table.
+- Verify constrained mode retains roving team tabs and the selected team across resize or mode changes.
+- Verify Add string, Remove string, assignment picker, move and clear confirmations, Optimize squads, and each team-specific Clear Squad target and focus-return path.
+- Verify bounded vertical and horizontal overflow, sticky multi-row headers, sticky position context, team separators, row focus, long-name truncation, and score proximity at all required viewports.
+- Verify table captions, row headers, team groups, string headers, and explicit cell accessible names provide complete context.
+- Reject backend, query, cache, optimizer, new-data, global breakpoint, dependency, or unrelated workspace changes.
+
 ## Active work
 
 **PR:** PR 1 — Redesign Squad Planner workspace
 
-**Commit:** No active commit — all planned commits are complete; PR 1 is ready for publication
+**Commit:** Commit 4 — Present linked tactical positions
 
 ### RED proof
 
-Add focused tests that render the configured Squad workspace and expect one compact team/action toolbar, bounded matrix overflow, and consolidated success feedback without changing assignment or optimizer results. The current depth matrix distributes team actions and feedback around a dense unbounded table.
+Add focused route tests that configure the stable `left_winger` identity with AMC positions and expect current position-and-role descriptions across the tactic pitch, inspector, squad matrix, picker, confirmations, validation, and accessible names without visible lane terminology or numbers. Add a linked-pitch interaction assertion that would fail if the IP and OOP counterparts no longer share focus, hover, or selection emphasis. The current UI fails because it renders **Left winger**, **Lane 9**, numbered pitch buttons, and lane-number control labels from internal identity rather than the current tactic.
 
 ### Expected outcome
 
-The Squad workspace keeps team selection and primary actions together above a compact, bounded matrix. Existing Optimize, Clear Squad, picker, string, assignment, warning, and focus behavior remain intact while the latest successful action is announced once.
-
-### GREEN proof
-
-- `./scripts/dev test src/app/routes/planner.test.tsx` — 40 passed, 0 failed, including the new toolbar, bounded-matrix, compact-row, and latest-status assertions.
-- `./scripts/dev test` — 21 files, 157 passed, 0 failed.
-- `./scripts/dev check-app` and `./scripts/dev check` — application and repository gates passed; Rust reported 211 passed, 0 failed, 2 ignored.
-- `./scripts/dev smoke` — 12 browser control-path tests passed with stubbed IPC after the sandbox WebServer bind limitation was rerun with elevated local process permissions.
-- The existing depth mutation, picker, string-management, warning, score, tab, and focus tests remain green in the same focused suite.
-- Native Tauri populated-state viewport evidence remains open because the former UI-agent runtime is unavailable; stubbed browser smoke is still required for control-path coverage.
+Normal Planner UI describes linked tactical positions from the current IP/OOP positions and roles, adds only the spatial context needed for distinction, and communicates cross-pitch linkage through visible and accessible emphasis. Internal lane IDs, ordering, save payloads, assignments, rank behavior, and mutation semantics remain unchanged.
 
 ### Explicit exclusions
 
-- Do not change optimizer allocation, assignment persistence, candidate sorting, or score calculation.
-- Do not add gap highlighting, recommendation data, filters, virtualization, or new Planner data.
-- Do not change the Tactic or Club setup workspaces, route workspace contract, Rust, IPC, queries, cache behavior, persistence, or dependencies.
+- Do not implement the adaptive all-team matrix, grouped team headers, responsive fit, or team-action relocation from commit 5.
+- Do not rename internal lane types, IDs, fields, database columns, or Rust contracts.
+- Do not change tactic, assignment, optimizer, query, cache, IPC, persistence, or dependency behavior.
 
 ## Discoveries and replanning
 
 - Planning confirmed that PR #30 is merged, but the local `origin/main` ref is stale. Refresh `main` before creating the redesign branch; do not stack this feature on the merged feature branch.
 - A prior uncommitted workspace-tab attempt used `clubs`, `tactic`, and `squad` and passed focused route tests, but it was not accepted because only an empty save was available. The populated screenshot supplied for this plan now confirms the vertical-stacking problem. Treat the old attempt as historical evidence, not source code.
 - No current runtime command provides the former native UI-agent inspection. Keep native populated-state verification as explicit manual evidence and do not report browser smoke as native proof.
+- After commits 1 through 3, populated inspection showed that `planner-depth-table.tsx` lets the sticky first column absorb much of the available width and separates player names from their scores. The remaining scan problem is column geometry and team switching, not workspace stacking.
+- `laneLabel` maps stable persisted IDs to default position names, while the editable tactic owns the current IP/OOP positions and roles. The label mismatch is presentational; it does not require a Rust, DTO, persistence, or migration change.
+- `PlannerDepth` already returns all teams against one shared tactic. An adaptive combined matrix is a React presentation change, but selected-team Clear Squad and string-header focus restoration must become explicit team-context interactions when all groups are visible.
+- The 2026-08-04 replanning pass reopened unpublished PR 1 and added commits 4 and 5. It preserved the existing branch and completed commit history because no trunk or PR merge boundary has occurred.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | Commit 1 — Add Planner workspace navigation | Pending record | Added validated workspace search state, accessible Planner tabs, configured and first-use defaults, primary-club context, hidden mounted panels, route/smoke coverage, and current-state documentation. | Sol High approved after one fix round; focused route suite 37/37. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
-| PR 1 | Commit 2 — Unify tactic lane editing | Pending record | Replaced per-pitch lane controls with one selected-lane inspector for shared settings and visible IP/OOP phase controls; preserved tactic state, save lifecycle, and route boundaries; updated tests and current-state docs. | Sol High approved; focused route suite 38/38, full suite 155/155, repository gate, and browser smoke 12/12. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
-| PR 1 | Commit 3 — Compact the squad depth workspace | Pending record | Grouped team selection and squad actions in one toolbar, compacted lane and assignment rows, added bounded two-axis matrix overflow with sticky context, consolidated latest success feedback, and updated tests and current-state docs. | Sol High accepted with no findings; focused route suite 40/40, full suite 157/157, application and repository gates, browser smoke 12/12, and staged secret scan passed. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
+| PR 1 | Commit 1 — Add Planner workspace navigation | `c5d6bce` | Added validated workspace search state, accessible Planner tabs, configured and first-use defaults, primary-club context, hidden mounted panels, route/smoke coverage, and current-state documentation. | Sol High approved after one fix round; focused route suite 37/37. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
+| PR 1 | Commit 2 — Unify tactic lane editing | `133089d` | Replaced per-pitch lane controls with one selected-lane inspector for shared settings and visible IP/OOP phase controls; preserved tactic state, save lifecycle, and route boundaries; updated tests and current-state docs. | Sol High approved; focused route suite 38/38, full suite 155/155, repository gate, and browser smoke 12/12. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
+| PR 1 | Commit 3 — Compact the squad depth workspace | `4d45d0f` | Grouped team selection and squad actions in one toolbar, compacted lane and assignment rows, added bounded two-axis matrix overflow with sticky context, consolidated latest success feedback, and updated tests and current-state docs. | Sol High accepted with no findings; focused route suite 40/40, full suite 157/157, application and repository gates, browser smoke 12/12, and staged secret scan passed. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
 
 ## Final validation
 
@@ -310,10 +407,12 @@ The Squad workspace keeps team selection and primary actions together above a co
 - `./scripts/dev test`
 - `./scripts/dev check`
 - `./scripts/dev smoke`
-- Native Tauri inspection with a representative configured and populated save at 1280×800 and 1600×900. Capture evidence for Squad, Tactic Both, Tactic single-phase, and Club setup with the navigation rail collapsed and expanded.
-- Keyboard-only pass: workspace tabs, phase controls, pitch lanes, inspector fields, team tabs, matrix cells, string menus, picker, confirmations, Save tactic, Optimize, and Clear Squad.
+- Native Tauri inspection with a representative configured and populated save at 1280×800, 1600×900, and the supplied wide viewport. Capture evidence for Squad with one-, two-, and three-string team combinations; Tactic Both and single-phase views; and Club setup with the navigation rail collapsed and expanded.
+- Keyboard-only pass: workspace tabs, phase controls, linked pitch positions, inspector fields, constrained team tabs, grouped team and string headers, matrix cells, string menus, picker, confirmations, Save tactic, Optimize, and each team-specific Clear Squad action.
 - Confirm workspace changes preserve drafts and selections; active-save changes reset or refresh them at the existing boundaries.
-- Confirm no document-level horizontal overflow, no content hidden behind the top bar, visible matrix scroll cues, and visible focus throughout bounded overflow.
+- Confirm normal Planner copy, validation, and accessible names contain no lane numbers, static lane-ID position labels, or lane-focused instructions while current IP/OOP positions and roles remain truthful and distinguishable.
+- Confirm wide mode shows all teams only when readable position and assignment widths fit; constrained mode retains the selected team; string mutations can change mode without losing the acted-on team or focus target.
+- Confirm no document-level horizontal overflow, no content hidden behind the top bar, visible matrix scroll cues, sticky multi-row and position context, bounded scan distance, and visible focus throughout overflow.
 - Confirm active save and snapshot age stay visible in the global top bar and all score and warning states remain truthful.
 - Fresh Sol High feature-complete review over the exact recorded implementation commits and final PR ref.
 - `./scripts/dev mutate` remains unsupported and must not be reported as passed.
