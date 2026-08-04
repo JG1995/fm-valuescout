@@ -146,6 +146,7 @@ test.describe("walking skeleton smoke", () => {
   test("planner depth adds strings for Senior, Reserves, and Youth", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/planner");
 
@@ -164,6 +165,7 @@ test.describe("walking skeleton smoke", () => {
   test("planner depth optimizes squads and shows the reconciled matrix", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/planner");
 
@@ -180,6 +182,31 @@ test.describe("walking skeleton smoke", () => {
         name: /Reserves, 1st string, IP: GK .* Optimized Keeper, Resolved/,
       }),
     ).toBeVisible();
+  });
+
+  test("planner depth groups all teams when the matrix fits", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Squad" }).click();
+    const matrix = main.getByRole("region", {
+      name: "All squads depth matrix",
+    });
+    await expect(matrix).toBeVisible();
+    await expect(
+      matrix.getByRole("columnheader", { name: "Senior squad" }),
+    ).toBeVisible();
+    await expect(
+      matrix.getByRole("columnheader", { name: "Reserves squad" }),
+    ).toBeVisible();
+    await expect(
+      matrix.getByRole("columnheader", { name: "Youth squad" }),
+    ).toBeVisible();
+    await expect(main.getByRole("tab", { name: "Senior" })).toHaveCount(0);
   });
 
   test("player profile route shows no-snapshot empty state from stubbed IPC", async ({

@@ -14,6 +14,7 @@ import {
   linkedPositionDescription,
   phaseDescription,
 } from "../utils/tactic-editor";
+import { PlannerClearTeamControl } from "./planner-clear-team-control";
 import type { PlannerSlotTarget } from "./planner-slot-fit-picker";
 
 function ordinal(value: number): string {
@@ -63,7 +64,11 @@ function assignmentStateLabel(
 }
 
 function PlannerStringHeader({
+  team,
   plannerString,
+  headerId,
+  combined,
+  teamStart,
   canRemove,
   menuOpen,
   onOpenMenu,
@@ -72,8 +77,13 @@ function PlannerStringHeader({
   onRemove,
   addDisabled,
   triggerRef,
+  onFocus,
 }: {
+  team: PlannerTeam;
   plannerString: PlannerString;
+  headerId: string;
+  combined: boolean;
+  teamStart: boolean;
   canRemove: boolean;
   menuOpen: boolean;
   onOpenMenu: () => void;
@@ -82,13 +92,15 @@ function PlannerStringHeader({
   onRemove: () => void;
   addDisabled: boolean;
   triggerRef: (element: HTMLButtonElement | null) => void;
+  onFocus: () => void;
 }) {
   const label = ordinal(plannerString.stringOrder);
 
   return (
     <th
+      id={headerId}
       scope="col"
-      className="h-table-header-height min-w-52 border-b border-outline-variant px-3 text-right font-mono text-mono-sm text-on-surface tabular-nums"
+      className={`${combined ? "sticky top-8 z-20" : ""} ${teamStart ? "border-l-2" : ""} h-table-header-height min-w-52 border-b border-outline-variant bg-surface-container-high px-3 text-right font-mono text-mono-sm text-on-surface tabular-nums`}
       onContextMenu={(event) => {
         event.preventDefault();
         onOpenMenu();
@@ -99,10 +111,13 @@ function PlannerStringHeader({
         <button
           ref={triggerRef}
           type="button"
+          data-planner-team={team}
+          data-planner-string-id={plannerString.id}
           aria-label={`Manage ${label}`}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
           className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          onFocus={onFocus}
           onClick={() => (menuOpen ? onCloseMenu() : onOpenMenu())}
         >
           <Ellipsis aria-hidden="true" size={16} strokeWidth={1.5} />
@@ -151,15 +166,27 @@ function AssignmentCell({
   teamLabel,
   laneId,
   laneName,
+  rowHeaderId,
+  teamHeaderId,
+  stringHeaderId,
+  teamStart,
   plannerString,
   onOpen,
+  cellRef,
+  onFocus,
 }: {
   team: PlannerTeam;
   teamLabel: string;
   laneId: string;
   laneName: string;
+  rowHeaderId: string;
+  teamHeaderId?: string;
+  stringHeaderId: string;
+  teamStart: boolean;
   plannerString: PlannerString;
   onOpen: (target: PlannerSlotTarget) => void;
+  cellRef: (element: HTMLButtonElement | null) => void;
+  onFocus: () => void;
 }) {
   const stringLabel = ordinal(plannerString.stringOrder);
   const assignment = assignmentForLane(plannerString, laneId);
@@ -171,11 +198,19 @@ function AssignmentCell({
     : `${teamLabel}, ${stringLabel}, ${laneName}, Empty`;
 
   return (
-    <td className="h-table-row-height-two-line min-w-52 border-b border-outline-variant px-3 py-1.5 align-middle">
+    <td
+      headers={[rowHeaderId, teamHeaderId, stringHeaderId]
+        .filter(Boolean)
+        .join(" ")}
+      className={`${teamStart ? "border-l-2" : ""} h-table-row-height-two-line min-w-52 border-b border-outline-variant px-3 py-1.5 align-middle`}
+    >
       <button
+        ref={cellRef}
         type="button"
+        data-planner-team={team}
         className="w-full rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         aria-label={ariaLabel}
+        onFocus={onFocus}
         onClick={() =>
           onOpen({
             team,
@@ -222,8 +257,9 @@ function AssignmentCell({
 }
 
 type PlannerDepthTableProps = {
-  teamDepth: PlannerDepthTeam;
-  teamLabel: string;
+  teamDepths: PlannerDepthTeam[];
+  teamLabels: Record<PlannerTeam, string>;
+  combined: boolean;
   tactic: PlannerDepth["tactic"];
   options: TacticOptions;
   onOpen: (target: PlannerSlotTarget) => void;
@@ -233,14 +269,31 @@ type PlannerDepthTableProps = {
   onAddString: (team: PlannerTeam, stringId: number) => void;
   onRemoveString: (plannerString: PlannerString) => void;
   addDisabled: boolean;
+  clearDisabled: boolean;
+  clearPending: boolean;
+  clearTeamTarget: PlannerTeam | null;
+  clearTeamOpen: boolean;
+  clearTeamError: string | null;
+  onRequestClearTeam: (team: PlannerTeam) => void;
+  onClearTeamFocus: (team: PlannerTeam) => void;
+  onCloseClearTeam: () => void;
+  onConfirmClearTeam: (team: PlannerTeam) => void;
   stringHeaderRef: (
     stringId: number,
   ) => (element: HTMLButtonElement | null) => void;
+  onStringHeaderFocus: (team: PlannerTeam, stringId: number) => void;
+  cellRef: (
+    team: PlannerTeam,
+    stringId: number,
+    laneId: string,
+  ) => (element: HTMLButtonElement | null) => void;
+  onCellFocus: (team: PlannerTeam, stringId: number, laneId: string) => void;
 };
 
 export function PlannerDepthTable({
-  teamDepth,
-  teamLabel,
+  teamDepths,
+  teamLabels,
+  combined,
   tactic,
   options,
   onOpen,
@@ -250,43 +303,132 @@ export function PlannerDepthTable({
   onAddString,
   onRemoveString,
   addDisabled,
+  clearDisabled,
+  clearPending,
+  clearTeamTarget,
+  clearTeamOpen,
+  clearTeamError,
+  onRequestClearTeam,
+  onClearTeamFocus,
+  onCloseClearTeam,
+  onConfirmClearTeam,
   stringHeaderRef,
+  onStringHeaderFocus,
+  cellRef,
+  onCellFocus,
 }: PlannerDepthTableProps) {
+  const matrixLabel = combined
+    ? "All squads depth matrix"
+    : `${teamLabels[teamDepths[0].team]} squad depth matrix`;
+  const allStrings = teamDepths.flatMap((teamDepth) =>
+    teamDepth.strings.map((plannerString) => ({
+      team: teamDepth.team,
+      plannerString,
+    })),
+  );
+  const idPrefix = combined
+    ? "planner-combined"
+    : `planner-${teamDepths[0].team}`;
+  const renderStringHeaders = () =>
+    allStrings.map(({ team, plannerString }, index) => {
+      const teamDepth = teamDepths.find((candidate) => candidate.team === team);
+      const headerId = `${idPrefix}-${team}-string-${plannerString.id}`;
+      return (
+        <PlannerStringHeader
+          key={plannerString.id}
+          team={team}
+          plannerString={plannerString}
+          headerId={headerId}
+          combined={combined}
+          teamStart={
+            combined && (index === 0 || allStrings[index - 1]?.team !== team)
+          }
+          canRemove={(teamDepth?.strings.length ?? 0) > 1}
+          menuOpen={openStringId === plannerString.id}
+          onOpenMenu={() => onOpenStringMenu(plannerString.id)}
+          onCloseMenu={onCloseStringMenu}
+          onAdd={() => onAddString(team, plannerString.id)}
+          onRemove={() => onRemoveString(plannerString)}
+          addDisabled={addDisabled}
+          triggerRef={stringHeaderRef(plannerString.id)}
+          onFocus={() => onStringHeaderFocus(team, plannerString.id)}
+        />
+      );
+    });
+
   return (
     <section
       className="max-h-[min(70vh,720px)] overflow-auto rounded-lg border border-outline-variant"
-      aria-label={`${teamLabel} squad depth matrix`}
+      aria-label={matrixLabel}
+      data-layout-mode={combined ? "combined" : "selected"}
     >
       <table
         className="min-w-max w-full border-collapse text-left"
-        aria-label={`${teamLabel} squad depth matrix`}
+        aria-label={matrixLabel}
       >
         <caption className="sr-only">
-          {teamLabel} squad depth using the shared tactic
+          {combined
+            ? "Senior, Reserves, and Youth squad depth using the shared tactic"
+            : `${teamLabels[teamDepths[0].team]} squad depth using the shared tactic`}
         </caption>
-        <thead className="sticky top-0 z-20">
-          <tr className="bg-surface-container-high">
-            <th
-              scope="col"
-              className="sticky left-0 z-30 h-table-header-height min-w-52 border-b border-r border-outline-variant bg-surface-container-high px-3 text-label-md text-on-surface"
-            >
-              Tactical position
-            </th>
-            {teamDepth.strings.map((plannerString) => (
-              <PlannerStringHeader
-                key={plannerString.id}
-                plannerString={plannerString}
-                canRemove={teamDepth.strings.length > 1}
-                menuOpen={openStringId === plannerString.id}
-                onOpenMenu={() => onOpenStringMenu(plannerString.id)}
-                onCloseMenu={onCloseStringMenu}
-                onAdd={() => onAddString(teamDepth.team, plannerString.id)}
-                onRemove={() => onRemoveString(plannerString)}
-                addDisabled={addDisabled}
-                triggerRef={stringHeaderRef(plannerString.id)}
-              />
-            ))}
-          </tr>
+        <thead>
+          {combined ? (
+            <>
+              <tr className="bg-surface-container-lowest">
+                <th
+                  rowSpan={2}
+                  scope="col"
+                  className="sticky top-0 left-0 z-30 h-table-header-height min-w-52 border-b border-r border-outline-variant bg-surface-container-lowest px-3 text-label-md text-on-surface"
+                >
+                  Tactical position
+                </th>
+                {teamDepths.map((teamDepth, index) => {
+                  const groupId = `planner-team-${teamDepth.team}-header`;
+                  const clearTarget =
+                    clearTeamTarget === teamDepth.team ? clearTeamTarget : null;
+                  return (
+                    <th
+                      key={teamDepth.team}
+                      id={groupId}
+                      colSpan={teamDepth.strings.length}
+                      scope="colgroup"
+                      aria-label={`${teamLabels[teamDepth.team]} squad`}
+                      className={`${index > 0 ? "border-l-2" : ""} sticky top-0 z-20 h-table-header-height border-b border-outline-variant bg-surface-container-lowest px-3 text-label-md text-on-surface`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span>{teamLabels[teamDepth.team]} squad</span>
+                        <PlannerClearTeamControl
+                          team={teamDepth.team}
+                          target={clearTarget}
+                          open={clearTeamOpen && clearTarget !== null}
+                          pending={clearPending}
+                          disabled={clearDisabled}
+                          error={clearTeamError}
+                          onRequest={() => onRequestClearTeam(teamDepth.team)}
+                          onFocus={() => onClearTeamFocus(teamDepth.team)}
+                          onClose={onCloseClearTeam}
+                          onConfirm={onConfirmClearTeam}
+                        />
+                      </div>
+                    </th>
+                  );
+                })}
+              </tr>
+              <tr className="bg-surface-container-high">
+                {renderStringHeaders()}
+              </tr>
+            </>
+          ) : (
+            <tr className="bg-surface-container-high">
+              <th
+                scope="col"
+                className="sticky top-0 left-0 z-30 h-table-header-height min-w-52 border-b border-r border-outline-variant bg-surface-container-high px-3 text-label-md text-on-surface"
+              >
+                Tactical position
+              </th>
+              {renderStringHeaders()}
+            </tr>
+          )}
         </thead>
         <tbody>
           {tactic.lanes.map((lane) => {
@@ -314,6 +456,7 @@ export function PlannerDepthTable({
                 aria-label={positionDescription}
               >
                 <th
+                  id={`${idPrefix}-position-${lane.laneId}`}
                   scope="row"
                   className="sticky left-0 z-10 h-table-row-height-two-line min-w-52 border-b border-r border-outline-variant bg-surface-container px-3 py-1.5 align-middle"
                 >
@@ -332,15 +475,28 @@ export function PlannerDepthTable({
                     </span>
                   </span>
                 </th>
-                {teamDepth.strings.map((plannerString) => (
+                {allStrings.map(({ team, plannerString }, index) => (
                   <AssignmentCell
                     key={plannerString.id}
-                    team={teamDepth.team}
-                    teamLabel={teamLabel}
+                    team={team}
+                    teamLabel={teamLabels[team]}
                     laneId={lane.laneId}
                     laneName={positionDescription}
+                    teamStart={
+                      combined &&
+                      (index === 0 || allStrings[index - 1]?.team !== team)
+                    }
+                    rowHeaderId={`${idPrefix}-position-${lane.laneId}`}
+                    teamHeaderId={
+                      combined ? `planner-team-${team}-header` : undefined
+                    }
+                    stringHeaderId={`${idPrefix}-${team}-string-${plannerString.id}`}
                     plannerString={plannerString}
                     onOpen={onOpen}
+                    cellRef={cellRef(team, plannerString.id, lane.laneId)}
+                    onFocus={() =>
+                      onCellFocus(team, plannerString.id, lane.laneId)
+                    }
                   />
                 ))}
               </tr>

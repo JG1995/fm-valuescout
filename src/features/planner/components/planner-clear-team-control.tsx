@@ -9,32 +9,41 @@ const TEAM_LABELS: Record<PlannerTeam, string> = {
 };
 
 type PlannerClearTeamControlProps = {
-  selectedTeam: PlannerTeam;
+  team: PlannerTeam;
   target: PlannerTeam | null;
   open: boolean;
   pending: boolean;
   disabled: boolean;
   error: string | null;
   onRequest: () => void;
+  onFocus: () => void;
   onClose: () => void;
   onConfirm: (team: PlannerTeam) => void;
 };
 
 export function PlannerClearTeamControl({
-  selectedTeam,
+  team,
   target,
   open,
   pending,
   disabled,
   error,
   onRequest,
+  onFocus,
   onClose,
   onConfirm,
 }: PlannerClearTeamControlProps) {
   return (
     <>
-      <Button variant="destructive" disabled={disabled} onClick={onRequest}>
-        Clear {TEAM_LABELS[selectedTeam]} squad
+      <Button
+        variant="destructive"
+        disabled={disabled}
+        onClick={onRequest}
+        onFocus={onFocus}
+        data-planner-clear-team={team}
+        className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      >
+        Clear {TEAM_LABELS[team]} squad
       </Button>
       {target ? (
         <Modal

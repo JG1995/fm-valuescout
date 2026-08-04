@@ -95,6 +95,41 @@ const SENIOR_FIRST_KEEPER = `Senior · 1st string · ${KEEPER_POSITION}`;
 const SENIOR_SECOND_KEEPER = `Senior · 2nd string · ${KEEPER_POSITION}`;
 const RESERVES_FIRST_KEEPER = `Reserves · 1st string · ${KEEPER_POSITION}`;
 
+function withSecondStringForEveryTeam(depth: PlannerDepth): PlannerDepth {
+  let nextStringId =
+    Math.max(
+      ...depth.teams.flatMap((team) =>
+        team.strings.map((plannerString) => plannerString.id),
+      ),
+    ) + 1;
+
+  return {
+    ...depth,
+    teams: depth.teams.map((team) => ({
+      ...team,
+      strings: [
+        ...team.strings,
+        {
+          id: nextStringId++,
+          stringOrder: team.strings.length,
+          assignments: [],
+        },
+      ],
+    })),
+  };
+}
+
+async function setPlannerMatrixWidth(width: number) {
+  const matrixContainer = await screen.findByTestId(
+    "planner-depth-matrix-container",
+  );
+  Object.defineProperty(matrixContainer, "clientWidth", {
+    configurable: true,
+    value: width,
+  });
+  fireEvent(window, new Event("resize"));
+}
+
 describe("planner route", () => {
   it("shows Load Data guidance when the active save has no snapshot", async () => {
     renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
@@ -985,6 +1020,204 @@ describe("planner route", () => {
     expect(matrix).toHaveClass("overflow-auto");
     expect(within(matrix).getByRole("row", { name: /Goalkeeper/ })).toHaveClass(
       "h-table-row-height-two-line",
+    );
+  });
+
+  it("groups all teams in one semantic table when the matrix fits", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(
+      withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
+    );
+    renderPlannerRoute();
+    await setPlannerMatrixWidth(1600);
+
+    const matrix = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    expect(
+      within(matrix).getByRole("columnheader", { name: "Senior squad" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("columnheader", { name: "Reserves squad" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("columnheader", { name: "Youth squad" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getAllByRole("columnheader", { name: "1st string" }),
+    ).toHaveLength(3);
+    expect(
+      within(matrix).getByRole("button", {
+        name: /Youth, 2nd string, IP: GK .* Empty/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix)
+        .getByRole("button", { name: /Reserves, 1st string, IP: GK .* Empty/ })
+        .closest("td"),
+    ).toHaveAttribute(
+      "headers",
+      expect.stringContaining("planner-team-reserves"),
+    );
+    expect(
+      screen.queryByRole("tab", { name: "Senior" }),
+    ).not.toBeInTheDocument();
+
+    const clearYouth = within(matrix).getByRole("button", {
+      name: "Clear Youth squad",
+    });
+    await user.click(clearYouth);
+    const confirmation = screen.getByRole("dialog", {
+      name: "Clear Youth squad?",
+    });
+    await user.click(
+      within(confirmation).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(clearYouth));
+  });
+
+  it("keeps the selected team and string focus across responsive mode changes", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(
+      withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
+    );
+    renderPlannerRoute();
+    await setPlannerMatrixWidth(1200);
+
+    await user.click(await screen.findByRole("tab", { name: "Reserves" }));
+    const reservesTab = screen.getByRole("tab", { name: "Reserves" });
+    reservesTab.focus();
+    await setPlannerMatrixWidth(1600);
+    const combinedFromTab = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(combinedFromTab).getAllByRole("button", {
+          name: "Manage 1st string",
+        })[1],
+      ),
+    );
+    await setPlannerMatrixWidth(1200);
+    const constrainedAfterTab = await screen.findByRole("region", {
+      name: "Reserves squad depth matrix",
+    });
+    await waitFor(() =>
+      expect(
+        within(constrainedAfterTab).getByRole("button", {
+          name: "Manage 1st string",
+        }),
+      ).toHaveFocus(),
+    );
+
+    const constrainedHeader = within(
+      screen.getByRole("region", { name: "Reserves squad depth matrix" }),
+    ).getByRole("button", { name: "Manage 1st string" });
+    constrainedHeader.focus();
+
+    await setPlannerMatrixWidth(1600);
+    const combined = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    const combinedHeaders = within(combined).getAllByRole("button", {
+      name: "Manage 1st string",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(combinedHeaders[1]),
+    );
+
+    await setPlannerMatrixWidth(1200);
+    const constrained = await screen.findByRole("region", {
+      name: "Reserves squad depth matrix",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(constrained).getByRole("button", { name: "Manage 1st string" }),
+      ),
+    );
+
+    const constrainedCell = within(constrained).getByRole("button", {
+      name: /Reserves, 1st string, IP: GK .* Empty/,
+    });
+    constrainedCell.focus();
+    await setPlannerMatrixWidth(1600);
+    await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    await setPlannerMatrixWidth(1200);
+    const constrainedFromCell = await screen.findByRole("region", {
+      name: "Reserves squad depth matrix",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(constrainedFromCell).getByRole("button", {
+          name: /Reserves, 1st string, IP: GK .* Empty/,
+        }),
+      ),
+    );
+
+    await setPlannerMatrixWidth(1600);
+    const combinedFromClear = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    await waitFor(() =>
+      expect(
+        within(combinedFromClear).getByRole("button", {
+          name: /Reserves, 1st string, IP: GK .* Empty/,
+        }),
+      ).toHaveFocus(),
+    );
+    const combinedClear = within(combinedFromClear).getByRole("button", {
+      name: "Clear Youth squad",
+    });
+    combinedClear.focus();
+    await setPlannerMatrixWidth(1200);
+    await screen.findByRole("region", {
+      name: "Youth squad depth matrix",
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Clear Youth squad" }),
+      ).toHaveFocus(),
+    );
+  });
+
+  it("keeps the acted-on team visible when adding a string crosses the fit threshold", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+    await setPlannerMatrixWidth(900);
+
+    const combined = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    within(combined).getByRole("columnheader", {
+      name: "Senior squad",
+    });
+    const seniorHeader = within(combined).getAllByRole("columnheader", {
+      name: "1st string",
+    })[0];
+    await user.click(
+      within(seniorHeader).getByRole("button", { name: "Manage 1st string" }),
+    );
+    await user.click(
+      within(seniorHeader).getByRole("menuitem", { name: "Add string" }),
+    );
+
+    const constrained = await screen.findByRole("region", {
+      name: "Senior squad depth matrix",
+    });
+    const addedHeader = await within(constrained).findByRole("columnheader", {
+      name: "2nd string",
+    });
+    expect(addedHeader).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.activeElement).toHaveAccessibleName("Manage 2nd string"),
     );
   });
 
