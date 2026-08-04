@@ -90,7 +90,6 @@ export function roleLabel(
 
 export function cloneTactic(tactic: PlannerTactic): PlannerTactic {
   return {
-    ipWeight: tactic.ipWeight,
     lanes: tactic.lanes.map((lane) => ({ ...lane })),
   };
 }
@@ -106,18 +105,36 @@ export function validateTacticDraft(
   tactic: PlannerTactic,
   options: TacticOptions,
 ): string | null {
-  if (
-    !Number.isFinite(tactic.ipWeight) ||
-    tactic.ipWeight < 0 ||
-    tactic.ipWeight > 1
-  ) {
-    return "IP score weight must be between 0% and 100%.";
-  }
   if (tactic.lanes.length !== TACTIC_LANE_IDS.length) {
     return `The tactic must contain ${TACTIC_LANE_IDS.length} linked lanes.`;
   }
 
+  const importanceRanks = new Set<number>();
   for (const [index, lane] of tactic.lanes.entries()) {
+    if (
+      !Number.isFinite(lane.ipWeight) ||
+      lane.ipWeight < 0 ||
+      lane.ipWeight > 1
+    ) {
+      return `Lane ${index + 1} IP score weight must be between 0% and 100%.`;
+    }
+    if (
+      lane.importanceRank !== null &&
+      (!Number.isInteger(lane.importanceRank) ||
+        lane.importanceRank < 1 ||
+        lane.importanceRank > TACTIC_LANE_IDS.length)
+    ) {
+      return `Lane ${index + 1} importance rank must be between 1 and ${TACTIC_LANE_IDS.length}.`;
+    }
+    if (
+      lane.importanceRank !== null &&
+      importanceRanks.has(lane.importanceRank)
+    ) {
+      return `Importance rank ${lane.importanceRank} is already used.`;
+    }
+    if (lane.importanceRank !== null) {
+      importanceRanks.add(lane.importanceRank);
+    }
     for (const phase of ["ip", "oop"] as const) {
       const position = phasePosition(lane, phase);
       const role = options.roles.find(

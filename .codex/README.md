@@ -5,7 +5,7 @@ This repository uses Codex for AI-assisted development. The workflow keeps imple
 ## Repository surfaces
 
 - `AGENTS.md` contains standing repository rules and project-specific validation commands.
-- `.agents/WORKFLOW.md` contains planning, routing, review, escalation, and PR-boundary policy.
+- `.codex/WORKFLOW.md` contains planning, routing, review, escalation, and PR-boundary policy.
 - Installed global skills provide reusable guidance and explicit workflows.
 - `.codex/agents/` contains the `reviewer` and `documentation-steward` specialist definitions.
 - `.codex/config.toml` contains project MCP and shell-environment configuration.

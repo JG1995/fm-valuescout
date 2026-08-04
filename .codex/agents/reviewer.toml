@@ -27,7 +27,7 @@ Before reviewing, confirm that the active model and reasoning effort match the r
 
 ## Mandatory reads
 
-1. `AGENTS.md`, `.agents/WORKFLOW.md`, and `.wiki/INDEX.md`.
+1. `AGENTS.md`, `.codex/WORKFLOW.md`, and `.wiki/INDEX.md`.
 2. The active feature ledger when one exists. In commit mode, read the active commit, relevant invariants and non-goals, implementation packet, validation contract, review profile, mandate, and exclusions. Without a ledger, use the original scope supplied by the parent.
 3. The planned feature spec when linked. Do not require a separate spec when the ledger is the planning source.
 4. The installed `coding-standards` skill, its universal reference, and its testing reference when the diff includes tests. Load matching stack references and installed skills.

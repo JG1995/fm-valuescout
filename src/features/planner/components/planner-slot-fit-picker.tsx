@@ -125,9 +125,9 @@ export function PlannerSlotFitPicker({
   const isOccupied = target.occupantName !== null;
 
   useEffect(() => {
+    setActiveIndex(0);
     const timer = window.setTimeout(() => {
       setDebouncedSearch(search.trim());
-      setActiveIndex(0);
     }, SEARCH_DEBOUNCE_MS);
     return () => {
       window.clearTimeout(timer);

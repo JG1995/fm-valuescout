@@ -93,6 +93,37 @@ fn returns_ranked_candidates_from_the_target_team_club_family() {
 }
 
 #[test]
+fn slot_candidates_use_the_selected_lane_weight() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[0].ip_weight = 1.0;
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save lane weight");
+    let snapshot_id: i64 = conn
+        .query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .expect("current snapshot");
+    conn.execute(
+        "UPDATE player_role_scores
+         SET score = CASE role_id
+             WHEN 'goalkeeper_ip' THEN 80
+             WHEN 'line_holding_keeper_oop' THEN 60
+             ELSE score
+         END
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("set keeper scores");
+
+    let candidates = get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
+        .expect("load candidates");
+
+    assert_eq!(candidates[0].combined_score, Some(80));
+}
+
+#[test]
 fn team_level_does_not_restrict_the_primary_club_pool() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
 
@@ -351,6 +382,9 @@ fn preserves_assignment_as_unresolved_when_snapshot_replaces_player() {
 #[test]
 fn resolves_combined_scores_and_marks_current_players_outside_the_pool() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[0].ip_weight = 1.0;
+    tactic::save_tactic(&conn, save_id, &tactic).expect("save lane weight");
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
     assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
@@ -375,7 +409,7 @@ fn resolves_combined_scores_and_marks_current_players_outside_the_pool() {
     let scored = get_depth(&conn, save_id).expect("load score");
     let assignment = &team_strings(&scored, PlannerTeam::Senior)[0].assignments[0];
     assert_eq!(assignment.state, AssignmentState::Resolved);
-    assert_eq!(assignment.combined_score, Some(70));
+    assert_eq!(assignment.combined_score, Some(80));
 
     let moved_path = temp_dir.path().join("moved.json");
     let moved = include_str!("../memory_read/fixtures/golden_dump_v5.json").replace(

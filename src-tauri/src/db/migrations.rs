@@ -181,6 +181,47 @@ ALTER TABLE planner_assignments
     CHECK (provenance IN ('manual', 'optimizer'));
 ";
 
+pub const PLANNER_LANE_WEIGHTS_SQL: &str = "
+DROP TABLE planner_tactic_lanes;
+DROP TABLE planner_tactics;
+
+CREATE TABLE planner_tactic_lanes (
+    id INTEGER PRIMARY KEY,
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    lane_order INTEGER NOT NULL CHECK (lane_order >= 0 AND lane_order < 11),
+    lane_id TEXT NOT NULL CHECK (trim(lane_id) <> ''),
+    ip_weight REAL NOT NULL DEFAULT 0.5 CHECK (ip_weight >= 0 AND ip_weight <= 1),
+    ip_position TEXT NOT NULL CHECK (trim(ip_position) <> ''),
+    ip_role_id TEXT NOT NULL CHECK (trim(ip_role_id) <> ''),
+    oop_position TEXT NOT NULL CHECK (trim(oop_position) <> ''),
+    oop_role_id TEXT NOT NULL CHECK (trim(oop_role_id) <> ''),
+    UNIQUE (save_id, lane_order),
+    UNIQUE (save_id, lane_id)
+);
+
+CREATE INDEX idx_planner_tactic_lanes_save_order
+    ON planner_tactic_lanes(save_id, lane_order);
+";
+
+pub const PLANNER_LANE_IMPORTANCE_RANKS_SQL: &str = "
+ALTER TABLE planner_tactic_lanes
+    ADD COLUMN importance_rank INTEGER CHECK (importance_rank IS NULL OR (importance_rank >= 1 AND importance_rank <= 11));
+
+CREATE UNIQUE INDEX idx_planner_tactic_lanes_save_importance_rank
+    ON planner_tactic_lanes(save_id, importance_rank)
+    WHERE importance_rank IS NOT NULL;
+";
+
+pub const PLANNER_LANE_FOOT_PREFERENCES_SQL: &str = "
+ALTER TABLE planner_tactic_lanes
+    ADD COLUMN preferred_foot TEXT NOT NULL DEFAULT 'any'
+    CHECK (preferred_foot IN ('any', 'left', 'right', 'both'));
+
+ALTER TABLE planner_tactic_lanes
+    ADD COLUMN foot_preference TEXT NOT NULL DEFAULT 'preferred'
+    CHECK (foot_preference IN ('preferred', 'strict'));
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -217,6 +258,21 @@ pub fn all() -> &'static [Migration] {
             version: 7,
             description: "add_planner_assignment_provenance",
             sql: PLANNER_ASSIGNMENT_PROVENANCE_SQL,
+        },
+        Migration {
+            version: 8,
+            description: "move_tactic_weight_to_lanes",
+            sql: PLANNER_LANE_WEIGHTS_SQL,
+        },
+        Migration {
+            version: 9,
+            description: "add_planner_lane_importance_ranks",
+            sql: PLANNER_LANE_IMPORTANCE_RANKS_SQL,
+        },
+        Migration {
+            version: 10,
+            description: "add_planner_lane_foot_preferences",
+            sql: PLANNER_LANE_FOOT_PREFERENCES_SQL,
         },
     ]
 }
@@ -298,7 +354,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 10);
 
         let table_name: String = conn
             .query_row(
@@ -353,6 +409,132 @@ mod tests {
     }
 
     #[test]
+    fn migrates_v7_tactics_to_lane_weights_without_deleting_assignments() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("planner-v7-migration-test.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 7) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v7");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES (?1)", ["Legacy save"])
+            .expect("insert legacy save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_tactics (save_id, ip_weight) VALUES (?1, 0.7)",
+            [save_id],
+        )
+        .expect("insert legacy tactic");
+        conn.execute(
+            "INSERT INTO planner_tactic_lanes (
+                 save_id, lane_order, lane_id, ip_position, ip_role_id, oop_position, oop_role_id
+             ) VALUES (?1, 0, 'goalkeeper', 'GK', 'goalkeeper_ip', 'GK', 'line_holding_keeper_oop')",
+            [save_id],
+        )
+        .expect("insert legacy lane");
+        conn.execute(
+            "INSERT INTO planner_strings (save_id, team, string_order) VALUES (?1, 'senior', 0)",
+            [save_id],
+        )
+        .expect("insert legacy string");
+        let string_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_assignments (
+                 save_id, string_id, lane_id, player_uid, last_known_name
+             ) VALUES (?1, ?2, 'goalkeeper', 77, 'Legacy Player')",
+            params![save_id, string_id],
+        )
+        .expect("insert legacy assignment");
+
+        apply(&conn).expect("migrate legacy tactic");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user version");
+        assert_eq!(version, 10);
+        let tactic_table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'planner_tactics'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check removed tactic table");
+        assert!(!tactic_table_exists);
+        let lane_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM planner_tactic_lanes", [], |row| {
+                row.get(0)
+            })
+            .expect("count reset tactic lanes");
+        assert_eq!(lane_count, 0);
+        let assignment_name: String = conn
+            .query_row(
+                "SELECT last_known_name FROM planner_assignments WHERE player_uid = 77",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read preserved assignment");
+        assert_eq!(assignment_name, "Legacy Player");
+        let foreign_key_parent: String = conn
+            .query_row(
+                "SELECT \"table\" FROM pragma_foreign_key_list('planner_tactic_lanes')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read lane foreign key");
+        assert_eq!(foreign_key_parent, "saves");
+        let foreign_key_errors: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .expect("check foreign keys");
+        assert_eq!(foreign_key_errors, 0);
+    }
+
+    #[test]
+    fn migrates_v8_tactic_lanes_with_default_rank_and_foot_preferences() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("planner-v8-migration-test.db"))
+            .expect("open test db");
+        for migration in all().iter().filter(|migration| migration.version <= 8) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v8");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES (?1)", ["Legacy save"])
+            .expect("insert legacy save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_tactic_lanes (
+                 save_id, lane_order, lane_id, ip_weight, ip_position, ip_role_id, oop_position, oop_role_id
+             ) VALUES (?1, 0, 'goalkeeper', 0.5, 'GK', 'goalkeeper_ip', 'GK', 'line_holding_keeper_oop')",
+            [save_id],
+        )
+        .expect("insert v8 lane");
+
+        apply(&conn).expect("migrate v8 tactic lane");
+
+        let (importance_rank, preferred_foot, foot_preference): (Option<i64>, String, String) =
+            conn.query_row(
+                "SELECT importance_rank, preferred_foot, foot_preference
+                 FROM planner_tactic_lanes
+                 WHERE save_id = ?1",
+                [save_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read migrated lane preferences");
+        assert_eq!(importance_rank, None);
+        assert_eq!(preferred_foot, "any");
+        assert_eq!(foot_preference, "preferred");
+    }
+
+    #[test]
     fn opening_fresh_db_applies_snapshot_schema_tables() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("snapshot-migration-test.db");
@@ -379,7 +561,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 10);
 
         let table_name: String = conn
             .query_row(
@@ -495,6 +677,7 @@ mod tests {
                 "idx_planner_assignments_string",
                 "idx_planner_club_sources_save_team",
                 "idx_planner_strings_save_team_order",
+                "idx_planner_tactic_lanes_save_importance_rank",
                 "idx_planner_tactic_lanes_save_order",
                 "idx_player_role_scores_snapshot_role",
                 "idx_players_snapshot_ca",
@@ -588,14 +771,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 7);
+        assert_eq!(version, 10);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 7);
+        assert_eq!(migrations.len(), 10);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -620,6 +803,21 @@ mod tests {
             "add_planner_assignment_provenance"
         );
         assert_eq!(migrations[6].sql, PLANNER_ASSIGNMENT_PROVENANCE_SQL);
+        assert_eq!(migrations[7].version, 8);
+        assert_eq!(migrations[7].description, "move_tactic_weight_to_lanes");
+        assert_eq!(migrations[7].sql, PLANNER_LANE_WEIGHTS_SQL);
+        assert_eq!(migrations[8].version, 9);
+        assert_eq!(
+            migrations[8].description,
+            "add_planner_lane_importance_ranks"
+        );
+        assert_eq!(migrations[8].sql, PLANNER_LANE_IMPORTANCE_RANKS_SQL);
+        assert_eq!(migrations[9].version, 10);
+        assert_eq!(
+            migrations[9].description,
+            "add_planner_lane_foot_preferences"
+        );
+        assert_eq!(migrations[9].sql, PLANNER_LANE_FOOT_PREFERENCES_SQL);
     }
 
     #[test]
@@ -656,16 +854,16 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("planner-tactic-migration-test.db"));
 
-        for expected_table in ["planner_tactics", "planner_tactic_lanes"] {
-            let table_name: String = conn
-                .query_row(
-                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
-                    [expected_table],
-                    |row| row.get(0),
-                )
-                .expect("read tactic table from sqlite_master");
-            assert_eq!(table_name, expected_table);
-        }
+        let tactic_table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                     SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'planner_tactics'
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check removed tactic table");
+        assert!(!tactic_table_exists);
 
         assert_eq!(
             table_columns(&conn, "planner_tactic_lanes"),
@@ -674,11 +872,38 @@ mod tests {
                 "save_id",
                 "lane_order",
                 "lane_id",
+                "ip_weight",
                 "ip_position",
                 "ip_role_id",
                 "oop_position",
-                "oop_role_id"
+                "oop_role_id",
+                "importance_rank",
+                "preferred_foot",
+                "foot_preference"
             ]
+        );
+    }
+
+    #[test]
+    fn planner_lane_importance_ranks_are_unique_when_set() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("planner-rank-migration-test.db"));
+        conn.execute("INSERT INTO saves (name) VALUES (?1)", ["Test save"])
+            .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        let insert_lane = "INSERT INTO planner_tactic_lanes (
+             save_id, lane_order, lane_id, ip_weight, ip_position, ip_role_id, oop_position, oop_role_id, importance_rank
+         ) VALUES (?1, ?2, ?3, 0.5, 'GK', 'goalkeeper_ip', 'GK', 'line_holding_keeper_oop', ?4)";
+        conn.execute(insert_lane, params![save_id, 0, "goalkeeper", 1])
+            .expect("insert ranked lane");
+
+        let error = conn
+            .execute(insert_lane, params![save_id, 1, "left_back", 1])
+            .expect_err("reject duplicate non-null importance rank");
+
+        assert_eq!(
+            error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::ConstraintViolation)
         );
     }
 

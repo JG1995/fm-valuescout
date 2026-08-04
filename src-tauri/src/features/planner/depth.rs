@@ -285,7 +285,7 @@ pub fn get_slot_candidates(
                     current_club,
                     ip_score,
                     oop_score,
-                    combined_score: combine_role_scores(ip_score, oop_score, tactic.ip_weight),
+                    combined_score: combine_role_scores(ip_score, oop_score, lane.ip_weight),
                     assignment_location,
                 })
             },
@@ -596,15 +596,7 @@ fn load_assignments(
         .into_iter()
         .map(|(id, lane_id, player_uid, last_known_name)| {
             let lane = find_lane(tactic, &lane_id)?;
-            let resolved = resolve_assignment(
-                conn,
-                save_id,
-                team,
-                snapshot_id,
-                player_uid,
-                lane,
-                tactic.ip_weight,
-            )?;
+            let resolved = resolve_assignment(conn, save_id, team, snapshot_id, player_uid, lane)?;
             Ok(PlannerAssignment {
                 id,
                 lane_id,
@@ -631,7 +623,6 @@ fn resolve_assignment(
     snapshot_id: Option<i64>,
     player_uid: i64,
     lane: &TacticLane,
-    ip_weight: f64,
 ) -> Result<ResolvedAssignment, String> {
     let Some(snapshot_id) = snapshot_id else {
         return Ok(ResolvedAssignment {
@@ -700,7 +691,7 @@ fn resolve_assignment(
     Ok(ResolvedAssignment {
         current_name: Some(current_name),
         state,
-        combined_score: combine_role_scores(ip_score, oop_score, ip_weight),
+        combined_score: combine_role_scores(ip_score, oop_score, lane.ip_weight),
     })
 }
 

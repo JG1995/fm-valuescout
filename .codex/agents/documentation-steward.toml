@@ -24,7 +24,7 @@ At feature completion, do not begin until feature-complete review is clear or th
 
 ## Mandatory reads
 
-1. `AGENTS.md`, `.agents/WORKFLOW.md`, and `.wiki/INDEX.md`.
+1. `AGENTS.md`, `.codex/WORKFLOW.md`, and `.wiki/INDEX.md`.
 2. The active feature ledger when one exists.
 3. The planned feature spec when linked.
 4. Relevant `CONCEPT.md` bullets.

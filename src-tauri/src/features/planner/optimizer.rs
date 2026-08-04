@@ -1,3 +1,4 @@
+use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use rusqlite::{params, Connection};
@@ -257,14 +258,53 @@ pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerD
                         .then_some(index)
                 })
                 .collect::<Vec<_>>();
+            let mut ranked_lane_indices = lane_indices
+                .iter()
+                .copied()
+                .filter(|&index| tactic.lanes[index].importance_rank.is_some())
+                .collect::<Vec<_>>();
+            ranked_lane_indices.sort_by_key(|&index| tactic.lanes[index].importance_rank);
+
+            for lane_index in ranked_lane_indices {
+                let candidate = candidates
+                    .iter()
+                    .filter(|candidate| !reserved_uids.contains(&candidate.player_uid))
+                    .filter_map(|candidate| {
+                        candidate
+                            .lane_scores
+                            .get(lane_index)
+                            .copied()
+                            .flatten()
+                            .map(|score| (candidate, score))
+                    })
+                    .max_by_key(|(candidate, score)| (*score, Reverse(candidate.player_uid)));
+                let Some((candidate, _)) = candidate else {
+                    continue;
+                };
+                insert_assignment(
+                    &tx,
+                    save_id,
+                    planner_string.id,
+                    &tactic.lanes[lane_index].lane_id,
+                    candidate.player_uid,
+                    &candidate.last_known_name,
+                    AssignmentProvenance::Optimizer,
+                )?;
+                reserved_uids.insert(candidate.player_uid);
+            }
+
+            let unranked_lane_indices = lane_indices
+                .into_iter()
+                .filter(|&index| tactic.lanes[index].importance_rank.is_none())
+                .collect::<Vec<_>>();
             let available_candidates = candidates
                 .iter()
                 .filter(|candidate| !reserved_uids.contains(&candidate.player_uid))
                 .cloned()
                 .collect::<Vec<_>>();
-            let matches = match_lanes(&lane_indices, &available_candidates);
+            let matches = match_lanes(&unranked_lane_indices, &available_candidates);
 
-            for (lane_index, candidate_index) in lane_indices.into_iter().zip(matches) {
+            for (lane_index, candidate_index) in unranked_lane_indices.into_iter().zip(matches) {
                 let Some(candidate_index) = candidate_index else {
                     continue;
                 };
@@ -403,7 +443,7 @@ fn load_optimizer_candidates(
 
     let mut player_statement = tx
         .prepare(
-            "SELECT p.uid, p.name, p.age, p.positions_json
+            "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json
              FROM players p
              WHERE p.snapshot_id = ?1
                AND EXISTS(
@@ -423,6 +463,7 @@ fn load_optimizer_candidates(
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<i64>>(2)?,
                 row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
             ))
         })
         .map_err(|error| error.to_string())?
@@ -431,39 +472,43 @@ fn load_optimizer_candidates(
 
     players
         .into_iter()
-        .filter(|(_, _, age, _)| is_age_eligible(team, *age))
-        .map(|(player_uid, last_known_name, _, positions_json)| {
-            let positions =
-                serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&positions_json)
-                    .map_err(|error| error.to_string())?;
-            let lane_scores = tactic
-                .lanes
-                .iter()
-                .map(|lane| {
-                    is_suitable_for_lane(&positions, lane)
-                        .then(|| {
-                            let player_scores = role_scores.get(&player_uid)?;
-                            combine_role_scores(
-                                player_scores
-                                    .get(lane.ip_role_id.as_str())
-                                    .copied()
-                                    .flatten(),
-                                player_scores
-                                    .get(lane.oop_role_id.as_str())
-                                    .copied()
-                                    .flatten(),
-                                tactic.ip_weight,
-                            )
-                        })
-                        .flatten()
+        .filter(|(_, _, age, _, _)| is_age_eligible(team, *age))
+        .map(
+            |(player_uid, last_known_name, _, preferred_foot, positions_json)| {
+                let positions = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
+                    &positions_json,
+                )
+                .map_err(|error| error.to_string())?;
+                let lane_scores = tactic
+                    .lanes
+                    .iter()
+                    .map(|lane| {
+                        is_suitable_for_lane(&positions, lane)
+                            .then(|| {
+                                let player_scores = role_scores.get(&player_uid)?;
+                                combine_role_scores(
+                                    player_scores
+                                        .get(lane.ip_role_id.as_str())
+                                        .copied()
+                                        .flatten(),
+                                    player_scores
+                                        .get(lane.oop_role_id.as_str())
+                                        .copied()
+                                        .flatten(),
+                                    lane.ip_weight,
+                                )
+                                .and_then(|score| allocation_score(score, &preferred_foot, lane))
+                            })
+                            .flatten()
+                    })
+                    .collect::<Vec<_>>();
+                Ok(OptimizerCandidate {
+                    player_uid,
+                    last_known_name,
+                    lane_scores,
                 })
-                .collect::<Vec<_>>();
-            Ok(OptimizerCandidate {
-                player_uid,
-                last_known_name,
-                lane_scores,
-            })
-        })
+            },
+        )
         .filter_map(|candidate| match candidate {
             Ok(candidate) if candidate.lane_scores.iter().any(Option::is_some) => {
                 Some(Ok(candidate))
@@ -472,6 +517,23 @@ fn load_optimizer_candidates(
             Err(error) => Some(Err(error)),
         })
         .collect()
+}
+
+pub(super) fn allocation_score(score: u8, player_foot: &str, lane: &TacticLane) -> Option<u8> {
+    if foot_matches(player_foot, &lane.preferred_foot) {
+        return Some(score);
+    }
+    (lane.foot_preference != "strict").then_some(score.saturating_sub(5))
+}
+
+pub(super) fn foot_matches(player_foot: &str, preferred_foot: &str) -> bool {
+    match preferred_foot {
+        "any" => true,
+        "left" => matches!(player_foot, "left" | "either"),
+        "right" => matches!(player_foot, "right" | "either"),
+        "both" => player_foot == "either",
+        _ => false,
+    }
 }
 
 fn is_age_eligible(team: PlannerTeam, age: Option<i64>) -> bool {

@@ -124,9 +124,7 @@ describe("planner route", () => {
     expect(
       within(screen.getByRole("main")).getByText(/Associated clubs/),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("11 linked lanes · 50% IP score weight"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("11 linked lanes")).toBeInTheDocument();
   });
 
   it("filters primary clubs and selects a club from the results", async () => {
@@ -303,7 +301,12 @@ describe("planner route", () => {
     expect(oopRole).toHaveValue("");
     await user.selectOptions(oopRole, "holding_full_back_oop");
 
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
+    expect(
+      screen.getAllByRole("slider", { name: "Lane 1 IP score weight" }),
+    ).toHaveLength(1);
     weight.focus();
     await user.keyboard(
       "{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}",
@@ -313,13 +316,14 @@ describe("planner route", () => {
 
     await user.click(screen.getByRole("button", { name: "Save tactic" }));
 
-    expect(resolvePlannerTacticIpcMock()).toMatchObject({ ipWeight: 0.55 });
     expect(resolvePlannerTacticIpcMock().lanes[0]).toMatchObject({
+      ipWeight: 0.55,
       ipPosition: "DL",
       ipRoleId: "full_back_ip",
       oopPosition: "DL",
       oopRoleId: "holding_full_back_oop",
     });
+    expect(resolvePlannerTacticIpcMock().lanes[1].ipWeight).toBe(0.5);
     await waitFor(() =>
       expect(getPlannerDepthIpcMockCalls()).toBeGreaterThan(1),
     );
@@ -333,7 +337,9 @@ describe("planner route", () => {
     renderPlannerRoute();
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     weight.focus();
     await user.keyboard(
       "{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}",
@@ -344,7 +350,131 @@ describe("planner route", () => {
       "Tactic save failed",
     );
     expect(weight).toHaveValue("55");
-    expect(resolvePlannerTacticIpcMock().ipWeight).toBe(0.5);
+    expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
+  });
+
+  it("saves only the selected lane score weight", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await user.click(
+      screen.getByRole("button", { name: "IP lane 2: DL, Full-Back" }),
+    );
+    const weight = screen.getByRole("slider", {
+      name: "Lane 2 IP score weight",
+    });
+    weight.focus();
+    await user.keyboard("{ArrowRight}");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
+    expect(resolvePlannerTacticIpcMock().lanes[1].ipWeight).toBe(0.51);
+  });
+
+  it("saves and reloads the selected lane importance rank", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await user.click(
+      screen.getByRole("button", { name: "IP lane 2: DL, Full-Back" }),
+    );
+    const rank = screen.getByRole("combobox", {
+      name: "Lane 2 importance rank",
+    });
+    await user.selectOptions(rank, "3");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    expect(resolvePlannerTacticIpcMock().lanes[0].importanceRank).toBeNull();
+    expect(resolvePlannerTacticIpcMock().lanes[1].importanceRank).toBe(3);
+    expect(rank).toHaveValue("3");
+  });
+
+  it("saves the selected lane foot rule and disables its mode for Either", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    const preferredFoot = screen.getByRole("combobox", {
+      name: "Lane 1 preferred foot",
+    });
+    const footPreference = screen.getByRole("combobox", {
+      name: "Lane 1 foot preference",
+    });
+    expect(footPreference).toBeDisabled();
+
+    await user.selectOptions(preferredFoot, "both");
+    expect(footPreference).toBeEnabled();
+    await user.selectOptions(footPreference, "strict");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    expect(resolvePlannerTacticIpcMock().lanes[0]).toMatchObject({
+      preferredFoot: "both",
+      footPreference: "strict",
+    });
+  });
+
+  it("retains an edited foot rule after a failed save", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerTacticSaveError("Tactic save failed");
+    renderPlannerRoute();
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    const preferredFoot = screen.getByRole("combobox", {
+      name: "Lane 1 preferred foot",
+    });
+    await user.selectOptions(preferredFoot, "left");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Tactic save failed",
+    );
+    expect(preferredFoot).toHaveValue("left");
+    expect(resolvePlannerTacticIpcMock().lanes[0].preferredFoot).toBe("any");
+  });
+
+  it("shows duplicate importance ranks inline and retains them after a failed save", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerTacticSaveError("Tactic save failed");
+    renderPlannerRoute();
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Lane 1 importance rank" }),
+      "1",
+    );
+    await user.click(
+      screen.getByRole("button", { name: "IP lane 2: DL, Full-Back" }),
+    );
+    const duplicateRank = screen.getByRole("combobox", {
+      name: "Lane 2 importance rank",
+    });
+    await user.selectOptions(duplicateRank, "1");
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Importance rank 1 is already used.",
+    );
+    expect(screen.getByRole("button", { name: "Save tactic" })).toBeDisabled();
+
+    await user.selectOptions(duplicateRank, "2");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Tactic save failed",
+    );
+    expect(duplicateRank).toHaveValue("2");
+    expect(resolvePlannerTacticIpcMock().lanes[1].importanceRank).toBeNull();
   });
 
   it("refreshes 60-second cached candidates after saving a tactic", async () => {
@@ -385,7 +515,9 @@ describe("planner route", () => {
         combinedScore: 85,
       }),
     ]);
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     weight.focus();
     await user.keyboard("{ArrowRight}");
     await user.click(screen.getByRole("button", { name: "Save tactic" }));
@@ -403,7 +535,9 @@ describe("planner route", () => {
     const { queryClient } = renderPlannerRoute();
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     weight.focus();
     await user.keyboard(
       "{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}",
@@ -412,7 +546,9 @@ describe("planner route", () => {
 
     queryClient.setQueryData(plannerKeys.tactic(), {
       ...resolvePlannerTacticIpcMock(),
-      ipWeight: 0.2,
+      lanes: resolvePlannerTacticIpcMock().lanes.map((lane, index) =>
+        index === 0 ? { ...lane, ipWeight: 0.2 } : lane,
+      ),
     });
     const snapshot = queryClient.getQueryData<SnapshotSummary>(
       snapshotKeys.current(),
@@ -427,7 +563,7 @@ describe("planner route", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("slider", { name: "IP score weight" }),
+        screen.getByRole("slider", { name: "Lane 1 IP score weight" }),
       ).toHaveValue("20"),
     );
   });
@@ -439,7 +575,9 @@ describe("planner route", () => {
     const { queryClient } = renderPlannerRoute();
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     weight.focus();
     await user.keyboard(
       "{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}",
@@ -461,7 +599,7 @@ describe("planner route", () => {
       "Refreshing active save",
     );
     await user.click(saveButton);
-    expect(resolvePlannerTacticIpcMock().ipWeight).toBe(0.5);
+    expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
 
     resolveRefresh(resolvePlannerTacticIpcMock());
     await refreshRequest;
@@ -475,7 +613,9 @@ describe("planner route", () => {
     const { queryClient } = renderPlannerRoute();
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
-    const weight = screen.getByRole("slider", { name: "IP score weight" });
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
+    });
     weight.focus();
     await user.keyboard(
       "{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}",
@@ -493,7 +633,7 @@ describe("planner route", () => {
       "Could not refresh the active save",
     );
     await user.click(saveButton);
-    expect(resolvePlannerTacticIpcMock().ipWeight).toBe(0.5);
+    expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
   });
 
   it("renders shared lanes, ordered strings, keyboard tabs, and truthful assignment states", async () => {
@@ -574,6 +714,7 @@ describe("planner route", () => {
   });
 
   it("searches null-score candidates and assigns the keyboard selection", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const scrollIntoView = vi.fn();
     const scrollDescriptor = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -584,7 +725,9 @@ describe("planner route", () => {
       value: scrollIntoView,
     });
     try {
-      const user = userEvent.setup();
+      const user = userEvent.setup({
+        advanceTimers: vi.advanceTimersByTime,
+      });
       await resolveLoadDataIpcMock();
       setPlannerAvailableClubs(["Barcelona"]);
       setPlannerSlotCandidates([
@@ -626,6 +769,8 @@ describe("planner route", () => {
       scrollIntoView.mockClear();
       await user.keyboard("{ArrowDown}");
       expect(bTeam).toHaveAttribute("aria-selected", "true");
+      await vi.advanceTimersByTimeAsync(200);
+      expect(bTeam).toHaveAttribute("aria-selected", "true");
       await waitFor(() =>
         expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" }),
       );
@@ -640,6 +785,7 @@ describe("planner route", () => {
       ).toBeInTheDocument();
       await waitFor(() => expect(document.activeElement).toBe(cell));
     } finally {
+      vi.useRealTimers();
       if (scrollDescriptor) {
         Object.defineProperty(
           HTMLElement.prototype,

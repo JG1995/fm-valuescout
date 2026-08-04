@@ -1,6 +1,6 @@
 # Development Contract
 
-This file contains the standing repository contract. `.agents/WORKFLOW.md` owns project workflow policy, and installed global skills own phase procedures. Project facts belong in `.wiki/`. Hard validation belongs in repository commands, tests, and CI.
+This file contains the standing repository contract. `.codex/WORKFLOW.md` owns project workflow policy, and installed global skills own phase procedures. Project facts belong in `.wiki/`. Hard validation belongs in repository commands, tests, and CI.
 
 ## Project scope
 
@@ -48,7 +48,7 @@ Keep guidance in the narrowest appropriate layer:
 - `.wiki/CONCEPT.md` owns product purpose and boundaries.
 - `.wiki/ARCHITECTURE.md` owns the current implemented system, including its stack and operational constraints.
 - `.wiki/features/active/` owns current multi-commit feature intent and delivery plans (PRs and commits).
-- `.agents/WORKFLOW.md` owns repository-specific planning, model-routing, review-evidence, escalation, and PR-boundary policy.
+- `.codex/WORKFLOW.md` owns repository-specific planning, model-routing, review-evidence, escalation, and PR-boundary policy.
 - Installed global skills own explicit workflows and reusable task- or stack-specific operating guidance.
 - `.codex/agents/` owns specialist role prompts. It must not duplicate this contract.
 
@@ -73,7 +73,7 @@ The loop variants are manual opt-ins only. Never suggest or run them automatical
 
 For broad features, `$workflow-plan-feature` produces a delivery plan before the first `$workflow-build` cycle. `$workflow-stack` and `$workflow-roadmap` precede it for new projects.
 
-Use the exact implementation and review profiles recorded in the active ledger. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. Follow `.agents/WORKFLOW.md` and the relevant installed workflow skill for routing, hard floors, evidence requirements, and escalation.
+Use the exact implementation and review profiles recorded in the active ledger. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. Follow `.codex/WORKFLOW.md` and the relevant installed workflow skill for routing, hard floors, evidence requirements, and escalation.
 
 ## Commands and validation
 
