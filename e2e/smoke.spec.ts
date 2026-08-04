@@ -95,11 +95,14 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       main.getByRole("heading", { level: 1, name: "Squad Planner" }),
     ).toBeVisible();
+    await expect(main.getByRole("tab", { name: "Club setup" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await expect(
       main.getByRole("combobox", { name: "Primary club" }),
     ).toBeVisible();
     await expect(main.getByText("Set up your club family")).toBeVisible();
-    await expect(main.getByText("11 linked lanes")).toBeVisible();
   });
 
   test("planner tactic editor saves a linked phase adjustment", async ({
@@ -109,6 +112,7 @@ test.describe("walking skeleton smoke", () => {
     await page.goto("/planner");
 
     const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Tactic" }).click();
     await expect(
       main.getByRole("heading", { name: "Tactic editor" }),
     ).toBeVisible();
@@ -142,6 +146,7 @@ test.describe("walking skeleton smoke", () => {
     await page.goto("/planner");
 
     const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Squad" }).click();
     for (const team of ["Senior", "Reserves", "Youth"]) {
       await main.getByRole("tab", { name: team }).click();
       await main.getByRole("button", { name: "Manage 1st string" }).click();
@@ -159,6 +164,7 @@ test.describe("walking skeleton smoke", () => {
     await page.goto("/planner");
 
     const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Squad" }).click();
     await main.getByRole("button", { name: "Optimize squads" }).click();
     await expect(main.getByRole("status")).toHaveText("Squads optimized.");
     await main.getByRole("tab", { name: "Reserves" }).click();

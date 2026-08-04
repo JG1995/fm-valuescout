@@ -96,7 +96,7 @@ The implementation uses existing React, TanStack Router, Tailwind, Panel, Button
 - Let the squad matrix own horizontal overflow and bounded vertical overflow. Do not constrain the entire route with an arbitrary pixel height.
 - Update the relevant current-state `DESIGN.md` and `ARCHITECTURE.md` text only in the implementation or reconciliation step that makes each statement true.
 - Do not create an ADR. The feature uses accepted React, Router, Tailwind, and Planner boundaries.
-- For this experiment, use Luna Max for every implementation and review profile in this ledger, including the final feature-complete review. This overrides the repository defaults for this ledger only.
+- For this experiment, use Luna Max for every implementation profile in this ledger. Keep Sol High for every review profile, including the final feature-complete review. This overrides the repository defaults for this ledger only.
 
 ### Unknowns
 
@@ -134,7 +134,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 #### Commit 1 — Add Planner workspace navigation
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): add workspace navigation`
 
@@ -155,7 +155,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 **Implementation profile:** Luna Max — the route and analogue are established, but default selection, hidden mounted state, active-save behavior, and accessible keyboard navigation require local integration judgment.
 
-**Review profile:** Luna Max — review must cover URL state, lifecycle preservation, accessibility, and existing Planner paths that broad route tests currently exercise together.
+**Review profile:** Sol High — review must cover URL state, lifecycle preservation, accessibility, and existing Planner paths that broad route tests currently exercise together.
 
 **Validation:**
 
@@ -177,7 +177,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 #### Commit 2 — Unify tactic lane editing
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): unify tactic lane editing`
 
@@ -198,7 +198,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 **Implementation profile:** Luna Max — the domain contract is fixed, but component ownership, responsive composition, and dense control hierarchy require design judgment.
 
-**Review profile:** Luna Max — deterministic tests cover behavior, while responsive fit, accessible labelling, and draft preservation need careful review and visual evidence.
+**Review profile:** Sol High — deterministic tests cover behavior, while responsive fit, accessible labelling, and draft preservation need careful review and visual evidence.
 
 **Validation:**
 
@@ -241,7 +241,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 **Implementation profile:** Luna Max — the mutation behavior is established, but table density, sticky overflow, status announcements, and many existing interaction paths make this a broad UI integration change.
 
-**Review profile:** Luna Max — review must combine deterministic mutation coverage with accessibility, focus, overflow, and populated-state visual checks that jsdom cannot prove.
+**Review profile:** Sol High — review must combine deterministic mutation coverage with accessibility, focus, overflow, and populated-state visual checks that jsdom cannot prove.
 
 **Validation:**
 
@@ -265,20 +265,20 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 **PR:** PR 1 — Redesign Squad Planner workspace
 
-**Commit:** Commit 1 — Add Planner workspace navigation
+**Commit:** Commit 2 — Unify tactic lane editing
 
 ### RED proof
 
-Add focused route tests that expect a labelled Planner workspace tablist, configured-save default to Squad, first-use default to Club setup, direct `?view=tactic` selection, invalid-view normalization, keyboard navigation, and preservation of an edited tactic draft after switching away and back. The current route fails because it has no workspace state or tabs and exposes all three panels at once.
+Add focused tests that render the Tactic workspace in Both, IP, and OOP modes and expect one selected-lane inspector with one control per lane property, phase-compatible controls, and unchanged save behavior. The current editor duplicates lane controls beside each pitch and has no single inspector boundary.
 
 ### Expected outcome
 
-`/planner` shows one URL-backed workspace at a time. Existing Planner components keep their current behavior and local state, while configured and first-use defaults place the user in the correct workspace.
+The Tactic workspace shows Both, IP, and OOP pitches beside one selected-lane inspector. Existing tactic drafts, save payloads, validation, and phase-specific controls keep their current behavior.
 
 ### Explicit exclusions
 
-- Do not recompose tactic controls or pitches.
-- Do not compact the squad matrix or move its controls.
+- Do not change the Planner workspace route contract established by Commit 1.
+- Do not compact the squad matrix or change Club setup behavior.
 - Do not change Rust, IPC, queries, cache behavior, persistence, or dependencies.
 
 ## Discoveries and replanning
@@ -291,7 +291,7 @@ Add focused route tests that expect a labelled Planner workspace tablist, config
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| — | — | — | No implementation yet | — | None |
+| PR 1 | Commit 1 — Add Planner workspace navigation | Pending record | Added validated workspace search state, accessible Planner tabs, configured and first-use defaults, primary-club context, hidden mounted panels, route/smoke coverage, and current-state documentation. | Sol High approved after one fix round; focused route suite 37/37. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
 
 ## Final validation
 
@@ -304,7 +304,7 @@ Add focused route tests that expect a labelled Planner workspace tablist, config
 - Confirm workspace changes preserve drafts and selections; active-save changes reset or refresh them at the existing boundaries.
 - Confirm no document-level horizontal overflow, no content hidden behind the top bar, visible matrix scroll cues, and visible focus throughout bounded overflow.
 - Confirm active save and snapshot age stay visible in the global top bar and all score and warning states remain truthful.
-- Fresh Luna Max feature-complete review over the exact recorded implementation commits and final PR ref.
+- Fresh Sol High feature-complete review over the exact recorded implementation commits and final PR ref.
 - `./scripts/dev mutate` remains unsupported and must not be reported as passed.
 
 ## Documentation impact

@@ -15,6 +15,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
+import type { PlannerWorkspace } from "@/features/planner/components/planner-workspace-tabs";
 import type {
   PlannerDepth,
   PlannerSlotCandidate,
@@ -32,6 +33,7 @@ import {
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
+  resolveSavePlannerClubFamilyIpcMock,
   setPlannerAddStringError,
   setPlannerAddStringPending,
   setPlannerAssignmentError,
@@ -47,15 +49,22 @@ import {
 } from "@/testing/planner-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 
-function renderPlannerRoute({ staleTime = 0 }: { staleTime?: number } = {}) {
+function renderPlannerRoute({
+  staleTime = 0,
+  initialEntry = "/planner?view=squad",
+}: {
+  staleTime?: number;
+  initialEntry?: string;
+} = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime } },
   });
+  const history = createMemoryHistory({ initialEntries: [initialEntry] });
   const router = createRouter({
     routeTree,
     context: { queryClient } satisfies RouterContext,
     defaultPreloadStaleTime: 0,
-    history: createMemoryHistory({ initialEntries: ["/planner"] }),
+    history,
   });
 
   render(
@@ -64,12 +73,24 @@ function renderPlannerRoute({ staleTime = 0 }: { staleTime?: number } = {}) {
     </QueryClientProvider>,
   );
 
-  return { queryClient };
+  return { history, queryClient, router };
+}
+
+async function openPlannerWorkspace(
+  user: ReturnType<typeof userEvent.setup>,
+  workspace: PlannerWorkspace,
+) {
+  const labels: Record<PlannerWorkspace, string> = {
+    squad: "Squad",
+    tactic: "Tactic",
+    clubs: "Club setup",
+  };
+  await user.click(await screen.findByRole("tab", { name: labels[workspace] }));
 }
 
 describe("planner route", () => {
   it("shows Load Data guidance when the active save has no snapshot", async () => {
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
     expect(
       await screen.findByRole("heading", { level: 1, name: "Squad Planner" }),
@@ -86,7 +107,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona", "Barca Athletic", "Barcelona U19"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
     const primaryClub = await screen.findByRole("combobox", {
       name: "Primary club",
@@ -124,14 +145,20 @@ describe("planner route", () => {
     expect(
       within(screen.getByRole("main")).getByText(/Associated clubs/),
     ).toBeInTheDocument();
-    expect(screen.getByText("11 linked lanes")).toBeInTheDocument();
+    expect(
+      within(
+        document.getElementById(
+          "planner-workspace-panel-tactic",
+        ) as HTMLElement,
+      ).getByText("11 linked lanes"),
+    ).toBeInTheDocument();
   });
 
   it("filters primary clubs and selects a club from the results", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["FC København", "Brøndby IF", "Copenhagen City"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
     const primaryClub = await screen.findByRole("combobox", {
       name: "Primary club",
@@ -165,7 +192,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
     const primaryClub = await screen.findByRole("combobox", {
       name: "Primary club",
@@ -199,7 +226,7 @@ describe("planner route", () => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
       setPlannerAvailableClubs(["Barcelona", "Barca Athletic"]);
-      renderPlannerRoute();
+      renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
       const primaryClub = await screen.findByRole("combobox", {
         name: "Primary club",
@@ -224,39 +251,143 @@ describe("planner route", () => {
     }
   });
 
-  it("renders first-use club-family setup before downstream planner panels", async () => {
+  it("defaults to Club setup and keeps inactive workspaces mounted", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    const user = userEvent.setup();
+    renderPlannerRoute({ initialEntry: "/planner" });
 
-    const clubSetup = await screen.findByRole("heading", {
+    await screen.findByRole("heading", {
       level: 2,
       name: "Set up your club family",
     });
+    expect(screen.getByRole("tab", { name: "Club setup" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "Squad" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    const clubPanel = document.getElementById("planner-workspace-panel-clubs");
+    const tacticPanel = document.getElementById(
+      "planner-workspace-panel-tactic",
+    );
+    const squadPanel = document.getElementById("planner-workspace-panel-squad");
+    expect(clubPanel).not.toHaveAttribute("hidden");
+    expect(tacticPanel).toBeInTheDocument();
+    expect(squadPanel).toBeInTheDocument();
+    expect(tacticPanel).toHaveAttribute("hidden");
+    expect(squadPanel).toHaveAttribute("hidden");
+    expect(
+      within(tacticPanel as HTMLElement).getByRole("heading", {
+        level: 2,
+        name: "Tactic editor",
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(squadPanel as HTMLElement).getByRole("heading", {
+        level: 2,
+        name: "Squad depth",
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
+
+    await openPlannerWorkspace(user, "tactic");
     const tacticEditor = screen.getByRole("heading", {
       level: 2,
       name: "Tactic editor",
     });
-    const squadDepth = screen.getByRole("heading", {
-      level: 2,
-      name: "Squad depth",
+    const weight = screen.getByRole("slider", {
+      name: "Lane 1 IP score weight",
     });
+    weight.focus();
+    await user.keyboard("{ArrowRight}");
+    await openPlannerWorkspace(user, "clubs");
+    await openPlannerWorkspace(user, "tactic");
+    expect(tacticEditor).toBeInTheDocument();
+    expect(weight).toHaveValue("51");
+  });
+
+  it("defaults configured saves to Squad and replaces workspace URL state", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Barcelona",
+      sources: [],
+    });
+    const { router } = renderPlannerRoute({ initialEntry: "/planner" });
 
     expect(
-      clubSetup.compareDocumentPosition(tacticEditor) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
+      await screen.findByText("Primary club: Barcelona"),
+    ).toBeInTheDocument();
+    const squadTab = screen.getByRole("tab", { name: "Squad" });
+    expect(squadTab).toHaveAttribute("aria-selected", "true");
+    squadTab.focus();
+    await user.keyboard("{End}");
+
+    const clubSetupTab = screen.getByRole("tab", { name: "Club setup" });
+    expect(clubSetupTab).toHaveAttribute("aria-selected", "true");
+    expect(clubSetupTab).toHaveFocus();
+    expect(clubSetupTab).toHaveAttribute("tabIndex", "0");
+    expect(squadTab).toHaveAttribute("tabIndex", "-1");
+    expect(router.state.location.search).toEqual({ view: "clubs" });
+    await user.keyboard("{ArrowLeft}");
+    const tacticTab = screen.getByRole("tab", { name: "Tactic" });
+    expect(tacticTab).toHaveAttribute("aria-selected", "true");
+    expect(tacticTab).toHaveFocus();
+    expect(tacticTab).toHaveAttribute("tabIndex", "0");
+    expect(clubSetupTab).toHaveAttribute("tabIndex", "-1");
+    expect(router.state.location.search).toEqual({ view: "tactic" });
+    tacticTab.focus();
+    await user.keyboard("{Home}");
+    expect(squadTab).toHaveAttribute("aria-selected", "true");
+    expect(squadTab).toHaveFocus();
+    expect(squadTab).toHaveAttribute("tabIndex", "0");
+    expect(tacticTab).toHaveAttribute("tabIndex", "-1");
+    expect(router.state.location.search).toEqual({ view: "squad" });
+
+    router.history.back();
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ view: "squad" }),
+    );
+    expect(router.history.canGoBack()).toBe(false);
+  });
+
+  it("lets an explicit workspace override the configured default", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Barcelona",
+      sources: [],
+    });
+    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
+
     expect(
-      clubSetup.compareDocumentPosition(squadDepth) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
+      await screen.findByRole("tab", { name: "Club setup" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Club family" })).toBeVisible();
+  });
+
+  it("uses the first-use default for invalid workspace values", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute({ initialEntry: "/planner?view=unknown" });
+
+    expect(
+      await screen.findByRole("tab", { name: "Club setup" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("heading", { name: "Set up your club family" }),
+    ).toBeVisible();
   });
 
   it("edits linked IP and OOP lanes with filtered roles and weight control", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
 
@@ -334,7 +465,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerTacticSaveError("Tactic save failed");
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
     const weight = screen.getByRole("slider", {
@@ -357,7 +488,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
     await user.click(
@@ -378,7 +509,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
     await user.click(
@@ -399,7 +530,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
     const preferredFoot = screen.getByRole("combobox", {
@@ -426,7 +557,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerTacticSaveError("Tactic save failed");
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
     const preferredFoot = screen.getByRole("combobox", {
@@ -447,7 +578,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerTacticSaveError("Tactic save failed");
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
     await user.selectOptions(
@@ -504,6 +635,7 @@ describe("planner route", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
+    await openPlannerWorkspace(user, "tactic");
 
     setPlannerSlotCandidates([
       slotCandidate({
@@ -522,6 +654,7 @@ describe("planner route", () => {
     await user.keyboard("{ArrowRight}");
     await user.click(screen.getByRole("button", { name: "Save tactic" }));
 
+    await openPlannerWorkspace(user, "squad");
     await user.click(cell);
     expect(
       await screen.findByRole("option", { name: /Updated tactic fit/ }),
@@ -532,7 +665,9 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const { queryClient } = renderPlannerRoute();
+    const { queryClient } = renderPlannerRoute({
+      initialEntry: "/planner?view=tactic",
+    });
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
     const weight = screen.getByRole("slider", {
@@ -572,7 +707,9 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const { queryClient } = renderPlannerRoute();
+    const { queryClient } = renderPlannerRoute({
+      initialEntry: "/planner?view=tactic",
+    });
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
     const weight = screen.getByRole("slider", {
@@ -610,7 +747,9 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const { queryClient } = renderPlannerRoute();
+    const { queryClient } = renderPlannerRoute({
+      initialEntry: "/planner?view=tactic",
+    });
 
     await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
     const weight = screen.getByRole("slider", {
