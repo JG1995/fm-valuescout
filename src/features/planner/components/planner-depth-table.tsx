@@ -10,7 +10,10 @@ import type {
   PlannerString,
 } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
-import { laneLabel, phasePosition, roleLabel } from "../utils/tactic-editor";
+import {
+  linkedPositionDescription,
+  phaseDescription,
+} from "../utils/tactic-editor";
 import type { PlannerSlotTarget } from "./planner-slot-fit-picker";
 
 function ordinal(value: number): string {
@@ -267,7 +270,7 @@ export function PlannerDepthTable({
               scope="col"
               className="sticky left-0 z-30 h-table-header-height min-w-52 border-b border-r border-outline-variant bg-surface-container-high px-3 text-label-md text-on-surface"
             >
-              Tactic lane
+              Tactical position
             </th>
             {teamDepth.strings.map((plannerString) => (
               <PlannerStringHeader
@@ -286,54 +289,63 @@ export function PlannerDepthTable({
           </tr>
         </thead>
         <tbody>
-          {tactic.lanes.map((lane, index) => (
-            <tr
-              key={lane.laneId}
-              className="h-table-row-height-two-line"
-              aria-label={laneLabel(lane.laneId)}
-            >
-              <th
-                scope="row"
-                className="sticky left-0 z-10 h-table-row-height-two-line min-w-52 border-b border-r border-outline-variant bg-surface-container px-3 py-1.5 align-middle"
+          {tactic.lanes.map((lane) => {
+            const ipDescription = phaseDescription(
+              lane,
+              "ip",
+              tactic.lanes,
+              options,
+            );
+            const oopDescription = phaseDescription(
+              lane,
+              "oop",
+              tactic.lanes,
+              options,
+            );
+            const positionDescription = linkedPositionDescription(
+              lane,
+              tactic.lanes,
+              options,
+            );
+            return (
+              <tr
+                key={lane.laneId}
+                className="h-table-row-height-two-line"
+                aria-label={positionDescription}
               >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-label-md text-on-surface">
-                    {laneLabel(lane.laneId)}
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 h-table-row-height-two-line min-w-52 border-b border-r border-outline-variant bg-surface-container px-3 py-1.5 align-middle"
+                >
+                  <span className="block min-w-0 text-body-sm text-on-surface-variant">
+                    <span
+                      className="block min-w-0 truncate"
+                      title={`IP: ${ipDescription}`}
+                    >
+                      IP: {ipDescription}
+                    </span>
+                    <span
+                      className="block min-w-0 truncate"
+                      title={`OOP: ${oopDescription}`}
+                    >
+                      OOP: {oopDescription}
+                    </span>
                   </span>
-                  <span className="shrink-0 font-mono text-mono-sm text-on-surface-variant tabular-nums">
-                    Lane {index + 1}
-                  </span>
-                </span>
-                <span className="flex min-w-0 gap-2 text-body-sm text-on-surface-variant">
-                  <span
-                    className="min-w-0 flex-1 truncate"
-                    title={`IP: ${phasePosition(lane, "ip")} · ${roleLabel(lane, "ip", options)}`}
-                  >
-                    IP: {phasePosition(lane, "ip")} ·{" "}
-                    {roleLabel(lane, "ip", options)}
-                  </span>
-                  <span
-                    className="min-w-0 flex-1 truncate"
-                    title={`OOP: ${phasePosition(lane, "oop")} · ${roleLabel(lane, "oop", options)}`}
-                  >
-                    OOP: {phasePosition(lane, "oop")} ·{" "}
-                    {roleLabel(lane, "oop", options)}
-                  </span>
-                </span>
-              </th>
-              {teamDepth.strings.map((plannerString) => (
-                <AssignmentCell
-                  key={plannerString.id}
-                  team={teamDepth.team}
-                  teamLabel={teamLabel}
-                  laneId={lane.laneId}
-                  laneName={laneLabel(lane.laneId)}
-                  plannerString={plannerString}
-                  onOpen={onOpen}
-                />
-              ))}
-            </tr>
-          ))}
+                </th>
+                {teamDepth.strings.map((plannerString) => (
+                  <AssignmentCell
+                    key={plannerString.id}
+                    team={teamDepth.team}
+                    teamLabel={teamLabel}
+                    laneId={lane.laneId}
+                    laneName={positionDescription}
+                    plannerString={plannerString}
+                    onOpen={onOpen}
+                  />
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </section>

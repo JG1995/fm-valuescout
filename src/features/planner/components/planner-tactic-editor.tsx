@@ -74,6 +74,9 @@ export function PlannerTacticEditor({
   const [selectedLaneId, setSelectedLaneId] = useState(
     tactic.lanes[0]?.laneId ?? "",
   );
+  const [highlightedLaneId, setHighlightedLaneId] = useState<string | null>(
+    null,
+  );
   const [saveSucceeded, setSaveSucceeded] = useState(false);
   const viewButtonRefs = useRef<Record<TacticView, HTMLButtonElement | null>>({
     ip: null,
@@ -116,10 +119,6 @@ export function PlannerTacticEditor({
   const selectedLane = draft.lanes.find(
     (lane) => lane.laneId === selectedLaneId,
   );
-  const selectedLaneNumber = selectedLane
-    ? draft.lanes.findIndex((lane) => lane.laneId === selectedLaneId) + 1
-    : 0;
-
   const updateDraft = (nextDraft: PlannerTactic) => {
     save.reset();
     setSaveSucceeded(false);
@@ -265,11 +264,11 @@ export function PlannerTacticEditor({
       <div className="space-y-5 p-4">
         <div className="space-y-1">
           <p className="text-body-md text-on-surface-variant">
-            {draft.lanes.length} linked lanes
+            {draft.lanes.length} linked positions
           </p>
           <p className="text-body-sm text-on-surface-variant">
-            The same lane identity links the In-Possession and Out-of-Possession
-            shapes.
+            Each linked position connects the In-Possession and
+            Out-of-Possession shapes.
           </p>
         </div>
 
@@ -342,14 +341,19 @@ export function PlannerTacticEditor({
                 lanes={draft.lanes}
                 options={options}
                 selectedLaneId={selectedLaneId}
-                onSelectLane={setSelectedLaneId}
+                highlightedLaneId={highlightedLaneId}
+                onHighlight={setHighlightedLaneId}
+                onSelectLane={(laneId) => {
+                  setSelectedLaneId(laneId);
+                  setHighlightedLaneId(laneId);
+                }}
               />
             ))}
           </div>
           {selectedLane ? (
             <PlannerTacticInspector
               selectedLane={selectedLane}
-              selectedLaneNumber={selectedLaneNumber}
+              lanes={draft.lanes}
               options={options}
               phases={visiblePhases(view)}
               onWeightChange={updateSelectedLaneWeight}

@@ -404,6 +404,8 @@ export function PlannerDepthMatrix({
           activeSaveId={activeSaveId}
           open={pickerOpen}
           target={picker}
+          tactic={tactic}
+          options={options}
           onClose={closePicker}
           onMutationError={setPickerError}
         />

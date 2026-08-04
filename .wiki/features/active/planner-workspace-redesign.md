@@ -54,8 +54,8 @@ Make Squad Planner a focused desktop workspace instead of one long page of equal
 ## Current-state map
 
 - Relevant components: `src/app/routes/planner.tsx` loads all Planner queries and owns URL-backed Squad, Tactic, and Club setup workspaces. It keeps `PlannerClubFamilyPanel`, `PlannerTacticEditor`, and `PlannerDepthMatrix` mounted in labelled hidden tab panels; `src/app/components/app-shell-layout.tsx` gives the main region page-level vertical scrolling.
-- Tactic presentation: `src/features/planner/components/planner-tactic-editor.tsx` owns the draft, phase view, selected lane ID, validation, and save mutation. `planner-tactic-pitch.tsx` renders each pitch with numbered lane buttons, while `planner-tactic-inspector.tsx` renders one selected-lane inspector. `src/features/planner/utils/tactic-editor.ts` maps stable lane IDs to static labels and emits lane-number validation copy, so edited positions can disagree with their visible label.
-- Squad presentation: `planner-depth-matrix.tsx` owns selected-team state, mutations, picker and menu state, and one latest squad-action status. `planner-depth-table.tsx` renders one selected team at a time with sticky lane and string headers, bounded two-axis overflow, compact rows, and static lane labels. `planner-slot-fit-picker.tsx` reuses those labels in assignment locations and confirmations.
+- Tactic presentation: `src/features/planner/components/planner-tactic-editor.tsx` owns the draft, phase view, selected lane ID, linked highlight, validation, and save mutation. `planner-tactic-pitch.tsx` renders each pitch with current position-and-role buttons and linked counterpart emphasis, while `planner-tactic-inspector.tsx` renders one selected-position inspector. `src/features/planner/utils/tactic-editor.ts` derives descriptions and deterministic spatial qualifiers from the current tactic without exposing stable lane IDs.
+- Squad presentation: `planner-depth-matrix.tsx` owns selected-team state, mutations, picker and menu state, and one latest squad-action status. `planner-depth-table.tsx` renders one selected team at a time with sticky position and string headers, bounded two-axis overflow, compact rows, and current IP/OOP position-and-role descriptions. `planner-slot-fit-picker.tsx` receives the current tactic and options so assignment locations and confirmations use the same descriptions.
 - Club-family presentation: `planner-club-family-panel.tsx` owns a local draft and invalidates the Planner query tree after save.
 - Existing analogue: `/players/$uid` validates a `tab` search parameter, replaces URL search state on tab changes, and uses an accessible roving-tabindex `PlayerProfileTabs` component with hidden tab panels.
 - Data model: save-scoped club settings, tactic lanes, strings, and assignments remain unchanged.
@@ -277,7 +277,7 @@ Commit 1 remains the feature walking skeleton: it replaced vertical workspace st
 
 #### Commit 4 — Present linked tactical positions
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): present linked tactical positions`
 
@@ -367,21 +367,21 @@ Commit 1 remains the feature walking skeleton: it replaced vertical workspace st
 
 **PR:** PR 1 — Redesign Squad Planner workspace
 
-**Commit:** Commit 4 — Present linked tactical positions
+**Commit:** Commit 5 — Show all teams when the matrix fits
 
 ### RED proof
 
-Add focused route tests that configure the stable `left_winger` identity with AMC positions and expect current position-and-role descriptions across the tactic pitch, inspector, squad matrix, picker, confirmations, validation, and accessible names without visible lane terminology or numbers. Add a linked-pitch interaction assertion that would fail if the IP and OOP counterparts no longer share focus, hover, or selection emphasis. The current UI fails because it renders **Left winger**, **Lane 9**, numbered pitch buttons, and lane-number control labels from internal identity rather than the current tactic.
+Add focused route tests that exercise a wide matrix with Senior, Reserves, and Youth groups, real string counts, grouped headers, team-scoped actions, and the fallback selected-team presentation when the available width or string count cannot preserve readable columns. Add resize and string-mutation assertions for mode changes, focus restoration, and complete cell accessible names. The current UI renders one selected team at a time, so the combined-table behavior is not yet implemented.
 
 ### Expected outcome
 
-Normal Planner UI describes linked tactical positions from the current IP/OOP positions and roles, adds only the spatial context needed for distinction, and communicates cross-pitch linkage through visible and accessible emphasis. Internal lane IDs, ordering, save payloads, assignments, rank behavior, and mutation semantics remain unchanged.
+When the Planner matrix has enough available width, one semantic table groups Senior, Reserves, and Youth with each team's ordered strings beneath its header. When those readable minimum widths do not fit, the existing team tabs show one team at a time. Team boundaries, position context, scores, warnings, string menus, team-specific Clear Squad actions, and focus remain usable in both modes without changing internal lane IDs or mutation semantics.
 
 ### Explicit exclusions
 
-- Do not implement the adaptive all-team matrix, grouped team headers, responsive fit, or team-action relocation from commit 5.
-- Do not rename internal lane types, IDs, fields, database columns, or Rust contracts.
-- Do not change tactic, assignment, optimizer, query, cache, IPC, persistence, or dependency behavior.
+- Do not change team, string, assignment, candidate, optimizer, scoring, query, cache, IPC, persistence, or Rust behavior.
+- Do not add a manual All teams toggle, saved layout preference, global breakpoint, table virtualization, column reordering, or string reordering.
+- Do not change the Tactic or Club setup workspaces beyond consuming the shared position descriptions from Commit 4.
 
 ## Discoveries and replanning
 
@@ -389,7 +389,7 @@ Normal Planner UI describes linked tactical positions from the current IP/OOP po
 - A prior uncommitted workspace-tab attempt used `clubs`, `tactic`, and `squad` and passed focused route tests, but it was not accepted because only an empty save was available. The populated screenshot supplied for this plan now confirms the vertical-stacking problem. Treat the old attempt as historical evidence, not source code.
 - No current runtime command provides the former native UI-agent inspection. Keep native populated-state verification as explicit manual evidence and do not report browser smoke as native proof.
 - After commits 1 through 3, populated inspection showed that `planner-depth-table.tsx` lets the sticky first column absorb much of the available width and separates player names from their scores. The remaining scan problem is column geometry and team switching, not workspace stacking.
-- `laneLabel` maps stable persisted IDs to default position names, while the editable tactic owns the current IP/OOP positions and roles. The label mismatch is presentational; it does not require a Rust, DTO, persistence, or migration change.
+- The old `laneLabel` mapping exposed stable persisted IDs as static position names, while the editable tactic owns the current IP/OOP positions and roles. Commit 4 removes that presentational mismatch with a Planner-local description helper; it does not require a Rust, DTO, persistence, or migration change.
 - `PlannerDepth` already returns all teams against one shared tactic. An adaptive combined matrix is a React presentation change, but selected-team Clear Squad and string-header focus restoration must become explicit team-context interactions when all groups are visible.
 - The 2026-08-04 replanning pass reopened unpublished PR 1 and added commits 4 and 5. It preserved the existing branch and completed commit history because no trunk or PR merge boundary has occurred.
 
@@ -400,6 +400,7 @@ Normal Planner UI describes linked tactical positions from the current IP/OOP po
 | PR 1 | Commit 1 — Add Planner workspace navigation | `c5d6bce` | Added validated workspace search state, accessible Planner tabs, configured and first-use defaults, primary-club context, hidden mounted panels, route/smoke coverage, and current-state documentation. | Sol High approved after one fix round; focused route suite 37/37. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
 | PR 1 | Commit 2 — Unify tactic lane editing | `133089d` | Replaced per-pitch lane controls with one selected-lane inspector for shared settings and visible IP/OOP phase controls; preserved tactic state, save lifecycle, and route boundaries; updated tests and current-state docs. | Sol High approved; focused route suite 38/38, full suite 155/155, repository gate, and browser smoke 12/12. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
 | PR 1 | Commit 3 — Compact the squad depth workspace | `4d45d0f` | Grouped team selection and squad actions in one toolbar, compacted lane and assignment rows, added bounded two-axis matrix overflow with sticky context, consolidated latest success feedback, and updated tests and current-state docs. | Sol High accepted with no findings; focused route suite 40/40, full suite 157/157, application and repository gates, browser smoke 12/12, and staged secret scan passed. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
+| PR 1 | Commit 4 — Present linked tactical positions | `Pending record` | Replaced static lane labels and numbers with current IP/OOP position-and-role descriptions across tactic, matrix, picker, confirmation, validation, and accessible surfaces; added linked pitch emphasis and duplicate-position qualifiers without changing stable lane IDs or payloads. | Sol High clean after two fix rounds; focused route suite 42/42, full suite 159/159, repository gate (211 Rust passed, 2 ignored), and browser smoke 12/12. | Native Tauri populated-state inspection remains open because the former UI-agent runtime is unavailable; no scope deviations. |
 
 ## Final validation
 

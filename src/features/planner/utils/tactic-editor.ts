@@ -27,24 +27,6 @@ export const TACTIC_PHASES: Record<
   },
 };
 
-const LANE_LABELS: Record<string, string> = {
-  goalkeeper: "Goalkeeper",
-  left_back: "Left back",
-  left_centre_back: "Left centre-back",
-  right_centre_back: "Right centre-back",
-  right_back: "Right back",
-  defensive_midfielder: "Defensive midfielder",
-  left_central_midfielder: "Left central midfielder",
-  right_central_midfielder: "Right central midfielder",
-  left_winger: "Left winger",
-  right_winger: "Right winger",
-  centre_forward: "Centre forward",
-};
-
-export function laneLabel(laneId: string): string {
-  return LANE_LABELS[laneId] ?? laneId.replace(/_/g, " ");
-}
-
 export function phasePosition(lane: TacticLane, phase: TacticPhase): string {
   return phase === "ip" ? lane.ipPosition : lane.oopPosition;
 }
@@ -88,6 +70,87 @@ export function roleLabel(
   );
 }
 
+const POSITION_QUALIFIERS = [
+  "far left",
+  "left",
+  "inside left",
+  "left centre",
+  "centre-left",
+  "centre",
+  "centre-right",
+  "right centre",
+  "inside right",
+  "right",
+  "far right",
+] as const;
+
+function duplicateQualifier(index: number, count: number): string {
+  if (count === 2) {
+    return index === 0 ? "left" : "right";
+  }
+  if (count === 3) {
+    return index === 0 ? "left" : index === 1 ? "centre" : "right";
+  }
+  const qualifierIndex = Math.round(
+    (index * (POSITION_QUALIFIERS.length - 1)) / (count - 1),
+  );
+  return POSITION_QUALIFIERS[qualifierIndex] ?? `additional ${index + 1}`;
+}
+
+export function phasePositionLabel(
+  lane: TacticLane,
+  phase: TacticPhase,
+  lanes: TacticLane[],
+): string {
+  const position = phasePosition(lane, phase);
+  if (!position) {
+    return "Position";
+  }
+
+  const roleId = phaseRoleId(lane, phase);
+  const duplicatePlacements = lanes.filter(
+    (candidate) =>
+      phasePosition(candidate, phase) === position &&
+      phaseRoleId(candidate, phase) === roleId,
+  );
+  if (duplicatePlacements.length < 2) {
+    return position;
+  }
+
+  const duplicateIndex = duplicatePlacements.findIndex(
+    (candidate) => candidate.laneId === lane.laneId,
+  );
+  return `${duplicateQualifier(duplicateIndex, duplicatePlacements.length)} ${position}`;
+}
+
+export function phaseDescription(
+  lane: TacticLane,
+  phase: TacticPhase,
+  lanes: TacticLane[],
+  options: TacticOptions,
+): string {
+  return `${phasePositionLabel(lane, phase, lanes)} · ${roleLabel(lane, phase, options)}`;
+}
+
+export function linkedPositionDescription(
+  lane: TacticLane,
+  lanes: TacticLane[],
+  options: TacticOptions,
+): string {
+  return `IP: ${phaseDescription(lane, "ip", lanes, options)} / OOP: ${phaseDescription(lane, "oop", lanes, options)}`;
+}
+
+export function linkedPositionDescriptionForId(
+  laneId: string,
+  lanes: TacticLane[],
+  options: TacticOptions,
+): string {
+  const lane = lanes.find((candidate) => candidate.laneId === laneId);
+  return lane
+    ? linkedPositionDescription(lane, lanes, options)
+    : "Unknown tactical position";
+}
+
 export function cloneTactic(tactic: PlannerTactic): PlannerTactic {
   return {
     lanes: tactic.lanes.map((lane) => ({ ...lane })),
@@ -106,17 +169,17 @@ export function validateTacticDraft(
   options: TacticOptions,
 ): string | null {
   if (tactic.lanes.length !== TACTIC_LANE_IDS.length) {
-    return `The tactic must contain ${TACTIC_LANE_IDS.length} linked lanes.`;
+    return `The tactic must contain ${TACTIC_LANE_IDS.length} linked positions.`;
   }
 
   const importanceRanks = new Set<number>();
-  for (const [index, lane] of tactic.lanes.entries()) {
+  for (const lane of tactic.lanes) {
     if (
       !Number.isFinite(lane.ipWeight) ||
       lane.ipWeight < 0 ||
       lane.ipWeight > 1
     ) {
-      return `Lane ${index + 1} IP score weight must be between 0% and 100%.`;
+      return `${phaseDescription(lane, "ip", tactic.lanes, options)} IP score weight must be between 0% and 100%.`;
     }
     if (
       lane.importanceRank !== null &&
@@ -124,13 +187,13 @@ export function validateTacticDraft(
         lane.importanceRank < 1 ||
         lane.importanceRank > TACTIC_LANE_IDS.length)
     ) {
-      return `Lane ${index + 1} importance rank must be between 1 and ${TACTIC_LANE_IDS.length}.`;
+      return `${linkedPositionDescription(lane, tactic.lanes, options)} importance rank must be between 1 and ${TACTIC_LANE_IDS.length}.`;
     }
     if (
       lane.importanceRank !== null &&
       importanceRanks.has(lane.importanceRank)
     ) {
-      return `Importance rank ${lane.importanceRank} is already used.`;
+      return `${linkedPositionDescription(lane, tactic.lanes, options)} cannot use importance rank ${lane.importanceRank}; it is already used.`;
     }
     if (lane.importanceRank !== null) {
       importanceRanks.add(lane.importanceRank);
@@ -146,7 +209,8 @@ export function validateTacticDraft(
         role.phase !== TACTIC_PHASES[phase].rolePhase ||
         !role.positionTags.includes(position)
       ) {
-        return `Choose a compatible ${TACTIC_PHASES[phase].shortLabel} role for lane ${index + 1}.`;
+        const position = phasePositionLabel(lane, phase, tactic.lanes);
+        return `Choose a compatible ${TACTIC_PHASES[phase].shortLabel} role for ${position}.`;
       }
     }
   }

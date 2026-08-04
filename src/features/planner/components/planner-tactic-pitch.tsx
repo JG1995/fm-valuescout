@@ -1,7 +1,9 @@
 import { useId } from "react";
 import type { TacticLane, TacticOptions } from "../types/tactic";
 import {
+  phaseDescription,
   phasePosition,
+  phasePositionLabel,
   roleLabel,
   TACTIC_PHASES,
   type TacticPhase,
@@ -12,6 +14,8 @@ type PlannerTacticPitchProps = {
   lanes: TacticLane[];
   options: TacticOptions;
   selectedLaneId: string;
+  highlightedLaneId: string | null;
+  onHighlight: (laneId: string | null) => void;
   onSelectLane: (laneId: string) => void;
 };
 
@@ -69,42 +73,62 @@ const PITCH_ROWS = [
 function LaneButton({
   phase,
   lane,
-  laneNumber,
+  lanes,
   options,
+  highlightedLaneId,
+  linkedHintId,
   selected,
+  onHighlight,
   onSelect,
 }: {
   phase: TacticPhase;
   lane: TacticLane;
-  laneNumber: number;
+  lanes: TacticLane[];
   options: TacticOptions;
+  highlightedLaneId: string | null;
+  linkedHintId: string;
   selected: boolean;
+  onHighlight: (laneId: string | null) => void;
   onSelect: () => void;
 }) {
-  const position = phasePosition(lane, phase);
+  const position = phasePositionLabel(lane, phase, lanes);
   const role = roleLabel(lane, phase, options);
+  const description = phaseDescription(lane, phase, lanes, options);
   const { shortLabel } = TACTIC_PHASES[phase];
+  const highlighted = highlightedLaneId === lane.laneId;
 
   return (
     <button
       type="button"
-      aria-label={`${shortLabel} lane ${laneNumber}: ${position}, ${role}`}
+      aria-label={`${shortLabel}: ${description}`}
+      aria-describedby={linkedHintId}
       aria-pressed={selected}
-      className={`min-h-11 w-full rounded-md border px-1 py-1 text-center transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+      className={`min-h-11 w-full rounded-md border px-1 py-1 text-center transition-[background-color,border-color,box-shadow] duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
         selected
-          ? "border-primary bg-primary-container text-primary"
-          : "border-outline-variant bg-surface-container text-on-surface hover:bg-surface-container-high"
+          ? "border-primary bg-primary-container text-primary ring-2 ring-primary/60"
+          : highlighted
+            ? "border-primary bg-surface-container-high text-on-surface ring-2 ring-primary/60"
+            : "border-outline-variant bg-surface-container text-on-surface hover:bg-surface-container-high"
       }`}
+      onBlur={() => {
+        if (!selected) {
+          onHighlight(null);
+        }
+      }}
       onClick={onSelect}
+      onFocus={() => onHighlight(lane.laneId)}
+      onMouseEnter={() => onHighlight(lane.laneId)}
+      onMouseLeave={() => {
+        if (!selected) {
+          onHighlight(null);
+        }
+      }}
     >
-      <span className="block font-mono text-mono-sm tabular-nums">
-        {laneNumber}
-      </span>
-      <span
-        className="block truncate text-[11px]"
-        title={`${position} · ${role}`}
-      >
+      <span className="block truncate text-label-md" title={description}>
         {position}
+      </span>
+      <span className="block truncate text-[11px]" title={description}>
+        {role}
       </span>
     </button>
   );
@@ -115,11 +139,20 @@ function PitchBoard({
   lanes,
   options,
   selectedLaneId,
+  highlightedLaneId,
+  linkedHintId,
+  onHighlight,
   onSelectLane,
 }: Pick<
   PlannerTacticPitchProps,
-  "phase" | "lanes" | "options" | "selectedLaneId" | "onSelectLane"
->) {
+  | "phase"
+  | "lanes"
+  | "options"
+  | "selectedLaneId"
+  | "highlightedLaneId"
+  | "onHighlight"
+  | "onSelectLane"
+> & { linkedHintId: string }) {
   return (
     <fieldset className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
       <legend className="sr-only">{TACTIC_PHASES[phase].label} pitch</legend>
@@ -128,9 +161,7 @@ function PitchBoard({
           {row.cells.map((cell) => {
             const { position } = cell;
             const positionLanes = position
-              ? lanes
-                  .map((lane, index) => ({ lane, laneNumber: index + 1 }))
-                  .filter(({ lane }) => phasePosition(lane, phase) === position)
+              ? lanes.filter((lane) => phasePosition(lane, phase) === position)
               : [];
             return (
               <div
@@ -138,14 +169,17 @@ function PitchBoard({
                 key={cell.id}
               >
                 {positionLanes.length > 0 ? (
-                  positionLanes.map(({ lane, laneNumber }) => (
+                  positionLanes.map((lane) => (
                     <LaneButton
                       key={lane.laneId}
                       phase={phase}
                       lane={lane}
-                      laneNumber={laneNumber}
+                      lanes={lanes}
                       options={options}
+                      highlightedLaneId={highlightedLaneId}
+                      linkedHintId={linkedHintId}
                       selected={lane.laneId === selectedLaneId}
+                      onHighlight={onHighlight}
                       onSelect={() => onSelectLane(lane.laneId)}
                     />
                   ))
@@ -168,14 +202,14 @@ export function PlannerTacticPitch({
   lanes,
   options,
   selectedLaneId,
+  highlightedLaneId,
+  onHighlight,
   onSelectLane,
 }: PlannerTacticPitchProps) {
   const { label, shortLabel } = TACTIC_PHASES[phase];
   const selectedLane = lanes.find((lane) => lane.laneId === selectedLaneId);
-  const selectedLaneNumber = selectedLane
-    ? lanes.findIndex((lane) => lane.laneId === selectedLaneId) + 1
-    : 0;
   const headingId = useId();
+  const linkedHintId = useId();
 
   return (
     <section className="space-y-3" aria-labelledby={headingId}>
@@ -185,19 +219,28 @@ export function PlannerTacticPitch({
             {label}
           </h3>
           <p className="text-body-sm text-on-surface-variant">
-            Select a numbered lane to edit its {shortLabel} placement and role
-            in the lane inspector.
+            Select a position to edit its {shortLabel} placement and role in the
+            position inspector.
           </p>
         </div>
         <span className="shrink-0 rounded-full bg-surface-container-high px-2 py-1 font-mono text-mono-sm text-on-surface-variant">
-          {selectedLane ? `Lane ${selectedLaneNumber}` : "Select a lane"}
+          {selectedLane
+            ? phaseDescription(selectedLane, phase, lanes, options)
+            : "Select a position"}
         </span>
       </div>
+      <p id={linkedHintId} className="sr-only">
+        Focus or select this position to highlight its linked counterpart in the
+        other phase.
+      </p>
       <PitchBoard
         phase={phase}
         lanes={lanes}
         options={options}
         selectedLaneId={selectedLaneId}
+        highlightedLaneId={highlightedLaneId}
+        linkedHintId={linkedHintId}
+        onHighlight={onHighlight}
         onSelectLane={onSelectLane}
       />
     </section>

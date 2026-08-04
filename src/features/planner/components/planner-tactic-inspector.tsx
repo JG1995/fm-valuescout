@@ -6,8 +6,9 @@ import {
   type TacticOptions,
 } from "../types/tactic";
 import {
-  laneLabel,
+  linkedPositionDescription,
   phasePosition,
+  phasePositionLabel,
   phaseRoleId,
   rolesForPhase,
   TACTIC_PHASES,
@@ -16,7 +17,7 @@ import {
 
 type PlannerTacticInspectorProps = {
   selectedLane: TacticLane;
-  selectedLaneNumber: number;
+  lanes: TacticLane[];
   options: TacticOptions;
   phases: TacticPhase[];
   onWeightChange: (ipWeight: number) => void;
@@ -48,19 +49,20 @@ function nextWeight(value: number, key: string): number | null {
 function PhaseControls({
   phase,
   lane,
-  laneNumber,
+  lanes,
   options,
   onPositionChange,
   onRoleChange,
 }: {
   phase: TacticPhase;
   lane: TacticLane;
-  laneNumber: number;
+  lanes: TacticLane[];
   options: TacticOptions;
   onPositionChange: (position: string) => void;
   onRoleChange: (roleId: string) => void;
 }) {
   const position = phasePosition(lane, phase);
+  const positionLabel = phasePositionLabel(lane, phase, lanes);
   const roleId = phaseRoleId(lane, phase);
   const roles = rolesForPhase(options, phase, position);
   const selectedRoleIsCompatible = roles.some((role) => role.roleId === roleId);
@@ -73,7 +75,7 @@ function PhaseControls({
     <fieldset className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-high p-3">
       <legend className="px-1 text-label-lg text-on-surface">{label}</legend>
       <SelectField
-        label={`${shortLabel} lane ${laneNumber} position`}
+        label={`${shortLabel} ${positionLabel} position`}
         value={position}
         onChange={(event) => onPositionChange(event.target.value)}
       >
@@ -84,7 +86,7 @@ function PhaseControls({
         ))}
       </SelectField>
       <SelectField
-        label={`${shortLabel} lane ${laneNumber} role`}
+        label={`${shortLabel} ${positionLabel} role`}
         value={selectedRoleIsCompatible ? roleId : ""}
         disabled={roles.length === 0}
         onChange={(event) => onRoleChange(event.target.value)}
@@ -107,7 +109,7 @@ function PhaseControls({
 
 export function PlannerTacticInspector({
   selectedLane,
-  selectedLaneNumber,
+  lanes,
   options,
   phases,
   onWeightChange,
@@ -128,10 +130,10 @@ export function PlannerTacticInspector({
     >
       <div>
         <h3 id={headingId} className="text-headline-sm text-on-surface">
-          Lane {selectedLaneNumber} · {laneLabel(selectedLane.laneId)}
+          {linkedPositionDescription(selectedLane, lanes, options)}
         </h3>
         <p className="text-body-sm text-on-surface-variant">
-          Shared lane settings and visible phase controls.
+          Shared position settings and visible phase controls.
         </p>
       </div>
 
@@ -149,7 +151,7 @@ export function PlannerTacticInspector({
           max="100"
           step="1"
           value={weight}
-          aria-label={`Lane ${selectedLaneNumber} IP score weight`}
+          aria-label="IP/OOP score weight"
           aria-valuetext={`IP ${weight}%, OOP ${100 - weight}%`}
           className="h-2 w-full cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           onKeyDown={(event) => {
@@ -169,7 +171,7 @@ export function PlannerTacticInspector({
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
         <SelectField
-          label={`Lane ${selectedLaneNumber} importance rank`}
+          label="Importance rank"
           value={selectedLane.importanceRank?.toString() ?? ""}
           onChange={(event) =>
             onRankChange(
@@ -185,7 +187,7 @@ export function PlannerTacticInspector({
           ))}
         </SelectField>
         <SelectField
-          label={`Lane ${selectedLaneNumber} preferred foot`}
+          label="Preferred foot"
           value={selectedLane.preferredFoot}
           onChange={(event) =>
             onPreferredFootChange(
@@ -199,7 +201,7 @@ export function PlannerTacticInspector({
           <option value="both">Both</option>
         </SelectField>
         <SelectField
-          label={`Lane ${selectedLaneNumber} foot preference`}
+          label="Foot preference"
           value={selectedLane.footPreference}
           disabled={selectedLane.preferredFoot === "any"}
           onChange={(event) =>
@@ -220,7 +222,7 @@ export function PlannerTacticInspector({
             key={phase}
             phase={phase}
             lane={selectedLane}
-            laneNumber={selectedLaneNumber}
+            lanes={lanes}
             options={options}
             onPositionChange={(position) => onPositionChange(phase, position)}
             onRoleChange={(roleId) => onRoleChange(phase, roleId)}

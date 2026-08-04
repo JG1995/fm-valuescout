@@ -116,23 +116,27 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       main.getByRole("heading", { name: "Tactic editor" }),
     ).toBeVisible();
+    await expect(
+      main.getByRole("button", { name: "IP: AML · Winger" }),
+    ).toBeVisible();
+    await expect(main.getByText("Left winger")).toHaveCount(0);
     await main
-      .getByRole("button", { name: "IP lane 1: GK, Goalkeeper" })
+      .getByRole("button", { name: "IP: GK · Goalkeeper" })
       .press("Enter");
 
     const weight = main.getByRole("slider", {
-      name: "Lane 1 IP score weight",
+      name: "IP/OOP score weight",
     });
     await weight.press("ArrowRight");
     await expect(main.getByText("IP 51% / OOP 49%")).toBeVisible();
     await main
-      .getByRole("combobox", { name: "Lane 1 importance rank" })
+      .getByRole("combobox", { name: "Importance rank" })
       .selectOption("1");
     await main
-      .getByRole("combobox", { name: "Lane 1 preferred foot" })
+      .getByRole("combobox", { name: "Preferred foot" })
       .selectOption("left");
     await main
-      .getByRole("combobox", { name: "Lane 1 foot preference" })
+      .getByRole("combobox", { name: "Foot preference" })
       .selectOption("strict");
     await main.getByRole("button", { name: "Save tactic" }).click();
 
@@ -173,7 +177,7 @@ test.describe("walking skeleton smoke", () => {
     await main.getByRole("tab", { name: "Reserves" }).click();
     await expect(
       main.getByRole("button", {
-        name: /Reserves, 1st string, Goalkeeper, Optimized Keeper, Resolved/,
+        name: /Reserves, 1st string, IP: GK .* Optimized Keeper, Resolved/,
       }),
     ).toBeVisible();
   });

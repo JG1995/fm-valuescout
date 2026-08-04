@@ -348,6 +348,10 @@ export function resolvePlannerTacticIpcMock() {
   return cloneTactic(tactic);
 }
 
+export function setPlannerTacticIpcMock(value: PlannerTactic) {
+  tactic = cloneTactic(value);
+}
+
 export function resolvePlannerTacticOptionsIpcMock() {
   return {
     placements: [...DEFAULT_TACTIC_OPTIONS.placements],
