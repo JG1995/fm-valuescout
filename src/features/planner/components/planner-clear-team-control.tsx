@@ -41,7 +41,7 @@ export function PlannerClearTeamControl({
         onClick={onRequest}
         onFocus={onFocus}
         data-planner-clear-team={team}
-        className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="!h-7 !px-3 !text-label-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         Clear {TEAM_LABELS[team]} squad
       </Button>
