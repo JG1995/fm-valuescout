@@ -78,9 +78,8 @@ export function PlannerDepthMatrix({
   );
   const [clearTeamOpen, setClearTeamOpen] = useState(false);
   const [clearTeamError, setClearTeamError] = useState<string | null>(null);
-  const [clearTeamStatus, setClearTeamStatus] = useState<string | null>(null);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
-  const [optimizeStatus, setOptimizeStatus] = useState<string | null>(null);
+  const [actionStatus, setActionStatus] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const closeTimerRef = useRef<number | null>(null);
   const removalTimerRef = useRef<number | null>(null);
@@ -227,7 +226,7 @@ export function PlannerDepthMatrix({
         queryKey: plannerKeys.slotCandidates(),
       });
       setClearTeamError(null);
-      setClearTeamStatus(`${TEAM_LABELS[team]} squad cleared.`);
+      setActionStatus(`${TEAM_LABELS[team]} squad cleared.`);
       setClearTeamOpen(false);
     },
     onError: (error) => {
@@ -243,7 +242,7 @@ export function PlannerDepthMatrix({
         queryKey: plannerKeys.slotCandidates(),
       });
       setOptimizeError(null);
-      setOptimizeStatus("Squads optimized.");
+      setActionStatus("Squads optimized.");
     },
     onError: (error) => {
       setOptimizeError(errorMessage(error));
@@ -252,7 +251,7 @@ export function PlannerDepthMatrix({
 
   const requestClearTeam = () => {
     setClearTeamError(null);
-    setClearTeamStatus(null);
+    setActionStatus(null);
     setClearTeamTarget(selectedTeam);
     setClearTeamOpen(true);
   };
@@ -275,37 +274,74 @@ export function PlannerDepthMatrix({
   }
 
   return (
-    <Panel
-      title="Squad depth"
-      flush
-      actions={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <PlannerOptimizerControls
-            pending={optimize.isPending}
-            onOptimize={() => {
-              if (optimize.isPending) {
-                return;
-              }
-              setOptimizeError(null);
-              setOptimizeStatus(null);
-              optimize.mutate();
-            }}
-          />
-          <PlannerClearTeamControl
-            selectedTeam={selectedTeam}
-            target={clearTeamTarget}
-            open={clearTeamOpen}
-            pending={clearTeam.isPending}
-            disabled={clearTeam.isPending || optimize.isPending}
-            error={clearTeamError}
-            onRequest={requestClearTeam}
-            onClose={closeClearTeam}
-            onConfirm={(team) => clearTeam.mutate(team)}
-          />
-        </div>
-      }
-    >
+    <Panel title="Squad depth" flush>
       <div className="space-y-4 p-4">
+        <fieldset
+          aria-label="Squad controls"
+          className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-outline-variant bg-surface-container-low p-3"
+        >
+          <div
+            role="tablist"
+            aria-label="Squad planner teams"
+            className="inline-flex rounded-full bg-surface-container-high p-0.5"
+            onKeyDown={handleTabKeyDown}
+          >
+            {PLANNER_TEAMS.map((team) => {
+              const selected = team === selectedTeam;
+              return (
+                <button
+                  key={team}
+                  ref={(element) => {
+                    tabRefs.current[team] = element;
+                  }}
+                  type="button"
+                  role="tab"
+                  id={`${team}-depth-tab`}
+                  aria-selected={selected}
+                  aria-controls={`${team}-depth-panel`}
+                  tabIndex={selected ? 0 : -1}
+                  className={`cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                    selected
+                      ? "bg-primary text-on-primary"
+                      : "text-on-surface-variant hover:text-on-surface"
+                  }`}
+                  onClick={() => setSelectedTeam(team)}
+                >
+                  {TEAM_LABELS[team]}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <PlannerOptimizerControls
+              pending={optimize.isPending}
+              onOptimize={() => {
+                if (optimize.isPending) {
+                  return;
+                }
+                setOptimizeError(null);
+                setActionStatus(null);
+                optimize.mutate();
+              }}
+            />
+            <PlannerClearTeamControl
+              selectedTeam={selectedTeam}
+              target={clearTeamTarget}
+              open={clearTeamOpen}
+              pending={clearTeam.isPending}
+              disabled={clearTeam.isPending || optimize.isPending}
+              error={clearTeamError}
+              onRequest={requestClearTeam}
+              onClose={closeClearTeam}
+              onConfirm={(team) => clearTeam.mutate(team)}
+            />
+          </div>
+        </fieldset>
+        {actionStatus ? (
+          <p className="text-body-sm text-success" role="status">
+            {actionStatus}
+          </p>
+        ) : null}
         {pickerError ? (
           <p className="text-body-sm text-error" role="alert">
             {pickerError}
@@ -316,53 +352,11 @@ export function PlannerDepthMatrix({
             {stringError}
           </p>
         ) : null}
-        {clearTeamStatus ? (
-          <p className="text-body-sm text-success" role="status">
-            {clearTeamStatus}
-          </p>
-        ) : null}
         {optimizeError ? (
           <p className="text-body-sm text-error" role="alert">
             {optimizeError}
           </p>
         ) : null}
-        {optimizeStatus ? (
-          <p className="text-body-sm text-success" role="status">
-            {optimizeStatus}
-          </p>
-        ) : null}
-        <div
-          role="tablist"
-          aria-label="Squad planner teams"
-          className="inline-flex rounded-full bg-surface-container-high p-0.5"
-          onKeyDown={handleTabKeyDown}
-        >
-          {PLANNER_TEAMS.map((team) => {
-            const selected = team === selectedTeam;
-            return (
-              <button
-                key={team}
-                ref={(element) => {
-                  tabRefs.current[team] = element;
-                }}
-                type="button"
-                role="tab"
-                id={`${team}-depth-tab`}
-                aria-selected={selected}
-                aria-controls={`${team}-depth-panel`}
-                tabIndex={selected ? 0 : -1}
-                className={`cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                  selected
-                    ? "bg-primary text-on-primary"
-                    : "text-on-surface-variant hover:text-on-surface"
-                }`}
-                onClick={() => setSelectedTeam(team)}
-              >
-                {TEAM_LABELS[team]}
-              </button>
-            );
-          })}
-        </div>
         {PLANNER_TEAMS.map((team) => {
           const teamDepth = depth.teams.find(
             (candidate) => candidate.team === team,

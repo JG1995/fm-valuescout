@@ -838,7 +838,7 @@ describe("planner route", () => {
     const matrix = await screen.findByRole("region", {
       name: "Senior squad depth matrix",
     });
-    expect(matrix).toHaveClass("overflow-x-auto");
+    expect(matrix).toHaveClass("overflow-auto");
     expect(
       within(matrix).getByRole("columnheader", { name: "1st string" }),
     ).toBeInTheDocument();
@@ -886,6 +886,69 @@ describe("planner route", () => {
     expect(cell).not.toBeDisabled();
     cell.focus();
     expect(document.activeElement).toBe(cell);
+  });
+
+  it("groups squad actions above a bounded compact matrix", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
+    renderPlannerRoute();
+
+    const toolbar = await screen.findByRole("group", {
+      name: "Squad controls",
+    });
+    expect(
+      within(toolbar).getByRole("tablist", { name: "Squad planner teams" }),
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole("button", { name: "Optimize squads" }),
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole("button", { name: "Clear Senior squad" }),
+    ).toBeInTheDocument();
+
+    const matrix = screen.getByRole("region", {
+      name: "Senior squad depth matrix",
+    });
+    expect(matrix).toHaveClass("max-h-[min(70vh,720px)]");
+    expect(matrix).toHaveClass("overflow-auto");
+    expect(within(matrix).getByRole("row", { name: /Goalkeeper/ })).toHaveClass(
+      "h-table-row-height-two-line",
+    );
+  });
+
+  it("announces only the latest successful squad action", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerOptimizeDepth(
+      withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
+    );
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize squads" }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Squads optimized.",
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Clear Senior squad" }),
+    );
+    const confirmation = screen.getByRole("dialog", {
+      name: "Clear Senior squad?",
+    });
+    await user.click(
+      within(confirmation).getByRole("button", { name: "Clear Senior squad" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Senior squad cleared.",
+      ),
+    );
+    expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
   it("opens a slot-fit picker from an empty matrix cell", async () => {

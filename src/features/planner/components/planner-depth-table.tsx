@@ -85,7 +85,7 @@ function PlannerStringHeader({
   return (
     <th
       scope="col"
-      className="min-w-52 border-b border-outline-variant px-3 py-2 text-right font-mono text-mono-sm text-on-surface tabular-nums"
+      className="h-table-header-height min-w-52 border-b border-outline-variant px-3 text-right font-mono text-mono-sm text-on-surface tabular-nums"
       onContextMenu={(event) => {
         event.preventDefault();
         onOpenMenu();
@@ -168,7 +168,7 @@ function AssignmentCell({
     : `${teamLabel}, ${stringLabel}, ${laneName}, Empty`;
 
   return (
-    <td className="min-w-52 border-b border-outline-variant px-3 py-2 align-top">
+    <td className="h-table-row-height-two-line min-w-52 border-b border-outline-variant px-3 py-1.5 align-middle">
       <button
         type="button"
         className="w-full rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -184,12 +184,25 @@ function AssignmentCell({
           })
         }
       >
-        <span className="block space-y-1">
-          <span
-            className="block truncate text-body-sm text-on-surface"
-            title={name}
-          >
-            {name}
+        <span className="block">
+          <span className="flex min-w-0 items-center justify-between gap-2">
+            <span
+              className="min-w-0 flex-1 truncate text-body-sm text-on-surface"
+              title={name}
+            >
+              {name}
+            </span>
+            {score === null ? (
+              <span className="shrink-0 font-mono text-mono-sm text-on-surface-variant">
+                —
+              </span>
+            ) : (
+              <ScoreBadge
+                score={score}
+                roleName="Combined role score"
+                className="shrink-0"
+              />
+            )}
           </span>
           {assignment?.state === "outside_pool" ? (
             <span className="block text-label-sm text-warning">
@@ -199,13 +212,6 @@ function AssignmentCell({
           {assignment?.state === "unresolved" ? (
             <span className="block text-label-sm text-warning">Unresolved</span>
           ) : null}
-          {score === null ? (
-            <span className="font-mono text-mono-sm text-on-surface-variant">
-              —
-            </span>
-          ) : (
-            <ScoreBadge score={score} roleName="Combined role score" />
-          )}
         </span>
       </button>
     </td>
@@ -245,7 +251,7 @@ export function PlannerDepthTable({
 }: PlannerDepthTableProps) {
   return (
     <section
-      className="overflow-x-auto rounded-lg border border-outline-variant"
+      className="max-h-[min(70vh,720px)] overflow-auto rounded-lg border border-outline-variant"
       aria-label={`${teamLabel} squad depth matrix`}
     >
       <table
@@ -255,11 +261,11 @@ export function PlannerDepthTable({
         <caption className="sr-only">
           {teamLabel} squad depth using the shared tactic
         </caption>
-        <thead>
+        <thead className="sticky top-0 z-20">
           <tr className="bg-surface-container-high">
             <th
               scope="col"
-              className="sticky left-0 z-10 min-w-52 border-b border-r border-outline-variant bg-surface-container-high px-3 py-2 text-label-md text-on-surface"
+              className="sticky left-0 z-30 h-table-header-height min-w-52 border-b border-r border-outline-variant bg-surface-container-high px-3 text-label-md text-on-surface"
             >
               Tactic lane
             </th>
@@ -281,24 +287,38 @@ export function PlannerDepthTable({
         </thead>
         <tbody>
           {tactic.lanes.map((lane, index) => (
-            <tr key={lane.laneId} aria-label={laneLabel(lane.laneId)}>
+            <tr
+              key={lane.laneId}
+              className="h-table-row-height-two-line"
+              aria-label={laneLabel(lane.laneId)}
+            >
               <th
                 scope="row"
-                className="sticky left-0 z-10 min-w-52 border-b border-r border-outline-variant bg-surface-container px-3 py-2 align-top"
+                className="sticky left-0 z-10 h-table-row-height-two-line min-w-52 border-b border-r border-outline-variant bg-surface-container px-3 py-1.5 align-middle"
               >
-                <span className="block text-label-md text-on-surface">
-                  {laneLabel(lane.laneId)}
+                <span className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-label-md text-on-surface">
+                    {laneLabel(lane.laneId)}
+                  </span>
+                  <span className="shrink-0 font-mono text-mono-sm text-on-surface-variant tabular-nums">
+                    Lane {index + 1}
+                  </span>
                 </span>
-                <span className="block font-mono text-mono-sm text-on-surface-variant tabular-nums">
-                  Lane {index + 1}
-                </span>
-                <span className="block text-body-sm text-on-surface-variant">
-                  IP: {phasePosition(lane, "ip")} ·{" "}
-                  {roleLabel(lane, "ip", options)}
-                </span>
-                <span className="block text-body-sm text-on-surface-variant">
-                  OOP: {phasePosition(lane, "oop")} ·{" "}
-                  {roleLabel(lane, "oop", options)}
+                <span className="flex min-w-0 gap-2 text-body-sm text-on-surface-variant">
+                  <span
+                    className="min-w-0 flex-1 truncate"
+                    title={`IP: ${phasePosition(lane, "ip")} · ${roleLabel(lane, "ip", options)}`}
+                  >
+                    IP: {phasePosition(lane, "ip")} ·{" "}
+                    {roleLabel(lane, "ip", options)}
+                  </span>
+                  <span
+                    className="min-w-0 flex-1 truncate"
+                    title={`OOP: ${phasePosition(lane, "oop")} · ${roleLabel(lane, "oop", options)}`}
+                  >
+                    OOP: {phasePosition(lane, "oop")} ·{" "}
+                    {roleLabel(lane, "oop", options)}
+                  </span>
                 </span>
               </th>
               {teamDepth.strings.map((plannerString) => (

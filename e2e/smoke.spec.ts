@@ -165,6 +165,9 @@ test.describe("walking skeleton smoke", () => {
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Squad" }).click();
+    await expect(
+      main.getByRole("group", { name: "Squad controls" }),
+    ).toBeVisible();
     await main.getByRole("button", { name: "Optimize squads" }).click();
     await expect(main.getByRole("status")).toHaveText("Squads optimized.");
     await main.getByRole("tab", { name: "Reserves" }).click();

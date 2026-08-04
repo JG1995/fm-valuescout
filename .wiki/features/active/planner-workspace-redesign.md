@@ -120,7 +120,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 ### PR 1 — Redesign Squad Planner workspace
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -220,7 +220,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 #### Commit 3 — Compact the squad depth workspace
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): compact squad depth workspace`
 
@@ -265,7 +265,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 **PR:** PR 1 — Redesign Squad Planner workspace
 
-**Commit:** Commit 3 — Compact the squad depth workspace
+**Commit:** No active commit — all planned commits are complete; PR 1 is ready for publication
 
 ### RED proof
 
@@ -274,6 +274,15 @@ Add focused tests that render the configured Squad workspace and expect one comp
 ### Expected outcome
 
 The Squad workspace keeps team selection and primary actions together above a compact, bounded matrix. Existing Optimize, Clear Squad, picker, string, assignment, warning, and focus behavior remain intact while the latest successful action is announced once.
+
+### GREEN proof
+
+- `./scripts/dev test src/app/routes/planner.test.tsx` — 40 passed, 0 failed, including the new toolbar, bounded-matrix, compact-row, and latest-status assertions.
+- `./scripts/dev test` — 21 files, 157 passed, 0 failed.
+- `./scripts/dev check-app` and `./scripts/dev check` — application and repository gates passed; Rust reported 211 passed, 0 failed, 2 ignored.
+- `./scripts/dev smoke` — 12 browser control-path tests passed with stubbed IPC after the sandbox WebServer bind limitation was rerun with elevated local process permissions.
+- The existing depth mutation, picker, string-management, warning, score, tab, and focus tests remain green in the same focused suite.
+- Native Tauri populated-state viewport evidence remains open because the former UI-agent runtime is unavailable; stubbed browser smoke is still required for control-path coverage.
 
 ### Explicit exclusions
 
@@ -293,6 +302,7 @@ The Squad workspace keeps team selection and primary actions together above a co
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Add Planner workspace navigation | Pending record | Added validated workspace search state, accessible Planner tabs, configured and first-use defaults, primary-club context, hidden mounted panels, route/smoke coverage, and current-state documentation. | Sol High approved after one fix round; focused route suite 37/37. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
 | PR 1 | Commit 2 — Unify tactic lane editing | Pending record | Replaced per-pitch lane controls with one selected-lane inspector for shared settings and visible IP/OOP phase controls; preserved tactic state, save lifecycle, and route boundaries; updated tests and current-state docs. | Sol High approved; focused route suite 38/38, full suite 155/155, repository gate, and browser smoke 12/12. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
+| PR 1 | Commit 3 — Compact the squad depth workspace | Pending record | Grouped team selection and squad actions in one toolbar, compacted lane and assignment rows, added bounded two-axis matrix overflow with sticky context, consolidated latest success feedback, and updated tests and current-state docs. | Sol High accepted with no findings; focused route suite 40/40, full suite 157/157, application and repository gates, browser smoke 12/12, and staged secret scan passed. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
 
 ## Final validation
 
