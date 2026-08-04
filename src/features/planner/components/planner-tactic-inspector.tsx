@@ -1,0 +1,232 @@
+import { useId } from "react";
+import { SelectField } from "@/components/ui/field/select-field";
+import {
+  TACTIC_LANE_IDS,
+  type TacticLane,
+  type TacticOptions,
+} from "../types/tactic";
+import {
+  laneLabel,
+  phasePosition,
+  phaseRoleId,
+  rolesForPhase,
+  TACTIC_PHASES,
+  type TacticPhase,
+} from "../utils/tactic-editor";
+
+type PlannerTacticInspectorProps = {
+  selectedLane: TacticLane;
+  selectedLaneNumber: number;
+  options: TacticOptions;
+  phases: TacticPhase[];
+  onWeightChange: (ipWeight: number) => void;
+  onRankChange: (importanceRank: number | null) => void;
+  onPreferredFootChange: (preferredFoot: TacticLane["preferredFoot"]) => void;
+  onFootPreferenceChange: (
+    footPreference: TacticLane["footPreference"],
+  ) => void;
+  onPositionChange: (phase: TacticPhase, position: string) => void;
+  onRoleChange: (phase: TacticPhase, roleId: string) => void;
+};
+
+function nextWeight(value: number, key: string): number | null {
+  if (key === "ArrowRight" || key === "ArrowUp") {
+    return Math.min(100, value + 1);
+  }
+  if (key === "ArrowLeft" || key === "ArrowDown") {
+    return Math.max(0, value - 1);
+  }
+  if (key === "Home") {
+    return 0;
+  }
+  if (key === "End") {
+    return 100;
+  }
+  return null;
+}
+
+function PhaseControls({
+  phase,
+  lane,
+  laneNumber,
+  options,
+  onPositionChange,
+  onRoleChange,
+}: {
+  phase: TacticPhase;
+  lane: TacticLane;
+  laneNumber: number;
+  options: TacticOptions;
+  onPositionChange: (position: string) => void;
+  onRoleChange: (roleId: string) => void;
+}) {
+  const position = phasePosition(lane, phase);
+  const roleId = phaseRoleId(lane, phase);
+  const roles = rolesForPhase(options, phase, position);
+  const selectedRoleIsCompatible = roles.some((role) => role.roleId === roleId);
+  const { label, shortLabel } = TACTIC_PHASES[phase];
+  const placements = options.placements.includes(position)
+    ? options.placements
+    : [position, ...options.placements];
+
+  return (
+    <fieldset className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-high p-3">
+      <legend className="px-1 text-label-lg text-on-surface">{label}</legend>
+      <SelectField
+        label={`${shortLabel} lane ${laneNumber} position`}
+        value={position}
+        onChange={(event) => onPositionChange(event.target.value)}
+      >
+        {placements.map((placement) => (
+          <option key={placement} value={placement}>
+            {placement}
+          </option>
+        ))}
+      </SelectField>
+      <SelectField
+        label={`${shortLabel} lane ${laneNumber} role`}
+        value={selectedRoleIsCompatible ? roleId : ""}
+        disabled={roles.length === 0}
+        onChange={(event) => onRoleChange(event.target.value)}
+      >
+        <option value="">Choose a compatible role</option>
+        {roles.map((role) => (
+          <option key={role.roleId} value={role.roleId}>
+            {role.displayName}
+          </option>
+        ))}
+      </SelectField>
+      {roles.length === 0 ? (
+        <p className="text-body-sm text-warning">
+          No {shortLabel} roles support this position.
+        </p>
+      ) : null}
+    </fieldset>
+  );
+}
+
+export function PlannerTacticInspector({
+  selectedLane,
+  selectedLaneNumber,
+  options,
+  phases,
+  onWeightChange,
+  onRankChange,
+  onPreferredFootChange,
+  onFootPreferenceChange,
+  onPositionChange,
+  onRoleChange,
+}: PlannerTacticInspectorProps) {
+  const weightId = useId();
+  const headingId = useId();
+  const weight = Math.round(selectedLane.ipWeight * 100);
+
+  return (
+    <section
+      className="space-y-4 rounded-lg border border-outline-variant bg-surface-container-high p-4"
+      aria-labelledby={headingId}
+    >
+      <div>
+        <h3 id={headingId} className="text-headline-sm text-on-surface">
+          Lane {selectedLaneNumber} · {laneLabel(selectedLane.laneId)}
+        </h3>
+        <p className="text-body-sm text-on-surface-variant">
+          Shared lane settings and visible phase controls.
+        </p>
+      </div>
+
+      <div className="space-y-1">
+        <label
+          className="block text-label-md text-on-surface-variant"
+          htmlFor={weightId}
+        >
+          IP/OOP score weight
+        </label>
+        <input
+          id={weightId}
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={weight}
+          aria-label={`Lane ${selectedLaneNumber} IP score weight`}
+          aria-valuetext={`IP ${weight}%, OOP ${100 - weight}%`}
+          className="h-2 w-full cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          onKeyDown={(event) => {
+            const next = nextWeight(weight, event.key);
+            if (next === null) {
+              return;
+            }
+            event.preventDefault();
+            onWeightChange(next / 100);
+          }}
+          onChange={(event) => onWeightChange(Number(event.target.value) / 100)}
+        />
+        <p className="font-mono text-mono-sm text-on-surface tabular-nums">
+          IP {weight}% / OOP {100 - weight}%
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+        <SelectField
+          label={`Lane ${selectedLaneNumber} importance rank`}
+          value={selectedLane.importanceRank?.toString() ?? ""}
+          onChange={(event) =>
+            onRankChange(
+              event.target.value === "" ? null : Number(event.target.value),
+            )
+          }
+        >
+          <option value="">No rank</option>
+          {TACTIC_LANE_IDS.map((laneId, index) => (
+            <option key={laneId} value={index + 1}>
+              {index + 1}
+            </option>
+          ))}
+        </SelectField>
+        <SelectField
+          label={`Lane ${selectedLaneNumber} preferred foot`}
+          value={selectedLane.preferredFoot}
+          onChange={(event) =>
+            onPreferredFootChange(
+              event.target.value as TacticLane["preferredFoot"],
+            )
+          }
+        >
+          <option value="any">Either</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+          <option value="both">Both</option>
+        </SelectField>
+        <SelectField
+          label={`Lane ${selectedLaneNumber} foot preference`}
+          value={selectedLane.footPreference}
+          disabled={selectedLane.preferredFoot === "any"}
+          onChange={(event) =>
+            onFootPreferenceChange(
+              event.target.value as TacticLane["footPreference"],
+            )
+          }
+        >
+          <option value="preferred">Preferred</option>
+          <option value="strict">Strict</option>
+        </SelectField>
+      </div>
+
+      <div className="space-y-3 border-t border-outline-variant pt-4">
+        <h4 className="text-label-lg text-on-surface">Phase placement</h4>
+        {phases.map((phase) => (
+          <PhaseControls
+            key={phase}
+            phase={phase}
+            lane={selectedLane}
+            laneNumber={selectedLaneNumber}
+            options={options}
+            onPositionChange={(position) => onPositionChange(phase, position)}
+            onRoleChange={(roleId) => onRoleChange(phase, roleId)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}

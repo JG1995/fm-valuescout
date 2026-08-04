@@ -1,19 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
-import { SelectField } from "@/components/ui/field/select-field";
 import { Panel } from "@/components/ui/panel/panel";
 import { plannerKeys } from "../api/planner-keys";
 import { savePlannerTactic } from "../api/save-planner-tactic";
-import {
-  type PlannerTactic,
-  TACTIC_LANE_IDS,
-  type TacticLane,
-  type TacticOptions,
-} from "../types/tactic";
+import type { PlannerTactic, TacticLane, TacticOptions } from "../types/tactic";
 import {
   cloneTactic,
-  laneLabel,
   phasePosition,
   phaseRoleId,
   rolesForPhase,
@@ -24,6 +17,7 @@ import {
   updatePhaseLane,
   validateTacticDraft,
 } from "../utils/tactic-editor";
+import { PlannerTacticInspector } from "./planner-tactic-inspector";
 import { PlannerTacticPitch } from "./planner-tactic-pitch";
 
 type PlannerTacticEditorProps = {
@@ -65,22 +59,6 @@ function nextView(view: TacticView, key: string): TacticView | null {
   return null;
 }
 
-function nextWeight(value: number, key: string): number | null {
-  if (key === "ArrowRight" || key === "ArrowUp") {
-    return Math.min(100, value + 1);
-  }
-  if (key === "ArrowLeft" || key === "ArrowDown") {
-    return Math.max(0, value - 1);
-  }
-  if (key === "Home") {
-    return 0;
-  }
-  if (key === "End") {
-    return 100;
-  }
-  return null;
-}
-
 export function PlannerTacticEditor({
   activeSaveRefreshError,
   isActiveSaveUnavailable,
@@ -97,8 +75,6 @@ export function PlannerTacticEditor({
     tactic.lanes[0]?.laneId ?? "",
   );
   const [saveSucceeded, setSaveSucceeded] = useState(false);
-  const weightId = useId();
-  const selectedLaneHeadingId = useId();
   const viewButtonRefs = useRef<Record<TacticView, HTMLButtonElement | null>>({
     ip: null,
     oop: null,
@@ -353,125 +329,41 @@ export function PlannerTacticEditor({
           </p>
         ) : null}
 
-        {selectedLane ? (
-          <section
-            className="flex flex-wrap items-end justify-between gap-4 rounded-lg border border-outline-variant bg-surface-container-high p-3"
-            aria-labelledby={selectedLaneHeadingId}
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
+          <div
+            className={
+              view === "both" ? "grid gap-4 lg:grid-cols-2" : "space-y-6"
+            }
           >
-            <div>
-              <h3
-                id={selectedLaneHeadingId}
-                className="text-label-lg text-on-surface"
-              >
-                Lane {selectedLaneNumber} · {laneLabel(selectedLane.laneId)}
-              </h3>
-            </div>
-            <div className="space-y-1">
-              <label
-                className="block text-right text-label-md text-on-surface-variant"
-                htmlFor={weightId}
-              >
-                IP/OOP score weight
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  id={weightId}
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={Math.round(selectedLane.ipWeight * 100)}
-                  aria-label={`Lane ${selectedLaneNumber} IP score weight`}
-                  aria-valuetext={`IP ${Math.round(selectedLane.ipWeight * 100)}%, OOP ${Math.round((1 - selectedLane.ipWeight) * 100)}%`}
-                  className="h-2 w-40 cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                  onKeyDown={(event) => {
-                    const next = nextWeight(
-                      Math.round(selectedLane.ipWeight * 100),
-                      event.key,
-                    );
-                    if (next === null) {
-                      return;
-                    }
-                    event.preventDefault();
-                    updateSelectedLaneWeight(next / 100);
-                  }}
-                  onChange={(event) =>
-                    updateSelectedLaneWeight(Number(event.target.value) / 100)
-                  }
-                />
-                <span className="whitespace-nowrap font-mono text-mono-sm text-on-surface tabular-nums">
-                  IP {Math.round(selectedLane.ipWeight * 100)}% / OOP{" "}
-                  {Math.round((1 - selectedLane.ipWeight) * 100)}%
-                </span>
-              </div>
-            </div>
-            <SelectField
-              label={`Lane ${selectedLaneNumber} importance rank`}
-              value={selectedLane.importanceRank?.toString() ?? ""}
-              onChange={(event) =>
-                updateSelectedLaneRank(
-                  event.target.value === "" ? null : Number(event.target.value),
-                )
-              }
-            >
-              <option value="">No rank</option>
-              {TACTIC_LANE_IDS.map((laneId, index) => (
-                <option key={laneId} value={index + 1}>
-                  {index + 1}
-                </option>
-              ))}
-            </SelectField>
-            <SelectField
-              label={`Lane ${selectedLaneNumber} preferred foot`}
-              value={selectedLane.preferredFoot}
-              onChange={(event) =>
-                updateSelectedLaneFoot(
-                  event.target.value as TacticLane["preferredFoot"],
-                )
-              }
-            >
-              <option value="any">Either</option>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-              <option value="both">Both</option>
-            </SelectField>
-            <SelectField
-              label={`Lane ${selectedLaneNumber} foot preference`}
-              value={selectedLane.footPreference}
-              disabled={selectedLane.preferredFoot === "any"}
-              onChange={(event) =>
-                updateSelectedLaneFootPreference(
-                  event.target.value as TacticLane["footPreference"],
-                )
-              }
-            >
-              <option value="preferred">Preferred</option>
-              <option value="strict">Strict</option>
-            </SelectField>
-          </section>
-        ) : null}
-
-        <div
-          className={
-            view === "both" ? "grid gap-6 2xl:grid-cols-2" : "space-y-6"
-          }
-        >
-          {visiblePhases(view).map((phase) => (
-            <PlannerTacticPitch
-              key={phase}
-              phase={phase}
-              lanes={draft.lanes}
+            {visiblePhases(view).map((phase) => (
+              <PlannerTacticPitch
+                key={phase}
+                phase={phase}
+                lanes={draft.lanes}
+                options={options}
+                selectedLaneId={selectedLaneId}
+                onSelectLane={setSelectedLaneId}
+              />
+            ))}
+          </div>
+          {selectedLane ? (
+            <PlannerTacticInspector
+              selectedLane={selectedLane}
+              selectedLaneNumber={selectedLaneNumber}
               options={options}
-              selectedLaneId={selectedLaneId}
-              onSelectLane={setSelectedLaneId}
-              onPositionChange={(laneId, position) =>
-                updatePosition(laneId, phase, position)
+              phases={visiblePhases(view)}
+              onWeightChange={updateSelectedLaneWeight}
+              onRankChange={updateSelectedLaneRank}
+              onPreferredFootChange={updateSelectedLaneFoot}
+              onFootPreferenceChange={updateSelectedLaneFootPreference}
+              onPositionChange={(phase, position) =>
+                updatePosition(selectedLane.laneId, phase, position)
               }
-              onRoleChange={(laneId, roleId) =>
-                updateRole(laneId, phase, roleId)
+              onRoleChange={(phase, roleId) =>
+                updateRole(selectedLane.laneId, phase, roleId)
               }
             />
-          ))}
+          ) : null}
         </div>
       </div>
     </Panel>

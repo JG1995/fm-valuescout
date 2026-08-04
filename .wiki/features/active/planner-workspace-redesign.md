@@ -177,7 +177,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 #### Commit 2 — Unify tactic lane editing
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): unify tactic lane editing`
 
@@ -220,7 +220,7 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 #### Commit 3 — Compact the squad depth workspace
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): compact squad depth workspace`
 
@@ -265,21 +265,21 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 
 **PR:** PR 1 — Redesign Squad Planner workspace
 
-**Commit:** Commit 2 — Unify tactic lane editing
+**Commit:** Commit 3 — Compact the squad depth workspace
 
 ### RED proof
 
-Add focused tests that render the Tactic workspace in Both, IP, and OOP modes and expect one selected-lane inspector with one control per lane property, phase-compatible controls, and unchanged save behavior. The current editor duplicates lane controls beside each pitch and has no single inspector boundary.
+Add focused tests that render the configured Squad workspace and expect one compact team/action toolbar, bounded matrix overflow, and consolidated success feedback without changing assignment or optimizer results. The current depth matrix distributes team actions and feedback around a dense unbounded table.
 
 ### Expected outcome
 
-The Tactic workspace shows Both, IP, and OOP pitches beside one selected-lane inspector. Existing tactic drafts, save payloads, validation, and phase-specific controls keep their current behavior.
+The Squad workspace keeps team selection and primary actions together above a compact, bounded matrix. Existing Optimize, Clear Squad, picker, string, assignment, warning, and focus behavior remain intact while the latest successful action is announced once.
 
 ### Explicit exclusions
 
-- Do not change the Planner workspace route contract established by Commit 1.
-- Do not compact the squad matrix or change Club setup behavior.
-- Do not change Rust, IPC, queries, cache behavior, persistence, or dependencies.
+- Do not change optimizer allocation, assignment persistence, candidate sorting, or score calculation.
+- Do not add gap highlighting, recommendation data, filters, virtualization, or new Planner data.
+- Do not change the Tactic or Club setup workspaces, route workspace contract, Rust, IPC, queries, cache behavior, persistence, or dependencies.
 
 ## Discoveries and replanning
 
@@ -292,6 +292,7 @@ The Tactic workspace shows Both, IP, and OOP pitches beside one selected-lane in
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Add Planner workspace navigation | Pending record | Added validated workspace search state, accessible Planner tabs, configured and first-use defaults, primary-club context, hidden mounted panels, route/smoke coverage, and current-state documentation. | Sol High approved after one fix round; focused route suite 37/37. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
+| PR 1 | Commit 2 — Unify tactic lane editing | Pending record | Replaced per-pitch lane controls with one selected-lane inspector for shared settings and visible IP/OOP phase controls; preserved tactic state, save lifecycle, and route boundaries; updated tests and current-state docs. | Sol High approved; focused route suite 38/38, full suite 155/155, repository gate, and browser smoke 12/12. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
 
 ## Final validation
 

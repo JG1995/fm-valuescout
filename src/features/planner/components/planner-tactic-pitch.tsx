@@ -1,12 +1,8 @@
 import { useId } from "react";
-import { SelectField } from "@/components/ui/field/select-field";
 import type { TacticLane, TacticOptions } from "../types/tactic";
 import {
-  laneLabel,
   phasePosition,
-  phaseRoleId,
   roleLabel,
-  rolesForPhase,
   TACTIC_PHASES,
   type TacticPhase,
 } from "../utils/tactic-editor";
@@ -17,8 +13,6 @@ type PlannerTacticPitchProps = {
   options: TacticOptions;
   selectedLaneId: string;
   onSelectLane: (laneId: string) => void;
-  onPositionChange: (laneId: string, position: string) => void;
-  onRoleChange: (laneId: string, roleId: string) => void;
 };
 
 const PITCH_ROWS = [
@@ -169,83 +163,12 @@ function PitchBoard({
   );
 }
 
-function TacticLaneControls({
-  phase,
-  lane,
-  laneNumber,
-  options,
-  onPositionChange,
-  onRoleChange,
-}: {
-  phase: TacticPhase;
-  lane: TacticLane;
-  laneNumber: number;
-  options: TacticOptions;
-  onPositionChange: (position: string) => void;
-  onRoleChange: (roleId: string) => void;
-}) {
-  const position = phasePosition(lane, phase);
-  const roleId = phaseRoleId(lane, phase);
-  const roles = rolesForPhase(options, phase, position);
-  const selectedRoleIsCompatible = roles.some((role) => role.roleId === roleId);
-  const { label, shortLabel } = TACTIC_PHASES[phase];
-  const placements = options.placements.includes(position)
-    ? options.placements
-    : [position, ...options.placements];
-  const headingId = useId();
-
-  return (
-    <section
-      className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-high p-3"
-      aria-labelledby={headingId}
-    >
-      <div>
-        <h4 id={headingId} className="text-label-lg text-on-surface">
-          Lane {laneNumber} · {laneLabel(lane.laneId)}
-        </h4>
-        <p className="text-body-sm text-on-surface-variant">{label} role fit</p>
-      </div>
-      <SelectField
-        label={`${shortLabel} lane ${laneNumber} position`}
-        value={position}
-        onChange={(event) => onPositionChange(event.target.value)}
-      >
-        {placements.map((placement) => (
-          <option key={placement} value={placement}>
-            {placement}
-          </option>
-        ))}
-      </SelectField>
-      <SelectField
-        label={`${shortLabel} lane ${laneNumber} role`}
-        value={selectedRoleIsCompatible ? roleId : ""}
-        disabled={roles.length === 0}
-        onChange={(event) => onRoleChange(event.target.value)}
-      >
-        <option value="">Choose a compatible role</option>
-        {roles.map((role) => (
-          <option key={role.roleId} value={role.roleId}>
-            {role.displayName}
-          </option>
-        ))}
-      </SelectField>
-      {roles.length === 0 ? (
-        <p className="text-body-sm text-warning">
-          No {shortLabel} roles support this position.
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
 export function PlannerTacticPitch({
   phase,
   lanes,
   options,
   selectedLaneId,
   onSelectLane,
-  onPositionChange,
-  onRoleChange,
 }: PlannerTacticPitchProps) {
   const { label, shortLabel } = TACTIC_PHASES[phase];
   const selectedLane = lanes.find((lane) => lane.laneId === selectedLaneId);
@@ -262,38 +185,21 @@ export function PlannerTacticPitch({
             {label}
           </h3>
           <p className="text-body-sm text-on-surface-variant">
-            Select a numbered lane to edit its {shortLabel} placement and role.
+            Select a numbered lane to edit its {shortLabel} placement and role
+            in the lane inspector.
           </p>
         </div>
         <span className="shrink-0 rounded-full bg-surface-container-high px-2 py-1 font-mono text-mono-sm text-on-surface-variant">
           {selectedLane ? `Lane ${selectedLaneNumber}` : "Select a lane"}
         </span>
       </div>
-      <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(13rem,15rem)]">
-        <PitchBoard
-          phase={phase}
-          lanes={lanes}
-          options={options}
-          selectedLaneId={selectedLaneId}
-          onSelectLane={onSelectLane}
-        />
-        {selectedLane ? (
-          <TacticLaneControls
-            phase={phase}
-            lane={selectedLane}
-            laneNumber={selectedLaneNumber}
-            options={options}
-            onPositionChange={(position) =>
-              onPositionChange(selectedLane.laneId, position)
-            }
-            onRoleChange={(roleId) => onRoleChange(selectedLane.laneId, roleId)}
-          />
-        ) : (
-          <div className="rounded-lg border border-dashed border-outline-variant p-4 text-body-sm text-on-surface-variant">
-            Select a lane on the pitch to edit its phase placement and role.
-          </div>
-        )}
-      </div>
+      <PitchBoard
+        phase={phase}
+        lanes={lanes}
+        options={options}
+        selectedLaneId={selectedLaneId}
+        onSelectLane={onSelectLane}
+      />
     </section>
   );
 }

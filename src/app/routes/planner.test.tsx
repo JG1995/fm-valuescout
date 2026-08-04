@@ -396,6 +396,21 @@ describe("planner route", () => {
     });
     const bothView = within(viewGroup).getByRole("button", { name: "Both" });
     expect(bothView).toHaveAttribute("aria-pressed", "true");
+    const inspectors = screen.getAllByRole("region", {
+      name: "Lane 1 · Goalkeeper",
+    });
+    expect(inspectors).toHaveLength(1);
+    const inspector = inspectors[0];
+    expect(
+      within(inspector).getByRole("combobox", {
+        name: "IP lane 1 position",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(inspector).getByRole("combobox", {
+        name: "OOP lane 1 position",
+      }),
+    ).toBeInTheDocument();
     bothView.focus();
     await user.keyboard("{ArrowLeft}");
     expect(
@@ -482,6 +497,43 @@ describe("planner route", () => {
     );
     expect(weight).toHaveValue("55");
     expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
+  });
+
+  it("keeps phase controls in one inspector for each tactic view", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    const viewGroup = screen.getByRole("group", {
+      name: "Tactic phase views",
+    });
+
+    for (const [view, phase, hiddenPhase] of [
+      ["IP", "IP", "OOP"],
+      ["OOP", "OOP", "IP"],
+      ["Both", "IP", ""],
+    ] as const) {
+      await user.click(within(viewGroup).getByRole("button", { name: view }));
+      const inspectors = screen.getAllByRole("region", {
+        name: "Lane 1 · Goalkeeper",
+      });
+      expect(inspectors).toHaveLength(1);
+      const inspector = inspectors[0];
+      expect(
+        within(inspector).getByRole("combobox", {
+          name: `${phase} lane 1 position`,
+        }),
+      ).toBeInTheDocument();
+      if (hiddenPhase) {
+        expect(
+          within(inspector).queryByRole("combobox", {
+            name: `${hiddenPhase} lane 1 position`,
+          }),
+        ).not.toBeInTheDocument();
+      }
+    }
   });
 
   it("saves only the selected lane score weight", async () => {
