@@ -96,6 +96,7 @@ The implementation uses existing React, TanStack Router, Tailwind, Panel, Button
 - Let the squad matrix own horizontal overflow and bounded vertical overflow. Do not constrain the entire route with an arbitrary pixel height.
 - Update the relevant current-state `DESIGN.md` and `ARCHITECTURE.md` text only in the implementation or reconciliation step that makes each statement true.
 - Do not create an ADR. The feature uses accepted React, Router, Tailwind, and Planner boundaries.
+- For this experiment, use Luna Max for every implementation and review profile in this ledger, including the final feature-complete review. This overrides the repository defaults for this ledger only.
 
 ### Unknowns
 
@@ -152,9 +153,9 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 - Constraints and invariants: one active visible workspace; valid explicit URL wins; configured default is Squad; unconfigured default is Club setup; invalid or missing search values normalize safely; components stay mounted; active-save reset, no-snapshot EmptyState, loaders, Suspense, and query invalidation remain unchanged.
 - Dependencies and ordering: refresh `main` through merged PR #30 before starting; this commit establishes the composition seam required by commits 2 and 3.
 
-**Implementation profile:** Terra High — the route and analogue are established, but default selection, hidden mounted state, active-save behavior, and accessible keyboard navigation require local integration judgment.
+**Implementation profile:** Luna Max — the route and analogue are established, but default selection, hidden mounted state, active-save behavior, and accessible keyboard navigation require local integration judgment.
 
-**Review profile:** Terra High — review must cover URL state, lifecycle preservation, accessibility, and existing Planner paths that broad route tests currently exercise together.
+**Review profile:** Luna Max — review must cover URL state, lifecycle preservation, accessibility, and existing Planner paths that broad route tests currently exercise together.
 
 **Validation:**
 
@@ -195,9 +196,9 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 - Constraints and invariants: exactly one selected lane; one instance of score weight, importance rank, and foot rule; phase-compatible position and role options; Both shows two pitches plus IP and OOP controls; single-phase views show one pitch plus that phase's controls; save and refresh behavior remains byte-for-byte compatible at the API boundary.
 - Dependencies and ordering: commit 1 provides the dedicated Tactic workspace and visible area. Do not change the route workspace contract here.
 
-**Implementation profile:** Terra High — the domain contract is fixed, but component ownership, responsive composition, and dense control hierarchy require design judgment.
+**Implementation profile:** Luna Max — the domain contract is fixed, but component ownership, responsive composition, and dense control hierarchy require design judgment.
 
-**Review profile:** Terra High — deterministic tests cover behavior, while responsive fit, accessible labelling, and draft preservation need careful review and visual evidence.
+**Review profile:** Luna Max — deterministic tests cover behavior, while responsive fit, accessible labelling, and draft preservation need careful review and visual evidence.
 
 **Validation:**
 
@@ -238,9 +239,9 @@ Commit 1 replaces vertical workspace stacking with URL-backed, keyboard-operable
 - Constraints and invariants: Optimize remains the primary action and still applies to all squads; Clear Squad remains selected-team and destructive; unlimited strings keep horizontal scrolling; all eleven lanes remain in stable order; long names truncate visually but remain available through `title` and accessible names; warning and unknown-score states stay truthful; focused cells and headers remain visible when the matrix scrolls.
 - Dependencies and ordering: commit 1 supplies the isolated Squad workspace. Commit 2 is behaviorally independent but lands first so final visual validation covers the finished Planner composition once.
 
-**Implementation profile:** Terra High — the mutation behavior is established, but table density, sticky overflow, status announcements, and many existing interaction paths make this a broad UI integration change.
+**Implementation profile:** Luna Max — the mutation behavior is established, but table density, sticky overflow, status announcements, and many existing interaction paths make this a broad UI integration change.
 
-**Review profile:** Terra High — review must combine deterministic mutation coverage with accessibility, focus, overflow, and populated-state visual checks that jsdom cannot prove.
+**Review profile:** Luna Max — review must combine deterministic mutation coverage with accessibility, focus, overflow, and populated-state visual checks that jsdom cannot prove.
 
 **Validation:**
 
@@ -303,7 +304,7 @@ Add focused route tests that expect a labelled Planner workspace tablist, config
 - Confirm workspace changes preserve drafts and selections; active-save changes reset or refresh them at the existing boundaries.
 - Confirm no document-level horizontal overflow, no content hidden behind the top bar, visible matrix scroll cues, and visible focus throughout bounded overflow.
 - Confirm active save and snapshot age stay visible in the global top bar and all score and warning states remain truthful.
-- Fresh Sol High feature-complete review over the exact recorded implementation commits and final PR ref.
+- Fresh Luna Max feature-complete review over the exact recorded implementation commits and final PR ref.
 - `./scripts/dev mutate` remains unsupported and must not be reported as passed.
 
 ## Documentation impact
