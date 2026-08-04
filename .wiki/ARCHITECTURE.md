@@ -36,7 +36,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
-**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v9: `saves`, `snapshots`, `players`, `player_role_scores`, and save-scoped Planner club-family, tactic, depth-string, and assignment rows with provenance).
+**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v10: `saves`, `snapshots`, `players`, `player_role_scores`, and save-scoped Planner club-family, tactic, depth-string, and assignment rows with provenance).
 
 **FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), `status.json` / `dump.json` / diagnostics with phase timings. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
@@ -431,7 +431,7 @@ User clicks Load Data (AppTopBar)
   → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
 
-**Saves model** (migrations v2–v7, `src-tauri/src/db/migrations.rs`):
+**Saves model** (migrations v2–v10, `src-tauri/src/db/migrations.rs`):
 
 | Table | Role |
 | --- | --- |
@@ -441,7 +441,7 @@ User clicks Load Data (AppTopBar)
 | `player_role_scores` | Per-player role-fit scores keyed by `(snapshot_id, uid, role_id)` with `phase` (`in_possession` \| `out_of_possession`) and nullable integer `score` (0–100). FK to `players` with `ON DELETE CASCADE`. Index on `(snapshot_id, role_id)` for role-filtered queries. |
 | `planner_club_settings` | One optional club-family configuration per save. Stores the explicitly selected primary club and survives current-snapshot replacement. |
 | `planner_club_sources` | Primary and attached club sources assigned to Senior, Reserves, or Youth. The legacy optional `team_level` value remains persisted but does not restrict Planner eligibility. Source rows reference the save, not a snapshot. |
-| `planner_tactic_lanes` | Eleven ordered, stable lanes per save. Each lane links an IP placement and role to an OOP placement and role, owns a 0–1 IP weight and an optional unique 1–11 importance rank, and references the save directly. Both role references are validated against the scoring catalog. |
+| `planner_tactic_lanes` | Eleven ordered, stable lanes per save. Each lane links an IP placement and role to an OOP placement and role, owns a 0–1 IP weight, an optional unique 1–11 importance rank, a preferred-foot rule, and references the save directly. Both role references are validated against the scoring catalog. |
 | `planner_strings` | Ordered depth-chart strings for Senior, Reserves, and Youth. Rows reference the save, not a snapshot, and each team keeps at least one string. |
 | `planner_assignments` | Save-wide unique player assignments to a tactic lane and string. Rows retain the player UID and last-known name while current snapshot resolution changes. Migration v7 records `manual` or `optimizer` provenance; legacy rows migrate to `manual`. |
 
@@ -484,8 +484,8 @@ User opens /planner
 User opens /planner
   → route loader: ensureQueryData(get_planner_tactic + get_planner_tactic_options)
   → get_planner_tactic creates the default tactic for a save when none exists
-  → save_planner_tactic receives the complete 11-lane draft with one IP weight and optional rank per lane
-  → Rust rejects incomplete lanes, unknown or phase-incompatible roles, unsupported positions, lane weights outside 0–1, and duplicate or out-of-range ranks
+  → save_planner_tactic receives the complete 11-lane draft with one IP weight, optional rank, preferred foot, and foot preference per lane
+  → Rust rejects incomplete lanes, unknown or phase-incompatible roles, unsupported positions, lane weights outside 0–1, duplicate or out-of-range ranks, and invalid foot rules
   → planner query keys remain save-scoped and are invalidated with the rest of the planner tree on save/snapshot changes
 ```
 
