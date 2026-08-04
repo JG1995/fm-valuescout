@@ -714,6 +714,7 @@ describe("planner route", () => {
   });
 
   it("searches null-score candidates and assigns the keyboard selection", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     const scrollIntoView = vi.fn();
     const scrollDescriptor = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
@@ -724,7 +725,9 @@ describe("planner route", () => {
       value: scrollIntoView,
     });
     try {
-      const user = userEvent.setup();
+      const user = userEvent.setup({
+        advanceTimers: vi.advanceTimersByTime,
+      });
       await resolveLoadDataIpcMock();
       setPlannerAvailableClubs(["Barcelona"]);
       setPlannerSlotCandidates([
@@ -766,6 +769,8 @@ describe("planner route", () => {
       scrollIntoView.mockClear();
       await user.keyboard("{ArrowDown}");
       expect(bTeam).toHaveAttribute("aria-selected", "true");
+      await vi.advanceTimersByTimeAsync(200);
+      expect(bTeam).toHaveAttribute("aria-selected", "true");
       await waitFor(() =>
         expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" }),
       );
@@ -780,6 +785,7 @@ describe("planner route", () => {
       ).toBeInTheDocument();
       await waitFor(() => expect(document.activeElement).toBe(cell));
     } finally {
+      vi.useRealTimers();
       if (scrollDescriptor) {
         Object.defineProperty(
           HTMLElement.prototype,
