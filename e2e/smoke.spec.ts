@@ -184,6 +184,35 @@ test.describe("walking skeleton smoke", () => {
     ).toBeVisible();
   });
 
+  test("planner depth clears every squad from one confirmed action", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Squad" }).click();
+    await main.getByRole("button", { name: "Optimize squads" }).click();
+    await expect(main.getByRole("status")).toHaveText("Squads optimized.");
+
+    const clearAll = main.getByRole("button", { name: "Clear all" });
+    await clearAll.click();
+    const confirmation = page.getByRole("dialog", {
+      name: "Clear all squads?",
+    });
+    await expect(confirmation).toContainText("Senior, Reserves, and Youth");
+    await confirmation.getByRole("button", { name: "Clear all" }).click();
+    await expect(main.getByRole("status")).toHaveText("All squads cleared.");
+
+    await main.getByRole("tab", { name: "Reserves" }).click();
+    await expect(
+      main.getByRole("button", {
+        name: /Reserves, 1st string, IP: GK .* Empty/,
+      }),
+    ).toBeVisible();
+  });
+
   test("planner depth groups all teams when the matrix fits", async ({
     page,
   }) => {

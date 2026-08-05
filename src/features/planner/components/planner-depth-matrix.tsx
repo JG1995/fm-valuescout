@@ -8,7 +8,7 @@ import {
 } from "react";
 import { Panel } from "@/components/ui/panel/panel";
 import { addPlannerString } from "../api/add-planner-string";
-import { clearPlannerTeam } from "../api/clear-planner-team";
+import { clearPlannerDepth } from "../api/clear-planner-depth";
 import { optimizePlannerDepth } from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
 import { removePlannerString } from "../api/remove-planner-string";
@@ -19,7 +19,7 @@ import type {
   PlannerString,
 } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
-import { PlannerClearTeamControl } from "./planner-clear-team-control";
+import { PlannerClearAllControl } from "./planner-clear-all-control";
 import {
   PlannerDepthTable,
   PlannerStringRemovalConfirmation,
@@ -133,11 +133,8 @@ export function PlannerDepthMatrix({
     null,
   );
   const [removalOpen, setRemovalOpen] = useState(false);
-  const [clearTeamTarget, setClearTeamTarget] = useState<PlannerTeam | null>(
-    null,
-  );
-  const [clearTeamOpen, setClearTeamOpen] = useState(false);
-  const [clearTeamError, setClearTeamError] = useState<string | null>(null);
+  const [clearAllOpen, setClearAllOpen] = useState(false);
+  const [clearAllError, setClearAllError] = useState<string | null>(null);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const matrixContainerRef = useRef<HTMLDivElement>(null);
@@ -154,7 +151,7 @@ export function PlannerDepthMatrix({
   });
   const lastFocusContext = useRef<
     | { kind: "tab"; team: PlannerTeam }
-    | { kind: "clear"; team: PlannerTeam }
+    | { kind: "clear" }
     | { kind: "string"; team: PlannerTeam; stringId: number }
     | {
         kind: "cell";
@@ -208,9 +205,7 @@ export function PlannerDepthMatrix({
       }
       if (context.kind === "clear") {
         document
-          .querySelector<HTMLButtonElement>(
-            `[data-planner-clear-team="${context.team}"]`,
-          )
+          .querySelector<HTMLButtonElement>("[data-planner-clear-all]")
           ?.focus();
         return;
       }
@@ -352,19 +347,19 @@ export function PlannerDepthMatrix({
     setRemovalOpen(true);
   };
 
-  const clearTeam = useMutation({
-    mutationFn: (team: PlannerTeam) => clearPlannerTeam(team, true),
-    onSuccess: async (nextDepth, team) => {
+  const clearAll = useMutation({
+    mutationFn: () => clearPlannerDepth(true),
+    onSuccess: async (nextDepth) => {
       queryClient.setQueryData(plannerKeys.depth(), nextDepth);
       await queryClient.invalidateQueries({
         queryKey: plannerKeys.slotCandidates(),
       });
-      setClearTeamError(null);
-      setActionStatus(`${TEAM_LABELS[team]} squad cleared.`);
-      setClearTeamOpen(false);
+      setClearAllError(null);
+      setActionStatus("All squads cleared.");
+      setClearAllOpen(false);
     },
     onError: (error) => {
-      setClearTeamError(errorMessage(error));
+      setClearAllError(errorMessage(error));
     },
   });
 
@@ -383,17 +378,15 @@ export function PlannerDepthMatrix({
     },
   });
 
-  const requestClearTeam = (team: PlannerTeam) => {
-    setClearTeamError(null);
+  const requestClearAll = () => {
+    setClearAllError(null);
     setActionStatus(null);
-    setSelectedTeam(team);
-    setClearTeamTarget(team);
-    setClearTeamOpen(true);
+    setClearAllOpen(true);
   };
 
-  const closeClearTeam = () => {
-    if (!clearTeam.isPending) {
-      setClearTeamOpen(false);
+  const closeClearAll = () => {
+    if (!clearAll.isPending) {
+      setClearAllOpen(false);
     }
   };
 
@@ -454,18 +447,6 @@ export function PlannerDepthMatrix({
       }}
       onRemoveString={requestRemoveString}
       addDisabled={addString.isPending}
-      clearDisabled={clearTeam.isPending || optimize.isPending}
-      clearPending={clearTeam.isPending}
-      clearTeamTarget={clearTeamTarget}
-      clearTeamOpen={clearTeamOpen}
-      clearTeamError={clearTeamError}
-      onRequestClearTeam={requestClearTeam}
-      onClearTeamFocus={(team) => {
-        setSelectedTeam(team);
-        lastFocusContext.current = { kind: "clear", team };
-      }}
-      onCloseClearTeam={closeClearTeam}
-      onConfirmClearTeam={(team) => clearTeam.mutate(team)}
       stringHeaderRef={stringHeaderRef}
       onStringHeaderFocus={onStringHeaderFocus}
       cellRef={cellRef}
@@ -533,25 +514,18 @@ export function PlannerDepthMatrix({
                 optimize.mutate();
               }}
             />
-            {!showCombinedTeams ? (
-              <PlannerClearTeamControl
-                team={selectedTeam}
-                target={clearTeamTarget}
-                open={clearTeamOpen}
-                pending={clearTeam.isPending}
-                disabled={clearTeam.isPending || optimize.isPending}
-                error={clearTeamError}
-                onRequest={() => requestClearTeam(selectedTeam)}
-                onFocus={() => {
-                  lastFocusContext.current = {
-                    kind: "clear",
-                    team: selectedTeam,
-                  };
-                }}
-                onClose={closeClearTeam}
-                onConfirm={(team) => clearTeam.mutate(team)}
-              />
-            ) : null}
+            <PlannerClearAllControl
+              open={clearAllOpen}
+              pending={clearAll.isPending}
+              disabled={clearAll.isPending || optimize.isPending}
+              error={clearAllError}
+              onRequest={requestClearAll}
+              onFocus={() => {
+                lastFocusContext.current = { kind: "clear" };
+              }}
+              onClose={closeClearAll}
+              onConfirm={() => clearAll.mutate()}
+            />
           </div>
         </fieldset>
         {actionStatus ? (

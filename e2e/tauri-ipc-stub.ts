@@ -241,6 +241,18 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             return plannerDepth;
           }
 
+          if (cmd === "clear_planner_depth") {
+            if (args?.confirmed !== true) {
+              throw new Error("Clearing all squads requires confirmation");
+            }
+            for (const team of plannerDepth.teams) {
+              for (const plannerString of team.strings) {
+                plannerString.assignments = [];
+              }
+            }
+            return plannerDepth;
+          }
+
           if (cmd === "get_planner_tactic_options") {
             return {
               placements: ["GK", "DL", "DC", "DR", "DM", "MC", "ML", "MR", "AML", "AMR", "ST"],

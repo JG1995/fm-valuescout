@@ -449,17 +449,12 @@ pub fn remove_planner_string(
 }
 
 #[tauri::command]
-pub fn clear_planner_team(
-    team: String,
-    confirmed: bool,
-    db: State<'_, Db>,
-) -> Result<PlannerDepthDto, String> {
-    let team = PlannerTeam::parse(&team)?;
+pub fn clear_planner_depth(confirmed: bool, db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
     let conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
-    depth_service::clear_team(&conn, save_id, team, confirmed)?;
+    depth_service::clear_all(&conn, save_id, confirmed)?;
     Ok(depth_service::get_depth(&conn, save_id)?.into())
 }
 

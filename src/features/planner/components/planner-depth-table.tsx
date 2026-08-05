@@ -14,7 +14,6 @@ import {
   linkedPositionDescription,
   phaseDescription,
 } from "../utils/tactic-editor";
-import { PlannerClearTeamControl } from "./planner-clear-team-control";
 import type { PlannerSlotTarget } from "./planner-slot-fit-picker";
 
 function ordinal(value: number): string {
@@ -269,15 +268,6 @@ type PlannerDepthTableProps = {
   onAddString: (team: PlannerTeam, stringId: number) => void;
   onRemoveString: (plannerString: PlannerString) => void;
   addDisabled: boolean;
-  clearDisabled: boolean;
-  clearPending: boolean;
-  clearTeamTarget: PlannerTeam | null;
-  clearTeamOpen: boolean;
-  clearTeamError: string | null;
-  onRequestClearTeam: (team: PlannerTeam) => void;
-  onClearTeamFocus: (team: PlannerTeam) => void;
-  onCloseClearTeam: () => void;
-  onConfirmClearTeam: (team: PlannerTeam) => void;
   stringHeaderRef: (
     stringId: number,
   ) => (element: HTMLButtonElement | null) => void;
@@ -303,15 +293,6 @@ export function PlannerDepthTable({
   onAddString,
   onRemoveString,
   addDisabled,
-  clearDisabled,
-  clearPending,
-  clearTeamTarget,
-  clearTeamOpen,
-  clearTeamError,
-  onRequestClearTeam,
-  onClearTeamFocus,
-  onCloseClearTeam,
-  onConfirmClearTeam,
   stringHeaderRef,
   onStringHeaderFocus,
   cellRef,
@@ -384,8 +365,6 @@ export function PlannerDepthTable({
                 </th>
                 {teamDepths.map((teamDepth, index) => {
                   const groupId = `planner-team-${teamDepth.team}-header`;
-                  const clearTarget =
-                    clearTeamTarget === teamDepth.team ? clearTeamTarget : null;
                   return (
                     <th
                       key={teamDepth.team}
@@ -395,21 +374,7 @@ export function PlannerDepthTable({
                       aria-label={`${teamLabels[teamDepth.team]} squad`}
                       className={`${index > 0 ? "border-l-2" : ""} sticky top-0 z-20 h-table-header-height border-b border-outline-variant bg-surface-container-lowest px-3 text-label-md text-on-surface`}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <span>{teamLabels[teamDepth.team]} squad</span>
-                        <PlannerClearTeamControl
-                          team={teamDepth.team}
-                          target={clearTarget}
-                          open={clearTeamOpen && clearTarget !== null}
-                          pending={clearPending}
-                          disabled={clearDisabled}
-                          error={clearTeamError}
-                          onRequest={() => onRequestClearTeam(teamDepth.team)}
-                          onFocus={() => onClearTeamFocus(teamDepth.team)}
-                          onClose={onCloseClearTeam}
-                          onConfirm={onConfirmClearTeam}
-                        />
-                      </div>
+                      {teamLabels[teamDepth.team]} squad
                     </th>
                   );
                 })}

@@ -61,7 +61,7 @@ Make Squad Planner a focused desktop workspace instead of one long page of equal
 - Relevant components: `src/app/routes/planner.tsx` loads all Planner queries and owns URL-backed Squad, Tactic, and Club setup workspaces. It keeps `PlannerClubFamilyPanel`, `PlannerTacticEditor`, and `PlannerDepthMatrix` mounted in labelled hidden tab panels; `src/app/components/app-shell-layout.tsx` gives the main region page-level vertical scrolling.
 - Tactic presentation: `src/features/planner/components/planner-tactic-editor.tsx` owns the draft, phase view, selected lane ID, linked highlight, validation, and save mutation. `planner-tactic-pitch.tsx` renders each pitch with current position-and-role buttons and linked counterpart emphasis, while `planner-tactic-inspector.tsx` renders one selected-position inspector. The pitch currently lists GK above ST and maps each base position to one cell, so repeated central positions stack vertically in that cell. `src/features/planner/utils/tactic-editor.ts` derives descriptions and spatial qualifiers, but its duplicate rule currently requires the same phase position and role and assigns qualifiers left-to-right.
 - Squad presentation: `planner-depth-matrix.tsx` owns selected-team state, container-fit mode, mutations, picker and menu state, and one latest squad-action status. `planner-depth-table.tsx` renders one semantic grouped table when the current strings fit the matrix container and keeps hidden non-selected team panels mounted for the constrained tabbed mode. Both presentations keep sticky position and string headers, bounded two-axis overflow, compact rows, explicit team context, and current IP/OOP position-and-role descriptions. `planner-slot-fit-picker.tsx` receives the current tactic and options so assignment locations and confirmations use the same descriptions.
-- Current clear path: `PlannerClearTeamControl`, `clearPlannerTeam`, the `clear_planner_team` Tauri command, and Rust `clear_team` service clear one named team after confirmation. Combined mode renders one trigger per team header, while constrained mode renders one trigger for the selected team. Rust already uses a transaction and returns the reconciled complete `PlannerDepth` read model.
+- Current clear path: `PlannerClearAllControl`, `clearPlannerDepth`, the `clear_planner_depth` Tauri command, and Rust `clear_all` service clear every assignment for the active save after confirmation. The shared toolbar owns the one trigger in both combined and constrained matrix modes. Rust uses one transaction and returns the reconciled complete `PlannerDepth` read model.
 - Club-family presentation: `planner-club-family-panel.tsx` owns a local draft and invalidates the Planner query tree after save.
 - Existing analogue: `/players/$uid` validates a `tab` search parameter, replaces URL search state on tab changes, and uses an accessible roving-tabindex `PlayerProfileTabs` component with hidden tab panels.
 - Data model: save-scoped club settings, tactic lanes, strings, and assignments remain unchanged.
@@ -388,7 +388,7 @@ Commit 1 remains the feature walking skeleton: it replaced vertical workspace st
 
 #### Commit 6 — Replace team clears with one atomic Clear all
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): replace team clears with clear all`
 
@@ -434,7 +434,7 @@ Commit 1 remains the feature walking skeleton: it replaced vertical workspace st
 
 #### Commit 7 — Arrange central positions across the pitch
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `fix(planner): arrange central positions across pitch`
 
@@ -524,21 +524,21 @@ Commit 1 remains the feature walking skeleton: it replaced vertical workspace st
 
 **PR:** PR 1 — Redesign Squad Planner workspace (Active)
 
-**Commit:** Commit 6 — Replace team clears with one atomic Clear all (active)
+**Commit:** Commit 7 — Arrange central positions across the pitch (active)
 
 ### RED proof
 
-Add one Rust regression that populates all three teams, rejects an unconfirmed clear, clears all three teams after confirmation, and proves another save plus strings, tactic, and club-family settings remain intact. Add focused route coverage that expects one Clear all trigger in both matrix modes, no team-specific triggers, complete confirmation copy, cancel and error preservation, duplicate-submit prevention, successful all-team reconciliation, one candidate invalidation, and focus restoration. Before implementation, these proofs fail because the save-scoped command and global action do not exist while the team-scoped paths remain.
+Add focused route coverage for one, two, and three repeated central positions, including different roles sharing one base position across IP and OOP. Before implementation, these proofs fail because the pitch gives each base position one cell and the existing qualifier helper groups by position and role instead of deriving one horizontal slot mapping from the base position alone.
 
 ### Expected outcome
 
-The Squad toolbar shows one Clear all action beside Optimize squads in both matrix modes. After explicit confirmation, one Rust transaction clears every assignment for Senior, Reserves, and Youth in the active save, returns the reconciled depth model, and leaves all other Planner state unchanged. No team-specific clear implementation, adapter, mock contract, or focus path remains.
+Repeated DC, DM, MC, AMC, and ST placements occupy a shared three-slot central band: one is centred, two use right then left in stable tactic order, and three use right, centre, then left. The same derived slot mapping supplies visible and accessible spatial qualifiers regardless of role, while every existing lane remains selectable and persisted tactic choices are unchanged.
 
 ### Explicit exclusions
 
-- Do not change optimizer, scoring, provenance, candidate ranking, team or string configuration, tactics, club-family behavior, matrix composition, or unrelated assignment mutations.
-- Do not add schema changes, migrations, undo, selective clearing, a compatibility command, sequential team clears, dependencies, or shared abstractions.
-- Do not change the Tactic or Club setup workspace UI.
+- Do not change pitch row orientation; commit 8 owns GK-at-bottom and ST-at-top.
+- Do not add persisted horizontal positions, user-facing MCL/MCR-style choices, formation constraints, validation limits, migrations, DTOs, Rust services, optimizer behavior, or squad-matrix changes.
+- Do not hide or discard lanes when more than three share a base position, and do not change tactic payloads, lane IDs, draft behavior, linking, or save behavior.
 
 ## Discoveries and replanning
 
@@ -555,13 +555,15 @@ The Squad toolbar shows one Clear all action beside Optimize squads in both matr
 - Local commit `500c081` compacted the soon-to-be-removed team-specific triggers as an explicitly approved trivial polish change outside the ledger. Preserve it in branch history; commit 6 supersedes its visible effect without rewriting history.
 - The 2026-08-05 replanning pass reopened unpublished PR 1 and added commit 6. No trunk or PR merge boundary has occurred, and the change shares the existing Squad toolbar, mutation, and final visual review surface, so a second PR would add no independent merge value.
 - The 2026-08-05 Tactic screenshot exposed a separate geometry problem after the workspace redesign: `PITCH_ROWS` renders GK before ST and gives each base position one cell, so repeated central positions stack. The current qualifier helper also groups by position and role, which explains why equal-role OOP midfielders receive left/right labels while different-role IP midfielders do not.
-- The developer chose to keep tactic-board geometry in PR 1 because the extension contains only two focused presentation commits. Commit 6 remains active; commits 7 and 8 stay pending behind it on the existing branch.
+- The developer chose to keep tactic-board geometry in PR 1 because the extension contains only two focused presentation commits. Commit 6 is complete; commit 7 is now active and commit 8 remains pending behind it on the existing branch.
 - The accepted horizontal rule is presentation-only: group by base phase position, keep the user's existing position choices, and assign stable tactic order right-centre-left when positions repeat. No schema, Rust validation, optimizer, or tactic payload change is required.
+- Commit 6 implementation replaces the team-scoped clear path end to end: one `clear_planner_depth` command and transaction clear the active save, the toolbar owns one confirmed Clear all control, and old team-target state, controls, adapters, registration, mocks, and tests are removed. The focused route suite is green at 45/45 and the Rust planner gate is green at 211 passed with 2 ignored; browser smoke coverage now includes the confirmed Clear all path. The repository gate is green, and the Sol High review is clear with no blocking findings.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
+| PR 1 | Commit 6 — Replace team clears with one atomic Clear all | Pending record | One confirmed toolbar action now clears all Senior, Reserves, and Youth assignments for the active save in one Rust transaction; old team-scoped paths were removed and implemented Planner contracts were updated. | Sol High clear after 0 fix rounds; focused route suite 45/45, full frontend 162/162, Rust 211 passed/2 ignored, repository check, elevated smoke 14/14, and check-fast passed. | No scope deviations. |
 | PR 1 | Commit 1 — Add Planner workspace navigation | `c5d6bce` | Added validated workspace search state, accessible Planner tabs, configured and first-use defaults, primary-club context, hidden mounted panels, route/smoke coverage, and current-state documentation. | Sol High approved after one fix round; focused route suite 37/37. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
 | PR 1 | Commit 2 — Unify tactic lane editing | `133089d` | Replaced per-pitch lane controls with one selected-lane inspector for shared settings and visible IP/OOP phase controls; preserved tactic state, save lifecycle, and route boundaries; updated tests and current-state docs. | Sol High approved; focused route suite 38/38, full suite 155/155, repository gate, and browser smoke 12/12. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |
 | PR 1 | Commit 3 — Compact the squad depth workspace | `4d45d0f` | Grouped team selection and squad actions in one toolbar, compacted lane and assignment rows, added bounded two-axis matrix overflow with sticky context, consolidated latest success feedback, and updated tests and current-state docs. | Sol High accepted with no findings; focused route suite 40/40, full suite 157/157, application and repository gates, browser smoke 12/12, and staged secret scan passed. | Native Tauri viewport evidence remains open because the former UI-agent runtime is unavailable; no scope deviations. |

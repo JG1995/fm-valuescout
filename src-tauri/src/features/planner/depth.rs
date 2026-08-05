@@ -406,26 +406,17 @@ pub fn remove_string(
     tx.commit().map_err(|error| error.to_string())
 }
 
-pub fn clear_team(
-    conn: &Connection,
-    save_id: i64,
-    team: PlannerTeam,
-    confirmed: bool,
-) -> Result<(), String> {
+pub fn clear_all(conn: &Connection, save_id: i64, confirmed: bool) -> Result<(), String> {
     if !confirmed {
-        return Err("Clearing a squad requires confirmation".to_string());
+        return Err("Clearing all squads requires confirmation".to_string());
     }
     ensure_depth(conn, save_id)?;
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
     tx.execute(
-        "DELETE FROM planner_assignments
-         WHERE save_id = ?1
-           AND string_id IN (
-             SELECT id FROM planner_strings WHERE save_id = ?1 AND team = ?2
-           )",
-        params![save_id, team.as_str()],
+        "DELETE FROM planner_assignments WHERE save_id = ?1",
+        params![save_id],
     )
     .map_err(|error| error.to_string())?;
     tx.commit().map_err(|error| error.to_string())

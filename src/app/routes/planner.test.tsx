@@ -27,10 +27,11 @@ import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import {
   getPlannerAddStringIpcMockCalls,
-  getPlannerClearTeamIpcMockCalls,
+  getPlannerClearAllIpcMockCalls,
   getPlannerClubFamilySaveCalls,
   getPlannerDepthIpcMockCalls,
   getPlannerOptimizeIpcMockCalls,
+  getPlannerSlotCandidateFetchCount,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
@@ -39,8 +40,8 @@ import {
   setPlannerAddStringPending,
   setPlannerAssignmentError,
   setPlannerAvailableClubs,
-  setPlannerClearTeamError,
-  setPlannerClearTeamPending,
+  setPlannerClearAllError,
+  setPlannerClearAllPending,
   setPlannerDepthIpcMock,
   setPlannerOptimizeDepth,
   setPlannerOptimizeError,
@@ -1010,7 +1011,7 @@ describe("planner route", () => {
       within(toolbar).getByRole("button", { name: "Optimize squads" }),
     ).toBeInTheDocument();
     expect(
-      within(toolbar).getByRole("button", { name: "Clear Senior squad" }),
+      within(toolbar).getByRole("button", { name: "Clear all" }),
     ).toBeInTheDocument();
 
     const matrix = screen.getByRole("region", {
@@ -1065,17 +1066,19 @@ describe("planner route", () => {
       screen.queryByRole("tab", { name: "Senior" }),
     ).not.toBeInTheDocument();
 
-    const clearYouth = within(matrix).getByRole("button", {
-      name: "Clear Youth squad",
-    });
-    await user.click(clearYouth);
+    const clearAll = screen.getByRole("button", { name: "Clear all" });
+    expect(
+      within(matrix).queryByRole("button", { name: /Clear .* squad/ }),
+    ).toBeNull();
+    await user.click(clearAll);
     const confirmation = screen.getByRole("dialog", {
-      name: "Clear Youth squad?",
+      name: "Clear all squads?",
     });
+    expect(confirmation).toHaveTextContent("Senior, Reserves, and Youth");
     await user.click(
       within(confirmation).getByRole("button", { name: "Cancel" }),
     );
-    await waitFor(() => expect(document.activeElement).toBe(clearYouth));
+    await waitFor(() => expect(document.activeElement).toBe(clearAll));
   });
 
   it("keeps the selected team and string focus across responsive mode changes", async () => {
@@ -1171,18 +1174,14 @@ describe("planner route", () => {
         }),
       ).toHaveFocus(),
     );
-    const combinedClear = within(combinedFromClear).getByRole("button", {
-      name: "Clear Youth squad",
-    });
-    combinedClear.focus();
+    const clearAll = screen.getByRole("button", { name: "Clear all" });
+    clearAll.focus();
     await setPlannerMatrixWidth(1200);
     await screen.findByRole("region", {
-      name: "Youth squad depth matrix",
+      name: "Reserves squad depth matrix",
     });
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Clear Youth squad" }),
-      ).toHaveFocus(),
+      expect(screen.getByRole("button", { name: "Clear all" })).toHaveFocus(),
     );
   });
 
@@ -1237,19 +1236,17 @@ describe("planner route", () => {
       "Squads optimized.",
     );
 
-    await user.click(
-      screen.getByRole("button", { name: "Clear Senior squad" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Clear all" }));
     const confirmation = screen.getByRole("dialog", {
-      name: "Clear Senior squad?",
+      name: "Clear all squads?",
     });
     await user.click(
-      within(confirmation).getByRole("button", { name: "Clear Senior squad" }),
+      within(confirmation).getByRole("button", { name: "Clear all" }),
     );
 
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent(
-        "Senior squad cleared.",
+        "All squads cleared.",
       ),
     );
     expect(screen.getAllByRole("status")).toHaveLength(1);
@@ -1850,41 +1847,16 @@ describe("planner route", () => {
     expect(getPlannerAddStringIpcMockCalls()).toBe(1);
   });
 
-  it("confirms clearing only the selected squad and reconciles its candidates", async () => {
+  it("confirms clearing every squad and reconciles all candidates", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const depth = withSecondSeniorString(
-      withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
-    );
-    depth.teams = depth.teams.map((team) =>
-      team.team === "senior"
-        ? {
-            ...team,
-            strings: team.strings.map((plannerString, index) => ({
-              ...plannerString,
-              assignments:
-                index === 0
-                  ? [
-                      {
-                        id: 78,
-                        laneId: "goalkeeper",
-                        playerUid: 78,
-                        lastKnownName: "Senior Keeper",
-                        currentName: "Senior Keeper",
-                        state: "resolved",
-                        combinedScore: 80,
-                      },
-                    ]
-                  : [],
-            })),
-          }
-        : team,
-    );
+    const depth = withAllTeamDepthAssignments(resolvePlannerDepthIpcMock());
     setPlannerDepthIpcMock(depth);
     setPlannerSlotCandidates([
-      slotCandidate({ playerUid: 78, name: "Senior Keeper" }),
-      slotCandidate({ playerUid: 77, name: "Reserve Keeper" }),
+      slotCandidate({ playerUid: 77, name: "Senior Keeper" }),
+      slotCandidate({ playerUid: 79, name: "Reserve Keeper" }),
+      slotCandidate({ playerUid: 80, name: "Youth Keeper" }),
     ]);
     renderPlannerRoute({ staleTime: 60_000 });
 
@@ -1895,21 +1867,22 @@ describe("planner route", () => {
     expect(
       await screen.findByRole("option", { name: /Senior Keeper/ }),
     ).toHaveTextContent(`Assigned: ${SENIOR_FIRST_KEEPER}`);
+    const candidateFetchesBeforeClear = getPlannerSlotCandidateFetchCount();
     await user.keyboard("{Escape}");
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
 
     const clearButton = await screen.findByRole("button", {
-      name: "Clear Senior squad",
+      name: "Clear all",
     });
     clearButton.focus();
     await user.keyboard("{Enter}");
     const confirmation = screen.getByRole("dialog", {
-      name: "Clear Senior squad?",
+      name: "Clear all squads?",
     });
     expect(confirmation).toHaveTextContent(
-      "This clears every assignment from the Senior squad.",
+      "This clears every assignment from Senior, Reserves, and Youth.",
     );
     await user.click(
       within(confirmation).getByRole("button", { name: "Cancel" }),
@@ -1919,64 +1892,72 @@ describe("planner route", () => {
       screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
     ).toBeInTheDocument();
 
-    setPlannerClearTeamError("Clear squad failed");
+    setPlannerClearAllError("Clear all failed");
     await user.click(clearButton);
     await user.click(
       within(
-        screen.getByRole("dialog", { name: "Clear Senior squad?" }),
-      ).getByRole("button", { name: "Clear Senior squad" }),
+        screen.getByRole("dialog", { name: "Clear all squads?" }),
+      ).getByRole("button", { name: "Clear all" }),
     );
     expect(
       await within(
-        screen.getByRole("dialog", { name: "Clear Senior squad?" }),
+        screen.getByRole("dialog", { name: "Clear all squads?" }),
       ).findByRole("alert"),
-    ).toHaveTextContent("Clear squad failed");
+    ).toHaveTextContent("Clear all failed");
     expect(
       screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
     ).toBeInTheDocument();
 
-    setPlannerClearTeamError(null);
+    setPlannerClearAllError(null);
     const confirmButton = within(
-      screen.getByRole("dialog", { name: "Clear Senior squad?" }),
-    ).getByRole("button", { name: "Clear Senior squad" });
+      screen.getByRole("dialog", { name: "Clear all squads?" }),
+    ).getByRole("button", { name: "Clear all" });
     await user.click(confirmButton);
-    expect(getPlannerClearTeamIpcMockCalls()).toBe(2);
-    expect(
-      await screen.findByText("Senior squad cleared."),
-    ).toBeInTheDocument();
+    expect(getPlannerClearAllIpcMockCalls()).toBe(2);
+    expect(await screen.findByText("All squads cleared.")).toBeInTheDocument();
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: /Senior Keeper, Resolved/ }),
       ).not.toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("tab", { name: "Reserves" }));
+    expect(
+      screen.getByRole("button", {
+        name: /Reserves, 1st string, IP: GK .* Empty/,
+      }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Youth" }));
+    expect(
+      screen.getByRole("button", {
+        name: /Youth, 1st string, IP: GK .* Empty/,
+      }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Senior" }));
     await user.click(secondSeniorCell);
     expect(
       await screen.findByRole("option", { name: /Senior Keeper/ }),
     ).toHaveTextContent("Unassigned");
+    expect(getPlannerSlotCandidateFetchCount()).toBe(
+      candidateFetchesBeforeClear + 1,
+    );
     await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("tab", { name: "Reserves" }));
-    expect(
-      screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
-    ).toBeInTheDocument();
   });
 
-  it("prevents duplicate selected-squad clears while confirmation is pending", async () => {
+  it("prevents duplicate clear-all requests while confirmation is pending", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    setPlannerClearTeamPending(true);
+    setPlannerClearAllPending(true);
     renderPlannerRoute();
 
-    await user.click(
-      await screen.findByRole("button", { name: "Clear Senior squad" }),
-    );
+    await user.click(await screen.findByRole("button", { name: "Clear all" }));
     const confirmButton = within(
-      screen.getByRole("dialog", { name: "Clear Senior squad?" }),
-    ).getByRole("button", { name: "Clear Senior squad" });
+      screen.getByRole("dialog", { name: "Clear all squads?" }),
+    ).getByRole("button", { name: "Clear all" });
     await user.click(confirmButton);
     await user.click(confirmButton);
 
-    expect(getPlannerClearTeamIpcMockCalls()).toBe(1);
+    expect(getPlannerClearAllIpcMockCalls()).toBe(1);
     expect(confirmButton).toBeDisabled();
     expect(confirmButton).toHaveAccessibleName("Clearing…");
   });
@@ -2196,5 +2177,57 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
           }
         : team,
     ),
+  };
+}
+
+function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
+  return {
+    ...depth,
+    teams: depth.teams.map((team) => {
+      const assignment =
+        team.team === "senior"
+          ? {
+              id: 101,
+              laneId: "goalkeeper",
+              playerUid: 77,
+              lastKnownName: "Senior Keeper",
+              currentName: "Senior Keeper",
+              state: "resolved" as const,
+              combinedScore: 82,
+            }
+          : team.team === "reserves"
+            ? {
+                id: 102,
+                laneId: "goalkeeper",
+                playerUid: 79,
+                lastKnownName: "Reserve Keeper",
+                currentName: "Reserve Keeper",
+                state: "resolved" as const,
+                combinedScore: 80,
+              }
+            : {
+                id: 103,
+                laneId: "goalkeeper",
+                playerUid: 80,
+                lastKnownName: "Youth Keeper",
+                currentName: "Youth Keeper",
+                state: "resolved" as const,
+                combinedScore: 78,
+              };
+
+      return {
+        ...team,
+        strings:
+          team.team === "senior"
+            ? [
+                { ...team.strings[0], assignments: [assignment] },
+                { id: 4, stringOrder: 1, assignments: [] },
+              ]
+            : team.strings.map((plannerString) => ({
+                ...plannerString,
+                assignments: [assignment],
+              })),
+      };
+    }),
   };
 }
