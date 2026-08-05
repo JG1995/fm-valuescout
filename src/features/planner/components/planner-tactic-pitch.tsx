@@ -73,7 +73,7 @@ const PITCH_ROWS = [
 ];
 
 const CENTRAL_POSITIONS = new Set(["GK", "DC", "DM", "MC", "AMC", "ST"]);
-const DEFAULT_COLUMN_STARTS = [1, 5, 9];
+const DEFAULT_COLUMN_STARTS = [1, 3, 5];
 const POSITION_SLOT_CLASS =
   "flex min-h-16 min-w-0 items-center justify-center rounded-md border border-outline-variant bg-surface-container-high p-1";
 
@@ -166,7 +166,7 @@ function PitchBoard({
     <fieldset className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
       <legend className="sr-only">{TACTIC_PHASES[phase].label} pitch</legend>
       {PITCH_ROWS.map((row) => (
-        <div className="grid min-h-16 grid-cols-10 gap-1" key={row.id}>
+        <div className="grid min-h-16 grid-cols-6 gap-1" key={row.id}>
           {row.cells.flatMap((cell, cellIndex) => {
             const { position } = cell;
             const positionLanes = position
@@ -232,15 +232,15 @@ function centralColumnStart(
   placement: PhasePositionPlacement | undefined,
 ): number {
   if (!placement || placement.rowSize === 1) {
-    return 5;
-  }
-  if (placement.rowSize === 2) {
-    return placement.column === "left" ? 4 : 6;
-  }
-  if (placement.column === "left") {
     return 3;
   }
-  return placement.column === "right" ? 7 : 5;
+  if (placement.rowSize === 2) {
+    return placement.column === "left" ? 2 : 4;
+  }
+  if (placement.column === "left") {
+    return 1;
+  }
+  return placement.column === "right" ? 5 : 3;
 }
 
 export function PlannerTacticPitch({

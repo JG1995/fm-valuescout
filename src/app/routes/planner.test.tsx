@@ -697,18 +697,18 @@ describe("planner route", () => {
       name: "IP: MCL · Box-to-Box Midfielder",
     });
     expect(rightMc.parentElement).toHaveStyle({
-      gridColumn: "7 / span 2",
-      gridRow: "1",
-    });
-    expect(centreMc.parentElement).toHaveStyle({
       gridColumn: "5 / span 2",
       gridRow: "1",
     });
-    expect(leftMc.parentElement).toHaveStyle({
+    expect(centreMc.parentElement).toHaveStyle({
       gridColumn: "3 / span 2",
       gridRow: "1",
     });
-    expect(rightMc.parentElement?.parentElement).toHaveClass("grid-cols-10");
+    expect(leftMc.parentElement).toHaveStyle({
+      gridColumn: "1 / span 2",
+      gridRow: "1",
+    });
+    expect(rightMc.parentElement?.parentElement).toHaveClass("grid-cols-6");
 
     const rightDc = screen.getByRole("button", {
       name: "IP: DCR · Centre-Back",
@@ -717,11 +717,11 @@ describe("planner route", () => {
       name: "IP: DCL · Ball-Playing Centre-Back",
     });
     expect(rightDc.parentElement).toHaveStyle({
-      gridColumn: "6 / span 2",
+      gridColumn: "4 / span 2",
       gridRow: "1",
     });
     expect(leftDc.parentElement).toHaveStyle({
-      gridColumn: "4 / span 2",
+      gridColumn: "2 / span 2",
       gridRow: "1",
     });
     const defensiveMidfielder = screen.getByRole("button", {
@@ -729,7 +729,7 @@ describe("planner route", () => {
     });
     expect(defensiveMidfielder).toBeInTheDocument();
     expect(defensiveMidfielder.parentElement).toHaveStyle({
-      gridColumn: "5 / span 2",
+      gridColumn: "3 / span 2",
       gridRow: "1",
     });
     const leftMidfielder = screen.getByRole("button", {
@@ -743,7 +743,7 @@ describe("planner route", () => {
       gridRow: "1",
     });
     expect(rightMidfielder.parentElement).toHaveStyle({
-      gridColumn: "9 / span 2",
+      gridColumn: "5 / span 2",
       gridRow: "1",
     });
 
@@ -781,7 +781,7 @@ describe("planner route", () => {
     });
     expect(secondRowRight).toBeInTheDocument();
     expect(secondRowRight.parentElement).toHaveStyle({
-      gridColumn: "6 / span 2",
+      gridColumn: "4 / span 2",
       gridRow: "2",
     });
     expect(

@@ -143,6 +143,7 @@ test.describe("walking skeleton smoke", () => {
     expect(rightMcBox.y).toBe(leftMcBox.y);
     expect(rightMcBox.width).toBeCloseTo(leftMcBox.width, 1);
     expect(rightMcBox.width).toBeCloseTo(leftWingerBox.width, 1);
+    expect(leftWingerBox.width).toBeGreaterThan(bothPitchBox.width * 0.25);
     expect(leftMcBox.x + leftMcBox.width).toBeLessThan(rightMcBox.x);
     const pairCentre = (leftMcBox.x + rightMcBox.x + rightMcBox.width) / 2;
     expect(pairCentre).toBeCloseTo(bothPitchBox.x + bothPitchBox.width / 2, 1);
