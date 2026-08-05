@@ -125,6 +125,17 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       main.getByRole("button", { name: "IP: left MC · Central Midfielder" }),
     ).toBeVisible();
+    const pitches = main.getByRole("group", { name: /pitch$/ });
+    await expect(pitches).toHaveCount(2);
+    for (const index of [0, 1]) {
+      const pitch = pitches.nth(index);
+      await expect(pitch.getByRole("button").first()).toHaveAccessibleName(
+        /: ST · /,
+      );
+      await expect(pitch.getByRole("button").last()).toHaveAccessibleName(
+        /: GK · /,
+      );
+    }
     await expect(main.getByText("Left winger")).toHaveCount(0);
     await main
       .getByRole("button", { name: "IP: GK · Goalkeeper" })

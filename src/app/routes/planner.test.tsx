@@ -520,6 +520,33 @@ describe("planner route", () => {
     );
   });
 
+  it("renders every tactic pitch from attack to goalkeeper", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    const viewGroup = screen.getByRole("group", {
+      name: "Tactic phase views",
+    });
+
+    for (const view of ["Both", "IP", "OOP"] as const) {
+      await user.click(within(viewGroup).getByRole("button", { name: view }));
+
+      const pitches = screen.getAllByRole("group", { name: /pitch$/ });
+      expect(pitches).toHaveLength(view === "Both" ? 2 : 1);
+
+      for (const pitch of pitches) {
+        const positionButtons = within(pitch).getAllByRole("button");
+        expect(positionButtons[0]).toHaveAccessibleName(/: ST · /);
+        expect(
+          positionButtons[positionButtons.length - 1],
+        ).toHaveAccessibleName(/: GK · /);
+      }
+    }
+  });
+
   it("presents current linked positions without lane terminology", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

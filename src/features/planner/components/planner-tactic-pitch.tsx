@@ -23,35 +23,11 @@ type PlannerTacticPitchProps = {
 
 const PITCH_ROWS = [
   {
-    id: "goalkeeper",
+    id: "striker",
     cells: [
-      { id: "goalkeeper-left", position: null },
-      { id: "goalkeeper-center", position: "GK" },
-      { id: "goalkeeper-right", position: null },
-    ],
-  },
-  {
-    id: "defence",
-    cells: [
-      { id: "defence-left", position: "DL" },
-      { id: "defence-center", position: "DC" },
-      { id: "defence-right", position: "DR" },
-    ],
-  },
-  {
-    id: "wide-defence",
-    cells: [
-      { id: "wide-defence-left", position: "WBL" },
-      { id: "wide-defence-center", position: "DM" },
-      { id: "wide-defence-right", position: "WBR" },
-    ],
-  },
-  {
-    id: "midfield",
-    cells: [
-      { id: "midfield-left", position: "ML" },
-      { id: "midfield-center", position: "MC" },
-      { id: "midfield-right", position: "MR" },
+      { id: "striker-left", position: null },
+      { id: "striker-center", position: "ST" },
+      { id: "striker-right", position: null },
     ],
   },
   {
@@ -63,11 +39,35 @@ const PITCH_ROWS = [
     ],
   },
   {
-    id: "striker",
+    id: "midfield",
     cells: [
-      { id: "striker-left", position: null },
-      { id: "striker-center", position: "ST" },
-      { id: "striker-right", position: null },
+      { id: "midfield-left", position: "ML" },
+      { id: "midfield-center", position: "MC" },
+      { id: "midfield-right", position: "MR" },
+    ],
+  },
+  {
+    id: "wide-defence",
+    cells: [
+      { id: "wide-defence-left", position: "WBL" },
+      { id: "wide-defence-center", position: "DM" },
+      { id: "wide-defence-right", position: "WBR" },
+    ],
+  },
+  {
+    id: "defence",
+    cells: [
+      { id: "defence-left", position: "DL" },
+      { id: "defence-center", position: "DC" },
+      { id: "defence-right", position: "DR" },
+    ],
+  },
+  {
+    id: "goalkeeper",
+    cells: [
+      { id: "goalkeeper-left", position: null },
+      { id: "goalkeeper-center", position: "GK" },
+      { id: "goalkeeper-right", position: null },
     ],
   },
 ];
