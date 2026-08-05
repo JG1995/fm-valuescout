@@ -5,7 +5,7 @@ use crate::features::planner::tactic;
 use crate::features::snapshot;
 
 use super::depth::{
-    add_string, assign_player, clear_assignment, clear_team, get_depth, get_slot_candidates,
+    add_string, assign_player, clear_all, clear_assignment, get_depth, get_slot_candidates,
     move_player, remove_string, AssignmentState, PlannerTeam,
 };
 use super::test_support::{
@@ -256,54 +256,128 @@ fn populated_string_requires_confirmation_and_deletes_only_its_assignments() {
 }
 
 #[test]
-fn clearing_a_team_requires_confirmation_and_preserves_other_teams() {
+fn clearing_all_requires_confirmation_and_preserves_other_saves_and_settings() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
+    service::save_club_family(
+        &conn,
+        save_id,
+        "Loan FC",
+        &[
+            ClubSourceInput {
+                team: "reserves".to_string(),
+                club_name: "Loan B FC".to_string(),
+                team_level: None,
+            },
+            ClubSourceInput {
+                team: "youth".to_string(),
+                club_name: "Loan B FC".to_string(),
+                team_level: None,
+            },
+        ],
+    )
+    .expect("configure reserve and youth sources");
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let senior_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
     let reserve_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
+    let youth_id = team_strings(&depth, PlannerTeam::Youth)[0].id;
     assign_player(&conn, save_id, senior_id, "goalkeeper", 77).expect("assign senior keeper");
-    assign_player(&conn, save_id, reserve_id, "goalkeeper", 78).expect("assign reserve keeper");
+    assign_player(&conn, save_id, reserve_id, "goalkeeper", 79).expect("assign reserve keeper");
+    assign_player(&conn, save_id, youth_id, "goalkeeper", 80).expect("assign youth keeper");
     conn.execute(
         "INSERT INTO planner_assignments (
             save_id, string_id, lane_id, player_uid, last_known_name, provenance
          ) VALUES (?1, ?2, ?3, ?4, ?5, 'optimizer')",
-        params![save_id, senior_id, "left_back", 79, "Senior optimizer"],
+        params![save_id, senior_id, "left_back", 78, "Senior optimizer"],
     )
-    .expect("assign senior optimizer row");
-    conn.execute(
-        "INSERT INTO planner_assignments (
-            save_id, string_id, lane_id, player_uid, last_known_name, provenance
-         ) VALUES (?1, ?2, ?3, ?4, ?5, 'optimizer')",
-        params![save_id, reserve_id, "left_back", 80, "Reserve optimizer"],
-    )
-    .expect("assign reserve optimizer row");
+    .expect("assign optimizer row");
 
-    let error =
-        clear_team(&conn, save_id, PlannerTeam::Senior, false).expect_err("require confirmation");
+    let before_tactic = tactic::get_tactic(&conn, save_id).expect("load tactic before clear");
+    let before_club_family =
+        service::get_club_family(&conn, save_id).expect("load club family before clear");
+    let before_string_ids = get_depth(&conn, save_id)
+        .expect("reload before clear")
+        .teams
+        .into_iter()
+        .map(|team| {
+            (
+                team.team,
+                team.strings
+                    .into_iter()
+                    .map(|planner_string| planner_string.id)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let error = clear_all(&conn, save_id, false).expect_err("require confirmation");
     assert!(error.contains("requires confirmation"));
     assert_eq!(
+        get_depth(&conn, save_id)
+            .expect("reload after rejected clear")
+            .teams
+            .iter()
+            .map(|team| team.strings[0].assignments.len())
+            .collect::<Vec<_>>(),
+        [2, 1, 1]
+    );
+
+    conn.execute(
+        "INSERT INTO saves (name, is_active) VALUES ('Second save', 0)",
+        [],
+    )
+    .expect("create second save");
+    let second_save_id = conn.last_insert_rowid();
+    let second_dump_path = temp_dir.path().join("second-save.json");
+    std::fs::write(
+        &second_dump_path,
+        include_str!("../memory_read/fixtures/golden_dump_v5.json"),
+    )
+    .expect("write second save dump");
+    snapshot::ingest::ingest_dump_file_for_save(&mut conn, second_save_id, &second_dump_path)
+        .expect("ingest second save");
+    service::save_club_family(&conn, second_save_id, "Loan FC", &[])
+        .expect("configure second save");
+    let second_depth = get_depth(&conn, second_save_id).expect("create second depth");
+    let second_string_id = team_strings(&second_depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, second_save_id, second_string_id, "goalkeeper", 77)
+        .expect("assign second-save player");
+
+    clear_all(&conn, save_id, true).expect("clear every team");
+    let reloaded = get_depth(&conn, save_id).expect("reload after clear");
+    assert!(reloaded.teams.iter().all(|team| team
+        .strings
+        .iter()
+        .all(|planner_string| planner_string.assignments.is_empty())));
+    assert_eq!(
+        reloaded
+            .teams
+            .iter()
+            .map(|team| {
+                (
+                    team.team,
+                    team.strings
+                        .iter()
+                        .map(|planner_string| planner_string.id)
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>(),
+        before_string_ids
+    );
+    assert_eq!(reloaded.tactic, before_tactic);
+    assert_eq!(
+        service::get_club_family(&conn, save_id).expect("load club family after clear"),
+        before_club_family
+    );
+    assert_eq!(
         team_strings(
-            &get_depth(&conn, save_id).expect("reload after rejected clear"),
-            PlannerTeam::Senior,
+            &get_depth(&conn, second_save_id).expect("reload second save"),
+            PlannerTeam::Senior
         )[0]
         .assignments
         .len(),
-        2
-    );
-
-    clear_team(&conn, save_id, PlannerTeam::Senior, true).expect("clear senior team");
-    let reloaded = get_depth(&conn, save_id).expect("reload after clear");
-    assert!(team_strings(&reloaded, PlannerTeam::Senior)[0]
-        .assignments
-        .is_empty());
-    assert_eq!(
-        team_strings(&reloaded, PlannerTeam::Reserves)[0]
-            .assignments
-            .iter()
-            .map(|assignment| assignment.player_uid)
-            .collect::<Vec<_>>(),
-        [78, 80]
+        1
     );
 }
 

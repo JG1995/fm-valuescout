@@ -14,7 +14,8 @@ import { plannerKeys } from "../api/planner-keys";
 import { plannerSlotCandidatesQueryOptions } from "../api/planner-slot-candidates-query-options";
 import type { PlannerTeam } from "../types/club-family";
 import type { PlannerSlotCandidate } from "../types/depth";
-import { laneLabel } from "../utils/tactic-editor";
+import type { PlannerTactic, TacticOptions } from "../types/tactic";
+import { linkedPositionDescriptionForId } from "../utils/tactic-editor";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
@@ -37,6 +38,8 @@ type PlannerSlotFitPickerProps = {
   activeSaveId: number;
   open: boolean;
   target: PlannerSlotTarget;
+  tactic: PlannerTactic;
+  options: TacticOptions;
   onClose: () => void;
   onMutationError: (message: string) => void;
 };
@@ -60,7 +63,11 @@ function ordinal(value: number) {
   return `${number}${suffix} string`;
 }
 
-function assignmentLocation(candidate: PlannerSlotCandidate) {
+function assignmentLocation(
+  candidate: PlannerSlotCandidate,
+  tactic: PlannerTactic,
+  options: TacticOptions,
+) {
   const location = candidate.assignmentLocation;
   if (!location) {
     return "Unassigned";
@@ -68,7 +75,7 @@ function assignmentLocation(candidate: PlannerSlotCandidate) {
   return `Assigned: ${slotLocation(
     location.team,
     location.stringOrder,
-    laneLabel(location.laneId),
+    linkedPositionDescriptionForId(location.laneId, tactic.lanes, options),
   )}`;
 }
 
@@ -87,6 +94,8 @@ function targetLocation(target: PlannerSlotTarget) {
 function moveConfirmation(
   candidate: PlannerSlotCandidate,
   target: PlannerSlotTarget,
+  tactic: PlannerTactic,
+  options: TacticOptions,
 ) {
   const location = candidate.assignmentLocation;
   if (!location) {
@@ -95,7 +104,7 @@ function moveConfirmation(
   return `Move ${candidate.name} from ${slotLocation(
     location.team,
     location.stringOrder,
-    laneLabel(location.laneId),
+    linkedPositionDescriptionForId(location.laneId, tactic.lanes, options),
   )} to ${targetLocation(target)}?`;
 }
 
@@ -107,6 +116,8 @@ export function PlannerSlotFitPicker({
   activeSaveId,
   open,
   target,
+  tactic,
+  options,
   onClose,
   onMutationError,
 }: PlannerSlotFitPickerProps) {
@@ -259,7 +270,7 @@ export function PlannerSlotFitPicker({
       ) : isMoveConfirmation ? (
         moveCandidate ? (
           <p className="text-body-md text-on-surface-variant">
-            {moveConfirmation(moveCandidate, target)}
+            {moveConfirmation(moveCandidate, target, tactic, options)}
           </p>
         ) : null
       ) : (
@@ -350,7 +361,8 @@ export function PlannerSlotFitPicker({
                   <span className="min-w-0">
                     <span className="block truncate">{candidate.name}</span>
                     <span className="block text-body-sm text-on-surface-variant">
-                      {candidate.currentClub} · {assignmentLocation(candidate)}
+                      {candidate.currentClub} ·{" "}
+                      {assignmentLocation(candidate, tactic, options)}
                     </span>
                     <span className="block font-mono text-mono-sm text-on-surface-variant">
                       IP {scoreEvidence(candidate.ipScore)} · OOP{" "}

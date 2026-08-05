@@ -1,19 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
-import { SelectField } from "@/components/ui/field/select-field";
 import { Panel } from "@/components/ui/panel/panel";
 import { plannerKeys } from "../api/planner-keys";
 import { savePlannerTactic } from "../api/save-planner-tactic";
-import {
-  type PlannerTactic,
-  TACTIC_LANE_IDS,
-  type TacticLane,
-  type TacticOptions,
-} from "../types/tactic";
+import type { PlannerTactic, TacticLane, TacticOptions } from "../types/tactic";
 import {
   cloneTactic,
-  laneLabel,
   phasePosition,
   phaseRoleId,
   rolesForPhase,
@@ -24,6 +17,7 @@ import {
   updatePhaseLane,
   validateTacticDraft,
 } from "../utils/tactic-editor";
+import { PlannerTacticInspector } from "./planner-tactic-inspector";
 import { PlannerTacticPitch } from "./planner-tactic-pitch";
 
 type PlannerTacticEditorProps = {
@@ -65,22 +59,6 @@ function nextView(view: TacticView, key: string): TacticView | null {
   return null;
 }
 
-function nextWeight(value: number, key: string): number | null {
-  if (key === "ArrowRight" || key === "ArrowUp") {
-    return Math.min(100, value + 1);
-  }
-  if (key === "ArrowLeft" || key === "ArrowDown") {
-    return Math.max(0, value - 1);
-  }
-  if (key === "Home") {
-    return 0;
-  }
-  if (key === "End") {
-    return 100;
-  }
-  return null;
-}
-
 export function PlannerTacticEditor({
   activeSaveRefreshError,
   isActiveSaveUnavailable,
@@ -96,9 +74,10 @@ export function PlannerTacticEditor({
   const [selectedLaneId, setSelectedLaneId] = useState(
     tactic.lanes[0]?.laneId ?? "",
   );
+  const [highlightedLaneId, setHighlightedLaneId] = useState<string | null>(
+    null,
+  );
   const [saveSucceeded, setSaveSucceeded] = useState(false);
-  const weightId = useId();
-  const selectedLaneHeadingId = useId();
   const viewButtonRefs = useRef<Record<TacticView, HTMLButtonElement | null>>({
     ip: null,
     oop: null,
@@ -140,10 +119,6 @@ export function PlannerTacticEditor({
   const selectedLane = draft.lanes.find(
     (lane) => lane.laneId === selectedLaneId,
   );
-  const selectedLaneNumber = selectedLane
-    ? draft.lanes.findIndex((lane) => lane.laneId === selectedLaneId) + 1
-    : 0;
-
   const updateDraft = (nextDraft: PlannerTactic) => {
     save.reset();
     setSaveSucceeded(false);
@@ -272,190 +247,81 @@ export function PlannerTacticEditor({
   };
 
   return (
-    <Panel
-      title="Tactic editor"
-      flush
-      actions={
-        <Button
-          disabled={Boolean(validationError) || isActiveSaveUnavailable}
-          loading={save.isPending}
-          loadingLabel="Saving…"
-          onClick={() => save.mutate()}
+    <Panel flush className="min-w-0">
+      <div className="grid gap-3 p-3">
+        <section
+          className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-high p-3"
+          aria-label="Tactic controls"
         >
-          Save tactic
-        </Button>
-      }
-    >
-      <div className="space-y-5 p-4">
-        <div className="space-y-1">
-          <p className="text-body-md text-on-surface-variant">
-            {draft.lanes.length} linked lanes
-          </p>
-          <p className="text-body-sm text-on-surface-variant">
-            The same lane identity links the In-Possession and Out-of-Possession
-            shapes.
-          </p>
-        </div>
-
-        <fieldset
-          className="inline-flex rounded-full bg-surface-container-high p-0.5"
-          onKeyDown={handleViewKeyDown}
-        >
-          <legend className="sr-only">Tactic phase views</legend>
-          {TACTIC_VIEWS.map((candidate) => {
-            const selected = candidate === view;
-            return (
-              <button
-                key={candidate}
-                ref={(element) => {
-                  viewButtonRefs.current[candidate] = element;
-                }}
-                type="button"
-                aria-pressed={selected}
-                tabIndex={selected ? 0 : -1}
-                className={`cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                  selected
-                    ? "bg-primary text-on-primary"
-                    : "text-on-surface-variant hover:text-on-surface"
-                }`}
-                onClick={() => setView(candidate)}
-              >
-                {VIEW_LABELS[candidate]}
-              </button>
-            );
-          })}
-        </fieldset>
-
-        {validationError ? (
-          <p className="text-body-sm text-warning" role="alert">
-            {validationError}
-          </p>
-        ) : null}
-        {isActiveSaveUnavailable && !activeSaveRefreshError ? (
-          <p className="text-body-sm text-on-surface-variant" role="status">
-            Refreshing active save…
-          </p>
-        ) : null}
-        {activeSaveRefreshError ? (
-          <p className="text-body-sm text-error" role="alert">
-            Could not refresh the active save. Saving is disabled until it
-            reloads.
-          </p>
-        ) : null}
-        {save.isError ? (
-          <p className="text-body-sm text-error" role="alert">
-            {save.error.message}
-          </p>
-        ) : null}
-        {saveSucceeded ? (
-          <p className="text-body-sm text-success" role="status">
-            Tactic saved.
-          </p>
-        ) : null}
-
-        {selectedLane ? (
-          <section
-            className="flex flex-wrap items-end justify-between gap-4 rounded-lg border border-outline-variant bg-surface-container-high p-3"
-            aria-labelledby={selectedLaneHeadingId}
+          <fieldset
+            className="mr-auto inline-flex rounded-full bg-surface-container p-0.5"
+            onKeyDown={handleViewKeyDown}
           >
-            <div>
-              <h3
-                id={selectedLaneHeadingId}
-                className="text-label-lg text-on-surface"
-              >
-                Lane {selectedLaneNumber} · {laneLabel(selectedLane.laneId)}
-              </h3>
-            </div>
-            <div className="space-y-1">
-              <label
-                className="block text-right text-label-md text-on-surface-variant"
-                htmlFor={weightId}
-              >
-                IP/OOP score weight
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  id={weightId}
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={Math.round(selectedLane.ipWeight * 100)}
-                  aria-label={`Lane ${selectedLaneNumber} IP score weight`}
-                  aria-valuetext={`IP ${Math.round(selectedLane.ipWeight * 100)}%, OOP ${Math.round((1 - selectedLane.ipWeight) * 100)}%`}
-                  className="h-2 w-40 cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                  onKeyDown={(event) => {
-                    const next = nextWeight(
-                      Math.round(selectedLane.ipWeight * 100),
-                      event.key,
-                    );
-                    if (next === null) {
-                      return;
-                    }
-                    event.preventDefault();
-                    updateSelectedLaneWeight(next / 100);
+            <legend className="sr-only">Tactic phase views</legend>
+            {TACTIC_VIEWS.map((candidate) => {
+              const selected = candidate === view;
+              return (
+                <button
+                  key={candidate}
+                  ref={(element) => {
+                    viewButtonRefs.current[candidate] = element;
                   }}
-                  onChange={(event) =>
-                    updateSelectedLaneWeight(Number(event.target.value) / 100)
-                  }
-                />
-                <span className="whitespace-nowrap font-mono text-mono-sm text-on-surface tabular-nums">
-                  IP {Math.round(selectedLane.ipWeight * 100)}% / OOP{" "}
-                  {Math.round((1 - selectedLane.ipWeight) * 100)}%
-                </span>
-              </div>
-            </div>
-            <SelectField
-              label={`Lane ${selectedLaneNumber} importance rank`}
-              value={selectedLane.importanceRank?.toString() ?? ""}
-              onChange={(event) =>
-                updateSelectedLaneRank(
-                  event.target.value === "" ? null : Number(event.target.value),
-                )
-              }
-            >
-              <option value="">No rank</option>
-              {TACTIC_LANE_IDS.map((laneId, index) => (
-                <option key={laneId} value={index + 1}>
-                  {index + 1}
-                </option>
-              ))}
-            </SelectField>
-            <SelectField
-              label={`Lane ${selectedLaneNumber} preferred foot`}
-              value={selectedLane.preferredFoot}
-              onChange={(event) =>
-                updateSelectedLaneFoot(
-                  event.target.value as TacticLane["preferredFoot"],
-                )
-              }
-            >
-              <option value="any">Either</option>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
-              <option value="both">Both</option>
-            </SelectField>
-            <SelectField
-              label={`Lane ${selectedLaneNumber} foot preference`}
-              value={selectedLane.footPreference}
-              disabled={selectedLane.preferredFoot === "any"}
-              onChange={(event) =>
-                updateSelectedLaneFootPreference(
-                  event.target.value as TacticLane["footPreference"],
-                )
-              }
-            >
-              <option value="preferred">Preferred</option>
-              <option value="strict">Strict</option>
-            </SelectField>
-          </section>
-        ) : null}
+                  type="button"
+                  aria-pressed={selected}
+                  tabIndex={selected ? 0 : -1}
+                  className={`cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                    selected
+                      ? "bg-primary text-on-primary"
+                      : "text-on-surface-variant hover:text-on-surface"
+                  }`}
+                  onClick={() => setView(candidate)}
+                >
+                  {VIEW_LABELS[candidate]}
+                </button>
+              );
+            })}
+          </fieldset>
 
-        <div
-          className={
-            view === "both" ? "grid gap-6 2xl:grid-cols-2" : "space-y-6"
-          }
-        >
+          <div className="min-w-0 flex-1 text-right">
+            {validationError ? (
+              <p className="text-body-sm text-warning" role="alert">
+                {validationError}
+              </p>
+            ) : null}
+            {isActiveSaveUnavailable && !activeSaveRefreshError ? (
+              <p className="text-body-sm text-on-surface-variant" role="status">
+                Refreshing active save…
+              </p>
+            ) : null}
+            {activeSaveRefreshError ? (
+              <p className="text-body-sm text-error" role="alert">
+                Could not refresh the active save. Saving is disabled until it
+                reloads.
+              </p>
+            ) : null}
+            {save.isError ? (
+              <p className="text-body-sm text-error" role="alert">
+                {save.error.message}
+              </p>
+            ) : null}
+            {saveSucceeded ? (
+              <p className="text-body-sm text-success" role="status">
+                Tactic saved.
+              </p>
+            ) : null}
+          </div>
+
+          <Button
+            disabled={Boolean(validationError) || isActiveSaveUnavailable}
+            loading={save.isPending}
+            loadingLabel="Saving…"
+            onClick={() => save.mutate()}
+          >
+            Save tactic
+          </Button>
+        </section>
+
+        <div className="grid gap-3 lg:grid-cols-2">
           {visiblePhases(view).map((phase) => (
             <PlannerTacticPitch
               key={phase}
@@ -463,16 +329,34 @@ export function PlannerTacticEditor({
               lanes={draft.lanes}
               options={options}
               selectedLaneId={selectedLaneId}
-              onSelectLane={setSelectedLaneId}
-              onPositionChange={(laneId, position) =>
-                updatePosition(laneId, phase, position)
-              }
-              onRoleChange={(laneId, roleId) =>
-                updateRole(laneId, phase, roleId)
-              }
+              highlightedLaneId={highlightedLaneId}
+              onHighlight={setHighlightedLaneId}
+              onSelectLane={(laneId) => {
+                setSelectedLaneId(laneId);
+                setHighlightedLaneId(laneId);
+              }}
             />
           ))}
         </div>
+
+        {selectedLane ? (
+          <PlannerTacticInspector
+            selectedLane={selectedLane}
+            lanes={draft.lanes}
+            options={options}
+            phases={visiblePhases(view)}
+            onWeightChange={updateSelectedLaneWeight}
+            onRankChange={updateSelectedLaneRank}
+            onPreferredFootChange={updateSelectedLaneFoot}
+            onFootPreferenceChange={updateSelectedLaneFootPreference}
+            onPositionChange={(phase, position) =>
+              updatePosition(selectedLane.laneId, phase, position)
+            }
+            onRoleChange={(phase, roleId) =>
+              updateRole(selectedLane.laneId, phase, roleId)
+            }
+          />
+        ) : null}
       </div>
     </Panel>
   );

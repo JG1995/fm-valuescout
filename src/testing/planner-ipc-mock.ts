@@ -254,9 +254,10 @@ let assignmentError: string | null = null;
 let addStringError: string | null = null;
 let addStringPending = false;
 let addStringCalls = 0;
-let clearTeamError: string | null = null;
-let clearTeamPending = false;
-let clearTeamCalls = 0;
+let clearAllError: string | null = null;
+let clearAllPending = false;
+let clearAllCalls = 0;
+let slotCandidateFetchCount = 0;
 let optimizeDepth: PlannerDepth | null = null;
 let optimizeError: string | null = null;
 let optimizePending = false;
@@ -316,9 +317,10 @@ export function resetPlannerIpcMock() {
   addStringError = null;
   addStringPending = false;
   addStringCalls = 0;
-  clearTeamError = null;
-  clearTeamPending = false;
-  clearTeamCalls = 0;
+  clearAllError = null;
+  clearAllPending = false;
+  clearAllCalls = 0;
+  slotCandidateFetchCount = 0;
   optimizeDepth = null;
   optimizeError = null;
   optimizePending = false;
@@ -346,6 +348,10 @@ export function resolvePlannerClubsIpcMock() {
 
 export function resolvePlannerTacticIpcMock() {
   return cloneTactic(tactic);
+}
+
+export function setPlannerTacticIpcMock(value: PlannerTactic) {
+  tactic = cloneTactic(value);
 }
 
 export function resolvePlannerTacticOptionsIpcMock() {
@@ -388,16 +394,20 @@ export function getPlannerAddStringIpcMockCalls() {
   return addStringCalls;
 }
 
-export function setPlannerClearTeamError(message: string | null) {
-  clearTeamError = message;
+export function setPlannerClearAllError(message: string | null) {
+  clearAllError = message;
 }
 
-export function setPlannerClearTeamPending(value: boolean) {
-  clearTeamPending = value;
+export function setPlannerClearAllPending(value: boolean) {
+  clearAllPending = value;
 }
 
-export function getPlannerClearTeamIpcMockCalls() {
-  return clearTeamCalls;
+export function getPlannerClearAllIpcMockCalls() {
+  return clearAllCalls;
+}
+
+export function getPlannerSlotCandidateFetchCount() {
+  return slotCandidateFetchCount;
 }
 
 export function setPlannerOptimizeDepth(value: PlannerDepth | null) {
@@ -417,6 +427,7 @@ export function getPlannerOptimizeIpcMockCalls() {
 }
 
 export function resolvePlannerSlotCandidatesIpcMock(args: unknown) {
+  slotCandidateFetchCount += 1;
   const search =
     typeof args === "object" &&
     args !== null &&
@@ -640,36 +651,31 @@ export function resolveRemovePlannerStringIpcMock(args: unknown) {
   return cloneDepth(depth);
 }
 
-export function resolveClearPlannerTeamIpcMock(args: unknown) {
-  clearTeamCalls += 1;
+export function resolveClearPlannerDepthIpcMock(args: unknown) {
+  clearAllCalls += 1;
   if (
     typeof args !== "object" ||
     args === null ||
-    !("team" in args) ||
     !("confirmed" in args) ||
-    (args.team !== "senior" &&
-      args.team !== "reserves" &&
-      args.team !== "youth") ||
     typeof args.confirmed !== "boolean"
   ) {
-    throw "Invalid planner team";
+    throw "Invalid planner clear request";
   }
   if (!args.confirmed) {
-    throw "Clearing a squad requires confirmation";
+    throw "Clearing all squads requires confirmation";
   }
-  if (clearTeamError) {
-    throw clearTeamError;
+  if (clearAllError) {
+    throw clearAllError;
   }
-  if (clearTeamPending) {
+  if (clearAllPending) {
     return new Promise<PlannerDepth>(() => {});
   }
-  const team = depth.teams.find((candidate) => candidate.team === args.team);
-  if (!team) {
-    throw "Planner team not found";
-  }
-  team.strings = team.strings.map((plannerString) => ({
-    ...plannerString,
-    assignments: [],
+  depth.teams = depth.teams.map((team) => ({
+    ...team,
+    strings: team.strings.map((plannerString) => ({
+      ...plannerString,
+      assignments: [],
+    })),
   }));
   return cloneDepth(depth);
 }

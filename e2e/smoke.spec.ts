@@ -95,11 +95,14 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       main.getByRole("heading", { level: 1, name: "Squad Planner" }),
     ).toBeVisible();
+    await expect(main.getByRole("tab", { name: "Club Setup" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await expect(
       main.getByRole("combobox", { name: "Primary club" }),
     ).toBeVisible();
     await expect(main.getByText("Set up your club family")).toBeVisible();
-    await expect(main.getByText("11 linked lanes")).toBeVisible();
   });
 
   test("planner tactic editor saves a linked phase adjustment", async ({
@@ -109,39 +112,246 @@ test.describe("walking skeleton smoke", () => {
     await page.goto("/planner");
 
     const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Tactic" }).click();
     await expect(
-      main.getByRole("heading", { name: "Tactic editor" }),
+      main.getByRole("region", { name: "Tactic controls" }),
     ).toBeVisible();
+    await expect(
+      main.getByRole("button", { name: "IP: AML · Winger" }),
+    ).toBeVisible();
+    const rightMc = main.getByRole("button", {
+      name: "IP: MCR · Central Midfielder",
+    });
+    const leftMc = main.getByRole("button", {
+      name: "IP: MCL · Central Midfielder",
+    });
+    const leftWinger = main.getByRole("button", { name: "IP: AML · Winger" });
+    const rightWinger = main.getByRole("button", {
+      name: "IP: AMR · Winger",
+    });
+    const pitches = main.getByRole("group", { name: /pitch$/ });
+    const leftWingerGroup = pitches
+      .first()
+      .locator('[data-position-group="AML"]');
+    const rightWingerGroup = pitches
+      .first()
+      .locator('[data-position-group="AMR"]');
+    await expect(rightMc).toBeVisible();
+    await expect(leftMc).toBeVisible();
+    await expect(pitches).toHaveCount(2);
+    await expect(pitches.first()).toHaveAttribute("data-pitch-slot-count", "4");
+    await expect(pitches.last()).toHaveAttribute("data-pitch-slot-count", "4");
+    const [
+      rightMcBox,
+      leftMcBox,
+      leftWingerBox,
+      rightWingerBox,
+      leftWingerGroupBox,
+      rightWingerGroupBox,
+      bothPitchBox,
+    ] = await Promise.all([
+      rightMc.boundingBox(),
+      leftMc.boundingBox(),
+      leftWinger.boundingBox(),
+      rightWinger.boundingBox(),
+      leftWingerGroup.boundingBox(),
+      rightWingerGroup.boundingBox(),
+      pitches.first().boundingBox(),
+    ]);
+    if (
+      !rightMcBox ||
+      !leftMcBox ||
+      !leftWingerBox ||
+      !rightWingerBox ||
+      !leftWingerGroupBox ||
+      !rightWingerGroupBox ||
+      !bothPitchBox
+    ) {
+      throw new Error("Expected visible tactic cards and pitch geometry");
+    }
+    expect(rightMcBox.y).toBe(leftMcBox.y);
+    expect(rightMcBox.width).toBeCloseTo(leftMcBox.width, 1);
+    expect(rightMcBox.width).toBeCloseTo(leftWingerBox.width, 1);
+    expect(rightMcBox.width).toBeCloseTo(rightWingerBox.width, 1);
+    expect(rightMcBox.width).toBeGreaterThan(bothPitchBox.width * 0.2);
+    expect(leftMcBox.x + leftMcBox.width).toBeLessThan(rightMcBox.x);
+    expect(leftWingerBox.x + leftWingerBox.width).toBeLessThan(
+      rightWingerBox.x,
+    );
+    expect(
+      Math.abs(
+        leftWingerBox.x +
+          leftWingerBox.width / 2 -
+          (leftWingerGroupBox.x + leftWingerGroupBox.width / 2),
+      ),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        rightWingerBox.x +
+          rightWingerBox.width / 2 -
+          (rightWingerGroupBox.x + rightWingerGroupBox.width / 2),
+      ),
+    ).toBeLessThanOrEqual(1);
+    const pairCentre = (leftMcBox.x + rightMcBox.x + rightMcBox.width) / 2;
+    expect(pairCentre).toBeCloseTo(bothPitchBox.x + bothPitchBox.width / 2, 1);
+    await main.getByRole("button", { name: "IP", exact: true }).click();
+    await expect(pitches).toHaveCount(1);
+    const singlePitchBox = await pitches.first().boundingBox();
+    if (!singlePitchBox) {
+      throw new Error("Expected visible single-phase pitch geometry");
+    }
+    expect(singlePitchBox.width).toBeCloseTo(bothPitchBox.width, 1);
+    await main.getByRole("button", { name: "Both", exact: true }).click();
+    await expect(pitches).toHaveCount(2);
+    for (const index of [0, 1]) {
+      const pitch = pitches.nth(index);
+      await expect(pitch.getByRole("button").first()).toHaveAccessibleName(
+        /: STC · /,
+      );
+      await expect(pitch.getByRole("button").last()).toHaveAccessibleName(
+        /: GK · /,
+      );
+    }
+    await expect(main.getByText("Left winger")).toHaveCount(0);
     await main
-      .getByRole("button", { name: "IP lane 1: GK, Goalkeeper" })
+      .getByRole("button", { name: "IP: GK · Goalkeeper" })
       .press("Enter");
 
     const weight = main.getByRole("slider", {
-      name: "Lane 1 IP score weight",
+      name: "IP/OOP score weight",
     });
     await weight.press("ArrowRight");
     await expect(main.getByText("IP 51% / OOP 49%")).toBeVisible();
     await main
-      .getByRole("combobox", { name: "Lane 1 importance rank" })
+      .getByRole("combobox", { name: "Importance rank" })
       .selectOption("1");
     await main
-      .getByRole("combobox", { name: "Lane 1 preferred foot" })
+      .getByRole("combobox", { name: "Preferred foot" })
       .selectOption("left");
     await main
-      .getByRole("combobox", { name: "Lane 1 foot preference" })
+      .getByRole("combobox", { name: "Foot preference" })
       .selectOption("strict");
     await main.getByRole("button", { name: "Save tactic" }).click();
 
     await expect(main.getByRole("status")).toHaveText("Tactic saved.");
   });
 
+  test("planner tactic workspace fits its supported desktop viewports", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner?view=tactic");
+
+    const main = page.getByRole("main");
+    const pitches = main.getByRole("group", { name: /pitch$/ });
+    const settings = main.getByRole("region", {
+      name: "Selected position settings",
+    });
+    const plannerHeading = main.getByRole("heading", {
+      level: 1,
+      name: "Squad Planner",
+    });
+    const workspaceTabs = main.getByRole("tablist", {
+      name: "Planner workspaces",
+    });
+    const navToggle = page.getByRole("button", {
+      name: "Toggle navigation",
+    });
+
+    const expectWorkspaceFit = async (
+      width: number,
+      height: number,
+      requireVerticalFit: boolean,
+    ) => {
+      await page.setViewportSize({ width, height });
+      for (const [view, pitchCount, visibleRole] of [
+        ["Both", 2, "OOP GK role"],
+        ["IP", 1, "IP GK role"],
+        ["OOP", 1, "OOP GK role"],
+      ] as const) {
+        await main.getByRole("button", { name: view, exact: true }).click();
+        await expect(pitches).toHaveCount(pitchCount);
+        await expect(settings).toBeVisible();
+        await expect(
+          settings.getByRole("combobox", { name: visibleRole }),
+        ).toBeVisible();
+
+        const [headingBox, workspaceTabsBox] = await Promise.all([
+          plannerHeading.boundingBox(),
+          workspaceTabs.boundingBox(),
+        ]);
+        expect(headingBox).not.toBeNull();
+        expect(workspaceTabsBox).not.toBeNull();
+        expect(workspaceTabsBox?.y).toBeGreaterThanOrEqual(
+          (headingBox?.y ?? 0) + (headingBox?.height ?? 0),
+        );
+
+        if (width >= 1600 && view === "Both") {
+          const selectBoxes = await settings
+            .getByRole("combobox")
+            .evaluateAll((elements) =>
+              elements.map(
+                (element) =>
+                  (
+                    element as unknown as {
+                      getBoundingClientRect: () => { top: number };
+                    }
+                  ).getBoundingClientRect().top,
+              ),
+            );
+          expect(
+            Math.max(...selectBoxes) - Math.min(...selectBoxes),
+          ).toBeLessThanOrEqual(1);
+        }
+
+        const dimensions = await main.evaluate((element) => {
+          const mainElement = element as unknown as {
+            clientHeight: number;
+            clientWidth: number;
+            scrollHeight: number;
+            scrollWidth: number;
+          };
+          return {
+            clientHeight: mainElement.clientHeight,
+            clientWidth: mainElement.clientWidth,
+            scrollHeight: mainElement.scrollHeight,
+            scrollWidth: mainElement.scrollWidth,
+          };
+        });
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(
+          dimensions.clientWidth + 1,
+        );
+        if (requireVerticalFit) {
+          expect(dimensions.scrollHeight).toBeLessThanOrEqual(
+            dimensions.clientHeight + 1,
+          );
+        }
+      }
+    };
+
+    for (const [width, height, requireVerticalFit] of [
+      [1280, 800, false],
+      [1600, 900, true],
+      [1920, 1080, true],
+    ] as const) {
+      await expectWorkspaceFit(width, height, requireVerticalFit);
+      await navToggle.click();
+      await expect(navToggle).toHaveAttribute("aria-expanded", "true");
+      await expectWorkspaceFit(width, height, requireVerticalFit);
+      await navToggle.click();
+      await expect(navToggle).toHaveAttribute("aria-expanded", "false");
+    }
+  });
+
   test("planner depth adds strings for Senior, Reserves, and Youth", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/planner");
 
     const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Squad" }).click();
     for (const team of ["Senior", "Reserves", "Youth"]) {
       await main.getByRole("tab", { name: team }).click();
       await main.getByRole("button", { name: "Manage 1st string" }).click();
@@ -155,18 +365,77 @@ test.describe("walking skeleton smoke", () => {
   test("planner depth optimizes squads and shows the reconciled matrix", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/planner");
 
     const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Squad" }).click();
+    await expect(
+      main.getByRole("group", { name: "Squad controls" }),
+    ).toBeVisible();
     await main.getByRole("button", { name: "Optimize squads" }).click();
     await expect(main.getByRole("status")).toHaveText("Squads optimized.");
     await main.getByRole("tab", { name: "Reserves" }).click();
     await expect(
       main.getByRole("button", {
-        name: /Reserves, 1st string, Goalkeeper, Optimized Keeper, Resolved/,
+        name: /Reserves, 1st string, IP: GK .* Optimized Keeper, Resolved/,
       }),
     ).toBeVisible();
+  });
+
+  test("planner depth clears every squad from one confirmed action", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 900, height: 800 });
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Squad" }).click();
+    await main.getByRole("button", { name: "Optimize squads" }).click();
+    await expect(main.getByRole("status")).toHaveText("Squads optimized.");
+
+    const clearAll = main.getByRole("button", { name: "Clear all" });
+    await clearAll.click();
+    const confirmation = page.getByRole("dialog", {
+      name: "Clear all squads?",
+    });
+    await expect(confirmation).toContainText("Senior, Reserves, and Youth");
+    await confirmation.getByRole("button", { name: "Clear all" }).click();
+    await expect(main.getByRole("status")).toHaveText("All squads cleared.");
+
+    await main.getByRole("tab", { name: "Reserves" }).click();
+    await expect(
+      main.getByRole("button", {
+        name: /Reserves, 1st string, IP: GK .* Empty/,
+      }),
+    ).toBeVisible();
+  });
+
+  test("planner depth groups all teams when the matrix fits", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Squad" }).click();
+    const matrix = main.getByRole("region", {
+      name: "All squads depth matrix",
+    });
+    await expect(matrix).toBeVisible();
+    await expect(
+      matrix.getByRole("columnheader", { name: "Senior squad" }),
+    ).toBeVisible();
+    await expect(
+      matrix.getByRole("columnheader", { name: "Reserves squad" }),
+    ).toBeVisible();
+    await expect(
+      matrix.getByRole("columnheader", { name: "Youth squad" }),
+    ).toBeVisible();
+    await expect(main.getByRole("tab", { name: "Senior" })).toHaveCount(0);
   });
 
   test("player profile route shows no-snapshot empty state from stubbed IPC", async ({

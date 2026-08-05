@@ -13,8 +13,18 @@ import { plannerTacticQueryOptions } from "@/features/planner/api/planner-tactic
 import { PlannerClubFamilyPanel } from "@/features/planner/components/planner-club-family-panel";
 import { PlannerDepthMatrix } from "@/features/planner/components/planner-depth-matrix";
 import { PlannerTacticEditor } from "@/features/planner/components/planner-tactic-editor";
+import {
+  type PlannerWorkspace,
+  PlannerWorkspaceTabs,
+  parsePlannerWorkspace,
+  plannerWorkspacePanelProps,
+} from "@/features/planner/components/planner-workspace-tabs";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+
+export type PlannerSearch = {
+  view?: PlannerWorkspace;
+};
 
 export const Route = createFileRoute("/planner")({
   loader: ({ context: { queryClient } }) =>
@@ -26,12 +36,17 @@ export const Route = createFileRoute("/planner")({
       queryClient.ensureQueryData(plannerTacticOptionsQueryOptions),
       queryClient.ensureQueryData(plannerDepthQueryOptions),
     ]),
+  validateSearch: (search: Record<string, unknown>): PlannerSearch => {
+    const view = parsePlannerWorkspace(search.view);
+    return view ? { view } : {};
+  },
   component: PlannerPage,
 });
 
 function PlannerPageContent() {
   const { data: snapshot, isRefetchError: snapshotRefreshError } =
     useSuspenseQuery(currentSnapshotQueryOptions);
+  const { data: clubFamily } = useSuspenseQuery(plannerClubFamilyQueryOptions);
   const { data: tactic, isRefetchError: tacticRefreshError } = useSuspenseQuery(
     plannerTacticQueryOptions,
   );
@@ -50,52 +65,92 @@ function PlannerPageContent() {
     depthRefreshError;
   const isActiveSaveUnavailable =
     isPlannerRefreshing || isSnapshotRefreshing || activeSaveRefreshError;
+  const { view } = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const requestedWorkspace = parsePlannerWorkspace(view);
+  const activeWorkspace =
+    requestedWorkspace ?? (clubFamily.primaryClub ? "squad" : "clubs");
+  const onWorkspaceChange = (nextWorkspace: PlannerWorkspace) => {
+    void navigate({
+      search: (previous) => ({ ...previous, view: nextWorkspace }),
+      replace: true,
+    });
+  };
+  const plannerHeader = (
+    <header className="flex flex-col items-start gap-2">
+      <div>
+        <h1 className="text-headline-lg text-on-surface">Squad Planner</h1>
+        {clubFamily.primaryClub ? (
+          <p className="text-body-sm text-on-surface-variant">
+            Primary club: {clubFamily.primaryClub}
+          </p>
+        ) : null}
+      </div>
+      {snapshot ? (
+        <PlannerWorkspaceTabs
+          workspace={activeWorkspace}
+          onWorkspaceChange={onWorkspaceChange}
+        />
+      ) : null}
+    </header>
+  );
 
   if (!snapshot) {
     return (
-      <Panel title="Planner" flush>
-        <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-          No snapshot loaded for the active save. Use Load Data to scan Football
-          Manager and ingest players before setting up your club family.
-        </EmptyState>
-      </Panel>
+      <div className="space-y-2">
+        {plannerHeader}
+        <Panel title="Planner" flush>
+          <EmptyState icon={DatabaseZap} title="No data loaded for this save">
+            No snapshot loaded for the active save. Use Load Data to scan
+            Football Manager and ingest players before setting up your club
+            family.
+          </EmptyState>
+        </Panel>
+      </div>
     );
   }
 
   return (
-    <>
-      <PlannerClubFamilyPanel />
-      {/* Key the editor to the active save so its local draft cannot cross a save boundary. */}
-      <PlannerTacticEditor
-        key={snapshot.saveId}
-        activeSaveRefreshError={activeSaveRefreshError}
-        isActiveSaveUnavailable={isActiveSaveUnavailable}
-        tactic={tactic}
-        options={tacticOptions}
-      />
-      <PlannerDepthMatrix
-        activeSaveId={snapshot.saveId}
-        depth={depth}
-        tactic={tactic}
-        options={tacticOptions}
-      />
-    </>
+    <div className="space-y-2">
+      {plannerHeader}
+      <div {...plannerWorkspacePanelProps("squad", activeWorkspace)}>
+        <PlannerDepthMatrix
+          activeSaveId={snapshot.saveId}
+          depth={depth}
+          tactic={tactic}
+          options={tacticOptions}
+        />
+      </div>
+      <div {...plannerWorkspacePanelProps("tactic", activeWorkspace)}>
+        {/* Key the editor to the active save so its local draft cannot cross a save boundary. */}
+        <PlannerTacticEditor
+          key={snapshot.saveId}
+          activeSaveRefreshError={activeSaveRefreshError}
+          isActiveSaveUnavailable={isActiveSaveUnavailable}
+          tactic={tactic}
+          options={tacticOptions}
+        />
+      </div>
+      <div {...plannerWorkspacePanelProps("clubs", activeWorkspace)}>
+        <PlannerClubFamilyPanel />
+      </div>
+    </div>
   );
 }
 
 function PlannerPage() {
   return (
-    <div className="space-y-gutter">
-      <h1 className="text-headline-lg text-on-surface">Squad Planner</h1>
-      <Suspense
-        fallback={
+    <Suspense
+      fallback={
+        <div className="space-y-gutter">
+          <h1 className="text-headline-lg text-on-surface">Squad Planner</h1>
           <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
             Loading planner…
           </div>
-        }
-      >
-        <PlannerPageContent />
-      </Suspense>
-    </div>
+        </div>
+      }
+    >
+      <PlannerPageContent />
+    </Suspense>
   );
 }

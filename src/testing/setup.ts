@@ -20,7 +20,7 @@ import {
   resolveAddPlannerStringIpcMock,
   resolveAssignPlannerPlayerIpcMock,
   resolveClearPlannerAssignmentIpcMock,
-  resolveClearPlannerTeamIpcMock,
+  resolveClearPlannerDepthIpcMock,
   resolveMovePlannerPlayerIpcMock,
   resolveOptimizePlannerDepthIpcMock,
   resolvePlannerClubFamilyIpcMock,
@@ -155,8 +155,8 @@ function registerIpcMocks() {
       return resolveRemovePlannerStringIpcMock(args);
     }
 
-    if (cmd === "clear_planner_team") {
-      return resolveClearPlannerTeamIpcMock(args);
+    if (cmd === "clear_planner_depth") {
+      return resolveClearPlannerDepthIpcMock(args);
     }
 
     if (cmd === "optimize_planner_depth") {

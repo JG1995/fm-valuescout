@@ -15,47 +15,59 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
+import type { PlannerWorkspace } from "@/features/planner/components/planner-workspace-tabs";
 import type {
   PlannerDepth,
   PlannerSlotCandidate,
 } from "@/features/planner/types/depth";
 import type { PlannerTactic } from "@/features/planner/types/tactic";
+import { phasePositionLabel } from "@/features/planner/utils/tactic-editor";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import {
   getPlannerAddStringIpcMockCalls,
-  getPlannerClearTeamIpcMockCalls,
+  getPlannerClearAllIpcMockCalls,
   getPlannerClubFamilySaveCalls,
   getPlannerDepthIpcMockCalls,
   getPlannerOptimizeIpcMockCalls,
+  getPlannerSlotCandidateFetchCount,
   resolvePlannerClubFamilyIpcMock,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
+  resolveSavePlannerClubFamilyIpcMock,
   setPlannerAddStringError,
   setPlannerAddStringPending,
   setPlannerAssignmentError,
   setPlannerAvailableClubs,
-  setPlannerClearTeamError,
-  setPlannerClearTeamPending,
+  setPlannerClearAllError,
+  setPlannerClearAllPending,
   setPlannerDepthIpcMock,
   setPlannerOptimizeDepth,
   setPlannerOptimizeError,
   setPlannerOptimizePending,
   setPlannerSlotCandidates,
+  setPlannerTacticIpcMock,
   setPlannerTacticSaveError,
 } from "@/testing/planner-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 
-function renderPlannerRoute({ staleTime = 0 }: { staleTime?: number } = {}) {
+function renderPlannerRoute({
+  staleTime = 0,
+  initialEntry = "/planner?view=squad",
+}: {
+  staleTime?: number;
+  initialEntry?: string;
+} = {}) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime } },
   });
+  const history = createMemoryHistory({ initialEntries: [initialEntry] });
   const router = createRouter({
     routeTree,
     context: { queryClient } satisfies RouterContext,
     defaultPreloadStaleTime: 0,
-    history: createMemoryHistory({ initialEntries: ["/planner"] }),
+    history,
   });
 
   render(
@@ -64,12 +76,64 @@ function renderPlannerRoute({ staleTime = 0 }: { staleTime?: number } = {}) {
     </QueryClientProvider>,
   );
 
-  return { queryClient };
+  return { history, queryClient, router };
+}
+
+async function openPlannerWorkspace(
+  user: ReturnType<typeof userEvent.setup>,
+  workspace: PlannerWorkspace,
+) {
+  const labels: Record<PlannerWorkspace, string> = {
+    squad: "Squad",
+    tactic: "Tactic",
+    clubs: "Club Setup",
+  };
+  await user.click(await screen.findByRole("tab", { name: labels[workspace] }));
+}
+
+const KEEPER_POSITION = "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper";
+const SENIOR_FIRST_KEEPER = `Senior · 1st string · ${KEEPER_POSITION}`;
+const SENIOR_SECOND_KEEPER = `Senior · 2nd string · ${KEEPER_POSITION}`;
+const RESERVES_FIRST_KEEPER = `Reserves · 1st string · ${KEEPER_POSITION}`;
+
+function withSecondStringForEveryTeam(depth: PlannerDepth): PlannerDepth {
+  let nextStringId =
+    Math.max(
+      ...depth.teams.flatMap((team) =>
+        team.strings.map((plannerString) => plannerString.id),
+      ),
+    ) + 1;
+
+  return {
+    ...depth,
+    teams: depth.teams.map((team) => ({
+      ...team,
+      strings: [
+        ...team.strings,
+        {
+          id: nextStringId++,
+          stringOrder: team.strings.length,
+          assignments: [],
+        },
+      ],
+    })),
+  };
+}
+
+async function setPlannerMatrixWidth(width: number) {
+  const matrixContainer = await screen.findByTestId(
+    "planner-depth-matrix-container",
+  );
+  Object.defineProperty(matrixContainer, "clientWidth", {
+    configurable: true,
+    value: width,
+  });
+  fireEvent(window, new Event("resize"));
 }
 
 describe("planner route", () => {
   it("shows Load Data guidance when the active save has no snapshot", async () => {
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
     expect(
       await screen.findByRole("heading", { level: 1, name: "Squad Planner" }),
@@ -86,7 +150,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona", "Barca Athletic", "Barcelona U19"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
     const primaryClub = await screen.findByRole("combobox", {
       name: "Primary club",
@@ -124,14 +188,20 @@ describe("planner route", () => {
     expect(
       within(screen.getByRole("main")).getByText(/Associated clubs/),
     ).toBeInTheDocument();
-    expect(screen.getByText("11 linked lanes")).toBeInTheDocument();
+    expect(
+      within(
+        document.getElementById(
+          "planner-workspace-panel-tactic",
+        ) as HTMLElement,
+      ).getByRole("region", { name: "Tactic controls", hidden: true }),
+    ).toBeInTheDocument();
   });
 
   it("filters primary clubs and selects a club from the results", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["FC København", "Brøndby IF", "Copenhagen City"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
     const primaryClub = await screen.findByRole("combobox", {
       name: "Primary club",
@@ -165,7 +235,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
     const primaryClub = await screen.findByRole("combobox", {
       name: "Primary club",
@@ -199,7 +269,7 @@ describe("planner route", () => {
       const user = userEvent.setup();
       await resolveLoadDataIpcMock();
       setPlannerAvailableClubs(["Barcelona", "Barca Athletic"]);
-      renderPlannerRoute();
+      renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
       const primaryClub = await screen.findByRole("combobox", {
         name: "Primary club",
@@ -224,47 +294,164 @@ describe("planner route", () => {
     }
   });
 
-  it("renders first-use club-family setup before downstream planner panels", async () => {
+  it("defaults to Club Setup and keeps inactive workspaces mounted", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    const user = userEvent.setup();
+    renderPlannerRoute({ initialEntry: "/planner" });
 
-    const clubSetup = await screen.findByRole("heading", {
+    await screen.findByRole("heading", {
       level: 2,
       name: "Set up your club family",
     });
-    const tacticEditor = screen.getByRole("heading", {
-      level: 2,
-      name: "Tactic editor",
+    expect(screen.getByRole("tab", { name: "Club Setup" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "Squad" })).toHaveAttribute(
+      "aria-selected",
+      "false",
+    );
+    const clubPanel = document.getElementById("planner-workspace-panel-clubs");
+    const tacticPanel = document.getElementById(
+      "planner-workspace-panel-tactic",
+    );
+    const squadPanel = document.getElementById("planner-workspace-panel-squad");
+    expect(clubPanel).not.toHaveAttribute("hidden");
+    expect(tacticPanel).toBeInTheDocument();
+    expect(squadPanel).toBeInTheDocument();
+    expect(tacticPanel).toHaveAttribute("hidden");
+    expect(squadPanel).toHaveAttribute("hidden");
+    expect(
+      within(tacticPanel as HTMLElement).getByRole("region", {
+        name: "Tactic controls",
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(squadPanel as HTMLElement).getByRole("heading", {
+        level: 2,
+        name: "Squad depth",
+        hidden: true,
+      }),
+    ).toBeInTheDocument();
+
+    await openPlannerWorkspace(user, "tactic");
+    const tacticEditor = screen.getByRole("region", {
+      name: "Tactic controls",
     });
-    const squadDepth = screen.getByRole("heading", {
-      level: 2,
-      name: "Squad depth",
+    const weight = screen.getByRole("slider", {
+      name: "IP/OOP score weight",
     });
+    weight.focus();
+    await user.keyboard("{ArrowRight}");
+    await openPlannerWorkspace(user, "clubs");
+    await openPlannerWorkspace(user, "tactic");
+    expect(tacticEditor).toBeInTheDocument();
+    expect(weight).toHaveValue("51");
+  });
+
+  it("defaults configured saves to Squad and replaces workspace URL state", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Barcelona",
+      sources: [],
+    });
+    const { router } = renderPlannerRoute({ initialEntry: "/planner" });
 
     expect(
-      clubSetup.compareDocumentPosition(tacticEditor) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
+      await screen.findByText("Primary club: Barcelona"),
+    ).toBeInTheDocument();
+    const squadTab = screen.getByRole("tab", { name: "Squad" });
+    expect(squadTab).toHaveAttribute("aria-selected", "true");
+    squadTab.focus();
+    await user.keyboard("{End}");
+
+    const clubSetupTab = screen.getByRole("tab", { name: "Club Setup" });
+    expect(clubSetupTab).toHaveAttribute("aria-selected", "true");
+    expect(clubSetupTab).toHaveFocus();
+    expect(clubSetupTab).toHaveAttribute("tabIndex", "0");
+    expect(squadTab).toHaveAttribute("tabIndex", "-1");
+    expect(router.state.location.search).toEqual({ view: "clubs" });
+    await user.keyboard("{ArrowLeft}");
+    const tacticTab = screen.getByRole("tab", { name: "Tactic" });
+    expect(tacticTab).toHaveAttribute("aria-selected", "true");
+    expect(tacticTab).toHaveFocus();
+    expect(tacticTab).toHaveAttribute("tabIndex", "0");
+    expect(clubSetupTab).toHaveAttribute("tabIndex", "-1");
+    expect(router.state.location.search).toEqual({ view: "tactic" });
+    tacticTab.focus();
+    await user.keyboard("{Home}");
+    expect(squadTab).toHaveAttribute("aria-selected", "true");
+    expect(squadTab).toHaveFocus();
+    expect(squadTab).toHaveAttribute("tabIndex", "0");
+    expect(tacticTab).toHaveAttribute("tabIndex", "-1");
+    expect(router.state.location.search).toEqual({ view: "squad" });
+
+    router.history.back();
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ view: "squad" }),
+    );
+    expect(router.history.canGoBack()).toBe(false);
+  });
+
+  it("lets an explicit workspace override the configured default", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Barcelona",
+      sources: [],
+    });
+    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
+
     expect(
-      clubSetup.compareDocumentPosition(squadDepth) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).not.toBe(0);
+      await screen.findByRole("tab", { name: "Club Setup" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Club family" })).toBeVisible();
+  });
+
+  it("uses the first-use default for invalid workspace values", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute({ initialEntry: "/planner?view=unknown" });
+
+    expect(
+      await screen.findByRole("tab", { name: "Club Setup" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("heading", { name: "Set up your club family" }),
+    ).toBeVisible();
   });
 
   it("edits linked IP and OOP lanes with filtered roles and weight control", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
 
     const viewGroup = screen.getByRole("group", {
       name: "Tactic phase views",
     });
     const bothView = within(viewGroup).getByRole("button", { name: "Both" });
     expect(bothView).toHaveAttribute("aria-pressed", "true");
+    const inspectors = screen.getAllByRole("region", {
+      name: "Selected position settings",
+    });
+    expect(inspectors).toHaveLength(1);
+    const inspector = inspectors[0];
+    expect(
+      within(inspector).getByRole("combobox", {
+        name: "IP GK position",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(inspector).getByRole("combobox", {
+        name: "OOP GK position",
+      }),
+    ).toBeInTheDocument();
     bothView.focus();
     await user.keyboard("{ArrowLeft}");
     expect(
@@ -276,17 +463,17 @@ describe("planner route", () => {
     await user.click(bothView);
 
     const firstIpLane = screen.getByRole("button", {
-      name: "IP lane 1: GK, Goalkeeper",
+      name: "IP: GK · Goalkeeper",
     });
     firstIpLane.focus();
     await user.keyboard("{Enter}");
 
     const ipPosition = screen.getByRole("combobox", {
-      name: "IP lane 1 position",
+      name: "IP GK position",
     });
     await user.selectOptions(ipPosition, "DL");
 
-    const ipRole = screen.getByRole("combobox", { name: "IP lane 1 role" });
+    const ipRole = screen.getByRole("combobox", { name: "IP DL role" });
     expect(ipRole).toHaveValue("");
     expect(
       within(ipRole).queryByRole("option", { name: "Goalkeeper" }),
@@ -294,18 +481,20 @@ describe("planner route", () => {
     await user.selectOptions(ipRole, "full_back_ip");
 
     const oopPosition = screen.getByRole("combobox", {
-      name: "OOP lane 1 position",
+      name: "OOP GK position",
     });
     await user.selectOptions(oopPosition, "DL");
-    const oopRole = screen.getByRole("combobox", { name: "OOP lane 1 role" });
+    const oopRole = screen.getByRole("combobox", {
+      name: "OOP DL role",
+    });
     expect(oopRole).toHaveValue("");
     await user.selectOptions(oopRole, "holding_full_back_oop");
 
     const weight = screen.getByRole("slider", {
-      name: "Lane 1 IP score weight",
+      name: "IP/OOP score weight",
     });
     expect(
-      screen.getAllByRole("slider", { name: "Lane 1 IP score weight" }),
+      screen.getAllByRole("slider", { name: "IP/OOP score weight" }),
     ).toHaveLength(1);
     weight.focus();
     await user.keyboard(
@@ -329,16 +518,474 @@ describe("planner route", () => {
     );
   });
 
+  it("orders the tactic command bar, pitches, and one settings shelf", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    const commandBar = await screen.findByRole("region", {
+      name: "Tactic controls",
+    });
+    const pitches = screen.getAllByRole("group", { name: /pitch$/ });
+    const settings = screen.getByRole("region", {
+      name: "Selected position settings",
+    });
+
+    expect(
+      within(commandBar).queryByRole("heading", { name: "Tactic editor" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(commandBar).getByRole("group", {
+        name: "Tactic phase views",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(commandBar).queryByText(
+        "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      within(commandBar).queryByText("11 linked positions"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(commandBar).getByRole("button", { name: "Save tactic" }),
+    ).toBeInTheDocument();
+    expect(pitches).toHaveLength(2);
+    expect(
+      commandBar.compareDocumentPosition(pitches[0]) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      pitches[1].compareDocumentPosition(settings) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      within(settings).getAllByRole("slider", {
+        name: "IP/OOP score weight",
+      }),
+    ).toHaveLength(1);
+    expect(
+      within(settings).getAllByRole("combobox", {
+        name: "Importance rank",
+      }),
+    ).toHaveLength(1);
+    expect(
+      within(settings).getByRole("group", {
+        name: "In-Possession settings",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(settings).getByRole("group", {
+        name: "Out-of-Possession settings",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders every tactic pitch from attack to goalkeeper", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    await screen.findByRole("region", { name: "Tactic controls" });
+    const viewGroup = screen.getByRole("group", {
+      name: "Tactic phase views",
+    });
+
+    for (const view of ["Both", "IP", "OOP"] as const) {
+      await user.click(within(viewGroup).getByRole("button", { name: view }));
+
+      const pitches = screen.getAllByRole("group", { name: /pitch$/ });
+      expect(pitches).toHaveLength(view === "Both" ? 2 : 1);
+
+      for (const pitch of pitches) {
+        const positionButtons = within(pitch).getAllByRole("button");
+        expect(positionButtons[0]).toHaveAccessibleName(/: STC · /);
+        expect(
+          positionButtons[positionButtons.length - 1],
+        ).toHaveAccessibleName(/: GK · /);
+      }
+    }
+  });
+
+  it("presents current linked positions without lane terminology", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes[8] = {
+      ...tactic.lanes[8],
+      ipPosition: "AMC",
+      ipRoleId: "winger_ip",
+    };
+    setPlannerTacticIpcMock(tactic);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.tactic = tactic;
+    setPlannerDepthIpcMock(depth);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    const ipButton = await screen.findByRole("button", {
+      name: /IP: AMC · Winger/,
+    });
+    const oopButton = screen.getByRole("button", {
+      name: /OOP: ML · Tracking Wide Midfielder/,
+    });
+    expect(screen.queryByText("11 linked positions")).not.toBeInTheDocument();
+    expect(screen.queryByText("Left winger")).not.toBeInTheDocument();
+    expect(screen.queryByText(/linked lanes/i)).not.toBeInTheDocument();
+
+    fireEvent.focus(ipButton);
+    await waitFor(() => expect(ipButton).toHaveClass("ring-2"));
+    expect(oopButton).toHaveClass("ring-2");
+
+    await user.click(ipButton);
+    const weight = screen.getByRole("slider", { name: "IP/OOP score weight" });
+    weight.focus();
+    expect(ipButton).toHaveClass("ring-2");
+    expect(oopButton).toHaveClass("ring-2");
+
+    const alternateIpButton = screen.getByRole("button", {
+      name: "IP: DL · Full-Back",
+    });
+    alternateIpButton.focus();
+    weight.focus();
+    expect(oopButton).toHaveClass("ring-2");
+
+    await openPlannerWorkspace(user, "squad");
+    const matrix = screen.getByRole("region", {
+      name: "Senior squad depth matrix",
+    });
+    expect(within(matrix).getByText("IP: AMC · Winger")).toBeInTheDocument();
+    expect(within(matrix).queryByText("Left winger")).not.toBeInTheDocument();
+  });
+
+  it("keeps repeated positions distinguishable without numeric labels", () => {
+    const tactic = resolvePlannerTacticIpcMock();
+    const lanes = tactic.lanes.map((lane, index) =>
+      index < 5 ? { ...lane, ipPosition: "AMC", ipRoleId: "winger_ip" } : lane,
+    );
+    const labels = lanes
+      .slice(0, 5)
+      .map((lane) => phasePositionLabel(lane, "ip", lanes));
+
+    expect(new Set(labels).size).toBe(5);
+    expect(labels.every((label) => !label.includes("additional"))).toBe(true);
+  });
+
+  it("arranges repeated positions in stable central slots regardless of role", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes = tactic.lanes.map((lane, index) => {
+      if (index === 0) {
+        return {
+          ...lane,
+          ipPosition: "MC",
+          ipRoleId: "central_midfielder_ip",
+          oopPosition: "MC",
+          oopRoleId: "pressing_central_midfielder_oop",
+        };
+      }
+      if (index === 1) {
+        return {
+          ...lane,
+          ipPosition: "MC",
+          ipRoleId: "advanced_playmaker_ip",
+          oopPosition: "MC",
+          oopRoleId: "pressing_central_midfielder_oop",
+        };
+      }
+      if (index === 2) {
+        return {
+          ...lane,
+          ipPosition: "MC",
+          ipRoleId: "box_to_box_midfielder_ip",
+          oopPosition: "MC",
+          oopRoleId: "pressing_central_midfielder_oop",
+        };
+      }
+      if (index === 3) {
+        return {
+          ...lane,
+          ipPosition: "DC",
+          ipRoleId: "centre_back_ip",
+          oopPosition: "DC",
+          oopRoleId: "covering_centre_back_oop",
+        };
+      }
+      if (index === 4) {
+        return {
+          ...lane,
+          ipPosition: "DC",
+          ipRoleId: "ball_playing_centre_back_ip",
+          oopPosition: "DC",
+          oopRoleId: "stopping_centre_back_oop",
+        };
+      }
+      if (index === 6) {
+        return {
+          ...lane,
+          ipPosition: "ML",
+          ipRoleId: "wide_midfielder_ip",
+          oopPosition: "ML",
+          oopRoleId: "tracking_wide_midfielder_oop",
+        };
+      }
+      if (index === 7) {
+        return {
+          ...lane,
+          ipPosition: "MR",
+          ipRoleId: "wide_midfielder_ip",
+          oopPosition: "MR",
+          oopRoleId: "tracking_wide_midfielder_oop",
+        };
+      }
+      return lane;
+    });
+    setPlannerTacticIpcMock(tactic);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.tactic = tactic;
+    setPlannerDepthIpcMock(depth);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    const rightMc = await screen.findByRole("button", {
+      name: "IP: MCR · Central Midfielder",
+    });
+    const centreMc = screen.getByRole("button", {
+      name: "IP: MC · Advanced Playmaker",
+    });
+    const leftMc = screen.getByRole("button", {
+      name: "IP: MCL · Box-to-Box Midfielder",
+    });
+    const mcGroup = rightMc.closest('[data-position-group="MC"]');
+    expect(mcGroup).not.toBeNull();
+    expect(mcGroup).toContainElement(centreMc);
+    expect(mcGroup).toContainElement(leftMc);
+    expect(mcGroup).toHaveAttribute("data-position-slot-count", "3");
+    for (const pitch of await screen.findAllByRole("group", {
+      name: /pitch$/,
+    })) {
+      expect(pitch).toHaveAttribute("data-pitch-slot-count", "5");
+    }
+    expect(rightMc.parentElement).toHaveStyle({
+      gridColumn: "5 / span 2",
+      gridRow: "1",
+    });
+    expect(centreMc.parentElement).toHaveStyle({
+      gridColumn: "3 / span 2",
+      gridRow: "1",
+    });
+    expect(leftMc.parentElement).toHaveStyle({
+      gridColumn: "1 / span 2",
+      gridRow: "1",
+    });
+    expect(mcGroup).toHaveStyle({ gridColumn: "3 / span 6" });
+    expect(mcGroup).toHaveClass("bg-surface-container-high");
+
+    const rightDc = screen.getByRole("button", {
+      name: "IP: DCR · Centre-Back",
+    });
+    const leftDc = screen.getByRole("button", {
+      name: "IP: DCL · Ball-Playing Centre-Back",
+    });
+    expect(rightDc.parentElement).toHaveStyle({
+      gridColumn: "3 / span 2",
+      gridRow: "1",
+    });
+    expect(leftDc.parentElement).toHaveStyle({
+      gridColumn: "1 / span 2",
+      gridRow: "1",
+    });
+    const dcGroup = rightDc.closest('[data-position-group="DC"]');
+    expect(dcGroup).not.toBeNull();
+    expect(dcGroup).toContainElement(leftDc);
+    expect(dcGroup).toHaveStyle({ gridColumn: "4 / span 4" });
+    const defensiveMidfielder = screen.getByRole("button", {
+      name: "IP: DM · Defensive Midfielder",
+    });
+    expect(defensiveMidfielder).toBeInTheDocument();
+    expect(defensiveMidfielder.parentElement).toHaveStyle({
+      gridColumn: "1 / span 2",
+      gridRow: "1",
+    });
+    expect(
+      defensiveMidfielder.closest('[data-position-group="DM"]'),
+    ).toHaveStyle({ gridColumn: "5 / span 2" });
+    const leftMidfielder = screen.getByRole("button", {
+      name: "IP: ML · Wide Midfielder",
+    });
+    const rightMidfielder = screen.getByRole("button", {
+      name: "IP: MR · Wide Midfielder",
+    });
+    expect(leftMidfielder.parentElement).toHaveStyle({
+      gridColumn: "1 / span 2",
+      gridRow: "1",
+    });
+    expect(rightMidfielder.parentElement).toHaveStyle({
+      gridColumn: "1 / span 2",
+      gridRow: "1",
+    });
+    expect(leftMidfielder.closest('[data-position-group="ML"]')).toHaveStyle({
+      gridColumn: "1 / span 2",
+    });
+    expect(rightMidfielder.closest('[data-position-group="MR"]')).toHaveStyle({
+      gridColumn: "9 / span 2",
+    });
+
+    expect(
+      screen.getByRole("button", {
+        name: "OOP: DCR · Covering Centre-Back",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "OOP: DCL · Stopping Centre-Back",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
+    expect(
+      screen.getByRole("button", { name: "IP: STC · Centre Forward" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps every position button when a base position has more than three lanes", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes = tactic.lanes.map((lane, index) =>
+      index < 5 ? { ...lane, ipPosition: "AMC", ipRoleId: "winger_ip" } : lane,
+    );
+    setPlannerTacticIpcMock(tactic);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.tactic = tactic;
+    setPlannerDepthIpcMock(depth);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    for (const pitch of await screen.findAllByRole("group", {
+      name: /pitch$/,
+    })) {
+      expect(pitch).toHaveAttribute("data-pitch-slot-count", "5");
+    }
+    const secondRowRight = await screen.findByRole("button", {
+      name: "IP: AMCR (row 2) · Winger",
+    });
+    const secondRowLeft = screen.getByRole("button", {
+      name: "IP: AMCL (row 2) · Winger",
+    });
+    expect(secondRowRight).toBeInTheDocument();
+    expect(secondRowRight.parentElement).toHaveStyle({
+      gridColumn: "3 / span 2",
+      gridRow: "1",
+    });
+    const secondRowGroup = secondRowRight.closest(
+      '[data-position-group="AMC"]',
+    );
+    expect(secondRowGroup).not.toBeNull();
+    expect(secondRowGroup).toContainElement(secondRowLeft);
+    expect(secondRowGroup).toHaveStyle({ gridColumn: "4 / span 4" });
+    expect(secondRowGroup).toHaveAttribute("data-position-slot-count", "2");
+    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
+  });
+
+  it("follows visible row order when a wide position overflows", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes = tactic.lanes.map((lane, index) => {
+      if (index < 2) {
+        return { ...lane, ipPosition: "AML", ipRoleId: "winger_ip" };
+      }
+      if (index === 2) {
+        return { ...lane, ipPosition: "AMC", ipRoleId: "winger_ip" };
+      }
+      if (index === 3) {
+        return { ...lane, ipPosition: "AMR", ipRoleId: "winger_ip" };
+      }
+      if (lane.ipPosition === "AML" || lane.ipPosition === "AMR") {
+        return {
+          ...lane,
+          ipPosition: "MC",
+          ipRoleId: "central_midfielder_ip",
+        };
+      }
+      return lane;
+    });
+    setPlannerTacticIpcMock(tactic);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.tactic = tactic;
+    setPlannerDepthIpcMock(depth);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    const ipPitch = (
+      await screen.findAllByRole("group", { name: /pitch$/ })
+    )[0];
+    const attackMidfieldRows = ipPitch.querySelectorAll(
+      '[data-pitch-band="attack-midfield"]',
+    );
+    expect(attackMidfieldRows).toHaveLength(2);
+    expect(
+      within(attackMidfieldRows[0] as HTMLElement)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["IP: AML · Winger", "IP: AMC · Winger", "IP: AMR · Winger"]);
+    expect(
+      within(attackMidfieldRows[1] as HTMLElement)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["IP: AML (row 2) · Winger"]);
+  });
+
+  it("keeps a three-slot minimum when every tactic row has at most two positions", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    const compactRows = [
+      ["ST", "centre_forward_ip", "central_outlet_centre_forward_oop"],
+      ["ST", "centre_forward_ip", "central_outlet_centre_forward_oop"],
+      ["AML", "winger_ip", "tracking_winger_oop"],
+      ["AMR", "winger_ip", "tracking_winger_oop"],
+      ["MC", "central_midfielder_ip", "pressing_central_midfielder_oop"],
+      ["MC", "central_midfielder_ip", "pressing_central_midfielder_oop"],
+      ["DM", "defensive_midfielder_ip", "screening_defensive_midfielder_oop"],
+      ["DM", "defensive_midfielder_ip", "screening_defensive_midfielder_oop"],
+      ["DC", "centre_back_ip", "covering_centre_back_oop"],
+      ["DC", "centre_back_ip", "covering_centre_back_oop"],
+      ["GK", "goalkeeper_ip", "line_holding_keeper_oop"],
+    ] as const;
+    tactic.lanes = tactic.lanes.map((lane, index) => {
+      const [position, ipRoleId, oopRoleId] = compactRows[index];
+      return {
+        ...lane,
+        ipPosition: position,
+        ipRoleId,
+        oopPosition: position,
+        oopRoleId,
+      };
+    });
+    setPlannerTacticIpcMock(tactic);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.tactic = tactic;
+    setPlannerDepthIpcMock(depth);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    for (const pitch of await screen.findAllByRole("group", {
+      name: /pitch$/,
+    })) {
+      expect(pitch).toHaveAttribute("data-pitch-slot-count", "3");
+    }
+    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
+  });
+
   it("retains the edited tactic draft when save fails", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerTacticSaveError("Tactic save failed");
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
-      name: "Lane 1 IP score weight",
+      name: "IP/OOP score weight",
     });
     weight.focus();
     await user.keyboard(
@@ -353,18 +1000,55 @@ describe("planner route", () => {
     expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
   });
 
+  it("keeps phase controls in one inspector for each tactic view", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    await screen.findByRole("region", { name: "Tactic controls" });
+    const viewGroup = screen.getByRole("group", {
+      name: "Tactic phase views",
+    });
+
+    for (const [view, phase, hiddenPhase] of [
+      ["IP", "IP", "OOP"],
+      ["OOP", "OOP", "IP"],
+      ["Both", "IP", ""],
+    ] as const) {
+      await user.click(within(viewGroup).getByRole("button", { name: view }));
+      const inspectors = screen.getAllByRole("region", {
+        name: "Selected position settings",
+      });
+      expect(inspectors).toHaveLength(1);
+      const inspector = inspectors[0];
+      expect(
+        within(inspector).getByRole("combobox", {
+          name: `${phase} GK position`,
+        }),
+      ).toBeInTheDocument();
+      if (hiddenPhase) {
+        expect(
+          within(inspector).queryByRole("combobox", {
+            name: `${hiddenPhase} GK position`,
+          }),
+        ).not.toBeInTheDocument();
+      }
+    }
+  });
+
   it("saves only the selected lane score weight", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     await user.click(
-      screen.getByRole("button", { name: "IP lane 2: DL, Full-Back" }),
+      screen.getByRole("button", { name: "IP: DL · Full-Back" }),
     );
     const weight = screen.getByRole("slider", {
-      name: "Lane 2 IP score weight",
+      name: "IP/OOP score weight",
     });
     weight.focus();
     await user.keyboard("{ArrowRight}");
@@ -378,14 +1062,14 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     await user.click(
-      screen.getByRole("button", { name: "IP lane 2: DL, Full-Back" }),
+      screen.getByRole("button", { name: "IP: DL · Full-Back" }),
     );
     const rank = screen.getByRole("combobox", {
-      name: "Lane 2 importance rank",
+      name: "Importance rank",
     });
     await user.selectOptions(rank, "3");
     await user.click(screen.getByRole("button", { name: "Save tactic" }));
@@ -399,14 +1083,14 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const preferredFoot = screen.getByRole("combobox", {
-      name: "Lane 1 preferred foot",
+      name: "Preferred foot",
     });
     const footPreference = screen.getByRole("combobox", {
-      name: "Lane 1 foot preference",
+      name: "Foot preference",
     });
     expect(footPreference).toBeDisabled();
 
@@ -426,11 +1110,11 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerTacticSaveError("Tactic save failed");
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const preferredFoot = screen.getByRole("combobox", {
-      name: "Lane 1 preferred foot",
+      name: "Preferred foot",
     });
     await user.selectOptions(preferredFoot, "left");
     await user.click(screen.getByRole("button", { name: "Save tactic" }));
@@ -447,23 +1131,23 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerTacticSaveError("Tactic save failed");
-    renderPlannerRoute();
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     await user.selectOptions(
-      screen.getByRole("combobox", { name: "Lane 1 importance rank" }),
+      screen.getByRole("combobox", { name: "Importance rank" }),
       "1",
     );
     await user.click(
-      screen.getByRole("button", { name: "IP lane 2: DL, Full-Back" }),
+      screen.getByRole("button", { name: "IP: DL · Full-Back" }),
     );
     const duplicateRank = screen.getByRole("combobox", {
-      name: "Lane 2 importance rank",
+      name: "Importance rank",
     });
     await user.selectOptions(duplicateRank, "1");
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Importance rank 1 is already used.",
+      "IP: DL · Full-Back / OOP: DL · Holding Full-Back cannot use importance rank 1; it is already used.",
     );
     expect(screen.getByRole("button", { name: "Save tactic" })).toBeDisabled();
 
@@ -494,7 +1178,7 @@ describe("planner route", () => {
     renderPlannerRoute({ staleTime: 60_000 });
 
     const cell = await screen.findByRole("button", {
-      name: /Senior, 1st string, Goalkeeper, Empty/,
+      name: /Senior, 1st string, IP: GK .* Empty/,
     });
     await user.click(cell);
     expect(
@@ -504,6 +1188,7 @@ describe("planner route", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
+    await openPlannerWorkspace(user, "tactic");
 
     setPlannerSlotCandidates([
       slotCandidate({
@@ -516,12 +1201,13 @@ describe("planner route", () => {
       }),
     ]);
     const weight = screen.getByRole("slider", {
-      name: "Lane 1 IP score weight",
+      name: "IP/OOP score weight",
     });
     weight.focus();
     await user.keyboard("{ArrowRight}");
     await user.click(screen.getByRole("button", { name: "Save tactic" }));
 
+    await openPlannerWorkspace(user, "squad");
     await user.click(cell);
     expect(
       await screen.findByRole("option", { name: /Updated tactic fit/ }),
@@ -532,11 +1218,13 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const { queryClient } = renderPlannerRoute();
+    const { queryClient } = renderPlannerRoute({
+      initialEntry: "/planner?view=tactic",
+    });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
-      name: "Lane 1 IP score weight",
+      name: "IP/OOP score weight",
     });
     weight.focus();
     await user.keyboard(
@@ -563,7 +1251,7 @@ describe("planner route", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("slider", { name: "Lane 1 IP score weight" }),
+        screen.getByRole("slider", { name: "IP/OOP score weight" }),
       ).toHaveValue("20"),
     );
   });
@@ -572,11 +1260,13 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const { queryClient } = renderPlannerRoute();
+    const { queryClient } = renderPlannerRoute({
+      initialEntry: "/planner?view=tactic",
+    });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
-      name: "Lane 1 IP score weight",
+      name: "IP/OOP score weight",
     });
     weight.focus();
     await user.keyboard(
@@ -610,11 +1300,13 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const { queryClient } = renderPlannerRoute();
+    const { queryClient } = renderPlannerRoute({
+      initialEntry: "/planner?view=tactic",
+    });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
-      name: "Lane 1 IP score weight",
+      name: "IP/OOP score weight",
     });
     weight.focus();
     await user.keyboard(
@@ -647,7 +1339,7 @@ describe("planner route", () => {
     const matrix = await screen.findByRole("region", {
       name: "Senior squad depth matrix",
     });
-    expect(matrix).toHaveClass("overflow-x-auto");
+    expect(matrix).toHaveClass("overflow-auto");
     expect(
       within(matrix).getByRole("columnheader", { name: "1st string" }),
     ).toBeInTheDocument();
@@ -690,11 +1382,268 @@ describe("planner route", () => {
     ).toBeInTheDocument();
 
     const cell = screen.getAllByRole("button", {
-      name: /Reserves, 1st string, Goalkeeper, Empty/,
+      name: /Reserves, 1st string, IP: GK .* Empty/,
     })[0];
     expect(cell).not.toBeDisabled();
     cell.focus();
     expect(document.activeElement).toBe(cell);
+  });
+
+  it("groups squad actions above a bounded compact matrix", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
+    renderPlannerRoute();
+
+    const toolbar = await screen.findByRole("group", {
+      name: "Squad controls",
+    });
+    expect(
+      within(toolbar).getByRole("tablist", { name: "Squad planner teams" }),
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole("button", { name: "Optimize squads" }),
+    ).toBeInTheDocument();
+    expect(
+      within(toolbar).getByRole("button", { name: "Clear all" }),
+    ).toBeInTheDocument();
+
+    const matrix = screen.getByRole("region", {
+      name: "Senior squad depth matrix",
+    });
+    expect(matrix).toHaveClass("max-h-[min(70vh,720px)]");
+    expect(matrix).toHaveClass("overflow-auto");
+    expect(within(matrix).getByRole("row", { name: /Goalkeeper/ })).toHaveClass(
+      "h-table-row-height-two-line",
+    );
+  });
+
+  it("groups all teams in one semantic table when the matrix fits", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(
+      withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
+    );
+    renderPlannerRoute();
+    await setPlannerMatrixWidth(1600);
+
+    const matrix = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    expect(
+      within(matrix).getByRole("columnheader", { name: "Senior squad" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("columnheader", { name: "Reserves squad" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("columnheader", { name: "Youth squad" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getAllByRole("columnheader", { name: "1st string" }),
+    ).toHaveLength(3);
+    expect(
+      within(matrix).getByRole("button", {
+        name: /Youth, 2nd string, IP: GK .* Empty/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix)
+        .getByRole("button", { name: /Reserves, 1st string, IP: GK .* Empty/ })
+        .closest("td"),
+    ).toHaveAttribute(
+      "headers",
+      expect.stringContaining("planner-team-reserves"),
+    );
+    expect(
+      screen.queryByRole("tab", { name: "Senior" }),
+    ).not.toBeInTheDocument();
+
+    const clearAll = screen.getByRole("button", { name: "Clear all" });
+    expect(
+      within(matrix).queryByRole("button", { name: /Clear .* squad/ }),
+    ).toBeNull();
+    await user.click(clearAll);
+    const confirmation = screen.getByRole("dialog", {
+      name: "Clear all squads?",
+    });
+    expect(confirmation).toHaveTextContent("Senior, Reserves, and Youth");
+    await user.click(
+      within(confirmation).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(clearAll));
+  });
+
+  it("keeps the selected team and string focus across responsive mode changes", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerDepthIpcMock(
+      withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
+    );
+    renderPlannerRoute();
+    await setPlannerMatrixWidth(1200);
+
+    await user.click(await screen.findByRole("tab", { name: "Reserves" }));
+    const reservesTab = screen.getByRole("tab", { name: "Reserves" });
+    reservesTab.focus();
+    await setPlannerMatrixWidth(1600);
+    const combinedFromTab = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(combinedFromTab).getAllByRole("button", {
+          name: "Manage 1st string",
+        })[1],
+      ),
+    );
+    await setPlannerMatrixWidth(1200);
+    const constrainedAfterTab = await screen.findByRole("region", {
+      name: "Reserves squad depth matrix",
+    });
+    await waitFor(() =>
+      expect(
+        within(constrainedAfterTab).getByRole("button", {
+          name: "Manage 1st string",
+        }),
+      ).toHaveFocus(),
+    );
+
+    const constrainedHeader = within(
+      screen.getByRole("region", { name: "Reserves squad depth matrix" }),
+    ).getByRole("button", { name: "Manage 1st string" });
+    constrainedHeader.focus();
+
+    await setPlannerMatrixWidth(1600);
+    const combined = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    const combinedHeaders = within(combined).getAllByRole("button", {
+      name: "Manage 1st string",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(combinedHeaders[1]),
+    );
+
+    await setPlannerMatrixWidth(1200);
+    const constrained = await screen.findByRole("region", {
+      name: "Reserves squad depth matrix",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(constrained).getByRole("button", { name: "Manage 1st string" }),
+      ),
+    );
+
+    const constrainedCell = within(constrained).getByRole("button", {
+      name: /Reserves, 1st string, IP: GK .* Empty/,
+    });
+    constrainedCell.focus();
+    await setPlannerMatrixWidth(1600);
+    await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    await setPlannerMatrixWidth(1200);
+    const constrainedFromCell = await screen.findByRole("region", {
+      name: "Reserves squad depth matrix",
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(constrainedFromCell).getByRole("button", {
+          name: /Reserves, 1st string, IP: GK .* Empty/,
+        }),
+      ),
+    );
+
+    await setPlannerMatrixWidth(1600);
+    const combinedFromClear = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    await waitFor(() =>
+      expect(
+        within(combinedFromClear).getByRole("button", {
+          name: /Reserves, 1st string, IP: GK .* Empty/,
+        }),
+      ).toHaveFocus(),
+    );
+    const clearAll = screen.getByRole("button", { name: "Clear all" });
+    clearAll.focus();
+    await setPlannerMatrixWidth(1200);
+    await screen.findByRole("region", {
+      name: "Reserves squad depth matrix",
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Clear all" })).toHaveFocus(),
+    );
+  });
+
+  it("keeps the acted-on team visible when adding a string crosses the fit threshold", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+    await setPlannerMatrixWidth(900);
+
+    const combined = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    within(combined).getByRole("columnheader", {
+      name: "Senior squad",
+    });
+    const seniorHeader = within(combined).getAllByRole("columnheader", {
+      name: "1st string",
+    })[0];
+    await user.click(
+      within(seniorHeader).getByRole("button", { name: "Manage 1st string" }),
+    );
+    await user.click(
+      within(seniorHeader).getByRole("menuitem", { name: "Add string" }),
+    );
+
+    const constrained = await screen.findByRole("region", {
+      name: "Senior squad depth matrix",
+    });
+    const addedHeader = await within(constrained).findByRole("columnheader", {
+      name: "2nd string",
+    });
+    expect(addedHeader).toBeInTheDocument();
+    await waitFor(() =>
+      expect(document.activeElement).toHaveAccessibleName("Manage 2nd string"),
+    );
+  });
+
+  it("announces only the latest successful squad action", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerOptimizeDepth(
+      withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
+    );
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize squads" }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Squads optimized.",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Clear all" }));
+    const confirmation = screen.getByRole("dialog", {
+      name: "Clear all squads?",
+    });
+    await user.click(
+      within(confirmation).getByRole("button", { name: "Clear all" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "All squads cleared.",
+      ),
+    );
+    expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 
   it("opens a slot-fit picker from an empty matrix cell", async () => {
@@ -704,12 +1653,14 @@ describe("planner route", () => {
     renderPlannerRoute();
 
     const cell = await screen.findByRole("button", {
-      name: /Senior, 1st string, Goalkeeper, Empty/,
+      name: /Senior, 1st string, IP: GK .* Empty/,
     });
     await user.click(cell);
 
     expect(
-      screen.getByRole("dialog", { name: "Find a player for Goalkeeper" }),
+      screen.getByRole("dialog", {
+        name: `Find a player for ${KEEPER_POSITION}`,
+      }),
     ).toBeInTheDocument();
   });
 
@@ -751,7 +1702,7 @@ describe("planner route", () => {
       renderPlannerRoute();
 
       const cell = await screen.findByRole("button", {
-        name: /Senior, 1st string, Goalkeeper, Empty/,
+        name: /Senior, 1st string, IP: GK .* Empty/,
       });
       await user.click(cell);
       const search = screen.getByRole("combobox", {
@@ -819,7 +1770,7 @@ describe("planner route", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: /Senior, 1st string, Goalkeeper, Empty/,
+        name: /Senior, 1st string, IP: GK .* Empty/,
       }),
     );
     await user.click(
@@ -831,21 +1782,19 @@ describe("planner route", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: /Senior, 2nd string, Goalkeeper, Empty/,
+        name: /Senior, 2nd string, IP: GK .* Empty/,
       }),
     );
     const cacheKeeper = await screen.findByRole("option", {
       name: /Cache Keeper/,
     });
-    expect(cacheKeeper).toHaveTextContent(
-      "Assigned: Senior · 1st string · Goalkeeper",
-    );
+    expect(cacheKeeper).toHaveTextContent(`Assigned: ${SENIOR_FIRST_KEEPER}`);
     await user.click(cacheKeeper);
 
     expect(
       screen.getByRole("dialog", { name: "Move Cache Keeper?" }),
     ).toHaveTextContent(
-      "Move Cache Keeper from Senior · 1st string · Goalkeeper to Senior · 2nd string · Goalkeeper?",
+      `Move Cache Keeper from ${SENIOR_FIRST_KEEPER} to ${SENIOR_SECOND_KEEPER}?`,
     );
   });
 
@@ -894,12 +1843,12 @@ describe("planner route", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: /Senior, 2nd string, Goalkeeper, Empty/,
+        name: /Senior, 2nd string, IP: GK .* Empty/,
       }),
     );
     expect(
       await screen.findByRole("option", { name: /String Keeper/ }),
-    ).toHaveTextContent("Assigned: Senior · 1st string · Goalkeeper");
+    ).toHaveTextContent(`Assigned: ${SENIOR_FIRST_KEEPER}`);
     await user.keyboard("{Escape}");
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
@@ -915,7 +1864,7 @@ describe("planner route", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: /Senior, 1st string, Goalkeeper, Empty/,
+        name: /Senior, 1st string, IP: GK .* Empty/,
       }),
     );
     expect(
@@ -946,16 +1895,16 @@ describe("planner route", () => {
 
     await user.click(await screen.findByRole("tab", { name: "Reserves" }));
     const occupiedCell = screen.getByRole("button", {
-      name: /Reserves, 1st string, Goalkeeper, Reserve Keeper, Resolved/,
+      name: /Reserves, 1st string, IP: GK .* Reserve Keeper, Resolved/,
     });
     const emptyCell = screen.getByRole("button", {
-      name: /Reserves, 2nd string, Goalkeeper, Empty/,
+      name: /Reserves, 2nd string, IP: GK .* Empty/,
     });
 
     await user.click(emptyCell);
     expect(
       await screen.findByRole("option", { name: /Reserve Keeper/ }),
-    ).toHaveTextContent("Assigned: Reserves · 1st string · Goalkeeper");
+    ).toHaveTextContent(`Assigned: ${RESERVES_FIRST_KEEPER}`);
     await user.keyboard("{Escape}");
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
@@ -966,7 +1915,7 @@ describe("planner route", () => {
       name: "Clear Reserve Keeper?",
     });
     expect(clearDialog).toHaveTextContent(
-      "Reserve Keeper is assigned to Reserves · 1st string · Goalkeeper. It must be cleared before assigning or moving a player.",
+      `Reserve Keeper is assigned to ${RESERVES_FIRST_KEEPER}. It must be cleared before assigning or moving a player.`,
     );
     expect(within(clearDialog).queryByRole("combobox")).not.toBeInTheDocument();
     expect(within(clearDialog).queryByRole("listbox")).not.toBeInTheDocument();
@@ -990,7 +1939,7 @@ describe("planner route", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     expect(occupiedCell).toHaveAccessibleName(
-      /Reserves, 1st string, Goalkeeper, Empty/,
+      /Reserves, 1st string, IP: GK .* Empty/,
     );
     await waitFor(() => expect(document.activeElement).toBe(occupiedCell));
 
@@ -1026,7 +1975,7 @@ describe("planner route", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: /Senior, 1st string, Goalkeeper, Empty/,
+        name: /Senior, 1st string, IP: GK .* Empty/,
       }),
     );
     await user.click(
@@ -1039,7 +1988,7 @@ describe("planner route", () => {
     expect(
       screen.getByRole("dialog", { name: "Move Reserve Keeper?" }),
     ).toHaveTextContent(
-      "Move Reserve Keeper from Reserves · 1st string · Goalkeeper to Senior · 1st string · Goalkeeper?",
+      `Move Reserve Keeper from ${RESERVES_FIRST_KEEPER} to ${SENIOR_FIRST_KEEPER}?`,
     );
     const depthFetchesBeforeMove = getPlannerDepthIpcMockCalls();
     await user.click(screen.getByRole("button", { name: "Confirm move" }));
@@ -1058,7 +2007,7 @@ describe("planner route", () => {
     await user.click(screen.getByRole("tab", { name: "Reserves" }));
     expect(
       screen.getByRole("button", {
-        name: /Reserves, 1st string, Goalkeeper, Empty/,
+        name: /Reserves, 1st string, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
   });
@@ -1087,7 +2036,7 @@ describe("planner route", () => {
     renderPlannerRoute();
 
     const cell = await screen.findByRole("button", {
-      name: /Senior, 1st string, Goalkeeper, Empty/,
+      name: /Senior, 1st string, IP: GK .* Empty/,
     });
     cell.focus();
     await user.keyboard("{Enter}");
@@ -1105,7 +2054,7 @@ describe("planner route", () => {
     await waitFor(() => expect(document.activeElement).toBe(cell));
     expect(
       screen.getByRole("button", {
-        name: /Senior, 1st string, Goalkeeper, Empty/,
+        name: /Senior, 1st string, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Reserves" }));
@@ -1233,6 +2182,44 @@ describe("planner route", () => {
     ).toBeDisabled();
   });
 
+  it("returns focus to the string trigger when Escape closes its menu", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    const trigger = await screen.findByRole("button", {
+      name: "Manage 1st string",
+    });
+    await user.click(trigger);
+    screen.getByRole("menuitem", { name: "Add string" }).focus();
+
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByRole("menu", { name: "1st string actions" }),
+    ).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("closes a keyboard-opened string menu with Escape from its trigger", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    const trigger = await screen.findByRole("button", {
+      name: "Manage 1st string",
+    });
+    trigger.focus();
+    await user.keyboard("{Enter}{Escape}");
+
+    expect(
+      screen.queryByRole("menu", { name: "1st string actions" }),
+    ).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("opens the string menu from the whole header context menu", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
@@ -1292,66 +2279,42 @@ describe("planner route", () => {
     expect(getPlannerAddStringIpcMockCalls()).toBe(1);
   });
 
-  it("confirms clearing only the selected squad and reconciles its candidates", async () => {
+  it("confirms clearing every squad and reconciles all candidates", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const depth = withSecondSeniorString(
-      withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
-    );
-    depth.teams = depth.teams.map((team) =>
-      team.team === "senior"
-        ? {
-            ...team,
-            strings: team.strings.map((plannerString, index) => ({
-              ...plannerString,
-              assignments:
-                index === 0
-                  ? [
-                      {
-                        id: 78,
-                        laneId: "goalkeeper",
-                        playerUid: 78,
-                        lastKnownName: "Senior Keeper",
-                        currentName: "Senior Keeper",
-                        state: "resolved",
-                        combinedScore: 80,
-                      },
-                    ]
-                  : [],
-            })),
-          }
-        : team,
-    );
+    const depth = withAllTeamDepthAssignments(resolvePlannerDepthIpcMock());
     setPlannerDepthIpcMock(depth);
     setPlannerSlotCandidates([
-      slotCandidate({ playerUid: 78, name: "Senior Keeper" }),
-      slotCandidate({ playerUid: 77, name: "Reserve Keeper" }),
+      slotCandidate({ playerUid: 77, name: "Senior Keeper" }),
+      slotCandidate({ playerUid: 79, name: "Reserve Keeper" }),
+      slotCandidate({ playerUid: 80, name: "Youth Keeper" }),
     ]);
     renderPlannerRoute({ staleTime: 60_000 });
 
     const secondSeniorCell = await screen.findByRole("button", {
-      name: /Senior, 2nd string, Goalkeeper, Empty/,
+      name: /Senior, 2nd string, IP: GK .* Empty/,
     });
     await user.click(secondSeniorCell);
     expect(
       await screen.findByRole("option", { name: /Senior Keeper/ }),
-    ).toHaveTextContent("Assigned: Senior · 1st string · Goalkeeper");
+    ).toHaveTextContent(`Assigned: ${SENIOR_FIRST_KEEPER}`);
+    const candidateFetchesBeforeClear = getPlannerSlotCandidateFetchCount();
     await user.keyboard("{Escape}");
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
 
     const clearButton = await screen.findByRole("button", {
-      name: "Clear Senior squad",
+      name: "Clear all",
     });
     clearButton.focus();
     await user.keyboard("{Enter}");
     const confirmation = screen.getByRole("dialog", {
-      name: "Clear Senior squad?",
+      name: "Clear all squads?",
     });
     expect(confirmation).toHaveTextContent(
-      "This clears every assignment from the Senior squad.",
+      "This clears every assignment from Senior, Reserves, and Youth.",
     );
     await user.click(
       within(confirmation).getByRole("button", { name: "Cancel" }),
@@ -1361,64 +2324,72 @@ describe("planner route", () => {
       screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
     ).toBeInTheDocument();
 
-    setPlannerClearTeamError("Clear squad failed");
+    setPlannerClearAllError("Clear all failed");
     await user.click(clearButton);
     await user.click(
       within(
-        screen.getByRole("dialog", { name: "Clear Senior squad?" }),
-      ).getByRole("button", { name: "Clear Senior squad" }),
+        screen.getByRole("dialog", { name: "Clear all squads?" }),
+      ).getByRole("button", { name: "Clear all" }),
     );
     expect(
       await within(
-        screen.getByRole("dialog", { name: "Clear Senior squad?" }),
+        screen.getByRole("dialog", { name: "Clear all squads?" }),
       ).findByRole("alert"),
-    ).toHaveTextContent("Clear squad failed");
+    ).toHaveTextContent("Clear all failed");
     expect(
       screen.getByRole("button", { name: /Senior Keeper, Resolved/ }),
     ).toBeInTheDocument();
 
-    setPlannerClearTeamError(null);
+    setPlannerClearAllError(null);
     const confirmButton = within(
-      screen.getByRole("dialog", { name: "Clear Senior squad?" }),
-    ).getByRole("button", { name: "Clear Senior squad" });
+      screen.getByRole("dialog", { name: "Clear all squads?" }),
+    ).getByRole("button", { name: "Clear all" });
     await user.click(confirmButton);
-    expect(getPlannerClearTeamIpcMockCalls()).toBe(2);
-    expect(
-      await screen.findByText("Senior squad cleared."),
-    ).toBeInTheDocument();
+    expect(getPlannerClearAllIpcMockCalls()).toBe(2);
+    expect(await screen.findByText("All squads cleared.")).toBeInTheDocument();
     await waitFor(() =>
       expect(
         screen.queryByRole("button", { name: /Senior Keeper, Resolved/ }),
       ).not.toBeInTheDocument(),
     );
+    await user.click(screen.getByRole("tab", { name: "Reserves" }));
+    expect(
+      screen.getByRole("button", {
+        name: /Reserves, 1st string, IP: GK .* Empty/,
+      }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Youth" }));
+    expect(
+      screen.getByRole("button", {
+        name: /Youth, 1st string, IP: GK .* Empty/,
+      }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Senior" }));
     await user.click(secondSeniorCell);
     expect(
       await screen.findByRole("option", { name: /Senior Keeper/ }),
     ).toHaveTextContent("Unassigned");
+    expect(getPlannerSlotCandidateFetchCount()).toBe(
+      candidateFetchesBeforeClear + 1,
+    );
     await user.keyboard("{Escape}");
-    await user.click(screen.getByRole("tab", { name: "Reserves" }));
-    expect(
-      screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
-    ).toBeInTheDocument();
   });
 
-  it("prevents duplicate selected-squad clears while confirmation is pending", async () => {
+  it("prevents duplicate clear-all requests while confirmation is pending", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    setPlannerClearTeamPending(true);
+    setPlannerClearAllPending(true);
     renderPlannerRoute();
 
-    await user.click(
-      await screen.findByRole("button", { name: "Clear Senior squad" }),
-    );
+    await user.click(await screen.findByRole("button", { name: "Clear all" }));
     const confirmButton = within(
-      screen.getByRole("dialog", { name: "Clear Senior squad?" }),
-    ).getByRole("button", { name: "Clear Senior squad" });
+      screen.getByRole("dialog", { name: "Clear all squads?" }),
+    ).getByRole("button", { name: "Clear all" });
     await user.click(confirmButton);
     await user.click(confirmButton);
 
-    expect(getPlannerClearTeamIpcMockCalls()).toBe(1);
+    expect(getPlannerClearAllIpcMockCalls()).toBe(1);
     expect(confirmButton).toBeDisabled();
     expect(confirmButton).toHaveAccessibleName("Clearing…");
   });
@@ -1435,7 +2406,7 @@ describe("planner route", () => {
     renderPlannerRoute({ staleTime: 60_000 });
 
     const seniorCell = await screen.findByRole("button", {
-      name: /Senior, 1st string, Goalkeeper, Empty/,
+      name: /Senior, 1st string, IP: GK .* Empty/,
     });
     await user.click(seniorCell);
     expect(
@@ -1463,7 +2434,7 @@ describe("planner route", () => {
     await user.click(seniorCell);
     expect(
       await screen.findByRole("option", { name: /Reserve Keeper/ }),
-    ).toHaveTextContent("Assigned: Reserves · 1st string · Goalkeeper");
+    ).toHaveTextContent(`Assigned: ${RESERVES_FIRST_KEEPER}`);
   });
 
   it("keeps the depth unchanged and reports optimizer errors", async () => {
@@ -1482,7 +2453,7 @@ describe("planner route", () => {
     );
     expect(
       screen.getByRole("button", {
-        name: /Senior, 1st string, Goalkeeper, Empty/,
+        name: /Senior, 1st string, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
   });
@@ -1638,5 +2609,57 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
           }
         : team,
     ),
+  };
+}
+
+function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
+  return {
+    ...depth,
+    teams: depth.teams.map((team) => {
+      const assignment =
+        team.team === "senior"
+          ? {
+              id: 101,
+              laneId: "goalkeeper",
+              playerUid: 77,
+              lastKnownName: "Senior Keeper",
+              currentName: "Senior Keeper",
+              state: "resolved" as const,
+              combinedScore: 82,
+            }
+          : team.team === "reserves"
+            ? {
+                id: 102,
+                laneId: "goalkeeper",
+                playerUid: 79,
+                lastKnownName: "Reserve Keeper",
+                currentName: "Reserve Keeper",
+                state: "resolved" as const,
+                combinedScore: 80,
+              }
+            : {
+                id: 103,
+                laneId: "goalkeeper",
+                playerUid: 80,
+                lastKnownName: "Youth Keeper",
+                currentName: "Youth Keeper",
+                state: "resolved" as const,
+                combinedScore: 78,
+              };
+
+      return {
+        ...team,
+        strings:
+          team.team === "senior"
+            ? [
+                { ...team.strings[0], assignments: [assignment] },
+                { id: 4, stringOrder: 1, assignments: [] },
+              ]
+            : team.strings.map((plannerString) => ({
+                ...plannerString,
+                assignments: [assignment],
+              })),
+      };
+    }),
   };
 }
