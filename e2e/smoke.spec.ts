@@ -114,7 +114,7 @@ test.describe("walking skeleton smoke", () => {
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Tactic" }).click();
     await expect(
-      main.getByRole("heading", { name: "Tactic editor" }),
+      main.getByRole("region", { name: "Tactic controls" }),
     ).toBeVisible();
     await expect(
       main.getByRole("button", { name: "IP: AML · Winger" }),

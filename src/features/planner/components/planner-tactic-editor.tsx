@@ -254,23 +254,16 @@ export function PlannerTacticEditor({
           className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-high p-3"
           aria-label="Tactic controls"
         >
-          <div className="mr-auto min-w-48">
-            <h2 className="text-headline-sm text-on-surface">Tactic editor</h2>
-            <p className="truncate text-body-sm text-on-surface-variant">
-              {selectedLane ? (
-                <span>
-                  {linkedPositionDescription(
-                    selectedLane,
-                    draft.lanes,
-                    options,
-                  )}
-                </span>
-              ) : null}
-              <span className={selectedLane ? "ml-2" : undefined}>
-                {draft.lanes.length} linked positions
+          <p className="mr-auto min-w-48 truncate text-body-sm text-on-surface-variant">
+            {selectedLane ? (
+              <span>
+                {linkedPositionDescription(selectedLane, draft.lanes, options)}
               </span>
-            </p>
-          </div>
+            ) : null}
+            <span className={selectedLane ? "ml-2" : undefined}>
+              {draft.lanes.length} linked positions
+            </span>
+          </p>
 
           <fieldset
             className="inline-flex rounded-full bg-surface-container p-0.5"

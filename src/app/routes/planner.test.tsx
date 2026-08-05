@@ -323,9 +323,8 @@ describe("planner route", () => {
     expect(tacticPanel).toHaveAttribute("hidden");
     expect(squadPanel).toHaveAttribute("hidden");
     expect(
-      within(tacticPanel as HTMLElement).getByRole("heading", {
-        level: 2,
-        name: "Tactic editor",
+      within(tacticPanel as HTMLElement).getByRole("region", {
+        name: "Tactic controls",
         hidden: true,
       }),
     ).toBeInTheDocument();
@@ -338,9 +337,8 @@ describe("planner route", () => {
     ).toBeInTheDocument();
 
     await openPlannerWorkspace(user, "tactic");
-    const tacticEditor = screen.getByRole("heading", {
-      level: 2,
-      name: "Tactic editor",
+    const tacticEditor = screen.getByRole("region", {
+      name: "Tactic controls",
     });
     const weight = screen.getByRole("slider", {
       name: "IP/OOP score weight",
@@ -432,7 +430,7 @@ describe("planner route", () => {
     setPlannerAvailableClubs(["Barcelona"]);
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
 
     const viewGroup = screen.getByRole("group", {
       name: "Tactic phase views",
@@ -534,11 +532,8 @@ describe("planner route", () => {
     });
 
     expect(
-      within(commandBar).getByRole("heading", {
-        level: 2,
-        name: "Tactic editor",
-      }),
-    ).toBeInTheDocument();
+      within(commandBar).queryByRole("heading", { name: "Tactic editor" }),
+    ).not.toBeInTheDocument();
     expect(
       within(commandBar).getByRole("group", {
         name: "Tactic phase views",
@@ -571,6 +566,16 @@ describe("planner route", () => {
         name: "Importance rank",
       }),
     ).toHaveLength(1);
+    expect(
+      within(settings).getByRole("group", {
+        name: "In-Possession settings",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(settings).getByRole("group", {
+        name: "Out-of-Possession settings",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("renders every tactic pitch from attack to goalkeeper", async () => {
@@ -579,7 +584,7 @@ describe("planner route", () => {
     setPlannerAvailableClubs(["Barcelona"]);
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const viewGroup = screen.getByRole("group", {
       name: "Tactic phase views",
     });
@@ -975,7 +980,7 @@ describe("planner route", () => {
     setPlannerTacticSaveError("Tactic save failed");
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
       name: "IP/OOP score weight",
     });
@@ -998,7 +1003,7 @@ describe("planner route", () => {
     setPlannerAvailableClubs(["Barcelona"]);
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const viewGroup = screen.getByRole("group", {
       name: "Tactic phase views",
     });
@@ -1035,7 +1040,7 @@ describe("planner route", () => {
     setPlannerAvailableClubs(["Barcelona"]);
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     await user.click(
       screen.getByRole("button", { name: "IP: DL · Full-Back" }),
     );
@@ -1056,7 +1061,7 @@ describe("planner route", () => {
     setPlannerAvailableClubs(["Barcelona"]);
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     await user.click(
       screen.getByRole("button", { name: "IP: DL · Full-Back" }),
     );
@@ -1077,7 +1082,7 @@ describe("planner route", () => {
     setPlannerAvailableClubs(["Barcelona"]);
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const preferredFoot = screen.getByRole("combobox", {
       name: "Preferred foot",
     });
@@ -1104,7 +1109,7 @@ describe("planner route", () => {
     setPlannerTacticSaveError("Tactic save failed");
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const preferredFoot = screen.getByRole("combobox", {
       name: "Preferred foot",
     });
@@ -1125,7 +1130,7 @@ describe("planner route", () => {
     setPlannerTacticSaveError("Tactic save failed");
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Importance rank" }),
       "1",
@@ -1214,7 +1219,7 @@ describe("planner route", () => {
       initialEntry: "/planner?view=tactic",
     });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
       name: "IP/OOP score weight",
     });
@@ -1256,7 +1261,7 @@ describe("planner route", () => {
       initialEntry: "/planner?view=tactic",
     });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
       name: "IP/OOP score weight",
     });
@@ -1296,7 +1301,7 @@ describe("planner route", () => {
       initialEntry: "/planner?view=tactic",
     });
 
-    await screen.findByRole("heading", { level: 2, name: "Tactic editor" });
+    await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
       name: "IP/OOP score weight",
     });
