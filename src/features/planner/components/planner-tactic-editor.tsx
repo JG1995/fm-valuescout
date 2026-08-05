@@ -329,11 +329,7 @@ export function PlannerTacticEditor({
         ) : null}
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
-          <div
-            className={
-              view === "both" ? "grid gap-4 lg:grid-cols-2" : "space-y-6"
-            }
-          >
+          <div className="grid gap-4 lg:grid-cols-2">
             {visiblePhases(view).map((phase) => (
               <PlannerTacticPitch
                 key={phase}

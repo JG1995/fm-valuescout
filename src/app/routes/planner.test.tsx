@@ -475,7 +475,7 @@ describe("planner route", () => {
     });
     await user.selectOptions(ipPosition, "DL");
 
-    const ipRole = screen.getByRole("combobox", { name: "IP right DL role" });
+    const ipRole = screen.getByRole("combobox", { name: "IP DL role" });
     expect(ipRole).toHaveValue("");
     expect(
       within(ipRole).queryByRole("option", { name: "Goalkeeper" }),
@@ -487,7 +487,7 @@ describe("planner route", () => {
     });
     await user.selectOptions(oopPosition, "DL");
     const oopRole = screen.getByRole("combobox", {
-      name: "OOP right DL role",
+      name: "OOP DL role",
     });
     expect(oopRole).toHaveValue("");
     await user.selectOptions(oopRole, "holding_full_back_oop");
@@ -539,7 +539,7 @@ describe("planner route", () => {
 
       for (const pitch of pitches) {
         const positionButtons = within(pitch).getAllByRole("button");
-        expect(positionButtons[0]).toHaveAccessibleName(/: ST · /);
+        expect(positionButtons[0]).toHaveAccessibleName(/: STC · /);
         expect(
           positionButtons[positionButtons.length - 1],
         ).toHaveAccessibleName(/: GK · /);
@@ -688,48 +688,78 @@ describe("planner route", () => {
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
     const rightMc = await screen.findByRole("button", {
-      name: "IP: right MC · Central Midfielder",
+      name: "IP: MCR · Central Midfielder",
     });
     const centreMc = screen.getByRole("button", {
-      name: "IP: centre MC · Advanced Playmaker",
+      name: "IP: MC · Advanced Playmaker",
     });
     const leftMc = screen.getByRole("button", {
-      name: "IP: left MC · Box-to-Box Midfielder",
+      name: "IP: MCL · Box-to-Box Midfielder",
     });
-    expect(rightMc.parentElement).toHaveClass("col-start-3");
-    expect(centreMc.parentElement).toHaveClass("col-start-2");
-    expect(leftMc.parentElement).toHaveClass("col-start-1");
-    expect(rightMc.parentElement?.parentElement?.parentElement).toHaveClass(
-      "col-span-3",
-    );
+    expect(rightMc.parentElement).toHaveStyle({
+      gridColumn: "7 / span 2",
+      gridRow: "1",
+    });
+    expect(centreMc.parentElement).toHaveStyle({
+      gridColumn: "5 / span 2",
+      gridRow: "1",
+    });
+    expect(leftMc.parentElement).toHaveStyle({
+      gridColumn: "3 / span 2",
+      gridRow: "1",
+    });
+    expect(rightMc.parentElement?.parentElement).toHaveClass("grid-cols-10");
 
     const rightDc = screen.getByRole("button", {
-      name: "IP: right DC · Centre-Back",
+      name: "IP: DCR · Centre-Back",
     });
     const leftDc = screen.getByRole("button", {
-      name: "IP: left DC · Ball-Playing Centre-Back",
+      name: "IP: DCL · Ball-Playing Centre-Back",
     });
-    expect(rightDc.parentElement).toHaveClass("col-start-3");
-    expect(leftDc.parentElement).toHaveClass("col-start-1");
+    expect(rightDc.parentElement).toHaveStyle({
+      gridColumn: "6 / span 2",
+      gridRow: "1",
+    });
+    expect(leftDc.parentElement).toHaveStyle({
+      gridColumn: "4 / span 2",
+      gridRow: "1",
+    });
     const defensiveMidfielder = screen.getByRole("button", {
       name: "IP: DM · Defensive Midfielder",
     });
     expect(defensiveMidfielder).toBeInTheDocument();
-    expect(defensiveMidfielder.parentElement).toHaveClass("col-start-2");
+    expect(defensiveMidfielder.parentElement).toHaveStyle({
+      gridColumn: "5 / span 2",
+      gridRow: "1",
+    });
+    const leftMidfielder = screen.getByRole("button", {
+      name: "IP: ML · Wide Midfielder",
+    });
+    const rightMidfielder = screen.getByRole("button", {
+      name: "IP: MR · Wide Midfielder",
+    });
+    expect(leftMidfielder.parentElement).toHaveStyle({
+      gridColumn: "1 / span 2",
+      gridRow: "1",
+    });
+    expect(rightMidfielder.parentElement).toHaveStyle({
+      gridColumn: "9 / span 2",
+      gridRow: "1",
+    });
 
     expect(
       screen.getByRole("button", {
-        name: "OOP: right DC · Covering Centre-Back",
+        name: "OOP: DCR · Covering Centre-Back",
       }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", {
-        name: "OOP: left DC · Stopping Centre-Back",
+        name: "OOP: DCL · Stopping Centre-Back",
       }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
     expect(
-      screen.getByRole("button", { name: "IP: ST · Centre Forward" }),
+      screen.getByRole("button", { name: "IP: STC · Centre Forward" }),
     ).toBeInTheDocument();
   });
 
@@ -747,12 +777,15 @@ describe("planner route", () => {
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
     const secondRowRight = await screen.findByRole("button", {
-      name: "IP: right row 2 AMC · Winger",
+      name: "IP: AMCR (row 2) · Winger",
     });
     expect(secondRowRight).toBeInTheDocument();
-    expect(secondRowRight.parentElement).toHaveClass("col-start-3");
+    expect(secondRowRight.parentElement).toHaveStyle({
+      gridColumn: "6 / span 2",
+      gridRow: "2",
+    });
     expect(
-      screen.getByRole("button", { name: "IP: centre row 2 AMC · Winger" }),
+      screen.getByRole("button", { name: "IP: AMCL (row 2) · Winger" }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
   });

@@ -1,7 +1,7 @@
 import { useId } from "react";
 import type { TacticLane, TacticOptions } from "../types/tactic";
 import {
-  type PhasePositionColumn,
+  type PhasePositionPlacement,
   phaseDescription,
   phasePosition,
   phasePositionLabel,
@@ -73,6 +73,9 @@ const PITCH_ROWS = [
 ];
 
 const CENTRAL_POSITIONS = new Set(["GK", "DC", "DM", "MC", "AMC", "ST"]);
+const DEFAULT_COLUMN_STARTS = [1, 5, 9];
+const POSITION_SLOT_CLASS =
+  "flex min-h-16 min-w-0 items-center justify-center rounded-md border border-outline-variant bg-surface-container-high p-1";
 
 function LaneButton({
   phase,
@@ -163,79 +166,61 @@ function PitchBoard({
     <fieldset className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
       <legend className="sr-only">{TACTIC_PHASES[phase].label} pitch</legend>
       {PITCH_ROWS.map((row) => (
-        <div className="grid min-h-16 grid-cols-5 gap-2" key={row.id}>
-          {row.cells.map((cell) => {
+        <div className="grid min-h-16 grid-cols-10 gap-1" key={row.id}>
+          {row.cells.flatMap((cell, cellIndex) => {
             const { position } = cell;
             const positionLanes = position
               ? lanes.filter((lane) => phasePosition(lane, phase) === position)
               : [];
-            const usesSlotGrid =
-              positionLanes.length > 1 ||
-              (position !== null && CENTRAL_POSITIONS.has(position));
-            return (
-              <div
-                className={`${position && CENTRAL_POSITIONS.has(position) ? "col-span-3" : "col-span-1"} flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 rounded-md border border-outline-variant bg-surface-container-high p-1`}
-                key={cell.id}
-              >
-                {positionLanes.length > 0 ? (
-                  !usesSlotGrid ? (
-                    <LaneButton
-                      phase={phase}
-                      lane={positionLanes[0]}
-                      lanes={lanes}
-                      options={options}
-                      highlightedLaneId={highlightedLaneId}
-                      linkedHintId={linkedHintId}
-                      selected={positionLanes[0].laneId === selectedLaneId}
-                      onHighlight={onHighlight}
-                      onSelect={() => onSelectLane(positionLanes[0].laneId)}
-                    />
-                  ) : (
-                    Array.from(
-                      { length: Math.ceil(positionLanes.length / 3) },
-                      (_, rowIndex) => {
-                        const rowLanes = positionLanes.slice(
-                          rowIndex * 3,
-                          rowIndex * 3 + 3,
-                        );
-                        return (
-                          <div
-                            className="grid w-full min-w-0 grid-cols-3 gap-1"
-                            key={rowLanes.map((lane) => lane.laneId).join("-")}
-                          >
-                            {rowLanes.map((lane) => {
-                              const placement = positionLayout.get(lane.laneId);
-                              return (
-                                <div
-                                  className={`${columnClass(placement?.column ?? "centre")} min-w-0`}
-                                  key={lane.laneId}
-                                >
-                                  <LaneButton
-                                    phase={phase}
-                                    lane={lane}
-                                    lanes={lanes}
-                                    options={options}
-                                    highlightedLaneId={highlightedLaneId}
-                                    linkedHintId={linkedHintId}
-                                    selected={lane.laneId === selectedLaneId}
-                                    onHighlight={onHighlight}
-                                    onSelect={() => onSelectLane(lane.laneId)}
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      },
-                    )
-                  )
-                ) : position ? (
-                  <span className="text-label-sm text-on-surface-variant">
-                    {position}
-                  </span>
-                ) : null}
-              </div>
-            );
+
+            if (positionLanes.length === 0) {
+              return (
+                <div
+                  className={POSITION_SLOT_CLASS}
+                  key={cell.id}
+                  style={{
+                    gridColumn: `${DEFAULT_COLUMN_STARTS[cellIndex]} / span 2`,
+                    gridRow: 1,
+                  }}
+                >
+                  {position ? (
+                    <span className="text-label-sm text-on-surface-variant">
+                      {position === "ST" ? "STC" : position}
+                    </span>
+                  ) : null}
+                </div>
+              );
+            }
+
+            return positionLanes.map((lane) => {
+              const placement = positionLayout.get(lane.laneId);
+              const columnStart =
+                position && CENTRAL_POSITIONS.has(position)
+                  ? centralColumnStart(placement)
+                  : DEFAULT_COLUMN_STARTS[cellIndex];
+              return (
+                <div
+                  className={POSITION_SLOT_CLASS}
+                  key={lane.laneId}
+                  style={{
+                    gridColumn: `${columnStart} / span 2`,
+                    gridRow: (placement?.row ?? 0) + 1,
+                  }}
+                >
+                  <LaneButton
+                    phase={phase}
+                    lane={lane}
+                    lanes={lanes}
+                    options={options}
+                    highlightedLaneId={highlightedLaneId}
+                    linkedHintId={linkedHintId}
+                    selected={lane.laneId === selectedLaneId}
+                    onHighlight={onHighlight}
+                    onSelect={() => onSelectLane(lane.laneId)}
+                  />
+                </div>
+              );
+            });
           })}
         </div>
       ))}
@@ -243,14 +228,19 @@ function PitchBoard({
   );
 }
 
-function columnClass(column: PhasePositionColumn): string {
-  if (column === "left") {
-    return "col-start-1";
+function centralColumnStart(
+  placement: PhasePositionPlacement | undefined,
+): number {
+  if (!placement || placement.rowSize === 1) {
+    return 5;
   }
-  if (column === "right") {
-    return "col-start-3";
+  if (placement.rowSize === 2) {
+    return placement.column === "left" ? 4 : 6;
   }
-  return "col-start-2";
+  if (placement.column === "left") {
+    return 3;
+  }
+  return placement.column === "right" ? 7 : 5;
 }
 
 export function PlannerTacticPitch({

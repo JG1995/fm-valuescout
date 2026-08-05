@@ -119,18 +119,46 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       main.getByRole("button", { name: "IP: AML · Winger" }),
     ).toBeVisible();
-    await expect(
-      main.getByRole("button", { name: "IP: right MC · Central Midfielder" }),
-    ).toBeVisible();
-    await expect(
-      main.getByRole("button", { name: "IP: left MC · Central Midfielder" }),
-    ).toBeVisible();
+    const rightMc = main.getByRole("button", {
+      name: "IP: MCR · Central Midfielder",
+    });
+    const leftMc = main.getByRole("button", {
+      name: "IP: MCL · Central Midfielder",
+    });
+    const leftWinger = main.getByRole("button", { name: "IP: AML · Winger" });
+    await expect(rightMc).toBeVisible();
+    await expect(leftMc).toBeVisible();
     const pitches = main.getByRole("group", { name: /pitch$/ });
+    await expect(pitches).toHaveCount(2);
+    const [rightMcBox, leftMcBox, leftWingerBox, bothPitchBox] =
+      await Promise.all([
+        rightMc.boundingBox(),
+        leftMc.boundingBox(),
+        leftWinger.boundingBox(),
+        pitches.first().boundingBox(),
+      ]);
+    if (!rightMcBox || !leftMcBox || !leftWingerBox || !bothPitchBox) {
+      throw new Error("Expected visible tactic cards and pitch geometry");
+    }
+    expect(rightMcBox.y).toBe(leftMcBox.y);
+    expect(rightMcBox.width).toBeCloseTo(leftMcBox.width, 1);
+    expect(rightMcBox.width).toBeCloseTo(leftWingerBox.width, 1);
+    expect(leftMcBox.x + leftMcBox.width).toBeLessThan(rightMcBox.x);
+    const pairCentre = (leftMcBox.x + rightMcBox.x + rightMcBox.width) / 2;
+    expect(pairCentre).toBeCloseTo(bothPitchBox.x + bothPitchBox.width / 2, 1);
+    await main.getByRole("button", { name: "IP", exact: true }).click();
+    await expect(pitches).toHaveCount(1);
+    const singlePitchBox = await pitches.first().boundingBox();
+    if (!singlePitchBox) {
+      throw new Error("Expected visible single-phase pitch geometry");
+    }
+    expect(singlePitchBox.width).toBeCloseTo(bothPitchBox.width, 1);
+    await main.getByRole("button", { name: "Both", exact: true }).click();
     await expect(pitches).toHaveCount(2);
     for (const index of [0, 1]) {
       const pitch = pitches.nth(index);
       await expect(pitch.getByRole("button").first()).toHaveAccessibleName(
-        /: ST · /,
+        /: STC · /,
       );
       await expect(pitch.getByRole("button").last()).toHaveAccessibleName(
         /: GK · /,

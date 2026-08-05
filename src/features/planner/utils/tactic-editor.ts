@@ -75,28 +75,37 @@ export type PhasePositionColumn = "left" | "centre" | "right";
 export type PhasePositionPlacement = {
   column: PhasePositionColumn;
   row: number;
-  qualifier: string | null;
+  rowSize: 1 | 2 | 3;
 };
 
-const CENTRAL_COLUMNS: PhasePositionColumn[] = ["right", "centre", "left"];
+const CENTRAL_POSITION_LABELS: Record<string, string> = {
+  DC: "DC",
+  DM: "DM",
+  MC: "MC",
+  AMC: "AMC",
+  ST: "STC",
+};
+
+const CENTRAL_COLUMNS: Record<1 | 2 | 3, PhasePositionColumn[]> = {
+  1: ["centre"],
+  2: ["right", "left"],
+  3: ["right", "centre", "left"],
+};
 
 function positionPlacement(
+  position: string,
   index: number,
   count: number,
 ): PhasePositionPlacement {
-  if (count === 1) {
-    return { column: "centre", row: 0, qualifier: null };
+  if (!(position in CENTRAL_POSITION_LABELS)) {
+    return { column: "centre", row: index, rowSize: 1 };
   }
 
-  const columnIndex = count === 2 && index === 1 ? 2 : index % 3;
-  const row = count <= 3 ? 0 : Math.floor(index / 3);
-  const column = CENTRAL_COLUMNS[columnIndex] ?? "centre";
+  const row = Math.floor(index / 3);
+  const rowSize = Math.min(3, count - row * 3) as 1 | 2 | 3;
+  const column = CENTRAL_COLUMNS[rowSize][index % 3] ?? "centre";
 
-  return {
-    column,
-    row,
-    qualifier: row === 0 ? column : `${column} row ${row + 1}`,
-  };
+  return { column, row, rowSize };
 }
 
 export function phasePositionLayout(
@@ -112,9 +121,12 @@ export function phasePositionLayout(
   }
 
   const layout = new Map<string, PhasePositionPlacement>();
-  for (const positionLanes of grouped.values()) {
+  for (const [position, positionLanes] of grouped) {
     positionLanes.forEach((lane, index) => {
-      layout.set(lane.laneId, positionPlacement(index, positionLanes.length));
+      layout.set(
+        lane.laneId,
+        positionPlacement(position, index, positionLanes.length),
+      );
     });
   }
   return layout;
@@ -130,11 +142,19 @@ export function phasePositionLabel(
     return "Position";
   }
 
+  const label = CENTRAL_POSITION_LABELS[position] ?? position;
   const placement = phasePositionLayout(phase, lanes).get(lane.laneId);
-  if (!placement?.qualifier) {
-    return position;
+  if (!placement) {
+    return label;
   }
-  return `${placement.qualifier} ${position}`;
+
+  const positionedLabel =
+    position in CENTRAL_POSITION_LABELS && placement.column !== "centre"
+      ? `${label}${placement.column === "left" ? "L" : "R"}`
+      : label;
+  return placement.row === 0
+    ? positionedLabel
+    : `${positionedLabel} (row ${placement.row + 1})`;
 }
 
 export function phaseDescription(
