@@ -7,7 +7,6 @@ import { savePlannerTactic } from "../api/save-planner-tactic";
 import type { PlannerTactic, TacticLane, TacticOptions } from "../types/tactic";
 import {
   cloneTactic,
-  linkedPositionDescription,
   phasePosition,
   phaseRoleId,
   rolesForPhase,
@@ -254,19 +253,8 @@ export function PlannerTacticEditor({
           className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-high p-3"
           aria-label="Tactic controls"
         >
-          <p className="mr-auto min-w-48 truncate text-body-sm text-on-surface-variant">
-            {selectedLane ? (
-              <span>
-                {linkedPositionDescription(selectedLane, draft.lanes, options)}
-              </span>
-            ) : null}
-            <span className={selectedLane ? "ml-2" : undefined}>
-              {draft.lanes.length} linked positions
-            </span>
-          </p>
-
           <fieldset
-            className="inline-flex rounded-full bg-surface-container p-0.5"
+            className="mr-auto inline-flex rounded-full bg-surface-container p-0.5"
             onKeyDown={handleViewKeyDown}
           >
             <legend className="sr-only">Tactic phase views</legend>

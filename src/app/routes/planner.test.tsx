@@ -193,7 +193,7 @@ describe("planner route", () => {
         document.getElementById(
           "planner-workspace-panel-tactic",
         ) as HTMLElement,
-      ).getByText("11 linked positions"),
+      ).getByRole("region", { name: "Tactic controls", hidden: true }),
     ).toBeInTheDocument();
   });
 
@@ -540,10 +540,13 @@ describe("planner route", () => {
       }),
     ).toBeInTheDocument();
     expect(
-      within(commandBar).getByText(
+      within(commandBar).queryByText(
         "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(
+      within(commandBar).queryByText("11 linked positions"),
+    ).not.toBeInTheDocument();
     expect(
       within(commandBar).getByRole("button", { name: "Save tactic" }),
     ).toBeInTheDocument();
@@ -627,7 +630,7 @@ describe("planner route", () => {
     const oopButton = screen.getByRole("button", {
       name: /OOP: ML · Tracking Wide Midfielder/,
     });
-    expect(screen.getByText("11 linked positions")).toBeInTheDocument();
+    expect(screen.queryByText("11 linked positions")).not.toBeInTheDocument();
     expect(screen.queryByText("Left winger")).not.toBeInTheDocument();
     expect(screen.queryByText(/linked lanes/i)).not.toBeInTheDocument();
 
