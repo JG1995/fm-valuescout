@@ -52,14 +52,15 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Planner workspace redesign](./features/active/planner-workspace-redesign.md) — separate Planner workspaces, present linked tactical positions in football terms, and adapt the populated matrix between all-team and selected-team layouts
+No active feature.
 
 ## Next
 
-Complete the active Planner workspace redesign before selecting more work from [BACKLOG.md](./BACKLOG.md).
+No next feature selected.
 
 ## Completed
 
+- [Planner workspace redesign](./features/completed/planner-workspace-redesign.md) — URL-backed Planner workspaces, adaptive dual-phase tactic pitches, responsive three-team depth matrix, and transactional Clear all
 - [Codex workflow migration](./features/completed/codex-workflow-migration.md) — Codex-only repository guidance, specialist agents, and product-focused validation
 - [Player profiles](./features/completed/player-profiles.md) — `/players/$uid` with Overview / Attributes / Roles tabs; entry from Search row and Ctrl+K; ScoreBadge; position-family role grouping
 - [Squad planner](./features/completed/squad-planner.md) — save-scoped club family, one dual-phase tactic, and Senior / Reserves / Youth depth strings with manual player assignment
