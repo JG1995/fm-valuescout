@@ -126,25 +126,72 @@ test.describe("walking skeleton smoke", () => {
       name: "IP: MCL · Central Midfielder",
     });
     const leftWinger = main.getByRole("button", { name: "IP: AML · Winger" });
+    const rightWinger = main.getByRole("button", {
+      name: "IP: AMR · Winger",
+    });
+    const pitches = main.getByRole("group", { name: /pitch$/ });
+    const leftWingerGroup = pitches
+      .first()
+      .locator('[data-position-group="AML"]');
+    const rightWingerGroup = pitches
+      .first()
+      .locator('[data-position-group="AMR"]');
     await expect(rightMc).toBeVisible();
     await expect(leftMc).toBeVisible();
-    const pitches = main.getByRole("group", { name: /pitch$/ });
     await expect(pitches).toHaveCount(2);
-    const [rightMcBox, leftMcBox, leftWingerBox, bothPitchBox] =
-      await Promise.all([
-        rightMc.boundingBox(),
-        leftMc.boundingBox(),
-        leftWinger.boundingBox(),
-        pitches.first().boundingBox(),
-      ]);
-    if (!rightMcBox || !leftMcBox || !leftWingerBox || !bothPitchBox) {
+    await expect(pitches.first()).toHaveAttribute("data-pitch-slot-count", "4");
+    await expect(pitches.last()).toHaveAttribute("data-pitch-slot-count", "4");
+    const [
+      rightMcBox,
+      leftMcBox,
+      leftWingerBox,
+      rightWingerBox,
+      leftWingerGroupBox,
+      rightWingerGroupBox,
+      bothPitchBox,
+    ] = await Promise.all([
+      rightMc.boundingBox(),
+      leftMc.boundingBox(),
+      leftWinger.boundingBox(),
+      rightWinger.boundingBox(),
+      leftWingerGroup.boundingBox(),
+      rightWingerGroup.boundingBox(),
+      pitches.first().boundingBox(),
+    ]);
+    if (
+      !rightMcBox ||
+      !leftMcBox ||
+      !leftWingerBox ||
+      !rightWingerBox ||
+      !leftWingerGroupBox ||
+      !rightWingerGroupBox ||
+      !bothPitchBox
+    ) {
       throw new Error("Expected visible tactic cards and pitch geometry");
     }
     expect(rightMcBox.y).toBe(leftMcBox.y);
     expect(rightMcBox.width).toBeCloseTo(leftMcBox.width, 1);
     expect(rightMcBox.width).toBeCloseTo(leftWingerBox.width, 1);
-    expect(leftWingerBox.width).toBeGreaterThan(bothPitchBox.width * 0.25);
+    expect(rightMcBox.width).toBeCloseTo(rightWingerBox.width, 1);
+    expect(rightMcBox.width).toBeGreaterThan(bothPitchBox.width * 0.2);
     expect(leftMcBox.x + leftMcBox.width).toBeLessThan(rightMcBox.x);
+    expect(leftWingerBox.x + leftWingerBox.width).toBeLessThan(
+      rightWingerBox.x,
+    );
+    expect(
+      Math.abs(
+        leftWingerBox.x +
+          leftWingerBox.width / 2 -
+          (leftWingerGroupBox.x + leftWingerGroupBox.width / 2),
+      ),
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        rightWingerBox.x +
+          rightWingerBox.width / 2 -
+          (rightWingerGroupBox.x + rightWingerGroupBox.width / 2),
+      ),
+    ).toBeLessThanOrEqual(1);
     const pairCentre = (leftMcBox.x + rightMcBox.x + rightMcBox.width) / 2;
     expect(pairCentre).toBeCloseTo(bothPitchBox.x + bothPitchBox.width / 2, 1);
     await main.getByRole("button", { name: "IP", exact: true }).click();

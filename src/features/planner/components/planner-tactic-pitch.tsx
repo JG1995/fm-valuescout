@@ -72,10 +72,9 @@ const PITCH_ROWS = [
   },
 ];
 
-const CENTRAL_POSITIONS = new Set(["GK", "DC", "DM", "MC", "AMC", "ST"]);
-const DEFAULT_COLUMN_STARTS = [1, 3, 5];
-const POSITION_SLOT_CLASS =
-  "flex min-h-16 min-w-0 items-center justify-center rounded-md border border-outline-variant bg-surface-container-high p-1";
+const MIN_PITCH_SLOT_COUNT = 3;
+const MAX_PITCH_SLOT_COUNT = 5;
+const TACTIC_PHASE_IDS: TacticPhase[] = ["ip", "oop"];
 
 function LaneButton({
   phase,
@@ -161,86 +160,215 @@ function PitchBoard({
   | "onSelectLane"
 > & { linkedHintId: string }) {
   const positionLayout = phasePositionLayout(phase, lanes);
+  const slotCount = tacticSlotCount(lanes);
 
   return (
-    <fieldset className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
+    <fieldset
+      className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-lowest p-3"
+      data-pitch-slot-count={slotCount}
+    >
       <legend className="sr-only">{TACTIC_PHASES[phase].label} pitch</legend>
-      {PITCH_ROWS.map((row) => (
-        <div className="grid min-h-16 grid-cols-6 gap-1" key={row.id}>
-          {row.cells.flatMap((cell, cellIndex) => {
-            const { position } = cell;
-            const positionLanes = position
-              ? lanes.filter((lane) => phasePosition(lane, phase) === position)
-              : [];
+      {PITCH_ROWS.map((row) => {
+        const positionLanes = row.cells.map((cell) =>
+          cell.position
+            ? lanes.filter(
+                (lane) => phasePosition(lane, phase) === cell.position,
+              )
+            : [],
+        );
+        const visualRowCount = Math.max(
+          1,
+          ...positionLanes.flatMap((cellLanes) =>
+            cellLanes.map(
+              (lane) => (positionLayout.get(lane.laneId)?.row ?? 0) + 1,
+            ),
+          ),
+        );
 
-            if (positionLanes.length === 0) {
+        return (
+          <div className="space-y-1" key={row.id}>
+            {Array.from({ length: visualRowCount }, (_, visualRow) => {
+              const rowLanes = positionLanes.map((cellLanes) =>
+                cellLanes.filter(
+                  (lane) =>
+                    (positionLayout.get(lane.laneId)?.row ?? 0) === visualRow,
+                ),
+              );
+              const groupTracks = positionGroupTracks(rowLanes, slotCount);
+              const visualRowKey =
+                rowLanes
+                  .flat()
+                  .map((lane) => lane.laneId)
+                  .join("-") || "empty";
+
               return (
                 <div
-                  className={POSITION_SLOT_CLASS}
-                  key={cell.id}
+                  className="grid min-h-16 gap-1"
+                  data-pitch-band={row.id}
+                  key={`${row.id}-${visualRowKey}`}
                   style={{
-                    gridColumn: `${DEFAULT_COLUMN_STARTS[cellIndex]} / span 2`,
-                    gridRow: 1,
+                    gridTemplateColumns: `repeat(${slotCount * 2}, minmax(0, 1fr))`,
                   }}
                 >
-                  {position ? (
-                    <span className="text-label-sm text-on-surface-variant">
-                      {position === "ST" ? "STC" : position}
-                    </span>
-                  ) : null}
-                </div>
-              );
-            }
+                  {row.cells.map((cell, cellIndex) => {
+                    const { start, span } = groupTracks[cellIndex];
+                    if (span === 0) {
+                      return null;
+                    }
 
-            return positionLanes.map((lane) => {
-              const placement = positionLayout.get(lane.laneId);
-              const columnStart =
-                position && CENTRAL_POSITIONS.has(position)
-                  ? centralColumnStart(placement)
-                  : DEFAULT_COLUMN_STARTS[cellIndex];
-              return (
-                <div
-                  className={POSITION_SLOT_CLASS}
-                  key={lane.laneId}
-                  style={{
-                    gridColumn: `${columnStart} / span 2`,
-                    gridRow: (placement?.row ?? 0) + 1,
-                  }}
-                >
-                  <LaneButton
-                    phase={phase}
-                    lane={lane}
-                    lanes={lanes}
-                    options={options}
-                    highlightedLaneId={highlightedLaneId}
-                    linkedHintId={linkedHintId}
-                    selected={lane.laneId === selectedLaneId}
-                    onHighlight={onHighlight}
-                    onSelect={() => onSelectLane(lane.laneId)}
-                  />
+                    const cellRowLanes = rowLanes[cellIndex];
+                    return (
+                      <div
+                        className="grid min-h-16 min-w-0 gap-1 rounded-md border border-outline-variant bg-surface-container-high"
+                        data-position-group={cell.position ?? undefined}
+                        data-position-slot-count={cellRowLanes.length}
+                        key={cell.id}
+                        style={{
+                          gridColumn: `${start} / span ${span}`,
+                          gridRow: 1,
+                          gridTemplateColumns: "subgrid",
+                        }}
+                      >
+                        {cellRowLanes.length === 0 ? (
+                          <span
+                            className="flex items-center justify-center text-label-sm text-on-surface-variant"
+                            style={{ gridColumn: "1 / -1", gridRow: 1 }}
+                          >
+                            {cell.position === "ST" ? "STC" : cell.position}
+                          </span>
+                        ) : (
+                          cellRowLanes.map((lane) => {
+                            const placement = positionLayout.get(lane.laneId);
+                            const slotStart =
+                              cellIndex === 1
+                                ? centralSlotStart(placement)
+                                : cellIndex === 0
+                                  ? 1
+                                  : span - 1;
+                            const transform = outerSlotTransform(
+                              cellIndex,
+                              span,
+                            );
+
+                            return (
+                              <div
+                                className="z-10 flex min-w-0 items-center p-1"
+                                data-position-slot={lane.laneId}
+                                key={lane.laneId}
+                                style={{
+                                  gridColumn: `${slotStart} / span 2`,
+                                  gridRow: 1,
+                                  transform,
+                                }}
+                              >
+                                <LaneButton
+                                  phase={phase}
+                                  lane={lane}
+                                  lanes={lanes}
+                                  options={options}
+                                  highlightedLaneId={highlightedLaneId}
+                                  linkedHintId={linkedHintId}
+                                  selected={lane.laneId === selectedLaneId}
+                                  onHighlight={onHighlight}
+                                  onSelect={() => onSelectLane(lane.laneId)}
+                                />
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
-            });
-          })}
-        </div>
-      ))}
+            })}
+          </div>
+        );
+      })}
     </fieldset>
   );
 }
 
-function centralColumnStart(
+function tacticSlotCount(lanes: TacticLane[]): number {
+  let densestRow = 0;
+
+  for (const phase of TACTIC_PHASE_IDS) {
+    const layout = phasePositionLayout(phase, lanes);
+    for (const pitchRow of PITCH_ROWS) {
+      const rowPositions = new Set(
+        pitchRow.cells.flatMap((cell) =>
+          cell.position ? [cell.position] : [],
+        ),
+      );
+      const rowCounts = new Map<number, number>();
+
+      for (const lane of lanes) {
+        if (!rowPositions.has(phasePosition(lane, phase))) {
+          continue;
+        }
+        const visualRow = layout.get(lane.laneId)?.row ?? 0;
+        rowCounts.set(visualRow, (rowCounts.get(visualRow) ?? 0) + 1);
+      }
+
+      densestRow = Math.max(densestRow, ...rowCounts.values());
+    }
+  }
+
+  return Math.min(
+    MAX_PITCH_SLOT_COUNT,
+    Math.max(MIN_PITCH_SLOT_COUNT, densestRow),
+  );
+}
+
+function positionGroupTracks(
+  rowLanes: TacticLane[][],
+  slotCount: number,
+): { start: number; span: number }[] {
+  const centreSlots = Math.max(1, rowLanes[1].length);
+  const outerTracks = slotCount * 2 - centreSlots * 2;
+  const leftMinimum = rowLanes[0].length > 0 ? 2 : 0;
+  const rightMinimum = rowLanes[2].length > 0 ? 2 : 0;
+  const idealLeftTracks = slotCount - centreSlots;
+  const leftTracks = Math.min(
+    Math.max(idealLeftTracks, leftMinimum),
+    outerTracks - rightMinimum,
+  );
+  const rightTracks = outerTracks - leftTracks;
+
+  return [
+    { start: 1, span: leftTracks },
+    { start: leftTracks + 1, span: centreSlots * 2 },
+    { start: leftTracks + centreSlots * 2 + 1, span: rightTracks },
+  ];
+}
+
+function centralSlotStart(
   placement: PhasePositionPlacement | undefined,
 ): number {
-  if (!placement || placement.rowSize === 1) {
-    return 3;
-  }
-  if (placement.rowSize === 2) {
-    return placement.column === "left" ? 2 : 4;
-  }
-  if (placement.column === "left") {
+  if (!placement || placement.column === "left") {
     return 1;
   }
-  return placement.column === "right" ? 5 : 3;
+  if (placement.column === "right") {
+    return (placement.rowSize - 1) * 2 + 1;
+  }
+  return Math.floor(placement.rowSize / 2) * 2 + 1;
+}
+
+function outerSlotTransform(
+  cellIndex: number,
+  groupTrackCount: number,
+): string | undefined {
+  if (cellIndex === 1 || groupTrackCount <= 2) {
+    return undefined;
+  }
+
+  const remainingTrackCount = groupTrackCount - 2;
+  const distancePercent = remainingTrackCount * 25;
+  const gapOffsetRem = remainingTrackCount * 0.0625;
+
+  return cellIndex === 0
+    ? `translateX(calc(${distancePercent}% + ${gapOffsetRem}rem))`
+    : `translateX(calc(-${distancePercent}% - ${gapOffsetRem}rem))`;
 }
 
 export function PlannerTacticPitch({
