@@ -1,4 +1,5 @@
 import { Ellipsis, Plus, Trash2 } from "lucide-react";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
@@ -94,6 +95,11 @@ function PlannerStringHeader({
   onFocus: () => void;
 }) {
   const label = ordinal(plannerString.stringOrder);
+  const localTriggerRef = useRef<HTMLButtonElement>(null);
+  const closeMenuAndRestoreFocus = () => {
+    localTriggerRef.current?.focus();
+    onCloseMenu();
+  };
 
   return (
     <th
@@ -108,7 +114,10 @@ function PlannerStringHeader({
       <div className="relative flex items-center justify-between gap-2">
         <span>{label}</span>
         <button
-          ref={triggerRef}
+          ref={(element) => {
+            localTriggerRef.current = element;
+            triggerRef(element);
+          }}
           type="button"
           data-planner-team={team}
           data-planner-string-id={plannerString.id}
@@ -118,6 +127,12 @@ function PlannerStringHeader({
           className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           onFocus={onFocus}
           onClick={() => (menuOpen ? onCloseMenu() : onOpenMenu())}
+          onKeyDown={(event) => {
+            if (menuOpen && event.key === "Escape") {
+              event.preventDefault();
+              closeMenuAndRestoreFocus();
+            }
+          }}
         >
           <Ellipsis aria-hidden="true" size={16} strokeWidth={1.5} />
         </button>
@@ -129,7 +144,7 @@ function PlannerStringHeader({
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.preventDefault();
-                onCloseMenu();
+                closeMenuAndRestoreFocus();
               }
             }}
           >

@@ -2182,6 +2182,44 @@ describe("planner route", () => {
     ).toBeDisabled();
   });
 
+  it("returns focus to the string trigger when Escape closes its menu", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    const trigger = await screen.findByRole("button", {
+      name: "Manage 1st string",
+    });
+    await user.click(trigger);
+    screen.getByRole("menuitem", { name: "Add string" }).focus();
+
+    await user.keyboard("{Escape}");
+
+    expect(
+      screen.queryByRole("menu", { name: "1st string actions" }),
+    ).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("closes a keyboard-opened string menu with Escape from its trigger", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    const trigger = await screen.findByRole("button", {
+      name: "Manage 1st string",
+    });
+    trigger.focus();
+    await user.keyboard("{Enter}{Escape}");
+
+    expect(
+      screen.queryByRole("menu", { name: "1st string actions" }),
+    ).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("opens the string menu from the whole header context menu", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
