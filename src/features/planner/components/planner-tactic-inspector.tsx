@@ -74,7 +74,7 @@ function PhaseControls({
   return (
     <fieldset
       aria-label={`${label} settings`}
-      className="col-span-2 -my-1 grid grid-cols-2 gap-3 rounded-md bg-surface-container p-1 ring-1 ring-inset ring-outline-variant"
+      className="col-span-2 -my-2 grid grid-cols-2 gap-3 rounded-md bg-surface-container p-2 ring-1 ring-inset ring-outline-variant"
     >
       <SelectField
         label={`${shortLabel} ${positionLabel} position`}
