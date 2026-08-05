@@ -6,7 +6,7 @@ Active
 
 ## Intent
 
-Make Squad Planner a focused desktop workspace instead of one long page of equally weighted setup, tactic, and squad panels. The redesign puts squad decisions first, describes linked tactical positions in football terms instead of internal lane terminology, uses available desktop width to show the three teams together when the matrix remains readable, and presents both tactic phases as correctly oriented football shapes.
+Make Squad Planner a focused desktop workspace instead of one long page of equally weighted setup, tactic, and squad panels. The redesign puts squad decisions first, describes linked tactical positions in football terms instead of internal lane terminology, uses available desktop width to show the three teams together when the matrix remains readable, presents both tactic phases as correctly oriented football shapes, and fits the complete Tactic workspace within the supported desktop viewport without shrinking its cards into unreadable controls.
 
 ## User-visible behavior
 
@@ -15,8 +15,9 @@ Make Squad Planner a focused desktop workspace instead of one long page of equal
 - The page header identifies the configured primary club when one exists. Only the active workspace is visible and exposed to assistive technology.
 - Arrow keys, Home, and End move between workspace tabs. Tab changes replace the current URL search state so the selected workspace survives reload without adding noisy browser-history entries.
 - Switching workspaces preserves unsaved club-family and tactic drafts, selected tactic lane, and selected Planner team. Switching the active app save keeps the existing reset and refresh behavior.
-- The Tactic workspace shows the IP, OOP, or Both pitch view beside one selected-position inspector. The inspector contains the linked position's score weight, importance rank, preferred-foot rule, and the visible phase position and role controls.
-- In Both view, IP and OOP pitches remain side by side at the supported desktop widths. The editor has one clear primary action: **Save tactic**.
+- The Tactic workspace uses one compact route header and one command bar for the phase view, current linked-position summary, and **Save tactic** action. Permanent explanatory copy does not push the pitch canvas below the fold.
+- In Both view, IP and OOP pitches remain side by side above one horizontal selected-position settings shelf. The shelf contains the linked position's score weight, importance rank, preferred-foot rule, and the visible phase position and role controls without duplicating form state.
+- At the 1600×900 design viewport and the supplied 1920×1080 viewport, the complete Tactic command bar, both pitches, and every selected-position control fit without document scrolling. At 1280×800, the shelf may reflow to two rows or use bounded local overflow, but it must keep both pitches usable, every control reachable, and the document free of horizontal overflow.
 - Both tactic pitches place the goal at the bottom and the attacking end at the top: GK is the lowest band and ST is the highest.
 - Repeated DC, DM, MC, AMC, or ST placements share one light base-position group per visual row instead of stacking within one column. Later placements continue in labelled overflow-row groups. Dark individual slot cards keep one shared width derived from the densest visible IP or OOP row, clamped to three through five slots for both pitches. One player is centred; two occupy right and left; three occupy right, centre, and left according to stable tactic order. Wide cards such as AML, AMR, ML, and MR are centred within their light position groups. Keyboard traversal follows the visible band and overflow-row order. Empty outer position groups absorb unused width, and the user continues to choose only the base position.
 - Spatial qualifiers derive from every lane at the same phase position, independent of role. IP and OOP therefore use the same deterministic right-centre-left placement and naming rule.
@@ -94,6 +95,7 @@ The implementation uses existing React, TanStack Router, Tailwind, Panel, Button
 - The original populated Planner screenshot supplied on 2026-08-04 showed club setup, the full dual-pitch tactic editor, and the squad matrix stacked in one long document. Commits 1 through 3 replaced that composition with workspaces and a compact bounded matrix.
 - A second populated screenshot supplied on 2026-08-04 shows the implemented Squad workspace at about 1920px wide. The first column expands across roughly half the matrix, role and score context sit far apart, and the static **Left winger** label conflicts with lane 9's current AMC position.
 - A populated Tactic screenshot supplied on 2026-08-05 shows Both view at 1920×1080. GK appears at the top, ST appears at the bottom, and repeated DC, MC, and ST positions stack inside one central cell. OOP duplicates show left/right qualifiers while IP duplicates with different roles do not.
+- A later populated Tactic screenshot supplied on 2026-08-05 shows the corrected attack-up, adaptive pitch layout at 1920×1080. The pitch canvas begins below several stacked header and help regions, and the right inspector continues below the visible viewport, so the user must scroll to reach all selected-position settings.
 - The app targets a 1280×800 minimum and a 1600×900 design viewport.
 - PR [#30](https://github.com/JG1995/fm-valuescout/pull/30) merged Planner optimizer preferences into `main` as `1c4ec088246d6563e1ff05636af8928b4f5a290f` on 2026-08-04.
 - The feature branch is `feat/planner-workspace-redesign`. It is published at `origin/feat/planner-workspace-redesign`, remains unmerged, and has no PR ref recorded.
@@ -112,11 +114,11 @@ The implementation uses existing React, TanStack Router, Tailwind, Panel, Button
 
 ### Decisions
 
-- Deliver the complete redesign in PR 1 with eight planned atomic commits. Commits 7 and 8 extend the same unpublished feature branch after commit 6 because two presentation-only tactic commits do not justify another publication and merge boundary.
+- Deliver the complete redesign in PR 1 with nine planned atomic commits. Commits 7 through 9 extend the same unpublished feature branch after commit 6 because these presentation-only tactic commits share one publication and final visual review surface.
 - Use `squad`, `tactic`, and `clubs` as the URL values and **Squad**, **Tactic**, and **Club setup** as the visible labels.
 - Use `replace: true` for workspace changes, matching the player-profile tab route.
 - Keep inactive workspaces mounted inside hidden tab panels to preserve transient state.
-- Keep the tactic inspector visible beside the pitch area. Both view shows two pitch boards and one inspector, not one inspector per pitch.
+- Keep one selected-position settings surface below the pitch area. Both view shows two pitch boards above one horizontal shelf, not a right inspector, one inspector per pitch, or hidden settings behind a modal, drawer, accordion, or popover.
 - Let the squad matrix own horizontal overflow and bounded vertical overflow. Do not constrain the entire route with an arbitrary pixel height.
 - Keep stable lane IDs and order as internal persistence and linking contracts. Remove the word **lane**, lane numbers, and static lane-ID labels from normal Planner copy. Use current IP/OOP positions and roles, plus a deterministic spatial qualifier only when needed to distinguish linked positions.
 - Use linked focus, hover, and selection emphasis across the IP and OOP pitches instead of visible numeric correspondence.
@@ -148,16 +150,17 @@ The implementation uses existing React, TanStack Router, Tailwind, Panel, Button
 - A CSS-only visual reorder can disagree with DOM and keyboard order. The slot helper, rendered grid placement, focus sequence, and accessible qualifier must all use the same right-centre-left mapping.
 - Three central buttons can become too narrow in Both view. The central band must use more horizontal room than the current single centre cell while keeping wide positions anchored and avoiding document overflow.
 - Deriving qualifiers from roles recreates the current IP/OOP mismatch whenever two lanes use different roles at the same position. Position grouping must ignore role.
+- A viewport-fitting composition can regress when long role labels, validation errors, save feedback, refresh state, or the expanded navigation rail add size. Commit 9 must validate these states instead of proving only the default successful layout.
 
 ## Walking skeleton
 
-Commit 1 remains the feature walking skeleton: it replaced vertical workspace stacking with URL-backed, keyboard-operable Squad, Tactic, and Club setup tabs while preserving the existing three workspace components and their behavior. For the added scope, commit 4 establishes truthful linked-position language, commit 5 changes the matrix's team composition, commit 6 replaces repeated team-scoped destructive actions with one atomic save-scoped action, and commit 7 proves role-independent derived slots and horizontal central placement without changing tactic data.
+Commit 1 remains the feature walking skeleton: it replaced vertical workspace stacking with URL-backed, keyboard-operable Squad, Tactic, and Club setup tabs while preserving the existing three workspace components and their behavior. For the added scope, commit 4 establishes truthful linked-position language, commit 5 changes the matrix's team composition, commit 6 replaces repeated team-scoped destructive actions with one atomic save-scoped action, commit 7 proves role-independent derived slots and horizontal central placement without changing tactic data, and commit 9 completes the Tactic composition by fitting its command bar, pitch canvas, and settings shelf within the supported desktop viewport.
 
 ## Delivery plan
 
 ### PR 1 — Redesign Squad Planner workspace
 
-**Status:** Ready for publication
+**Status:** In progress
 
 **PR ref:** Not published
 
@@ -165,7 +168,7 @@ Commit 1 remains the feature walking skeleton: it replaced vertical workspace st
 
 **Provisional PR title:** `feat(planner): redesign squad planner workspace`
 
-**Purpose:** Deliver the complete Planner information architecture, truthful tactical-position language, adaptive three-team depth overview, one atomic Clear all action, and corrected tactic-board geometry in one review surface.
+**Purpose:** Deliver the complete Planner information architecture, truthful tactical-position language, adaptive three-team depth overview, one atomic Clear all action, corrected tactic-board geometry, and a viewport-fitting Tactic workspace in one review surface.
 
 **Depends on:** Planner optimizer preferences PR #30, merged as `1c4ec088246d6563e1ff05636af8928b4f5a290f`. Start implementation from a refreshed `main` on a new short-lived branch.
 
@@ -534,25 +537,73 @@ Commit 1 remains the feature walking skeleton: it replaced vertical workspace st
 
 **Validation:** Focused Planner route coverage for three- and five-slot shapes, browser geometry for the default four-slot shape, populated screenshots at four and five slots, `./scripts/dev smoke`, `./scripts/dev check`, format, diff checks, and a fresh Sol High review.
 
+#### Commit 9 — Fit the Tactic workspace to the viewport
+
+**Status:** Active
+
+**Provisional commit:** `feat(planner): fit tactic workspace to viewport`
+
+**Work:** Recompose the Tactic workspace as a compact route header, a command bar, a flexible pitch canvas, and one horizontal selected-position settings shelf. Keep IP and OOP side by side in Both view. Use the desktop width for shared and phase-specific controls so the complete editor fits without document scrolling at 1600×900 and 1920×1080. Preserve all tactic draft, validation, save, selection, and linked-highlight behavior.
+
+**Out of scope:**
+
+- Tactic data, DTO, persistence, optimizer, role-catalog, validation-rule, or backend changes.
+- Pitch card geometry, adaptive density, position grouping, spatial qualifiers, row orientation, or formation semantics.
+- A modal, drawer, accordion, floating popover, hidden advanced settings, or a second inspector state.
+- Squad or Club setup workspace changes beyond the shared Planner header composition.
+- New dependencies, generic app-shell abstractions, or a mobile layout.
+
+**Implementation packet:**
+
+- Owners and files: `src/app/routes/planner.tsx`; `src/features/planner/components/planner-tactic-editor.tsx`; `planner-tactic-inspector.tsx`; `planner-tactic-pitch.tsx` only if the flexible canvas needs a presentation hook; `src/app/routes/planner.test.tsx`; `e2e/smoke.spec.ts`; the Squad Planner section in `.wiki/DESIGN.md`; and this ledger for progress evidence.
+- Existing patterns to verify: the app shell's fixed top bar and scrollable main region; Planner workspace tabs; `Panel` actions; IP, OOP, and Both controls; `visiblePhases`; selected-lane ownership in `PlannerTacticEditor`; `SelectField`; range keyboard behavior; validation and save status regions; pitch truncation and focus behavior; and the current active-save key.
+- Constraints and invariants: keep one selected lane and one instance of each shared setting; Both shows two pitches and both phase-control groups; IP and OOP show one pitch and only the visible phase-control group; keep **Save tactic** visible as the primary action; retain the `h1`, primary-club context, tab semantics, field labels, alert semantics, and logical command-bar → pitch → settings focus order; do not remove controls or reduce pitch cards below the current readable geometry to achieve fit.
+- Responsive contract: at 1600×900 and 1920×1080, render one horizontal settings shelf below the complete pitch canvas with all controls visible and no document scrollbar. At 1280×800, reflow the shelf within the Tactic workspace while keeping both pitches usable in Both view and every control keyboard reachable; bounded local overflow is acceptable only when a two-row shelf cannot preserve readable controls. Expanded and collapsed navigation rails must not cause document-level horizontal overflow.
+- Dependencies and ordering: the adaptive pitch follow-up must remain complete and green. Keep this work on the existing unpublished PR 1 branch. Update the current-state design contract only when implementation makes the new composition true.
+
+**Implementation profile:** Luna Max — the behavior and component ownership are established, but the route header, flexible pitch canvas, responsive shelf, status placement, and focus order require coordinated layout judgment across three supported viewports.
+
+**Review profile:** Sol High — review must verify actual viewport fit, preserved form ownership and behavior, readable pitches and controls, semantic order, status visibility, and the absence of hidden or duplicated settings.
+
+**Validation:**
+
+- RED then GREEN: `./scripts/dev test src/app/routes/planner.test.tsx`
+- Full frontend regression suite: `./scripts/dev test`
+- Browser geometry and control paths at 1280×800, 1600×900, and 1920×1080: `./scripts/dev smoke`
+- Commit gate: `./scripts/dev check`
+- Manual populated evidence in Both, IP, and OOP views with collapsed and expanded navigation rails: at 1600×900 and 1920×1080, the route header, command bar, complete visible pitch set, and all selected-position controls fit without document scrolling; at 1280×800, the pitch and shelf remain readable and every control stays reachable; long position and role labels, validation errors, refresh state, failed save, and save success do not hide the primary action or selected settings.
+
+**Stop conditions:** Stop and replan if viewport fit requires lifting tactic state out of `PlannerTacticEditor`, changing the global app-shell scroll contract, hiding or removing settings, duplicating form controls, shrinking pitch cards below their current readable geometry, or changing tactic data or backend contracts; if the 1280×800 fallback cannot keep both pitches usable and every control reachable; or if visual order cannot match keyboard and assistive-technology order.
+
+**Review mandate:**
+
+- Verify the compact route header retains the page heading, primary-club context, workspace-tab semantics, URL state, and focus behavior in every workspace.
+- Verify the command bar contains the phase control, truthful selected-position summary, status feedback when present, and one visible **Save tactic** action.
+- Verify Both, IP, and OOP render the correct pitches and exactly one instance of each applicable shared and phase-specific control.
+- Verify the settings shelf keeps weight, rank, preferred foot, foot preference, position, and role controls labelled, readable, and keyboard operable without a modal, drawer, accordion, or hidden settings path.
+- Verify selection, linked emphasis, draft retention, validation, failed-save retention, successful save, refresh disabling, active-save reset, payloads, and query invalidation remain unchanged.
+- Verify 1600×900 and 1920×1080 have no Tactic document scroll, 1280×800 uses only the documented constrained fallback, expanded navigation does not create horizontal overflow, and long or error content does not cover the pitches or primary action.
+- Reject changes to pitch geometry, tactic semantics, Squad behavior, Club setup behavior, app-shell architecture, dependencies, or unrelated Planner polish.
+
 ## Active work
 
-**PR:** PR 1 — Redesign Squad Planner workspace (Ready for publication)
+**PR:** PR 1 — Redesign Squad Planner workspace (In progress)
 
-**Commit:** All planned commits and the adaptive pitch follow-up are complete; awaiting PR publication
+**Commit:** Commit 9 — Fit the Tactic workspace to the viewport (Active)
 
 ### RED proof
 
-Add focused route coverage for nested repeated-position groups, shared three- and five-slot densities, and mixed overflow-row traversal, plus browser geometry for the default four-slot tactic. Before implementation, repeated central positions do not share one light position group, the pitch does not expose shared density, and the existing fixed geometry cannot satisfy both readable sparse tactics and non-overlapping five-player bands. Before the centring correction, populated wide cards are anchored to the outer edge of their expanded light groups instead of the group centre.
+Add focused route coverage for the new command-bar and settings-shelf semantics, then add browser geometry assertions at 1600×900 and 1920×1080. Before implementation, the Tactic page stacks the route heading, primary-club context, workspace tabs, panel heading, explanatory copy, phase control, pitch area, and a tall right inspector. At 1920×1080, the inspector extends below the viewport and the document must scroll to expose all settings.
 
 ### Expected outcome
 
-Both pitches use the same three-to-five-slot density derived from the densest visible IP or OOP row. Dark tactical slot cards remain equal within the tactic, repeated central slots share one light base-position group per visual row, populated wide cards remain centred within their groups, empty outer groups absorb unused width, and keyboard traversal follows visible band and overflow-row order. Linked behavior, inspector content, and tactic payload remain unchanged.
+The Tactic workspace uses a compact route header and command bar above a flexible pitch canvas, with one horizontal selected-position settings shelf below it. Both pitches and every selected-position control fit without document scrolling at 1600×900 and 1920×1080. The 1280×800 fallback preserves readable pitches and reachable controls. Draft, selection, linking, validation, save, and tactic payload behavior remain unchanged.
 
 ### Explicit exclusions
 
-- Do not change qualifier derivation, stable right-centre-left tactic order, or the documented overflow-row grouping and visual row-major traversal.
-- Do not add direction arrows, goals, pitch markings, animation, drag-and-drop, formation names, persisted pitch coordinates, data changes, or squad-workspace behavior.
-- Do not change tactic payloads, lane IDs, draft behavior, linking, role validation, save behavior, Rust services, schema, migrations, or optimizer behavior.
+- Do not change pitch geometry, adaptive density, qualifier derivation, stable right-centre-left tactic order, row orientation, or visual row-major traversal.
+- Do not add a modal, drawer, accordion, floating popover, hidden settings path, new dependency, mobile layout, or generic app-shell abstraction.
+- Do not change tactic payloads, lane IDs, draft behavior, linking, role validation, save behavior, Rust services, schema, migrations, optimizer behavior, or Squad and Club setup behavior.
 
 ## Discoveries and replanning
 
@@ -577,6 +628,7 @@ Both pitches use the same three-to-five-slot density derived from the densest vi
 - Commit 8 RED coverage failed against the existing GK-first `PITCH_ROWS` order, then passed after the shared row source was reordered to ST-first and GK-last. The focused route assertion covers Both, IP, and OOP DOM order, while browser smoke checks both rendered pitches; no CSS-only visual reversal or tactic-data change was needed.
 - Follow-up populated inspection showed that one universal card width either left large voids or forced five-player bands to overlap. The accepted presentation derives one three-to-five-slot density from the densest visible row across both phases, keeps every dark slot card equal within that tactic, groups repeated central slots inside one light position surface per visual row, centres populated wide cards within their light groups, and lets empty outer position surfaces absorb the remaining width.
 - The adaptive renderer uses visual row-major DOM and keyboard order when a base position overflows. This intentionally matches the rendered top-to-bottom, left-to-right reading sequence instead of preserving the former cell-major traversal, which could move focus to a lower overflow card before a visible card on the current row.
+- A populated 1920×1080 screenshot supplied on 2026-08-05 showed that the corrected pitch geometry still sits below stacked route and editor chrome while the tall right inspector extends beyond the viewport. The developer accepted a generated composition with a compact route header, one tactic command bar, two pitches above one horizontal settings shelf, and no document scrolling at that viewport. Commit 9 records that accepted direction instead of treating it as unplanned CSS polish.
 
 ## Completed work
 
@@ -605,6 +657,7 @@ Both pitches use the same three-to-five-slot density derived from the densest vi
 - Confirm IP and OOP group repeated positions independently of role and use the same stable slot rule: one centred, two right then left, and three right then centre then left. Confirm DC, DM, MC, AMC, and ST central bands render horizontally, all lanes remain operable when a configuration exceeds three duplicates, and DOM, keyboard, and accessible order follow the visible band and overflow-row sequence.
 - Confirm both pitches attack upward in Both and single-phase views: ST is the highest band and GK is the lowest band.
 - Confirm both pitches share one density derived from the densest visible IP or OOP row; two-or-sparser rows retain the three-slot minimum, the default tactic uses four slots, five-player bands use five slots, every dark slot card has equal width within the tactic, repeated central cards share one light position group per visual row, populated wide cards are centred within their groups, and empty outer groups absorb unused width without overlap.
+- Confirm the Tactic route header, command bar, visible pitch set, and selected-position settings shelf fit without document scrolling at 1600×900 and 1920×1080 in Both, IP, and OOP views. At 1280×800, confirm the documented constrained shelf keeps both pitches usable and every control reachable. Repeat with the navigation rail expanded, long labels, validation errors, refresh state, failed save, and success feedback.
 - Confirm wide mode shows all teams only when readable position and assignment widths fit; constrained mode retains the selected team; string mutations can change mode without losing the acted-on team or focus target.
 - Confirm exactly one Clear all trigger appears in the shared toolbar in both matrix modes; confirmation names Senior, Reserves, and Youth; cancel and failure preserve every assignment; one successful command clears both manual and optimizer assignments from all teams in the active save without changing another save or any strings, tactic, or club-family settings; no team-scoped clear command or UI path remains.
 - Confirm no document-level horizontal overflow, no content hidden behind the top bar, visible matrix scroll cues, sticky multi-row and position context, bounded scan distance, and visible focus throughout overflow.
@@ -620,6 +673,7 @@ During implementation and reconciliation:
 - Update the Planner composition paragraphs in `.wiki/ARCHITECTURE.md` after the implemented route and component ownership change.
 - Update the Planner clear-operation text in `.wiki/ARCHITECTURE.md` and the Squad action contract in `.wiki/DESIGN.md` when commit 6 makes the save-scoped Clear all behavior true.
 - Update the Tactic board geometry and orientation contract in `.wiki/DESIGN.md` with commits 7 and 8. No `ARCHITECTURE.md` update is expected because pitch geometry remains inside the existing React presentation owner.
+- Update the Tactic workspace composition and viewport-fit contract in `.wiki/DESIGN.md` with commit 9. Update `.wiki/ARCHITECTURE.md` only if implementation changes route, app-shell, or state ownership rather than Planner-local composition.
 - Keep `.wiki/CONCEPT.md` unchanged because product purpose and scope do not change.
 - Create no ADR unless implementation crosses an accepted routing, feature, or app-shell boundary.
 - On completion, condense this ledger into `.wiki/features/completed/planner-workspace-redesign.md` and move the TODO entry to Completed.
