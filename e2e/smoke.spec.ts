@@ -95,7 +95,7 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       main.getByRole("heading", { level: 1, name: "Squad Planner" }),
     ).toBeVisible();
-    await expect(main.getByRole("tab", { name: "Club setup" })).toHaveAttribute(
+    await expect(main.getByRole("tab", { name: "Club Setup" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -247,6 +247,13 @@ test.describe("walking skeleton smoke", () => {
     const settings = main.getByRole("region", {
       name: "Selected position settings",
     });
+    const plannerHeading = main.getByRole("heading", {
+      level: 1,
+      name: "Squad Planner",
+    });
+    const workspaceTabs = main.getByRole("tablist", {
+      name: "Planner workspaces",
+    });
     const navToggle = page.getByRole("button", {
       name: "Toggle navigation",
     });
@@ -268,6 +275,34 @@ test.describe("walking skeleton smoke", () => {
         await expect(
           settings.getByRole("combobox", { name: visibleRole }),
         ).toBeVisible();
+
+        const [headingBox, workspaceTabsBox] = await Promise.all([
+          plannerHeading.boundingBox(),
+          workspaceTabs.boundingBox(),
+        ]);
+        expect(headingBox).not.toBeNull();
+        expect(workspaceTabsBox).not.toBeNull();
+        expect(workspaceTabsBox?.y).toBeGreaterThanOrEqual(
+          (headingBox?.y ?? 0) + (headingBox?.height ?? 0),
+        );
+
+        if (width >= 1600 && view === "Both") {
+          const selectBoxes = await settings
+            .getByRole("combobox")
+            .evaluateAll((elements) =>
+              elements.map(
+                (element) =>
+                  (
+                    element as unknown as {
+                      getBoundingClientRect: () => { top: number };
+                    }
+                  ).getBoundingClientRect().top,
+              ),
+            );
+          expect(
+            Math.max(...selectBoxes) - Math.min(...selectBoxes),
+          ).toBeLessThanOrEqual(1);
+        }
 
         const dimensions = await main.evaluate((element) => {
           const mainElement = element as unknown as {

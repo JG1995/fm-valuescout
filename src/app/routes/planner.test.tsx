@@ -86,7 +86,7 @@ async function openPlannerWorkspace(
   const labels: Record<PlannerWorkspace, string> = {
     squad: "Squad",
     tactic: "Tactic",
-    clubs: "Club setup",
+    clubs: "Club Setup",
   };
   await user.click(await screen.findByRole("tab", { name: labels[workspace] }));
 }
@@ -294,7 +294,7 @@ describe("planner route", () => {
     }
   });
 
-  it("defaults to Club setup and keeps inactive workspaces mounted", async () => {
+  it("defaults to Club Setup and keeps inactive workspaces mounted", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     const user = userEvent.setup();
@@ -304,7 +304,7 @@ describe("planner route", () => {
       level: 2,
       name: "Set up your club family",
     });
-    expect(screen.getByRole("tab", { name: "Club setup" })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: "Club Setup" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -371,7 +371,7 @@ describe("planner route", () => {
     squadTab.focus();
     await user.keyboard("{End}");
 
-    const clubSetupTab = screen.getByRole("tab", { name: "Club setup" });
+    const clubSetupTab = screen.getByRole("tab", { name: "Club Setup" });
     expect(clubSetupTab).toHaveAttribute("aria-selected", "true");
     expect(clubSetupTab).toHaveFocus();
     expect(clubSetupTab).toHaveAttribute("tabIndex", "0");
@@ -408,7 +408,7 @@ describe("planner route", () => {
     renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
 
     expect(
-      await screen.findByRole("tab", { name: "Club setup" }),
+      await screen.findByRole("tab", { name: "Club Setup" }),
     ).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("heading", { name: "Club family" })).toBeVisible();
   });
@@ -419,7 +419,7 @@ describe("planner route", () => {
     renderPlannerRoute({ initialEntry: "/planner?view=unknown" });
 
     expect(
-      await screen.findByRole("tab", { name: "Club setup" }),
+      await screen.findByRole("tab", { name: "Club Setup" }),
     ).toHaveAttribute("aria-selected", "true");
     expect(
       screen.getByRole("heading", { name: "Set up your club family" }),

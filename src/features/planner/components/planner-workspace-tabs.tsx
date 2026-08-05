@@ -7,7 +7,7 @@ export type PlannerWorkspace = (typeof PLANNER_WORKSPACES)[number];
 const WORKSPACE_LABELS: Record<PlannerWorkspace, string> = {
   squad: "Squad",
   tactic: "Tactic",
-  clubs: "Club setup",
+  clubs: "Club Setup",
 };
 
 export function parsePlannerWorkspace(raw: unknown): PlannerWorkspace | null {

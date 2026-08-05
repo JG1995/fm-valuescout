@@ -66,14 +66,13 @@ function PhaseControls({
   const roleId = phaseRoleId(lane, phase);
   const roles = rolesForPhase(options, phase, position);
   const selectedRoleIsCompatible = roles.some((role) => role.roleId === roleId);
-  const { label, shortLabel } = TACTIC_PHASES[phase];
+  const { shortLabel } = TACTIC_PHASES[phase];
   const placements = options.placements.includes(position)
     ? options.placements
     : [position, ...options.placements];
 
   return (
-    <fieldset className="grid min-w-0 gap-2 rounded-md border border-outline-variant bg-surface-container p-2 sm:grid-cols-2 [grid-column:span_2]">
-      <legend className="px-1 text-label-lg text-on-surface">{label}</legend>
+    <>
       <SelectField
         label={`${shortLabel} ${positionLabel} position`}
         value={position}
@@ -103,7 +102,7 @@ function PhaseControls({
           No {shortLabel} roles support this position.
         </p>
       ) : null}
-    </fieldset>
+    </>
   );
 }
 

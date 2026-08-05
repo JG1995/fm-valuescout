@@ -77,7 +77,7 @@ function PlannerPageContent() {
     });
   };
   const plannerHeader = (
-    <header className="flex flex-wrap items-end justify-between gap-3">
+    <header className="flex flex-col items-start gap-2">
       <div>
         <h1 className="text-headline-lg text-on-surface">Squad Planner</h1>
         {clubFamily.primaryClub ? (
@@ -97,7 +97,7 @@ function PlannerPageContent() {
 
   if (!snapshot) {
     return (
-      <div className="space-y-gutter">
+      <div className="space-y-2">
         {plannerHeader}
         <Panel title="Planner" flush>
           <EmptyState icon={DatabaseZap} title="No data loaded for this save">
@@ -111,7 +111,7 @@ function PlannerPageContent() {
   }
 
   return (
-    <div className="space-y-gutter">
+    <div className="space-y-2">
       {plannerHeader}
       <div {...plannerWorkspacePanelProps("squad", activeWorkspace)}>
         <PlannerDepthMatrix
