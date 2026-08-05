@@ -32,7 +32,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Runtime for tooling:** Node.js 24
 
-**Desktop shell:** Tauri v2 — native window, WebView, IPC runtime, capabilities ACL
+**Desktop shell:** Tauri v2 — native window, WebView, IPC runtime, capabilities ACL. The main window starts maximized while retaining normal OS window controls.
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
