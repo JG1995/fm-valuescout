@@ -475,7 +475,7 @@ describe("planner route", () => {
     });
     await user.selectOptions(ipPosition, "DL");
 
-    const ipRole = screen.getByRole("combobox", { name: "IP DL role" });
+    const ipRole = screen.getByRole("combobox", { name: "IP right DL role" });
     expect(ipRole).toHaveValue("");
     expect(
       within(ipRole).queryByRole("option", { name: "Goalkeeper" }),
@@ -486,7 +486,9 @@ describe("planner route", () => {
       name: "OOP GK position",
     });
     await user.selectOptions(oopPosition, "DL");
-    const oopRole = screen.getByRole("combobox", { name: "OOP DL role" });
+    const oopRole = screen.getByRole("combobox", {
+      name: "OOP right DL role",
+    });
     expect(oopRole).toHaveValue("");
     await user.selectOptions(oopRole, "holding_full_back_oop");
 
@@ -580,6 +582,152 @@ describe("planner route", () => {
 
     expect(new Set(labels).size).toBe(5);
     expect(labels.every((label) => !label.includes("additional"))).toBe(true);
+  });
+
+  it("arranges repeated positions in stable central slots regardless of role", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes = tactic.lanes.map((lane, index) => {
+      if (index === 0) {
+        return {
+          ...lane,
+          ipPosition: "MC",
+          ipRoleId: "central_midfielder_ip",
+          oopPosition: "MC",
+          oopRoleId: "pressing_central_midfielder_oop",
+        };
+      }
+      if (index === 1) {
+        return {
+          ...lane,
+          ipPosition: "MC",
+          ipRoleId: "advanced_playmaker_ip",
+          oopPosition: "MC",
+          oopRoleId: "pressing_central_midfielder_oop",
+        };
+      }
+      if (index === 2) {
+        return {
+          ...lane,
+          ipPosition: "MC",
+          ipRoleId: "box_to_box_midfielder_ip",
+          oopPosition: "MC",
+          oopRoleId: "pressing_central_midfielder_oop",
+        };
+      }
+      if (index === 3) {
+        return {
+          ...lane,
+          ipPosition: "DC",
+          ipRoleId: "centre_back_ip",
+          oopPosition: "DC",
+          oopRoleId: "covering_centre_back_oop",
+        };
+      }
+      if (index === 4) {
+        return {
+          ...lane,
+          ipPosition: "DC",
+          ipRoleId: "ball_playing_centre_back_ip",
+          oopPosition: "DC",
+          oopRoleId: "stopping_centre_back_oop",
+        };
+      }
+      if (index === 6) {
+        return {
+          ...lane,
+          ipPosition: "ML",
+          ipRoleId: "wide_midfielder_ip",
+          oopPosition: "ML",
+          oopRoleId: "tracking_wide_midfielder_oop",
+        };
+      }
+      if (index === 7) {
+        return {
+          ...lane,
+          ipPosition: "MR",
+          ipRoleId: "wide_midfielder_ip",
+          oopPosition: "MR",
+          oopRoleId: "tracking_wide_midfielder_oop",
+        };
+      }
+      return lane;
+    });
+    setPlannerTacticIpcMock(tactic);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.tactic = tactic;
+    setPlannerDepthIpcMock(depth);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    const rightMc = await screen.findByRole("button", {
+      name: "IP: right MC · Central Midfielder",
+    });
+    const centreMc = screen.getByRole("button", {
+      name: "IP: centre MC · Advanced Playmaker",
+    });
+    const leftMc = screen.getByRole("button", {
+      name: "IP: left MC · Box-to-Box Midfielder",
+    });
+    expect(rightMc.parentElement).toHaveClass("col-start-3");
+    expect(centreMc.parentElement).toHaveClass("col-start-2");
+    expect(leftMc.parentElement).toHaveClass("col-start-1");
+    expect(rightMc.parentElement?.parentElement?.parentElement).toHaveClass(
+      "col-span-3",
+    );
+
+    const rightDc = screen.getByRole("button", {
+      name: "IP: right DC · Centre-Back",
+    });
+    const leftDc = screen.getByRole("button", {
+      name: "IP: left DC · Ball-Playing Centre-Back",
+    });
+    expect(rightDc.parentElement).toHaveClass("col-start-3");
+    expect(leftDc.parentElement).toHaveClass("col-start-1");
+    const defensiveMidfielder = screen.getByRole("button", {
+      name: "IP: DM · Defensive Midfielder",
+    });
+    expect(defensiveMidfielder).toBeInTheDocument();
+    expect(defensiveMidfielder.parentElement).toHaveClass("col-start-2");
+
+    expect(
+      screen.getByRole("button", {
+        name: "OOP: right DC · Covering Centre-Back",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "OOP: left DC · Stopping Centre-Back",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
+    expect(
+      screen.getByRole("button", { name: "IP: ST · Centre Forward" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps every position button when a base position has more than three lanes", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes = tactic.lanes.map((lane, index) =>
+      index < 5 ? { ...lane, ipPosition: "AMC", ipRoleId: "winger_ip" } : lane,
+    );
+    setPlannerTacticIpcMock(tactic);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.tactic = tactic;
+    setPlannerDepthIpcMock(depth);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    const secondRowRight = await screen.findByRole("button", {
+      name: "IP: right row 2 AMC · Winger",
+    });
+    expect(secondRowRight).toBeInTheDocument();
+    expect(secondRowRight.parentElement).toHaveClass("col-start-3");
+    expect(
+      screen.getByRole("button", { name: "IP: centre row 2 AMC · Winger" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^IP:/ })).toHaveLength(11);
   });
 
   it("retains the edited tactic draft when save fails", async () => {

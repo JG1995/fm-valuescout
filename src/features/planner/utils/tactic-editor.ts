@@ -70,31 +70,54 @@ export function roleLabel(
   );
 }
 
-const POSITION_QUALIFIERS = [
-  "far left",
-  "left",
-  "inside left",
-  "left centre",
-  "centre-left",
-  "centre",
-  "centre-right",
-  "right centre",
-  "inside right",
-  "right",
-  "far right",
-] as const;
+export type PhasePositionColumn = "left" | "centre" | "right";
 
-function duplicateQualifier(index: number, count: number): string {
-  if (count === 2) {
-    return index === 0 ? "left" : "right";
+export type PhasePositionPlacement = {
+  column: PhasePositionColumn;
+  row: number;
+  qualifier: string | null;
+};
+
+const CENTRAL_COLUMNS: PhasePositionColumn[] = ["right", "centre", "left"];
+
+function positionPlacement(
+  index: number,
+  count: number,
+): PhasePositionPlacement {
+  if (count === 1) {
+    return { column: "centre", row: 0, qualifier: null };
   }
-  if (count === 3) {
-    return index === 0 ? "left" : index === 1 ? "centre" : "right";
+
+  const columnIndex = count === 2 && index === 1 ? 2 : index % 3;
+  const row = count <= 3 ? 0 : Math.floor(index / 3);
+  const column = CENTRAL_COLUMNS[columnIndex] ?? "centre";
+
+  return {
+    column,
+    row,
+    qualifier: row === 0 ? column : `${column} row ${row + 1}`,
+  };
+}
+
+export function phasePositionLayout(
+  phase: TacticPhase,
+  lanes: TacticLane[],
+): Map<string, PhasePositionPlacement> {
+  const grouped = new Map<string, TacticLane[]>();
+  for (const lane of lanes) {
+    const position = phasePosition(lane, phase);
+    const positionLanes = grouped.get(position) ?? [];
+    positionLanes.push(lane);
+    grouped.set(position, positionLanes);
   }
-  const qualifierIndex = Math.round(
-    (index * (POSITION_QUALIFIERS.length - 1)) / (count - 1),
-  );
-  return POSITION_QUALIFIERS[qualifierIndex] ?? `additional ${index + 1}`;
+
+  const layout = new Map<string, PhasePositionPlacement>();
+  for (const positionLanes of grouped.values()) {
+    positionLanes.forEach((lane, index) => {
+      layout.set(lane.laneId, positionPlacement(index, positionLanes.length));
+    });
+  }
+  return layout;
 }
 
 export function phasePositionLabel(
@@ -107,20 +130,11 @@ export function phasePositionLabel(
     return "Position";
   }
 
-  const roleId = phaseRoleId(lane, phase);
-  const duplicatePlacements = lanes.filter(
-    (candidate) =>
-      phasePosition(candidate, phase) === position &&
-      phaseRoleId(candidate, phase) === roleId,
-  );
-  if (duplicatePlacements.length < 2) {
+  const placement = phasePositionLayout(phase, lanes).get(lane.laneId);
+  if (!placement?.qualifier) {
     return position;
   }
-
-  const duplicateIndex = duplicatePlacements.findIndex(
-    (candidate) => candidate.laneId === lane.laneId,
-  );
-  return `${duplicateQualifier(duplicateIndex, duplicatePlacements.length)} ${position}`;
+  return `${placement.qualifier} ${position}`;
 }
 
 export function phaseDescription(
