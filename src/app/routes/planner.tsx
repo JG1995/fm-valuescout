@@ -76,29 +76,43 @@ function PlannerPageContent() {
       replace: true,
     });
   };
+  const plannerHeader = (
+    <header className="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h1 className="text-headline-lg text-on-surface">Squad Planner</h1>
+        {clubFamily.primaryClub ? (
+          <p className="text-body-sm text-on-surface-variant">
+            Primary club: {clubFamily.primaryClub}
+          </p>
+        ) : null}
+      </div>
+      {snapshot ? (
+        <PlannerWorkspaceTabs
+          workspace={activeWorkspace}
+          onWorkspaceChange={onWorkspaceChange}
+        />
+      ) : null}
+    </header>
+  );
 
   if (!snapshot) {
     return (
-      <Panel title="Planner" flush>
-        <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-          No snapshot loaded for the active save. Use Load Data to scan Football
-          Manager and ingest players before setting up your club family.
-        </EmptyState>
-      </Panel>
+      <div className="space-y-gutter">
+        {plannerHeader}
+        <Panel title="Planner" flush>
+          <EmptyState icon={DatabaseZap} title="No data loaded for this save">
+            No snapshot loaded for the active save. Use Load Data to scan
+            Football Manager and ingest players before setting up your club
+            family.
+          </EmptyState>
+        </Panel>
+      </div>
     );
   }
 
   return (
     <div className="space-y-gutter">
-      {clubFamily.primaryClub ? (
-        <p className="text-body-sm text-on-surface-variant">
-          Primary club: {clubFamily.primaryClub}
-        </p>
-      ) : null}
-      <PlannerWorkspaceTabs
-        workspace={activeWorkspace}
-        onWorkspaceChange={onWorkspaceChange}
-      />
+      {plannerHeader}
       <div {...plannerWorkspacePanelProps("squad", activeWorkspace)}>
         <PlannerDepthMatrix
           activeSaveId={snapshot.saveId}
@@ -126,17 +140,17 @@ function PlannerPageContent() {
 
 function PlannerPage() {
   return (
-    <div className="space-y-gutter">
-      <h1 className="text-headline-lg text-on-surface">Squad Planner</h1>
-      <Suspense
-        fallback={
+    <Suspense
+      fallback={
+        <div className="space-y-gutter">
+          <h1 className="text-headline-lg text-on-surface">Squad Planner</h1>
           <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
             Loading planner…
           </div>
-        }
-      >
-        <PlannerPageContent />
-      </Suspense>
-    </div>
+        </div>
+      }
+    >
+      <PlannerPageContent />
+    </Suspense>
   );
 }

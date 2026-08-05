@@ -380,23 +380,17 @@ export function PlannerTacticPitch({
   onHighlight,
   onSelectLane,
 }: PlannerTacticPitchProps) {
-  const { label, shortLabel } = TACTIC_PHASES[phase];
+  const { label } = TACTIC_PHASES[phase];
   const selectedLane = lanes.find((lane) => lane.laneId === selectedLaneId);
   const headingId = useId();
   const linkedHintId = useId();
 
   return (
-    <section className="space-y-3" aria-labelledby={headingId}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 id={headingId} className="text-headline-sm text-on-surface">
-            {label}
-          </h3>
-          <p className="text-body-sm text-on-surface-variant">
-            Select a position to edit its {shortLabel} placement and role in the
-            position inspector.
-          </p>
-        </div>
+    <section className="space-y-2" aria-labelledby={headingId}>
+      <div className="flex items-center justify-between gap-3">
+        <h3 id={headingId} className="text-headline-sm text-on-surface">
+          {label}
+        </h3>
         <span className="shrink-0 rounded-full bg-surface-container-high px-2 py-1 font-mono text-mono-sm text-on-surface-variant">
           {selectedLane
             ? phaseDescription(selectedLane, phase, lanes, options)

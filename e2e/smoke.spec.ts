@@ -236,6 +236,78 @@ test.describe("walking skeleton smoke", () => {
     await expect(main.getByRole("status")).toHaveText("Tactic saved.");
   });
 
+  test("planner tactic workspace fits its supported desktop viewports", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner?view=tactic");
+
+    const main = page.getByRole("main");
+    const pitches = main.getByRole("group", { name: /pitch$/ });
+    const settings = main.getByRole("region", {
+      name: "Selected position settings",
+    });
+    const navToggle = page.getByRole("button", {
+      name: "Toggle navigation",
+    });
+
+    const expectWorkspaceFit = async (
+      width: number,
+      height: number,
+      requireVerticalFit: boolean,
+    ) => {
+      await page.setViewportSize({ width, height });
+      for (const [view, pitchCount, visibleRole] of [
+        ["Both", 2, "OOP GK role"],
+        ["IP", 1, "IP GK role"],
+        ["OOP", 1, "OOP GK role"],
+      ] as const) {
+        await main.getByRole("button", { name: view, exact: true }).click();
+        await expect(pitches).toHaveCount(pitchCount);
+        await expect(settings).toBeVisible();
+        await expect(
+          settings.getByRole("combobox", { name: visibleRole }),
+        ).toBeVisible();
+
+        const dimensions = await main.evaluate((element) => {
+          const mainElement = element as unknown as {
+            clientHeight: number;
+            clientWidth: number;
+            scrollHeight: number;
+            scrollWidth: number;
+          };
+          return {
+            clientHeight: mainElement.clientHeight,
+            clientWidth: mainElement.clientWidth,
+            scrollHeight: mainElement.scrollHeight,
+            scrollWidth: mainElement.scrollWidth,
+          };
+        });
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(
+          dimensions.clientWidth + 1,
+        );
+        if (requireVerticalFit) {
+          expect(dimensions.scrollHeight).toBeLessThanOrEqual(
+            dimensions.clientHeight + 1,
+          );
+        }
+      }
+    };
+
+    for (const [width, height, requireVerticalFit] of [
+      [1280, 800, false],
+      [1600, 900, true],
+      [1920, 1080, true],
+    ] as const) {
+      await expectWorkspaceFit(width, height, requireVerticalFit);
+      await navToggle.click();
+      await expect(navToggle).toHaveAttribute("aria-expanded", "true");
+      await expectWorkspaceFit(width, height, requireVerticalFit);
+      await navToggle.click();
+      await expect(navToggle).toHaveAttribute("aria-expanded", "false");
+    }
+  });
+
   test("planner depth adds strings for Senior, Reserves, and Youth", async ({
     page,
   }) => {

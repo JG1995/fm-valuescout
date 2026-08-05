@@ -72,7 +72,7 @@ function PhaseControls({
     : [position, ...options.placements];
 
   return (
-    <fieldset className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-high p-3">
+    <fieldset className="grid min-w-0 gap-2 rounded-md border border-outline-variant bg-surface-container p-2 sm:grid-cols-2 [grid-column:span_2]">
       <legend className="px-1 text-label-lg text-on-surface">{label}</legend>
       <SelectField
         label={`${shortLabel} ${positionLabel} position`}
@@ -125,51 +125,53 @@ export function PlannerTacticInspector({
 
   return (
     <section
-      className="space-y-4 rounded-lg border border-outline-variant bg-surface-container-high p-4"
+      className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-high p-3"
       aria-labelledby={headingId}
     >
-      <div>
-        <h3 id={headingId} className="text-headline-sm text-on-surface">
-          {linkedPositionDescription(selectedLane, lanes, options)}
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 id={headingId} className="text-label-lg text-on-surface">
+          Selected position settings
         </h3>
         <p className="text-body-sm text-on-surface-variant">
-          Shared position settings and visible phase controls.
+          {linkedPositionDescription(selectedLane, lanes, options)}
         </p>
       </div>
 
-      <div className="space-y-1">
-        <label
-          className="block text-label-md text-on-surface-variant"
-          htmlFor={weightId}
-        >
-          IP/OOP score weight
-        </label>
-        <input
-          id={weightId}
-          type="range"
-          min="0"
-          max="100"
-          step="1"
-          value={weight}
-          aria-label="IP/OOP score weight"
-          aria-valuetext={`IP ${weight}%, OOP ${100 - weight}%`}
-          className="h-2 w-full cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          onKeyDown={(event) => {
-            const next = nextWeight(weight, event.key);
-            if (next === null) {
-              return;
+      <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))]">
+        <div className="space-y-1">
+          <label
+            className="block text-label-md text-on-surface-variant"
+            htmlFor={weightId}
+          >
+            IP/OOP score weight
+          </label>
+          <input
+            id={weightId}
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={weight}
+            aria-label="IP/OOP score weight"
+            aria-valuetext={`IP ${weight}%, OOP ${100 - weight}%`}
+            className="h-2 w-full cursor-pointer accent-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            onKeyDown={(event) => {
+              const next = nextWeight(weight, event.key);
+              if (next === null) {
+                return;
+              }
+              event.preventDefault();
+              onWeightChange(next / 100);
+            }}
+            onChange={(event) =>
+              onWeightChange(Number(event.target.value) / 100)
             }
-            event.preventDefault();
-            onWeightChange(next / 100);
-          }}
-          onChange={(event) => onWeightChange(Number(event.target.value) / 100)}
-        />
-        <p className="font-mono text-mono-sm text-on-surface tabular-nums">
-          IP {weight}% / OOP {100 - weight}%
-        </p>
-      </div>
+          />
+          <p className="font-mono text-mono-sm text-on-surface tabular-nums">
+            IP {weight}% / OOP {100 - weight}%
+          </p>
+        </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
         <SelectField
           label="Importance rank"
           value={selectedLane.importanceRank?.toString() ?? ""}
@@ -213,10 +215,6 @@ export function PlannerTacticInspector({
           <option value="preferred">Preferred</option>
           <option value="strict">Strict</option>
         </SelectField>
-      </div>
-
-      <div className="space-y-3 border-t border-outline-variant pt-4">
-        <h4 className="text-label-lg text-on-surface">Phase placement</h4>
         {phases.map((phase) => (
           <PhaseControls
             key={phase}

@@ -160,7 +160,7 @@ Commit 1 remains the feature walking skeleton: it replaced vertical workspace st
 
 ### PR 1 — Redesign Squad Planner workspace
 
-**Status:** In progress
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -539,7 +539,7 @@ Commit 1 remains the feature walking skeleton: it replaced vertical workspace st
 
 #### Commit 9 — Fit the Tactic workspace to the viewport
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): fit tactic workspace to viewport`
 
@@ -587,9 +587,9 @@ Commit 1 remains the feature walking skeleton: it replaced vertical workspace st
 
 ## Active work
 
-**PR:** PR 1 — Redesign Squad Planner workspace (In progress)
+**PR:** PR 1 — Redesign Squad Planner workspace (Ready for publication)
 
-**Commit:** Commit 9 — Fit the Tactic workspace to the viewport (Active)
+**Commit:** None — PR 1 is ready for publication
 
 ### RED proof
 
@@ -629,11 +629,13 @@ The Tactic workspace uses a compact route header and command bar above a flexibl
 - Follow-up populated inspection showed that one universal card width either left large voids or forced five-player bands to overlap. The accepted presentation derives one three-to-five-slot density from the densest visible row across both phases, keeps every dark slot card equal within that tactic, groups repeated central slots inside one light position surface per visual row, centres populated wide cards within their light groups, and lets empty outer position surfaces absorb the remaining width.
 - The adaptive renderer uses visual row-major DOM and keyboard order when a base position overflows. This intentionally matches the rendered top-to-bottom, left-to-right reading sequence instead of preserving the former cell-major traversal, which could move focus to a lower overflow card before a visible card on the current row.
 - A populated 1920×1080 screenshot supplied on 2026-08-05 showed that the corrected pitch geometry still sits below stacked route and editor chrome while the tall right inspector extends beyond the viewport. The developer accepted a generated composition with a compact route header, one tactic command bar, two pitches above one horizontal settings shelf, and no document scrolling at that viewport. Commit 9 records that accepted direction instead of treating it as unplanned CSS polish.
+- Commit 9 keeps all tactic state inside `PlannerTacticEditor` and recomposes only Planner-local presentation: the route heading, primary-club context, and workspace tabs share one wrapping header; the selected summary, phase control, status, and save action share one command bar; and the existing selected-position controls form one responsive shelf below the pitches. The initial browser geometry proof exceeded the 1600×900 main viewport by 14px because each pitch retained its superseded instruction line. Removing that redundant line made the 1280×800 horizontal-fit contract and the 1600×900 and 1920×1080 no-scroll contracts green with both collapsed and expanded navigation rails; pitch rows and card geometry did not change.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
+| PR 1 | Commit 9 — Fit the Tactic workspace to the viewport | Pending record | Combined the Planner heading, primary-club context, and workspace tabs in one compact route header; grouped phase view, selected-position summary, status, and Save tactic in one command bar; moved the unchanged selected-position state into one responsive shelf below the pitch canvas; and preserved Both, IP, OOP, draft, selection, validation, and save behavior. | Sol High clear after 0 fix rounds; focused route suite 51/51, full frontend 168/168, Rust 211 passed/2 ignored, repository check, elevated smoke 15/15, format, and cached diff checks passed. Browser geometry covered Both, IP, and OOP at 1280×800, 1600×900, and 1920×1080 with both navigation-rail widths. | Native populated Tauri WebView inspection and exceptional-content geometry remain manual gaps; focused tests retain the validation, refresh, failure, and success behavior. No scope or architecture deviation. |
 | PR 1 | Follow-up — Adapt tactic pitch density | Pending record | Derived one shared three-to-five-slot density across IP and OOP, nested equal dark slot cards inside light base-position groups per visual row, centred populated wide cards within their groups, let empty outer groups absorb unused width, and preserved stable central order, linking, and tactic contracts. | Sol High clear after 2 correction rounds; focused route suite 50/50, Rust 211 passed/2 ignored, repository check, elevated smoke 14/14, populated screenshots, format, and diff checks passed. | Replaced the rejected universal-width follow-up before publication. Visual row-major keyboard traversal intentionally replaces cell-major traversal when a position overflows so focus follows the rendered reading order; no persistence or architecture deviation. |
 | PR 1 | Commit 8 — Orient tactic pitches toward attack | Pending record | Reordered the shared pitch rows so ST is highest and GK is lowest in IP, OOP, and Both views; preserved DOM and keyboard order, linked selection, central-slot geometry, and tactic contracts; added route and smoke orientation assertions and updated the implemented design contract. | Sol High approved after 0 fix rounds; focused route suite 48/48, full frontend 165/165, Rust 211 passed/2 ignored, repository check, elevated smoke 14/14, format, and cached diff checks passed. | No scope deviations. Native populated viewport evidence remains open. |
 | PR 1 | Commit 7 — Arrange central positions across the pitch | Pending record | Derived one-, two-, three-, and overflow-row position layouts from stable tactic order; widened the central band to three of five pitch columns; aligned labels, accessible names, DOM order, and slot classes regardless of role; preserved wide positions, singleton centre slots, all lane controls, and tactic contracts. | Sol High approved after two fix rounds; focused route suite 47/47, full frontend 164/164, Rust 211 passed/2 ignored, repository check, elevated smoke 14/14, format, and cached diff checks passed. | No scope deviations. Native populated viewport evidence remains open. |

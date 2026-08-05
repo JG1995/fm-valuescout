@@ -440,7 +440,7 @@ describe("planner route", () => {
     const bothView = within(viewGroup).getByRole("button", { name: "Both" });
     expect(bothView).toHaveAttribute("aria-pressed", "true");
     const inspectors = screen.getAllByRole("region", {
-      name: "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+      name: "Selected position settings",
     });
     expect(inspectors).toHaveLength(1);
     const inspector = inspectors[0];
@@ -518,6 +518,59 @@ describe("planner route", () => {
     await waitFor(() =>
       expect(getPlannerDepthIpcMockCalls()).toBeGreaterThan(1),
     );
+  });
+
+  it("orders the tactic command bar, pitches, and one settings shelf", async () => {
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    const commandBar = await screen.findByRole("region", {
+      name: "Tactic controls",
+    });
+    const pitches = screen.getAllByRole("group", { name: /pitch$/ });
+    const settings = screen.getByRole("region", {
+      name: "Selected position settings",
+    });
+
+    expect(
+      within(commandBar).getByRole("heading", {
+        level: 2,
+        name: "Tactic editor",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(commandBar).getByRole("group", {
+        name: "Tactic phase views",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(commandBar).getByText(
+        "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(commandBar).getByRole("button", { name: "Save tactic" }),
+    ).toBeInTheDocument();
+    expect(pitches).toHaveLength(2);
+    expect(
+      commandBar.compareDocumentPosition(pitches[0]) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      pitches[1].compareDocumentPosition(settings) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      within(settings).getAllByRole("slider", {
+        name: "IP/OOP score weight",
+      }),
+    ).toHaveLength(1);
+    expect(
+      within(settings).getAllByRole("combobox", {
+        name: "Importance rank",
+      }),
+    ).toHaveLength(1);
   });
 
   it("renders every tactic pitch from attack to goalkeeper", async () => {
@@ -957,7 +1010,7 @@ describe("planner route", () => {
     ] as const) {
       await user.click(within(viewGroup).getByRole("button", { name: view }));
       const inspectors = screen.getAllByRole("region", {
-        name: "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper",
+        name: "Selected position settings",
       });
       expect(inspectors).toHaveLength(1);
       const inspector = inspectors[0];

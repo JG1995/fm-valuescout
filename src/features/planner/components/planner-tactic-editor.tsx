@@ -7,6 +7,7 @@ import { savePlannerTactic } from "../api/save-planner-tactic";
 import type { PlannerTactic, TacticLane, TacticOptions } from "../types/tactic";
 import {
   cloneTactic,
+  linkedPositionDescription,
   phasePosition,
   phaseRoleId,
   rolesForPhase,
@@ -247,124 +248,134 @@ export function PlannerTacticEditor({
   };
 
   return (
-    <Panel
-      title="Tactic editor"
-      flush
-      actions={
-        <Button
-          disabled={Boolean(validationError) || isActiveSaveUnavailable}
-          loading={save.isPending}
-          loadingLabel="Saving…"
-          onClick={() => save.mutate()}
+    <Panel flush className="min-w-0">
+      <div className="grid gap-3 p-3">
+        <section
+          className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-high p-3"
+          aria-label="Tactic controls"
         >
-          Save tactic
-        </Button>
-      }
-    >
-      <div className="space-y-5 p-4">
-        <div className="space-y-1">
-          <p className="text-body-md text-on-surface-variant">
-            {draft.lanes.length} linked positions
-          </p>
-          <p className="text-body-sm text-on-surface-variant">
-            Each linked position connects the In-Possession and
-            Out-of-Possession shapes.
-          </p>
-        </div>
-
-        <fieldset
-          className="inline-flex rounded-full bg-surface-container-high p-0.5"
-          onKeyDown={handleViewKeyDown}
-        >
-          <legend className="sr-only">Tactic phase views</legend>
-          {TACTIC_VIEWS.map((candidate) => {
-            const selected = candidate === view;
-            return (
-              <button
-                key={candidate}
-                ref={(element) => {
-                  viewButtonRefs.current[candidate] = element;
-                }}
-                type="button"
-                aria-pressed={selected}
-                tabIndex={selected ? 0 : -1}
-                className={`cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                  selected
-                    ? "bg-primary text-on-primary"
-                    : "text-on-surface-variant hover:text-on-surface"
-                }`}
-                onClick={() => setView(candidate)}
-              >
-                {VIEW_LABELS[candidate]}
-              </button>
-            );
-          })}
-        </fieldset>
-
-        {validationError ? (
-          <p className="text-body-sm text-warning" role="alert">
-            {validationError}
-          </p>
-        ) : null}
-        {isActiveSaveUnavailable && !activeSaveRefreshError ? (
-          <p className="text-body-sm text-on-surface-variant" role="status">
-            Refreshing active save…
-          </p>
-        ) : null}
-        {activeSaveRefreshError ? (
-          <p className="text-body-sm text-error" role="alert">
-            Could not refresh the active save. Saving is disabled until it
-            reloads.
-          </p>
-        ) : null}
-        {save.isError ? (
-          <p className="text-body-sm text-error" role="alert">
-            {save.error.message}
-          </p>
-        ) : null}
-        {saveSucceeded ? (
-          <p className="text-body-sm text-success" role="status">
-            Tactic saved.
-          </p>
-        ) : null}
-
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)]">
-          <div className="grid gap-4 lg:grid-cols-2">
-            {visiblePhases(view).map((phase) => (
-              <PlannerTacticPitch
-                key={phase}
-                phase={phase}
-                lanes={draft.lanes}
-                options={options}
-                selectedLaneId={selectedLaneId}
-                highlightedLaneId={highlightedLaneId}
-                onHighlight={setHighlightedLaneId}
-                onSelectLane={(laneId) => {
-                  setSelectedLaneId(laneId);
-                  setHighlightedLaneId(laneId);
-                }}
-              />
-            ))}
+          <div className="mr-auto min-w-48">
+            <h2 className="text-headline-sm text-on-surface">Tactic editor</h2>
+            <p className="truncate text-body-sm text-on-surface-variant">
+              {selectedLane ? (
+                <span>
+                  {linkedPositionDescription(
+                    selectedLane,
+                    draft.lanes,
+                    options,
+                  )}
+                </span>
+              ) : null}
+              <span className={selectedLane ? "ml-2" : undefined}>
+                {draft.lanes.length} linked positions
+              </span>
+            </p>
           </div>
-          {selectedLane ? (
-            <PlannerTacticInspector
-              selectedLane={selectedLane}
+
+          <fieldset
+            className="inline-flex rounded-full bg-surface-container p-0.5"
+            onKeyDown={handleViewKeyDown}
+          >
+            <legend className="sr-only">Tactic phase views</legend>
+            {TACTIC_VIEWS.map((candidate) => {
+              const selected = candidate === view;
+              return (
+                <button
+                  key={candidate}
+                  ref={(element) => {
+                    viewButtonRefs.current[candidate] = element;
+                  }}
+                  type="button"
+                  aria-pressed={selected}
+                  tabIndex={selected ? 0 : -1}
+                  className={`cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+                    selected
+                      ? "bg-primary text-on-primary"
+                      : "text-on-surface-variant hover:text-on-surface"
+                  }`}
+                  onClick={() => setView(candidate)}
+                >
+                  {VIEW_LABELS[candidate]}
+                </button>
+              );
+            })}
+          </fieldset>
+
+          <div className="min-w-0 flex-1 text-right">
+            {validationError ? (
+              <p className="text-body-sm text-warning" role="alert">
+                {validationError}
+              </p>
+            ) : null}
+            {isActiveSaveUnavailable && !activeSaveRefreshError ? (
+              <p className="text-body-sm text-on-surface-variant" role="status">
+                Refreshing active save…
+              </p>
+            ) : null}
+            {activeSaveRefreshError ? (
+              <p className="text-body-sm text-error" role="alert">
+                Could not refresh the active save. Saving is disabled until it
+                reloads.
+              </p>
+            ) : null}
+            {save.isError ? (
+              <p className="text-body-sm text-error" role="alert">
+                {save.error.message}
+              </p>
+            ) : null}
+            {saveSucceeded ? (
+              <p className="text-body-sm text-success" role="status">
+                Tactic saved.
+              </p>
+            ) : null}
+          </div>
+
+          <Button
+            disabled={Boolean(validationError) || isActiveSaveUnavailable}
+            loading={save.isPending}
+            loadingLabel="Saving…"
+            onClick={() => save.mutate()}
+          >
+            Save tactic
+          </Button>
+        </section>
+
+        <div className="grid gap-3 lg:grid-cols-2">
+          {visiblePhases(view).map((phase) => (
+            <PlannerTacticPitch
+              key={phase}
+              phase={phase}
               lanes={draft.lanes}
               options={options}
-              phases={visiblePhases(view)}
-              onWeightChange={updateSelectedLaneWeight}
-              onRankChange={updateSelectedLaneRank}
-              onPreferredFootChange={updateSelectedLaneFoot}
-              onFootPreferenceChange={updateSelectedLaneFootPreference}
-              onPositionChange={(phase, position) =>
-                updatePosition(selectedLane.laneId, phase, position)
-              }
-              onRoleChange={(phase, roleId) =>
-                updateRole(selectedLane.laneId, phase, roleId)
-              }
+              selectedLaneId={selectedLaneId}
+              highlightedLaneId={highlightedLaneId}
+              onHighlight={setHighlightedLaneId}
+              onSelectLane={(laneId) => {
+                setSelectedLaneId(laneId);
+                setHighlightedLaneId(laneId);
+              }}
             />
-          ) : null}
+          ))}
         </div>
+
+        {selectedLane ? (
+          <PlannerTacticInspector
+            selectedLane={selectedLane}
+            lanes={draft.lanes}
+            options={options}
+            phases={visiblePhases(view)}
+            onWeightChange={updateSelectedLaneWeight}
+            onRankChange={updateSelectedLaneRank}
+            onPreferredFootChange={updateSelectedLaneFoot}
+            onFootPreferenceChange={updateSelectedLaneFootPreference}
+            onPositionChange={(phase, position) =>
+              updatePosition(selectedLane.laneId, phase, position)
+            }
+            onRoleChange={(phase, roleId) =>
+              updateRole(selectedLane.laneId, phase, roleId)
+            }
+          />
+        ) : null}
       </div>
     </Panel>
   );
