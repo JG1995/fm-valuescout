@@ -119,7 +119,7 @@ Fork chooses: auth, signing, auto-update, additional plugins
 
 ```text
 your-repo/
-├── .codex/            # Project workflow policy, agents, MCP config, and guide
+├── .codex/            # Specialist agents, MCP config, and workflow guide
 ├── .wiki/             # Durable docs (this file, ADRs, TODO)
 ├── .husky/            # Git hooks (pre-commit → check-fast + conditional check-rust)
 ├── scripts/
@@ -326,9 +326,9 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `.github/workflows/release.yml` | Tag-triggered multi-OS installer build via `tauri-action` |
 | `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` surface |
 | `.codex/config.toml` | Context7 MCP and shell-environment configuration |
-| `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML |
+| `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML, and Repowise extensions |
 | `.vscode/settings.json` | Format on save (Biome / rust-analyzer); rust-analyzer linked to `src-tauri` |
-| `.gitignore` | Build, test, and tool artifacts; `.tanstack/` cache; `.env.*` except `.env.example`; `src-tauri/target/`; editor noise (`.idea/`, vim swap) |
+| `.gitignore` | Build, test, and tool artifacts; `.tanstack/` and `.repowise/` caches; `.env.*` except `.env.example`; `src-tauri/target/`; editor noise (`.idea/`, vim swap) |
 | `.gitattributes` | LF for text sources; binary for images including `.icns` / `.ico` |
 
 ---

@@ -5,8 +5,8 @@ This repository uses Codex for AI-assisted development. The workflow keeps imple
 ## Repository surfaces
 
 - `AGENTS.md` contains standing repository rules and project-specific validation commands.
-- `.codex/WORKFLOW.md` contains planning, routing, review, escalation, and PR-boundary policy.
-- Installed global skills provide reusable guidance and explicit workflows.
+- The installed `workflow-core` skill contains shared planning, routing, review, escalation, and PR-boundary policy.
+- Other installed `workflow-*` skills provide explicit workflow commands and load `workflow-core` before continuing.
 - `.codex/agents/` contains the `reviewer` and `documentation-steward` specialist definitions.
 - `.codex/config.toml` contains project MCP and shell-environment configuration.
 - `.wiki/` contains project-owned current state, feature records, ADRs, and reusable debug knowledge.
@@ -42,15 +42,17 @@ Keep commits atomic and stage exact paths or hunks. Follow the approval rules in
 
 Dispatch specialists explicitly:
 
-- `reviewer` performs the default fresh-context read-only commit review.
-- `documentation-steward` changes documentation and feature-ledger state only.
+- `reviewer` performs the default fresh-context read-only commit review at Sol Medium.
+- `documentation-steward` changes documentation and feature-ledger state only at Luna Max.
 
 The main session plans established feature work. Delegate planning only when the developer explicitly requests it. Use a generic reviewer when the required profile differs from the named agent's pinned profile. If independent review is required but unavailable, report the missing capability instead of replacing it with self-review.
+
+Live workflow routing uses only Luna Max, Terra xhigh, Terra Max, Sol Medium, Sol High, Sol xhigh, or Sol Max. The active ledger records per-commit implementation and review profiles plus the feature review profile. Completed feature history keeps the profiles that were actually used.
 
 ## Optional MCP tools
 
 Context7 provides current library documentation. Use it for library APIs and configuration details instead of guessing.
 
-Codebase Memory provides advisory architecture, call-path, semantic-search, data-flow, and change-impact queries. Register `codebase-memory-mcp` globally on the developer workstation. Use `$codebase-memory` for selection and verification rules, and fall back to exact search and direct source inspection when it is unavailable.
+Repowise provides advisory architecture, symbol relationships, rationale, code health, risk, dead-code, and impacted-test evidence. Register its MCP server globally on the developer workstation and initialize each project locally. Use `$repowise` for selection, freshness, and verification rules, and fall back to exact search and direct source inspection when it is unavailable.
 
 Use other project-specific MCP tools only when the project documents and configures them. Never put machine-specific binary paths or credentials in repository files.

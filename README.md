@@ -84,7 +84,7 @@ Project MCP servers in [.codex/config.toml](.codex/config.toml):
 
 - **context7** — current library documentation
 
-Codebase Memory is an optional globally registered MCP. Treat its index as advisory and keep durable project knowledge in the repository.
+Repowise is the optional shared code-intelligence and code-health layer. Treat its index and scores as advisory and keep durable project knowledge in the repository.
 
 ## Documents
 
