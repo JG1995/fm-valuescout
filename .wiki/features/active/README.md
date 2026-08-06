@@ -172,6 +172,8 @@ Resolve `Pending record` from Git in the next normal ledger update or during fea
 
 ## Final validation
 
+**Feature review profile:** <Sol High | Sol xhigh | Sol Max> — <short cross-commit risk and consequence reason>
+
 List the exact project commands and manual evidence required before feature review.
 
 ## Documentation impact

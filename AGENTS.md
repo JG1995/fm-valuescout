@@ -1,6 +1,6 @@
 # Development Contract
 
-This file contains the standing repository contract. `.codex/WORKFLOW.md` owns project workflow policy, and installed global skills own phase procedures. Project facts belong in `.wiki/`. Hard validation belongs in repository commands, tests, and CI.
+This file contains the standing repository contract. Detailed procedures belong in installed `workflow-*` skills. Project facts belong in `.wiki/`. Hard validation belongs in repository commands, tests, and CI.
 
 ## Project scope
 
@@ -48,8 +48,9 @@ Keep guidance in the narrowest appropriate layer:
 - `.wiki/CONCEPT.md` owns product purpose and boundaries.
 - `.wiki/ARCHITECTURE.md` owns the current implemented system, including its stack and operational constraints.
 - `.wiki/features/active/` owns current multi-commit feature intent and delivery plans (PRs and commits).
-- `.codex/WORKFLOW.md` owns repository-specific planning, model-routing, review-evidence, escalation, and PR-boundary policy.
-- Installed global skills own explicit workflows and reusable task- or stack-specific operating guidance.
+- The installed `workflow-core` skill owns shared lifecycle, routing, review, escalation, and PR-boundary policy.
+- Other installed `workflow-*` skills own explicit commands such as `$workflow-plan-feature`, `$workflow-build`, and `$workflow-checkpoint`. Each command loads `workflow-core` before continuing.
+- Installed non-workflow skills own reusable task- or stack-specific operating guidance.
 - `.codex/agents/` owns specialist role prompts. It must not duplicate this contract.
 
 Project-owned guidance governs project facts and constraints. When reusable skill guidance conflicts with an applicable project document, follow the project document. Skills govern procedure and provide defaults where project guidance is silent. Code, tests, and configuration remain authoritative for current executable behavior. Current-state documents take precedence over plans and historical records; ADRs explain accepted rationale until superseded but do not override current behavior.
@@ -65,7 +66,7 @@ The development cycle follows a repeating loop. Invoke a `workflow-*` skill expl
 3. **Checkpoint** (`$workflow-checkpoint`) — stage exact changes, run the gate, present evidence and review, wait for approval, and commit locally.
 4. **Fix** (`$workflow-fix`) — address only the findings the developer delegates, then checkpoint again.
 5. **Reassess** — update the delivery plan and select the next commit; repeat from build until the plan is done.
-6. **Finish feature** (`$workflow-finish-feature`) — when every planned commit is done, run full tests, a Sol High feature-complete review, and documentation reconciliation.
+6. **Finish feature** (`$workflow-finish-feature`) — when every planned commit is done, run full tests, the ledger-selected feature-complete review (Sol High for a legacy ledger), and documentation reconciliation.
 
 For a trivial change, the user can describe the fix without invoking a workflow skill. Follow the applicable standing rules internally.
 
@@ -73,7 +74,7 @@ The loop variants are manual opt-ins only. Never suggest or run them automatical
 
 For broad features, `$workflow-plan-feature` produces a delivery plan before the first `$workflow-build` cycle. `$workflow-stack` and `$workflow-roadmap` precede it for new projects.
 
-Use the exact implementation and review profiles recorded in the active ledger. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. Follow `.codex/WORKFLOW.md` and the relevant installed workflow skill for routing, hard floors, evidence requirements, and escalation.
+Use the exact implementation and review profiles recorded in the active ledger. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. Follow the installed `workflow-core` skill and the relevant user-facing workflow skill for routing, hard floors, evidence requirements, and escalation.
 
 ## Commands and validation
 
@@ -106,7 +107,7 @@ For non-trivial behaviour:
 
 Prompts guide the workflow. Deterministic commands and tests provide evidence. Do not weaken, delete, skip, or broadly rewrite tests merely to make a change pass.
 
-Increase reasoning effort when the model has the right architecture but incomplete execution. After two failed correction attempts on the same bounded defect, stop and request a profile change or replan. Replan sooner when a known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes. Use `$workflow-spike` only for a genuine runtime unknown and only when the developer explicitly invokes it. Every non-trivial staged change requires a separate fresh-context read-only reviewer pass with the ledger-assigned review profile, or the default Terra High reviewer when no ledger exists. Every feature-complete review uses Sol High.
+Increase reasoning effort when the model has the right architecture but incomplete execution. After two failed correction attempts on the same bounded defect, stop and request a profile change or replan. Replan sooner when a known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes. Use `$workflow-spike` only for a genuine runtime unknown and only when the developer explicitly invokes it. Every non-trivial staged change requires a separate fresh-context read-only reviewer pass with the ledger-assigned review profile, or the default Sol Medium reviewer when no ledger exists. Feature-complete review uses the ledger's feature review profile, or Sol High for a legacy ledger without that field.
 
 ## Design and execution
 
@@ -201,7 +202,7 @@ The repository is the complete source of project knowledge. Do not rely on chat 
 
 - Read the installed `project-context` skill before a non-obvious decision, when resuming multi-session work, or when deciding where new durable knowledge belongs.
 - Inspect the current-state owner, relevant feature records, ADRs, debug reports, implementation, tests, and targeted Git history as needed. Search narrowly before reading broadly.
-- Use the installed `codebase-memory` skill for semantic architecture discovery, call or data-flow tracing, and change-impact analysis when its MCP is available. Verify graph results against current repository evidence and fall back to direct inspection without blocking the task.
+- Use the installed `repowise` skill for indexed architecture discovery, symbol relationships, rationale, code health, defect risk, change impact, dead code, and coverage-backed test selection when the MCP or CLI is available. Treat its index and scores as advisory, respect stale warnings, verify conclusions against current repository evidence, and fall back to direct inspection without blocking the task.
 - Update the narrowest owner in the same change that makes the information true. Current product, architecture, and design facts belong in their wiki documents. Active discoveries and deviations belong in the feature ledger.
 - Create an ADR only for a consequential decision with durable effects, meaningful alternatives, and non-obvious rationale.
 - Treat regression tests as the primary record of ordinary bugs. Add `.wiki/debugging/` reports only for confirmed, reusable failure patterns or diagnostic procedures that code and tests do not explain.
