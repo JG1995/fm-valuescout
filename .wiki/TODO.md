@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No active feature.
+- [Youth Academy](./features/active/youth-academy.md) — save-scoped `Class of YYYY` cohorts, club-family player tracking, and honest placeholders for career statistics pending memory-reader support
 
 ## Next
 
