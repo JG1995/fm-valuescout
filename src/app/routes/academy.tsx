@@ -232,7 +232,9 @@ function AcademyPageContent() {
         {selectedClass ? (
           <AcademyClassWorkspace
             academyClass={selectedClass}
+            academyClasses={classes}
             clubOptions={clubOptions.data ?? []}
+            onSelectClass={onOpenClass}
             onDelete={() => setDeleteTarget(selectedClass)}
           />
         ) : (

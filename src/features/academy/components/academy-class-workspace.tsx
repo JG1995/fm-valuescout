@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import { SelectField } from "@/components/ui/field/select-field";
 import { Modal } from "@/components/ui/modal/modal";
 import { Panel } from "@/components/ui/panel/panel";
 import {
@@ -36,7 +37,9 @@ import {
 
 type AcademyClassWorkspaceProps = {
   academyClass: AcademyClass;
+  academyClasses: AcademyClass[];
   clubOptions: string[];
+  onSelectClass: (academyClass: AcademyClass) => void;
   onDelete: () => void;
 };
 
@@ -75,7 +78,9 @@ function errorMessage(error: unknown) {
 
 export function AcademyClassWorkspace({
   academyClass,
+  academyClasses,
   clubOptions,
+  onSelectClass,
   onDelete,
 }: AcademyClassWorkspaceProps) {
   const queryClient = useQueryClient();
@@ -114,7 +119,30 @@ export function AcademyClassWorkspace({
   return (
     <>
       <Panel
-        title={`Class of ${academyClass.classYear}`}
+        title={
+          <div className="w-52">
+            <h2 className="sr-only">Class workspace</h2>
+            <SelectField
+              label="Academy class"
+              value={academyClass.id}
+              className="[&_select]:text-headline-sm"
+              onChange={(event) => {
+                const selectedClass = academyClasses.find(
+                  (item) => item.id === Number(event.target.value),
+                );
+                if (selectedClass) {
+                  onSelectClass(selectedClass);
+                }
+              }}
+            >
+              {academyClasses.map((item) => (
+                <option key={item.id} value={item.id}>
+                  Class of {item.classYear}
+                </option>
+              ))}
+            </SelectField>
+          </div>
+        }
         actions={
           <div className="flex items-center gap-2">
             <Button

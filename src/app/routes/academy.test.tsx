@@ -176,9 +176,39 @@ describe("academy route", () => {
     renderAcademyRoute("/academy?view=class&classId=7");
 
     expect(
-      await screen.findByRole("heading", { level: 2, name: "Class of 2025" }),
+      await screen.findByRole("combobox", { name: "Academy class" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete class" })).toBeNull();
+  });
+
+  it("switches Academy classes from the Class workspace", async () => {
+    const user = userEvent.setup();
+    await loadConfiguredSave();
+    setAcademyClasses([
+      { id: 8, classYear: 2026, memberCount: 0 },
+      { id: 7, classYear: 2025, memberCount: 0 },
+    ]);
+    const { router } = renderAcademyRoute("/academy?view=class&classId=7");
+
+    const classPicker = await screen.findByRole("combobox", {
+      name: "Academy class",
+    });
+    expect(classPicker).toHaveValue("7");
+    expect(
+      within(classPicker)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Class of 2025", "Class of 2026"]);
+
+    await user.selectOptions(classPicker, "8");
+
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({
+        view: "class",
+        classId: 8,
+      }),
+    );
+    expect(classPicker).toHaveValue("8");
   });
 
   it("shows reported senior counts and keeps unsupported aggregates unavailable", async () => {
@@ -405,9 +435,9 @@ describe("academy route", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "The class could not be deleted",
     );
-    expect(
-      screen.getByRole("heading", { level: 2, name: "Class of 2026" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Academy class" })).toHaveValue(
+      "7",
+    );
     setAcademyDeleteError(null);
   });
 
