@@ -202,7 +202,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 #### Commit 3 — Assign club-family players to classes
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(academy): assign club-family players to classes`
 
@@ -241,7 +241,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 #### Commit 4 — Surface graduate tracking statistics
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(academy): surface graduate tracking statistics`
 
@@ -282,19 +282,19 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 **PR:** Add youth graduate tracking
 
-**Commit:** Assign club-family players to classes
+**Commit:** Surface graduate tracking statistics
 
 ### RED proof
 
-Add a route test for club-family-only Add Players candidates and persisted membership through an Academy IPC mock. The expected RED is the missing member/candidate API or assignment UI, not a router-test harness failure. Extend it to duplicate prevention, removal and reassignment, departed-member retention, and mutation-error recovery before implementing the roster.
+Add Academy route tests that require `—`, rather than zero, for null career data and require the exact graduation rule when a fixture supplies senior league appearances. Add an AppTopBar test that fails until Academy queries invalidate after snapshot load and save switch. The expected RED is missing graduate presentation or Academy cache invalidation, not a test-harness failure.
 
 ### Expected outcome
 
-The class workspace exposes an Add Players flow restricted to exact configured club-family names, persists one membership per player, and renders assigned players with current or last-known identity. Removing a player permits reassignment, and departed or unresolved members remain visible with explicit warnings.
+Overview, Class, and Graduates views show only source-supported statistics, label unavailable values honestly, and treat a player as a graduate only when reported senior league appearances are at least one. Academy queries refresh after snapshot load and active-save switch without changing persisted memberships.
 
 ### Explicit exclusions
 
-No automatic or bulk assignment, dedicated cross-class move workflow, editing player facts, reported-team-level eligibility gate, bridge/schema change, generated career statistics, CSV/HTML flow, or Git publication belong in the active commit.
+No bridge/schema change, source-value invention, transfer-history interpretation, sale or release inference, charts, manual overrides, CSV/HTML flow, or Git publication belongs in the active commit.
 
 ## Discoveries and replanning
 
@@ -309,6 +309,7 @@ No automatic or bulk assignment, dedicated cross-class move workflow, editing pl
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Persist youth class membership | Pending record | v11 Academy schema, Rust commands, member retention, and nullable career-stat placeholders | Sol High accepted; no Critical, High, or Medium findings | Backend delete confirmation and bounded candidate input recorded under Discoveries. |
 | PR 1 | Commit 2 — Add youth class workspace | Pending record | Youth Academy rail entry, URL-backed workspace shell, typed queries, class create/delete, first-use states, IPC mock, and route coverage | Sol Medium accepted after correction; no Critical, High, Medium, or NIT findings | Two modal lifecycle findings were fixed before commit; the planned live `Class of YYYY` preview was added. |
+| PR 1 | Commit 3 — Assign club-family players to classes | Pending record | Searchable club-family picker, typed membership mutations, current/departed/unresolved roster, and assignment/removal route coverage | Sol High accepted after two correction rounds; no Critical, High, or Medium findings remain | Internal table overflow is structural coverage only; populated viewport inspection remains in Commit 4 final validation. |
 
 ## Final validation
 
@@ -325,6 +326,6 @@ No automatic or bulk assignment, dedicated cross-class move workflow, editing pl
 ## Documentation impact
 
 - `DESIGN.md` owns the planned `/academy` layout and unavailable-stat presentation.
-- `ARCHITECTURE.md` records the Academy Rust module, Tauri commands, v11 tables, Planner club-family dependency, and the delivered frontend route/query/component boundary.
+- `ARCHITECTURE.md` records the Academy Rust module, Tauri commands, v11 tables, Planner club-family dependency, searchable picker, and delivered roster boundary.
 - `CONCEPT.md` needs reconciliation only if implementation establishes Youth Academy as a durable product capability beyond its existing product purpose.
 - Archive this ledger to `.wiki/features/completed/` only after full validation, feature review, and documentation reconciliation.
