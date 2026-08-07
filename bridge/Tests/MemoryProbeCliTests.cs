@@ -79,6 +79,47 @@ public sealed class MemoryProbeCliTests
     }
 
     [Fact]
+    public void Correlation_reports_missing_depth_two_ranges_as_missing_evidence()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var capturePath = Path.Combine(directory, "depth-two-probe.json");
+            var csvPath = Path.Combine(directory, "depth-two.csv");
+            File.WriteAllText(capturePath, Serialize(CreateDepthTwoCapture("depth-two-capture")));
+            File.WriteAllText(csvPath, "UID,Research\n1001,12\n1002,17\n1003,23\n");
+
+            var result = Run(
+                "correlate",
+                "--csv",
+                csvPath,
+                "--capture",
+                capturePath,
+                "--uid-column",
+                "UID",
+                "--field",
+                "research=Research");
+
+            Assert.Equal(0, result.ExitCode);
+            using var document = JsonDocument.Parse(result.Output);
+            var field = GetField(document.RootElement, "research");
+            Assert.Equal("ambiguous", field.GetProperty("outcome").GetString());
+            var candidate = field.GetProperty("candidates").EnumerateArray().Single(
+                item => item.GetProperty("path").GetString() == "player-block+0x70->target+0x20->target+0x0");
+            Assert.Equal(2, candidate.GetProperty("pointerDepth").GetInt32());
+            Assert.Equal("player-block+0x70->target+0x20", candidate.GetProperty("sourcePointerPath").GetString());
+            Assert.Equal(2, candidate.GetProperty("coverage").GetInt32());
+            Assert.Equal(
+                new[] { 1003u },
+                candidate.GetProperty("missingUids").EnumerateArray().Select(value => value.GetUInt32()).ToArray());
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Correlation_requires_varied_multi_player_evidence_before_reporting_a_candidate()
     {
         var directory = CreateTempDirectory();
@@ -1069,13 +1110,71 @@ public sealed class MemoryProbeCliTests
             },
         };
 
+    private static ProbeDocument CreateDepthTwoCapture(string requestId) =>
+        new()
+        {
+            SchemaVersion = ProbeProtocol.SchemaVersion,
+            GeneratedAtUtc = "2026-08-07T12:00:00.0000000+00:00",
+            GameVersion = "26.3.2.2329565",
+            SupportedGameVersion = "26.3",
+            BridgeVersion = "0.1.0",
+            ProtocolVersion = ProbeProtocol.ProtocolVersion,
+            RequestId = requestId,
+            RequestedUids = new[] { 1001u, 1002u, 1003u },
+            PlayerCount = 3,
+            CapturePolicy = CreateCapturePolicy(),
+            Players = new[]
+            {
+                DepthTwoPlayer(1001, 12),
+                DepthTwoPlayer(1002, 17),
+                new ProbePlayer
+                {
+                    Uid = 1003,
+                    CandidateAddress = 0x100003,
+                    ClassOffset = 0x288,
+                    PlayerBlockAddress = 0x0FFD7B,
+                    RequestedBytes = 1,
+                    ReadableBytes = 1,
+                    Ranges = new[] { Range("player-block", "player-block+0x0", new byte[] { 0 }) },
+                },
+            },
+        };
+
+    private static ProbePlayer DepthTwoPlayer(uint uid, ushort value)
+    {
+        var bytes = new byte[sizeof(ushort)];
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes, value);
+        return new ProbePlayer
+        {
+            Uid = uid,
+            CandidateAddress = 0x100000 + uid,
+            ClassOffset = 0x288,
+            PlayerBlockAddress = 0x100000 + uid - 0x288,
+            RequestedBytes = bytes.Length,
+            ReadableBytes = bytes.Length,
+            Ranges = new[]
+            {
+                new ProbeMemoryRange
+                {
+                    AddressBasis = "pointer-target",
+                    RelativePath = "player-block+0x70->target+0x20->target+0x0",
+                    SourcePointerPath = "player-block+0x70->target+0x20",
+                    Address = 0x200000 + uid,
+                    RequestedLength = bytes.Length,
+                    PointerDepth = 2,
+                    ReadableSpans = new[] { new ProbeReadableSpan { Offset = 0, BytesBase64 = Convert.ToBase64String(bytes) } },
+                },
+            },
+        };
+    }
+
     private static ProbeCapturePolicy CreateCapturePolicy() =>
         new()
         {
-            MaxPointerDepth = 1,
+            MaxPointerDepth = 2,
             TargetWindowBytes = 128,
-            MaxBytesPerPlayer = 2_944,
-            MaxBytesPerRequest = 376_832,
+            MaxBytesPerPlayer = 3_968,
+            MaxBytesPerRequest = 507_904,
             PathQuotas = new[]
             {
                 new ProbePointerPathQuota
@@ -1088,6 +1187,12 @@ public sealed class MemoryProbeCliTests
                 {
                     AddressBasis = "person-object",
                     PointerDepth = 1,
+                    MaxPaths = 8,
+                },
+                new ProbePointerPathQuota
+                {
+                    AddressBasis = "pointer-target",
+                    PointerDepth = 2,
                     MaxPaths = 8,
                 },
             },

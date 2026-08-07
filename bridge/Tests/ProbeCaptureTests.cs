@@ -23,6 +23,8 @@ public sealed class ProbeCaptureTests
     private const ulong PlayerTwoBase = 0x110000UL;
     private const ulong PointerTargetBase = 0x200000UL;
     private const ulong PersonPointerTargetBase = PointerTargetBase + 0x1000;
+    private const ulong DepthTwoTargetBase = PointerTargetBase + 0x3000;
+    private const ulong DepthThreeTargetBase = PointerTargetBase + 0x4000;
     private const int PlayerClassOffset = 0x288;
 
     [Fact]
@@ -73,13 +75,22 @@ public sealed class ProbeCaptureTests
             Assert.Equal(ProbeCaptureLimits.MaxBytesPerPlayer, result.Document.Players[0].RequestedBytes);
 
             var ranges = result.Document.Players[0].Ranges;
-            Assert.Equal(2 + ProbeCaptureLimits.MaxFirstHopTargetsPerPlayer, ranges.Count);
+            Assert.Equal(
+                2 + ProbeCaptureLimits.MaxFirstHopTargetsPerPlayer + ProbeCaptureLimits.MaxSecondHopTargetsPerPlayer,
+                ranges.Count);
             Assert.Equal(
                 ProbeCaptureLimits.MaxFirstHopTargetsPerPlayer,
                 ranges.Count(range => range.PointerDepth == 1));
+            Assert.Equal(
+                ProbeCaptureLimits.MaxSecondHopTargetsPerPlayer,
+                ranges.Count(range => range.PointerDepth == 2));
             Assert.All(
                 ranges,
-                range => Assert.InRange(range.RequestedLength, 1, ProbeCaptureLimits.PlayerRootWindowBytes));
+                range =>
+                {
+                    Assert.InRange(range.RequestedLength, 1, ProbeCaptureLimits.PlayerRootWindowBytes);
+                    Assert.InRange(range.PointerDepth, 0, ProbeCaptureLimits.MaxPointerDepth);
+                });
             Assert.DoesNotContain(
                 ranges,
                 range => range.SourcePointerPath?.EndsWith("+0x18", StringComparison.Ordinal) == true);
@@ -158,11 +169,11 @@ public sealed class ProbeCaptureTests
                     range => range.SourcePointerPath == "person-object+0x20"));
 
             var policy = Assert.IsType<ProbeCapturePolicy>(result.Document.CapturePolicy);
-            Assert.Equal(1, policy.MaxPointerDepth);
+            Assert.Equal(2, policy.MaxPointerDepth);
             Assert.Equal(ProbeCaptureLimits.MaxBytesPerPlayer, policy.MaxBytesPerPlayer);
             Assert.Equal(ProbeCaptureLimits.MaxBytesPerRequest, policy.MaxBytesPerRequest);
             Assert.Equal(
-                new[] { "player-block", "person-object" },
+                new[] { "player-block", "person-object", "pointer-target" },
                 policy.PathQuotas.Select(quota => quota.AddressBasis).ToArray());
             Assert.All(policy.PathQuotas, quota => Assert.Equal(8, quota.MaxPaths));
             Assert.Equal(
@@ -189,7 +200,7 @@ public sealed class ProbeCaptureTests
             using var document = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetProbePath(bridgeDirectory)));
             Assert.Equal(2, document.RootElement.GetProperty("schemaVersion").GetInt32());
             var policyJson = document.RootElement.GetProperty("capturePolicy");
-            Assert.Equal(1, policyJson.GetProperty("maxPointerDepth").GetInt32());
+            Assert.Equal(2, policyJson.GetProperty("maxPointerDepth").GetInt32());
             Assert.Contains(
                 policyJson.GetProperty("selectedPaths").EnumerateArray(),
                 path => path.GetProperty("sourcePointerPath").GetString() == "person-object+0x20");
@@ -221,6 +232,129 @@ public sealed class ProbeCaptureTests
             {
                 Directory.Delete(repeatDirectory, recursive: true);
             }
+        }
+        finally
+        {
+            Directory.Delete(bridgeDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Cohort_capture_follows_one_selected_second_hop_with_full_provenance()
+    {
+        var bridgeDirectory = CreateTempBridgeDirectory();
+        try
+        {
+            var result = new ProbeCaptureService().RunAndWrite(
+                BuildReaderWithDepthTwoPointerChain(),
+                bridgeDirectory,
+                new ProbeRequest
+                {
+                    ProtocolVersion = ProbeProtocol.ProtocolVersion,
+                    RequestId = "depth-two",
+                    CreatedAtUtc = DateTimeOffset.Parse("2026-08-07T12:00:00Z"),
+                    Uids = new[] { 1001u, 1002u },
+                },
+                gameVersion: "26.3.2.2329565",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success, result.Error);
+            var players = result.Document!.Players;
+            Assert.Equal(new[] { 1001u, 1002u }, players.Select(player => player.Uid).ToArray());
+            var depthTwoRanges = players
+                .Select(player => Assert.Single(player.Ranges, range => range.PointerDepth == 2))
+                .ToArray();
+            Assert.All(depthTwoRanges, depthTwoRange =>
+            {
+                Assert.Equal("player-block+0x70->target+0x20", depthTwoRange.SourcePointerPath);
+                Assert.Equal("player-block+0x70->target+0x20->target+0x0", depthTwoRange.RelativePath);
+            });
+            Assert.Equal(new byte[] { 42, 43 }, depthTwoRanges.Select(range => ReadCapturedBytes(range)[0x40]).ToArray());
+            Assert.DoesNotContain(
+                players.SelectMany(player => player.Ranges),
+                range => range.PointerDepth > 2 || range.Address == DepthThreeTargetBase || range.Address == DepthThreeTargetBase + 0x80);
+
+            var policy = Assert.IsType<ProbeCapturePolicy>(result.Document.CapturePolicy);
+            Assert.Equal(2, policy.MaxPointerDepth);
+            Assert.Contains(
+                policy.PathQuotas,
+                quota => quota.AddressBasis == "pointer-target" && quota.PointerDepth == 2 && quota.MaxPaths == 8);
+            Assert.Contains(
+                policy.SelectedPaths,
+                path => path.SourcePointerPath == "player-block+0x70->target+0x20"
+                    && path.PointerDepth == 2
+                    && path.EligiblePlayerCount == 2);
+
+            var repeatDirectory = CreateTempBridgeDirectory();
+            try
+            {
+                var repeated = new ProbeCaptureService().RunAndWrite(
+                    BuildReaderWithDepthTwoPointerChain(),
+                    repeatDirectory,
+                    new ProbeRequest
+                    {
+                        ProtocolVersion = ProbeProtocol.ProtocolVersion,
+                        RequestId = "depth-two-repeat",
+                        CreatedAtUtc = DateTimeOffset.Parse("2026-08-07T12:00:00Z"),
+                        Uids = new[] { 1002u, 1001u },
+                    },
+                    gameVersion: "26.3.2.2329565",
+                    bridgeVersion: "0.1.0",
+                    gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+                Assert.True(repeated.Success, repeated.Error);
+                Assert.Equal(
+                    policy.SelectedPaths.Select(path => (path.SourcePointerPath, path.PointerDepth, path.EligiblePlayerCount)),
+                    repeated.Document!.CapturePolicy!.SelectedPaths.Select(path => (path.SourcePointerPath, path.PointerDepth, path.EligiblePlayerCount)));
+            }
+            finally
+            {
+                Directory.Delete(repeatDirectory, recursive: true);
+            }
+        }
+        finally
+        {
+            Directory.Delete(bridgeDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Second_hop_capture_skips_cycle_and_alias_targets()
+    {
+        var bridgeDirectory = CreateTempBridgeDirectory();
+        try
+        {
+            var result = new ProbeCaptureService().RunAndWrite(
+                BuildReaderWithAliasedSecondHopTargets(),
+                bridgeDirectory,
+                CreateProbeRequest("depth-two-aliases"),
+                gameVersion: "26.3.2.2329565",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success, result.Error);
+            var player = Assert.Single(result.Document!.Players);
+            var depthTwoRanges = player.Ranges.Where(range => range.PointerDepth == 2).ToArray();
+            Assert.Equal(2, depthTwoRanges.Length);
+            Assert.Equal(2, depthTwoRanges.Select(range => range.Address).Distinct().Count());
+            Assert.DoesNotContain(
+                depthTwoRanges,
+                range => range.SourcePointerPath == "player-block+0x70->target+0x28"
+                    || range.SourcePointerPath == "player-block+0x70->target+0x30");
+            Assert.Equal(
+                ProbeCaptureLimits.PlayerRootWindowBytes
+                    + ProbeCaptureLimits.PersonRootWindowBytes
+                    + (4 * ProbeCaptureLimits.PointerTargetWindowBytes),
+                player.RequestedBytes);
+
+            var policy = Assert.IsType<ProbeCapturePolicy>(result.Document.CapturePolicy);
+            Assert.Contains(
+                policy.SelectedPaths,
+                path => path.SourcePointerPath == "player-block+0x70->target+0x28" && path.PointerDepth == 2);
+            Assert.Contains(
+                policy.SelectedPaths,
+                path => path.SourcePointerPath == "player-block+0x70->target+0x30" && path.PointerDepth == 2);
         }
         finally
         {
@@ -340,7 +474,7 @@ public sealed class ProbeCaptureTests
         Assert.True(ProbeRequestAcceptance.TryValidateForCapture(request, out var rejectReason));
         Assert.Null(rejectReason);
         Assert.Equal(128, ProbeRequestAcceptance.MaxRequestedUids);
-        Assert.Equal(376_832, ProbeRequestAcceptance.MaxRequestedUids * ProbeCaptureLimits.MaxBytesPerPlayer);
+        Assert.Equal(507_904, ProbeRequestAcceptance.MaxRequestedUids * ProbeCaptureLimits.MaxBytesPerPlayer);
     }
 
     [Fact]
@@ -541,7 +675,7 @@ public sealed class ProbeCaptureTests
         reader.AddRegion(
             new MemoryRegion(
                 PointerTargetBase,
-                0x2000,
+                0x5000,
                 MemoryConstants.PageReadWrite,
                 MemoryConstants.MemPrivate,
                 MemoryConstants.MemCommit));
@@ -549,15 +683,36 @@ public sealed class ProbeCaptureTests
         PlacePlayer(reader, PlayerOneBase, uid: 1001, includePointers: true);
         PlacePlayer(reader, PlayerTwoBase, uid: 1002, includePointers: false);
 
-        for (var index = 0; index < ProbeCaptureLimits.MaxPlayerRootFirstHopPaths + 1; index++)
+        var firstHopPathCount = ProbeCaptureLimits.MaxPlayerRootFirstHopPaths + 1;
+        for (var index = 0; index < firstHopPathCount; index++)
         {
             var target = PointerTargetBase + (ulong)(index * ProbeCaptureLimits.PointerTargetWindowBytes);
-            reader.AddBytes(target, Enumerable.Repeat((byte)(index + 1), ProbeCaptureLimits.PointerTargetWindowBytes).ToArray());
             var personTarget = PersonPointerTargetBase + (ulong)(index * ProbeCaptureLimits.PointerTargetWindowBytes);
+            var playerSecondHopTarget = DepthTwoTargetBase + (ulong)(index * ProbeCaptureLimits.PointerTargetWindowBytes);
+            var personSecondHopTarget = DepthTwoTargetBase
+                + (ulong)((firstHopPathCount + index) * ProbeCaptureLimits.PointerTargetWindowBytes);
+            reader.AddBytes(target + 0x20, PointerBytes(playerSecondHopTarget));
+            reader.AddBytes(personTarget + 0x20, PointerBytes(personSecondHopTarget));
+            reader.AddBytes(playerSecondHopTarget, new byte[ProbeCaptureLimits.PointerTargetWindowBytes]);
+            reader.AddBytes(personSecondHopTarget, new byte[ProbeCaptureLimits.PointerTargetWindowBytes]);
+        }
+
+        for (var index = 0; index < firstHopPathCount; index++)
+        {
+            var target = PointerTargetBase + (ulong)(index * ProbeCaptureLimits.PointerTargetWindowBytes);
+            var personTarget = PersonPointerTargetBase + (ulong)(index * ProbeCaptureLimits.PointerTargetWindowBytes);
+            reader.AddBytes(target, Enumerable.Repeat((byte)(index + 1), ProbeCaptureLimits.PointerTargetWindowBytes).ToArray());
             reader.AddBytes(personTarget, Enumerable.Repeat((byte)(index + 11), ProbeCaptureLimits.PointerTargetWindowBytes).ToArray());
         }
 
         return reader;
+
+        static byte[] PointerBytes(ulong target)
+        {
+            var pointer = new byte[sizeof(ulong)];
+            BinaryPrimitives.WriteUInt64LittleEndian(pointer, target);
+            return pointer;
+        }
     }
 
     private static FakeMemoryReader BuildReaderWithCohortPointerPaths()
@@ -605,6 +760,95 @@ public sealed class ProbeCaptureTests
             reader.AddBytes(sourceAddress, pointer);
             reader.AddBytes(target, Enumerable.Repeat(marker, ProbeCaptureLimits.PointerTargetWindowBytes).ToArray());
             targetIndex++;
+        }
+    }
+
+    private static FakeMemoryReader BuildReaderWithDepthTwoPointerChain()
+    {
+        var reader = new FakeMemoryReader();
+        reader.AddRegion(
+            new MemoryRegion(
+                PlayerOneBase,
+                0x30000,
+                MemoryConstants.PageReadWrite,
+                MemoryConstants.MemPrivate,
+                MemoryConstants.MemCommit));
+        reader.AddRegion(
+            new MemoryRegion(
+                PointerTargetBase,
+                0x5000,
+                MemoryConstants.PageReadWrite,
+                MemoryConstants.MemPrivate,
+                MemoryConstants.MemCommit));
+
+        AddPointer(PlayerOneBase + 0x70, PointerTargetBase);
+        AddPointer(PlayerTwoBase + 0x70, PointerTargetBase + 0x80);
+        AddPointer(PointerTargetBase + 0x20, DepthTwoTargetBase);
+        AddPointer(PointerTargetBase + 0x80 + 0x20, DepthTwoTargetBase + 0x80);
+        AddPointer(DepthTwoTargetBase + 0x20, DepthThreeTargetBase);
+        AddPointer(DepthTwoTargetBase + 0x80 + 0x20, DepthThreeTargetBase + 0x80);
+
+        var firstHopBytes = new byte[ProbeCaptureLimits.PointerTargetWindowBytes];
+        var secondHopBytes = new byte[ProbeCaptureLimits.PointerTargetWindowBytes];
+        secondHopBytes[0x40] = 42;
+        var secondPlayerFirstHopBytes = new byte[ProbeCaptureLimits.PointerTargetWindowBytes];
+        var secondPlayerSecondHopBytes = new byte[ProbeCaptureLimits.PointerTargetWindowBytes];
+        secondPlayerSecondHopBytes[0x40] = 43;
+        reader.AddBytes(PointerTargetBase, firstHopBytes);
+        reader.AddBytes(DepthTwoTargetBase, secondHopBytes);
+        reader.AddBytes(PointerTargetBase + 0x80, secondPlayerFirstHopBytes);
+        reader.AddBytes(DepthTwoTargetBase + 0x80, secondPlayerSecondHopBytes);
+        reader.AddBytes(DepthThreeTargetBase, new byte[ProbeCaptureLimits.PointerTargetWindowBytes]);
+        reader.AddBytes(DepthThreeTargetBase + 0x80, new byte[ProbeCaptureLimits.PointerTargetWindowBytes]);
+        PlacePlayer(reader, PlayerOneBase, uid: 1001, includePointers: false);
+        PlacePlayer(reader, PlayerTwoBase, uid: 1002, includePointers: false);
+        return reader;
+
+        void AddPointer(ulong sourceAddress, ulong targetAddress)
+        {
+            var pointer = new byte[sizeof(ulong)];
+            BinaryPrimitives.WriteUInt64LittleEndian(pointer, targetAddress);
+            reader.AddBytes(sourceAddress, pointer);
+        }
+    }
+
+    private static FakeMemoryReader BuildReaderWithAliasedSecondHopTargets()
+    {
+        var reader = new FakeMemoryReader();
+        reader.AddRegion(
+            new MemoryRegion(
+                PlayerOneBase,
+                0x30000,
+                MemoryConstants.PageReadWrite,
+                MemoryConstants.MemPrivate,
+                MemoryConstants.MemCommit));
+        reader.AddRegion(
+            new MemoryRegion(
+                PointerTargetBase,
+                0x5000,
+                MemoryConstants.PageReadWrite,
+                MemoryConstants.MemPrivate,
+                MemoryConstants.MemCommit));
+
+        AddPointer(PlayerOneBase + 0x70, PointerTargetBase);
+        AddPointer(PlayerOneBase + 0x78, PointerTargetBase + 0x80);
+        AddPointer(PointerTargetBase + 0x20, DepthTwoTargetBase);
+        AddPointer(PointerTargetBase + 0x28, PointerTargetBase);
+        AddPointer(PointerTargetBase + 0x30, DepthTwoTargetBase);
+        AddPointer(PointerTargetBase + 0x80 + 0x20, DepthTwoTargetBase + 0x80);
+
+        reader.AddBytes(PointerTargetBase, new byte[ProbeCaptureLimits.PointerTargetWindowBytes]);
+        reader.AddBytes(PointerTargetBase + 0x80, new byte[ProbeCaptureLimits.PointerTargetWindowBytes]);
+        reader.AddBytes(DepthTwoTargetBase, new byte[ProbeCaptureLimits.PointerTargetWindowBytes]);
+        reader.AddBytes(DepthTwoTargetBase + 0x80, new byte[ProbeCaptureLimits.PointerTargetWindowBytes]);
+        PlacePlayer(reader, PlayerOneBase, uid: 1001, includePointers: false);
+        return reader;
+
+        void AddPointer(ulong sourceAddress, ulong targetAddress)
+        {
+            var pointer = new byte[sizeof(ulong)];
+            BinaryPrimitives.WriteUInt64LittleEndian(pointer, targetAddress);
+            reader.AddBytes(sourceAddress, pointer);
         }
     }
 

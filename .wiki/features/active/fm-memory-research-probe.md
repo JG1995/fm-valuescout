@@ -364,7 +364,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 6 — Capture a bounded second pointer hop
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-probe): capture bounded second-hop targets`
 
@@ -403,7 +403,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 7 — Revise and repeat the live evidence workflow
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `docs(memory-probe): revise live evidence workflow`
 
@@ -444,21 +444,21 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 **PR:** PR 1 — Add reusable FM memory research tooling
 
-**Commit:** Commit 6 — Capture a bounded second pointer hop
+**Commit:** Commit 7 — Revise and repeat the live evidence workflow
 
 ### RED proof
 
-Commit 5 captures the stable first-hop paths for both roots but does not follow pointers inside those captured target windows. Add a fake-memory graph in which a labeled value exists only behind an aligned pointer in a selected first-hop target; confirm that the current depth-one capture has no corresponding range or candidate.
+The existing runbook and bridge summary still describe the former first-hop capture policy and retain a disjoint-UID expectation that FM cannot reliably satisfy. Verify the final commands and output shape against the implemented schema-v2 policy before documenting the same-cohort recapture procedure.
 
 ### Expected outcome
 
-A developer can recapture the same 103-player Academy cohort with deterministic first-hop coverage plus one bounded second hop. Each second-hop range retains its complete root-relative provenance and stays within the 3,968-byte per-player and 507,904-byte full-request ceilings. Correlation can then either expose a strong reproducible target path or provide a clear negative result that justifies a structure-specific reader.
+A developer can build and install the final bridge, recapture the unchanged 103-player Academy cohort with a new request ID, and correlate known anchors plus the three career-stat targets. The runbook states the schema-v2 policy, one bounded second hop, 3,968-byte per-player and 507,904-byte full-request ceilings, and the same-cohort fresh-evidence rule without overstating candidate discovery as a verified production offset.
 
 ### Explicit exclusions
 
 - No speculative Academy or Moneyball offset is recorded.
 - No raw CSV, memory, screenshot, or machine-specific artifact is committed.
-- No third hop, recursive traversal, configurable capture budget, product-facing UI, or production schema change is added.
+- No production bridge, schema-v5, SQLite, Academy, Moneyball, product-facing UI, or generic traversal expansion is added.
 
 ## Discoveries and replanning
 
@@ -489,7 +489,8 @@ Record material deviations, blockers, and decisions that change remaining work. 
 | PR 1 | Adapt real FM exports for bounded research | 73dd764 | Raised the fixed cap to 128; added declared real-export normalization, field-local eligibility, provenance, and focused coverage | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Uniform cross-player before/after shifts no longer qualify as varied evidence; no scope change. |
 | PR 1 | Document and validate the research workflow | f546485 | Added the bridge-local runbook, probe protocol summary, architecture boundary, and honest live-validation handoff | Sol Medium accepted; no Critical, High, Medium, or Nitpick findings | Live FM capture was deferred because FM was not running; the DLL install and automated checks passed. |
 | PR 1 | Resolve repository-relative probe paths | 206b775 | Kept `memory-probe` execution at the repository root and made the documented work directory absolute | Review skipped by explicit developer request for the trivial correction | The first live command exposed the wrapper defect; protocol and capture semantics did not change. |
-| PR 1 | Select stable first-hop pointer paths across the cohort | Pending commit | Added cohort-level player- and person-root first-hop selection, schema-v2 capture-policy provenance, and legacy single-capture compatibility | Sol High accepted; no Critical, High, Medium, or Nitpick findings | No plan deviation. |
+| PR 1 | Select stable first-hop pointer paths across the cohort | 010125e | Added cohort-level player- and person-root first-hop selection, schema-v2 capture-policy provenance, and legacy single-capture compatibility | Sol High accepted; no Critical, High, Medium, or Nitpick findings | No plan deviation. |
+| PR 1 | Capture a bounded second pointer hop | Pending commit | Added deterministic cohort-ranked depth-two capture, compiled-in second-hop quotas and ceilings, complete provenance, and alias/cycle/missing-evidence coverage | Sol High accepted; no Critical, High, Medium, or Nitpick findings | No plan deviation. |
 
 ## Final validation
 

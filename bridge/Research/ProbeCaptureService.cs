@@ -13,13 +13,15 @@ internal static class ProbeCaptureLimits
     public const int PlayerRootWindowBytes = 0x280;
     public const int PersonRootWindowBytes = 0x100;
     public const int PointerTargetWindowBytes = 128;
-    public const int MaxPointerDepth = 1;
+    public const int FirstPointerDepth = 1;
+    public const int MaxPointerDepth = 2;
     public const int MaxPlayerRootFirstHopPaths = 8;
     public const int MaxPersonRootFirstHopPaths = 8;
     public const int MaxFirstHopTargetsPerPlayer = MaxPlayerRootFirstHopPaths + MaxPersonRootFirstHopPaths;
+    public const int MaxSecondHopTargetsPerPlayer = 8;
     public const int MaxBytesPerPlayer = PlayerRootWindowBytes
         + PersonRootWindowBytes
-        + (MaxFirstHopTargetsPerPlayer * PointerTargetWindowBytes);
+        + ((MaxFirstHopTargetsPerPlayer + MaxSecondHopTargetsPerPlayer) * PointerTargetWindowBytes);
     public const int MaxBytesPerRequest = ProbeRequestAcceptance.MaxRequestedUids * MaxBytesPerPlayer;
 }
 
@@ -147,27 +149,58 @@ public sealed class ProbeCaptureService
             return ProbeCaptureResult.Failed(planError!);
         }
 
-        var players = new List<ProbePlayer>(capturedRoots.Count);
         foreach (var roots in capturedRoots)
         {
-            var capture = CaptureFirstHopTargets(
-                reader,
-                roots,
-                firstHopPlan,
-                regions,
-                cancellationToken,
-                out var captureError);
-            if (capture is null)
+            if (!CapturePointerTargets(
+                    reader,
+                    roots,
+                    firstHopPlan,
+                    regions,
+                    cancellationToken,
+                    out var captureError))
             {
                 return ProbeCaptureResult.Failed(captureError!);
             }
-
-            players.Add(capture);
         }
 
         if (cancellationToken.IsCancellationRequested)
         {
             return ProbeCaptureResult.Failed("probe capture cancelled");
+        }
+
+        var secondHopPlan = BuildSecondHopPlan(
+            capturedRoots,
+            regions,
+            cancellationToken,
+            out planError);
+        if (secondHopPlan is null)
+        {
+            return ProbeCaptureResult.Failed(planError!);
+        }
+
+        foreach (var roots in capturedRoots)
+        {
+            if (!CapturePointerTargets(
+                    reader,
+                    roots,
+                    secondHopPlan,
+                    regions,
+                    cancellationToken,
+                    out var captureError))
+            {
+                return ProbeCaptureResult.Failed(captureError!);
+            }
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return ProbeCaptureResult.Failed("probe capture cancelled");
+        }
+
+        var players = capturedRoots.Select(roots => roots.ToProbePlayer()).ToArray();
+        if (players.Sum(player => player.RequestedBytes) > ProbeCaptureLimits.MaxBytesPerRequest)
+        {
+            throw new InvalidOperationException("probe capture exceeded its request byte ceiling");
         }
 
         var document = new ProbeDocument
@@ -182,8 +215,8 @@ public sealed class ProbeCaptureService
             RequestedUids = request.Uids,
             GameAssembly = ToProbeModule(gameAssembly),
             GamePlugin = gamePlugin is { } gamePluginBounds ? ToProbeModule(gamePluginBounds) : null,
-            PlayerCount = players.Count,
-            CapturePolicy = CreateCapturePolicy(firstHopPlan),
+            PlayerCount = players.Length,
+            CapturePolicy = CreateCapturePolicy(firstHopPlan, secondHopPlan),
             Players = players,
         };
 
@@ -252,7 +285,9 @@ public sealed class ProbeCaptureService
         error = null;
         var playerPaths = SelectPaths(
             players,
+            player => new[] { player.PlayerRoot },
             addressBasis: "player-block",
+            pointerDepth: ProbeCaptureLimits.FirstPointerDepth,
             maxPaths: ProbeCaptureLimits.MaxPlayerRootFirstHopPaths,
             acceptableRegions,
             cancellationToken,
@@ -264,7 +299,9 @@ public sealed class ProbeCaptureService
 
         var personPaths = SelectPaths(
             players,
+            player => new[] { player.PersonRoot },
             addressBasis: "person-object",
+            pointerDepth: ProbeCaptureLimits.FirstPointerDepth,
             maxPaths: ProbeCaptureLimits.MaxPersonRootFirstHopPaths,
             acceptableRegions,
             cancellationToken,
@@ -277,9 +314,26 @@ public sealed class ProbeCaptureService
         return playerPaths.Concat(personPaths).ToArray();
     }
 
+    private static IReadOnlyList<PlannedPointerPath>? BuildSecondHopPlan(
+        IReadOnlyList<CapturedPlayerRoots> players,
+        IReadOnlyList<MemoryRegion> acceptableRegions,
+        CancellationToken cancellationToken,
+        out string? error) =>
+        SelectPaths(
+            players,
+            player => player.Ranges.Where(range => range.PointerDepth == ProbeCaptureLimits.FirstPointerDepth),
+            addressBasis: "pointer-target",
+            pointerDepth: ProbeCaptureLimits.MaxPointerDepth,
+            maxPaths: ProbeCaptureLimits.MaxSecondHopTargetsPerPlayer,
+            acceptableRegions,
+            cancellationToken,
+            out error);
+
     private static IReadOnlyList<PlannedPointerPath>? SelectPaths(
         IReadOnlyList<CapturedPlayerRoots> players,
+        Func<CapturedPlayerRoots, IEnumerable<CapturedRange>> sourceRanges,
         string addressBasis,
+        int pointerDepth,
         int maxPaths,
         IReadOnlyList<MemoryRegion> acceptableRegions,
         CancellationToken cancellationToken,
@@ -289,28 +343,31 @@ public sealed class ProbeCaptureService
         var availability = new Dictionary<string, PathAvailability>(StringComparer.Ordinal);
         foreach (var player in players)
         {
-            var root = player.GetRoot(addressBasis);
-            foreach (var pointer in root.FindReadablePointers())
+            foreach (var range in sourceRanges(player))
             {
-                if (cancellationToken.IsCancellationRequested)
+                foreach (var pointer in range.FindReadablePointers())
                 {
-                    error = "probe capture cancelled";
-                    return null;
-                }
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        error = "probe capture cancelled";
+                        return null;
+                    }
 
-                if (!IsSafePointerTarget(pointer.TargetAddress, acceptableRegions))
-                {
-                    continue;
-                }
+                    if (!IsSafePointerTarget(pointer.TargetAddress, acceptableRegions))
+                    {
+                        continue;
+                    }
 
-                var sourcePath = root.PathAt(pointer.Offset);
-                if (!availability.TryGetValue(sourcePath, out var path))
-                {
-                    path = new PathAvailability(addressBasis, sourcePath, pointer.Offset);
-                    availability.Add(sourcePath, path);
-                }
+                    var sourcePath = range.PathAt(pointer.Offset);
+                    var pathKey = string.Join("\u001F", addressBasis, sourcePath);
+                    if (!availability.TryGetValue(pathKey, out var path))
+                    {
+                        path = new PathAvailability(addressBasis, range.RelativePath, sourcePath, pointer.Offset);
+                        availability.Add(pathKey, path);
+                    }
 
-                path.EligibleUids.Add(player.Candidate.Uid);
+                    path.EligibleUids.Add(player.Candidate.Uid);
+                }
             }
         }
 
@@ -322,34 +379,34 @@ public sealed class ProbeCaptureService
             .Select(
                 path => new PlannedPointerPath(
                     path.AddressBasis,
+                    path.SourceRangePath,
                     path.SourcePointerPath,
                     path.SourceOffset,
-                    ProbeCaptureLimits.MaxPointerDepth,
+                    pointerDepth,
                     path.EligibleUids.Count))
             .ToArray();
     }
 
-    private static ProbePlayer? CaptureFirstHopTargets(
+    private static bool CapturePointerTargets(
         IMemoryReader reader,
         CapturedPlayerRoots roots,
-        IReadOnlyList<PlannedPointerPath> firstHopPlan,
+        IReadOnlyList<PlannedPointerPath> pointerPlan,
         IReadOnlyList<MemoryRegion> acceptableRegions,
         CancellationToken cancellationToken,
         out string? error)
     {
         error = null;
-        var ranges = new List<CapturedRange> { roots.PlayerRoot, roots.PersonRoot };
-        var seenTargets = new HashSet<ulong>();
-        foreach (var path in firstHopPlan)
+        var seenTargets = roots.Ranges.Select(range => range.Address).ToHashSet();
+        foreach (var path in pointerPlan)
         {
             if (cancellationToken.IsCancellationRequested)
             {
                 error = "probe capture cancelled";
-                return null;
+                return false;
             }
 
-            var root = roots.GetRoot(path.AddressBasis);
-            if (!root.TryGetReadablePointer(path.SourceOffset, out var pointer)
+            if (!roots.TryGetRange(path.SourceRangePath, out var sourceRange)
+                || !sourceRange.TryGetReadablePointer(path.SourceOffset, out var pointer)
                 || !IsSafePointerTarget(pointer.TargetAddress, acceptableRegions)
                 || !seenTargets.Add(pointer.TargetAddress))
             {
@@ -368,31 +425,24 @@ public sealed class ProbeCaptureService
                 error: out error);
             if (targetRange is null)
             {
-                return null;
+                return false;
             }
 
-            ranges.Add(targetRange);
+            roots.Ranges.Add(targetRange);
         }
 
-        var requestedBytes = ranges.Sum(range => range.RequestedLength);
+        var requestedBytes = roots.Ranges.Sum(range => range.RequestedLength);
         if (requestedBytes > ProbeCaptureLimits.MaxBytesPerPlayer)
         {
             throw new InvalidOperationException("probe capture exceeded its per-player byte ceiling");
         }
 
-        return new ProbePlayer
-        {
-            Uid = roots.Candidate.Uid,
-            CandidateAddress = roots.Candidate.ObjectAddress,
-            ClassOffset = roots.Candidate.ClassOffset,
-            PlayerBlockAddress = roots.PlayerBlockAddress,
-            RequestedBytes = requestedBytes,
-            ReadableBytes = ranges.Sum(range => range.ReadableByteCount),
-            Ranges = ranges.Select(range => range.ToDocumentRange()).ToArray(),
-        };
+        return true;
     }
 
-    private static ProbeCapturePolicy CreateCapturePolicy(IReadOnlyList<PlannedPointerPath> firstHopPlan) =>
+    private static ProbeCapturePolicy CreateCapturePolicy(
+        IReadOnlyList<PlannedPointerPath> firstHopPlan,
+        IReadOnlyList<PlannedPointerPath> secondHopPlan) =>
         new()
         {
             MaxPointerDepth = ProbeCaptureLimits.MaxPointerDepth,
@@ -404,17 +454,23 @@ public sealed class ProbeCaptureService
                 new ProbePointerPathQuota
                 {
                     AddressBasis = "player-block",
-                    PointerDepth = ProbeCaptureLimits.MaxPointerDepth,
+                    PointerDepth = ProbeCaptureLimits.FirstPointerDepth,
                     MaxPaths = ProbeCaptureLimits.MaxPlayerRootFirstHopPaths,
                 },
                 new ProbePointerPathQuota
                 {
                     AddressBasis = "person-object",
-                    PointerDepth = ProbeCaptureLimits.MaxPointerDepth,
+                    PointerDepth = ProbeCaptureLimits.FirstPointerDepth,
                     MaxPaths = ProbeCaptureLimits.MaxPersonRootFirstHopPaths,
                 },
+                new ProbePointerPathQuota
+                {
+                    AddressBasis = "pointer-target",
+                    PointerDepth = ProbeCaptureLimits.MaxPointerDepth,
+                    MaxPaths = ProbeCaptureLimits.MaxSecondHopTargetsPerPlayer,
+                },
             },
-            SelectedPaths = firstHopPlan
+            SelectedPaths = firstHopPlan.Concat(secondHopPlan)
                 .Select(
                     path => new ProbeSelectedPointerPath
                     {
@@ -523,6 +579,7 @@ public sealed class ProbeCaptureService
             PlayerBlockAddress = playerBlockAddress;
             PlayerRoot = playerRoot;
             PersonRoot = personRoot;
+            Ranges = new List<CapturedRange> { playerRoot, personRoot };
         }
 
         public PersonCandidate Candidate { get; }
@@ -533,24 +590,40 @@ public sealed class ProbeCaptureService
 
         public CapturedRange PersonRoot { get; }
 
-        public CapturedRange GetRoot(string addressBasis) => addressBasis switch
+        public List<CapturedRange> Ranges { get; }
+
+        public bool TryGetRange(string relativePath, out CapturedRange range)
         {
-            "player-block" => PlayerRoot,
-            "person-object" => PersonRoot,
-            _ => throw new ArgumentOutOfRangeException(nameof(addressBasis)),
-        };
+            range = Ranges.FirstOrDefault(candidate => candidate.RelativePath == relativePath)!;
+            return range is not null;
+        }
+
+        public ProbePlayer ToProbePlayer() =>
+            new()
+            {
+                Uid = Candidate.Uid,
+                CandidateAddress = Candidate.ObjectAddress,
+                ClassOffset = Candidate.ClassOffset,
+                PlayerBlockAddress = PlayerBlockAddress,
+                RequestedBytes = Ranges.Sum(range => range.RequestedLength),
+                ReadableBytes = Ranges.Sum(range => range.ReadableByteCount),
+                Ranges = Ranges.Select(range => range.ToDocumentRange()).ToArray(),
+            };
     }
 
     private sealed class PathAvailability
     {
-        public PathAvailability(string addressBasis, string sourcePointerPath, int sourceOffset)
+        public PathAvailability(string addressBasis, string sourceRangePath, string sourcePointerPath, int sourceOffset)
         {
             AddressBasis = addressBasis;
+            SourceRangePath = sourceRangePath;
             SourcePointerPath = sourcePointerPath;
             SourceOffset = sourceOffset;
         }
 
         public string AddressBasis { get; }
+
+        public string SourceRangePath { get; }
 
         public string SourcePointerPath { get; }
 
@@ -561,6 +634,7 @@ public sealed class ProbeCaptureService
 
     private sealed record PlannedPointerPath(
         string AddressBasis,
+        string SourceRangePath,
         string SourcePointerPath,
         int SourceOffset,
         int PointerDepth,
