@@ -6,15 +6,16 @@ Active
 
 ## Intent
 
-Add a reusable, developer-only probe for finding FM26 player data in memory. The probe must capture small, labeled memory samples for explicit player UIDs and compare those samples with FM-exported CSV values. It must accept the real Youth Academy and Moneyball export shapes through bounded full-export requests. It will support later offset research without changing production snapshot data until an offset has been independently verified.
+Add a reusable, developer-only probe for finding FM26 player data in memory. The probe must capture small, labeled memory samples for explicit player UIDs and compare those samples with FM-exported CSV values. It must accept the real Youth Academy and Moneyball export shapes through bounded full-export requests. When scalar root and pointer-window correlation fails, it must support bounded discovery and analysis of player-linked record structures. It will support later offset research without changing production snapshot data until a location or derivation has been independently verified.
 
 ## User-visible behavior
 
 - A developer can export a player view from FM and request a bounded memory capture for every explicit UID in that CSV while the same save state remains open.
 - A developer can keep the full current sample exports unchanged. The fixed 128-player ceiling accommodates the largest current export without removing the hard safety bound.
 - The bridge writes a versioned `probe.json` with game, layout, module, candidate-address, root-window, and bounded pointer-target metadata for each matched UID.
+- A structure-aware capture preset can inventory bounded memory contexts that contain exact references to the requested players, then capture only a versioned record shape justified by that inventory.
 - A repository command can correlate declared integer or decimal CSV values against one capture and can compare before-and-after CSV/capture pairs. It reports excluded cells and requires explicit normalization for compound or unit-bearing values.
-- Analysis reports candidate relative paths, offsets, encodings, match coverage, and ambiguity. It never labels a candidate as a verified production offset.
+- Analysis can compare direct structured values and declared record aggregates. It reports candidate relative paths, offsets, encodings, non-zero match coverage, and ambiguity. It never labels a candidate as a verified production offset.
 - Research requests and outputs remain separate from Load Data. The app has no new UI, and schema-v5 `dump.json` remains unchanged.
 
 ## Invariants
@@ -28,9 +29,12 @@ Add a reusable, developer-only probe for finding FM26 player data in memory. The
 - A successful `probe.json` is written through a temporary file and atomically replaced. A failed probe must not replace the prior successful capture; its terminal state belongs in `probe-status.json`.
 - Each captured byte range records its address basis, relative path or offset, requested length, readable spans or masks, and encoded bytes. Unread bytes must never appear as real zero values. Pointer targets retain the source pointer path so analysis can report a reproducible location.
 - Pointer traversal may start only from fully readable aligned pointer cells, and a target must fall inside a pre-enumerated acceptable committed memory region before capture.
+- Reverse-reference discovery may search only the same pre-enumerated committed regions for the requested players' exact UID, person-object address, or player-block address. It must use one bounded pass, deterministic grouping, fixed context counts, and fixed byte ceilings.
+- A structured record capture may follow only a compiled-in, versioned layout recipe learned from the bounded inventory. Requests must not supply process addresses, record offsets, strides, counts, or byte ceilings.
 - The comparison tool must reject or clearly report malformed CSV, duplicate or missing UIDs, incompatible capture metadata, unreadable ranges, unsupported numeric values, and unmatched rows.
 - UID handling, missing-value handling, units, compound values, and decimal rounding must be explicit. The tool must not guess a field's meaning from its header or silently coerce display text into scalar truth.
 - Correlation results are hypotheses. Production layouts, dump schemas, SQLite, Academy behavior, and Moneyball features change only in later features after independent live validation.
+- Zero-valued rows may support a candidate but cannot establish it. Every accepted career-stat candidate must reproduce every eligible row, including every non-zero value, across the available synchronized cohorts without an equally strong conflict.
 - Raw CSV exports, probe captures, and analysis output stay untracked under `.work/` or outside the repository. They must not enter Git.
 
 ## Non-goals
@@ -40,6 +44,7 @@ Add a reusable, developer-only probe for finding FM26 player data in memory. The
 - Adding snapshot history or reconstructing statistics from earlier points in a season.
 - Adding a product-facing probe UI or sending raw memory over Tauri IPC.
 - Capturing the whole heap, following arbitrary addresses supplied by the operator, or performing recursive unbounded pointer scans.
+- Adding a generic reverse-pointer graph, accepting operator-defined structure recipes in the live bridge, or retaining every reference hit found in the heap.
 - Supporting non-numeric CSV correlation, save-file parsing, non-Windows FM editions, or unsupported FM builds.
 - Treating every exported display field as a distinct stored scalar. Later integration may derive rates, percentages, and aggregates from verified base values when that preserves the required semantics.
 - Requiring a controlled before/after sample. Diff remains available when a useful state transition can be captured, but cross-sectional replication is the normal evidence path.
@@ -56,7 +61,7 @@ Add a reusable, developer-only probe for finding FM26 player data in memory. The
 - Existing behavioral assumptions: full candidate discovery takes about 26 seconds on the reference save and already retains the addresses needed to derive player and person bases. Live FM attach validation remains manual on Windows.
 - Architectural seams: capture and raw-memory interpretation stay in the C# bridge; a developer CLI prepares bounded full-export requests and analyzes local CSV/JSON files; Rust, React, and snapshot ingest remain outside the feature.
 - Project validation commands: `./scripts/dev bridge-test` runs fake-memory C# tests; `./scripts/dev check` remains the repository commit gate; `./scripts/dev bridge-install` installs a live-test DLL on Windows/WSL.
-- Primary risks: unsafe capture breadth, interference with production scans, misleading false correlations, stale or mismatched CSV/captures, and insufficient pointer reach for indirect history structures.
+- Primary risks: unsafe capture breadth, interference with production scans, misleading zero-driven correlations, stale or mismatched CSV/captures, and incorrect grouping or aggregation of indirect history records.
 
 ## Feature architecture
 
@@ -66,16 +71,19 @@ FM player-view CSV
   -> probe-request.json with explicit UIDs
   -> BepInEx bridge: supported layout + existing candidate discovery
   -> fixed player/person windows + budgeted pointer targets
+  -> optional bounded reference inventory + versioned record recipe
   -> probe-status.json + atomic probe.json
   -> ./scripts/dev memory-probe correlate | diff
-  -> ranked candidate paths and ambiguity report
+  -> direct or aggregate candidate paths + ambiguity report
 ```
 
 The probe protocol has its own schema version and file names under the existing bridge data directory. It reuses the bridge's layout resolution, candidate scanner, safe memory reader, cancellation path, and scan gate, but it does not enter the production status/dump protocol.
 
 The capture records two stable roots per matched candidate: player-block-relative and person-object-relative. It collects roots for the full requested cohort, ranks safe pointer source paths by cross-player availability, and reserves independent quotas for the two roots before it captures any target. It may repeat this planning step once across the selected first-hop ranges. Every target retains its root-relative source path, and fixed depth, count, window, address-region, and byte ceilings prevent graph expansion. The request may select UIDs and a bounded preset, but it may not supply arbitrary process addresses or remove the built-in limits.
 
-The .NET developer tool under `bridge/Tools/MemoryProbe/` owns CSV parsing, declared value normalization, request creation and waiting, scalar interpretation, cross-player correlation, and optional before/after comparison. It uses runtime libraries only. `scripts/dev` exposes the tool as `memory-probe` so the repository retains one command surface.
+The .NET developer tool under `bridge/Tools/MemoryProbe/` owns CSV parsing, declared value normalization, request creation and waiting, scalar and structured-record interpretation, cross-player correlation, and optional before/after comparison. It uses runtime libraries only. `scripts/dev` exposes the tool as `memory-probe` so the repository retains one command surface.
+
+The generic depth-two capture remains available for ordinary scalar research. A separate compiled-in history preset first inventories exact UID and player-root references in the same safe memory regions. It groups bounded contexts by stable structural provenance instead of treating every hit as interchangeable. Live evidence from that inventory must justify one FM-versioned record recipe before the bridge follows a container or captures record rows. The analyzer may test direct fields and explicit aggregates from those rows, but it must keep raw values, filters, and aggregation rules visible.
 
 One PR is appropriate. Capture without analysis is not yet a useful research workflow, while the analyzer depends directly on the probe schema. The final documentation commit closes the same developer capability and records the manual live validation contract.
 
@@ -87,15 +95,16 @@ One PR is appropriate. Capture without analysis is not yet a useful research wor
 - Known FM 26.3 layout pins provide enough anchors to test whether correlation finds correct relative locations and transforms.
 - Academy currently represents senior appearances, goals, assists, and international caps as unavailable nullable values. The later integration will omit assists because FM does not export the required career value.
 - Production Load Data depends on frozen dump schema v5 and the existing `request.json` / `status.json` files.
-- All five sample exports are valid UTF-8, semicolon-delimited CSV files with unique UIDs and no malformed rows. The paired Youth Academy and Moneyball exports contain the same UID sets within each save state.
-- `AT Apps`, `AT Gls`, and `Int Apps` mean totals across all senior matches, including league, cup, and continental matches. These are the three Academy research targets.
+- The three current player-search exports are valid UTF-8, semicolon-delimited CSV files with unique UIDs and no malformed rows. Their synchronized captures contain 101, 120, and 23 players from one FM 26.3.2 state.
+- `AT Apps` and `AT Gls` are all-senior club totals across league, cup, continental, and other senior matches. `Int Apps` is the senior international appearance total. These are the three Academy research targets.
 - Moneyball values are season-to-date statistics at the moment of capture. FM does not expose earlier values through the export, so each load is an honest point-in-time snapshot rather than a complete season history.
 - Compound `Appearances` values represent starts and substitute appearances. Later persistence will store those counts separately and derive total appearances.
 - The revised Youth Academy export provides strong variation across 103 players. The Moneyball exports mix integers, rounded decimals, missing values, unit-bearing values, localized currency text, and compound appearances.
+- The three current player-search exports contain 244 rows for 235 distinct UIDs. Nine UIDs repeat without a conflicting value. They provide all seven current career targets: `AT Apps`, `AT Gls`, `AT League Apps`, `AT League Goals`, `Int Apps`, `Int Gls`, and `International Assists`.
 
 ### Assumptions
 
-- Fixed player/person root windows plus a small, budgeted pointer traversal will expose enough nearby structure to research numeric player fields.
+- Exact UID and player-root references will expose a bounded, repeatable route to the record structure that supplies the exported career totals.
 - FM player-view exports include a stable numeric UID column and can include varied known and target numeric columns.
 - The existing full candidate walk is fast enough for an occasional developer probe; targeted scanner optimization is not required for the first version.
 
@@ -106,7 +115,7 @@ One PR is appropriate. Capture without analysis is not yet a useful research wor
 - Provide single-capture correlation and before/after diff in one .NET CLI with no new package dependency.
 - Keep research artifacts disposable and untracked; preserve only validated conclusions in later feature ledgers or layout code.
 - Treat the sample exports as temporary evidence and record only their durable field-shape and coverage conclusions in this ledger and the runbook.
-- Raise the fixed request ceiling from 16 to 128 players. The initial capture used a 1,408-byte per-player bound and a 180,224-byte full-request bound. Commits 5 and 6 may replace these limits only with new fixed ceilings that remain below 512 KiB of raw memory for a 128-player request.
+- Raise the fixed request ceiling from 16 to 128 players. The initial capture used a 1,408-byte per-player bound and a 180,224-byte full-request bound. Commits 5 and 6 replace these limits with fixed generic-preset ceilings that remain below 512 KiB of raw memory for a 128-player request. The structure-aware preset has separate compiled-in ceilings because it captures a different artifact shape.
 - Do not require a controlled before/after sample or disjoint UID sets. Candidate discovery may use one synchronized cohort with varied values. Before later production integration, require fresh synchronized evidence that recovers the known anchors and repeats the same path and encoding with meaningful value variation. A different player set is preferred when FM can provide one, but it is not mandatory. Keep diff as optional supporting evidence.
 - Select pointer paths across the requested cohort instead of giving each player the first valid pointers found in player-root order. Rank paths by cross-player availability with deterministic tie-breaking, reserve separate first-hop quotas for player and person roots, and record the fixed capture policy in the probe output.
 - Permit one fixed second hop after cohort-level path selection. Allow at most eight player-root first-hop targets, eight person-root first-hop targets, and eight second-hop targets per player. Keep every target window at 128 bytes. Together with the existing roots, the revised maximum is 3,968 bytes per player and 507,904 raw bytes for 128 players.
@@ -114,12 +123,16 @@ One PR is appropriate. Capture without analysis is not yet a useful research wor
 - Preserve Moneyball statistics as season-to-date point-in-time values. The existing snapshot-history backlog item may later retain earlier captures inside the app, but this probe does not reconstruct history that FM cannot export.
 - Normalize compound appearances into separate starts and substitute-appearance values. A later integration derives total appearances instead of storing the formatted display string.
 - Keep production field selection, derived-stat formulas, schema changes, and persistence work in later feature plans after the probe identifies and independently validates the required source values.
+- Preserve the generic depth-two preset as a completed scalar-research path. Add structure-aware work as a separate preset; do not increase its pointer depth or path quotas.
+- Use the three synchronized player-search cohorts as the required cross-sectional evidence for all seven career targets. Acceptance requires complete eligible-row and non-zero-row coverage across 235 distinct players; the nine repeated UIDs are a consistency check, not additional independent players.
+- Treat `International Assists` as an international-career target only. It does not replace the unavailable all-senior Academy assists value.
 - Do not create an ADR. The feature stays within ADR-0016's established C# memory-reader boundary and does not change a product-facing or persisted contract.
 
 ### Unknowns
 
-- Whether target career statistics are inline scalar totals, counters inside another object, or derived from history collections.
-- Whether the planned depth-two, 3,968-byte capture exposes the Academy career-statistics structure.
+- Whether the player-linked structure contains direct totals, per-season or per-competition records, or both.
+- Whether one stable reverse-reference signature reaches both club and international records or the two domains need separate FM-versioned recipes.
+- The exact container layout, record stride, category fields, and aggregation rules. Commit 8 must obtain live structural evidence before Commit 9 pins them.
 - Whether rounded decimal statistics are stored directly as floating-point values, fixed-point totals, or derived from other counters.
 - Which FM CSV header names and delimiters appear across other locales; the tool must use explicit UID/field mappings and robust delimiter handling rather than one hard-coded English export.
 
@@ -130,12 +143,14 @@ One PR is appropriate. Capture without analysis is not yet a useful research wor
 - Pointer-like values in raw bytes can fan out quickly. Hard depth, count, byte, and UID budgets must remain non-configurable ceilings.
 - Adding probe polling to `Plugin.cs` can disturb shutdown or production request handling. Tests and review must cover priority, mutual exclusion, cancellation, and file isolation.
 - Stats may require a structure-specific reader. If bounded generic capture cannot expose a known indirection in live validation, replan the probe instead of expanding into unbounded traversal.
+- Searching for any matching UID or small integer across many contexts can amplify false positives. Reference inventory must group hits by stable structural provenance before value correlation.
+- A record sum can match a displayed total while using the wrong seasons or competition types. Reports must show record membership, filters, and raw contributions for every aggregate candidate.
 - Sparse event columns can satisfy simple value variation while still producing weak evidence. Require fresh synchronized evidence and inspect related neighboring fields before accepting a binary or rare-event candidate.
 - FM display values can be rounded or derived. A direct byte match may be absent even when the underlying source values are inside the capture, so the analyzer must keep exact, rounded, scaled, and derived evidence distinct.
 
 ## Sample export assessment
 
-The five untracked samples under `.work/` are suitable as the field inventory and as source material for full-export correlation. The revised 103-player Academy export has one synchronized `academy-a` capture. Each other sample still needs a synchronized capture from the same loaded save state before its values can be correlated.
+The earlier five untracked samples established the export shapes. The three current player-search exports under `.work/memory-probe/` now provide synchronized, multi-club evidence for the career targets from one FM 26.3.2 state.
 
 - The original Youth Academy and Moneyball files contain the same 75 UIDs from one club. They remain useful as one paired data set, but the Moneyball file has 41 players with zero minutes and weak rare-event coverage.
 - The revised Youth Academy and Moneyball files contain the same 103 UIDs and no overlap with the original pair. They can provide another player set only if the matching save state is available; the evidence contract does not require that operationally unavailable state.
@@ -143,8 +158,12 @@ The five untracked samples under `.work/` are suitable as the field inventory an
 - The player-search Moneyball file contains 72 different UIDs across 51 clubs and 18 divisions. It has 69 players with minutes, 69 ratings, four non-zero penalty-save rows, and broad variation across the other match statistics.
 - Across the revised and player-search Moneyball files, only `Penalties Saved`, `Red cards`, and `Mistakes Leading to Goals` remain notably sparse. Fresh synchronized agreement and neighboring-field structure are mandatory for these fields.
 - Academy assists are intentionally absent because FM cannot export the required all-senior-career value. They are no longer a missing research input.
-- The current analyzer cannot consume several Moneyball shapes: compound appearances such as `32 (5)`, rounded decimals such as xG and rating, `-` for unavailable ratings, and unit-bearing values such as `205.1km`. Currency ranges, localized wages, dates, and text enums are not direct scalar truth and remain outside automatic correlation.
+- The analyzer accepts declared compound, rounded-decimal, unavailable, and unit-bearing shapes. Currency ranges, localized wages, dates, and text enums are not direct scalar truth and remain outside automatic correlation.
 - Known values in the exports remain useful anchors, but display values are not always identical to the existing product contract. For example, a localized transfer-value range is not the same field as the bridge's scalar `marketValueGbp`.
+- The three current exports contain 101, 120, and 23 rows. Together they contain 244 rows, 235 distinct UIDs, and nine repeated UIDs with identical numeric values.
+- Across the 235 distinct players, the non-zero evidence counts are 224 `AT Apps`, 190 `AT Gls`, 219 `AT League Apps`, 184 `AT League Goals`, 161 `Int Apps`, 103 `Int Gls`, and 55 `International Assists`. The corresponding distinct-value counts are 175, 70, 175, 66, 79, 27, and 6.
+- `AT Apps` is never below `AT League Apps`, and `AT Gls` is never below `AT League Goals`. These relations are useful validation constraints but do not identify a memory location by themselves.
+- `International Assists` is sparse and ranges only from 0 to 6. Its 55 non-zero rows must match; agreement on its 180 zero rows is not positive evidence.
 
 ## Walking skeleton
 
@@ -162,9 +181,9 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 **Provisional PR title:** `feat(memory-probe): add reusable FM memory research tooling`
 
-**Build-feature-loop profile:** Terra xhigh — this is the highest implementation profile among the PR's non-removed commits.
+**Build-feature-loop profile:** Terra Max — the structure inventory and record reader add bounded full-region reference discovery and live container traversal.
 
-**Purpose:** Deliver one complete developer workflow for bounded full-export capture, CSV correlation, optional before/after comparison, and repeatable cross-sectional validation. The capture and analyzer share one research schema and therefore belong in one review and merge boundary.
+**Purpose:** Deliver one complete developer workflow for bounded full-export capture, scalar and structured-record correlation, optional before/after comparison, and repeatable cross-sectional validation. The capture presets and analyzer share one isolated research protocol and therefore belong in one review and merge boundary.
 
 **Depends on:** Completed FM26 memory read and bridge scan performance foundations. Youth Academy supplies the first downstream research need but is not changed by this PR.
 
@@ -403,7 +422,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 7 — Revise and repeat the live evidence workflow
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(memory-probe): revise live evidence workflow`
 
@@ -440,25 +459,181 @@ With fake memory, accept one research request containing one UID, reuse candidat
 - Verify known anchors recover before any Academy target is considered.
 - Verify a negative live result triggers structure-specific replanning instead of a wider generic memory scan.
 
+#### Commit 8 — Inventory bounded player-linked structures
+
+**Status:** Active
+
+**Provisional commit:** `feat(memory-probe): inventory player-linked structures`
+
+**Work:** Add a separate history-research capture preset that scans the existing acceptable memory regions once for exact references to each requested UID, person-object address, and player-block address. Group hits across the cohort by stable object or record provenance, rank those groups deterministically, and capture one fixed context for each selected player/signature pair. Record the anchor kind, anchor offset, structural signature, cohort coverage, total hit count, and fixed limits in a new versioned probe schema.
+
+**Out of scope:**
+
+- Following a candidate container, choosing record offsets, or aggregating career values.
+- Increasing the generic preset's pointer depth, path quotas, target size, or byte ceilings.
+- Accepting a process address, offset, stride, count, signature, or byte limit from the request.
+- Adding FM UI bindings, invoking game mutators, or introducing a checked-in dependency on machine-local interop assemblies.
+
+**Implementation packet:**
+
+- Owners and files: focused additions under `bridge/Research/`; `bridge/Research/ProbeCaptureService.cs` only for preset routing and shared roots; probe request/document models and protocol versions under `bridge/Models/` and `bridge/Protocol/`; `bridge/Tools/MemoryProbe/` for preset selection and schema loading; focused fake-memory tests under `bridge/Tests/`.
+- Existing patterns to verify: `RegionEnumerator.GetCandidateRegions`, `PersonScanner`'s block scan and cancellation checks, module-relative vtable validation, dynamic class-offset lookup, cohort path ranking, `ProbeWriter` atomic replacement, request priority, and `FakeMemoryReader` sparse-region fixtures.
+- Constraints and invariants: search only the three exact anchor kinds for requested players; scan each acceptable region at most once; exclude the known root occurrences; never serialize unselected heap bytes; select at most eight structural signatures per anchor kind; capture at most one 128-byte context per selected signature and player; retain roots for known-anchor checks; enforce 4,480 bytes per player and 573,440 raw bytes for 128 UIDs; treat multiple hits for one player/signature as visible multiplicity, not interchangeable evidence; do not promote a hit that lacks stable object or repeated-record provenance.
+- Dependencies and ordering: preserve the generic schema-v2 preset and its analyzer compatibility. The history preset may use a new request protocol and result schema because its policy and output differ. Capture and inspect all three current cohorts before Commit 9 fixes a record recipe.
+
+**Implementation profile:** Terra Max — this adds a second full-region scan with cross-player reference grouping, normalized provenance, strict memory limits, and a new research schema inside the live FM process.
+
+**Review profile:** Sol High — review must challenge scan cost, false structural grouping, address safety, deterministic selection, protocol compatibility, and every path that could retain more heap data than the fixed policy permits.
+
+**Validation:** Start with fake memory where a history object contains a requested player's person pointer and career counters, but the player and person roots contain no pointer back to that object. Confirm the generic preset cannot capture it. Then prove the history preset finds the reference, normalizes the same object/field signature across several players, keeps multiple-hit counts visible, excludes unrelated UID bytes, produces deterministic ordering under permuted region and player input, and enforces the 4,480-byte player and 573,440-byte request ceilings. Prove malformed presets, cancellation, unsafe regions, missing UIDs, and output failure preserve the prior successful probe and all production files. Run `./scripts/dev bridge-test` and `./scripts/dev check`. After installation, capture the 101-, 120-, and 23-player cohorts and record only the stable signature inventory in this ledger.
+
+**Stop conditions:** Replan instead of widening the inventory if no object-backed or repeated-record signature appears across meaningful non-zero players. Stop if a safe inventory requires retaining every heap hit, an operator-supplied address, more than one region pass, a generic reverse-pointer graph, or a machine-local interop build dependency. Reassess Commit 9 if club and international evidence resolve through different structures.
+
+**Review mandate:**
+
+- Verify the scan compares only exact requested anchors and does not become a general value search or heap dump.
+- Verify every context is fully inside an acceptable committed region and every count and byte ceiling is enforced below plugin request handling.
+- Verify structural signatures use stable provenance rather than absolute addresses, scan order, or first-hit order.
+- Verify multiple hits, absent signatures, and excluded hits remain visible without synthesizing zero-filled contexts.
+- Verify schema and preset compatibility errors are explicit in capture, correlation, and diff modes.
+- Verify scan-gate priority, cancellation, shutdown, atomic replacement, and production-file isolation remain unchanged.
+
+#### Commit 9 — Capture bounded career-history records
+
+**Status:** Pending
+
+**Provisional commit:** `feat(memory-probe): capture bounded career records`
+
+**Work:** Use Commit 8's live structural evidence to add the smallest FM 26.3 research recipe that reaches the identified club and international career containers. Validate each observed descriptor, enumerate its records, and serialize bounded record slices with stable collection and record provenance. Keep the recipe versioned with the supported layout and expose it only through the history preset.
+
+**Out of scope:**
+
+- Guessing a container shape that Commit 8 did not reproduce across the live cohorts.
+- Adding a general object browser, general collection parser, arbitrary recipe language, or operator-configurable record reads.
+- Assigning statistic meanings, calculating totals, or changing production extraction and schema v5.
+- Loading or invoking FM UI panels to make history data appear.
+
+**Implementation packet:**
+
+- Owners and files: a focused versioned recipe under `bridge/Layouts/` or `bridge/Research/`; structured-record additions to `bridge/Models/ProbeDocument.cs`; capture orchestration under `bridge/Research/`; schema validation under `bridge/Tools/MemoryProbe/ProbeAnalysis.cs`; fake-memory fixtures under `bridge/Tests/`.
+- Existing patterns to verify: layout fail-closed resolution, checked address arithmetic, acceptable-region membership, fully readable ranges, pointer/alias deduplication, selected-path provenance, atomic output, and analyzer schema validation.
+- Constraints and invariants: the recipe records every pointer hop, descriptor field, count field, record stride, and selected record slice; all arithmetic is checked before reading; counts must be plausible and internally consistent; any cap that would truncate a player's required records fails the capture instead of producing an aggregateable partial set; allow at most two career collections, 128 records per collection, and 64 captured bytes per record; enforce 18,432 raw bytes per player and 2,359,296 bytes per 128-UID request; keep all bounds compiled in and layout-versioned.
+- Dependencies and ordering: Commit 8 must identify the descriptor shape and its stable provenance before this packet is implemented. Update the exact recipe and ceilings in this ledger if live evidence requires a narrower shape; replan if it requires a materially broader one.
+
+**Implementation profile:** Terra Max — the implementation converts observed raw structure into safe collection traversal where one bad count, stride, or pointer could expand process-memory reads or produce silently incomplete totals.
+
+**Review profile:** Sol High — review must independently verify the evidence-to-recipe link, overflow and truncation behavior, record provenance, layout versioning, and hard bounds.
+
+**Validation:** Start with a fake descriptor and record array that reproduces the exact shape observed in Commit 8. Confirm the inventory-only preset cannot expose all row values. Then prove the recipe captures every required record in deterministic order, rejects negative or excessive counts, invalid begin/end or data/count relations, multiplication and addition overflow, partial records, out-of-region arrays, aliases, and unsupported layouts. Prove a player at the record cap succeeds and one above it fails without replacing prior output. Run `./scripts/dev bridge-test` and `./scripts/dev check`, then recapture all three cohorts and confirm the same recipe resolves for every requested UID.
+
+**Stop conditions:** Replan if the cohorts do not share a stable descriptor and record shape, if records appear only after opening an FM UI panel, if complete rows exceed the fixed request ceiling, or if club and international structures cannot be represented as at most two explicit recipes. Do not proceed to aggregation with truncated or structurally ambiguous records.
+
+**Review mandate:**
+
+- Verify every descriptor field and record slice traces to Commit 8 live evidence and a supported FM layout.
+- Verify corrupt or excessive counts fail before allocation, address arithmetic, or output replacement.
+- Verify record ordering and paths do not depend on absolute addresses or dictionary enumeration.
+- Verify no missing, partial, duplicate, or aliased row can enter a complete collection silently.
+- Verify the recorded policy lets the analyzer distinguish complete, empty, absent, and rejected collections.
+- Verify the history recipe does not alter the generic preset or any product extraction path.
+
+#### Commit 10 — Correlate structured career totals
+
+**Status:** Pending
+
+**Provisional commit:** `feat(memory-probe): correlate career record totals`
+
+**Work:** Extend correlation for structured history captures. Compare declared CSV fields with direct values in collection headers or record slices and with explicit aggregates justified by the observed record semantics. Report each candidate's collection path, scalar offset and encoding, record-selection rule, aggregation rule, raw contributions, total coverage, non-zero coverage, exclusions, and conflicts. Evaluate all seven current career targets together so neighboring fields and the all-senior versus league subset relations can challenge false matches.
+
+**Out of scope:**
+
+- Searching arbitrary record subsets until a sum matches, inferring competition meanings from English CSV headers, or hiding an unexplained FM formula behind a candidate.
+- Treating an aggregate with missing or truncated records as evidence.
+- Converting a research candidate into a production layout field, dump value, database column, Academy metric, or Moneyball statistic.
+- Reconstructing prior-season snapshots or the unavailable all-senior assists total.
+
+**Implementation packet:**
+
+- Owners and files: structured capture validation and candidate enumeration in `bridge/Tools/MemoryProbe/ProbeAnalysis.cs`; CLI/report changes in `bridge/Tools/MemoryProbe/MemoryProbeCli.cs`; focused CSV and structured-record fixtures under `bridge/Tests/MemoryProbeCliTests.cs` or a dedicated test file.
+- Existing patterns to verify: declared field mappings and transforms, eligible/excluded UID accounting, deterministic candidate ranking, exact versus rounded evidence, duplicate-path reporting, schema compatibility, and before/after separation.
+- Constraints and invariants: analyze only complete collections; keep direct and aggregate evidence distinct; allow only recipe-declared record filters and aggregations; require the same candidate recipe across cohorts; require complete eligible-row coverage and report non-zero coverage separately; deduplicate the nine repeated UIDs when calculating combined support; enforce `AT Apps >= AT League Apps` and `AT Gls >= AT League Goals` as consistency checks; never map `International Assists` to Academy assists.
+- Dependencies and ordering: consume only the structured schema and exact record semantics delivered by Commit 9. If Commit 9 exposes direct summary counters, retain record aggregation only where it proves another required field or future reuse.
+
+**Implementation profile:** Terra xhigh — the work is offline and bounded, but candidate aggregation and sparse-value evidence can create convincing false matches unless provenance and denominators remain exact.
+
+**Review profile:** Sol High — review must challenge zero-driven candidates, accidental subset fitting, duplicate-player inflation, incomplete collections, semantic mixing, and deterministic ranking across three captures.
+
+**Validation:** Start with a fixture where a zero-heavy wrong path outranks the real field by total matches but fails non-zero coverage. Add direct-summary and multi-record fixtures for all-senior totals, league subsets, and international totals. Prove raw contributions sum to each reported aggregate, repeated UIDs count once in combined evidence, missing records invalidate aggregation, relationship violations remain visible, and ties remain ambiguous. Run the exact seven-field correlations for the three live captures, then run `./scripts/dev memory-probe --help`, `./scripts/dev bridge-test`, and `./scripts/dev check`.
+
+**Stop conditions:** Stop for developer input if FM's exported meaning cannot be reproduced from visible record fields without an undocumented filter or formula. Replan if exact aggregation needs a general expression language, if different cohorts require different recipes, or if any target matches only zero-valued players.
+
+**Review mandate:**
+
+- Verify candidate acceptance requires every eligible row and every eligible non-zero row, not a high total dominated by zeros.
+- Verify combined coverage uses 235 distinct UIDs and reports the nine overlaps separately.
+- Verify every aggregate exposes its selected records, predicate, scalar encoding, and arithmetic.
+- Verify club totals, league subsets, and international totals cannot be mixed across structures or fields.
+- Verify sparse `International Assists` evidence cannot pass through zero agreement or a one-value coincidence.
+- Verify reports still label every result as candidate, ambiguous, or no evidence rather than verified production data.
+
+#### Commit 11 — Validate and document the career-history recipes
+
+**Status:** Pending
+
+**Provisional commit:** `docs(memory-probe): validate career history recipes`
+
+**Work:** Reinstall the final bridge, capture the unchanged 101-, 120-, and 23-player CSV cohorts with new request IDs, and correlate UID, CA, PA, Determination, and all seven career targets. Record the exact versioned structure recipe or direct location, encoding, aggregation semantics, cohort coverage, non-zero coverage, and ambiguity for each target. Update the runbook, bridge protocol summary, and current architecture to describe only the implemented structure-aware workflow and its final fixed limits.
+
+**Out of scope:**
+
+- Committing raw CSVs, captures, correlation reports, absolute addresses, interop assemblies, or machine-specific paths.
+- Calling a candidate a production offset or integrating it into schema v5, Rust, SQLite, Academy, or Moneyball.
+- Relaxing the evidence contract because one field is sparse or because the three files share one save state.
+- Adding another generic capture expansion when a target remains unresolved.
+
+**Implementation packet:**
+
+- Owners and files: `bridge/MEMORY_PROBE.md`; `bridge/README.md`; `.wiki/ARCHITECTURE.md`; this ledger for concise evidence, final recipes, and any unresolved target.
+- Existing patterns to verify: new request IDs, exact UID-set checks, known anchors, capture-policy metadata, untracked artifacts, same-state synchronization, versioned layouts, and the candidate-versus-production boundary.
+- Constraints and invariants: use all 244 rows and deduplicate to 235 players for combined evidence; require every eligible row and every eligible non-zero row to reproduce; confirm the nine repeated UIDs agree; require the same relative recipe and encoding in all cohorts where the field varies; preserve raw contribution evidence for derived totals; document unresolved fields honestly.
+- Dependencies and ordering: run only after Commits 8 through 10 pass automated validation and their live evidence has fixed the recipe. If any of the seven targets fails the contract, keep the feature Active and replan that target instead of marking final validation complete.
+
+**Implementation profile:** Luna Max — the remaining implementation is evidence reconciliation and exact operational writing once the structure and analyzer are settled.
+
+**Review profile:** Sol High — final documentation determines whether later production work can trust the discovered locations and derivations, so review must verify every claim against the three untracked reports and implemented recipe.
+
+**Validation:** Run `./scripts/dev memory-probe --help`, `./scripts/dev bridge-test`, `./scripts/dev check`, and `./scripts/dev bridge-install`. With the matching FM state open, create three new history-preset captures and reports. Confirm all requested UIDs, supported layout metadata, structural signatures, descriptor and record limits, complete collections, known anchors, exact non-zero coverage, repeated-UID consistency, and no equally strong conflicting candidate. Run a fresh-context Sol High review over the documentation and concise evidence before marking the commit complete.
+
+**Stop conditions:** Do not mark the feature ready for closeout unless every target is either supported by the full evidence contract or explicitly replanned as unresolved. Do not widen generic traversal. Stop for developer input if the source CSV state is no longer available or if a target's exported semantics remain uncertain after structured inspection.
+
+**Review mandate:**
+
+- Verify each of the seven target claims against all applicable non-zero rows in all three reports.
+- Verify the documented recipe, limits, commands, schema versions, and report fields match implementation.
+- Verify repeated UIDs agree but do not inflate the 235-player combined denominator.
+- Verify direct and derived fields remain clearly distinguished and every aggregate states its exact inputs.
+- Verify no absolute address or raw artifact enters Git and no weak candidate is presented as verified.
+- Verify unresolved evidence leaves the feature Active with a concrete replan condition.
+
 ## Active work
 
 **PR:** PR 1 — Add reusable FM memory research tooling
 
-**Commit:** Commit 7 — Revise and repeat the live evidence workflow
+**Commit:** Commit 8 — Inventory bounded player-linked structures
 
 ### RED proof
 
-The existing runbook and bridge summary still describe the former first-hop capture policy and retain a disjoint-UID expectation that FM cannot reliably satisfy. Verify the final commands and output shape against the implemented schema-v2 policy before documenting the same-cohort recapture procedure.
+Create fake memory where a separate history object contains a requested player's exact person pointer and labeled counters, but neither player root points back to that object. The current generic depth-two preset must miss the history object. This proves that another generic outgoing hop cannot solve the observed reverse-link case.
 
 ### Expected outcome
 
-A developer can build and install the final bridge, recapture the unchanged 103-player Academy cohort with a new request ID, and correlate known anchors plus the three career-stat targets. The runbook states the schema-v2 policy, one bounded second hop, 3,968-byte per-player and 507,904-byte full-request ceilings, and the same-cohort fresh-evidence rule without overstating candidate discovery as a verified production offset.
+The history preset finds exact UID and player-root references in one bounded region pass, groups them by stable structural provenance across the cohort, and captures only the selected 128-byte contexts. Its result records hit multiplicity, missing players, selection coverage, and the 4,480-byte player and 573,440-byte request ceilings without changing the generic preset.
 
 ### Explicit exclusions
 
-- No speculative Academy or Moneyball offset is recorded.
+- No container, record, or statistic offset is guessed before live signature evidence exists.
 - No raw CSV, memory, screenshot, or machine-specific artifact is committed.
-- No production bridge, schema-v5, SQLite, Academy, Moneyball, product-facing UI, or generic traversal expansion is added.
+- No production schema-v5, Rust, SQLite, Academy, Moneyball, product-facing UI, interop dependency, or generic traversal expansion is added.
 
 ## Discoveries and replanning
 
@@ -480,7 +655,13 @@ Record material deviations, blockers, and decisions that change remaining work. 
 - Inspection of the capture policy explained the gap. Each player received the two roots and the first four valid targets encountered while scanning the player root, so the quota was full before the person root was considered. No person-root target was captured, and traversal stopped at depth one even though captured first-hop ranges contain further stable pointer cells. This satisfies the existing replan condition for insufficient pointer reach.
 - Commits 5 and 6 replace per-player first-four selection with bounded cohort-level path planning: eight first-hop paths per root and eight second-hop paths, all with 128-byte targets. The resulting fixed maximum is 3,968 bytes per player and 507,904 raw bytes for 128 UIDs. If the revised capture still lacks the targets, the next plan must use a structure-specific history reader rather than a wider generic graph walk.
 - On 2026-08-07, `academy-depth2` recaptured the unchanged 103-player Academy cohort on FM 26.3.2. The bridge reported `ready`, captured every requested UID with no unread ranges, selected 16 first-hop and eight second-hop source paths, and captured 398 depth-two ranges. The capture requested and read 334,464 bytes in total, and no player exceeded 3,456 bytes. Both figures stay below the respective 507,904-byte request and 3,968-byte player ceilings. Correlation recovered full-cohort UID, CA, and PA anchors and the known Determination ×5 path for 85 players.
-- The new target evidence remains insufficient. `AT Apps`, `AT Gls`, and `Int Apps` were all ambiguous, with best coverage of 18, 45, and 36 of 103 players. `AT Gls` included one depth-two path, but five paths tied at the same coverage. Compared with `academy-a`, the best coverages changed only from 16/45/35 to 18/45/36. Do not widen generic traversal. A later feature must use a structure-specific reader for career-history records.
+- The new target evidence remains insufficient. `AT Apps`, `AT Gls`, and `Int Apps` were all ambiguous, with best coverage of 18, 45, and 36 of 103 players. `AT Gls` included one depth-two path, but five paths tied at the same coverage. Compared with `academy-a`, the best coverages changed only from 16/45/35 to 18/45/36. Do not widen generic traversal. Commits 8 through 11 replace that approach with bounded structure-specific discovery and validation.
+- On 2026-08-07, three synchronized player-search exports supplied 101, 120, and 23 rows from the same FM 26.3.2 state. Together they contain 244 rows for 235 distinct UIDs, with nine repeated UIDs and no conflicting numeric values. All target and anchor cells are present and numeric.
+- The combined non-zero evidence is broad for six targets and usable but sparse for the seventh: 224 `AT Apps`, 190 `AT Gls`, 219 `AT League Apps`, 184 `AT League Goals`, 161 `Int Apps`, 103 `Int Gls`, and 55 `International Assists`. `AT Apps` is never below `AT League Apps`, and `AT Gls` is never below `AT League Goals`.
+- The matching generic captures resolved every requested UID with no unread ranges. They requested and read 339,456, 427,648, and 73,216 bytes; no player exceeded 3,712 bytes. UID, CA, and PA recovered for every player, and the known Determination ×5 path recovered for 82/101, 104/120, and 18/23 players.
+- All seven career targets remained ambiguous. Best generic coverage across the three cohorts was `AT Apps` 13/5/3, `AT Gls` 31/17/5, `AT League Apps` 12/5/3, `AT League Goals` 36/21/5, `Int Apps` 49/28/4, `Int Gls` 79/53/8, and `International Assists` 92/87/13. The high sparse-field figures track zero-valued rows rather than non-zero values.
+- Cross-cohort inspection found no common top candidate with meaningful non-zero support: the best common paths matched at most one non-zero `AT Apps` row and zero non-zero rows for the other six targets. This is a strong negative result for the generic capture, not proof that FM lacks the data.
+- Read-only inspection of the local generated interop metadata found UI binding reference types named `CareerStatsReference`, `CareerStatsFullReference`, and `PlayerHistoryReference`, but did not reveal an obvious typed raw career-record model in the game-plugin assembly. Machine-local interop DLLs remain research context only and must not become a checked-in or required build dependency.
 
 ## Completed work
 
@@ -493,10 +674,11 @@ Record material deviations, blockers, and decisions that change remaining work. 
 | PR 1 | Resolve repository-relative probe paths | 206b775 | Kept `memory-probe` execution at the repository root and made the documented work directory absolute | Review skipped by explicit developer request for the trivial correction | The first live command exposed the wrapper defect; protocol and capture semantics did not change. |
 | PR 1 | Select stable first-hop pointer paths across the cohort | 010125e | Added cohort-level player- and person-root first-hop selection, schema-v2 capture-policy provenance, and legacy single-capture compatibility | Sol High accepted; no Critical, High, Medium, or Nitpick findings | No plan deviation. |
 | PR 1 | Capture a bounded second pointer hop | b8cb4bf | Added deterministic cohort-ranked depth-two capture, compiled-in second-hop quotas and ceilings, complete provenance, and alias/cycle/missing-evidence coverage | Sol High accepted; no Critical, High, Medium, or Nitpick findings | No plan deviation. |
+| PR 1 | Revise and repeat the live evidence workflow | 32ee188 | Updated the runbook, protocol summary, architecture, and same-cohort live evidence contract for schema v2 and bounded depth-two capture | Sol Medium accepted; no actionable findings | The completed live run produced a negative target result and triggered the planned structure-specific replan. |
 
 ## Final validation
 
-**Feature review profile:** Sol High — the final review must connect in-process memory safety, isolated file lifecycle, real-export normalization, deterministic bounded traversal, CLI evidence quality, and live operational instructions across all recorded commits.
+**Feature review profile:** Sol High — the final review must connect in-process memory safety, isolated file lifecycle, real-export normalization, deterministic bounded traversal and reference discovery, structure recipe validity, aggregate evidence quality, and live operational instructions across all recorded commits.
 
 Automated evidence:
 
@@ -507,20 +689,20 @@ Automated evidence:
 
 Manual Windows/FM evidence:
 
-1. Build and install the current DLL with `./scripts/dev bridge-install`, restart FM26, and load a supported save.
-2. Use the fixed field contracts. Moneyball values are season-to-date at capture time, with starts and substitute appearances treated separately. Academy uses `AT Apps`, `AT Gls`, and `Int Apps` across all senior matches; assists are not a target.
-3. Load the state represented by the revised Academy CSV and run a new capture without advancing or changing the save. Reuse the full 103-player UID set and use a new request ID.
-4. Confirm the matching request ID, supported game/layout metadata, exact requested UID set, versioned capture-policy metadata, the 3,968-byte per-player ceiling, the 507,904-byte full-request ceiling, and successful research status.
-5. Run correlation and confirm it reports the known UID, CA, PA, and Determination ×5 paths with the correct interpretations and transparent ambiguity. Use a scalar market-value anchor only when the synchronized export supplies that exact value; treat the localized transfer-value range only as display context.
-6. Run the supported integer and decimal target fields. Record eligible players, exclusions, value diversity, candidate coverage, and whether the result is exact, rounded, scaled, ambiguous, or has no evidence.
-7. Treat the revised capture as candidate discovery because the traversal policy changed. Before production integration, obtain fresh synchronized evidence that recovers the known anchors and repeats the same relative path and encoding with meaningful value variation and no equally strong conflict. The same UID cohort is acceptable; use a disjoint cohort only when FM can provide it naturally. Use diff only as optional supporting evidence.
-8. For sparse Moneyball fields, inspect whether related statistics form a coherent neighboring structure. Do not accept a rare-event candidate from zero-heavy value agreement alone.
-9. Confirm a malformed request, unsupported layout, missing UID, and 129-player request fail only the research status and leave the prior `dump.json`, production `status.json`, and prior successful `probe.json` unchanged.
-10. Keep all CSV, probe, analysis, and diagnostic artifacts under `.work/memory-probe/` or outside the repository. Record only concise pass/fail evidence and any plan-changing discovery here.
+1. Build and install the current DLL with `./scripts/dev bridge-install`, restart FM26, and load the state represented by the three current player-search exports.
+2. Use new request IDs to capture the unchanged 101-, 120-, and 23-player cohorts with the history preset. Do not advance or change the save between export and capture.
+3. Confirm the matching request IDs, supported game/layout metadata, exact requested UID sets, successful research status, versioned structural policy, and the final compiled-in context, collection, record, player, and request ceilings.
+4. Confirm the inventory groups exact UID, person-object, and player-block references by stable structural provenance without retaining unselected heap hits. Confirm the record recipe resolves complete club and international collections for every requested player.
+5. Run correlation and confirm it recovers UID, CA, PA, and the applicable Determination ×5 anchor before interpreting career fields.
+6. Correlate `AT Apps`, `AT Gls`, `AT League Apps`, `AT League Goals`, `Int Apps`, `Int Gls`, and `International Assists`. For each field, record direct or aggregate provenance, eligible and excluded players, total and non-zero coverage, conflicts, and ambiguity.
+7. Combine evidence across 235 distinct UIDs. Confirm every eligible row and every eligible non-zero row reproduce through the same FM 26.3 recipe and encoding, and confirm the nine repeated UIDs agree without inflating the denominator.
+8. For every derived value, inspect the selected records, category filter, scalar encoding, raw contributions, and arithmetic. Confirm `AT Apps >= AT League Apps` and `AT Gls >= AT League Goals` for the result as well as the CSV truth.
+9. Confirm a malformed preset, unsupported layout, missing UID, invalid descriptor, excessive record count, and 129-player request fail only the research status and leave the prior `dump.json`, production `status.json`, and prior successful `probe.json` unchanged.
+10. Keep all CSV, probe, analysis, metadata-inspection, and diagnostic artifacts under `.work/memory-probe/` or outside the repository. Record only concise pass/fail evidence and any plan-changing discovery here.
 
 ## Documentation impact
 
 - `bridge/MEMORY_PROBE.md` owns the developer-only capture, correlation, replication, and evidence procedure.
 - `bridge/README.md` documents the separate probe files and `memory-probe` command surface alongside the existing bridge protocol.
 - `.wiki/ARCHITECTURE.md` records the implemented research path without changing the schema-v5 product dump boundary.
-- This ledger records the `academy-a` negative result, the bounded traversal replan, and the remaining live FM evidence requirement. No ADR or debug report is warranted.
+- This ledger records the generic-capture negative result, the three synchronized career cohorts, the structure-specific replan, and the remaining live FM evidence requirement. No ADR or debug report is warranted.
