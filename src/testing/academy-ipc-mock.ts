@@ -17,6 +17,10 @@ let deferredAssignment: Promise<void> | null = null;
 let resolveDeferredAssignment: (() => void) | null = null;
 let deferredRemoval: Promise<void> | null = null;
 let resolveDeferredRemoval: (() => void) | null = null;
+let deferredClassesFetch: {
+  promise: Promise<AcademyClass[]>;
+  resolve: (value: AcademyClass[]) => void;
+} | null = null;
 
 export function resetAcademyIpcMock() {
   classes = [];
@@ -31,6 +35,7 @@ export function resetAcademyIpcMock() {
   resolveDeferredAssignment = null;
   deferredRemoval = null;
   resolveDeferredRemoval = null;
+  deferredClassesFetch = null;
 }
 
 export function setAcademyClasses(value: AcademyClass[]) {
@@ -83,7 +88,26 @@ export function deferAcademyRemoval() {
   return () => resolveDeferredRemoval?.();
 }
 
+export function deferAcademyClassesFetch() {
+  let resolve: (value: AcademyClass[]) => void = () => undefined;
+  const promise = new Promise<AcademyClass[]>((next) => {
+    resolve = next;
+  });
+  const deferred = { promise, resolve };
+  deferredClassesFetch = deferred;
+  return () => {
+    if (deferredClassesFetch !== deferred) {
+      return;
+    }
+    deferredClassesFetch = null;
+    resolve(classes.map((academyClass) => ({ ...academyClass })));
+  };
+}
+
 export function resolveListAcademyClassesIpcMock() {
+  if (deferredClassesFetch) {
+    return deferredClassesFetch.promise;
+  }
   return classes.map((academyClass) => ({ ...academyClass }));
 }
 

@@ -48,7 +48,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Player profiles:** Rust `features/player` owns `get_player` — one player by `uid` from the active save's current snapshot, including attribute JSON maps and `player_role_scores` merged in-process with the scoring catalog (`displayName`, `phase`, `positionTags`). React `features/player-profile` owns Overview / Attributes / Roles tab panels; route `/players/$uid` with validated `tab` search param. Shared **ScoreBadge** (`table` / `card` / `hero` / `muted`) in `src/components/ui/score-badge/`. Search row activation and GlobalPlayerSearch navigate by route path only (no cross-feature imports). See [player-profiles](./features/completed/player-profiles.md).
 
-**Youth Academy:** Rust `features/academy` owns save-scoped `academy_classes` and `academy_memberships`, typed commands for class and membership mutations, candidate eligibility, and current-snapshot member resolution. New memberships use exact current-club names from the configured Planner club family; existing memberships retain UID and last-known name across snapshot changes. Unsupported career-stat fields return `null`. React `features/academy` owns the `/academy` route's typed Academy IPC/query layer, URL-backed Overview / Class / Graduates workspace shell, class creation and destructive deletion flow, first-use states, a searchable club-family picker, and a current/departed/unresolved class roster with assignment and removal. Career-stat presentation remains in the active feature plan.
+**Youth Academy:** Rust `features/academy` owns save-scoped `academy_classes` and `academy_memberships`, typed commands for class and membership mutations, candidate eligibility, and current-snapshot member resolution. New memberships use exact current-club names from the configured Planner club family; existing memberships retain UID and last-known name across snapshot changes. Unsupported career-stat fields return `null`. React `features/academy` owns the `/academy` route's typed Academy IPC/query layer, URL-backed Overview / Class / Graduates workspace shell, class creation and destructive deletion flow, first-use states, a searchable club-family picker, the current/departed/unresolved class roster with assignment and removal, nullable statistic cards, reported-senior limitations, and the exact senior-appearance graduate presentation. Summary presentation operates only on the bounded, typed member DTOs; it does not access SQLite or recreate persistence and candidate-eligibility rules.
 
 **Planner club family:** Rust `features/planner` owns save-scoped `planner_club_settings` and `planner_club_sources`, current-snapshot club discovery, and validation for `get_planner_club_family`, `list_planner_clubs`, and `save_planner_club_family`. React `features/planner` owns the `/planner` setup panel. The primary club seeds Senior, Reserves, and Youth sources. Pool membership matches the configured club name and ignores dump `teamLevel`, so every primary-club player is eligible for all three Planner teams. Attached sources preserve explicit separate B-team or youth club mappings and add every player at that club to the target team's pool. App-shell save switching and Load Data invalidate planner queries alongside snapshot and player queries.
 
@@ -428,7 +428,7 @@ User clicks Load Data (AppTopBar)
       On ingest failure: roll back; prior current snapshot remains
   → Returns LoadDataResult { requestId, playersFound, scanTruncated, maxAccepted, snapshot,
       timings: { scanMs, ingestMs, totalMs } }
-  → onSettled: invalidate snapshot query keys (current snapshot, sanity list)
+  → onSettled: invalidate snapshot query keys (current snapshot, sanity list) and the Academy query root
   → LoadDataOutcome banner in AppTopBar (aria-live; success shows phase timings; cleared when user switches save)
   → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
@@ -479,7 +479,7 @@ User opens /planner
   → snapshot present: PlannerClubFamilyPanel reads get_planner_club_family and list_planner_clubs
   → save: invokeCommand("save_planner_club_family", { primaryClub, sources })
   → Rust validates team, team level, name length, and duplicate sources, then replaces only that save's source rows
-  → Load Data and active-save changes invalidate planner query keys from AppTopBar
+  → Load Data invalidates planner and Academy query keys; active-save changes reset the Academy query root before refetching from AppTopBar
 ```
 
 **Planner tactic IPC** (`features/planner/commands.rs`):

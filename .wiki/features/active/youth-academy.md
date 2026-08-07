@@ -241,7 +241,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 #### Commit 4 — Surface graduate tracking statistics
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(academy): surface graduate tracking statistics`
 
@@ -282,11 +282,15 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 **PR:** Add youth graduate tracking
 
-**Commit:** Surface graduate tracking statistics
+**Commit:** None — Commit 4 is complete; feature-complete validation and documentation reconciliation remain for `$workflow-finish-feature`.
 
 ### RED proof
 
-Add Academy route tests that require `—`, rather than zero, for null career data and require the exact graduation rule when a fixture supplies senior league appearances. Add an AppTopBar test that fails until Academy queries invalidate after snapshot load and save switch. The expected RED is missing graduate presentation or Academy cache invalidation, not a test-harness failure.
+Added Academy route tests that require `—`, rather than zero, for null career data and require the exact graduation rule when a fixture supplies senior league appearances. Added AppTopBar tests that fail until Academy queries invalidate after snapshot load and save switch. The focused RED run failed only those four new expectations (graduate/stat presentation and the two lifecycle refreshes), not the test harness.
+
+### Implementation notes
+
+The summary cards and graduate workspace consume only the bounded, typed class-detail DTOs already returned by the Academy commands. The frontend does not access SQLite or duplicate persistence and candidate-eligibility rules; nullable source fields remain nullable through formatting. Active-save changes reset the Academy query root before refetching so the previous save cannot remain visible during the transition. A follow-up memory-reader feature can populate the existing member fields without changing this page's unavailable-state contract.
 
 ### Expected outcome
 
@@ -310,6 +314,7 @@ No bridge/schema change, source-value invention, transfer-history interpretation
 | PR 1 | Commit 1 — Persist youth class membership | Pending record | v11 Academy schema, Rust commands, member retention, and nullable career-stat placeholders | Sol High accepted; no Critical, High, or Medium findings | Backend delete confirmation and bounded candidate input recorded under Discoveries. |
 | PR 1 | Commit 2 — Add youth class workspace | Pending record | Youth Academy rail entry, URL-backed workspace shell, typed queries, class create/delete, first-use states, IPC mock, and route coverage | Sol Medium accepted after correction; no Critical, High, Medium, or NIT findings | Two modal lifecycle findings were fixed before commit; the planned live `Class of YYYY` preview was added. |
 | PR 1 | Commit 3 — Assign club-family players to classes | Pending record | Searchable club-family picker, typed membership mutations, current/departed/unresolved roster, and assignment/removal route coverage | Sol High accepted after two correction rounds; no Critical, High, or Medium findings remain | Internal table overflow is structural coverage only; populated viewport inspection remains in Commit 4 final validation. |
+| PR 1 | Commit 4 — Surface graduate tracking statistics | Pending record | Overview and class statistics, exact senior-appearance graduate workspace, nullable career-stat presentation, and save/snapshot lifecycle refresh | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Active-save transitions reset the Academy query root before refetch; populated 1280×800 and 1600×900 inspection remains feature-complete validation. |
 
 ## Final validation
 

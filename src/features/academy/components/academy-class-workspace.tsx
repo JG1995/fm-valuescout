@@ -3,12 +3,24 @@ import { Trash2, TriangleAlert, UserPlus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
-import { formatMissable, formatPreferredFoot } from "@/utils/format";
+import {
+  formatMissable,
+  formatMoney,
+  formatPreferredFoot,
+} from "@/utils/format";
 import { academyClassQueryOptions } from "../api/academy-class-query-options";
 import { academyKeys } from "../api/academy-keys";
 import { removeAcademyMember } from "../api/remove-academy-member";
 import type { AcademyClass, AcademyMember } from "../types/academy";
+import {
+  summarizeAcademyMembers,
+  unavailableAcademyStatistics,
+} from "../utils/academy-statistics";
 import { AcademyAddPlayersModal } from "./academy-add-players-modal";
+import {
+  AcademyStatistics,
+  type AcademyStatisticsStatus,
+} from "./academy-statistics";
 
 type AcademyClassWorkspaceProps = {
   academyClass: AcademyClass;
@@ -40,6 +52,14 @@ export function AcademyClassWorkspace({
     },
   });
   const members = roster.data?.members ?? [];
+  const statistics = roster.data
+    ? summarizeAcademyMembers(members)
+    : unavailableAcademyStatistics();
+  const statisticsStatus: AcademyStatisticsStatus = roster.isError
+    ? "error"
+    : roster.isPending
+      ? "loading"
+      : "ready";
 
   return (
     <>
@@ -56,16 +76,13 @@ export function AcademyClassWorkspace({
           </div>
         }
       >
-        <dl>
-          <div>
-            <dt className="text-label-md text-on-surface-variant">
-              Tracked players
-            </dt>
-            <dd className="mt-1 text-headline-md text-on-surface">
-              {roster.data?.members.length ?? academyClass.memberCount}
-            </dd>
-          </div>
-        </dl>
+        <AcademyStatistics
+          trackedPlayers={
+            roster.data?.members.length ?? academyClass.memberCount
+          }
+          statistics={statistics}
+          status={statisticsStatus}
+        />
         {roster.isError ? (
           <p className="mt-6 text-body-sm text-error" role="alert">
             Could not load the class roster. {roster.error.message}
@@ -83,7 +100,7 @@ export function AcademyClassWorkspace({
         ) : null}
         {members.length > 0 ? (
           <div className="mt-6 max-h-[min(55vh,560px)] overflow-auto rounded-lg border border-outline-variant">
-            <table className="min-w-[960px] w-full border-collapse text-left">
+            <table className="min-w-[1240px] w-full border-collapse text-left">
               <caption className="sr-only">
                 Players in Class of {academyClass.classYear}
               </caption>
@@ -100,6 +117,11 @@ export function AcademyClassWorkspace({
                     "Determination",
                     "Height",
                     "Foot",
+                    "Senior league apps",
+                    "Goals",
+                    "Assists",
+                    "Caps",
+                    "Sale fee",
                     "",
                   ].map((label) => (
                     <th
@@ -107,7 +129,17 @@ export function AcademyClassWorkspace({
                       scope="col"
                       aria-label={label || "Actions"}
                       className={`h-table-header-height px-2 text-label-md text-on-surface-variant uppercase ${
-                        ["Age", "PA", "Determination", "Height"].includes(label)
+                        [
+                          "Age",
+                          "PA",
+                          "Determination",
+                          "Height",
+                          "Senior league apps",
+                          "Goals",
+                          "Assists",
+                          "Caps",
+                          "Sale fee",
+                        ].includes(label)
                           ? "text-right"
                           : "text-left"
                       }`}
@@ -235,6 +267,21 @@ function AcademyRosterRow({
       </td>
       <td className="px-2 text-body-sm">
         {formatPreferredFoot(member.preferredFoot)}
+      </td>
+      <td className="px-2 text-right text-body-sm tabular-nums">
+        {formatMissable(member.seniorLeagueAppearances)}
+      </td>
+      <td className="px-2 text-right text-body-sm tabular-nums">
+        {formatMissable(member.goals)}
+      </td>
+      <td className="px-2 text-right text-body-sm tabular-nums">
+        {formatMissable(member.assists)}
+      </td>
+      <td className="px-2 text-right text-body-sm tabular-nums">
+        {formatMissable(member.internationalCaps)}
+      </td>
+      <td className="px-2 text-right text-body-sm tabular-nums">
+        {member.saleFeeGbp === null ? "—" : formatMoney(member.saleFeeGbp)}
       </td>
       <td className="px-2 text-right">
         <div className="flex flex-col items-end gap-1">

@@ -80,13 +80,16 @@ describe("academy route", () => {
       determination: valueOrDefault(overrides.determination, 15),
       heightCm: valueOrDefault(overrides.heightCm, 180),
       preferredFoot: valueOrDefault(overrides.preferredFoot, "right"),
-      seniorLeagueAppearances: null,
-      goals: null,
-      assists: null,
-      internationalCaps: null,
-      saleFeeGbp: null,
-      isReleased: null,
-      isGraduate: null,
+      seniorLeagueAppearances: valueOrDefault(
+        overrides.seniorLeagueAppearances,
+        null,
+      ),
+      goals: valueOrDefault(overrides.goals, null),
+      assists: valueOrDefault(overrides.assists, null),
+      internationalCaps: valueOrDefault(overrides.internationalCaps, null),
+      saleFeeGbp: valueOrDefault(overrides.saleFeeGbp, null),
+      isReleased: valueOrDefault(overrides.isReleased, null),
+      isGraduate: valueOrDefault(overrides.isGraduate, null),
     };
   }
 
@@ -128,6 +131,71 @@ describe("academy route", () => {
     expect(
       screen.getByText(/senior league appearances are not available/i),
     ).toBeInTheDocument();
+  });
+
+  it("shows reported senior counts and keeps unsupported aggregates unavailable", async () => {
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 2 }]);
+    setAcademyClassMembers(7, [
+      academyMember({
+        playerUid: 77,
+        lastKnownName: "Senior snapshot player",
+        teamLevel: "senior",
+      }),
+      academyMember({
+        playerUid: 78,
+        lastKnownName: "Youth snapshot player",
+        teamLevel: "youth",
+      }),
+    ]);
+    renderAcademyRoute();
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("academy-stat-reported-senior-players"),
+      ).toHaveTextContent("1"),
+    );
+    expect(screen.getByTestId("academy-stat-graduates")).toHaveTextContent("—");
+    expect(
+      screen.getByTestId("academy-stat-goals").parentElement,
+    ).toHaveTextContent(/not available from the current memory reader/i);
+  });
+
+  it("renders nullable career columns and applies the exact graduation rule", async () => {
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 2 }]);
+    setAcademyClassMembers(7, [
+      academyMember({
+        playerUid: 77,
+        lastKnownName: "Graduate candidate",
+        seniorLeagueAppearances: 2,
+        isGraduate: false,
+      }),
+      academyMember({
+        playerUid: 78,
+        lastKnownName: "Non-graduate candidate",
+        seniorLeagueAppearances: 0,
+        isGraduate: true,
+      }),
+    ]);
+    renderAcademyRoute("/academy?view=graduates");
+
+    expect(await screen.findByText("Graduate candidate")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Non-graduate candidate"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("table", { name: "Youth Academy graduates" }),
+      ).getByRole("cell", { name: "2" }),
+    ).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Class" }));
+    expect(
+      await screen.findByRole("columnheader", { name: "Senior league apps" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   it("supports keyboard navigation across Academy workspaces", async () => {
@@ -385,7 +453,11 @@ describe("academy route", () => {
     expect(
       await screen.findByRole("cell", { name: "Club prospect" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("tabpanel", { name: "Class", hidden: true }),
+      ).getByTestId("academy-stat-tracked-players"),
+    ).toHaveTextContent("1");
   });
 
   it("removes a member before making them available to another class", async () => {

@@ -1,9 +1,10 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { DatabaseZap, UsersRound } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { academyClassQueryOptions } from "@/features/academy/api/academy-class-query-options";
 import { academyClassesQueryOptions } from "@/features/academy/api/academy-classes-query-options";
 import { AcademyClassCreationModal } from "@/features/academy/components/academy-class-creation-modal";
 import { AcademyClassDeletionModal } from "@/features/academy/components/academy-class-deletion-modal";
@@ -18,6 +19,7 @@ import type {
   AcademyClass,
   AcademyView,
 } from "@/features/academy/types/academy";
+import { academyDetailsAreComplete } from "@/features/academy/utils/academy-statistics";
 import {
   parseAcademyClassId,
   parseAcademyView,
@@ -98,6 +100,22 @@ function AcademyPageContent() {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: clubFamily } = useSuspenseQuery(plannerClubFamilyQueryOptions);
   const { data: classes } = useSuspenseQuery(academyClassesQueryOptions);
+  const classDetailQueries = useQueries({
+    queries: classes.map((academyClass) => ({
+      ...academyClassQueryOptions(academyClass.id),
+      enabled: Boolean(snapshot),
+    })),
+  });
+  const classDetails = classDetailQueries.flatMap((query) =>
+    query.data ? [query.data] : [],
+  );
+  const classDetailsReady = academyDetailsAreComplete(classes, classDetails);
+  const classDetailsError = classDetailQueries.find(
+    (query) => query.isError,
+  )?.error;
+  const classDetailsPending = classDetailQueries.some(
+    (query) => query.isPending,
+  );
   const { view, classId } = Route.useSearch();
   const navigate = Route.useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
@@ -168,12 +186,21 @@ function AcademyPageContent() {
       <div {...academyWorkspacePanelProps("overview", activeView)}>
         <AcademyOverview
           classes={classes}
+          classDetails={classDetails}
+          classDetailsReady={classDetailsReady}
+          classDetailsPending={classDetailsPending}
+          classDetailsError={classDetailsError}
           onCreate={() => setCreateOpen(true)}
           onOpenClass={onOpenClass}
         />
       </div>
       <div {...academyWorkspacePanelProps("graduates", activeView)}>
-        <AcademyGraduatesWorkspace />
+        <AcademyGraduatesWorkspace
+          classDetails={classDetails}
+          detailsPending={classDetailsPending}
+          detailsReady={classDetailsReady}
+          detailsError={classDetailsError}
+        />
       </div>
       <div {...academyWorkspacePanelProps("class", activeView)}>
         {selectedClass ? (
