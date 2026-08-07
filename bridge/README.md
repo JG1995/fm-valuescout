@@ -26,10 +26,10 @@ It uses three additional files in the same bridge directory:
 ```text
   ├── probe-request.json  ← CLI writes one bounded, explicit-UID request
   ├── probe-status.json   ← plugin writes scanning → ready / failed for that request
-  └── probe.json          ← successful schema-v1 bounded capture (replace-only-on-success)
+  └── probe.json          ← successful schema-v2 bounded capture (replace-only-on-success)
 ```
 
-`probe.json` contains raw research data. Keep it, source CSVs, and correlation reports under `.work/memory-probe/` or outside the repository. Do not commit them. A production request or `force-scan` takes priority over a queued probe, and probe activity does not change `request.json`, `status.json`, `diagnostics.txt`, or `dump.json`.
+`probe.json` contains raw research data and a `capturePolicy`: two pointer hops at most, 128-byte target windows, up to eight first-hop paths per root plus eight second-hop paths, and fixed ceilings of 3,968 bytes per player / 507,904 bytes per 128-UID request. Keep it, source CSVs, and correlation reports under `.work/memory-probe/` or outside the repository. Do not commit them. A production request or `force-scan` takes priority over a queued probe, and probe activity does not change `request.json`, `status.json`, `diagnostics.txt`, or `dump.json`.
 
 Run the command surface with:
 
