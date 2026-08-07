@@ -68,6 +68,8 @@ The development cycle follows a repeating loop. Invoke a `workflow-*` skill expl
 5. **Reassess** — update the delivery plan and select the next commit; repeat from build until the plan is done.
 6. **Finish feature** (`$workflow-finish-feature`) — when every planned commit is done, run full tests, the ledger-selected feature-complete review (Sol High for a legacy ledger), and documentation reconciliation.
 
+`$workflow-build-feature-loop` is the explicit Goal-mode opt-in for repeating the complete `$workflow-build-loop` contract across the remaining commits in one active PR. It stops at publication, implementation completion, replanning, failed review, or a required developer decision. It never runs feature close-out.
+
 For a trivial change, the user can describe the fix without invoking a workflow skill. Follow the applicable standing rules internally.
 
 The loop variants are manual opt-ins only. Never suggest or run them automatically. Their documented local commit permissions come from this file; they do not authorize pushes, merges, or history rewrites.
@@ -193,7 +195,7 @@ Exceptions: commit messages (use the global `conventional-commits` skill and exp
 - Stage exact files or hunks. Never use `git add .` or `git commit -a`.
 - Before commit, inspect status and the complete diff, run `git diff --cached --check`, review the staged diff and stat, and report tests, gate results, documentation impact, reviewer findings, risks, and the proposed commit message.
 - Wait for explicit developer approval before committing locally.
-- Explicitly invoking `$workflow-build-loop` authorizes its documented single local content commit after review clears. Explicitly invoking `$workflow-finish-feature-loop` authorizes its documented local correction and documentation commits. No other workflow invocation grants commit approval.
+- Explicitly invoking `$workflow-build-loop` authorizes its documented single local content commit after review clears. Explicitly invoking `$workflow-build-feature-loop` authorizes one reviewed local content commit for each Active or Pending commit in its preflight active-PR scope. Explicitly invoking `$workflow-finish-feature-loop` authorizes its documented local correction and documentation commits. No other workflow invocation grants commit approval.
 - Never push, amend, rebase, squash, or otherwise rewrite history without explicit approval.
 
 ## Project knowledge

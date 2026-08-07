@@ -24,13 +24,14 @@ Workflow skills never activate from task similarity. Select one through `/skills
 | Order work | `$workflow-roadmap` | Dependency-aware project sequence |
 | Plan a feature | `$workflow-plan-feature` | Active ledger with PRs, commit packets, profiles, and validation |
 | Build one commit | `$workflow-build` | Active commit implemented through RED, GREEN, and REFACTOR |
+| Build an active PR | `$workflow-build-feature-loop` | Reviewed build loops and local commits through the next stopping boundary |
 | Checkpoint | `$workflow-checkpoint` | Exact staging, validation, independent review, and approved local commit |
 | Address findings | `$workflow-fix` | Focused remediation followed by another checkpoint |
 | Review | `$workflow-review` | Read-only staged or feature review |
 | Reconcile docs | `$workflow-docs-review` | Documentation-only reconciliation |
 | Finish a feature | `$workflow-finish-feature` | Exact-scope validation, feature review, and documentation reconciliation |
 
-The loop variants are manual opt-ins. Their documented local commit permissions come from `AGENTS.md`; they do not authorize pushes, merges, or history rewrites.
+The loop variants are manual opt-ins. Their documented local commit permissions come from `AGENTS.md`; they do not authorize pushes, merges, or history rewrites. For a durable active-PR run, select the ledger's `Build-feature-loop profile` and enter `/goal $workflow-build-feature-loop`. The skill stops at publication or implementation completion and never runs feature close-out.
 
 ## Validation and Git
 

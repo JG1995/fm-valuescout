@@ -14,6 +14,8 @@ Create a ledger with `$workflow-plan-feature`. When a planned spec exists, absor
 
 The content commit can mark its own plan item `Completed`, but it cannot contain its own hash. Record the hash in the next normal ledger-bearing commit or during feature reconciliation. Do not create a ledger-only commit only to record a hash.
 
+Each PR records a `Build-feature-loop profile`: the highest implementation profile among its non-removed commits. Keep it stable as commits complete, and recalculate it when replanning changes the PR. When the final implementation commit becomes `Completed`, set the feature status to `Validation`; this does not run feature close-out.
+
 At feature completion, reconcile documentation, condense the ledger, and move it to [completed features](../completed/README.md).
 
 ## Ledger template
@@ -93,6 +95,8 @@ The thinnest path through this feature.
 
 **Provisional PR title:** `type(scope): imperative description`
 
+**Build-feature-loop profile:** <Luna Max | Terra xhigh | Terra Max> — <why this is the highest implementation profile in the PR>
+
 **Purpose:** What this PR delivers and why it is a review and merge boundary.
 
 **Depends on:** Prior PRs, features, or foundations.
@@ -133,6 +137,8 @@ The thinnest path through this feature.
 ### PR 2 — <title>
 
 **Status:** Awaiting prior PR merge
+
+**Build-feature-loop profile:** <Luna Max | Terra xhigh | Terra Max> — <why this is the highest implementation profile in the PR>
 
 **Depends on:** PR 1
 

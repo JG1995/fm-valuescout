@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation — replanned after live validation
+Active
 
 ## Intent
 
@@ -154,13 +154,15 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 ### PR 1 — Add reusable FM memory research tooling
 
-**Status:** Implementation
+**Status:** Active
 
 **PR ref:** Not published
 
 **Merge ref:** Not merged
 
 **Provisional PR title:** `feat(memory-probe): add reusable FM memory research tooling`
+
+**Build-feature-loop profile:** Terra xhigh — this is the highest implementation profile among the PR's non-removed commits.
 
 **Purpose:** Deliver one complete developer workflow for bounded full-export capture, CSV correlation, optional before/after comparison, and repeatable cross-sectional validation. The capture and analyzer share one research schema and therefore belong in one review and merge boundary.
 
@@ -362,7 +364,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 6 — Capture a bounded second pointer hop
 
-**Status:** Planned
+**Status:** Pending
 
 **Provisional commit:** `feat(memory-probe): capture bounded second-hop targets`
 
@@ -401,7 +403,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 7 — Revise and repeat the live evidence workflow
 
-**Status:** Planned
+**Status:** Pending
 
 **Provisional commit:** `docs(memory-probe): revise live evidence workflow`
 
@@ -440,7 +442,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 ## Active work
 
-**PR:** PR 1 — Add reusable FM memory research tooling (Implementation)
+**PR:** PR 1 — Add reusable FM memory research tooling
 
 **Commit:** Commit 5 — Select stable first-hop pointer paths across the cohort
 
