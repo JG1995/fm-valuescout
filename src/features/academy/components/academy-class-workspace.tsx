@@ -2,12 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CircleCheck,
   CircleMinus,
-  Ellipsis,
+  HandCoins,
+  RotateCcw,
   Trash2,
   TriangleAlert,
   UserPlus,
+  UserRoundMinus,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { SelectField } from "@/components/ui/field/select-field";
 import { Modal } from "@/components/ui/modal/modal";
@@ -323,7 +325,7 @@ function AcademyRosterTableHeader() {
           "Assists",
           "Caps",
           "Sale fee",
-          "",
+          "Actions",
         ].map((label) => (
           <th
             key={label || "actions"}
@@ -340,6 +342,7 @@ function AcademyRosterTableHeader() {
                 "Assists",
                 "Caps",
                 "Sale fee",
+                "Actions",
               ].includes(label)
                 ? "text-right"
                 : "text-left"
@@ -513,156 +516,49 @@ function AcademyMemberActions({
   onOpenOutcome,
   onRemove,
 }: AcademyMemberActionsProps) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
-  const name = member.currentName ?? member.lastKnownName;
-  const closeAndRestoreFocus = () => {
-    setOpen(false);
-    triggerRef.current?.focus();
-  };
-  const moveMenuFocus = (direction: 1 | -1) => {
-    const items = Array.from(
-      menuRef.current?.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitem"]',
-      ) ?? [],
-    );
-    const currentIndex = items.indexOf(
-      document.activeElement as HTMLButtonElement,
-    );
-    if (currentIndex === -1) {
-      items[direction === 1 ? 0 : items.length - 1]?.focus();
-      return;
-    }
-    const nextIndex = (currentIndex + direction + items.length) % items.length;
-    items[nextIndex]?.focus();
-  };
-  const openOutcome = (mode: AcademyMemberOutcomeMode) => {
-    setOpen(false);
-    onOpenOutcome(member, mode, triggerRef.current);
-  };
-
-  useEffect(() => {
-    if (open) {
-      menuRef.current
-        ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
-        ?.focus();
-    }
-  }, [open]);
+  const released = member.outcome?.status === "released";
 
   return (
-    <div className="relative inline-flex">
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={`Manage ${name} in Class of ${academyClass.classYear}`}
-        data-academy-member-actions={`${academyClass.id}-${member.playerUid}`}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-45"
+    <div className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+      <Button
+        data-academy-member-sell={`${academyClass.id}-${member.playerUid}`}
         disabled={disabled}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          setOpen(true);
-        }}
-        onClick={() => setOpen((current) => !current)}
-        onKeyDown={(event) => {
-          if (event.key === "ArrowDown") {
-            event.preventDefault();
-            setOpen(true);
-          } else if (open && event.key === "Escape") {
-            event.preventDefault();
-            closeAndRestoreFocus();
-          }
-        }}
+        icon={HandCoins}
+        variant="secondary"
+        className="h-7 border-success/60 px-3 text-success hover:bg-success/10 hover:text-success active:bg-success/15"
+        onClick={(event) => onOpenOutcome(member, "sale", event.currentTarget)}
       >
-        <Ellipsis aria-hidden size={16} strokeWidth={1.5} />
-      </button>
-      {open ? (
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label={`${name} actions`}
-          className="absolute right-0 top-full z-20 mt-1 w-48 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              closeAndRestoreFocus();
-            } else if (event.key === "ArrowDown") {
-              event.preventDefault();
-              moveMenuFocus(1);
-            } else if (event.key === "ArrowUp") {
-              event.preventDefault();
-              moveMenuFocus(-1);
-            } else if (event.key === "Home") {
-              event.preventDefault();
-              menuRef.current
-                ?.querySelector<HTMLButtonElement>('[role="menuitem"]')
-                ?.focus();
-            } else if (event.key === "End") {
-              event.preventDefault();
-              const items =
-                menuRef.current?.querySelectorAll<HTMLButtonElement>(
-                  '[role="menuitem"]',
-                );
-              items?.[items.length - 1]?.focus();
-            }
-          }}
-        >
-          {member.outcome?.status === "sold" ? (
-            <AcademyActionMenuItem onClick={() => openOutcome("sale")}>
-              Edit sale
-            </AcademyActionMenuItem>
-          ) : (
-            <AcademyActionMenuItem onClick={() => openOutcome("sale")}>
-              Record sale
-            </AcademyActionMenuItem>
-          )}
-          {member.outcome?.status !== "released" ? (
-            <AcademyActionMenuItem onClick={() => openOutcome("released")}>
-              Mark released
-            </AcademyActionMenuItem>
-          ) : null}
-          {member.outcome ? (
-            <AcademyActionMenuItem onClick={() => openOutcome("clear")}>
-              Restore to still at club
-            </AcademyActionMenuItem>
-          ) : null}
-          <AcademyActionMenuItem
-            destructive
-            onClick={() => {
-              setOpen(false);
-              onRemove(member, triggerRef.current);
-            }}
-          >
-            Remove from class
-          </AcademyActionMenuItem>
-        </div>
-      ) : null}
+        Sell
+      </Button>
+      <Button
+        disabled={disabled}
+        icon={released ? RotateCcw : UserRoundMinus}
+        variant="secondary"
+        className={
+          released
+            ? "h-7 px-3"
+            : "h-7 border-warning/60 px-3 text-warning hover:bg-warning/10 hover:text-warning active:bg-warning/15"
+        }
+        onClick={(event) =>
+          onOpenOutcome(
+            member,
+            released ? "clear" : "released",
+            event.currentTarget,
+          )
+        }
+      >
+        {released ? "Restore" : "Release"}
+      </Button>
+      <Button
+        disabled={disabled}
+        icon={Trash2}
+        variant="destructive"
+        className="h-7 px-3"
+        onClick={(event) => onRemove(member, event.currentTarget)}
+      >
+        Remove
+      </Button>
     </div>
-  );
-}
-
-function AcademyActionMenuItem({
-  children,
-  destructive = false,
-  onClick,
-}: {
-  children: string;
-  destructive?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      className={`flex w-full cursor-pointer items-center rounded-sm px-3 py-2 text-left text-label-md hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-        destructive ? "text-error" : "text-on-surface"
-      }`}
-      onClick={onClick}
-    >
-      {children}
-    </button>
   );
 }
 

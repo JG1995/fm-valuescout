@@ -51,18 +51,18 @@ export function AcademyMemberOutcomeModal({
   const name =
     activeTarget?.currentName ?? activeTarget?.lastKnownName ?? "player";
   const mutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (nextMode: AcademyMemberOutcomeMode) => {
       if (!activeTarget || !activeMode) {
         throw new Error("Select an academy player before recording an outcome");
       }
-      if (activeMode === "sale") {
+      if (nextMode === "sale") {
         return setAcademyMemberOutcome(academyClassId, activeTarget.playerUid, {
           status: "sold",
           buyingClub: buyingClub.trim(),
           saleFeeEur: Number(saleFeeEur),
         });
       }
-      if (activeMode === "released") {
+      if (nextMode === "released") {
         return setAcademyMemberOutcome(academyClassId, activeTarget.playerUid, {
           status: "released",
           buyingClub: null,
@@ -117,6 +117,7 @@ export function AcademyMemberOutcomeModal({
   const showSuggestions = suggestionsOpen && matches.length > 0;
   const error =
     validationError ?? (mutation.isError ? errorMessage(mutation.error) : null);
+  const pendingMode = mutation.isPending ? mutation.variables : null;
 
   useEffect(() => {
     if (!activeClub) {
@@ -147,6 +148,8 @@ export function AcademyMemberOutcomeModal({
       : activeMode === "released"
         ? "Marking…"
         : "Restoring…";
+  const restoreExistingSale =
+    activeMode === "sale" && activeTarget.outcome?.status === "sold";
 
   const selectClub = (club: string) => {
     setBuyingClub(club);
@@ -163,7 +166,7 @@ export function AcademyMemberOutcomeModal({
       returnFocusTo={visibleReturnFocusTo}
       fallbackFocusTo={() =>
         document.querySelector<HTMLButtonElement>(
-          `[data-academy-member-actions="${academyClassId}-${activeTarget.playerUid}"]`,
+          `[data-academy-member-sell="${academyClassId}-${activeTarget.playerUid}"]`,
         )
       }
       onClose={() => {
@@ -173,6 +176,17 @@ export function AcademyMemberOutcomeModal({
       }}
       footer={
         <>
+          {restoreExistingSale ? (
+            <Button
+              disabled={mutation.isPending}
+              loading={pendingMode === "clear"}
+              loadingLabel="Restoring…"
+              variant="secondary"
+              onClick={() => mutation.mutate("clear")}
+            >
+              Restore to still at club
+            </Button>
+          ) : null}
           <Button
             disabled={mutation.isPending}
             variant="secondary"
@@ -183,7 +197,8 @@ export function AcademyMemberOutcomeModal({
           <Button
             type="submit"
             form="academy-member-outcome-form"
-            loading={mutation.isPending}
+            disabled={pendingMode === "clear"}
+            loading={mutation.isPending && pendingMode !== "clear"}
             loadingLabel={pendingLabel}
           >
             {submitLabel}
@@ -212,7 +227,7 @@ export function AcademyMemberOutcomeModal({
             }
           }
           setValidationError(null);
-          mutation.mutate();
+          mutation.mutate(activeMode);
         }}
       >
         {activeMode === "sale" ? (
