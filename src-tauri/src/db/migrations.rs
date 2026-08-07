@@ -292,6 +292,22 @@ CREATE TABLE academy_member_outcomes (
 );
 ";
 
+pub const ACADEMY_CURRENT_SNAPSHOT_CLASSES_SQL: &str = "
+INSERT OR IGNORE INTO academy_classes (save_id, class_year, is_automatic)
+SELECT id, 2025, 1
+FROM saves;
+
+INSERT INTO academy_classes (save_id, class_year, is_automatic)
+SELECT save_id, CAST(substr(game_date, 1, 4) AS INTEGER), 1
+FROM snapshots
+WHERE is_current = 1
+  AND game_date_source IN ('memory', 'derived')
+  AND game_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+  AND date(game_date, '+0 days') = game_date
+  AND CAST(substr(game_date, 1, 4) AS INTEGER) >= 2025
+ON CONFLICT(save_id, class_year) DO UPDATE SET is_automatic = 1;
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -358,6 +374,11 @@ pub fn all() -> &'static [Migration] {
             version: 13,
             description: "create_academy_member_outcomes",
             sql: ACADEMY_MEMBER_OUTCOMES_SQL,
+        },
+        Migration {
+            version: 14,
+            description: "backfill_current_snapshot_academy_classes",
+            sql: ACADEMY_CURRENT_SNAPSHOT_CLASSES_SQL,
         },
     ]
 }
@@ -439,7 +460,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
 
         let table_name: String = conn
             .query_row(
@@ -515,7 +536,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -563,7 +584,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -592,6 +613,78 @@ mod tests {
             )
             .expect("count second-save baseline");
         assert_eq!(second_baseline_count, 1);
+    }
+
+    #[test]
+    fn migrates_v13_current_snapshot_to_its_observed_automatic_class() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("academy-v13-migration-test.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 13) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v13");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES ('Existing save')", [])
+            .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO snapshots (
+                save_id, is_current, schema_version, generated_at_utc, game_version,
+                supported_game_version, bridge_version, protocol_version, game_date,
+                game_date_source, scan_truncated, max_accepted, player_count
+             ) VALUES (
+                ?1, 1, 5, '2030-08-14T12:00:00Z', '26.3.2', '26.3', '0.1.0', 1,
+                '2030-08-14', 'memory', 0, NULL, 0
+             )",
+            [save_id],
+        )
+        .expect("insert current snapshot");
+        conn.execute(
+            "INSERT INTO saves (name) VALUES ('Malformed date save')",
+            [],
+        )
+        .expect("insert malformed-date save");
+        let malformed_date_save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO snapshots (
+                save_id, is_current, schema_version, generated_at_utc, game_version,
+                supported_game_version, bridge_version, protocol_version, game_date,
+                game_date_source, scan_truncated, max_accepted, player_count
+             ) VALUES (
+                ?1, 1, 5, '2030-02-30T12:00:00Z', '26.3.2', '26.3', '0.1.0', 1,
+                '2030-02-30', 'memory', 0, NULL, 0
+             )",
+            [malformed_date_save_id],
+        )
+        .expect("insert malformed current snapshot");
+
+        apply(&conn).expect("backfill current snapshot class");
+
+        let class_years = conn
+            .prepare(
+                "SELECT class_year
+                 FROM academy_classes
+                 WHERE save_id = ?1
+                 ORDER BY class_year",
+            )
+            .expect("prepare class query")
+            .query_map([save_id], |row| row.get::<_, i64>(0))
+            .expect("query automatic classes")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read automatic classes");
+        assert_eq!(class_years, vec![2025, 2030]);
+        let malformed_date_class_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2030",
+                [malformed_date_save_id],
+                |row| row.get(0),
+            )
+            .expect("count malformed-date classes");
+        assert_eq!(malformed_date_class_count, 0);
     }
 
     #[test]
@@ -714,7 +807,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -820,7 +913,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
 
         let table_name: String = conn
             .query_row(
@@ -1032,14 +1125,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 13);
+        assert_eq!(version, 14);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 13);
+        assert_eq!(migrations.len(), 14);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -1086,6 +1179,7 @@ mod tests {
         assert_eq!(migrations[11].description, "add_automatic_academy_classes");
         assert_eq!(migrations[11].sql, ACADEMY_AUTOMATIC_CLASSES_SQL);
         assert_eq!(migrations[12].version, 13);
+        assert_eq!(migrations[13].version, 14);
         assert_eq!(migrations[12].description, "create_academy_member_outcomes");
         assert_eq!(migrations[12].sql, ACADEMY_MEMBER_OUTCOMES_SQL);
     }

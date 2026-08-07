@@ -552,6 +552,20 @@ describe("academy route", () => {
     );
   });
 
+  it("recovers a Class URL without an identifier to Overview", async () => {
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 0 }]);
+    const { router } = renderAcademyRoute("/academy?view=class");
+
+    await waitFor(() =>
+      expect(router.state.location.search).toEqual({ view: "overview" }),
+    );
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
   it("assigns only club-family candidates and refreshes the class roster", async () => {
     const user = userEvent.setup();
     await loadConfiguredSave();

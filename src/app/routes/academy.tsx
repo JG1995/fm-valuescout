@@ -151,10 +151,10 @@ function AcademyPageContent() {
   const activeView = view;
 
   useEffect(() => {
-    if (view === "class" && classId && !selectedClass) {
+    if (view === "class" && classes.length > 0 && !selectedClass) {
       void navigate({ search: { view: "overview" }, replace: true });
     }
-  }, [classId, navigate, selectedClass, view]);
+  }, [classes.length, navigate, selectedClass, view]);
 
   const onViewChange = (nextView: AcademyView) => {
     if (nextView === "class") {
