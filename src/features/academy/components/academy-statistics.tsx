@@ -83,14 +83,14 @@ export function AcademyStatistics({
     {
       label: "Sale income",
       value:
-        statistics.saleFeeGbp === null
+        statistics.saleFeeEur === null
           ? "—"
-          : formatMoney(statistics.saleFeeGbp),
+          : formatMoney(statistics.saleFeeEur),
       explanation:
         unavailableExplanation ??
-        (statistics.saleFeeGbp === null
-          ? "Sale fees are not available from the current memory reader."
-          : "Reported sale fees for tracked players."),
+        (statistics.saleFeeEur === null
+          ? "Manual Academy outcomes are unavailable while details load."
+          : "Manual sale fees recorded for tracked players."),
     },
     {
       label: "Released players",
@@ -98,8 +98,8 @@ export function AcademyStatistics({
       explanation:
         unavailableExplanation ??
         (statistics.releasedPlayers === null
-          ? "Release outcomes are not available from the current memory reader."
-          : "Reported released players in this cohort."),
+          ? "Manual Academy outcomes are unavailable while details load."
+          : "Players manually marked as released in this cohort."),
     },
   ];
 

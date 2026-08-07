@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::db::Db;
 use crate::features::snapshot::service as snapshot_service;
 
-use super::service::{self, AcademyCandidate, AcademyClass, AcademyClassDetail, AcademyMember};
+use super::service::{
+    self, AcademyCandidate, AcademyClass, AcademyClassDetail, AcademyMember, AcademyMemberOutcome,
+    AcademyMemberOutcomeInput,
+};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,9 +74,44 @@ pub struct AcademyMemberDto {
     pub goals: Option<i64>,
     pub assists: Option<i64>,
     pub international_caps: Option<i64>,
-    pub sale_fee_gbp: Option<i64>,
-    pub is_released: Option<bool>,
+    pub outcome: Option<AcademyMemberOutcomeDto>,
     pub is_graduate: Option<bool>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcademyMemberOutcomeDto {
+    pub status: String,
+    pub buying_club: Option<String>,
+    pub sale_fee_eur: Option<i64>,
+}
+
+impl From<AcademyMemberOutcome> for AcademyMemberOutcomeDto {
+    fn from(outcome: AcademyMemberOutcome) -> Self {
+        Self {
+            status: outcome.status.as_str().to_string(),
+            buying_club: outcome.buying_club,
+            sale_fee_eur: outcome.sale_fee_eur,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AcademyMemberOutcomeInputDto {
+    pub status: String,
+    pub buying_club: Option<String>,
+    pub sale_fee_eur: Option<i64>,
+}
+
+impl From<AcademyMemberOutcomeInputDto> for AcademyMemberOutcomeInput {
+    fn from(outcome: AcademyMemberOutcomeInputDto) -> Self {
+        Self {
+            status: outcome.status,
+            buying_club: outcome.buying_club,
+            sale_fee_eur: outcome.sale_fee_eur,
+        }
+    }
 }
 
 impl From<AcademyMember> for AcademyMemberDto {
@@ -97,8 +135,7 @@ impl From<AcademyMember> for AcademyMemberDto {
             goals: member.goals,
             assists: member.assists,
             international_caps: member.international_caps,
-            sale_fee_gbp: member.sale_fee_gbp,
-            is_released: member.is_released,
+            outcome: member.outcome.map(AcademyMemberOutcomeDto::from),
             is_graduate: member.is_graduate,
         }
     }
@@ -213,4 +250,24 @@ pub fn remove_academy_member(
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = snapshot_service::active_save_id(&conn)?;
     service::remove_member(&conn, save_id, class_id, player_uid)
+}
+
+#[tauri::command]
+pub fn set_academy_member_outcome(
+    class_id: i64,
+    player_uid: i64,
+    outcome: Option<AcademyMemberOutcomeInputDto>,
+    db: State<'_, Db>,
+) -> Result<(), String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = snapshot_service::active_save_id(&conn)?;
+    service::set_member_outcome(
+        &conn,
+        save_id,
+        class_id,
+        player_uid,
+        outcome.map(AcademyMemberOutcomeInput::from),
+    )
 }

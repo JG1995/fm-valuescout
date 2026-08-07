@@ -268,6 +268,30 @@ CREATE INDEX idx_academy_classes_save_year
     ON academy_classes(save_id, class_year ASC);
 ";
 
+pub const ACADEMY_MEMBER_OUTCOMES_SQL: &str = "
+CREATE TABLE academy_member_outcomes (
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    player_uid INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('sold', 'released')),
+    buying_club TEXT,
+    sale_fee_eur INTEGER,
+    PRIMARY KEY (save_id, player_uid),
+    FOREIGN KEY (save_id, player_uid)
+        REFERENCES academy_memberships(save_id, player_uid)
+        ON DELETE CASCADE,
+    CHECK (
+        (status = 'sold'
+            AND buying_club IS NOT NULL
+            AND trim(buying_club) <> ''
+            AND sale_fee_eur IS NOT NULL
+            AND sale_fee_eur >= 0)
+        OR (status = 'released'
+            AND buying_club IS NULL
+            AND sale_fee_eur IS NULL)
+    )
+);
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -329,6 +353,11 @@ pub fn all() -> &'static [Migration] {
             version: 12,
             description: "add_automatic_academy_classes",
             sql: ACADEMY_AUTOMATIC_CLASSES_SQL,
+        },
+        Migration {
+            version: 13,
+            description: "create_academy_member_outcomes",
+            sql: ACADEMY_MEMBER_OUTCOMES_SQL,
         },
     ]
 }
@@ -410,7 +439,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
 
         let table_name: String = conn
             .query_row(
@@ -444,6 +473,16 @@ mod tests {
             table_columns(&conn, "academy_memberships"),
             ["save_id", "class_id", "player_uid", "last_known_name"]
         );
+        assert_eq!(
+            table_columns(&conn, "academy_member_outcomes"),
+            [
+                "save_id",
+                "player_uid",
+                "status",
+                "buying_club",
+                "sale_fee_eur"
+            ]
+        );
     }
 
     #[test]
@@ -476,7 +515,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -524,7 +563,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -675,7 +714,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -781,7 +820,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
 
         let table_name: String = conn
             .query_row(
@@ -993,14 +1032,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 12);
+        assert_eq!(migrations.len(), 13);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -1046,6 +1085,9 @@ mod tests {
         assert_eq!(migrations[11].version, 12);
         assert_eq!(migrations[11].description, "add_automatic_academy_classes");
         assert_eq!(migrations[11].sql, ACADEMY_AUTOMATIC_CLASSES_SQL);
+        assert_eq!(migrations[12].version, 13);
+        assert_eq!(migrations[12].description, "create_academy_member_outcomes");
+        assert_eq!(migrations[12].sql, ACADEMY_MEMBER_OUTCOMES_SQL);
     }
 
     #[test]

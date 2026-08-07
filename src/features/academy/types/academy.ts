@@ -15,6 +15,14 @@ export type AcademyCandidate = {
 
 export type AcademyMemberState = "resolved" | "departed" | "unresolved";
 
+export type AcademyMemberOutcomeStatus = "sold" | "released";
+
+export type AcademyMemberOutcome = {
+  status: AcademyMemberOutcomeStatus;
+  buyingClub: string | null;
+  saleFeeEur: number | null;
+};
+
 export type AcademyMember = {
   playerUid: number;
   lastKnownName: string;
@@ -34,8 +42,7 @@ export type AcademyMember = {
   goals: number | null;
   assists: number | null;
   internationalCaps: number | null;
-  saleFeeGbp: number | null;
-  isReleased: boolean | null;
+  outcome: AcademyMemberOutcome | null;
   isGraduate: boolean | null;
 };
 

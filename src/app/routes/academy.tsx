@@ -1,4 +1,4 @@
-import { useQueries, useSuspenseQuery } from "@tanstack/react-query";
+import { useQueries, useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { DatabaseZap, FolderOpen, Plus, UsersRound } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
@@ -27,6 +27,7 @@ import {
   snapshotYear,
 } from "@/features/academy/utils/academy-workspace";
 import { plannerClubFamilyQueryOptions } from "@/features/planner/api/get-planner-club-family-query-options";
+import { plannerClubsQueryOptions } from "@/features/planner/api/planner-clubs-query-options";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 
 export type AcademySearch = {
@@ -120,6 +121,10 @@ function AcademyPageContent() {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: clubFamily } = useSuspenseQuery(plannerClubFamilyQueryOptions);
   const { data: classes } = useSuspenseQuery(academyClassesQueryOptions);
+  const clubOptions = useQuery({
+    ...plannerClubsQueryOptions,
+    enabled: Boolean(snapshot),
+  });
   const classDetailQueries = useQueries({
     queries: classes.map((academyClass) => ({
       ...academyClassQueryOptions(academyClass.id),
@@ -227,6 +232,7 @@ function AcademyPageContent() {
         {selectedClass ? (
           <AcademyClassWorkspace
             academyClass={selectedClass}
+            clubOptions={clubOptions.data ?? []}
             onDelete={() => setDeleteTarget(selectedClass)}
           />
         ) : (

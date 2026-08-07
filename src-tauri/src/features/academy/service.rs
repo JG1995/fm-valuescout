@@ -50,6 +50,35 @@ impl AcademyMemberState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AcademyMemberOutcomeStatus {
+    Sold,
+    Released,
+}
+
+impl AcademyMemberOutcomeStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Sold => "sold",
+            Self::Released => "released",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcademyMemberOutcome {
+    pub status: AcademyMemberOutcomeStatus,
+    pub buying_club: Option<String>,
+    pub sale_fee_eur: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AcademyMemberOutcomeInput {
+    pub status: String,
+    pub buying_club: Option<String>,
+    pub sale_fee_eur: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcademyMember {
     pub player_uid: i64,
     pub last_known_name: String,
@@ -69,8 +98,7 @@ pub struct AcademyMember {
     pub goals: Option<i64>,
     pub assists: Option<i64>,
     pub international_caps: Option<i64>,
-    pub sale_fee_gbp: Option<i64>,
-    pub is_released: Option<bool>,
+    pub outcome: Option<AcademyMemberOutcome>,
     pub is_graduate: Option<bool>,
 }
 
@@ -219,15 +247,28 @@ pub fn get_class(
     let snapshot_id = current_snapshot_id(conn, save_id)?;
     let mut statement = conn
         .prepare(
-            "SELECT player_uid, last_known_name
-             FROM academy_memberships
-             WHERE save_id = ?1 AND class_id = ?2
-             ORDER BY last_known_name COLLATE NOCASE, player_uid",
+            "SELECT membership.player_uid,
+                    membership.last_known_name,
+                    outcome.status,
+                    outcome.buying_club,
+                    outcome.sale_fee_eur
+             FROM academy_memberships membership
+             LEFT JOIN academy_member_outcomes outcome
+               ON outcome.save_id = membership.save_id
+              AND outcome.player_uid = membership.player_uid
+             WHERE membership.save_id = ?1 AND membership.class_id = ?2
+             ORDER BY membership.last_known_name COLLATE NOCASE, membership.player_uid",
         )
         .map_err(|error| error.to_string())?;
     let memberships = statement
         .query_map(params![save_id, class_id], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<i64>>(4)?,
+            ))
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
@@ -236,13 +277,16 @@ pub fn get_class(
 
     let members = memberships
         .into_iter()
-        .map(|(player_uid, last_known_name)| {
-            let player = match snapshot_id {
-                Some(snapshot_id) => load_current_player(conn, snapshot_id, player_uid)?,
-                None => None,
-            };
-            academy_member(conn, save_id, player_uid, last_known_name, player)
-        })
+        .map(
+            |(player_uid, last_known_name, status, buying_club, sale_fee_eur)| {
+                let player = match snapshot_id {
+                    Some(snapshot_id) => load_current_player(conn, snapshot_id, player_uid)?,
+                    None => None,
+                };
+                let outcome = stored_member_outcome(status, buying_club, sale_fee_eur)?;
+                academy_member(conn, save_id, player_uid, last_known_name, player, outcome)
+            },
+        )
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(AcademyClassDetail {
@@ -398,6 +442,70 @@ pub fn remove_member(
     Ok(())
 }
 
+pub fn set_member_outcome(
+    conn: &Connection,
+    save_id: i64,
+    class_id: i64,
+    player_uid: i64,
+    outcome: Option<AcademyMemberOutcomeInput>,
+) -> Result<(), String> {
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let is_member: bool = tx
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1
+                 FROM academy_memberships
+                 WHERE save_id = ?1 AND class_id = ?2 AND player_uid = ?3
+             )",
+            params![save_id, class_id, player_uid],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if !is_member {
+        return Err(format!(
+            "Player {player_uid} is not assigned to academy class {class_id}"
+        ));
+    }
+
+    match outcome {
+        Some(outcome) => {
+            let outcome = validate_member_outcome(outcome)?;
+            tx.execute(
+                "INSERT INTO academy_member_outcomes (
+                    save_id,
+                    player_uid,
+                    status,
+                    buying_club,
+                    sale_fee_eur
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(save_id, player_uid) DO UPDATE SET
+                    status = excluded.status,
+                    buying_club = excluded.buying_club,
+                    sale_fee_eur = excluded.sale_fee_eur",
+                params![
+                    save_id,
+                    player_uid,
+                    outcome.status.as_str(),
+                    outcome.buying_club,
+                    outcome.sale_fee_eur,
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+        }
+        None => {
+            tx.execute(
+                "DELETE FROM academy_member_outcomes WHERE save_id = ?1 AND player_uid = ?2",
+                params![save_id, player_uid],
+            )
+            .map_err(|error| error.to_string())?;
+        }
+    }
+
+    tx.commit().map_err(|error| error.to_string())
+}
+
 fn academy_class(conn: &Connection, save_id: i64, class_id: i64) -> Result<(i64, bool), String> {
     conn.query_row(
         "SELECT class_year, is_automatic
@@ -467,6 +575,7 @@ fn academy_member(
     player_uid: i64,
     last_known_name: String,
     player: Option<CurrentAcademyPlayer>,
+    outcome: Option<AcademyMemberOutcome>,
 ) -> Result<AcademyMember, String> {
     let Some(player) = player else {
         return Ok(AcademyMember {
@@ -488,8 +597,7 @@ fn academy_member(
             goals: None,
             assists: None,
             international_caps: None,
-            sale_fee_gbp: None,
-            is_released: None,
+            outcome,
             is_graduate: None,
         });
     };
@@ -518,10 +626,59 @@ fn academy_member(
         goals: None,
         assists: None,
         international_caps: None,
-        sale_fee_gbp: None,
-        is_released: None,
+        outcome,
         is_graduate: None,
     })
+}
+
+fn validate_member_outcome(
+    input: AcademyMemberOutcomeInput,
+) -> Result<AcademyMemberOutcome, String> {
+    match input.status.as_str() {
+        "sold" => {
+            let buying_club = input
+                .buying_club
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "Sale outcomes require a buying club".to_string())?;
+            let sale_fee_eur = input
+                .sale_fee_eur
+                .filter(|value| *value >= 0)
+                .ok_or_else(|| "Sale outcomes require a non-negative whole-euro fee".to_string())?;
+            Ok(AcademyMemberOutcome {
+                status: AcademyMemberOutcomeStatus::Sold,
+                buying_club: Some(buying_club),
+                sale_fee_eur: Some(sale_fee_eur),
+            })
+        }
+        "released" => {
+            if input.buying_club.is_some() || input.sale_fee_eur.is_some() {
+                return Err("Released outcomes cannot include sale details".to_string());
+            }
+            Ok(AcademyMemberOutcome {
+                status: AcademyMemberOutcomeStatus::Released,
+                buying_club: None,
+                sale_fee_eur: None,
+            })
+        }
+        _ => Err(format!("Unknown academy outcome status `{}`", input.status)),
+    }
+}
+
+fn stored_member_outcome(
+    status: Option<String>,
+    buying_club: Option<String>,
+    sale_fee_eur: Option<i64>,
+) -> Result<Option<AcademyMemberOutcome>, String> {
+    let Some(status) = status else {
+        return Ok(None);
+    };
+    validate_member_outcome(AcademyMemberOutcomeInput {
+        status,
+        buying_club,
+        sale_fee_eur,
+    })
+    .map(Some)
 }
 
 fn load_current_player(
@@ -785,6 +942,15 @@ mod tests {
             }],
         )
         .expect("configure club family");
+    }
+
+    fn insert_membership(conn: &Connection, save_id: i64, class_id: i64, player_uid: i64) {
+        conn.execute(
+            "INSERT INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
+             VALUES (?1, ?2, ?3, 'Academy Player')",
+            params![save_id, class_id, player_uid],
+        )
+        .expect("insert academy membership");
     }
 
     #[test]
@@ -1086,8 +1252,7 @@ mod tests {
         assert_eq!(member.goals, None);
         assert_eq!(member.assists, None);
         assert_eq!(member.international_caps, None);
-        assert_eq!(member.sale_fee_gbp, None);
-        assert_eq!(member.is_released, None);
+        assert_eq!(member.outcome, None);
         assert_eq!(member.is_graduate, None);
         assert_eq!(
             super::list_candidates(&conn, save_id, "")
@@ -1097,6 +1262,249 @@ mod tests {
                 .collect::<Vec<_>>(),
             [78]
         );
+    }
+
+    #[test]
+    fn records_replaces_and_clears_member_outcomes() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("academy-outcomes.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let academy_class =
+            super::create_class(&conn, save_id, 2030).expect("create academy class");
+        insert_membership(&conn, save_id, academy_class.id, 77);
+
+        super::set_member_outcome(
+            &conn,
+            save_id,
+            academy_class.id,
+            77,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "sold".to_string(),
+                buying_club: Some("  Rovers FC  ".to_string()),
+                sale_fee_eur: Some(1_250_000),
+            }),
+        )
+        .expect("record sale");
+        assert_eq!(
+            super::get_class(&conn, save_id, academy_class.id)
+                .expect("load sold member")
+                .members[0]
+                .outcome,
+            Some(super::AcademyMemberOutcome {
+                status: super::AcademyMemberOutcomeStatus::Sold,
+                buying_club: Some("Rovers FC".to_string()),
+                sale_fee_eur: Some(1_250_000),
+            })
+        );
+
+        super::set_member_outcome(
+            &conn,
+            save_id,
+            academy_class.id,
+            77,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "released".to_string(),
+                buying_club: None,
+                sale_fee_eur: None,
+            }),
+        )
+        .expect("replace sale with release");
+        assert_eq!(
+            super::get_class(&conn, save_id, academy_class.id)
+                .expect("load released member")
+                .members[0]
+                .outcome,
+            Some(super::AcademyMemberOutcome {
+                status: super::AcademyMemberOutcomeStatus::Released,
+                buying_club: None,
+                sale_fee_eur: None,
+            })
+        );
+
+        super::set_member_outcome(&conn, save_id, academy_class.id, 77, None)
+            .expect("restore member to club");
+        assert_eq!(
+            super::get_class(&conn, save_id, academy_class.id)
+                .expect("load restored member")
+                .members[0]
+                .outcome,
+            None
+        );
+    }
+
+    #[test]
+    fn outcome_validation_and_save_scoping_preserve_existing_outcomes() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("academy-outcome-validation.db"));
+        let first_save_id = insert_save(&conn, "First save");
+        let second_save_id = insert_save(&conn, "Second save");
+        let academy_class =
+            super::create_class(&conn, first_save_id, 2030).expect("create academy class");
+        insert_membership(&conn, first_save_id, academy_class.id, 77);
+
+        super::set_member_outcome(
+            &conn,
+            first_save_id,
+            academy_class.id,
+            77,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "sold".to_string(),
+                buying_club: Some("Existing FC".to_string()),
+                sale_fee_eur: Some(250_000),
+            }),
+        )
+        .expect("record existing sale");
+
+        let invalid_sale = super::set_member_outcome(
+            &conn,
+            first_save_id,
+            academy_class.id,
+            77,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "sold".to_string(),
+                buying_club: Some(" ".to_string()),
+                sale_fee_eur: Some(1),
+            }),
+        )
+        .expect_err("reject blank buying club");
+        let negative_fee = super::set_member_outcome(
+            &conn,
+            first_save_id,
+            academy_class.id,
+            77,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "sold".to_string(),
+                buying_club: Some("Rovers FC".to_string()),
+                sale_fee_eur: Some(-1),
+            }),
+        )
+        .expect_err("reject negative sale fee");
+        let released_with_sale_data = super::set_member_outcome(
+            &conn,
+            first_save_id,
+            academy_class.id,
+            77,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "released".to_string(),
+                buying_club: Some("Rovers FC".to_string()),
+                sale_fee_eur: Some(1),
+            }),
+        )
+        .expect_err("reject release sale data");
+        let unknown_status = super::set_member_outcome(
+            &conn,
+            first_save_id,
+            academy_class.id,
+            77,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "loaned".to_string(),
+                buying_club: None,
+                sale_fee_eur: None,
+            }),
+        )
+        .expect_err("reject unknown outcome status");
+        let cross_save = super::set_member_outcome(
+            &conn,
+            second_save_id,
+            academy_class.id,
+            77,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "sold".to_string(),
+                buying_club: Some("Rovers FC".to_string()),
+                sale_fee_eur: Some(1),
+            }),
+        )
+        .expect_err("reject another save's member");
+
+        assert_eq!(invalid_sale, "Sale outcomes require a buying club");
+        assert_eq!(
+            negative_fee,
+            "Sale outcomes require a non-negative whole-euro fee"
+        );
+        assert_eq!(
+            released_with_sale_data,
+            "Released outcomes cannot include sale details"
+        );
+        assert_eq!(unknown_status, "Unknown academy outcome status `loaned`");
+        assert_eq!(
+            cross_save,
+            format!(
+                "Player 77 is not assigned to academy class {}",
+                academy_class.id
+            )
+        );
+        assert_eq!(
+            super::get_class(&conn, first_save_id, academy_class.id)
+                .expect("load unchanged member")
+                .members[0]
+                .outcome,
+            Some(super::AcademyMemberOutcome {
+                status: super::AcademyMemberOutcomeStatus::Sold,
+                buying_club: Some("Existing FC".to_string()),
+                sale_fee_eur: Some(250_000),
+            })
+        );
+    }
+
+    #[test]
+    fn outcome_storage_rejects_incomplete_or_mixed_values() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("academy-outcome-schema.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let academy_class =
+            super::create_class(&conn, save_id, 2030).expect("create academy class");
+        insert_membership(&conn, save_id, academy_class.id, 77);
+
+        for (status, buying_club, sale_fee_eur) in [
+            ("sold", None, Some(1)),
+            ("sold", Some("Rovers FC"), None),
+            ("released", Some("Rovers FC"), None),
+            ("released", None, Some(1)),
+        ] {
+            let error = conn
+                .execute(
+                    "INSERT INTO academy_member_outcomes (
+                        save_id,
+                        player_uid,
+                        status,
+                        buying_club,
+                        sale_fee_eur
+                     ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    params![save_id, 77, status, buying_club, sale_fee_eur],
+                )
+                .expect_err("reject incomplete or mixed outcome values");
+            assert!(error.to_string().contains("CHECK constraint failed"));
+        }
+    }
+
+    #[test]
+    fn removing_membership_cascades_its_outcome() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("academy-outcome-cascade.db"));
+        let save_id = insert_save(&conn, "Academy save");
+        let academy_class =
+            super::create_class(&conn, save_id, 2030).expect("create academy class");
+        insert_membership(&conn, save_id, academy_class.id, 77);
+        super::set_member_outcome(
+            &conn,
+            save_id,
+            academy_class.id,
+            77,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "sold".to_string(),
+                buying_club: Some("Rovers FC".to_string()),
+                sale_fee_eur: Some(500_000),
+            }),
+        )
+        .expect("record sale");
+
+        super::remove_member(&conn, save_id, academy_class.id, 77).expect("remove academy member");
+        let outcome_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM academy_member_outcomes", [], |row| {
+                row.get(0)
+            })
+            .expect("count outcomes");
+        assert_eq!(outcome_count, 0);
     }
 
     #[test]
@@ -1122,6 +1530,18 @@ mod tests {
         super::assign_member(&conn, save_id, first_class.id, 77).expect("assign academy member");
         super::remove_member(&conn, save_id, first_class.id, 77).expect("remove academy member");
         super::assign_member(&conn, save_id, second_class.id, 77).expect("reassign academy member");
+        super::set_member_outcome(
+            &conn,
+            save_id,
+            second_class.id,
+            77,
+            Some(super::AcademyMemberOutcomeInput {
+                status: "sold".to_string(),
+                buying_club: Some("Rovers FC".to_string()),
+                sale_fee_eur: Some(750_000),
+            }),
+        )
+        .expect("record sale before snapshot replacement");
 
         ingest_players(
             &temp_dir,
@@ -1143,6 +1563,14 @@ mod tests {
             departed.members[0].current_name.as_deref(),
             Some("Golden Fixture Player")
         );
+        assert_eq!(
+            departed.members[0].outcome,
+            Some(super::AcademyMemberOutcome {
+                status: super::AcademyMemberOutcomeStatus::Sold,
+                buying_club: Some("Rovers FC".to_string()),
+                sale_fee_eur: Some(750_000),
+            })
+        );
 
         ingest_players(
             &temp_dir,
@@ -1161,6 +1589,14 @@ mod tests {
         assert_eq!(
             unresolved.members[0].last_known_name,
             "Golden Fixture Player"
+        );
+        assert_eq!(
+            unresolved.members[0].outcome,
+            Some(super::AcademyMemberOutcome {
+                status: super::AcademyMemberOutcomeStatus::Sold,
+                buying_club: Some("Rovers FC".to_string()),
+                sale_fee_eur: Some(750_000),
+            })
         );
     }
 }

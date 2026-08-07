@@ -342,7 +342,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 #### Commit 6 — Record academy player outcomes
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(academy): record player sale and release outcomes`
 
@@ -381,7 +381,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 #### Commit 7 — Celebrate academy outcomes
 
-**Status:** Planned
+**Status:** Active
 
 **Provisional commit:** `feat(academy): celebrate academy outcomes`
 
@@ -421,23 +421,23 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 **PR:** Add youth graduate tracking
 
-**Commit:** Commit 6 — Record academy player outcomes
+**Commit:** Commit 7 — Celebrate academy outcomes
 
 ### RED proof
 
-Focused Rust and route tests failed for the expected absent behavior: fresh and existing saves had no Class of 2025, a 2026 snapshot did not create or promote a class, automatic class deletion remained possible, classes rendered newest-first, and the Class tab had no actionable no-classes state. The failures were behavioral assertions rather than test-harness failures.
+Pending Commit 7 build loop.
 
 ### Implementation notes
 
-Migration v12 adds `academy_classes.is_automatic`, backfills and protects Class of 2025 for existing saves, and changes the class index to ascending chronology. Save creation and successful snapshot ingest call the Academy Rust service in their transactions. The service only inserts a missing class or promotes the matching row's marker, so it preserves its identifier and memberships. React consumes the returned marker to hide the delete action and renders the defensive Class empty state.
+Pending Commit 7 build loop.
 
 ### Expected outcome
 
-Every save has Class of 2025, each valid observed in-game year appears once after a successful snapshot, custom classes still work, automatic classes cannot be deleted, Overview uses numeric oldest-to-newest chronology, and the Class control never fails silently when no class is available.
+Pending Commit 7 build loop.
 
 ### Explicit exclusions
 
-No bridge or dump-schema change, player auto-assignment, unseen-year backfill, sale/release outcome UI, statistics redesign, CSV/HTML flow, or Git publication belongs in the active commit.
+No persistence, career-stat semantics, bridge/dump-schema change, charting, animation, remote assets, CSV/HTML flow, or Git publication belongs in the active commit.
 
 ## Discoveries and replanning
 
@@ -459,6 +459,7 @@ No bridge or dump-schema change, player auto-assignment, unseen-year backfill, s
 | PR 1 | Commit 3 — Assign club-family players to classes | Pending record | Searchable club-family picker, typed membership mutations, current/departed/unresolved roster, and assignment/removal route coverage | Sol High accepted after two correction rounds; no Critical, High, or Medium findings remain | Internal table overflow is structural coverage only; populated viewport inspection remains in Commit 4 final validation. |
 | PR 1 | Commit 4 — Surface graduate tracking statistics | Pending record | Overview and class statistics, exact senior-appearance graduate workspace, nullable career-stat presentation, and save/snapshot lifecycle refresh | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Active-save transitions reset the Academy query root before refetch; populated 1280×800 and 1600×900 inspection remains feature-complete validation. |
 | PR 1 | Commit 5 — Generate yearly academy classes | Pending record | v12 automatic class marker/backfill, transactional 2025 and observed-year lifecycle, protected deletion, ascending chronology, and Class empty-state recovery | Sol High accepted; no Critical, High, or Medium findings | Source gating and late transactional rollback have service/source coverage but no dedicated regression variants; retain for feature-complete validation if warranted. |
+| PR 1 | Commit 6 — Record academy player outcomes | Pending record | v13 manual sale/release outcome persistence, typed mutation, three roster groups, accessible action/menu/modal flows, corrected removal confirmation, and manual summary totals | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Browser viewport and visual contrast inspection remain in Commit 7 and feature-complete validation. |
 
 ## Final validation
 

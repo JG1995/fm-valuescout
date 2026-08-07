@@ -15,6 +15,8 @@ type ModalProps = {
   footer?: ReactNode;
   variant?: ModalVariant;
   className?: string;
+  returnFocusTo?: HTMLElement | null;
+  fallbackFocusTo?: () => HTMLElement | null;
 };
 
 const FOCUSABLE =
@@ -35,15 +37,20 @@ export function Modal({
   footer,
   variant = "form",
   className,
+  returnFocusTo,
+  fallbackFocusTo,
 }: ModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
+  const fallbackFocusToRef = useRef(fallbackFocusTo);
+  const shouldReturnFocusRef = useRef(false);
   const [mounted, setMounted] = useState(open);
   const [entered, setEntered] = useState(false);
 
   onCloseRef.current = onClose;
+  fallbackFocusToRef.current = fallbackFocusTo;
 
   useEffect(() => {
     if (open) {
@@ -70,11 +77,13 @@ export function Modal({
       return;
     }
 
-    triggerRef.current = document.activeElement as HTMLElement | null;
+    triggerRef.current =
+      returnFocusTo ?? (document.activeElement as HTMLElement | null);
+    shouldReturnFocusRef.current = true;
     const dialog = dialogRef.current;
     const focusables = dialog ? getFocusableElements(dialog) : [];
     focusables[0]?.focus();
-  }, [open, mounted]);
+  }, [open, mounted, returnFocusTo]);
 
   useEffect(() => {
     if (!mounted) {
@@ -119,10 +128,15 @@ export function Modal({
   }, [mounted]);
 
   useEffect(() => {
-    if (mounted) {
+    if (mounted || !shouldReturnFocusRef.current) {
       return;
     }
-    triggerRef.current?.focus();
+    shouldReturnFocusRef.current = false;
+    if (triggerRef.current?.isConnected) {
+      triggerRef.current.focus();
+      return;
+    }
+    fallbackFocusToRef.current?.()?.focus();
   }, [mounted]);
 
   if (!mounted) {

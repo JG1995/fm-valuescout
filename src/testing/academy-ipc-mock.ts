@@ -13,6 +13,7 @@ let candidates: AcademyCandidate[] = [];
 let membersByClass = new Map<number, AcademyMember[]>();
 let assignError: string | null = null;
 let removeError: string | null = null;
+let outcomeError: string | null = null;
 let deferredAssignment: Promise<void> | null = null;
 let resolveDeferredAssignment: (() => void) | null = null;
 let deferredRemoval: Promise<void> | null = null;
@@ -35,6 +36,7 @@ export function resetAcademyIpcMock() {
   membersByClass = new Map();
   assignError = null;
   removeError = null;
+  outcomeError = null;
   deferredAssignment = null;
   resolveDeferredAssignment = null;
   deferredRemoval = null;
@@ -71,7 +73,10 @@ export function setAcademyClassMembers(
 ) {
   membersByClass.set(
     classId,
-    members.map((member) => ({ ...member })),
+    members.map((member) => ({
+      ...member,
+      outcome: member.outcome ? { ...member.outcome } : null,
+    })),
   );
 }
 
@@ -88,6 +93,10 @@ export function deferAcademyAssignment() {
 
 export function setAcademyRemoveError(message: string | null) {
   removeError = message;
+}
+
+export function setAcademyOutcomeError(message: string | null) {
+  outcomeError = message;
 }
 
 export function deferAcademyRemoval() {
@@ -200,6 +209,7 @@ export function resolveGetAcademyClassIpcMock(
     ...academyClass,
     members: (membersByClass.get(classId) ?? []).map((member) => ({
       ...member,
+      outcome: member.outcome ? { ...member.outcome } : null,
     })),
   };
 }
@@ -293,6 +303,47 @@ export function resolveRemoveAcademyMemberIpcMock(args: unknown) {
   removeMember();
 }
 
+export function resolveSetAcademyMemberOutcomeIpcMock(args: unknown) {
+  if (outcomeError) {
+    throw outcomeError;
+  }
+  const classId = readNumberArg(args, "classId");
+  const playerUid = readNumberArg(args, "playerUid");
+  const outcome = readOutcomeArg(args);
+  const members = membersByClass.get(classId) ?? [];
+  const member = members.find((candidate) => candidate.playerUid === playerUid);
+  if (!member) {
+    throw `Player ${playerUid} is not assigned to academy class ${classId}`;
+  }
+  if (outcome?.status === "sold") {
+    if (!outcome.buyingClub?.trim()) {
+      throw "Sale outcomes require a buying club";
+    }
+    if (
+      outcome.saleFeeEur === null ||
+      !Number.isInteger(outcome.saleFeeEur) ||
+      outcome.saleFeeEur < 0
+    ) {
+      throw "Sale outcomes require a non-negative whole-euro fee";
+    }
+  }
+  if (
+    outcome?.status === "released" &&
+    (outcome.buyingClub !== null || outcome.saleFeeEur !== null)
+  ) {
+    throw "Released outcomes cannot include sale details";
+  }
+
+  membersByClass.set(
+    classId,
+    members.map((candidate) =>
+      candidate.playerUid === playerUid
+        ? { ...candidate, outcome: outcome ? { ...outcome } : null }
+        : candidate,
+    ),
+  );
+}
+
 function readNumberArg(args: unknown, name: string) {
   if (typeof args !== "object" || args === null) {
     return NaN;
@@ -307,6 +358,30 @@ function readStringArg(args: unknown, name: string) {
   }
   const record = args as Record<string, unknown>;
   return typeof record[name] === "string" ? record[name] : "";
+}
+
+function readOutcomeArg(args: unknown): AcademyMember["outcome"] {
+  if (typeof args !== "object" || args === null || !("outcome" in args)) {
+    return null;
+  }
+  const outcome = (args as Record<string, unknown>).outcome;
+  if (outcome === null) {
+    return null;
+  }
+  if (typeof outcome !== "object" || outcome === null) {
+    throw "Academy outcome is invalid";
+  }
+  const record = outcome as Record<string, unknown>;
+  if (record.status !== "sold" && record.status !== "released") {
+    throw "Academy outcome is invalid";
+  }
+  return {
+    status: record.status,
+    buyingClub:
+      typeof record.buyingClub === "string" ? record.buyingClub : null,
+    saleFeeEur:
+      typeof record.saleFeeEur === "number" ? record.saleFeeEur : null,
+  };
 }
 
 function updateClassMemberCount(classId: number, memberCount: number) {
@@ -339,8 +414,7 @@ function academyMemberFromCandidate(
     goals: null,
     assists: null,
     internationalCaps: null,
-    saleFeeGbp: null,
-    isReleased: null,
+    outcome: null,
     isGraduate: null,
   };
 }

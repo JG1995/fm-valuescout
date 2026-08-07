@@ -47,6 +47,7 @@ pub fn run() {
             features::academy::commands::list_academy_candidates,
             features::academy::commands::assign_academy_member,
             features::academy::commands::remove_academy_member,
+            features::academy::commands::set_academy_member_outcome,
             features::planner::commands::get_planner_club_family,
             features::planner::commands::list_planner_clubs,
             features::planner::commands::save_planner_club_family,

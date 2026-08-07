@@ -19,9 +19,13 @@ import {
   setAcademyClassMembers,
   setAcademyCreateError,
   setAcademyDeleteError,
+  setAcademyOutcomeError,
   setAcademyRemoveError,
 } from "@/testing/academy-ipc-mock";
-import { resolveSavePlannerClubFamilyIpcMock } from "@/testing/planner-ipc-mock";
+import {
+  resolveSavePlannerClubFamilyIpcMock,
+  setPlannerAvailableClubs,
+} from "@/testing/planner-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 
 function renderAcademyRoute(initialEntry = "/academy") {
@@ -87,8 +91,7 @@ describe("academy route", () => {
       goals: valueOrDefault(overrides.goals, null),
       assists: valueOrDefault(overrides.assists, null),
       internationalCaps: valueOrDefault(overrides.internationalCaps, null),
-      saleFeeGbp: valueOrDefault(overrides.saleFeeGbp, null),
-      isReleased: valueOrDefault(overrides.isReleased, null),
+      outcome: valueOrDefault(overrides.outcome, null),
       isGraduate: valueOrDefault(overrides.isGraduate, null),
     };
   }
@@ -238,8 +241,10 @@ describe("academy route", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Class" }));
     expect(
-      await screen.findByRole("columnheader", { name: "Senior league apps" }),
-    ).toBeInTheDocument();
+      await screen.findAllByRole("columnheader", {
+        name: "Senior league apps",
+      }),
+    ).toHaveLength(3);
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
@@ -528,11 +533,23 @@ describe("academy route", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: "Remove Club prospect from Class of 2026",
+        name: "Manage Club prospect in Class of 2026",
       }),
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: "Remove from class" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Remove Club prospect from Class of 2026?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove from class" }),
     );
     await waitFor(() =>
       expect(screen.queryByRole("cell", { name: "Club prospect" })).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Add players" })).toHaveFocus(),
     );
 
     await user.click(screen.getByRole("tab", { name: "Overview" }));
@@ -558,18 +575,21 @@ describe("academy route", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: "Remove Club prospect from Class of 2026",
+        name: "Manage Club prospect in Class of 2026",
       }),
     );
-    const prospectRow = screen.getByRole("row", { name: /^Club prospect/ });
-    expect(await within(prospectRow).findByRole("alert")).toHaveTextContent(
+    await user.click(
+      screen.getByRole("menuitem", { name: "Remove from class" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Remove Club prospect from Class of 2026?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove from class" }),
+    );
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "The player could not be removed",
     );
-    expect(
-      within(screen.getByRole("row", { name: /^Club midfielder/ })).queryByRole(
-        "alert",
-      ),
-    ).toBeNull();
     expect(
       screen.getByRole("cell", { name: "Club prospect" }),
     ).toBeInTheDocument();
@@ -587,18 +607,28 @@ describe("academy route", () => {
     const releaseRemoval = deferAcademyRemoval();
     renderAcademyRoute("/academy?view=class&classId=7");
 
-    const prospectRemove = await screen.findByRole("button", {
-      name: "Remove Club prospect from Class of 2026",
+    const prospectManage = await screen.findByRole("button", {
+      name: "Manage Club prospect in Class of 2026",
     });
-    const midfielderRemove = screen.getByRole("button", {
-      name: "Remove Club midfielder from Class of 2026",
+    const midfielderManage = screen.getByRole("button", {
+      name: "Manage Club midfielder in Class of 2026",
     });
-    await user.click(prospectRemove);
+    await user.click(prospectManage);
+    await user.click(
+      screen.getByRole("menuitem", { name: "Remove from class" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Remove Club prospect from Class of 2026?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove from class" }),
+    );
 
-    await waitFor(() => expect(prospectRemove).toBeDisabled());
-    expect(midfielderRemove).toBeDisabled();
-    expect(prospectRemove.querySelector("svg.animate-spin")).not.toBeNull();
-    expect(midfielderRemove.querySelector("svg.animate-spin")).toBeNull();
+    await waitFor(() => expect(prospectManage).toBeDisabled());
+    expect(midfielderManage).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Removing…" }),
+    ).toBeDisabled();
 
     releaseRemoval();
     await waitFor(() =>
@@ -682,6 +712,175 @@ describe("academy route", () => {
     expect(
       screen.getByRole("row", { name: /^Missing prospect/ }),
     ).toHaveTextContent("—");
+  });
+
+  it("records manual outcomes in labelled roster groups", async () => {
+    const user = userEvent.setup();
+    await loadConfiguredSave();
+    setPlannerAvailableClubs(["Metro FC", "Rovers FC"]);
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 1 }]);
+    setAcademyClassMembers(7, [
+      academyMember({ playerUid: 77, lastKnownName: "Club prospect" }),
+    ]);
+    renderAcademyRoute("/academy?view=class&classId=7");
+
+    expect(
+      await screen.findByRole("heading", {
+        level: 3,
+        name: "Still at club (1)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Sold (0)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Released (0)" }),
+    ).toBeInTheDocument();
+
+    const manageInitial = screen.getByRole("button", {
+      name: "Manage Club prospect in Class of 2026",
+    });
+    manageInitial.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "Record sale" })).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(manageInitial).toHaveFocus();
+
+    await user.click(manageInitial);
+    await user.click(screen.getByRole("menuitem", { name: "Record sale" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Record sale for Club prospect",
+    });
+    const buyingClub = within(dialog).getByRole("combobox", {
+      name: "Buying club",
+    });
+    await user.type(buyingClub, "Rov");
+    expect(
+      await within(dialog).findByRole("option", { name: "Rovers FC" }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(dialog).toBeInTheDocument();
+    expect(buyingClub).toHaveValue("Rov");
+    expect(
+      within(dialog).queryByRole("option", { name: "Rovers FC" }),
+    ).toBeNull();
+    await user.type(buyingClub, "e");
+    await user.click(
+      await within(dialog).findByRole("option", { name: "Rovers FC" }),
+    );
+    const fee = within(dialog).getByRole("spinbutton", {
+      name: "Sale fee (€)",
+    });
+    await user.type(fee, "1250000");
+    await user.click(within(dialog).getByRole("button", { name: "Save sale" }));
+
+    expect(await screen.findByText("Sold to Rovers FC")).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByRole("row", {
+          name: /^Club prospect Sold to Rovers FC/,
+        }),
+      ).getByText("€1.3M"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Sold (1)" }),
+    ).toBeInTheDocument();
+
+    const manageSold = screen.getByRole("button", {
+      name: "Manage Club prospect in Class of 2026",
+    });
+    await waitFor(() => expect(manageSold).toHaveFocus());
+    await user.click(manageSold);
+    await user.click(screen.getByRole("menuitem", { name: "Mark released" }));
+    const releaseDialog = await screen.findByRole("dialog", {
+      name: "Mark Club prospect as released?",
+    });
+    await user.click(
+      within(releaseDialog).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(manageSold).toHaveFocus());
+
+    const manageReleased = screen.getByRole("button", {
+      name: "Manage Club prospect in Class of 2026",
+    });
+    await user.click(manageReleased);
+    await user.click(screen.getByRole("menuitem", { name: "Mark released" }));
+    await user.click(
+      within(
+        await screen.findByRole("dialog", {
+          name: "Mark Club prospect as released?",
+        }),
+      ).getByRole("button", { name: "Mark released" }),
+    );
+    const releasedRow = await screen.findByRole("row", {
+      name: /^Club prospect Released/,
+    });
+    expect(releasedRow).toHaveClass("bg-surface-container-low");
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Released (1)" }),
+    ).toBeInTheDocument();
+
+    const manageOutcome = screen.getByRole("button", {
+      name: "Manage Club prospect in Class of 2026",
+    });
+    await user.click(manageOutcome);
+    await user.click(
+      screen.getByRole("menuitem", { name: "Restore to still at club" }),
+    );
+    await user.click(
+      within(
+        await screen.findByRole("dialog", {
+          name: "Restore Club prospect to still at club?",
+        }),
+      ).getByRole("button", { name: "Restore player" }),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        level: 3,
+        name: "Still at club (1)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Sold (0)" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the outcome dialog open when saving a sale fails", async () => {
+    const user = userEvent.setup();
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 1 }]);
+    setAcademyClassMembers(7, [
+      academyMember({ playerUid: 77, lastKnownName: "Club prospect" }),
+    ]);
+    setAcademyOutcomeError("Could not save the sale");
+    renderAcademyRoute("/academy?view=class&classId=7");
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Manage Club prospect in Class of 2026",
+      }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Record sale" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Record sale for Club prospect",
+    });
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Buying club" }),
+      "Rovers FC",
+    );
+    await user.type(
+      within(dialog).getByRole("spinbutton", { name: "Sale fee (€)" }),
+      "1000000",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save sale" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Could not save the sale",
+    );
+    expect(
+      within(dialog).getByRole("combobox", { name: "Buying club" }),
+    ).toHaveValue("Rovers FC");
+    setAcademyOutcomeError(null);
   });
 
   it("supports keyboard assignment and restores focus after closing the picker", async () => {

@@ -10,7 +10,7 @@ export type AcademyStatistics = {
   goals: number | null;
   assists: number | null;
   internationalCaps: number | null;
-  saleFeeGbp: number | null;
+  saleFeeEur: number | null;
   releasedPlayers: number | null;
 };
 
@@ -21,7 +21,7 @@ export function unavailableAcademyStatistics(): AcademyStatistics {
     goals: null,
     assists: null,
     internationalCaps: null,
-    saleFeeGbp: null,
+    saleFeeEur: null,
     releasedPlayers: null,
   };
 }
@@ -50,12 +50,16 @@ export function summarizeAcademyMembers(
       members,
       (member) => member.internationalCaps,
     ),
-    saleFeeGbp: completeSum(members, (member) => member.saleFeeGbp),
-    releasedPlayers: completeCount(
-      members,
-      (member) => member.isReleased === true,
-      (member) => member.isReleased,
+    saleFeeEur: members.reduce(
+      (total, member) =>
+        member.outcome?.status === "sold"
+          ? total + (member.outcome.saleFeeEur ?? 0)
+          : total,
+      0,
     ),
+    releasedPlayers: members.filter(
+      (member) => member.outcome?.status === "released",
+    ).length,
   };
 }
 

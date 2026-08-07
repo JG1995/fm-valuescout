@@ -24,6 +24,7 @@ import {
   resolveListAcademyCandidatesIpcMock,
   resolveListAcademyClassesIpcMock,
   resolveRemoveAcademyMemberIpcMock,
+  resolveSetAcademyMemberOutcomeIpcMock,
 } from "@/testing/academy-ipc-mock";
 import {
   resetPlannerIpcMock,
@@ -159,6 +160,10 @@ function registerIpcMocks() {
 
     if (cmd === "remove_academy_member") {
       return resolveRemoveAcademyMemberIpcMock(args);
+    }
+
+    if (cmd === "set_academy_member_outcome") {
+      return resolveSetAcademyMemberOutcomeIpcMock(args);
     }
 
     if (cmd === "get_planner_club_family") {
