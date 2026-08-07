@@ -1,4 +1,4 @@
-# FM Memory Research Probe
+# FM Memory Research and Reader Expansion
 
 ## Status
 
@@ -6,7 +6,9 @@ Active
 
 ## Intent
 
-Add a reusable, developer-only probe for finding FM26 player data in memory. The probe must capture small, labeled memory samples for explicit player UIDs and compare those samples with FM-exported CSV values. It must accept the real Youth Academy and Moneyball export shapes through bounded full-export requests. When scalar root and pointer-window correlation fails, it must support bounded discovery and analysis of player-linked record structures. It will support later offset research without changing production snapshot data until a location or derivation has been independently verified.
+Add a reusable, developer-only probe for finding FM26 player data in memory. The probe must capture small, labeled memory samples for explicit player UIDs and compare those samples with FM-exported CSV values. It must accept the real Youth Academy and Moneyball export shapes through bounded full-export requests. When scalar root and pointer-window correlation fails, it must support bounded discovery and analysis of player-linked record structures.
+
+After the research workflow is complete, expand the production reader with practically all direct data that the permitted FMSuperScout source already extracts but the original MVP did not port. Persist that data for later product features without adding speculative UI. Treat upstream fields that are only declared or abandoned as research candidates until live evidence confirms their meaning. Finish with bounded scan hardening derived from the same upstream source without coupling those process-memory changes to the data-contract expansion.
 
 ## User-visible behavior
 
@@ -16,7 +18,10 @@ Add a reusable, developer-only probe for finding FM26 player data in memory. The
 - A structure-aware capture preset can inventory bounded memory contexts that contain exact references to the requested players, then capture only a versioned record shape justified by that inventory.
 - A repository command can correlate declared integer or decimal CSV values against one capture and can compare before-and-after CSV/capture pairs. It reports excluded cells and requires explicit normalization for compound or unit-bearing values.
 - Analysis can compare direct structured values and declared record aggregates. It reports candidate relative paths, offsets, encodings, non-zero match coverage, and ambiguity. It never labels a candidate as a verified production offset.
-- Research requests and outputs remain separate from Load Data. The app has no new UI, and schema-v5 `dump.json` remains unchanged.
+- During PR 1, research requests and outputs remain separate from Load Data. The app has no new UI, and schema-v5 `dump.json` remains unchanged.
+- After the probe PR merges, Load Data produces a new versioned dump that can include remaining proven player fields, save and manager metadata, complete staff records, and the scan's database scope.
+- Snapshot ingest stores the expanded player, save, and staff data transactionally for later features. Existing Search, Player, Planner, Academy, and Moneyball screens do not expose new controls or fields in this feature.
+- Production scan requests can select `men`, `women`, or `both`; the current app keeps its existing men's-database default until a later product feature exposes that choice.
 
 ## Invariants
 
@@ -36,11 +41,16 @@ Add a reusable, developer-only probe for finding FM26 player data in memory. The
 - Correlation results are hypotheses. Production layouts, dump schemas, SQLite, Academy behavior, and Moneyball features change only in later features after independent live validation.
 - Zero-valued rows may support a candidate but cannot establish it. Every accepted career-stat candidate must reproduce every eligible row, including every non-zero value, across the available synchronized cohorts without an equally strong conflict.
 - Raw CSV exports, probe captures, and analysis output stay untracked under `.work/` or outside the repository. They must not enter Git.
+- Production expansion may port fields that the pinned upstream plugin emits directly or fields that this probe independently validates. A constant in upstream `Fields.cs` is not enough evidence by itself.
+- Dump schema, Rust validation, and SQLite ingest must advance together at their planned boundary. A new dump must never validate and then silently discard a newly promised field.
+- Staff records remain a separate snapshot-owned entity. Player/staff dual-role deduplication must be explicit, deterministic, and compatible with cascade replacement of the current snapshot.
+- The schedule-derived date is a next-fixture consensus, not an exact world clock. The expanded contract must record that basis and must not label it as direct memory truth.
+- Scanner hardening must preserve the same accepted player, staff, manager, and club results. Parallelism, adaptive buffers, or a frozen-memory retry must not change extraction semantics or weaken prior-dump preservation.
 
 ## Non-goals
 
 - Shipping or integrating offsets for all-senior appearances, all-senior goals, international caps, or any other new production field. The probe may report candidate paths from live evidence, but a later feature owns production verification and integration.
-- Changing dump schema v5, Rust dump validation, snapshot ingest, SQLite migrations, Academy DTOs, statistics UI, or Moneyball behavior.
+- Changing dump schema v5, Rust dump validation, snapshot ingest, or SQLite during PR 1. PR 2 owns one explicit production-contract and persistence transition after the research tooling merges.
 - Adding snapshot history or reconstructing statistics from earlier points in a season.
 - Adding a product-facing probe UI or sending raw memory over Tauri IPC.
 - Capturing the whole heap, following arbitrary addresses supplied by the operator, or performing recursive unbounded pointer scans.
@@ -49,6 +59,10 @@ Add a reusable, developer-only probe for finding FM26 player data in memory. The
 - Treating every exported display field as a distinct stored scalar. Later integration may derive rates, percentages, and aggregates from verified base values when that preserves the required semantics.
 - Requiring a controlled before/after sample. Diff remains available when a useful state transition can be captured, but cross-sectional replication is the normal evidence path.
 - Treating one matching player, one matching value, or one changed byte as enough evidence for an offset.
+- Adding staff search, staff profiles, gender filters, manager UI, condition or morale UI, or other product use of the newly stored fields.
+- Copying FMSuperScout's app-side estimates, meta scores, potential projections, snapshot history, localized job labels, or derived coaching-star calculations into the memory reader.
+- Emitting a separate asking-price field that merely duplicates market value, emitting its always-null wage-demand placeholder, or treating the unused `player+0x238` slot as verified without independent evidence.
+- Promising condition, morale, home reputation, squad number, staff reputation, or any other dormant upstream pin when live validation cannot establish its encoding and semantics.
 
 ## Current-state map
 
@@ -57,11 +71,13 @@ Add a reusable, developer-only probe for finding FM26 player data in memory. The
 - Memory boundary: `IMemoryReader` provides controlled scalar and block reads; `WindowsMemoryReader` uses `ReadProcessMemory`, and `Tests/Fakes/FakeMemoryReader` provides deterministic sparse memory.
 - Layout boundary: `IFmMemoryLayout` and `Fm263Layout` own supported-build pins. Known anchors include UID, CA, PA, attributes, market value, and reputation.
 - Output boundary: `DumpWriter` and `StatusWriter` demonstrate temporary-file plus atomic-replace JSON output. Production dump schema v5 is frozen and validated by Rust.
-- Persistence and migrations: none for this feature. Probe artifacts are disposable research files and never enter SQLite.
+- Persistence and migrations: PR 1 has none; probe artifacts are disposable research files and never enter SQLite. PR 2 owns the next schema migration and transactional storage for the expanded production dump.
+- Production persistence after PR 1: schema v5 stores players only. It has no staff table and no columns for nation UID, gender, raw team type, club reputation, manager identity, managed-club reputation, database scope, or date basis.
 - Existing behavioral assumptions: full candidate discovery takes about 26 seconds on the reference save and already retains the addresses needed to derive player and person bases. Live FM attach validation remains manual on Windows.
 - Architectural seams: capture and raw-memory interpretation stay in the C# bridge; a developer CLI prepares bounded full-export requests and analyzes local CSV/JSON files; Rust, React, and snapshot ingest remain outside the feature.
 - Project validation commands: `./scripts/dev bridge-test` runs fake-memory C# tests; `./scripts/dev check` remains the repository commit gate; `./scripts/dev bridge-install` installs a live-test DLL on Windows/WSL.
 - Primary risks: unsafe capture breadth, interference with production scans, misleading zero-driven correlations, stale or mismatched CSV/captures, and incorrect grouping or aggregation of indirect history records.
+- Upstream reference: [FMSuperScout commit `4ec3c657`](https://github.com/mavarobli/FMSuperScout/commit/4ec3c657e3b993edf4e5b87d5ea42c4a3700cac6) was audited on 2026-08-07. Its current direct reader, field pins, repin guide, and historical discovery notes are useful provenance; its generated dump and app models are not a contract for this repository.
 
 ## Feature architecture
 
@@ -75,6 +91,17 @@ FM player-view CSV
   -> probe-status.json + atomic probe.json
   -> ./scripts/dev memory-probe correlate | diff
   -> direct or aggregate candidate paths + ambiguity report
+
+Pinned and independently validated field set
+  -> extended player, staff, manager, and club readers
+  -> versioned production dump schema
+  -> Rust validation + transactional SQLite ingest
+  -> stored future-facing data; existing product UI unchanged
+
+Stable expanded reader
+  -> deterministic bounded parallel scan
+  -> read-quality measurement
+  -> optional frozen-memory retry on materially incomplete live reads
 ```
 
 The probe protocol has its own schema version and file names under the existing bridge data directory. It reuses the bridge's layout resolution, candidate scanner, safe memory reader, cancellation path, and scan gate, but it does not enter the production status/dump protocol.
@@ -85,7 +112,7 @@ The .NET developer tool under `bridge/Tools/MemoryProbe/` owns CSV parsing, decl
 
 The generic depth-two capture remains available for ordinary scalar research. A separate compiled-in history preset first inventories exact UID and player-root references in the same safe memory regions. It groups bounded contexts by stable structural provenance instead of treating every hit as interchangeable. Live evidence from that inventory must justify one FM-versioned record recipe before the bridge follows a container or captures record rows. The analyzer may test direct fields and explicit aggregates from those rows, but it must keep raw values, filters, and aggregation rules visible.
 
-One PR is appropriate. Capture without analysis is not yet a useful research workflow, while the analyzer depends directly on the probe schema. The final documentation commit closes the same developer capability and records the manual live validation contract.
+Three PRs are appropriate. PR 1 keeps capture, analysis, and structure-aware career research in one isolated developer workflow. PR 2 changes the production dump and persistence contracts together after the research boundary is stable. PR 3 adopts upstream scan hardening only after the expanded reader has a fixed semantic baseline, so field regressions and process-memory regressions remain separable.
 
 ## Uncertainty register
 
@@ -101,6 +128,11 @@ One PR is appropriate. Capture without analysis is not yet a useful research wor
 - Compound `Appearances` values represent starts and substitute appearances. Later persistence will store those counts separately and derive total appearances.
 - The revised Youth Academy export provides strong variation across 103 players. The Moneyball exports mix integers, rounded decimals, missing values, unit-bearing values, localized currency text, and compound appearances.
 - The three current player-search exports contain 244 rows for 235 distinct UIDs. Nine UIDs repeat without a conflicting value. They provide all seven current career targets: `AT Apps`, `AT Gls`, `AT League Apps`, `AT League Goals`, `Int Apps`, `Int Gls`, and `International Assists`.
+- The pinned FMSuperScout reader emits direct player nation UID, gender, club reputation, raw team type, manager name, managed club, managed-club reputation, and a separate staff collection that includes identity, CA, PA, contract, club, division, job ID, and 22 staff attributes.
+- The same upstream source walks staff, human-manager, and plausible club objects during its full scan. Its second squad walk resolves indirect squad entries by searching each entry for a known person address, which supports PR 1's bounded reverse-reference design.
+- FMSuperScout's app-side history, asking-price and transfer-interest estimates, meta scores, potential projections, and coaching calculations are derived after extraction. They are not additional memory fields.
+- Upstream declares but does not productize player condition, morale, home reputation, squad number, staff reputation, and a second value slot. Their presence in `Fields.cs` is only a lead.
+- Upstream documents that the shared team-schedule value is a next-fixture date and can differ from FM's world date during breaks. The current bridge calls the same schedule consensus `memory` and therefore overstates its precision.
 
 ### Assumptions
 
@@ -122,11 +154,18 @@ One PR is appropriate. Capture without analysis is not yet a useful research wor
 - Do not research Academy assists. A later Academy feature will remove that unsupported outcome.
 - Preserve Moneyball statistics as season-to-date point-in-time values. The existing snapshot-history backlog item may later retain earlier captures inside the app, but this probe does not reconstruct history that FM cannot export.
 - Normalize compound appearances into separate starts and substitute-appearance values. A later integration derives total appearances instead of storing the formatted display string.
-- Keep production field selection, derived-stat formulas, schema changes, and persistence work in later feature plans after the probe identifies and independently validates the required source values.
+- Keep career-stat production selection and integration in a later feature plan after the probe identifies and independently validates the required source values. PR 2 may integrate only the separate upstream-parity field set defined here.
 - Preserve the generic depth-two preset as a completed scalar-research path. Add structure-aware work as a separate preset; do not increase its pointer depth or path quotas.
 - Use the three synchronized player-search cohorts as the required cross-sectional evidence for all seven career targets. Acceptance requires complete eligible-row and non-zero-row coverage across 235 distinct players; the nine repeated UIDs are a consistency check, not additional independent players.
 - Treat `International Assists` as an international-career target only. It does not replace the unavailable all-senior Academy assists value.
-- Do not create an ADR. The feature stays within ADR-0016's established C# memory-reader boundary and does not change a product-facing or persisted contract.
+- Port every direct field emitted by the pinned upstream reader when this repository can preserve its meaning: player nation UID, gender, club reputation, raw team type; manager and managed-club metadata; complete staff records; database scope; and full-club squad discovery.
+- Store future-facing staff attributes as one validated JSON object per staff record. Do not add speculative per-attribute SQL columns, search indexes, DTOs, or UI until a staff feature needs them.
+- Add an optional `databaseScope` request value with `men`, `women`, and `both`; keep `men` as the app default. Record the selected scope in the dump and snapshot so mixed data is never ambiguous.
+- Give the expanded production contract one schema-v6 transition. C# output, Rust validation, the golden fixture, SQLite migrations, and ingest must agree before the PR can publish.
+- Replace the false exact-date claim with an explicit date basis. A next-fixture consensus remains useful but is `derived`, not direct memory truth; existing Academy year behavior must be regression-tested at year boundaries.
+- Test the dormant upstream pins before schema v6 is locked. Include a field only when varied live truth establishes its encoding and meaning; record a negative result and omit the field otherwise.
+- Keep scan parallelism and snapshot retry in PR 3. PR 2 must first establish a deterministic expanded-reader baseline against which scan hardening can prove semantic parity.
+- Do not create a new ADR. The expanded extraction and schema version remain inside ADR-0016's accepted C# bridge, Rust validation, and SQLite ingest boundaries; this ledger records the field-selection and delivery decisions.
 
 ### Unknowns
 
@@ -135,6 +174,10 @@ One PR is appropriate. Capture without analysis is not yet a useful research wor
 - The exact container layout, record stride, category fields, and aggregation rules. Commit 8 must obtain live structural evidence before Commit 9 pins them.
 - Whether rounded decimal statistics are stored directly as floating-point values, fixed-point totals, or derived from other counters.
 - Which FM CSV header names and delimiters appear across other locales; the tool must use explicit UID/field mappings and robust delimiter handling rather than one hard-coded English export.
+- Which dormant pins can be validated from exported or plainly visible FM truth, and whether the second value slot has any stable meaning worth storing.
+- Whether player/staff dual-role persons expose one object, two linked facets, or duplicate candidates on every supported save shape. PR 2 must preserve the upstream behavior only after fake and live evidence make the deduplication rule explicit.
+- Whether a mixed or women's database exposes additional player class offsets beyond the current FM 26.3 pins. The request enum must not imply coverage that the live scan cannot demonstrate.
+- Whether a PSS VA-clone retry remains reliable under the reference save's memory pressure. PR 3 may keep measured unread-region failure without snapshot support if the clone cannot be bounded and released safely.
 
 ### Risks
 
@@ -147,6 +190,11 @@ One PR is appropriate. Capture without analysis is not yet a useful research wor
 - A record sum can match a displayed total while using the wrong seasons or competition types. Reports must show record membership, filters, and raw contributions for every aggregate candidate.
 - Sparse event columns can satisfy simple value variation while still producing weak evidence. Require fresh synchronized evidence and inspect related neighboring fields before accepting a binary or rare-event candidate.
 - FM display values can be rounded or derived. A direct byte match may be absent even when the underlying source values are inside the capture, so the analyzer must keep exact, rounded, scaled, and derived evidence distinct.
+- Expanding the dump can increase file size and ingest time substantially because staff may add tens of thousands of records. PR 2 must measure bridge write, validation, transaction, and database-size impact before publication.
+- A schema bump can make a stale v5 dump unreadable. Validation must return an explicit refresh-required error and must not partially ingest or replace the current snapshot.
+- A broad club-object heuristic can introduce false club candidates. Full-club discovery must require the same structural checks and plausible-name rules across fake and live evidence, while contract-seeded clubs remain the safe fallback.
+- Parallel region scans can change first-hit order and deduplication if merge rules depend on scheduling. PR 3 must sort and merge by stable addresses and UIDs before extraction.
+- A frozen-memory clone can consume substantial commit memory and must always be released. Retry must be conditional on measured read quality and must preserve the prior good dump when both attempts remain incomplete.
 
 ## Sample export assessment
 
@@ -167,7 +215,7 @@ The earlier five untracked samples established the export shapes. The three curr
 
 ## Walking skeleton
 
-With fake memory, accept one research request containing one UID, reuse candidate discovery to locate it, capture bounded player/person root ranges plus one first-hop target, and atomically write a schema-v1 `probe.json` without touching any production protocol file. This proves the safe in-process path before CSV analysis is added.
+The first vertical slice uses fake memory to accept one research request containing one UID, capture bounded player/person ranges, and atomically write `probe.json` without touching production files. The production-expansion slice then uses fake memory containing one player, one staff member, one human manager, and one club to write schema v6, validate it in Rust, and ingest all promised records into one replacement snapshot. Existing UI queries must return the same player results.
 
 ## Delivery plan
 
@@ -604,7 +652,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 **Validation:** Run `./scripts/dev memory-probe --help`, `./scripts/dev bridge-test`, `./scripts/dev check`, and `./scripts/dev bridge-install`. With the matching FM state open, create three new history-preset captures and reports. Confirm all requested UIDs, supported layout metadata, structural signatures, descriptor and record limits, complete collections, known anchors, exact non-zero coverage, repeated-UID consistency, and no equally strong conflicting candidate. Run a fresh-context Sol High review over the documentation and concise evidence before marking the commit complete.
 
-**Stop conditions:** Do not mark the feature ready for closeout unless every target is either supported by the full evidence contract or explicitly replanned as unresolved. Do not widen generic traversal. Stop for developer input if the source CSV state is no longer available or if a target's exported semantics remain uncertain after structured inspection.
+**Stop conditions:** Do not mark PR 1 ready for publication unless every target is either supported by the full evidence contract or explicitly replanned as unresolved. Do not widen generic traversal. Stop for developer input if the source CSV state is no longer available or if a target's exported semantics remain uncertain after structured inspection.
 
 **Review mandate:**
 
@@ -614,6 +662,349 @@ With fake memory, accept one research request containing one UID, reuse candidat
 - Verify direct and derived fields remain clearly distinguished and every aggregate states its exact inputs.
 - Verify no absolute address or raw artifact enters Git and no weak candidate is presented as verified.
 - Verify unresolved evidence leaves the feature Active with a concrete replan condition.
+
+### PR 2 — Expand production memory and snapshot data
+
+**Status:** Awaiting prior PR merge
+
+**PR ref:** Not published
+
+**Merge ref:** Not merged
+
+**Provisional PR title:** `feat(memory-read): store remaining proven FM data`
+
+**Build-feature-loop profile:** Terra Max — this PR expands native object discovery, adds a second entity family, and changes the C# dump, Rust validation, and SQLite snapshot contracts together.
+
+**Purpose:** Port and persist practically all direct data emitted by the pinned FMSuperScout reader that the original MVP omitted. Use the completed probe to test dormant pins before the schema is locked. Keep every new field available for later features without adding product UI or speculative query layers.
+
+**Depends on:** PR 1 merged. Use its generic probe and evidence rules for dormant player pins, but do not integrate PR 1's career-stat candidates in this PR.
+
+#### Commit 1 — Discover staff, managers, and the full club graph
+
+**Status:** Pending
+
+**Provisional commit:** `feat(memory-read): discover staff managers and full clubs`
+
+**Work:** Extend the typed full-region scan result beyond players. Classify the pinned pure-staff and human-manager objects, retain player/staff facets without duplicate output, collect plausible club objects already encountered by the object scan, and return the address maps required for complete squad and manager resolution. Preserve the existing player candidate contract for probe callers.
+
+**Out of scope:**
+
+- Reading staff attributes or remaining player fields.
+- Changing dump schema v5, Rust, SQLite, or product UI.
+- Parallelizing the scan, adding a memory snapshot, or changing acceptable memory regions.
+- Treating any unrecognized class-offset histogram peak as a supported entity.
+
+**Implementation packet:**
+
+- Owners and files: `bridge/Scanning/PersonScanner.cs`; a small typed scan-result model under `bridge/Scanning/`; `bridge/Layouts/IFmMemoryLayout.cs` and `Fm263Layout.cs`; club structural checks under `bridge/Extraction/`; focused fake-memory tests.
+- Existing patterns to verify: dynamic class-offset caching, module-vtable validation, in-buffer UID reads, candidate sanity checks, deterministic UID ordering, `ContractClubReader`, `SquadClubIndex`, cancellation, and scan diagnostics.
+- Constraints and invariants: use only the pinned FM 26.3 player, player/staff, pure-staff, and human-manager class offsets; validate staff CA/PA before acceptance; require a plausible team-vector shape and club name before retaining a club object; deduplicate entity and club addresses deterministically; keep diagnostic caps explicit and mark the whole scan truncated when early termination can make staff or club results incomplete; production unlimited scans must enumerate the full accepted region set.
+- Dependencies and ordering: land the typed discovery seam before any reader or schema assumes staff, manager, or global-club availability. Probe capture must continue to receive the exact player candidate list it uses today.
+
+**Implementation profile:** Terra Max — one region pass will now classify several native object types and preserve cross-object address maps without changing existing player or probe semantics.
+
+**Review profile:** Sol High — review must challenge false club classification, player/staff duplication, capped-scan completeness, cancellation, address provenance, and every compatibility path used by the probe.
+
+**Validation:** Start with fake memory that contains one player, one player/staff object, one pure-staff object, one human manager, one valid club, and near-miss objects. Confirm the current player-only result loses the new entities. Then prove exact classification, deterministic deduplication, rejection of implausible clubs and abilities, cancellation, cap metadata, unchanged player ordering, and unchanged generic/history probe roots. Run `./scripts/dev bridge-test` and `./scripts/dev check`.
+
+**Stop conditions:** Replan if the pinned staff or manager classes do not reproduce on the live FM 26.3.2 save, if reliable club discovery requires an unbounded name scan, or if one scan result cannot serve production and probe callers without weakening their current contracts.
+
+**Review mandate:**
+
+- Verify only supported class offsets create typed candidates.
+- Verify every accepted address lies inside an acceptable committed region and all base-address arithmetic is checked.
+- Verify club candidates require both structural and name evidence and cannot be created from arbitrary vectors.
+- Verify player/staff facets and duplicate UIDs have one documented, deterministic outcome.
+- Verify capped, cancelled, and failed scans expose incomplete results and cannot replace a complete production dump.
+- Verify PR 1 probe behavior and byte ceilings remain unchanged.
+
+#### Commit 2 — Read the remaining proven upstream fields
+
+**Status:** Pending
+
+**Provisional commit:** `feat(memory-read): read remaining proven FM fields`
+
+**Work:** Add typed readers for the direct fields emitted by the pinned upstream plugin. Players gain nation UID, gender, club reputation, and raw team type alongside the existing derived team level. Save metadata gains manager UID and name, managed club and reputation, database scope, and an honest date basis. Staff records gain UID, identity, DOB and age, nation and nation UID, gender, CA, PA, 22 staff attributes, stable job ID, wage, contract expiry, club, and division. Use full-club discovery for squad resolution while retaining contract-seeded fallback.
+
+**Out of scope:**
+
+- Emitting schema v6 or storing any new field.
+- Localized staff job names, coaching-star formulas, staff search, or staff profiles.
+- Condition, morale, home reputation, squad number, staff reputation, or the second value slot before Commit 3 validates them.
+- Asking-price, wage-demand, transfer-interest, meta-score, or potential-projection fields derived by the upstream app.
+
+**Implementation packet:**
+
+- Owners and files: focused readers under `bridge/Extraction/`; production models under `bridge/Models/`; request parsing under `bridge/Protocol/` for the bounded `databaseScope` enum; `CapADumpPipeline.cs` for orchestration; layout pins under `bridge/Layouts/`; bridge tests.
+- Existing patterns to verify: `PlayerIdentityReader`, `PlayerAttributeReader`, `PlayerContractReader`, `ContractClubReader`, `SquadClubIndex`, `GameDateResolver`, nullable scalar reads, contiguous attribute batches, and deterministic squad selection.
+- Constraints and invariants: default `databaseScope` to `men`; represent gender and scope with closed enums; retain a numeric nation UID separately from the localized nation name; keep raw team type alongside `TeamLevelMap`; use numeric staff job ID as the stable contract; keep unread or impossible values null; never emit process addresses; label schedule consensus as `derived` with basis `next-fixture-consensus`; do not call it the world date.
+- Dependencies and ordering: use Commit 1's typed candidates and full club set. Build and test readers behind the existing v5 writer so the production contract changes only once in Commit 4.
+
+**Implementation profile:** Terra Max — the field offsets are known, but staff batching, manager selection, gender scope, full-club squad precedence, date honesty, and null semantics span several native object chains.
+
+**Review profile:** Sol High — review must verify every field basis and encoding against pinned source provenance, ensure localized strings are not mistaken for stable IDs, and challenge manager, loan, and team selection ambiguity.
+
+**Validation:** Add fake-memory tests for every player, staff, manager, club, competition, contract, and date field. Prove male, female, and mixed scope behavior; player/staff deduplication; raw team type plus derived level; nation name plus UID; manager selection; full-club squad precedence; null handling; and next-fixture date labeling. Run `./scripts/dev bridge-test` and `./scripts/dev check`.
+
+**Stop conditions:** Stop if a field emitted by the pinned upstream reader cannot be reproduced with the documented object path, if women's records require an unpinned class, or if manager and managed-club selection remain ambiguous across the live save. Omit rather than guess any field whose stable identity or unit cannot be shown.
+
+**Review mandate:**
+
+- Verify each field traces to a pinned object basis, offset, width, transform, and null rule.
+- Verify all 22 staff attributes use the correct stored-times-five transform and stable keys.
+- Verify database scope never mislabels an incomplete men's, women's, or mixed scan.
+- Verify full-club results cannot override a stronger contract or squad association with a weaker heuristic.
+- Verify schedule-derived dates no longer claim direct world-clock precision.
+- Verify the current v5 writer and existing player UI behavior remain unchanged in this commit.
+
+#### Commit 3 — Validate the dormant upstream pins
+
+**Status:** Pending
+
+**Provisional commit:** `feat(memory-probe): validate dormant FM field pins`
+
+**Work:** Use the completed probe and small synchronized FM samples to test the upstream constants that its current product does not emit: player condition, morale, home reputation, the second value slot, contract squad number, and staff home, current, and world reputation. Record the exact encoding, transform, null sentinel, coverage, and contradictions for each candidate. Add only confirmed fields to the typed readers that will feed schema v6.
+
+**Out of scope:**
+
+- Treating an upstream constant, one known player, or plausible range as verification.
+- Blocking the proven field set when FM cannot export or display trustworthy truth for a dormant candidate.
+- Searching for injuries, happiness, tactical familiarity, promises, release clauses, or other fields without an upstream pin and explicit evidence input.
+- Expanding probe breadth, pointer depth, or byte ceilings.
+
+**Implementation packet:**
+
+- Owners and files: explicit mappings or transforms under `bridge/Tools/MemoryProbe/`; focused candidate readers under `bridge/Extraction/` only after validation; bridge tests; this ledger for concise live conclusions. All CSVs and reports remain under `.work/memory-probe/`.
+- Existing patterns to verify: player-root coverage through `0x280`, contract pointer provenance, explicit field normalization, eligible and non-zero coverage, unread masks, supported-layout checks, and candidate-versus-production labels.
+- Constraints and invariants: test `PLAO_CONDITION 0x258`, `PLAO_HOME_REP 0x25E`, `PLAO_MORALE 0x26C`, `PLAO_TRANSFER_VALUE 0x238`, `CON_SQUAD_NUMBER 0x5D`, `NPLO_HOME_REP 0xD4`, `NPLO_CUR_REP 0xD6`, and `NPLO_WORLD_REP 0xD8`; require varied synchronized truth wherever FM exposes it; record unavailable truth as unresolved; omit unresolved or contradicted candidates from schema v6; never rename the second value slot until its semantics are established.
+- Dependencies and ordering: run after Commit 2 supplies staff candidates and before Commit 4 freezes schema v6. Reuse PR 1 rather than adding another generic probe mechanism.
+
+**Implementation profile:** Terra xhigh — the reads are bounded and mostly direct, but field semantics, transforms, sentinel handling, and evidence sufficiency require careful live interpretation.
+
+**Review profile:** Sol High — review must reject plausible-but-unproven fields, zero-dominated correlations, mislabeled value semantics, and any production reader that exceeds the recorded evidence.
+
+**Validation:** Capture or inspect synchronized values for a varied player and staff sample where FM exposes ground truth. Confirm known anchors first. For each candidate, report eligible rows, non-zero rows, exact matches, conflicts, encoding, and transform. Add fake-memory boundary and null tests only for accepted fields. Run `./scripts/dev memory-probe --help`, `./scripts/dev bridge-test`, and `./scripts/dev check`.
+
+**Stop conditions:** If FM supplies no trustworthy truth for a candidate, record it as unresolved and omit it; this does not block the proven upstream-emitted fields. Replan only if validating a candidate reveals that an already promised field uses a materially different structure or meaning.
+
+**Review mandate:**
+
+- Verify every accepted dormant field has varied live truth and no unexplained conflict.
+- Verify unresolved and rejected pins remain absent from production models and schema plans.
+- Verify the second value slot is not called asking price, transfer value, or guide value without direct evidence.
+- Verify staff reputation uses the staff block basis rather than player or team reputation offsets.
+- Verify all raw artifacts and absolute addresses remain untracked.
+- Verify no probe safety limit changes.
+
+#### Commit 4 — Publish and persist dump schema v6
+
+**Status:** Pending
+
+**Provisional commit:** `feat(snapshot): ingest expanded FM dump data`
+
+**Work:** Make one atomic production-contract transition. Update the bridge models and writer to emit schema v6 with the proven player, staff, manager, scope, club, and date-basis fields. Update Rust validation, the golden fixture, and explicit stale-schema errors. Add the next SQLite migration, then ingest every promised field transactionally into expanded snapshots and players plus a new snapshot-owned staff table.
+
+**Out of scope:**
+
+- Career or Moneyball statistic integration.
+- Staff, manager, gender, condition, morale, or database-scope UI.
+- Staff query commands, search indexes beyond snapshot/name lookup, role scoring, or derived coaching ratings.
+- Backfilling old snapshots with invented values or silently accepting v5 as v6.
+
+**Implementation packet:**
+
+- Owners and files: `bridge/Models/DumpDocument.cs`, `bridge/Output/DumpWriter.cs`, `bridge/Protocol/BridgeProtocol.cs`, `bridge/DUMP_SCHEMA.md`, bridge serialization tests; `src-tauri/src/features/memory_read/dump_validation.rs` and fixtures; `src-tauri/src/db/migrations.rs`; `src-tauri/src/features/snapshot/ingest.rs` and focused migration/ingest tests.
+- Existing patterns to verify: exact schema-version validation, required-versus-nullable field checks, compact streaming output, replace-only-on-success, transactional snapshot insertion, current-snapshot replacement, cascade deletion, JSON attribute storage, and migration replay tests.
+- Constraints and invariants: `playerCount` and `staffCount` must equal their arrays; `scanTruncated` applies to the completeness of every emitted entity family; v6 records database scope and date basis; stale v5 returns a clear refresh-required error; snapshots store manager UID/name, managed club/reputation, staff count, database scope, and date basis; players store new scalar fields without changing existing query DTOs; staff uses `(snapshot_id, uid)` identity plus `staff_attributes_json`; every accepted dormant field follows Commit 3's exact null and transform rules; one transaction inserts snapshot, players, staff, role scores, and Academy class effects or rolls back all of them.
+- Dependencies and ordering: Commits 1 through 3 lock the field set and readers. Do not bump the production schema until bridge output, Rust validation, migration, and ingest are all present in this commit.
+
+**Implementation profile:** Terra Max — this is a cross-language, persisted contract change with large-record performance, migration, rollback, and stale-dump consequences.
+
+**Review profile:** Sol High — review must compare every schema field across C# output, Rust validation, SQLite storage, tests, and documentation, with special attention to silent data loss and partial replacement.
+
+**Validation:** Start with a schema-v6 golden dump containing one player, one staff member, manager metadata, mixed nullable values, and all accepted dormant fields. Confirm current validation rejects it before the change. Then prove exact bridge serialization, Rust type validation, migration from every prior schema, complete ingest, staff and player cascade replacement, stale-v5 error text, duplicate UID rejection per entity family, transaction rollback, and unchanged existing player queries. Measure validation, insert time, database growth, and dump size on a representative large fixture. Run `./scripts/dev bridge-test`, `./scripts/dev test`, and `./scripts/dev check`.
+
+**Stop conditions:** Replan if the expanded live dump cannot be written and ingested within practical resource limits, if SQLite storage requires a premature staff-domain API, or if any promised field would validate but not persist. Do not split the production version transition across publishable commits.
+
+**Review mandate:**
+
+- Verify one authoritative schema-v6 field list matches bridge, Rust, fixture, migration, ingest, and documentation.
+- Verify every new field is persisted or explicitly excluded before validation succeeds.
+- Verify old v5 artifacts fail with a useful rescan instruction and cannot replace the current snapshot.
+- Verify staff and player duplicate rules, foreign keys, cascades, and transaction rollback.
+- Verify no existing player query, score, Planner, Academy, or Search behavior changes accidentally.
+- Verify large arrays stream and ingest without avoidable per-record parsing or index overhead.
+- Verify no process address, raw probe evidence, or machine-local source enters the dump or repository.
+
+#### Commit 5 — Validate and document the expanded reader
+
+**Status:** Pending
+
+**Provisional commit:** `docs(memory-read): validate expanded FM data`
+
+**Work:** Install the schema-v6 bridge and validate a live full scan against known players, staff, manager, clubs, loans, database scope, and every accepted dormant field. Confirm the dump validates and persists without changing existing UI results. Update the bridge runbook, dump contract, architecture, and this ledger with concise field provenance, limitations, counts, timings, and unresolved pins.
+
+**Out of scope:**
+
+- Adding UI for the stored data.
+- Claiming women's or mixed-database coverage without a live representative scan.
+- Retaining raw dumps, personal names, memory addresses, or diagnostic artifacts in Git.
+- Starting PR 3 scan optimization before schema-v6 semantic parity is recorded.
+
+**Implementation packet:**
+
+- Owners and files: `bridge/README.md`; `bridge/DUMP_SCHEMA.md`; `.wiki/ARCHITECTURE.md`; this ledger; focused corrections only when live validation exposes a bounded contract defect.
+- Existing patterns to verify: `./scripts/dev bridge-install`, version fail-closed behavior, status/dump replacement, Rust validation, Load Data ingest, current-snapshot replacement, diagnostics timing, and untracked `.work/` evidence.
+- Constraints and invariants: verify all emitted fields against source truth where practical; record staff/player counts and duplicate handling; confirm player and staff array lengths; confirm manager and managed-club selection; confirm scope and date basis; compare existing Search and Academy results before and after; record dormant pins as accepted, rejected, or unresolved; do not call next-fixture consensus the exact game date.
+- Dependencies and ordering: run after schema-v6 automated validation passes. This commit makes PR 2 ready for publication but does not start staff product work.
+
+**Implementation profile:** Luna Max — the code path is fixed; the work is live evidence reconciliation and precise documentation across bridge and persistence contracts.
+
+**Review profile:** Sol High — documentation will become the source for later staff and player features, so every field, omission, limitation, and performance claim must match code and live evidence.
+
+**Validation:** Run `./scripts/dev bridge-test`, `./scripts/dev test`, `./scripts/dev check`, and `./scripts/dev bridge-install`. With FM 26.3.2 loaded, create a fresh unlimited schema-v6 dump, validate and ingest it, inspect representative player/staff/manager/club values, confirm replacement semantics, and record dump size plus phase timings. Run a fresh-context Sol High review over the exact PR 2 diff and concise live evidence.
+
+**Stop conditions:** Do not publish PR 2 if any required v6 field is systematically wrong, silently lost, or ambiguous, if staff completeness cannot be established, or if the expanded dump causes impractical resource use. Omit non-required dormant candidates instead of weakening evidence.
+
+**Review mandate:**
+
+- Verify live field values and nulls against representative FM truth.
+- Verify staff, manager, club, scope, and date-basis documentation matches the final v6 schema.
+- Verify existing UI and Academy behavior remains unchanged.
+- Verify timings and sizes are measured and labeled with the tested save.
+- Verify dormant-field conclusions do not overstate weak or unavailable evidence.
+- Verify no private live artifact enters Git.
+
+### PR 3 — Harden production memory scans
+
+**Status:** Awaiting prior PR merge
+
+**PR ref:** Not published
+
+**Merge ref:** Not merged
+
+**Provisional PR title:** `perf(memory-read): harden full FM scans`
+
+**Build-feature-loop profile:** Terra Max — bounded parallel scanning and optional process-snapshot retry affect memory pressure, cancellation, deterministic deduplication, and prior-dump safety inside FM.
+
+**Purpose:** Adopt the useful scan-engine improvements from the pinned upstream reader after schema-v6 field parity provides a stable baseline. Improve throughput and resilience without changing which data the bridge accepts, emits, or stores.
+
+**Depends on:** PR 2 merged with recorded schema-v6 live counts, field samples, timings, and dump size.
+
+#### Commit 1 — Parallelize deterministic region scanning
+
+**Status:** Pending
+
+**Provisional commit:** `perf(memory-read): parallelize deterministic region scans`
+
+**Work:** Scan independent acceptable regions through bounded worker-local buffers and collections, then merge candidates, staff, managers, clubs, histograms, and diagnostics deterministically. Reuse large buffers between scans and reduce the worker count under measured physical-memory pressure. Preserve cancellation and every semantic result from PR 2.
+
+**Out of scope:**
+
+- Frozen-memory snapshots or retry policy.
+- New entities, fields, layouts, schema versions, or persistence changes.
+- Configurable worker counts or benchmark-only production switches.
+
+**Implementation packet:**
+
+- Owners and files: `bridge/Scanning/PersonScanner.cs` and typed scan-result helpers; `bridge/Memory/` for a narrow memory-status query if required; scan diagnostics; fake-memory and determinism tests.
+- Existing patterns to verify: fixed scan block size, boundary overlap, dynamic-offset cache, region filtering, cancellation token, UID/address sorting, bridge scan gate, and upstream's capped worker-local collection pattern.
+- Constraints and invariants: use at most eight workers; never allocate more than one fixed scan buffer per worker; choose a smaller fixed worker count when available physical memory crosses a documented threshold; merge by stable address and UID rather than task completion order; retain exact duplicate rules and histograms; make cancellation stop all workers; preserve one scan at a time through `ScanGate`.
+- Dependencies and ordering: use PR 2's semantic fixture and live baseline as the equality oracle. Do not introduce retry until deterministic parallel output is proven independently.
+
+**Implementation profile:** Terra Max — concurrency enters the native-memory hot path and can otherwise create non-deterministic candidates, excessive buffers, or late cancellation.
+
+**Review profile:** Sol High — review must challenge task lifecycle, buffer ownership, deterministic merge, memory ceilings, cancellation races, exception propagation, and scan-gate isolation.
+
+**Validation:** Make a deterministic fake reader block selected regions so the serial baseline is observably slow, then prove bounded concurrency. Compare complete serial and parallel results under permuted region order, duplicate objects, boundary overlap, unread gaps, cancellation, and worker exceptions. Run `./scripts/dev bridge-test` and `./scripts/dev check`, then measure one live schema-v6 scan against PR 2 without claiming improvement unless the before/after numbers support it.
+
+**Stop conditions:** Replan if deterministic equality requires global locks in the scan hot loop, if memory usage exceeds the fixed worker-buffer budget, or if live throughput does not justify the added concurrency. Preserve the serial scanner if the measured tradeoff is unfavorable.
+
+**Review mandate:**
+
+- Verify worker count and buffer memory have hard upper bounds.
+- Verify no candidate or diagnostic result depends on scheduling or first completion.
+- Verify all worker failures and cancellation terminate cleanly without partial output replacement.
+- Verify region overlap still catches objects at block boundaries exactly once after deduplication.
+- Verify serial and parallel semantic results are identical.
+- Verify no schema or extraction behavior changes.
+
+#### Commit 2 — Retry materially incomplete scans from a frozen snapshot
+
+**Status:** Pending
+
+**Provisional commit:** `feat(memory-read): retry incomplete scans from snapshots`
+
+**Work:** Measure unread bytes and region failures during the live scan. When a compiled-in read-quality threshold shows that the result is materially incomplete, release the live attempt and retry once through a PSS VA-clone memory source. Always release the clone, report the source and quality metrics, and preserve the prior good dump when the retry also remains incomplete.
+
+**Out of scope:**
+
+- Taking a snapshot for every scan, exposing snapshot controls, or retrying more than once.
+- Using snapshot APIs on unsupported platforms or making them a build-time dependency outside Windows P/Invoke.
+- Accepting partial schema-v6 dumps as complete.
+- Changing extraction fields, ordering, or persistence.
+
+**Implementation packet:**
+
+- Owners and files: a focused snapshot-handle abstraction under `bridge/Memory/`; `WindowsMemoryReader` or a sibling reader for the clone; scan-quality diagnostics; pipeline retry orchestration; fake abstractions and Windows-guarded tests.
+- Existing patterns to verify: `ReadProcessMemory`, `SafeHandle`-style disposal, `DumpWriter.TryWriteReplaceOnSuccess`, failure diagnostics, scan gate, cancellation, and FMSuperScout's live-first/snapshot-on-poor-read strategy.
+- Constraints and invariants: define one compiled-in unread threshold from live evidence; retry at most once; never retain both attempt outputs; snapshot creation failure falls back to an explicit failed/incomplete result rather than a partial dump; dispose every native handle on success, failure, cancellation, and exception; check available commit memory before capture; record `live` or `snapshot-retry` plus unread metrics without exposing addresses.
+- Dependencies and ordering: run after Commit 1 fixes deterministic parallel semantics. Keep snapshot use behind a narrow reader boundary so fake tests require no Windows process snapshot.
+
+**Implementation profile:** Terra Max — native handle lifetime, copy-on-write memory pressure, retry state, cancellation, and prior-dump preservation create high-consequence failure paths inside the game process.
+
+**Review profile:** Sol High — review must independently trace every handle and output lifecycle, threshold path, retry failure, cancellation edge, and interaction with production/probe priority.
+
+**Validation:** Start with a fake live reader that returns unread coverage above the threshold and a complete snapshot reader; prove one retry and successful replacement. Add below-threshold, snapshot-creation failure, retry-incomplete, cancellation, exception, low-memory, and double-disposal tests. Confirm no incomplete attempt reaches `dump.json`. Run `./scripts/dev bridge-test` and `./scripts/dev check`, then force or observe a safe live retry on Windows before publication.
+
+**Stop conditions:** Remove the snapshot retry from the plan if PSS VA clone cannot be bounded, reliably released, or exercised safely on the supported Windows build. Keep read-quality measurement and prior-dump preservation even if snapshot support is removed.
+
+**Review mandate:**
+
+- Verify every native handle is owned once and released on every exit path.
+- Verify retry triggers only from measured incompleteness and runs at most once.
+- Verify snapshot failure or low memory cannot crash FM or replace a prior dump with partial data.
+- Verify cancellation and scan-gate priority remain correct across both attempts.
+- Verify diagnostics state the source and quality without leaking addresses.
+- Verify semantic output matches the live-reader baseline when both reads are complete.
+
+#### Commit 3 — Validate scan parity and operating limits
+
+**Status:** Pending
+
+**Provisional commit:** `docs(memory-read): validate hardened scan behavior`
+
+**Work:** Compare hardened schema-v6 scans with PR 2's semantic baseline, record measured worker, buffer, unread, retry, timing, and memory limits, and update bridge operations and architecture documentation. Keep only changes that improve or materially harden the supported workflow.
+
+**Out of scope:**
+
+- New data fields, schema changes, UI, staff features, or tuning controls.
+- Performance claims without comparable measurements.
+- Keeping temporary dumps, memory telemetry, or machine-specific diagnostics in Git.
+
+**Implementation packet:**
+
+- Owners and files: `bridge/README.md`; `.wiki/ARCHITECTURE.md`; this ledger; focused corrections only for parity or lifecycle defects found during live validation.
+- Existing patterns to verify: bridge install, unlimited full dump, status and diagnostics, semantic count/sample comparison, process-memory measurements, and prior-dump preservation.
+- Constraints and invariants: compare player/staff counts and representative field values against PR 2; explain any legitimate save-state drift; report worker count, allocated scan-buffer bound, unread fraction, source, retry count, elapsed phases, and process memory; keep raw evidence under `.work/`; remove any hardening layer whose measured cost exceeds its practical benefit.
+- Dependencies and ordering: run after both scan changes pass automated tests and after FM has restarted with the final DLL.
+
+**Implementation profile:** Luna Max — the main work is controlled live comparison and concise operational documentation after high-risk code has stabilized.
+
+**Review profile:** Sol High — final review must verify semantic parity, measured claims, native-resource safety, and documentation accuracy across the full scan lifecycle.
+
+**Validation:** Run `./scripts/dev bridge-test`, `./scripts/dev test`, `./scripts/dev check`, and `./scripts/dev bridge-install`. Produce comparable live full scans, confirm schema-v6 validation and ingest, compare entity counts and representative fields, exercise prior-dump preservation, and record measured timing and memory evidence. Run the feature-complete review selected below.
+
+**Stop conditions:** Do not publish a hardening change that causes unexplained field or count drift, increases failure risk, or lacks safe Windows evidence. Revert that bounded hardening layer while retaining the stable expanded reader.
+
+**Review mandate:**
+
+- Verify final player, staff, manager, club, and field parity against PR 2.
+- Verify every timing and memory statement comes from comparable measured runs.
+- Verify worker, buffer, retry, and unread thresholds match code.
+- Verify snapshot and cancellation lifecycles remain safe under failure.
+- Verify documentation distinguishes implemented behavior from removed or rejected hardening.
+- Verify no raw live artifact or private data enters Git.
 
 ## Active work
 
@@ -662,6 +1053,11 @@ Record material deviations, blockers, and decisions that change remaining work. 
 - All seven career targets remained ambiguous. Best generic coverage across the three cohorts was `AT Apps` 13/5/3, `AT Gls` 31/17/5, `AT League Apps` 12/5/3, `AT League Goals` 36/21/5, `Int Apps` 49/28/4, `Int Gls` 79/53/8, and `International Assists` 92/87/13. The high sparse-field figures track zero-valued rows rather than non-zero values.
 - Cross-cohort inspection found no common top candidate with meaningful non-zero support: the best common paths matched at most one non-zero `AT Apps` row and zero non-zero rows for the other six targets. This is a strong negative result for the generic capture, not proof that FM lacks the data.
 - Read-only inspection of the local generated interop metadata found UI binding reference types named `CareerStatsReference`, `CareerStatsFullReference`, and `PlayerHistoryReference`, but did not reveal an obvious typed raw career-record model in the game-plugin assembly. Machine-local interop DLLs remain research context only and must not become a checked-in or required build dependency.
+- On 2026-08-07, the current FMSuperScout source was audited at commit `4ec3c657e3b993edf4e5b87d5ea42c4a3700cac6`. The original ValueScout work was a targeted MVP port, not a complete reader audit. Current upstream has no career, appearance, goal, assist, or season-stat extraction path, so it does not replace Commits 8 through 11.
+- The upstream audit identified proven direct data not present in schema v5: player nation UID, gender, club reputation, and raw team type; manager and managed-club metadata; staff identity, CA/PA, contract, club, division, job ID, and 22 attributes; selectable men's, women's, or mixed scans; and global club-object discovery. PR 2 will read and persist these fields without adding UI.
+- Upstream also declares player condition, morale, home reputation, squad number, staff reputation, and a second value slot without relying on them in its emitted product data. PR 2 must validate these dormant pins through the probe or omit them from schema v6. Upstream's duplicated asking-price output, null wage demand, estimates, scores, projections, and app-side history are not memory-reader parity targets.
+- The audit confirmed that both readers use team next-fixture consensus as a date proxy. Upstream records that it can differ from the world date during breaks. Schema v6 will record an explicit date basis and stop labeling this value as direct memory truth.
+- Upstream scan hardening now includes bounded worker-local buffers, adaptive worker count, unread-fraction measurement, and a live-first PSS VA-clone retry. PR 3 isolates these operational changes from PR 2's semantic expansion and may remove any layer that does not prove a practical benefit safely.
 
 ## Completed work
 
@@ -678,14 +1074,15 @@ Record material deviations, blockers, and decisions that change remaining work. 
 
 ## Final validation
 
-**Feature review profile:** Sol High — the final review must connect in-process memory safety, isolated file lifecycle, real-export normalization, deterministic bounded traversal and reference discovery, structure recipe validity, aggregate evidence quality, and live operational instructions across all recorded commits.
+**Feature review profile:** Sol Max — final review must connect bounded research, native object discovery, cross-language schema v6, migration and ingest completeness, staff/player identity rules, deterministic concurrency, optional native snapshot lifetime, and live operational evidence across three PRs.
 
 Automated evidence:
 
 - `./scripts/dev memory-probe --help`
 - `./scripts/dev bridge-test`
+- `./scripts/dev test`
 - `./scripts/dev check`
-- Fresh-context Sol High feature review over the exact recorded implementation commits.
+- Fresh-context Sol Max feature review over the exact recorded implementation commits and final current-state documentation.
 
 Manual Windows/FM evidence:
 
@@ -699,10 +1096,19 @@ Manual Windows/FM evidence:
 8. For every derived value, inspect the selected records, category filter, scalar encoding, raw contributions, and arithmetic. Confirm `AT Apps >= AT League Apps` and `AT Gls >= AT League Goals` for the result as well as the CSV truth.
 9. Confirm a malformed preset, unsupported layout, missing UID, invalid descriptor, excessive record count, and 129-player request fail only the research status and leave the prior `dump.json`, production `status.json`, and prior successful `probe.json` unchanged.
 10. Keep all CSV, probe, analysis, metadata-inspection, and diagnostic artifacts under `.work/memory-probe/` or outside the repository. Record only concise pass/fail evidence and any plan-changing discovery here.
+11. Install the PR 2 bridge and create an unlimited schema-v6 dump. Confirm player and staff counts, manager and managed-club metadata, database scope, date basis, full-club squad resolution, and every promised direct field against representative FM truth.
+12. Validate and ingest schema v6. Confirm every promised field reaches its snapshot, player, or staff storage location; current-snapshot replacement cascades old staff; stale v5 fails with a clear rescan instruction; and existing Search, Player, Planner, and Academy results remain unchanged.
+13. Record every dormant pin as accepted, rejected, or unresolved. Confirm only accepted pins appear in schema v6 and no duplicate asking-price, null placeholder, app estimate, or derived upstream history field is present.
+14. Measure schema-v6 dump size, bridge write time, Rust validation time, transaction time, database growth, and peak scan-buffer budget on the representative save.
+15. Install the PR 3 bridge and compare complete semantic results against PR 2. Confirm deterministic player, staff, manager, club, and representative field parity under the final scan implementation.
+16. Confirm worker count and buffer memory remain within compiled-in limits, cancellation stops all workers, unread metrics are reported, and an incomplete live attempt cannot replace the prior good dump.
+17. Exercise the frozen-memory retry safely when retained. Confirm it triggers at most once from measured read quality, releases every native handle, reports its source, and preserves the prior dump when retry fails. If safe live evidence cannot support it, remove the retry and document the retained read-quality behavior.
 
 ## Documentation impact
 
 - `bridge/MEMORY_PROBE.md` owns the developer-only capture, correlation, replication, and evidence procedure.
-- `bridge/README.md` documents the separate probe files and `memory-probe` command surface alongside the existing bridge protocol.
-- `.wiki/ARCHITECTURE.md` records the implemented research path without changing the schema-v5 product dump boundary.
-- This ledger records the generic-capture negative result, the three synchronized career cohorts, the structure-specific replan, and the remaining live FM evidence requirement. No ADR or debug report is warranted.
+- `bridge/DUMP_SCHEMA.md` will own schema v6, including expanded snapshot and player metadata, staff records, null rules, scope, date basis, and completeness checks.
+- `bridge/README.md` documents the separate probe files and `memory-probe` command surface, then the expanded reader and final scan operating limits.
+- `.wiki/ARCHITECTURE.md` records the implemented research path, schema-v6 bridge-to-SQLite flow, staff storage boundary, and final scanner lifecycle only as each PR makes them true.
+- The completed FM26 memory-read record will be reconciled at feature completion so its v5 intentional gaps do not remain presented as current behavior.
+- This ledger records the generic-capture negative result, synchronized career evidence, structure-specific replan, pinned upstream parity audit, dormant-pin outcomes, production expansion, and scan-hardening evidence. No new ADR is warranted unless implementation crosses ADR-0016's existing boundary; no debug report is warranted without a reusable confirmed failure pattern.
