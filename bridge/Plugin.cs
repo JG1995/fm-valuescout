@@ -4,6 +4,7 @@ using BepInEx.Unity.IL2CPP;
 using FmDataBridge.Memory;
 using FmDataBridge.Output;
 using FmDataBridge.Protocol;
+using FmDataBridge.Research;
 using FmDataBridge.Scanning;
 
 namespace FmDataBridge;
@@ -109,59 +110,86 @@ public class Plugin : BasePlugin
 
     private static void TryStartScanFromRequestOrForceFlag(string bridgeDirectory)
     {
+        var scanKind = ScanRequestKind.None;
         string? requestId = null;
         int? maxAccepted = null;
+        ProbeRequest? probeRequest = null;
 
         lock (ScanGate)
         {
             if (_scanInProgress)
             {
-                // Keep a waiting request.json fresh so a long scan does not TTL-kill it.
-                RequestAcceptance.TryRefreshCreatedAtUtc(
-                    BridgePaths.GetRequestPath(bridgeDirectory),
-                    DateTimeOffset.UtcNow);
+                RefreshQueuedRequests(bridgeDirectory);
                 return;
             }
 
-            var requestPath = BridgePaths.GetRequestPath(bridgeDirectory);
-            if (File.Exists(requestPath))
+            scanKind = ScanRequestPriority.Select(
+                File.Exists(BridgePaths.GetRequestPath(bridgeDirectory)),
+                File.Exists(BridgePaths.GetForceScanPath(bridgeDirectory)),
+                File.Exists(BridgePaths.GetProbeRequestPath(bridgeDirectory)));
+            switch (scanKind)
             {
-                if (!RequestAcceptance.TryAccept(
-                        requestPath,
-                        DateTimeOffset.UtcNow,
-                        RequestTtl,
-                        out var request,
-                        out var rejectReason,
-                        out var observedRequestId))
-                {
-                    Log.LogWarning($"Ignored bridge request: {rejectReason}");
-                    if (!string.IsNullOrEmpty(observedRequestId))
+                case ScanRequestKind.FullDump:
+                    if (!RequestAcceptance.TryAccept(
+                            BridgePaths.GetRequestPath(bridgeDirectory),
+                            DateTimeOffset.UtcNow,
+                            RequestTtl,
+                            out var request,
+                            out var rejectReason,
+                            out var observedRequestId))
                     {
-                        WriteStatus(
-                            bridgeDirectory,
-                            BridgeProtocol.StateFailed,
-                            DetectModulesBestEffort(),
-                            requestId: observedRequestId,
-                            playersFound: null,
-                            error: rejectReason);
+                        Log.LogWarning($"Ignored bridge request: {rejectReason}");
+                        if (!string.IsNullOrEmpty(observedRequestId))
+                        {
+                            WriteStatus(
+                                bridgeDirectory,
+                                BridgeProtocol.StateFailed,
+                                DetectModulesBestEffort(),
+                                requestId: observedRequestId,
+                                playersFound: null,
+                                error: rejectReason);
+                        }
+
+                        return;
                     }
 
-                    return;
-                }
+                    requestId = request.RequestId;
+                    maxAccepted = request.MaxAccepted;
+                    break;
 
-                requestId = request.RequestId;
-                maxAccepted = request.MaxAccepted;
-            }
-            else if (File.Exists(BridgePaths.GetForceScanPath(bridgeDirectory)))
-            {
-                // Manual fallback until operators prefer only the in-app request path.
-                // Unlimited — same as production Load Data (null maxAccepted).
-                requestId = "force-scan";
-                maxAccepted = null;
-            }
-            else
-            {
-                return;
+                case ScanRequestKind.ForceDump:
+                    // Manual fallback until operators prefer only the in-app request path.
+                    // Unlimited — same as production Load Data (null maxAccepted).
+                    requestId = "force-scan";
+                    maxAccepted = null;
+                    break;
+
+                case ScanRequestKind.Probe:
+                    if (!ProbeRequestAcceptance.TryAccept(
+                            BridgePaths.GetProbeRequestPath(bridgeDirectory),
+                            DateTimeOffset.UtcNow,
+                            RequestTtl,
+                            out probeRequest,
+                            out var probeRejectReason,
+                            out var observedProbeRequestId))
+                    {
+                        Log.LogWarning($"Ignored probe request: {probeRejectReason}");
+                        WriteProbeStatus(
+                            bridgeDirectory,
+                            ProbeProtocol.StateFailed,
+                            DetectModulesBestEffort(),
+                            requestId: observedProbeRequestId,
+                            playersCaptured: null,
+                            error: probeRejectReason);
+
+                        return;
+                    }
+
+                    requestId = probeRequest.RequestId;
+                    break;
+
+                default:
+                    return;
             }
 
             _scanInProgress = true;
@@ -169,12 +197,20 @@ public class Plugin : BasePlugin
 
         var scanRequestId = requestId!;
         var scanMaxAccepted = maxAccepted;
+        var acceptedProbeRequest = probeRequest;
         var cancelToken = s_unloadCts?.Token ?? CancellationToken.None;
         s_scanThread = new Thread(() =>
         {
             try
             {
-                RunDumpScan(bridgeDirectory, scanRequestId, scanMaxAccepted, cancelToken);
+                if (scanKind == ScanRequestKind.Probe)
+                {
+                    RunProbeScan(bridgeDirectory, acceptedProbeRequest!, cancelToken);
+                }
+                else
+                {
+                    RunDumpScan(bridgeDirectory, scanRequestId, scanMaxAccepted, cancelToken);
+                }
             }
             finally
             {
@@ -189,6 +225,14 @@ public class Plugin : BasePlugin
             Name = "FmBridge-Scan",
         };
         s_scanThread.Start();
+    }
+
+    private static void RefreshQueuedRequests(string bridgeDirectory)
+    {
+        var now = DateTimeOffset.UtcNow;
+        // A full-dump request still wins when both queues are waiting.
+        RequestAcceptance.TryRefreshCreatedAtUtc(BridgePaths.GetRequestPath(bridgeDirectory), now);
+        ProbeRequestAcceptance.TryRefreshCreatedAtUtc(BridgePaths.GetProbeRequestPath(bridgeDirectory), now);
     }
 
     private static void RunDumpScan(
@@ -306,6 +350,108 @@ public class Plugin : BasePlugin
         }
     }
 
+    private static void RunProbeScan(
+        string bridgeDirectory,
+        ProbeRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reader = new WindowsMemoryReader();
+            var known = reader.LocateKnownModules();
+            var modules = ModulePresence.FromBounds(known);
+
+            WriteProbeStatus(
+                bridgeDirectory,
+                ProbeProtocol.StateScanning,
+                modules,
+                requestId: request.RequestId,
+                playersCaptured: null,
+                error: null);
+
+            if (!GameVersionDetector.TryDetectFromCurrentProcess(out var gameVersion)
+                || string.IsNullOrWhiteSpace(gameVersion))
+            {
+                const string message =
+                    "could not detect FM game_plugin.dll version; refusing probe capture (fail closed)";
+                WriteProbeStatus(
+                    bridgeDirectory,
+                    ProbeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersCaptured: null,
+                    error: message);
+                Log.LogError(message);
+                return;
+            }
+
+            if (known.GameAssembly is not { } gameAssembly)
+            {
+                const string message = "GameAssembly.dll bounds not found; cannot capture probe";
+                WriteProbeStatus(
+                    bridgeDirectory,
+                    ProbeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersCaptured: null,
+                    error: message);
+                Log.LogError(message);
+                return;
+            }
+
+            var result = new ProbeCaptureService().RunAndWrite(
+                reader,
+                bridgeDirectory,
+                request,
+                gameVersion,
+                MyPluginInfo.PLUGIN_VERSION,
+                gameAssembly,
+                known.GamePlugin,
+                cancellationToken);
+
+            if (result.Success)
+            {
+                WriteProbeStatus(
+                    bridgeDirectory,
+                    ProbeProtocol.StateReady,
+                    modules,
+                    requestId: request.RequestId,
+                    playersCaptured: result.Document!.PlayerCount,
+                    error: null);
+                Log.LogInfo($"Probe request {request.RequestId} wrote {result.Document.PlayerCount} players");
+            }
+            else
+            {
+                WriteProbeStatus(
+                    bridgeDirectory,
+                    ProbeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersCaptured: null,
+                    error: result.Error);
+                Log.LogWarning($"Probe request {request.RequestId} failed: {result.Error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.LogError($"Probe capture crashed: {ex}");
+            try
+            {
+                WriteProbeStatus(
+                    bridgeDirectory,
+                    ProbeProtocol.StateFailed,
+                    DetectModulesBestEffort(),
+                    requestId: request.RequestId,
+                    playersCaptured: null,
+                    error: ex.Message);
+            }
+            catch
+            {
+                // ignored — probe status is best-effort during a crash
+            }
+        }
+    }
+
     /// <summary>
     /// game_plugin.dll may appear after plugin Load; rewrite status module flags without changing state.
     /// </summary>
@@ -400,6 +546,29 @@ public class Plugin : BasePlugin
             MaxAccepted = maxAccepted,
         };
         StatusWriter.Write(bridgeDirectory, status);
+    }
+
+    private static void WriteProbeStatus(
+        string bridgeDirectory,
+        string state,
+        ModulePresenceSignals modules,
+        string? requestId,
+        int? playersCaptured,
+        string? error)
+    {
+        var status = new ProbeStatus
+        {
+            ProtocolVersion = ProbeProtocol.ProtocolVersion,
+            PluginVersion = MyPluginInfo.PLUGIN_VERSION,
+            State = state,
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            GamePluginModulePresent = modules.GamePluginModulePresent,
+            GameAssemblyModulePresent = modules.GameAssemblyModulePresent,
+            RequestId = requestId,
+            PlayersCaptured = playersCaptured,
+            Error = error,
+        };
+        ProbeStatusWriter.Write(bridgeDirectory, status);
     }
 
     private static ModulePresenceSignals DetectModulesBestEffort()

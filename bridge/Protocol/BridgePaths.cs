@@ -32,4 +32,13 @@ public static class BridgePaths
 
     public static string GetForceScanPath(string bridgeDirectory) =>
         Path.Combine(bridgeDirectory, BridgeProtocol.ForceScanFileName);
+
+    public static string GetProbeRequestPath(string bridgeDirectory) =>
+        Path.Combine(bridgeDirectory, ProbeProtocol.RequestFileName);
+
+    public static string GetProbeStatusPath(string bridgeDirectory) =>
+        Path.Combine(bridgeDirectory, ProbeProtocol.StatusFileName);
+
+    public static string GetProbePath(string bridgeDirectory) =>
+        Path.Combine(bridgeDirectory, ProbeProtocol.ProbeFileName);
 }

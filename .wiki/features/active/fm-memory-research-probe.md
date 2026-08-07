@@ -134,7 +134,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 1 — Capture bounded player memory by UID
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-probe): capture bounded player memory`
 
@@ -173,7 +173,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 2 — Correlate CSV truth with probe captures
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(memory-probe): correlate CSV values with captures`
 
@@ -252,22 +252,22 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 **PR:** PR 1 — Add reusable FM memory research tooling
 
-**Commit:** Capture bounded player memory by UID
+**Commit:** Correlate CSV truth with probe captures
 
 ### RED proof
 
-Add a fake-memory test that submits a research request for one UID while two valid candidates exist. The test must initially fail because no research capture exists, then prove that the result contains only the requested candidate, derives both root addresses correctly, captures only approved ranges and pointer targets within the byte budget, and leaves production request/status/dump/diagnostic files unchanged.
+Add deterministic capture and CSV fixtures where duplicate small integers make a one-player match ambiguous, while multi-player coverage identifies the known relative path. The initial RED must fail for missing correlation behavior rather than CSV or test-harness setup. Add a synchronized before/after fixture with one controlled scalar delta.
 
 ### Expected outcome
 
-The bridge has a testable, read-only schema-v1 research capture path for explicit player UIDs. A successful request atomically writes bounded, provenance-rich `probe.json`; all failures terminate in the separate research status and preserve prior production and research outputs.
+The dependency-free .NET developer CLI can create and await a bounded probe request, correlate explicit numeric CSV mappings with one compatible capture, and compare synchronized before/after CSV and capture pairs. Its output ranks candidate paths and encodings while making ambiguity and unmatched data visible.
 
 ### Explicit exclusions
 
-- No analyzer or CSV support yet.
-- No live offset discovery or layout pins.
-- No Rust, React, SQLite, Academy, Moneyball, or dump-schema change.
-- No unbounded memory traversal or product-facing trigger.
+- No candidate is declared a verified FM layout offset.
+- No domain-specific appearance-history or competition-record parsing.
+- No product UI, IPC, persisted analysis results, charts, or general-purpose data science tooling.
+- No new CSV or command-line package.
 
 ## Discoveries and replanning
 
@@ -275,12 +275,13 @@ Record material deviations, blockers, and decisions that change remaining work. 
 
 - Planning selected a separate research protocol so the reusable tool cannot accidentally become part of the frozen product dump contract.
 - Repowise showed `Plugin.cs`, `PersonScanner.cs`, and `CapADumpPipeline.cs` as bridge hotspots; its index was behind live `HEAD`, so file relationships and all planning facts were verified against current source.
+- Commit 1 fixed the player root at 0x280 bytes and the person root at 0x100 bytes (1,408 bytes maximum per player). The player window covers the known CA, PA, Determination, and market-value anchors; unread root or target bytes now fail before output replacement.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | Capture bounded player memory by UID | Pending record | Pending | Pending | None |
+| PR 1 | Capture bounded player memory by UID | Pending record | Isolated C# research protocol, scan-gate integration, bounded capture, atomic output, and fake-memory coverage | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Root window set to 0x280 bytes during review to include planned known anchors; no scope change. |
 | PR 1 | Correlate CSV truth with probe captures | Pending record | Pending | Pending | None |
 | PR 1 | Document and validate the research workflow | Pending record | Pending | Pending | None |
 
