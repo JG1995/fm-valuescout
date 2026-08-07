@@ -124,7 +124,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 #### Commit 1 — Persist youth class membership
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(academy): persist youth class membership`
 
@@ -163,7 +163,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 #### Commit 2 — Add youth class workspace
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(academy): add youth class workspace`
 
@@ -282,29 +282,32 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 **PR:** Add youth graduate tracking
 
-**Commit:** Persist youth class membership
+**Commit:** Add youth class workspace
 
 ### RED proof
 
-Add the smallest Rust tests that attempt to apply migration v11 and create/list an Academy class for the active save. The expected RED is a missing migration/table/service behavior, not a setup, compilation, or unrelated Planner failure. Extend RED coverage one invariant at a time for duplicate years, duplicate UID membership, cross-save references, exact club-family candidate filtering, and retention after snapshot replacement before implementing each behavior.
+Add a route test for direct `/academy` navigation and persisted class creation through an Academy IPC mock. The expected RED is the missing route, feature API, or command mock, not a router-test harness failure. Extend it to URL recovery and configured/no-snapshot/no-club-family states before implementing the workspace.
 
 ### Expected outcome
 
-An upgraded database has save-scoped Academy tables and typed Rust commands that enforce class/membership invariants, reuse the Planner club family for candidate eligibility, resolve current player data without losing persisted identity, and return null for unsupported career statistics.
+The `/academy` route loads an Overview workspace for the active save, exposes persisted `Class of YYYY` cards, and supports accessible class creation and confirmed deletion. URL state and first-use states recover to the correct workspace without duplicating Planner club-family setup.
 
 ### Explicit exclusions
 
-No React route or components, no bridge/schema-v6 work, no generated statistics, no CSV/HTML flow, and no Git publication belong in the active commit.
+No player picker or roster table, no membership-mutation UI, no bridge/schema change, no generated career statistics, no CSV/HTML flow, and no Git publication belong in the active commit.
 
 ## Discoveries and replanning
 
 - Initial planning confirmed that the Planner club family is reusable at the Rust service seam; no separate Academy club configuration is needed.
 - The reference file mixes manual facts with imported statistics. The app will keep live memory data authoritative and show unsupported fields as unavailable instead of reproducing manual edit controls.
 - Repowise architecture/risk output was two commits stale and its answer synthesis was unavailable. Direct source, tests, manifests, and wiki documents were used for the plan; its migration/lib/top-bar risk signals are advisory review focus only.
+- Commit 1 adds `UNIQUE (save_id, id)` to the v11 class table so SQLite can enforce the planned composite same-save membership foreign key. Class deletion also requires backend confirmation; candidate search is bounded to 100 results and 120 characters, following established local IPC limits.
 
 ## Completed work
 
-No implementation commits completed yet.
+| PR | Commit | Git ref | Implementation | Review | Deviations |
+| --- | --- | --- | --- | --- | --- |
+| PR 1 | Commit 1 — Persist youth class membership | Pending record | v11 Academy schema, Rust commands, member retention, and nullable career-stat placeholders | Sol High accepted; no Critical, High, or Medium findings | Backend delete confirmation and bounded candidate input recorded under Discoveries. |
 
 ## Final validation
 
@@ -321,6 +324,6 @@ No implementation commits completed yet.
 ## Documentation impact
 
 - `DESIGN.md` owns the planned `/academy` layout and unavailable-stat presentation.
-- `ARCHITECTURE.md` remains current-state-only during planning. Reconcile it after implementation with the Academy Rust module, Tauri commands, v11 tables, frontend feature boundary, and club-family dependency actually delivered.
+- `ARCHITECTURE.md` records Commit 1's Academy Rust module, Tauri commands, v11 tables, and Planner club-family dependency. Add the frontend feature boundary only when it is delivered.
 - `CONCEPT.md` needs reconciliation only if implementation establishes Youth Academy as a durable product capability beyond its existing product purpose.
 - Archive this ledger to `.wiki/features/completed/` only after full validation, feature review, and documentation reconciliation.
