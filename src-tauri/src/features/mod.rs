@@ -1,3 +1,4 @@
+pub mod academy;
 pub mod health;
 pub mod memory_read;
 pub mod planner;

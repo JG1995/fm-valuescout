@@ -222,6 +222,92 @@ ALTER TABLE planner_tactic_lanes
     CHECK (foot_preference IN ('preferred', 'strict'));
 ";
 
+pub const ACADEMY_SCHEMA_SQL: &str = "
+CREATE TABLE academy_classes (
+    id INTEGER PRIMARY KEY,
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    class_year INTEGER NOT NULL CHECK (class_year > 0),
+    UNIQUE (save_id, id),
+    UNIQUE (save_id, class_year)
+);
+
+CREATE INDEX idx_academy_classes_save_year
+    ON academy_classes(save_id, class_year DESC);
+
+CREATE TABLE academy_memberships (
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    class_id INTEGER NOT NULL,
+    player_uid INTEGER NOT NULL,
+    last_known_name TEXT NOT NULL CHECK (trim(last_known_name) <> ''),
+    PRIMARY KEY (save_id, player_uid),
+    FOREIGN KEY (save_id, class_id)
+        REFERENCES academy_classes(save_id, id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX idx_academy_memberships_class
+    ON academy_memberships(save_id, class_id);
+";
+
+pub const ACADEMY_AUTOMATIC_CLASSES_SQL: &str = "
+ALTER TABLE academy_classes
+    ADD COLUMN is_automatic INTEGER NOT NULL DEFAULT 0
+    CHECK (is_automatic IN (0, 1));
+
+UPDATE academy_classes
+SET is_automatic = 1
+WHERE class_year = 2025;
+
+INSERT OR IGNORE INTO academy_classes (save_id, class_year, is_automatic)
+SELECT id, 2025, 1
+FROM saves;
+
+DROP INDEX idx_academy_classes_save_year;
+
+CREATE INDEX idx_academy_classes_save_year
+    ON academy_classes(save_id, class_year ASC);
+";
+
+pub const ACADEMY_MEMBER_OUTCOMES_SQL: &str = "
+CREATE TABLE academy_member_outcomes (
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    player_uid INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('sold', 'released')),
+    buying_club TEXT,
+    sale_fee_eur INTEGER,
+    PRIMARY KEY (save_id, player_uid),
+    FOREIGN KEY (save_id, player_uid)
+        REFERENCES academy_memberships(save_id, player_uid)
+        ON DELETE CASCADE,
+    CHECK (
+        (status = 'sold'
+            AND buying_club IS NOT NULL
+            AND trim(buying_club) <> ''
+            AND sale_fee_eur IS NOT NULL
+            AND sale_fee_eur >= 0)
+        OR (status = 'released'
+            AND buying_club IS NULL
+            AND sale_fee_eur IS NULL)
+    )
+);
+";
+
+pub const ACADEMY_CURRENT_SNAPSHOT_CLASSES_SQL: &str = "
+INSERT OR IGNORE INTO academy_classes (save_id, class_year, is_automatic)
+SELECT id, 2025, 1
+FROM saves;
+
+INSERT INTO academy_classes (save_id, class_year, is_automatic)
+SELECT save_id, CAST(substr(game_date, 1, 4) AS INTEGER), 1
+FROM snapshots
+WHERE is_current = 1
+  AND game_date_source IN ('memory', 'derived')
+  AND game_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+  AND date(game_date, '+0 days') = game_date
+  AND CAST(substr(game_date, 1, 4) AS INTEGER) >= 2025
+ON CONFLICT(save_id, class_year) DO UPDATE SET is_automatic = 1;
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -273,6 +359,26 @@ pub fn all() -> &'static [Migration] {
             version: 10,
             description: "add_planner_lane_foot_preferences",
             sql: PLANNER_LANE_FOOT_PREFERENCES_SQL,
+        },
+        Migration {
+            version: 11,
+            description: "create_academy_schema",
+            sql: ACADEMY_SCHEMA_SQL,
+        },
+        Migration {
+            version: 12,
+            description: "add_automatic_academy_classes",
+            sql: ACADEMY_AUTOMATIC_CLASSES_SQL,
+        },
+        Migration {
+            version: 13,
+            description: "create_academy_member_outcomes",
+            sql: ACADEMY_MEMBER_OUTCOMES_SQL,
+        },
+        Migration {
+            version: 14,
+            description: "backfill_current_snapshot_academy_classes",
+            sql: ACADEMY_CURRENT_SNAPSHOT_CLASSES_SQL,
         },
     ]
 }
@@ -354,7 +460,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 10);
+        assert_eq!(version, 14);
 
         let table_name: String = conn
             .query_row(
@@ -364,6 +470,252 @@ mod tests {
             )
             .expect("read sqlite_master");
         assert_eq!(table_name, "demo_value");
+    }
+
+    #[test]
+    fn opening_fresh_db_applies_academy_schema() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("academy-migration-test.db"));
+
+        let table_name: String = conn
+            .query_row(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'academy_classes'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read academy_classes from sqlite_master");
+
+        assert_eq!(table_name, "academy_classes");
+        assert_eq!(
+            table_columns(&conn, "academy_classes"),
+            ["id", "save_id", "class_year", "is_automatic"]
+        );
+        assert_eq!(
+            table_columns(&conn, "academy_memberships"),
+            ["save_id", "class_id", "player_uid", "last_known_name"]
+        );
+        assert_eq!(
+            table_columns(&conn, "academy_member_outcomes"),
+            [
+                "save_id",
+                "player_uid",
+                "status",
+                "buying_club",
+                "sale_fee_eur"
+            ]
+        );
+    }
+
+    #[test]
+    fn migrates_populated_v10_without_touching_planner_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("academy-v10-migration-test.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 10) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v10");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Existing save', 1)",
+            [],
+        )
+        .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_club_settings (save_id, primary_club) VALUES (?1, 'Existing FC')",
+            [save_id],
+        )
+        .expect("insert planner setting");
+
+        apply(&conn).expect("migrate populated v10 database");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user version");
+        assert_eq!(version, 14);
+        let primary_club: String = conn
+            .query_row(
+                "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
+                [save_id],
+                |row| row.get(0),
+            )
+            .expect("read preserved planner setting");
+        assert_eq!(primary_club, "Existing FC");
+    }
+
+    #[test]
+    fn migrates_v11_classes_to_automatic_baselines_without_overwriting_memberships() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("academy-v11-migration-test.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 11) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v11");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES ('Existing save')", [])
+            .expect("insert first save");
+        let first_save_id = conn.last_insert_rowid();
+        conn.execute("INSERT INTO saves (name) VALUES ('Second save')", [])
+            .expect("insert second save");
+        let second_save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO academy_classes (save_id, class_year) VALUES (?1, 2025)",
+            [first_save_id],
+        )
+        .expect("insert existing class");
+        let existing_class_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
+             VALUES (?1, ?2, 77, 'Existing graduate')",
+            params![first_save_id, existing_class_id],
+        )
+        .expect("insert existing membership");
+
+        apply(&conn).expect("migrate populated v11 database");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user version");
+        assert_eq!(version, 14);
+        assert_eq!(
+            table_columns(&conn, "academy_classes"),
+            ["id", "save_id", "class_year", "is_automatic"]
+        );
+        let (class_id, automatic, member_count): (i64, i32, i64) = conn
+            .query_row(
+                "SELECT class.id, class.is_automatic, COUNT(member.player_uid)
+                 FROM academy_classes class
+                 LEFT JOIN academy_memberships member
+                   ON member.save_id = class.save_id
+                  AND member.class_id = class.id
+                 WHERE class.save_id = ?1 AND class.class_year = 2025
+                 GROUP BY class.id, class.is_automatic",
+                [first_save_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read promoted existing class");
+        assert_eq!(class_id, existing_class_id);
+        assert_eq!(automatic, 1);
+        assert_eq!(member_count, 1);
+        let second_baseline_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2025",
+                [second_save_id],
+                |row| row.get(0),
+            )
+            .expect("count second-save baseline");
+        assert_eq!(second_baseline_count, 1);
+    }
+
+    #[test]
+    fn migrates_v13_current_snapshot_to_its_observed_automatic_class() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("academy-v13-migration-test.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 13) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v13");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES ('Existing save')", [])
+            .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO snapshots (
+                save_id, is_current, schema_version, generated_at_utc, game_version,
+                supported_game_version, bridge_version, protocol_version, game_date,
+                game_date_source, scan_truncated, max_accepted, player_count
+             ) VALUES (
+                ?1, 1, 5, '2030-08-14T12:00:00Z', '26.3.2', '26.3', '0.1.0', 1,
+                '2030-08-14', 'memory', 0, NULL, 0
+             )",
+            [save_id],
+        )
+        .expect("insert current snapshot");
+        conn.execute(
+            "INSERT INTO saves (name) VALUES ('Malformed date save')",
+            [],
+        )
+        .expect("insert malformed-date save");
+        let malformed_date_save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO snapshots (
+                save_id, is_current, schema_version, generated_at_utc, game_version,
+                supported_game_version, bridge_version, protocol_version, game_date,
+                game_date_source, scan_truncated, max_accepted, player_count
+             ) VALUES (
+                ?1, 1, 5, '2030-02-30T12:00:00Z', '26.3.2', '26.3', '0.1.0', 1,
+                '2030-02-30', 'memory', 0, NULL, 0
+             )",
+            [malformed_date_save_id],
+        )
+        .expect("insert malformed current snapshot");
+
+        apply(&conn).expect("backfill current snapshot class");
+
+        let class_years = conn
+            .prepare(
+                "SELECT class_year
+                 FROM academy_classes
+                 WHERE save_id = ?1
+                 ORDER BY class_year",
+            )
+            .expect("prepare class query")
+            .query_map([save_id], |row| row.get::<_, i64>(0))
+            .expect("query automatic classes")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read automatic classes");
+        assert_eq!(class_years, vec![2025, 2030]);
+        let malformed_date_class_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2030",
+                [malformed_date_save_id],
+                |row| row.get(0),
+            )
+            .expect("count malformed-date classes");
+        assert_eq!(malformed_date_class_count, 0);
+    }
+
+    #[test]
+    fn academy_membership_requires_a_class_from_its_save() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("academy-foreign-key-test.db"));
+        conn.execute("INSERT INTO saves (name) VALUES ('First save')", [])
+            .expect("insert first save");
+        let first_save_id = conn.last_insert_rowid();
+        conn.execute("INSERT INTO saves (name) VALUES ('Second save')", [])
+            .expect("insert second save");
+        let second_save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO academy_classes (save_id, class_year) VALUES (?1, 2030)",
+            [first_save_id],
+        )
+        .expect("insert first class");
+        let first_class_id = conn.last_insert_rowid();
+
+        let error = conn
+            .execute(
+                "INSERT INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
+                 VALUES (?1, ?2, 77, 'Wrong Save')",
+                params![second_save_id, first_class_id],
+            )
+            .expect_err("reject cross-save class reference");
+
+        assert_eq!(
+            error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::ConstraintViolation)
+        );
     }
 
     #[test]
@@ -455,7 +807,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 10);
+        assert_eq!(version, 14);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -561,7 +913,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 10);
+        assert_eq!(version, 14);
 
         let table_name: String = conn
             .query_row(
@@ -674,6 +1026,8 @@ mod tests {
         assert_eq!(
             indexes,
             [
+                "idx_academy_classes_save_year",
+                "idx_academy_memberships_class",
                 "idx_planner_assignments_string",
                 "idx_planner_club_sources_save_team",
                 "idx_planner_strings_save_team_order",
@@ -771,14 +1125,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 10);
+        assert_eq!(version, 14);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 10);
+        assert_eq!(migrations.len(), 14);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -818,6 +1172,16 @@ mod tests {
             "add_planner_lane_foot_preferences"
         );
         assert_eq!(migrations[9].sql, PLANNER_LANE_FOOT_PREFERENCES_SQL);
+        assert_eq!(migrations[10].version, 11);
+        assert_eq!(migrations[10].description, "create_academy_schema");
+        assert_eq!(migrations[10].sql, ACADEMY_SCHEMA_SQL);
+        assert_eq!(migrations[11].version, 12);
+        assert_eq!(migrations[11].description, "add_automatic_academy_classes");
+        assert_eq!(migrations[11].sql, ACADEMY_AUTOMATIC_CLASSES_SQL);
+        assert_eq!(migrations[12].version, 13);
+        assert_eq!(migrations[13].version, 14);
+        assert_eq!(migrations[12].description, "create_academy_member_outcomes");
+        assert_eq!(migrations[12].sql, ACADEMY_MEMBER_OUTCOMES_SQL);
     }
 
     #[test]

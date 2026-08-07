@@ -16,6 +16,17 @@ import {
   setDumpRequestIpcMockMode,
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
 import {
+  resetAcademyIpcMock,
+  resolveAssignAcademyMemberIpcMock,
+  resolveCreateAcademyClassIpcMock,
+  resolveDeleteAcademyClassIpcMock,
+  resolveGetAcademyClassIpcMock,
+  resolveListAcademyCandidatesIpcMock,
+  resolveListAcademyClassesIpcMock,
+  resolveRemoveAcademyMemberIpcMock,
+  resolveSetAcademyMemberOutcomeIpcMock,
+} from "@/testing/academy-ipc-mock";
+import {
   resetPlannerIpcMock,
   resolveAddPlannerStringIpcMock,
   resolveAssignPlannerPlayerIpcMock,
@@ -123,6 +134,38 @@ function registerIpcMocks() {
       return resolveGetPlayerIpcMock(args);
     }
 
+    if (cmd === "list_academy_classes") {
+      return resolveListAcademyClassesIpcMock();
+    }
+
+    if (cmd === "create_academy_class") {
+      return resolveCreateAcademyClassIpcMock(args);
+    }
+
+    if (cmd === "delete_academy_class") {
+      return resolveDeleteAcademyClassIpcMock(args);
+    }
+
+    if (cmd === "get_academy_class") {
+      return resolveGetAcademyClassIpcMock(args);
+    }
+
+    if (cmd === "list_academy_candidates") {
+      return resolveListAcademyCandidatesIpcMock(args);
+    }
+
+    if (cmd === "assign_academy_member") {
+      return resolveAssignAcademyMemberIpcMock(args);
+    }
+
+    if (cmd === "remove_academy_member") {
+      return resolveRemoveAcademyMemberIpcMock(args);
+    }
+
+    if (cmd === "set_academy_member_outcome") {
+      return resolveSetAcademyMemberOutcomeIpcMock(args);
+    }
+
     if (cmd === "get_planner_club_family") {
       return resolvePlannerClubFamilyIpcMock();
     }
@@ -219,5 +262,6 @@ afterEach(() => {
   resetSearchPlayersOverride();
   resetGetPlayerOverride();
   resetPlannerIpcMock();
+  resetAcademyIpcMock();
   registerIpcMocks();
 });

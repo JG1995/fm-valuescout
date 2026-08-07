@@ -1,5 +1,7 @@
 use rusqlite::{params, Connection, Row, Transaction};
 
+use crate::features::academy::service as academy_service;
+
 pub const DEFAULT_SAVE_NAME: &str = "Default save";
 pub const MAX_SAVE_NAME_LEN: usize = 100;
 
@@ -28,13 +30,26 @@ pub fn validate_save_name(name: &str) -> Result<String, String> {
 }
 
 pub fn ensure_default_save(conn: &Connection) -> Result<(), String> {
-    conn.execute(
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    tx.execute(
         "INSERT INTO saves (name, is_active)
          SELECT ?1, 1
          WHERE NOT EXISTS (SELECT 1 FROM saves)",
         params![DEFAULT_SAVE_NAME],
     )
     .map_err(|error| error.to_string())?;
+
+    let save_id: i64 = tx
+        .query_row(
+            "SELECT id FROM saves WHERE is_active = 1 LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    academy_service::ensure_baseline_class(&tx, save_id)?;
+    tx.commit().map_err(|error| error.to_string())?;
 
     Ok(())
 }
@@ -73,13 +88,18 @@ pub fn create_save(conn: &Connection, name: &str) -> Result<SaveSummary, String>
     let name = validate_save_name(name)?;
     ensure_default_save(conn)?;
 
-    conn.execute(
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    tx.execute(
         "INSERT INTO saves (name, is_active) VALUES (?1, 0)",
         params![name],
     )
     .map_err(|error| error.to_string())?;
 
-    let id = conn.last_insert_rowid();
+    let id = tx.last_insert_rowid();
+    academy_service::ensure_baseline_class(&tx, id)?;
+    tx.commit().map_err(|error| error.to_string())?;
     get_save_by_id(conn, id)
 }
 

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './app/routes/__root'
 import { Route as IndexRouteImport } from './app/routes/index'
+import { Route as AcademyRouteImport } from './app/routes/academy'
 import { Route as PlannerRouteImport } from './app/routes/planner'
 import { Route as SearchRouteImport } from './app/routes/search'
 import { Route as PlayersUidRouteImport } from './app/routes/players.$uid'
@@ -17,6 +18,11 @@ import { Route as PlayersUidRouteImport } from './app/routes/players.$uid'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AcademyRoute = AcademyRouteImport.update({
+  id: '/academy',
+  path: '/academy',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlannerRoute = PlannerRouteImport.update({
@@ -37,12 +43,14 @@ const PlayersUidRoute = PlayersUidRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/academy': typeof AcademyRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
   '/players/$uid': typeof PlayersUidRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/academy': typeof AcademyRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
   '/players/$uid': typeof PlayersUidRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/academy': typeof AcademyRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
   '/players/$uid': typeof PlayersUidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/planner' | '/search' | '/players/$uid'
+  fullPaths: '/' | '/academy' | '/planner' | '/search' | '/players/$uid'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/planner' | '/search' | '/players/$uid'
-  id: '__root__' | '/' | '/planner' | '/search' | '/players/$uid'
+  to: '/' | '/academy' | '/planner' | '/search' | '/players/$uid'
+  id: '__root__' | '/' | '/academy' | '/planner' | '/search' | '/players/$uid'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AcademyRoute: typeof AcademyRoute
   PlannerRoute: typeof PlannerRoute
   SearchRoute: typeof SearchRoute
   PlayersUidRoute: typeof PlayersUidRoute
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/academy': {
+      id: '/academy'
+      path: '/academy'
+      fullPath: '/academy'
+      preLoaderRoute: typeof AcademyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/planner': {
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AcademyRoute: AcademyRoute,
   PlannerRoute: PlannerRoute,
   SearchRoute: SearchRoute,
   PlayersUidRoute: PlayersUidRoute,

@@ -36,7 +36,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
-**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v10: `saves`, `snapshots`, `players`, `player_role_scores`, and save-scoped Planner club-family, tactic, depth-string, and assignment rows with provenance).
+**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v14: `saves`, `snapshots`, `players`, `player_role_scores`, save-scoped Planner club-family, tactic, depth-string, and assignment rows with provenance, and Academy classes, memberships, outcomes, and automatic-class backfill).
 
 **FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), `status.json` / `dump.json` / diagnostics with phase timings. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
@@ -47,6 +47,8 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 **Player search:** Rust `features/search` owns `search_players` and `suggest_players` — parameterized SQLite queries against the active save's current snapshot (`players`, `player_role_scores`, JSON attribute columns). React `features/search` owns the `/search` route, virtualized results table, compact filter strip + editor modal, and top-bar global name search. Filter rules compile to a flat AND|OR AST in Rust; filters, combine mode, and sort live in TanStack Router search params. See [player-search](./features/completed/player-search.md).
 
 **Player profiles:** Rust `features/player` owns `get_player` — one player by `uid` from the active save's current snapshot, including attribute JSON maps and `player_role_scores` merged in-process with the scoring catalog (`displayName`, `phase`, `positionTags`). React `features/player-profile` owns Overview / Attributes / Roles tab panels; route `/players/$uid` with validated `tab` search param. Shared **ScoreBadge** (`table` / `card` / `hero` / `muted`) in `src/components/ui/score-badge/`. Search row activation and GlobalPlayerSearch navigate by route path only (no cross-feature imports). See [player-profiles](./features/completed/player-profiles.md).
+
+**Youth Academy:** Rust `features/academy` owns save-scoped `academy_classes`, `academy_memberships`, and one-to-one `academy_member_outcomes`, plus typed commands for class, membership, and outcome mutations, candidate eligibility, and current-snapshot member resolution. Every save gets one protected automatic Class of 2025. Successful snapshots add a protected class for each valid known in-game year without replacing a matching class or its memberships; only trusted `memory` or `derived` dates can create an observed-year class. New memberships use exact current-club names from the configured Planner club family; existing memberships retain UID and last-known name across snapshot changes. An optional manual outcome records a sale (buying club plus non-negative whole-euro fee) or release; it never derives from snapshot data, can be cleared by restoring the player to Still at club, and cascades when its membership is removed. Unsupported career-stat fields return `null`. React `features/academy` owns the `/academy` route's typed Academy IPC/query layer, URL-backed Overview / Class / Graduates workspace shell, class creation and destructive deletion flow, first-use states, a searchable club-family picker, the current/departed/unresolved class roster with assignment, outcome correction, and removal, nullable statistic cards, reported-senior limitations, and the exact senior-appearance graduate presentation. A class view with existing classes but no or invalid `classId` returns to Overview. Summary presentation operates only on the bounded, typed member DTOs; it does not access SQLite or recreate persistence and candidate-eligibility rules.
 
 **Planner club family:** Rust `features/planner` owns save-scoped `planner_club_settings` and `planner_club_sources`, current-snapshot club discovery, and validation for `get_planner_club_family`, `list_planner_clubs`, and `save_planner_club_family`. React `features/planner` owns the `/planner` setup panel. The primary club seeds Senior, Reserves, and Youth sources. Pool membership matches the configured club name and ignores dump `teamLevel`, so every primary-club player is eligible for all three Planner teams. Attached sources preserve explicit separate B-team or youth club mappings and add every player at that club to the target team's pool. App-shell save switching and Load Data invalidate planner queries alongside snapshot and player queries.
 
@@ -341,7 +343,7 @@ Examples use the scaffold **health** demo feature. Forked apps follow the same p
 
 ```text
 AppShellLayout (all routes via __root)
-  → AppNavRail — Dashboard + Search + Planner; railExpanded persisted in useLayoutStore (localStorage)
+  → AppNavRail — Dashboard + Search + Planner + Youth Academy; railExpanded persisted in useLayoutStore (localStorage)
   → AppTopBar — GlobalPlayerSearch (Ctrl+K / Meta+K), ActiveSaveSelect, SnapshotFreshnessChip,
                 Load Data cap toggle/limit, Load Data + LoadDataOutcome banner
   → Main content — route Outlet (Dashboard, /search, …)
@@ -422,16 +424,17 @@ User clicks Load Data (AppTopBar)
   → On scan failure: LoadDataError { phase: "scan", kind, message }; prior snapshot unchanged
   → On scan success: lock Db → load_data_after_scan → ingest::ingest_dump_file_for_save(save_id, dump path)
       validate_dump_json (memory_read::dump_validation) — hard-fail before insert
-      Transaction: insert new snapshot + players + player_role_scores, promote to current, delete prior current
+      Transaction: insert new snapshot + players + player_role_scores, promote to current, delete prior current,
+                   ensure the valid trusted (`memory` or `derived`) in-game year's automatic Academy class
       On ingest failure: roll back; prior current snapshot remains
   → Returns LoadDataResult { requestId, playersFound, scanTruncated, maxAccepted, snapshot,
       timings: { scanMs, ingestMs, totalMs } }
-  → onSettled: invalidate snapshot query keys (current snapshot, sanity list)
+  → onSettled: invalidate snapshot query keys (current snapshot, sanity list) and the Academy query root
   → LoadDataOutcome banner in AppTopBar (aria-live; success shows phase timings; cleared when user switches save)
   → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
 
-**Saves model** (migrations v2–v10, `src-tauri/src/db/migrations.rs`):
+**Saves model** (migrations v2–v14, `src-tauri/src/db/migrations.rs`):
 
 | Table | Role |
 | --- | --- |
@@ -444,6 +447,11 @@ User clicks Load Data (AppTopBar)
 | `planner_tactic_lanes` | Eleven ordered, stable lanes per save. Each lane links an IP placement and role to an OOP placement and role, owns a 0–1 IP weight, an optional unique 1–11 importance rank, a preferred-foot rule, and references the save directly. Both role references are validated against the scoring catalog. |
 | `planner_strings` | Ordered depth-chart strings for Senior, Reserves, and Youth. Rows reference the save, not a snapshot, and each team keeps at least one string. |
 | `planner_assignments` | Save-wide unique player assignments to a tactic lane and string. Rows retain the player UID and last-known name while current snapshot resolution changes. Migration v7 records `manual` or `optimizer` provenance; legacy rows migrate to `manual`. |
+| `academy_classes` | Save-scoped positive `class_year` cohorts, unique by year within a save. The automatic marker protects baseline and observed-year classes from deletion; automatic generation only adds or promotes a matching row and never replaces its memberships. |
+| `academy_memberships` | One player UID may belong to one class per save. Stores last-known name and uses a composite `(save_id, class_id)` foreign key to prevent a cross-save class reference. |
+| `academy_member_outcomes` | One optional outcome per save-scoped membership. `sold` stores a non-empty buying club and non-negative whole-euro fee; `released` stores neither. Its composite foreign key cascades when the selected membership is removed. |
+
+Migration v14 backfills a missing 2025 baseline for every save and promotes a matching class to automatic for a current snapshot only when its date source is `memory` or `derived` and its date is valid and at least 2025. It does not replace class identifiers or memberships, and it ignores unknown, malformed, untrusted, pre-2025, or non-current dates.
 
 **Query and save-management IPC** (`features/snapshot/commands.rs`):
 
@@ -475,7 +483,7 @@ User opens /planner
   → snapshot present: PlannerClubFamilyPanel reads get_planner_club_family and list_planner_clubs
   → save: invokeCommand("save_planner_club_family", { primaryClub, sources })
   → Rust validates team, team level, name length, and duplicate sources, then replaces only that save's source rows
-  → Load Data and active-save changes invalidate planner query keys from AppTopBar
+  → Load Data invalidates planner and Academy query keys; active-save changes reset the Academy query root before refetching from AppTopBar
 ```
 
 **Planner tactic IPC** (`features/planner/commands.rs`):

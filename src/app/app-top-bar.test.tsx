@@ -1,17 +1,63 @@
-import { screen } from "@testing-library/react";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { RouterContext } from "@/app/router-context";
+import { academyClassesQueryOptions } from "@/features/academy/api/academy-classes-query-options";
 import { setBridgeStatusIpcMockMode } from "@/features/memory-read/api/bridge-status-ipc-mock";
 import {
   DEFAULT_PLAYER_CAP,
   useLoadDataPreferences,
 } from "@/features/memory-read/stores/use-load-data-preferences";
+import { routeTree } from "@/routeTree.gen";
+import {
+  deferAcademyClassesFetch,
+  setAcademyClasses,
+} from "@/testing/academy-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   getLastLoadDataIpcArgs,
   resolveBusyLoadDataRequest,
   setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
+
+function AcademyCacheProbe() {
+  const { data: classes } = useQuery(academyClassesQueryOptions);
+  return (
+    <output data-testid="academy-cache-value">
+      {classes?.[0]?.classYear ?? "none"}
+    </output>
+  );
+}
+
+async function renderTopBarWithAcademyProbe() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+  });
+  await queryClient.fetchQuery(academyClassesQueryOptions);
+  const router = createRouter({
+    routeTree,
+    context: { queryClient } satisfies RouterContext,
+    defaultPreloadStaleTime: 0,
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+  });
+
+  render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+      <AcademyCacheProbe />
+    </QueryClientProvider>,
+  );
+}
 
 // Load Data lives in the shell top bar, so its outcome banner is asserted here
 // rather than against the bridge panel that used to own the button.
@@ -136,5 +182,59 @@ describe("app top bar", () => {
     expect(
       await screen.findByRole("button", { name: "Scanning…" }),
     ).toBeDisabled();
+  });
+
+  it("refetches an active Academy query after Load Data", async () => {
+    const user = userEvent.setup();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 0 }]);
+    await renderTopBarWithAcademyProbe();
+
+    expect(await screen.findByTestId("academy-cache-value")).toHaveTextContent(
+      "2026",
+    );
+    setAcademyClasses([{ id: 8, classYear: 2027, memberCount: 0 }]);
+
+    await user.click(screen.getByRole("button", { name: "Load Data" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("academy-cache-value")).toHaveTextContent(
+        "2027",
+      ),
+    );
+  });
+
+  it("refetches an active Academy query after switching saves", async () => {
+    const user = userEvent.setup();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 0 }]);
+    await renderTopBarWithAcademyProbe();
+
+    expect(await screen.findByTestId("academy-cache-value")).toHaveTextContent(
+      "2026",
+    );
+    await user.type(screen.getByLabelText("New save"), "Youth intake");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Active save" }),
+      "2",
+    );
+
+    setAcademyClasses([{ id: 8, classYear: 2027, memberCount: 0 }]);
+    const releaseClassesFetch = deferAcademyClassesFetch();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Active save" }),
+      "1",
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("academy-cache-value")).toHaveTextContent(
+        "none",
+      ),
+    );
+    releaseClassesFetch();
+    await waitFor(() =>
+      expect(screen.getByTestId("academy-cache-value")).toHaveTextContent(
+        "2027",
+      ),
+    );
   });
 });
