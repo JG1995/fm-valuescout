@@ -249,6 +249,25 @@ CREATE INDEX idx_academy_memberships_class
     ON academy_memberships(save_id, class_id);
 ";
 
+pub const ACADEMY_AUTOMATIC_CLASSES_SQL: &str = "
+ALTER TABLE academy_classes
+    ADD COLUMN is_automatic INTEGER NOT NULL DEFAULT 0
+    CHECK (is_automatic IN (0, 1));
+
+UPDATE academy_classes
+SET is_automatic = 1
+WHERE class_year = 2025;
+
+INSERT OR IGNORE INTO academy_classes (save_id, class_year, is_automatic)
+SELECT id, 2025, 1
+FROM saves;
+
+DROP INDEX idx_academy_classes_save_year;
+
+CREATE INDEX idx_academy_classes_save_year
+    ON academy_classes(save_id, class_year ASC);
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -305,6 +324,11 @@ pub fn all() -> &'static [Migration] {
             version: 11,
             description: "create_academy_schema",
             sql: ACADEMY_SCHEMA_SQL,
+        },
+        Migration {
+            version: 12,
+            description: "add_automatic_academy_classes",
+            sql: ACADEMY_AUTOMATIC_CLASSES_SQL,
         },
     ]
 }
@@ -386,7 +410,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
 
         let table_name: String = conn
             .query_row(
@@ -414,7 +438,7 @@ mod tests {
         assert_eq!(table_name, "academy_classes");
         assert_eq!(
             table_columns(&conn, "academy_classes"),
-            ["id", "save_id", "class_year"]
+            ["id", "save_id", "class_year", "is_automatic"]
         );
         assert_eq!(
             table_columns(&conn, "academy_memberships"),
@@ -452,7 +476,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -461,6 +485,74 @@ mod tests {
             )
             .expect("read preserved planner setting");
         assert_eq!(primary_club, "Existing FC");
+    }
+
+    #[test]
+    fn migrates_v11_classes_to_automatic_baselines_without_overwriting_memberships() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("academy-v11-migration-test.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 11) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v11");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES ('Existing save')", [])
+            .expect("insert first save");
+        let first_save_id = conn.last_insert_rowid();
+        conn.execute("INSERT INTO saves (name) VALUES ('Second save')", [])
+            .expect("insert second save");
+        let second_save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO academy_classes (save_id, class_year) VALUES (?1, 2025)",
+            [first_save_id],
+        )
+        .expect("insert existing class");
+        let existing_class_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
+             VALUES (?1, ?2, 77, 'Existing graduate')",
+            params![first_save_id, existing_class_id],
+        )
+        .expect("insert existing membership");
+
+        apply(&conn).expect("migrate populated v11 database");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user version");
+        assert_eq!(version, 12);
+        assert_eq!(
+            table_columns(&conn, "academy_classes"),
+            ["id", "save_id", "class_year", "is_automatic"]
+        );
+        let (class_id, automatic, member_count): (i64, i32, i64) = conn
+            .query_row(
+                "SELECT class.id, class.is_automatic, COUNT(member.player_uid)
+                 FROM academy_classes class
+                 LEFT JOIN academy_memberships member
+                   ON member.save_id = class.save_id
+                  AND member.class_id = class.id
+                 WHERE class.save_id = ?1 AND class.class_year = 2025
+                 GROUP BY class.id, class.is_automatic",
+                [first_save_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read promoted existing class");
+        assert_eq!(class_id, existing_class_id);
+        assert_eq!(automatic, 1);
+        assert_eq!(member_count, 1);
+        let second_baseline_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2025",
+                [second_save_id],
+                |row| row.get(0),
+            )
+            .expect("count second-save baseline");
+        assert_eq!(second_baseline_count, 1);
     }
 
     #[test]
@@ -583,7 +675,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -689,7 +781,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
 
         let table_name: String = conn
             .query_row(
@@ -901,14 +993,14 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 11);
+        assert_eq!(version, 12);
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 11);
+        assert_eq!(migrations.len(), 12);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -951,6 +1043,9 @@ mod tests {
         assert_eq!(migrations[10].version, 11);
         assert_eq!(migrations[10].description, "create_academy_schema");
         assert_eq!(migrations[10].sql, ACADEMY_SCHEMA_SQL);
+        assert_eq!(migrations[11].version, 12);
+        assert_eq!(migrations[11].description, "add_automatic_academy_classes");
+        assert_eq!(migrations[11].sql, ACADEMY_AUTOMATIC_CLASSES_SQL);
     }
 
     #[test]

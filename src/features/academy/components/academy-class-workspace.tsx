@@ -70,9 +70,11 @@ export function AcademyClassWorkspace({
             <Button icon={UserPlus} onClick={() => setAddPlayersOpen(true)}>
               Add players
             </Button>
-            <Button variant="destructive" icon={Trash2} onClick={onDelete}>
-              Delete class
-            </Button>
+            {!academyClass.isAutomatic ? (
+              <Button variant="destructive" icon={Trash2} onClick={onDelete}>
+                Delete class
+              </Button>
+            ) : null}
           </div>
         }
       >

@@ -7,6 +7,7 @@ use std::time::Instant;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
 
+use crate::features::academy::service as academy_service;
 use crate::features::memory_read::dump_validation::parse_and_validate_dump;
 use crate::features::scoring::catalog::all_roles;
 use crate::features::scoring::score::score_role;
@@ -92,6 +93,12 @@ fn ingest_dump_json_for_save(
     // Upgrade to lazy/on-demand or batched scoring if ingest scoring time dominates Load Data
     insert_role_scores(&tx, snapshot_id, object)?;
     replace_current_snapshot(&tx, save_id, snapshot_id)?;
+    academy_service::ensure_class_for_game_date(
+        &tx,
+        save_id,
+        optional_string(object.get("gameDate"))?.as_deref(),
+        &require_string(object, "gameDateSource")?,
+    )?;
     tx.commit().map_err(|error| error.to_string())?;
     let insert_ms = insert_started.elapsed().as_millis();
 

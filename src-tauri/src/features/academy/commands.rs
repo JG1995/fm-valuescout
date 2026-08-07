@@ -13,6 +13,7 @@ use super::service::{self, AcademyCandidate, AcademyClass, AcademyClassDetail, A
 pub struct AcademyClassDto {
     pub id: i64,
     pub class_year: i64,
+    pub is_automatic: bool,
     pub member_count: i64,
 }
 
@@ -21,6 +22,7 @@ impl From<AcademyClass> for AcademyClassDto {
         Self {
             id: academy_class.id,
             class_year: academy_class.class_year,
+            is_automatic: academy_class.is_automatic,
             member_count: academy_class.member_count,
         }
     }
@@ -107,6 +109,7 @@ impl From<AcademyMember> for AcademyMemberDto {
 pub struct AcademyClassDetailDto {
     pub id: i64,
     pub class_year: i64,
+    pub is_automatic: bool,
     pub members: Vec<AcademyMemberDto>,
 }
 
@@ -115,6 +118,7 @@ impl From<AcademyClassDetail> for AcademyClassDetailDto {
         Self {
             id: detail.id,
             class_year: detail.class_year,
+            is_automatic: detail.is_automatic,
             members: detail
                 .members
                 .into_iter()

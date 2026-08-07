@@ -1,7 +1,8 @@
 import { useQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { DatabaseZap, UsersRound } from "lucide-react";
+import { DatabaseZap, FolderOpen, Plus, UsersRound } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
+import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { academyClassQueryOptions } from "@/features/academy/api/academy-class-query-options";
@@ -37,10 +38,10 @@ export const Route = createFileRoute("/academy")({
   validateSearch: (search: Record<string, unknown>): AcademySearch => {
     const view = parseAcademyView(search.view);
     const classId = parseAcademyClassId(search.classId);
-    if (view === "class" && classId !== null) {
-      return { view, classId };
+    if (view === "class") {
+      return classId !== null ? { view, classId } : { view };
     }
-    return { view: view === "class" ? "overview" : view };
+    return { view };
   },
   loader: ({ context: { queryClient } }) =>
     Promise.all([
@@ -96,6 +97,25 @@ function AcademyNoClubFamily() {
   );
 }
 
+function AcademyNoClasses({ onCreate }: { onCreate: () => void }) {
+  return (
+    <Panel title="Class" flush>
+      <EmptyState
+        icon={FolderOpen}
+        title="No academy classes available"
+        action={
+          <Button icon={Plus} onClick={onCreate}>
+            Create class
+          </Button>
+        }
+      >
+        Create a class to start grouping players by the year they came through
+        your club.
+      </EmptyState>
+    </Panel>
+  );
+}
+
 function AcademyPageContent() {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: clubFamily } = useSuspenseQuery(plannerClubFamilyQueryOptions);
@@ -123,14 +143,13 @@ function AcademyPageContent() {
   const selectedClass = classId
     ? (classes.find((academyClass) => academyClass.id === classId) ?? null)
     : null;
-  const activeView: AcademyView =
-    view === "class" && !selectedClass ? "overview" : view;
+  const activeView = view;
 
   useEffect(() => {
-    if (view === "class" && !selectedClass) {
+    if (view === "class" && classId && !selectedClass) {
       void navigate({ search: { view: "overview" }, replace: true });
     }
-  }, [navigate, selectedClass, view]);
+  }, [classId, navigate, selectedClass, view]);
 
   const onViewChange = (nextView: AcademyView) => {
     if (nextView === "class") {
@@ -140,6 +159,8 @@ function AcademyPageContent() {
           search: { view: "class", classId: targetClass.id },
           replace: true,
         });
+      } else {
+        void navigate({ search: { view: "class" }, replace: true });
       }
       return;
     }
@@ -208,7 +229,9 @@ function AcademyPageContent() {
             academyClass={selectedClass}
             onDelete={() => setDeleteTarget(selectedClass)}
           />
-        ) : null}
+        ) : (
+          <AcademyNoClasses onCreate={() => setCreateOpen(true)} />
+        )}
       </div>
 
       <AcademyClassCreationModal

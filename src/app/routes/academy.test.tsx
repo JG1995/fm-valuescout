@@ -133,6 +133,51 @@ describe("academy route", () => {
     ).toBeInTheDocument();
   });
 
+  it("orders Academy classes from oldest to newest", async () => {
+    await loadConfiguredSave();
+    setAcademyClasses([
+      { id: 8, classYear: 2026, memberCount: 0 },
+      { id: 7, classYear: 2025, memberCount: 0 },
+    ]);
+    renderAcademyRoute();
+
+    expect(
+      (await screen.findAllByRole("button", { name: /Open Class of/ })).map(
+        (button) => button.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Open Class of 2025", "Open Class of 2026"]);
+  });
+
+  it("shows an actionable empty state when the Class workspace has no classes", async () => {
+    const user = userEvent.setup();
+    await loadConfiguredSave();
+    setAcademyClasses([]);
+    renderAcademyRoute();
+
+    await user.click(await screen.findByRole("tab", { name: "Class" }));
+
+    expect(
+      await screen.findByText("No academy classes available"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create class" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Create academy class" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not offer deletion for an automatically managed class", async () => {
+    await loadConfiguredSave();
+    setAcademyClasses([
+      { id: 7, classYear: 2025, memberCount: 0, isAutomatic: true },
+    ]);
+    renderAcademyRoute("/academy?view=class&classId=7");
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "Class of 2025" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete class" })).toBeNull();
+  });
+
   it("shows reported senior counts and keeps unsupported aggregates unavailable", async () => {
     await loadConfiguredSave();
     setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 2 }]);

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
+const BASELINE_CLASS_YEAR: i64 = 2025;
 const MAX_ACADEMY_CANDIDATES: usize = 100;
 const MAX_CANDIDATE_SEARCH_LEN: usize = 120;
 
@@ -10,6 +11,7 @@ const MAX_CANDIDATE_SEARCH_LEN: usize = 120;
 pub struct AcademyClass {
     pub id: i64,
     pub class_year: i64,
+    pub is_automatic: bool,
     pub member_count: i64,
 }
 
@@ -17,6 +19,7 @@ pub struct AcademyClass {
 pub struct AcademyClassDetail {
     pub id: i64,
     pub class_year: i64,
+    pub is_automatic: bool,
     pub members: Vec<AcademyMember>,
 }
 
@@ -116,21 +119,39 @@ pub fn create_class(
     Ok(AcademyClass {
         id: conn.last_insert_rowid(),
         class_year,
+        is_automatic: false,
         member_count: 0,
     })
+}
+
+pub fn ensure_baseline_class(conn: &Connection, save_id: i64) -> Result<(), String> {
+    ensure_automatic_class(conn, save_id, BASELINE_CLASS_YEAR)
+}
+
+pub fn ensure_class_for_game_date(
+    conn: &Connection,
+    save_id: i64,
+    game_date: Option<&str>,
+    game_date_source: &str,
+) -> Result<(), String> {
+    let Some(class_year) = observed_class_year(game_date, game_date_source) else {
+        return Ok(());
+    };
+
+    ensure_automatic_class(conn, save_id, class_year)
 }
 
 pub fn list_classes(conn: &Connection, save_id: i64) -> Result<Vec<AcademyClass>, String> {
     let mut statement = conn
         .prepare(
-            "SELECT class.id, class.class_year, COUNT(member.player_uid)
+            "SELECT class.id, class.class_year, class.is_automatic, COUNT(member.player_uid)
              FROM academy_classes class
              LEFT JOIN academy_memberships member
                ON member.save_id = class.save_id
               AND member.class_id = class.id
              WHERE class.save_id = ?1
-             GROUP BY class.id, class.class_year
-             ORDER BY class.class_year DESC",
+             GROUP BY class.id, class.class_year, class.is_automatic
+             ORDER BY class.class_year ASC",
         )
         .map_err(|error| error.to_string())?;
 
@@ -139,7 +160,8 @@ pub fn list_classes(conn: &Connection, save_id: i64) -> Result<Vec<AcademyClass>
             Ok(AcademyClass {
                 id: row.get(0)?,
                 class_year: row.get(1)?,
-                member_count: row.get(2)?,
+                is_automatic: row.get::<_, i32>(2)? == 1,
+                member_count: row.get(3)?,
             })
         })
         .map_err(|error| error.to_string())?
@@ -157,6 +179,22 @@ pub fn delete_class(
 ) -> Result<(), String> {
     if !confirmed {
         return Err("Deleting an academy class requires confirmation".to_string());
+    }
+
+    let is_automatic: Option<bool> = conn
+        .query_row(
+            "SELECT is_automatic FROM academy_classes WHERE id = ?1 AND save_id = ?2",
+            params![class_id, save_id],
+            |row| Ok(row.get::<_, i32>(0)? == 1),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    match is_automatic {
+        Some(true) => {
+            return Err("Automatically managed academy classes cannot be deleted".to_string())
+        }
+        Some(false) => {}
+        None => return Err(format!("Academy class {class_id} not found")),
     }
 
     let deleted = conn
@@ -177,7 +215,7 @@ pub fn get_class(
     save_id: i64,
     class_id: i64,
 ) -> Result<AcademyClassDetail, String> {
-    let class_year = academy_class_year(conn, save_id, class_id)?;
+    let (class_year, is_automatic) = academy_class(conn, save_id, class_id)?;
     let snapshot_id = current_snapshot_id(conn, save_id)?;
     let mut statement = conn
         .prepare(
@@ -210,6 +248,7 @@ pub fn get_class(
     Ok(AcademyClassDetail {
         id: class_id,
         class_year,
+        is_automatic,
         members,
     })
 }
@@ -287,7 +326,7 @@ pub fn assign_member(
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
-    academy_class_year(&tx, save_id, class_id)?;
+    academy_class(&tx, save_id, class_id)?;
 
     let last_known_name: Option<String> = tx
         .query_row(
@@ -359,17 +398,57 @@ pub fn remove_member(
     Ok(())
 }
 
-fn academy_class_year(conn: &Connection, save_id: i64, class_id: i64) -> Result<i64, String> {
+fn academy_class(conn: &Connection, save_id: i64, class_id: i64) -> Result<(i64, bool), String> {
     conn.query_row(
-        "SELECT class_year
+        "SELECT class_year, is_automatic
          FROM academy_classes
          WHERE id = ?1 AND save_id = ?2",
         params![class_id, save_id],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get::<_, i32>(1)? == 1)),
     )
     .optional()
     .map_err(|error| error.to_string())?
     .ok_or_else(|| format!("Academy class {class_id} not found"))
+}
+
+fn ensure_automatic_class(conn: &Connection, save_id: i64, class_year: i64) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO academy_classes (save_id, class_year, is_automatic)
+         VALUES (?1, ?2, 1)
+         ON CONFLICT(save_id, class_year) DO UPDATE SET is_automatic = 1",
+        params![save_id, class_year],
+    )
+    .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+fn observed_class_year(game_date: Option<&str>, game_date_source: &str) -> Option<i64> {
+    if !matches!(game_date_source, "memory" | "derived") {
+        return None;
+    }
+
+    let game_date = game_date?;
+    let bytes = game_date.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return None;
+    }
+
+    let year = game_date[0..4].parse::<i64>().ok()?;
+    let month = game_date[5..7].parse::<u8>().ok()?;
+    let day = game_date[8..10].parse::<u8>().ok()?;
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        _ => return None,
+    };
+    if !(1..=days_in_month).contains(&day) || year < BASELINE_CLASS_YEAR {
+        return None;
+    }
+
+    Some(year)
 }
 
 fn current_snapshot_id(conn: &Connection, save_id: i64) -> Result<Option<i64>, String> {
@@ -623,6 +702,7 @@ mod tests {
     use crate::db::migrations;
     use crate::features::planner::service::{self as planner_service, ClubSourceInput};
     use crate::features::snapshot::ingest;
+    use crate::features::snapshot::service as snapshot_service;
 
     fn open_migrated(path: &Path) -> Connection {
         let conn = Connection::open(path).expect("open db");
@@ -669,6 +749,28 @@ mod tests {
         )
         .expect("write dump");
         ingest::ingest_dump_file_for_save(conn, save_id, &dump_path).expect("ingest dump");
+    }
+
+    fn ingest_with_game_date(
+        temp_dir: &tempfile::TempDir,
+        conn: &mut Connection,
+        save_id: i64,
+        filename: &str,
+        game_date: Value,
+        game_date_source: &str,
+    ) -> Result<(), String> {
+        let mut dump: Value =
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v5.json"))
+                .expect("parse fixture");
+        dump["gameDate"] = game_date;
+        dump["gameDateSource"] = json!(game_date_source);
+        let dump_path = temp_dir.path().join(filename);
+        fs::write(
+            &dump_path,
+            serde_json::to_string(&dump).expect("serialize dump"),
+        )
+        .expect("write dump");
+        ingest::ingest_dump_file_for_save(conn, save_id, &dump_path).map(|_| ())
     }
 
     fn configure_club_family(conn: &Connection, save_id: i64) {
@@ -735,6 +837,158 @@ mod tests {
 
         assert_eq!(duplicate, "Class of 2030 already exists");
         assert_eq!(second_class.class_year, 2030);
+    }
+
+    #[test]
+    fn generates_automatic_classes_without_replacing_matching_manual_memberships() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-automatic-classes.db"));
+        let save = snapshot_service::create_save(&conn, "Academy save").expect("create save");
+        let default_save = snapshot_service::list_saves(&conn)
+            .expect("list saves")
+            .into_iter()
+            .find(|candidate| candidate.is_active)
+            .expect("default save");
+
+        assert_eq!(
+            super::list_classes(&conn, save.id)
+                .expect("list baseline classes")
+                .into_iter()
+                .map(|academy_class| academy_class.class_year)
+                .collect::<Vec<_>>(),
+            vec![2025]
+        );
+
+        let manual = super::create_class(&conn, save.id, 2026).expect("create manual class");
+        conn.execute(
+            "INSERT INTO academy_memberships (save_id, class_id, player_uid, last_known_name)
+             VALUES (?1, ?2, 77, 'Manual class player')",
+            params![save.id, manual.id],
+        )
+        .expect("assign manual class player");
+
+        ingest_players(
+            &temp_dir,
+            &mut conn,
+            save.id,
+            "automatic-2026.json",
+            vec![fixture_player(78, "Academy prospect", "Loan FC", "youth")],
+        );
+        ingest_players(
+            &temp_dir,
+            &mut conn,
+            save.id,
+            "automatic-2026-retry.json",
+            vec![fixture_player(79, "Academy retry", "Loan FC", "youth")],
+        );
+
+        let classes = super::list_classes(&conn, save.id).expect("list automatic classes");
+        assert_eq!(
+            classes
+                .iter()
+                .map(|academy_class| academy_class.class_year)
+                .collect::<Vec<_>>(),
+            vec![2025, 2026]
+        );
+        let matching_class = classes
+            .iter()
+            .find(|academy_class| academy_class.class_year == 2026)
+            .expect("matching 2026 class");
+        assert_eq!(matching_class.id, manual.id);
+        assert!(matching_class.is_automatic);
+        assert_eq!(matching_class.member_count, 1);
+        let is_automatic: i32 = conn
+            .query_row(
+                "SELECT is_automatic FROM academy_classes WHERE id = ?1",
+                [manual.id],
+                |row| row.get(0),
+            )
+            .expect("read matching class marker");
+        assert_eq!(is_automatic, 1);
+        assert_eq!(
+            super::list_classes(&conn, default_save.id)
+                .expect("list default-save classes")
+                .into_iter()
+                .map(|academy_class| academy_class.class_year)
+                .collect::<Vec<_>>(),
+            vec![2025]
+        );
+    }
+
+    #[test]
+    fn automatic_classes_reject_deletion_while_manual_classes_remain_deletable() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("academy-automatic-delete.db"));
+        let save = snapshot_service::create_save(&conn, "Academy save").expect("create save");
+        let baseline = super::list_classes(&conn, save.id)
+            .expect("list baseline")
+            .into_iter()
+            .find(|academy_class| academy_class.class_year == 2025)
+            .expect("baseline class");
+
+        let automatic_error = super::delete_class(&conn, save.id, baseline.id, true)
+            .expect_err("reject automatic class deletion");
+        assert_eq!(
+            automatic_error,
+            "Automatically managed academy classes cannot be deleted"
+        );
+
+        let custom = super::create_class(&conn, save.id, 2027).expect("create custom class");
+        super::delete_class(&conn, save.id, custom.id, true).expect("delete custom class");
+    }
+
+    #[test]
+    fn unknown_malformed_early_and_failed_snapshots_do_not_create_observed_classes() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-unavailable-date.db"));
+        let save = snapshot_service::create_save(&conn, "Academy save").expect("create save");
+
+        ingest_with_game_date(
+            &temp_dir,
+            &mut conn,
+            save.id,
+            "unknown-date.json",
+            Value::Null,
+            "unknown",
+        )
+        .expect("ingest unknown date");
+        ingest_with_game_date(
+            &temp_dir,
+            &mut conn,
+            save.id,
+            "malformed-date.json",
+            json!("not-a-date"),
+            "memory",
+        )
+        .expect("ingest malformed date");
+        ingest_with_game_date(
+            &temp_dir,
+            &mut conn,
+            save.id,
+            "early-date.json",
+            json!("2024-12-31"),
+            "memory",
+        )
+        .expect("ingest early date");
+        let failed_json = include_str!("../memory_read/fixtures/golden_dump_v5.json")
+            .replace("\"schemaVersion\": 5", "\"schemaVersion\": 4")
+            .replace(
+                "\"gameDate\": \"2026-08-14\"",
+                "\"gameDate\": \"2027-01-01\"",
+            );
+        let failed_path = temp_dir.path().join("failed-date.json");
+        fs::write(&failed_path, failed_json).expect("write failed dump");
+        let failed = ingest::ingest_dump_file_for_save(&mut conn, save.id, &failed_path);
+
+        assert!(failed.is_err());
+        assert_eq!(
+            super::list_classes(&conn, save.id)
+                .expect("list classes after unavailable dates")
+                .into_iter()
+                .map(|academy_class| academy_class.class_year)
+                .collect::<Vec<_>>(),
+            vec![2025]
+        );
     }
 
     #[test]
