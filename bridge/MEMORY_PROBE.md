@@ -10,10 +10,11 @@ This is a developer-only workflow for finding possible FM26 player-memory locati
 - Define each field's meaning before you correlate it. Academy `AT Apps`, `AT Gls`, and `Int Apps` mean all senior matches. Moneyball values are season-to-date at the capture point. Treat starts and substitute appearances as separate values. Assists are not a research target because FM does not export the required value.
 - Keep the full exported UID set when it has 128 or fewer players. Do not trim it to make a convenient sample.
 
-The plugin data directory is `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`. When the CLI runs through WSL, pass its mounted location with `--bridge-dir`, for example `/mnt/c/Users/<Windows-user>/AppData/Local/fm-valuescout/fm-bridge`. Create a work directory for every CSV, capture, correlation report, and diagnostic:
+The plugin data directory is `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`. When the CLI runs through WSL, pass its mounted location with `--bridge-dir`, for example `/mnt/c/Users/<Windows-user>/AppData/Local/fm-valuescout/fm-bridge`. Run the commands from the repository root. Create an absolute work directory for every CSV, capture, correlation report, and diagnostic:
 
 ```bash
-work_dir=.work/memory-probe
+repo_root="$(git rev-parse --show-toplevel)"
+work_dir="$repo_root/.work/memory-probe"
 bridge_dir=/mnt/c/Users/<Windows-user>/AppData/Local/fm-valuescout/fm-bridge
 mkdir -p "$work_dir"
 ```

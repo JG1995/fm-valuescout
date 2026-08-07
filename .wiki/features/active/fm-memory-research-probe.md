@@ -353,6 +353,7 @@ Record material deviations, blockers, and decisions that change remaining work. 
 - The developer confirmed that Moneyball values are season-to-date at the point of recording and that starts and substitute appearances must be stored separately. Snapshot history may later preserve multiple points in the season, but it does not change the probe contract.
 - A controlled before/after state is not expected to be practical. The validation contract now requires stable candidate paths and encodings across synchronized captures with independent UID sets, with optional diff evidence when available.
 - On 2026-08-07, `./scripts/dev bridge-install` built and installed the current DLL to the configured FM26 BepInEx plugins directory. FM was not running, so no live capture was attempted; the runbook's in-game evidence checklist remains required before feature completion.
+- On 2026-08-07, the first live probe command exposed a wrapper working-directory defect: `scripts/dev memory-probe` changed to `bridge/` before passing relative paths to the CLI. The correction runs the command from the repository root and makes the runbook work directory absolute. It does not change the bridge protocol or capture semantics.
 
 ## Completed work
 

@@ -184,8 +184,8 @@ run_memory_probe() {
   DEV_COMMAND_LABEL=memory-probe
   ensure_dotnet
   (
-    cd "$repo_root/bridge"
-    dotnet run --project Tools/MemoryProbe/FmDataBridge.MemoryProbe.csproj --configuration Release -- "$@"
+    cd "$repo_root"
+    dotnet run --project bridge/Tools/MemoryProbe/FmDataBridge.MemoryProbe.csproj --configuration Release -- "$@"
   )
 }
 
