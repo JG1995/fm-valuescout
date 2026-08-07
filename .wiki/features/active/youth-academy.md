@@ -163,7 +163,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 #### Commit 2 — Add youth class workspace
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(academy): add youth class workspace`
 
@@ -202,7 +202,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 #### Commit 3 — Assign club-family players to classes
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(academy): assign club-family players to classes`
 
@@ -282,19 +282,19 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 **PR:** Add youth graduate tracking
 
-**Commit:** Add youth class workspace
+**Commit:** Assign club-family players to classes
 
 ### RED proof
 
-Add a route test for direct `/academy` navigation and persisted class creation through an Academy IPC mock. The expected RED is the missing route, feature API, or command mock, not a router-test harness failure. Extend it to URL recovery and configured/no-snapshot/no-club-family states before implementing the workspace.
+Add a route test for club-family-only Add Players candidates and persisted membership through an Academy IPC mock. The expected RED is the missing member/candidate API or assignment UI, not a router-test harness failure. Extend it to duplicate prevention, removal and reassignment, departed-member retention, and mutation-error recovery before implementing the roster.
 
 ### Expected outcome
 
-The `/academy` route loads an Overview workspace for the active save, exposes persisted `Class of YYYY` cards, and supports accessible class creation and confirmed deletion. URL state and first-use states recover to the correct workspace without duplicating Planner club-family setup.
+The class workspace exposes an Add Players flow restricted to exact configured club-family names, persists one membership per player, and renders assigned players with current or last-known identity. Removing a player permits reassignment, and departed or unresolved members remain visible with explicit warnings.
 
 ### Explicit exclusions
 
-No player picker or roster table, no membership-mutation UI, no bridge/schema change, no generated career statistics, no CSV/HTML flow, and no Git publication belong in the active commit.
+No automatic or bulk assignment, dedicated cross-class move workflow, editing player facts, reported-team-level eligibility gate, bridge/schema change, generated career statistics, CSV/HTML flow, or Git publication belong in the active commit.
 
 ## Discoveries and replanning
 
@@ -308,6 +308,7 @@ No player picker or roster table, no membership-mutation UI, no bridge/schema ch
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Persist youth class membership | Pending record | v11 Academy schema, Rust commands, member retention, and nullable career-stat placeholders | Sol High accepted; no Critical, High, or Medium findings | Backend delete confirmation and bounded candidate input recorded under Discoveries. |
+| PR 1 | Commit 2 — Add youth class workspace | Pending record | Youth Academy rail entry, URL-backed workspace shell, typed queries, class create/delete, first-use states, IPC mock, and route coverage | Sol Medium accepted after correction; no Critical, High, Medium, or NIT findings | Two modal lifecycle findings were fixed before commit; the planned live `Class of YYYY` preview was added. |
 
 ## Final validation
 
@@ -324,6 +325,6 @@ No player picker or roster table, no membership-mutation UI, no bridge/schema ch
 ## Documentation impact
 
 - `DESIGN.md` owns the planned `/academy` layout and unavailable-stat presentation.
-- `ARCHITECTURE.md` records Commit 1's Academy Rust module, Tauri commands, v11 tables, and Planner club-family dependency. Add the frontend feature boundary only when it is delivered.
+- `ARCHITECTURE.md` records the Academy Rust module, Tauri commands, v11 tables, Planner club-family dependency, and the delivered frontend route/query/component boundary.
 - `CONCEPT.md` needs reconciliation only if implementation establishes Youth Academy as a durable product capability beyond its existing product purpose.
 - Archive this ledger to `.wiki/features/completed/` only after full validation, feature review, and documentation reconciliation.

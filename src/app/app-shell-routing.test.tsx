@@ -105,4 +105,12 @@ describe("app shell routing", () => {
       await screen.findByRole("link", { name: "Planner" }),
     ).toBeInTheDocument();
   });
+
+  it("lists Youth Academy in the nav rail", async () => {
+    renderWithProviders();
+
+    expect(
+      await screen.findByRole("link", { name: "Youth Academy" }),
+    ).toHaveAttribute("href", "/academy");
+  });
 });

@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { LucideIcon } from "lucide-react";
 import {
+  GraduationCap,
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
@@ -21,6 +22,7 @@ const navItems: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/search", label: "Search", icon: Search },
   { to: "/planner", label: "Planner", icon: UsersRound },
+  { to: "/academy", label: "Youth Academy", icon: GraduationCap },
 ];
 
 export function AppNavRail() {

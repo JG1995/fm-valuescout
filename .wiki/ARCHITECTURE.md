@@ -48,7 +48,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Player profiles:** Rust `features/player` owns `get_player` — one player by `uid` from the active save's current snapshot, including attribute JSON maps and `player_role_scores` merged in-process with the scoring catalog (`displayName`, `phase`, `positionTags`). React `features/player-profile` owns Overview / Attributes / Roles tab panels; route `/players/$uid` with validated `tab` search param. Shared **ScoreBadge** (`table` / `card` / `hero` / `muted`) in `src/components/ui/score-badge/`. Search row activation and GlobalPlayerSearch navigate by route path only (no cross-feature imports). See [player-profiles](./features/completed/player-profiles.md).
 
-**Youth Academy foundation:** Rust `features/academy` owns save-scoped `academy_classes` and `academy_memberships`, typed commands for class and membership mutations, candidate eligibility, and current-snapshot member resolution. New memberships use exact current-club names from the configured Planner club family; existing memberships retain UID and last-known name across snapshot changes. Unsupported career-stat fields return `null`. The Academy route and UI are not delivered yet.
+**Youth Academy:** Rust `features/academy` owns save-scoped `academy_classes` and `academy_memberships`, typed commands for class and membership mutations, candidate eligibility, and current-snapshot member resolution. New memberships use exact current-club names from the configured Planner club family; existing memberships retain UID and last-known name across snapshot changes. Unsupported career-stat fields return `null`. React `features/academy` owns the `/academy` route's typed Academy IPC/query layer, URL-backed Overview / Class / Graduates workspace shell, class creation and destructive deletion flow, and first-use states. Player assignment and career-stat presentation remain in the active feature plan.
 
 **Planner club family:** Rust `features/planner` owns save-scoped `planner_club_settings` and `planner_club_sources`, current-snapshot club discovery, and validation for `get_planner_club_family`, `list_planner_clubs`, and `save_planner_club_family`. React `features/planner` owns the `/planner` setup panel. The primary club seeds Senior, Reserves, and Youth sources. Pool membership matches the configured club name and ignores dump `teamLevel`, so every primary-club player is eligible for all three Planner teams. Attached sources preserve explicit separate B-team or youth club mappings and add every player at that club to the target team's pool. App-shell save switching and Load Data invalidate planner queries alongside snapshot and player queries.
 
@@ -343,7 +343,7 @@ Examples use the scaffold **health** demo feature. Forked apps follow the same p
 
 ```text
 AppShellLayout (all routes via __root)
-  → AppNavRail — Dashboard + Search + Planner; railExpanded persisted in useLayoutStore (localStorage)
+  → AppNavRail — Dashboard + Search + Planner + Youth Academy; railExpanded persisted in useLayoutStore (localStorage)
   → AppTopBar — GlobalPlayerSearch (Ctrl+K / Meta+K), ActiveSaveSelect, SnapshotFreshnessChip,
                 Load Data cap toggle/limit, Load Data + LoadDataOutcome banner
   → Main content — route Outlet (Dashboard, /search, …)
