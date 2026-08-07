@@ -333,10 +333,14 @@ describe("academy route", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Class" }));
     expect(
-      await screen.findAllByRole("columnheader", {
-        name: "Senior league apps",
-      }),
+      await screen.findAllByRole("columnheader", { name: "Apps" }),
     ).toHaveLength(3);
+    expect(screen.getAllByRole("columnheader", { name: "Fee" })).toHaveLength(
+      3,
+    );
+    expect(
+      screen.queryByRole("columnheader", { name: "Reported team" }),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 

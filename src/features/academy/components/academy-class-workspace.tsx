@@ -290,7 +290,7 @@ function AcademyRosterGroup({
             ) : (
               <tr className="h-table-row border-t border-outline-variant">
                 <td
-                  colSpan={17}
+                  colSpan={16}
                   className="px-2 text-body-sm text-on-surface-variant"
                 >
                   No players are currently in this group.
@@ -315,16 +315,15 @@ function AcademyRosterTableHeader() {
           "Nationality",
           "Positions",
           "Club",
-          "Reported team",
           "PA",
           "Determination",
           "Height",
           "Foot",
-          "Senior league apps",
+          "Apps",
           "Goals",
           "Assists",
           "Caps",
-          "Sale fee",
+          "Fee",
           "Actions",
         ].map((label) => (
           <th
@@ -337,11 +336,11 @@ function AcademyRosterTableHeader() {
                 "PA",
                 "Determination",
                 "Height",
-                "Senior league apps",
+                "Apps",
                 "Goals",
                 "Assists",
                 "Caps",
-                "Sale fee",
+                "Fee",
                 "Actions",
               ].includes(label)
                 ? "text-right"
@@ -379,9 +378,6 @@ function AcademyRosterRow({
         ? "Unavailable in the current snapshot"
         : null;
   const positions = Object.keys(member.positions).join(", ");
-  const reportedTeam = [member.teamLevel, member.parentClub]
-    .filter((value): value is string => Boolean(value))
-    .join(" · ");
   const rowTone =
     member.outcome?.status === "sold"
       ? "bg-success-container/20"
@@ -430,12 +426,6 @@ function AcademyRosterRow({
         title={member.currentClub ?? undefined}
       >
         {formatMissable(member.currentClub)}
-      </td>
-      <td
-        className="max-w-44 truncate px-2 text-body-sm"
-        title={reportedTeam || undefined}
-      >
-        {reportedTeam || "—"}
       </td>
       <td className="px-2 text-right text-body-sm tabular-nums">
         {formatMissable(member.pa)}

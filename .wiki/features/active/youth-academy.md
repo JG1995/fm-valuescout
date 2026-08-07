@@ -97,7 +97,7 @@ Add a save-scoped Youth Academy page for grouping players who came through the c
 
 - Deliver one PR because the migrations, service, route, assignment and outcome flows, and statistics presentation form one additive user capability and do not require an independently deployable foundation.
 - Use a dedicated `/academy` route labelled **Youth Academy** and an `academy` code/commit scope.
-- Treat the configured club-family source names as the only assignment boundary. Reported team level can be displayed but cannot decide eligibility.
+- Treat the configured club-family source names as the only assignment boundary. Reported team level cannot decide eligibility and is not a roster column.
 - Retain departed and unresolved members by UID and last-known name rather than restricting every read to the current club family.
 - Define nullable reader-owned career-stat fields now and render unavailable states; do not add manual substitutes or speculative snapshot columns. Persist sale and release outcomes separately because the user, not the reader, owns those facts.
 - Show class count and tracked-player count as supporting context. Give graduates, Academy income, and other outcome totals the primary visual hierarchy. Any statistic whose complete meaning depends on absent reader data remains `—`; a reported current senior-squad count may include only resolved members whose snapshot explicitly reports `team_level = senior`, with the limitation stated in the UI.
@@ -229,7 +229,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 **Provisional commit:** `feat(academy): assign club-family players to classes`
 
-**Work:** Add the searchable Add Players modal, exclude already classified players, assign/remove membership, and render the current class roster with current-snapshot identity, reported team context, PA, determination, height, preferred foot, and explicit departed/unresolved warnings.
+**Work:** Add the searchable Add Players modal, exclude already classified players, assign/remove membership, and render the current class roster with current-snapshot identity, PA, determination, height, preferred foot, and explicit departed/unresolved warnings.
 
 **Out of scope:**
 
