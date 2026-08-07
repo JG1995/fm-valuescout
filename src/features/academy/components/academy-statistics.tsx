@@ -213,11 +213,11 @@ function AcademyContextMetric({ metric }: { metric: Metric }) {
   const Icon = metric.icon;
 
   return (
-    <div className="flex min-w-0 items-start gap-2">
-      <dt className="flex min-w-0 items-start gap-2">
+    <div className="min-w-0">
+      <dt className="flex min-w-0 items-center gap-2">
         <Icon
           aria-hidden
-          className={`mt-0.5 size-4 shrink-0 ${metric.iconClassName}`}
+          className={`size-4 shrink-0 ${metric.iconClassName}`}
         />
         <span className="min-w-0 text-label-sm text-on-surface-variant uppercase">
           {metric.label}
@@ -225,7 +225,7 @@ function AcademyContextMetric({ metric }: { metric: Metric }) {
       </dt>
       <dd
         data-testid={`academy-stat-${metric.id}`}
-        className="min-w-0 font-mono text-mono-md text-on-surface tabular-nums"
+        className="mt-1 min-w-0 pl-6 font-mono text-mono-md text-on-surface tabular-nums"
       >
         {metric.value}
         <p className="mt-0.5 font-sans text-label-sm font-normal text-on-surface-variant normal-case">
