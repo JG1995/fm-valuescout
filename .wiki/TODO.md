@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No active feature selected.
+- [FM Memory Research Probe](./features/active/fm-memory-research-probe.md) — reusable UID-scoped memory capture plus CSV correlation and before/after analysis for future reader-field discovery
 
 ## Next
 
