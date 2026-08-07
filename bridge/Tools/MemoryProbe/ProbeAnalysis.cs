@@ -125,6 +125,15 @@ internal sealed class ProbeCapture
         RequireSameMetadata("gameVersion", before.Document.GameVersion, after.Document.GameVersion);
         RequireSameMetadata("supportedGameVersion", before.Document.SupportedGameVersion, after.Document.SupportedGameVersion);
         RequireSameMetadata("bridgeVersion", before.Document.BridgeVersion, after.Document.BridgeVersion);
+        RequireSameMetadata(
+            "schemaVersion",
+            before.Document.SchemaVersion.ToString(CultureInfo.InvariantCulture),
+            after.Document.SchemaVersion.ToString(CultureInfo.InvariantCulture));
+        if (!CapturePoliciesEqual(before.Document.CapturePolicy, after.Document.CapturePolicy))
+        {
+            throw new MemoryProbeException("incompatible capture metadata: capturePolicy differs");
+        }
+
         if (!before.Players.Keys.ToHashSet().SetEquals(after.Players.Keys))
         {
             throw new MemoryProbeException(
@@ -146,10 +155,15 @@ internal sealed class ProbeCapture
 
     private static void ValidateDocument(ProbeDocument document)
     {
-        if (document.SchemaVersion != ProbeProtocol.SchemaVersion)
+        if (document.SchemaVersion is not 1 and not ProbeProtocol.SchemaVersion)
         {
             throw new MemoryProbeException(
-                $"unsupported probe schema version {document.SchemaVersion}; expected {ProbeProtocol.SchemaVersion}");
+                $"unsupported probe schema version {document.SchemaVersion}; expected 1 or {ProbeProtocol.SchemaVersion}");
+        }
+
+        if (document.SchemaVersion == ProbeProtocol.SchemaVersion)
+        {
+            ValidateCapturePolicy(document.CapturePolicy);
         }
 
         if (document.ProtocolVersion != ProbeProtocol.ProtocolVersion)
@@ -185,6 +199,113 @@ internal sealed class ProbeCapture
             }
         }
     }
+
+    private static void ValidateCapturePolicy(ProbeCapturePolicy? policy)
+    {
+        if (policy is null
+            || policy.MaxPointerDepth <= 0
+            || policy.TargetWindowBytes <= 0
+            || policy.MaxBytesPerPlayer <= 0
+            || policy.MaxBytesPerRequest < policy.MaxBytesPerPlayer
+            || policy.PathQuotas is null
+            || policy.SelectedPaths is null)
+        {
+            throw new MemoryProbeException("probe capture has an invalid capturePolicy");
+        }
+
+        var quotas = new Dictionary<string, ProbePointerPathQuota>(StringComparer.Ordinal);
+        foreach (var quota in policy.PathQuotas)
+        {
+            if (quota is null)
+            {
+                throw new MemoryProbeException("probe capture has an invalid capturePolicy quota");
+            }
+
+            if (string.IsNullOrWhiteSpace(quota.AddressBasis)
+                || quota.PointerDepth <= 0
+                || quota.PointerDepth > policy.MaxPointerDepth
+                || quota.MaxPaths <= 0)
+            {
+                throw new MemoryProbeException("probe capture has an invalid capturePolicy quota");
+            }
+
+            var key = CapturePolicyPathKey(quota.AddressBasis, quota.PointerDepth);
+            if (!quotas.TryAdd(key, quota))
+            {
+                throw new MemoryProbeException("probe capture has duplicate capturePolicy quotas");
+            }
+        }
+
+        var selectedCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var selectedPaths = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in policy.SelectedPaths)
+        {
+            if (path is null)
+            {
+                throw new MemoryProbeException("probe capture has an invalid selected capturePolicy path");
+            }
+
+            if (string.IsNullOrWhiteSpace(path.AddressBasis)
+                || string.IsNullOrWhiteSpace(path.SourcePointerPath)
+                || path.PointerDepth <= 0
+                || path.PointerDepth > policy.MaxPointerDepth
+                || path.EligiblePlayerCount <= 0)
+            {
+                throw new MemoryProbeException("probe capture has an invalid selected capturePolicy path");
+            }
+
+            var quotaKey = CapturePolicyPathKey(path.AddressBasis, path.PointerDepth);
+            if (!quotas.TryGetValue(quotaKey, out var quota))
+            {
+                throw new MemoryProbeException("probe capture selected a path without a capturePolicy quota");
+            }
+
+            var pathKey = string.Join("\u001F", quotaKey, path.SourcePointerPath);
+            if (!selectedPaths.Add(pathKey))
+            {
+                throw new MemoryProbeException("probe capture has duplicate selected capturePolicy paths");
+            }
+
+            var selectedCount = selectedCounts.GetValueOrDefault(quotaKey) + 1;
+            if (selectedCount > quota.MaxPaths)
+            {
+                throw new MemoryProbeException("probe capture selected more paths than its capturePolicy quota");
+            }
+
+            selectedCounts[quotaKey] = selectedCount;
+        }
+    }
+
+    private static string CapturePolicyPathKey(string addressBasis, int pointerDepth) =>
+        string.Join("\u001F", addressBasis, pointerDepth.ToString(CultureInfo.InvariantCulture));
+
+    private static bool CapturePoliciesEqual(ProbeCapturePolicy? before, ProbeCapturePolicy? after)
+    {
+        if (before is null || after is null)
+        {
+            return before is null && after is null;
+        }
+
+        return before.MaxPointerDepth == after.MaxPointerDepth
+            && before.TargetWindowBytes == after.TargetWindowBytes
+            && before.MaxBytesPerPlayer == after.MaxBytesPerPlayer
+            && before.MaxBytesPerRequest == after.MaxBytesPerRequest
+            && before.PathQuotas.Count == after.PathQuotas.Count
+            && before.PathQuotas.Zip(after.PathQuotas).All(pair => ProbePointerPathQuotaEquals(pair.First, pair.Second))
+            && before.SelectedPaths.Count == after.SelectedPaths.Count
+            && before.SelectedPaths.Zip(after.SelectedPaths).All(pair => ProbeSelectedPointerPathEquals(pair.First, pair.Second));
+    }
+
+    private static bool ProbePointerPathQuotaEquals(ProbePointerPathQuota before, ProbePointerPathQuota after) =>
+        string.Equals(before.AddressBasis, after.AddressBasis, StringComparison.Ordinal)
+        && before.PointerDepth == after.PointerDepth
+        && before.MaxPaths == after.MaxPaths;
+
+    private static bool ProbeSelectedPointerPathEquals(ProbeSelectedPointerPath before, ProbeSelectedPointerPath after) =>
+        string.Equals(before.AddressBasis, after.AddressBasis, StringComparison.Ordinal)
+        && string.Equals(before.SourcePointerPath, after.SourcePointerPath, StringComparison.Ordinal)
+        && before.PointerDepth == after.PointerDepth
+        && before.EligiblePlayerCount == after.EligiblePlayerCount;
 
     internal sealed class CapturedPlayer
     {

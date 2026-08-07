@@ -1,7 +1,7 @@
 namespace FmDataBridge.Models;
 
 /// <summary>
-/// Schema-v1 artifact for developer-only, UID-scoped FM memory research.
+/// Schema-v2 artifact for developer-only, UID-scoped FM memory research.
 /// </summary>
 public sealed class ProbeDocument
 {
@@ -27,7 +27,44 @@ public sealed class ProbeDocument
 
     public int PlayerCount { get; init; }
 
+    public ProbeCapturePolicy? CapturePolicy { get; init; }
+
     public IReadOnlyList<ProbePlayer> Players { get; init; } = Array.Empty<ProbePlayer>();
+}
+
+public sealed class ProbeCapturePolicy
+{
+    public int MaxPointerDepth { get; init; }
+
+    public int TargetWindowBytes { get; init; }
+
+    public int MaxBytesPerPlayer { get; init; }
+
+    public int MaxBytesPerRequest { get; init; }
+
+    public IReadOnlyList<ProbePointerPathQuota> PathQuotas { get; init; } = Array.Empty<ProbePointerPathQuota>();
+
+    public IReadOnlyList<ProbeSelectedPointerPath> SelectedPaths { get; init; } = Array.Empty<ProbeSelectedPointerPath>();
+}
+
+public sealed class ProbePointerPathQuota
+{
+    public string AddressBasis { get; init; } = "";
+
+    public int PointerDepth { get; init; }
+
+    public int MaxPaths { get; init; }
+}
+
+public sealed class ProbeSelectedPointerPath
+{
+    public string AddressBasis { get; init; } = "";
+
+    public string SourcePointerPath { get; init; } = "";
+
+    public int PointerDepth { get; init; }
+
+    public int EligiblePlayerCount { get; init; }
 }
 
 public sealed class ProbeModule

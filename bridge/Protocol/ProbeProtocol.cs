@@ -6,7 +6,7 @@ namespace FmDataBridge.Protocol;
 public static class ProbeProtocol
 {
     public const int ProtocolVersion = 1;
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
 
     public const string StateScanning = "scanning";
     public const string StateReady = "ready";

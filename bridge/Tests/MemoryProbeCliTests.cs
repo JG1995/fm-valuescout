@@ -17,7 +17,13 @@ public sealed class MemoryProbeCliTests
         {
             var singleCapturePath = Path.Combine(directory, "single-probe.json");
             var singleCsvPath = Path.Combine(directory, "single.csv");
-            File.WriteAllText(singleCapturePath, Serialize(CreateCapture("single-capture", Player(1001, 120, 160, 15, 10_000_000, 120))));
+            File.WriteAllText(
+                singleCapturePath,
+                Serialize(
+                    CreateCapture(
+                        "single-capture",
+                        Player(1001, 120, 160, 15, 10_000_000, 120),
+                        schemaVersion: 1)));
             File.WriteAllText(singleCsvPath, "UID,CA\n1001,120\n");
 
             var single = Run(
@@ -900,6 +906,56 @@ public sealed class MemoryProbeCliTests
         }
     }
 
+    [Fact]
+    public void Diff_rejects_different_probe_schema_versions()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var beforeCapturePath = Path.Combine(directory, "before-probe.json");
+            var afterCapturePath = Path.Combine(directory, "after-probe.json");
+            var beforeCsvPath = Path.Combine(directory, "before.csv");
+            var afterCsvPath = Path.Combine(directory, "after.csv");
+            File.WriteAllText(
+                beforeCapturePath,
+                Serialize(
+                    CreateCapture(
+                        "before-capture",
+                        Player(1001, 120, 160, 15, 10_000_000, 1),
+                        schemaVersion: 1)));
+            File.WriteAllText(
+                afterCapturePath,
+                Serialize(
+                    CreateCapture(
+                        "after-capture",
+                        Player(1001, 120, 160, 16, 10_000_000, 1))));
+            File.WriteAllText(beforeCsvPath, "UID,Determination\n1001,15\n");
+            File.WriteAllText(afterCsvPath, "UID,Determination\n1001,16\n");
+
+            var result = Run(
+                "diff",
+                "--before-csv",
+                beforeCsvPath,
+                "--after-csv",
+                afterCsvPath,
+                "--before-capture",
+                beforeCapturePath,
+                "--after-capture",
+                afterCapturePath,
+                "--uid-column",
+                "UID",
+                "--field",
+                "determination=Determination");
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("schemaVersion", result.Error, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static (int ExitCode, string Output, string Error) Run(params string[] args)
     {
         using var output = new StringWriter();
@@ -946,7 +1002,8 @@ public sealed class MemoryProbeCliTests
         PlayerFixture? third = null,
         bool includeUnreadableRange = false,
         string supportedGameVersion = "26.3",
-        string? generatedAtUtc = null)
+        string? generatedAtUtc = null,
+        int schemaVersion = ProbeProtocol.SchemaVersion)
     {
         var players = new[] { first, second, third }
             .Where(player => player is not null)
@@ -955,7 +1012,7 @@ public sealed class MemoryProbeCliTests
             .ToArray();
         return new ProbeDocument
         {
-            SchemaVersion = ProbeProtocol.SchemaVersion,
+            SchemaVersion = schemaVersion,
             GeneratedAtUtc = generatedAtUtc ?? "2026-08-07T12:00:00.0000000+00:00",
             GameVersion = "26.3.2.2329565",
             SupportedGameVersion = supportedGameVersion,
@@ -964,6 +1021,7 @@ public sealed class MemoryProbeCliTests
             RequestId = requestId,
             RequestedUids = players.Select(player => player.Uid).ToArray(),
             PlayerCount = players.Length,
+            CapturePolicy = schemaVersion == ProbeProtocol.SchemaVersion ? CreateCapturePolicy() : null,
             Players = players,
         };
     }
@@ -980,6 +1038,7 @@ public sealed class MemoryProbeCliTests
             RequestId = requestId,
             RequestedUids = new[] { 1001u },
             PlayerCount = 1,
+            CapturePolicy = CreateCapturePolicy(),
             Players = new[]
             {
                 new ProbePlayer
@@ -1006,6 +1065,30 @@ public sealed class MemoryProbeCliTests
                             },
                         },
                     },
+                },
+            },
+        };
+
+    private static ProbeCapturePolicy CreateCapturePolicy() =>
+        new()
+        {
+            MaxPointerDepth = 1,
+            TargetWindowBytes = 128,
+            MaxBytesPerPlayer = 2_944,
+            MaxBytesPerRequest = 376_832,
+            PathQuotas = new[]
+            {
+                new ProbePointerPathQuota
+                {
+                    AddressBasis = "player-block",
+                    PointerDepth = 1,
+                    MaxPaths = 8,
+                },
+                new ProbePointerPathQuota
+                {
+                    AddressBasis = "person-object",
+                    PointerDepth = 1,
+                    MaxPaths = 8,
                 },
             },
         };
