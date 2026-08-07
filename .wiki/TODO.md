@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Youth Academy](./features/active/youth-academy.md) — save-scoped `Class of YYYY` cohorts, club-family player tracking, and honest placeholders for career statistics pending memory-reader support
+No active feature selected.
 
 ## Next
 
@@ -61,6 +61,7 @@ No next feature selected.
 ## Completed
 
 - [Planner workspace redesign](./features/completed/planner-workspace-redesign.md) — URL-backed Planner workspaces, adaptive dual-phase tactic pitches, responsive three-team depth matrix, and transactional Clear all
+- [Youth Academy](./features/completed/youth-academy.md) — save-scoped `Class of YYYY` cohorts, club-family player tracking, manual sale/release outcomes, and honest placeholders for career statistics pending memory-reader support
 - [Codex workflow migration](./features/completed/codex-workflow-migration.md) — Codex-only repository guidance, specialist agents, and product-focused validation
 - [Player profiles](./features/completed/player-profiles.md) — `/players/$uid` with Overview / Attributes / Roles tabs; entry from Search row and Ctrl+K; ScoreBadge; position-family role grouping
 - [Squad planner](./features/completed/squad-planner.md) — save-scoped club family, one dual-phase tactic, and Senior / Reserves / Youth depth strings with manual player assignment
