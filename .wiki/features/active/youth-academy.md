@@ -133,7 +133,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 ### PR 1 — Add youth graduate tracking
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -381,7 +381,7 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 #### Commit 7 — Celebrate academy outcomes
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(academy): celebrate academy outcomes`
 
@@ -419,25 +419,21 @@ Commits 1 and 2 establish the thinnest end-to-end path: navigate to `/academy`, 
 
 ## Active work
 
-**PR:** Add youth graduate tracking
+**PR:** PR 1 — Add youth graduate tracking (Ready for publication)
 
-**Commit:** Commit 7 — Celebrate academy outcomes
+**Commit:** None — PR 1 is ready for publication
 
 ### RED proof
 
-Pending Commit 7 build loop.
-
-### Implementation notes
-
-Pending Commit 7 build loop.
+Added route assertions for separate outcome and context groups and for supported class-card highlights. The initial focused run failed in the expected paths because the old statistics grid had no semantic groups and class cards had no outcome summary.
 
 ### Expected outcome
 
-Pending Commit 7 build loop.
+Overview and Class views make Academy outcomes the first visual read while keeping unavailable reader-owned fields as `—` with explanations. Context counts remain visible but subordinate, and class cards surface only supported aggregates.
 
 ### Explicit exclusions
 
-No persistence, career-stat semantics, bridge/dump-schema change, charting, animation, remote assets, CSV/HTML flow, or Git publication belongs in the active commit.
+No persistence, career-stat semantics, bridge/dump-schema change, charting, animation, remote assets, CSV/HTML flow, or Git publication belongs in the completed commit.
 
 ## Discoveries and replanning
 
@@ -448,7 +444,7 @@ No persistence, career-stat semantics, bridge/dump-schema change, charting, anim
 - Follow-up review confirmed that the memory reader already supplies optional `gameDate` and `gameDateSource` through the current snapshot contract. Automatic cohort creation can use this existing field without bridge work.
 - Product feedback after Commit 4 changed the plan: 2025 is the guaranteed baseline, later observed years auto-create, Overview chronology is oldest-to-newest, and the Class control needs a defensive empty state.
 - Sale fee, buying club, and release status are manual Academy outcomes. They must not wait for or be overwritten by the follow-up memory-reader feature.
-- The uniform statistic grid underplays the feature's main reward. A separate presentation commit will strengthen outcome hierarchy after the new manual aggregates exist.
+- The uniform statistic grid underplayed the feature's main reward. Commit 7 strengthened outcome hierarchy after the new manual aggregates existed without changing their persistence or semantics.
 
 ## Completed work
 
@@ -459,7 +455,8 @@ No persistence, career-stat semantics, bridge/dump-schema change, charting, anim
 | PR 1 | Commit 3 — Assign club-family players to classes | Pending record | Searchable club-family picker, typed membership mutations, current/departed/unresolved roster, and assignment/removal route coverage | Sol High accepted after two correction rounds; no Critical, High, or Medium findings remain | Internal table overflow is structural coverage only; populated viewport inspection remains in Commit 4 final validation. |
 | PR 1 | Commit 4 — Surface graduate tracking statistics | Pending record | Overview and class statistics, exact senior-appearance graduate workspace, nullable career-stat presentation, and save/snapshot lifecycle refresh | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Active-save transitions reset the Academy query root before refetch; populated 1280×800 and 1600×900 inspection remains feature-complete validation. |
 | PR 1 | Commit 5 — Generate yearly academy classes | Pending record | v12 automatic class marker/backfill, transactional 2025 and observed-year lifecycle, protected deletion, ascending chronology, and Class empty-state recovery | Sol High accepted; no Critical, High, or Medium findings | Source gating and late transactional rollback have service/source coverage but no dedicated regression variants; retain for feature-complete validation if warranted. |
-| PR 1 | Commit 6 — Record academy player outcomes | Pending record | v13 manual sale/release outcome persistence, typed mutation, three roster groups, accessible action/menu/modal flows, corrected removal confirmation, and manual summary totals | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Browser viewport and visual contrast inspection remain in Commit 7 and feature-complete validation. |
+| PR 1 | Commit 6 — Record academy player outcomes | Pending record | v13 manual sale/release outcome persistence, typed mutation, three roster groups, accessible action/menu/modal flows, corrected removal confirmation, and manual summary totals | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Commit 7 completed the planned browser hierarchy and contrast inspection; feature-complete validation remains. |
+| PR 1 | Commit 7 — Celebrate academy outcomes | Pending record | Outcome-first statistics hierarchy, quiet Academy context metrics, supported class-card highlights, and updated design guidance | Sol Medium accepted after one correction round; no Critical, High, Medium, or NIT findings remain | Populated and unavailable states were inspected at 1280×800 and 1600×900; feature-complete validation still covers the full cross-save and interaction matrix. |
 
 ## Final validation
 
@@ -476,7 +473,7 @@ No persistence, career-stat semantics, bridge/dump-schema change, charting, anim
 
 ## Documentation impact
 
-- `DESIGN.md` owns the planned `/academy` layout, class chronology, outcome grouping, sold/released treatments, and celebratory statistics hierarchy. Update it with Commit 7 when that presentation becomes implemented.
+- `DESIGN.md` owns the implemented `/academy` layout, class chronology, outcome grouping, sold/released treatments, and celebratory statistics hierarchy delivered through Commit 7.
 - `ARCHITECTURE.md` records the implemented Academy Rust module, Tauri commands, v12 automatic-class lifecycle, Planner club-family dependency, searchable picker, and delivered roster boundary. Reconcile later migrations and manual outcome persistence when those commits land.
 - `CONCEPT.md` needs reconciliation only if implementation establishes Youth Academy as a durable product capability beyond its existing product purpose.
 - Archive this ledger to `.wiki/features/completed/` only after full validation, feature review, and documentation reconciliation.

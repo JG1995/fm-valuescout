@@ -1,7 +1,8 @@
-import { FolderOpen, Plus } from "lucide-react";
+import { BadgeEuro, FolderOpen, GraduationCap, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { formatCount, formatMoney } from "@/utils/format";
 import type { AcademyClass, AcademyClassDetail } from "../types/academy";
 import {
   academyDetailsAreComplete,
@@ -98,6 +99,26 @@ export function AcademyOverview({
                       Reported senior:{" "}
                       {classStatistics?.reportedSeniorPlayers ?? "—"}
                     </span>
+                    <span className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-outline-variant pt-3 text-label-sm text-on-surface-variant">
+                      <span className="inline-flex items-center gap-1.5">
+                        <GraduationCap
+                          aria-hidden
+                          className="size-3.5 text-primary"
+                        />
+                        {formatClassCount(
+                          classStatistics?.graduates,
+                          "graduate",
+                        )}
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <BadgeEuro
+                          aria-hidden
+                          className="size-3.5 text-success"
+                        />
+                        {formatClassIncome(classStatistics?.saleFeeEur)} sale
+                        income
+                      </span>
+                    </span>
                   </button>
                 </li>
               );
@@ -107,4 +128,15 @@ export function AcademyOverview({
       </Panel>
     </div>
   );
+}
+
+function formatClassCount(value: number | null | undefined, singular: string) {
+  if (value === null || value === undefined) {
+    return `— ${singular}s`;
+  }
+  return `${formatCount(value)} ${value === 1 ? singular : `${singular}s`}`;
+}
+
+function formatClassIncome(value: number | null | undefined) {
+  return value === null || value === undefined ? "—" : formatMoney(value);
 }

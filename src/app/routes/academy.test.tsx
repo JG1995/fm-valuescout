@@ -207,6 +207,68 @@ describe("academy route", () => {
     expect(
       screen.getByTestId("academy-stat-goals").parentElement,
     ).toHaveTextContent(/not available from the current memory reader/i);
+
+    const outcomes = screen.getByRole("region", {
+      name: "Academy outcomes",
+    });
+    expect(
+      within(outcomes).getByTestId("academy-stat-graduates"),
+    ).toHaveTextContent("—");
+    expect(
+      within(outcomes).getByTestId("academy-stat-sale-income"),
+    ).toHaveTextContent("€0");
+    expect(
+      within(outcomes).getByTestId("academy-stat-goals"),
+    ).toHaveTextContent("—");
+    expect(
+      within(outcomes).getByTestId("academy-stat-released-players"),
+    ).toHaveTextContent("0");
+    expect(
+      within(outcomes).getByTestId("academy-stat-assists"),
+    ).toHaveTextContent("—");
+    expect(
+      within(outcomes).getByTestId("academy-stat-international-caps"),
+    ).toHaveTextContent("—");
+
+    const context = screen.getByRole("region", {
+      name: "Academy context",
+    });
+    expect(
+      within(context).getByTestId("academy-stat-classes"),
+    ).toHaveTextContent("1");
+    expect(
+      within(context).getByTestId("academy-stat-tracked-players"),
+    ).toHaveTextContent("2");
+    expect(
+      within(context).getByTestId("academy-stat-reported-senior-players"),
+    ).toHaveTextContent("1");
+  });
+
+  it("adds supported outcome highlights to each class card", async () => {
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 1 }]);
+    setAcademyClassMembers(7, [
+      academyMember({
+        playerUid: 77,
+        lastKnownName: "Sold graduate",
+        seniorLeagueAppearances: 1,
+        goals: null,
+        assists: null,
+        internationalCaps: null,
+        outcome: {
+          status: "sold",
+          buyingClub: "North FC",
+          saleFeeEur: 120_000,
+        },
+      }),
+    ]);
+    renderAcademyRoute();
+
+    const card = await screen.findByRole("button", {
+      name: "Open Class of 2026",
+    });
+    await waitFor(() => expect(card).toHaveTextContent("1 graduate"));
+    expect(card).toHaveTextContent("€120k sale income");
   });
 
   it("renders nullable career columns and applies the exact graduation rule", async () => {
