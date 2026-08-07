@@ -38,7 +38,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v14: `saves`, `snapshots`, `players`, `player_role_scores`, save-scoped Planner club-family, tactic, depth-string, and assignment rows with provenance, and Academy classes, memberships, outcomes, and automatic-class backfill).
 
-**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), `status.json` / `dump.json` / diagnostics with phase timings. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
+**FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), `status.json` / `dump.json` / diagnostics with phase timings. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. A separate `bridge/Tools/MemoryProbe/` CLI uses `probe-request.json` / `probe-status.json` / schema-v1 `probe.json` for developer-only bounded correlation research; it never crosses Tauri IPC or changes schema-v5 product dumps. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [memory probe runbook](../bridge/MEMORY_PROBE.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
 **Snapshot ingest:** Rust `features/snapshot` owns save slots, transactional ingest from `dump.json`, and query IPC; React `features/snapshot` owns the save switcher, snapshot overview, and sanity list. `load_data` captures `active_save_id` under a brief Db lock, runs the bridge scan without holding the Db mutex, then ingests via `ingest_dump_file_for_save` with the captured id. See [snapshot-ingest](./features/completed/snapshot-ingest.md).
 
@@ -406,6 +406,22 @@ User opens home route
 
 Dump contract: bridge/DUMP_SCHEMA.md schema v5 (frozen). Scan writes dump.json on disk; ingest reads it in Rust (§5.5).
 ```
+
+### 5.4.1 Developer memory research probe
+
+The probe is outside the product data flow. A developer exports a labeled FM player view, then runs the .NET CLI through `./scripts/dev memory-probe`. `capture` writes a versioned `probe-request.json` for explicit UIDs and waits for its matching `probe-status.json`; the bridge scans with the existing safe reader and writes a bounded schema-v1 `probe.json` only on success. `correlate` and optional `diff` inspect those local artifacts and report hypotheses.
+
+```text
+FM CSV with explicit UIDs
+  → memory-probe capture
+  → probe-request.json
+  → BepInEx bounded capture
+  → probe-status.json + probe.json
+  → memory-probe correlate | diff
+  → local candidate report
+```
+
+The request accepts 1–128 unique UIDs. Capture remains read-only and bounded to 1,408 raw bytes per player (180,224 bytes at the fixed maximum). Production `request.json` and `force-scan` work take priority; the probe does not change production `status.json`, `dump.json`, diagnostics, Rust validation, SQLite, or the WebView. Raw CSVs, captures, and reports stay under `.work/` or outside Git. See [bridge/MEMORY_PROBE.md](../bridge/MEMORY_PROBE.md) for synchronization, declared CSV normalization, replication, and the evidence threshold before a later feature may pin a production field.
 
 ### 5.5 Load Data and snapshot ingest
 

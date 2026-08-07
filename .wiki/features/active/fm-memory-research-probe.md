@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -152,7 +152,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 ### PR 1 — Add reusable FM memory research tooling
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -283,7 +283,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 4 — Document and validate the research workflow
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(memory-probe): document the research workflow`
 
@@ -321,9 +321,9 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 ## Active work
 
-**PR:** PR 1 — Add reusable FM memory research tooling
+**PR:** PR 1 — Add reusable FM memory research tooling (Ready for publication)
 
-**Commit:** Document and validate the research workflow
+**Commit:** None — all planned commits are complete; live FM evidence remains feature-completion work
 
 ### RED proof
 
@@ -352,6 +352,7 @@ Record material deviations, blockers, and decisions that change remaining work. 
 - The developer confirmed that FM cannot export the required Academy assists total, so it is no longer a research target. The developer also confirmed that `AT Apps`, `AT Gls`, and `Int Apps` cover all senior matches. The revised Academy file supplies strong variation for all three targets.
 - The developer confirmed that Moneyball values are season-to-date at the point of recording and that starts and substitute appearances must be stored separately. Snapshot history may later preserve multiple points in the season, but it does not change the probe contract.
 - A controlled before/after state is not expected to be practical. The validation contract now requires stable candidate paths and encodings across synchronized captures with independent UID sets, with optional diff evidence when available.
+- On 2026-08-07, `./scripts/dev bridge-install` built and installed the current DLL to the configured FM26 BepInEx plugins directory. FM was not running, so no live capture was attempted; the runbook's in-game evidence checklist remains required before feature completion.
 
 ## Completed work
 
@@ -360,7 +361,7 @@ Record material deviations, blockers, and decisions that change remaining work. 
 | PR 1 | Capture bounded player memory by UID | 393f75f | Isolated C# research protocol, scan-gate integration, bounded capture, atomic output, and fake-memory coverage | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Root window set to 0x280 bytes during review to include planned known anchors; no scope change. |
 | PR 1 | Correlate CSV truth with probe captures | ccd6102 | Dependency-free .NET CLI and repository command for bounded request capture, mapped numeric CSV correlation, and synchronized before/after comparison | Sol High accepted after two correction rounds; no Critical, High, or Medium findings remain | Explicit IDs are single-use while matching artifacts remain; candidates require varied multi-player evidence. |
 | PR 1 | Adapt real FM exports for bounded research | Pending record | Raised the fixed cap to 128; added declared real-export normalization, field-local eligibility, provenance, and focused coverage | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Uniform cross-player before/after shifts no longer qualify as varied evidence; no scope change. |
-| PR 1 | Document and validate the research workflow | Pending record | Pending | Pending | Renumbered from commit 3 after the real-export gap was found. |
+| PR 1 | Document and validate the research workflow | Pending record | Added the bridge-local runbook, probe protocol summary, architecture boundary, and honest live-validation handoff | Sol Medium accepted; no Critical, High, Medium, or Nitpick findings | Live FM capture is deferred because FM was not running; the DLL install and automated checks passed, but in-game evidence remains required before feature completion. |
 
 ## Final validation
 
@@ -388,4 +389,7 @@ Manual Windows/FM evidence:
 
 ## Documentation impact
 
-Complete during reconciliation. Expected owners are the bridge research runbook, `bridge/README.md`, `.wiki/ARCHITECTURE.md`, `.wiki/TODO.md`, and the completed feature record created from this ledger.
+- `bridge/MEMORY_PROBE.md` owns the developer-only capture, correlation, replication, and evidence procedure.
+- `bridge/README.md` documents the separate probe files and `memory-probe` command surface alongside the existing bridge protocol.
+- `.wiki/ARCHITECTURE.md` records the implemented research path without changing the schema-v5 product dump boundary.
+- This ledger records the installed-DLL result and the remaining live FM evidence requirement. No ADR or debug report is warranted.

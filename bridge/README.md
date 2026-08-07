@@ -17,6 +17,28 @@ Exact folder names: `fm-valuescout` / `fm-bridge`.
 
 **Dump contract:** frozen schema v5 field list, null rules, and ingestibility checks — [DUMP_SCHEMA.md](./DUMP_SCHEMA.md). Rust validates shape via `validate_dump_json` (see `src-tauri/src/features/memory_read/dump_validation.rs`).
 
+## Developer memory research probe
+
+The probe is a separate developer-only protocol for researching possible player-memory locations. It is not part of **Load Data**, does not enter Rust or Tauri IPC, and does not change the frozen schema-v5 `dump.json` contract.
+
+It uses three additional files in the same bridge directory:
+
+```text
+  ├── probe-request.json  ← CLI writes one bounded, explicit-UID request
+  ├── probe-status.json   ← plugin writes scanning → ready / failed for that request
+  └── probe.json          ← successful schema-v1 bounded capture (replace-only-on-success)
+```
+
+`probe.json` contains raw research data. Keep it, source CSVs, and correlation reports under `.work/memory-probe/` or outside the repository. Do not commit them. A production request or `force-scan` takes priority over a queued probe, and probe activity does not change `request.json`, `status.json`, `diagnostics.txt`, or `dump.json`.
+
+Run the command surface with:
+
+```bash
+./scripts/dev memory-probe --help
+```
+
+The full capture, correlation, replication, and evidence workflow is in [MEMORY_PROBE.md](./MEMORY_PROBE.md). The CLI reports candidates only; a later feature must independently validate a field before adding it to product data.
+
 ### Memory access (`Memory/`)
 
 Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
