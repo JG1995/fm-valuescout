@@ -173,7 +173,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 2 — Correlate CSV truth with probe captures
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-probe): correlate CSV values with captures`
 
@@ -212,7 +212,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 3 — Document and validate the research workflow
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `docs(memory-probe): document the research workflow`
 
@@ -252,22 +252,21 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 **PR:** PR 1 — Add reusable FM memory research tooling
 
-**Commit:** Correlate CSV truth with probe captures
+**Commit:** Document and validate the research workflow
 
 ### RED proof
 
-Add deterministic capture and CSV fixtures where duplicate small integers make a one-player match ambiguous, while multi-player coverage identifies the known relative path. The initial RED must fail for missing correlation behavior rather than CSV or test-harness setup. Add a synchronized before/after fixture with one controlled scalar delta.
+Verify that the developer documentation does not yet describe the implemented command, probe files, synchronization contract, or evidence threshold. Use the implemented CLI output and bridge protocol as the source of truth before writing the runbook.
 
 ### Expected outcome
 
-The dependency-free .NET developer CLI can create and await a bounded probe request, correlate explicit numeric CSV mappings with one compatible capture, and compare synchronized before/after CSV and capture pairs. Its output ranks candidate paths and encodings while making ambiguity and unmatched data visible.
+A durable developer runbook, bridge README update, and architecture reconciliation describe the implemented command surface, isolated probe protocol, varied-player correlation, controlled before/after workflow, artifact handling, and the independent validation required before any later feature can pin an offset.
 
 ### Explicit exclusions
 
-- No candidate is declared a verified FM layout offset.
-- No domain-specific appearance-history or competition-record parsing.
-- No product UI, IPC, persisted analysis results, charts, or general-purpose data science tooling.
-- No new CSV or command-line package.
+- No speculative Academy or Moneyball offset is recorded.
+- No raw CSV, memory, screenshot, or machine-specific artifact is committed.
+- No product-facing documentation or end-user probe UI is added.
 
 ## Discoveries and replanning
 
@@ -276,13 +275,14 @@ Record material deviations, blockers, and decisions that change remaining work. 
 - Planning selected a separate research protocol so the reusable tool cannot accidentally become part of the frozen product dump contract.
 - Repowise showed `Plugin.cs`, `PersonScanner.cs`, and `CapADumpPipeline.cs` as bridge hotspots; its index was behind live `HEAD`, so file relationships and all planning facts were verified against current source.
 - Commit 1 fixed the player root at 0x280 bytes and the person root at 0x100 bytes (1,408 bytes maximum per player). The player window covers the known CA, PA, Determination, and market-value anchors; unread root or target bytes now fail before output replacement.
+- Commit 2 requires varied values across multiple players before analysis reports a candidate. Explicit request IDs are single-use while matching probe status or capture artifacts remain, because completion timestamps cannot distinguish an older in-flight scan from a same-ID retry.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | Capture bounded player memory by UID | Pending record | Isolated C# research protocol, scan-gate integration, bounded capture, atomic output, and fake-memory coverage | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Root window set to 0x280 bytes during review to include planned known anchors; no scope change. |
-| PR 1 | Correlate CSV truth with probe captures | Pending record | Pending | Pending | None |
+| PR 1 | Capture bounded player memory by UID | 393f75f | Isolated C# research protocol, scan-gate integration, bounded capture, atomic output, and fake-memory coverage | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Root window set to 0x280 bytes during review to include planned known anchors; no scope change. |
+| PR 1 | Correlate CSV truth with probe captures | Pending record | Dependency-free .NET CLI and repository command for bounded request capture, mapped numeric CSV correlation, and synchronized before/after comparison | Sol High accepted after two correction rounds; no Critical, High, or Medium findings remain | Explicit IDs are single-use while matching artifacts remain; candidates require varied multi-player evidence. |
 | PR 1 | Document and validate the research workflow | Pending record | Pending | Pending | None |
 
 ## Final validation

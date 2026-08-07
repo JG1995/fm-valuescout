@@ -7,7 +7,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install} [args...]
+Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|memory-probe|format|secrets|smoke|mutate|bridge-install} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
@@ -16,6 +16,7 @@ Commands:
   check-fast        Run Biome, TypeScript, and secretlint on staged files (pre-commit fast path).
   check-rust        Run cargo fmt --check, clippy, and test in src-tauri/.
   bridge-test       Run the C# bridge unit tests (requires the .NET 6 SDK).
+  memory-probe      Run the developer-only CSV and bounded-capture research CLI (requires .NET 6 SDK).
   format [paths...] Apply Biome lint/format fixes, then cargo fmt in src-tauri/.
                     Optional paths forward to Biome only; cargo fmt always runs.
   secrets [--staged] Scan for secrets with secretlint (full tree or staged files only).
@@ -179,6 +180,15 @@ run_bridge_test() {
   )
 }
 
+run_memory_probe() {
+  DEV_COMMAND_LABEL=memory-probe
+  ensure_dotnet
+  (
+    cd "$repo_root/bridge"
+    dotnet run --project Tools/MemoryProbe/FmDataBridge.MemoryProbe.csproj --configuration Release -- "$@"
+  )
+}
+
 run_check() {
   require_no_arguments check "$@"
 
@@ -320,6 +330,9 @@ case "$command" in
     ;;
   bridge-test)
     run_bridge_test "$@"
+    ;;
+  memory-probe)
+    run_memory_probe "$@"
     ;;
   format)
     run_format "$@"

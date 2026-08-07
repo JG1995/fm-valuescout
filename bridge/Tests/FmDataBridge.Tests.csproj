@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FmDataBridge.csproj" />
+    <ProjectReference Include="..\Tools\MemoryProbe\FmDataBridge.MemoryProbe.csproj" />
   </ItemGroup>
 
 </Project>
