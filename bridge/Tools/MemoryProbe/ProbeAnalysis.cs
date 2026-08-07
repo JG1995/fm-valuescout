@@ -378,15 +378,15 @@ internal static class ProbeAnalysis
 {
     private const int MaximumReportedCandidates = 50;
 
-    private static readonly IReadOnlyList<ScalarEncoding> Encodings = new ScalarEncoding[]
+    private static readonly IReadOnlyList<ScalarEncoding> ExactEncodings = new ScalarEncoding[]
     {
-        new("uint32-le", 4, 0, MatchesUInt32),
-        new("int32-le", 4, 1, MatchesInt32),
-        new("uint16-le", 2, 2, MatchesUInt16),
-        new("int16-le", 2, 3, MatchesInt16),
-        new("uint8-times-five", 1, 4, MatchesTimesFive),
-        new("uint8", 1, 5, MatchesUInt8),
-        new("int8", 1, 6, MatchesInt8),
+        new("uint32-le", 4, 0, "exact", MatchesUInt32),
+        new("int32-le", 4, 1, "exact", MatchesInt32),
+        new("uint16-le", 2, 2, "exact", MatchesUInt16),
+        new("int16-le", 2, 3, "exact", MatchesInt16),
+        new("uint8-times-five", 1, 4, "exact", MatchesTimesFive),
+        new("uint8", 1, 5, "exact", MatchesUInt8),
+        new("int8", 1, 6, "exact", MatchesInt8),
     };
 
     public static CorrelationReport Correlate(
@@ -395,8 +395,7 @@ internal static class ProbeAnalysis
         string capturePath,
         IReadOnlyList<FieldMapping> mappings)
     {
-        var uids = table.Players.Select(player => player.Uid).OrderBy(uid => uid).ToArray();
-        var fields = mappings.Select(mapping => CorrelateField(capture, table, mapping, uids)).ToArray();
+        var fields = mappings.Select(mapping => CorrelateField(capture, table, mapping)).ToArray();
         return new CorrelationReport(
             capturePath,
             capture.Document.RequestId,
@@ -434,24 +433,38 @@ internal static class ProbeAnalysis
     private static FieldReport CorrelateField(
         ProbeCapture capture,
         CsvPlayerTable table,
-        FieldMapping mapping,
-        IReadOnlyList<uint> uids)
+        FieldMapping mapping)
     {
+        var eligiblePlayers = table.Players
+            .Where(player => player.Values[mapping.Name] is not null)
+            .ToArray();
+        var eligibleUids = eligiblePlayers.Select(player => player.Uid).OrderBy(uid => uid).ToArray();
+        var excludedUids = table.Players
+            .Where(player => player.Values[mapping.Name] is null)
+            .Select(player => player.Uid)
+            .OrderBy(uid => uid)
+            .ToArray();
+        var encodings = GetEncodings(mapping.Normalization);
         var collector = new CandidateCollector();
-        foreach (var csvPlayer in table.Players)
+        foreach (var csvPlayer in eligiblePlayers)
         {
-            var expected = csvPlayer.Values[mapping.Name];
+            var expected = csvPlayer.Values[mapping.Name]!.Value;
             var capturePlayer = capture.Players[csvPlayer.Uid];
             foreach (var range in capturePlayer.Ranges)
             {
-                FindMatches(range, expected, csvPlayer.Uid, collector);
+                FindMatches(range, expected, encodings, csvPlayer.Uid, collector);
             }
         }
 
         var evidenceSufficient = HasVariedMultiPlayerEvidence(
-            table.Players.Select(player => player.Values[mapping.Name]),
-            uids.Count);
-        return BuildFieldReport(mapping, collector.Build(uids, mapping.Name), uids.Count, evidenceSufficient);
+            eligiblePlayers.Select(player => player.Values[mapping.Name]!.Value),
+            eligibleUids.Length);
+        return BuildFieldReport(
+            mapping,
+            collector.Build(eligibleUids, mapping.Name),
+            eligibleUids,
+            excludedUids,
+            evidenceSufficient);
     }
 
     private static DiffFieldReport DiffField(
@@ -462,18 +475,28 @@ internal static class ProbeAnalysis
         FieldMapping mapping,
         IReadOnlyList<uint> uids)
     {
-        var beforeValues = beforeTable.Players.ToDictionary(player => player.Uid, player => player.Values[mapping.Name]);
-        var afterValues = afterTable.Players.ToDictionary(player => player.Uid, player => player.Values[mapping.Name]);
-        var evidenceSufficient = HasVariedMultiPlayerEvidence(beforeValues.Values.Concat(afterValues.Values), uids.Count);
-        var changedUids = uids.Where(uid => beforeValues[uid] != afterValues[uid]).ToArray();
+        var beforePlayers = beforeTable.Players.ToDictionary(player => player.Uid);
+        var afterPlayers = afterTable.Players.ToDictionary(player => player.Uid);
+        var eligibleUids = uids
+            .Where(uid => beforePlayers[uid].Values[mapping.Name] is not null && afterPlayers[uid].Values[mapping.Name] is not null)
+            .ToArray();
+        var excludedUids = uids.Except(eligibleUids).ToArray();
+        var beforeValues = eligibleUids.ToDictionary(uid => uid, uid => beforePlayers[uid].Values[mapping.Name]!.Value);
+        var afterValues = eligibleUids.ToDictionary(uid => uid, uid => afterPlayers[uid].Values[mapping.Name]!.Value);
+        var evidenceSufficient = HasVariedMultiPlayerEvidence(beforeValues.Values, eligibleUids.Length)
+            || HasVariedMultiPlayerEvidence(afterValues.Values, eligibleUids.Length);
+        var changedUids = eligibleUids.Where(uid => beforeValues[uid] != afterValues[uid]).ToArray();
         if (changedUids.Length == 0)
         {
             return new DiffFieldReport(
                 mapping.Name,
                 mapping.CsvColumn,
+                mapping.Normalization.Name,
                 "no-evidence",
                 Array.Empty<uint>(),
-                uids,
+                eligibleUids,
+                eligibleUids,
+                excludedUids,
                 evidenceSufficient,
                 0,
                 0,
@@ -483,7 +506,8 @@ internal static class ProbeAnalysis
         }
 
         var collector = new CandidateCollector();
-        foreach (var uid in uids)
+        var encodings = GetEncodings(mapping.Normalization);
+        foreach (var uid in eligibleUids)
         {
             var beforePlayer = before.Players[uid];
             var afterPlayer = after.Players[uid];
@@ -495,7 +519,7 @@ internal static class ProbeAnalysis
                 }
 
                 var beforeRange = pair.Value;
-                foreach (var encoding in Encodings)
+                foreach (var encoding in encodings)
                 {
                     for (var offset = 0; offset <= beforeRange.RequestedLength - encoding.Width; offset++)
                     {
@@ -519,8 +543,8 @@ internal static class ProbeAnalysis
             }
         }
 
-        var candidates = collector.Build(uids, mapping.Name);
-        var field = BuildFieldReport(mapping, candidates, uids.Count, evidenceSufficient);
+        var candidates = collector.Build(eligibleUids, mapping.Name);
+        var field = BuildFieldReport(mapping, candidates, eligibleUids, excludedUids, evidenceSufficient);
         var deltas = changedUids
             .Select(uid => new ScalarDelta(uid, beforeValues[uid], afterValues[uid]))
             .ToArray();
@@ -532,6 +556,7 @@ internal static class ProbeAnalysis
                 candidate.SourcePointerPath,
                 candidate.PointerDepth,
                 candidate.Encoding,
+                candidate.EvidenceKind,
                 candidate.MatchingEncodings,
                 candidate.EncodingMatches,
                 candidate.EncodingAmbiguous,
@@ -544,9 +569,12 @@ internal static class ProbeAnalysis
         return new DiffFieldReport(
             mapping.Name,
             mapping.CsvColumn,
+            mapping.Normalization.Name,
             field.Outcome,
             changedUids,
-            uids.Except(changedUids).ToArray(),
+            eligibleUids.Except(changedUids).ToArray(),
+            eligibleUids,
+            excludedUids,
             field.EvidenceSufficient,
             field.CandidateCount,
             field.TopCoverage,
@@ -558,9 +586,11 @@ internal static class ProbeAnalysis
     private static FieldReport BuildFieldReport(
         FieldMapping mapping,
         IReadOnlyList<RankedCandidate> candidates,
-        int requiredCoverage,
+        IReadOnlyList<uint> eligibleUids,
+        IReadOnlyList<uint> excludedUids,
         bool evidenceSufficient)
     {
+        var requiredCoverage = eligibleUids.Count;
         var topCoverage = candidates.Count == 0 ? 0 : candidates[0].Coverage;
         var topCandidateCount = candidates.Count(candidate => candidate.Coverage == topCoverage);
         var outcome = candidates.Count == 0
@@ -576,6 +606,7 @@ internal static class ProbeAnalysis
                 candidate.SourcePointerPath,
                 candidate.PointerDepth,
                 candidate.Encoding,
+                candidate.EvidenceKind,
                 candidate.MatchingEncodings,
                 candidate.EncodingMatches,
                 candidate.EncodingAmbiguous,
@@ -587,7 +618,10 @@ internal static class ProbeAnalysis
         return new FieldReport(
             mapping.Name,
             mapping.CsvColumn,
+            mapping.Normalization.Name,
             outcome,
+            eligibleUids,
+            excludedUids,
             evidenceSufficient,
             candidates.Count,
             topCoverage,
@@ -596,16 +630,17 @@ internal static class ProbeAnalysis
             reportedCandidates);
     }
 
-    private static bool HasVariedMultiPlayerEvidence(IEnumerable<long> values, int playerCount) =>
+    private static bool HasVariedMultiPlayerEvidence(IEnumerable<decimal> values, int playerCount) =>
         playerCount > 1 && values.Distinct().Skip(1).Any();
 
     private static void FindMatches(
         ProbeCapture.CapturedRange range,
-        long expected,
+        decimal expected,
+        IReadOnlyList<ScalarEncoding> encodings,
         uint uid,
         CandidateCollector collector)
     {
-        foreach (var encoding in Encodings)
+        foreach (var encoding in encodings)
         {
             for (var offset = 0; offset <= range.RequestedLength - encoding.Width; offset++)
             {
@@ -615,6 +650,70 @@ internal static class ProbeAnalysis
                 }
             }
         }
+    }
+
+    private static IReadOnlyList<ScalarEncoding> GetEncodings(FieldNormalization normalization)
+    {
+        if (normalization.Kind is FieldNormalizationKind.Integer
+            or FieldNormalizationKind.AppearancesStarts
+            or FieldNormalizationKind.AppearancesSubstitutes)
+        {
+            return ExactEncodings;
+        }
+
+        var scale = PowerOfTen(normalization.DecimalPlaces);
+        var scaleName = scale.ToString("0", CultureInfo.InvariantCulture);
+        return new ScalarEncoding[]
+        {
+            new(
+                $"float32-le-rounded-{normalization.DecimalPlaces}",
+                sizeof(float),
+                7,
+                "rounded",
+                (bytes, offset, expected) => MatchesRoundedFloat32(bytes, offset, expected, normalization.DecimalPlaces)),
+            new(
+                $"float64-le-rounded-{normalization.DecimalPlaces}",
+                sizeof(double),
+                8,
+                "rounded",
+                (bytes, offset, expected) => MatchesRoundedFloat64(bytes, offset, expected, normalization.DecimalPlaces)),
+            new(
+                $"uint32-le-fixed-scale-{scaleName}",
+                sizeof(uint),
+                9,
+                "fixed-scale",
+                (bytes, offset, expected) => MatchesFixed(bytes, offset, expected, scale, MatchesUInt32)),
+            new(
+                $"int32-le-fixed-scale-{scaleName}",
+                sizeof(int),
+                10,
+                "fixed-scale",
+                (bytes, offset, expected) => MatchesFixed(bytes, offset, expected, scale, MatchesInt32)),
+            new(
+                $"uint16-le-fixed-scale-{scaleName}",
+                sizeof(ushort),
+                11,
+                "fixed-scale",
+                (bytes, offset, expected) => MatchesFixed(bytes, offset, expected, scale, MatchesUInt16)),
+            new(
+                $"int16-le-fixed-scale-{scaleName}",
+                sizeof(short),
+                12,
+                "fixed-scale",
+                (bytes, offset, expected) => MatchesFixed(bytes, offset, expected, scale, MatchesInt16)),
+            new(
+                $"uint8-fixed-scale-{scaleName}",
+                sizeof(byte),
+                13,
+                "fixed-scale",
+                (bytes, offset, expected) => MatchesFixed(bytes, offset, expected, scale, MatchesUInt8)),
+            new(
+                $"int8-fixed-scale-{scaleName}",
+                sizeof(sbyte),
+                14,
+                "fixed-scale",
+                (bytes, offset, expected) => MatchesFixed(bytes, offset, expected, scale, MatchesInt8)),
+        };
     }
 
     private static (int ChangedBytes, int UnmatchedRanges) CountRangeDifferences(
@@ -666,31 +765,106 @@ internal static class ProbeAnalysis
         return false;
     }
 
-    private static bool MatchesUInt32(byte[] bytes, int offset, long expected) =>
-        expected is >= 0 and <= uint.MaxValue
+    private static bool MatchesUInt32(byte[] bytes, int offset, decimal expected) =>
+        IsWhole(expected)
+        && expected >= uint.MinValue
+        && expected <= uint.MaxValue
         && BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(offset, sizeof(uint))) == (uint)expected;
 
-    private static bool MatchesInt32(byte[] bytes, int offset, long expected) =>
-        expected is >= int.MinValue and <= int.MaxValue
+    private static bool MatchesInt32(byte[] bytes, int offset, decimal expected) =>
+        IsWhole(expected)
+        && expected >= int.MinValue
+        && expected <= int.MaxValue
         && BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(offset, sizeof(int))) == (int)expected;
 
-    private static bool MatchesUInt16(byte[] bytes, int offset, long expected) =>
-        expected is >= 0 and <= ushort.MaxValue
+    private static bool MatchesUInt16(byte[] bytes, int offset, decimal expected) =>
+        IsWhole(expected)
+        && expected >= ushort.MinValue
+        && expected <= ushort.MaxValue
         && BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(offset, sizeof(ushort))) == (ushort)expected;
 
-    private static bool MatchesInt16(byte[] bytes, int offset, long expected) =>
-        expected is >= short.MinValue and <= short.MaxValue
+    private static bool MatchesInt16(byte[] bytes, int offset, decimal expected) =>
+        IsWhole(expected)
+        && expected >= short.MinValue
+        && expected <= short.MaxValue
         && BinaryPrimitives.ReadInt16LittleEndian(bytes.AsSpan(offset, sizeof(short))) == (short)expected;
 
-    private static bool MatchesTimesFive(byte[] bytes, int offset, long expected) =>
-        expected is >= 0 and <= byte.MaxValue / 5
+    private static bool MatchesTimesFive(byte[] bytes, int offset, decimal expected) =>
+        IsWhole(expected)
+        && expected >= 0
+        && expected <= byte.MaxValue / 5
         && bytes[offset] == (byte)(expected * 5);
 
-    private static bool MatchesUInt8(byte[] bytes, int offset, long expected) =>
-        expected is >= 0 and <= byte.MaxValue && bytes[offset] == (byte)expected;
+    private static bool MatchesUInt8(byte[] bytes, int offset, decimal expected) =>
+        IsWhole(expected) && expected >= byte.MinValue && expected <= byte.MaxValue && bytes[offset] == (byte)expected;
 
-    private static bool MatchesInt8(byte[] bytes, int offset, long expected) =>
-        expected is >= sbyte.MinValue and <= sbyte.MaxValue && unchecked((sbyte)bytes[offset]) == (sbyte)expected;
+    private static bool MatchesInt8(byte[] bytes, int offset, decimal expected) =>
+        IsWhole(expected)
+        && expected >= sbyte.MinValue
+        && expected <= sbyte.MaxValue
+        && unchecked((sbyte)bytes[offset]) == (sbyte)expected;
+
+    private static bool MatchesRoundedFloat32(byte[] bytes, int offset, decimal expected, int decimalPlaces) =>
+        MatchesRounded(
+            BitConverter.Int32BitsToSingle(BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(offset, sizeof(float)))),
+            expected,
+            decimalPlaces);
+
+    private static bool MatchesRoundedFloat64(byte[] bytes, int offset, decimal expected, int decimalPlaces) =>
+        MatchesRounded(
+            BitConverter.Int64BitsToDouble(BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(offset, sizeof(double)))),
+            expected,
+            decimalPlaces);
+
+    private static bool MatchesRounded(double value, decimal expected, int decimalPlaces)
+    {
+        if (double.IsNaN(value) || double.IsInfinity(value))
+        {
+            return false;
+        }
+
+        try
+        {
+            var halfUnit = 0.5m / PowerOfTen(decimalPlaces);
+            var actual = (decimal)value;
+            return actual >= expected - halfUnit && actual < expected + halfUnit;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+    }
+
+    private static bool MatchesFixed(
+        byte[] bytes,
+        int offset,
+        decimal expected,
+        decimal scale,
+        Func<byte[], int, decimal, bool> matchesScalar)
+    {
+        try
+        {
+            var scaled = expected * scale;
+            return IsWhole(scaled) && matchesScalar(bytes, offset, scaled);
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsWhole(decimal value) => decimal.Truncate(value) == value;
+
+    private static decimal PowerOfTen(int decimalPlaces)
+    {
+        var scale = 1m;
+        for (var index = 0; index < decimalPlaces; index++)
+        {
+            scale *= 10m;
+        }
+
+        return scale;
+    }
 
     private static int EncodingRank(string metricName, ScalarEncoding encoding)
     {
@@ -710,7 +884,8 @@ internal static class ProbeAnalysis
         string Name,
         int Width,
         int Rank,
-        Func<byte[], int, long, bool> Matches);
+        string EvidenceKind,
+        Func<byte[], int, decimal, bool> Matches);
 
     private sealed class CandidateCollector
     {
@@ -778,6 +953,7 @@ internal static class ProbeAnalysis
                 .Select(
                     evidence => new EncodingMatchReport(
                         evidence.Encoding.Name,
+                        evidence.Encoding.EvidenceKind,
                         evidence.MatchedUids.Count,
                         evidence.MatchedUids.OrderBy(uid => uid).ToArray(),
                         evidence.DuplicatePathHits))
@@ -790,6 +966,7 @@ internal static class ProbeAnalysis
                 _range.SourcePointerPath,
                 _range.PointerDepth,
                 selected.Encoding.Name,
+                selected.Encoding.EvidenceKind,
                 matchingEncodings,
                 encodingMatches,
                 matchingEncodings.Length > 1,
@@ -829,6 +1006,7 @@ internal static class ProbeAnalysis
         string? SourcePointerPath,
         int PointerDepth,
         string Encoding,
+        string EvidenceKind,
         IReadOnlyList<string> MatchingEncodings,
         IReadOnlyList<EncodingMatchReport> EncodingMatches,
         bool EncodingAmbiguous,
@@ -853,7 +1031,10 @@ internal sealed record CorrelationReport(
 internal sealed record FieldReport(
     string Name,
     string CsvColumn,
+    string Normalization,
     string Outcome,
+    IReadOnlyList<uint> EligibleUids,
+    IReadOnlyList<uint> ExcludedUids,
     bool EvidenceSufficient,
     int CandidateCount,
     int TopCoverage,
@@ -867,6 +1048,7 @@ internal sealed record CandidateReport(
     string? SourcePointerPath,
     int PointerDepth,
     string Encoding,
+    string EvidenceKind,
     IReadOnlyList<string> MatchingEncodings,
     IReadOnlyList<EncodingMatchReport> EncodingMatches,
     bool EncodingAmbiguous,
@@ -893,9 +1075,12 @@ internal sealed record DiffReport(
 internal sealed record DiffFieldReport(
     string Name,
     string CsvColumn,
+    string Normalization,
     string Outcome,
     IReadOnlyList<uint> ChangedUids,
     IReadOnlyList<uint> UnchangedUids,
+    IReadOnlyList<uint> EligibleUids,
+    IReadOnlyList<uint> ExcludedUids,
     bool EvidenceSufficient,
     int CandidateCount,
     int TopCoverage,
@@ -909,6 +1094,7 @@ internal sealed record DiffCandidateReport(
     string? SourcePointerPath,
     int PointerDepth,
     string Encoding,
+    string EvidenceKind,
     IReadOnlyList<string> MatchingEncodings,
     IReadOnlyList<EncodingMatchReport> EncodingMatches,
     bool EncodingAmbiguous,
@@ -920,8 +1106,9 @@ internal sealed record DiffCandidateReport(
 
 internal sealed record EncodingMatchReport(
     string Encoding,
+    string EvidenceKind,
     int Coverage,
     IReadOnlyList<uint> MatchedUids,
     int DuplicatePathHits);
 
-internal sealed record ScalarDelta(uint Uid, long BeforeValue, long AfterValue);
+internal sealed record ScalarDelta(uint Uid, decimal BeforeValue, decimal AfterValue);

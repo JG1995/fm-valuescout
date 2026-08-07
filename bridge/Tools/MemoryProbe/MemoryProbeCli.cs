@@ -100,8 +100,8 @@ public static class MemoryProbeCli
 
     private static CorrelationReport Correlate(CommandArguments options)
     {
-        options.RequireOnly("csv", "capture", "uid-column", "field", "delimiter");
-        var mappings = FieldMapping.Parse(options.Many("field"));
+        options.RequireOnly("csv", "capture", "uid-column", "field", "transform", "delimiter");
+        var mappings = FieldMapping.Parse(options.Many("field"), options.Many("transform"));
         var table = CsvPlayerTable.Load(
             options.RequireOne("csv"),
             options.RequireOne("uid-column"),
@@ -122,8 +122,9 @@ public static class MemoryProbeCli
             "after-capture",
             "uid-column",
             "field",
+            "transform",
             "delimiter");
-        var mappings = FieldMapping.Parse(options.Many("field"));
+        var mappings = FieldMapping.Parse(options.Many("field"), options.Many("transform"));
         var uidColumn = options.RequireOne("uid-column");
         var delimiter = options.OptionalOne("delimiter");
         var beforeTable = CsvPlayerTable.Load(options.RequireOne("before-csv"), uidColumn, mappings, delimiter);
@@ -364,8 +365,8 @@ public static class MemoryProbeCli
     private const string HelpText = "Usage: ./scripts/dev memory-probe {capture|correlate|diff} [options]\n"
         + "\n"
         + "capture --csv <path> --uid-column <header> [--bridge-dir <path>] [--request-id <unique-id>] [--timeout-seconds <1-300>] [--delimiter comma|semicolon|tab]\n"
-        + "correlate --csv <path> --capture <probe.json> --uid-column <header> --field <metric=CSV header> [--field ...] [--delimiter comma|semicolon|tab]\n"
-        + "diff --before-csv <path> --after-csv <path> --before-capture <probe.json> --after-capture <probe.json> --uid-column <header> --field <metric=CSV header> [--field ...] [--delimiter comma|semicolon|tab]\n"
+        + "correlate --csv <path> --capture <probe.json> --uid-column <header> --field <metric=CSV header> [--field ...] [--transform <metric=integer|appearances-starts|appearances-subs|decimal:<0-6>|unit-decimal:<unit>:<0-6>>] [--delimiter comma|semicolon|tab]\n"
+        + "diff --before-csv <path> --after-csv <path> --before-capture <probe.json> --after-capture <probe.json> --uid-column <header> --field <metric=CSV header> [--field ...] [--transform <metric=integer|appearances-starts|appearances-subs|decimal:<0-6>|unit-decimal:<unit>:<0-6>>] [--delimiter comma|semicolon|tab]\n"
         + "\n"
         + "The tool reports hypotheses only. It never verifies a production memory offset.";
 }

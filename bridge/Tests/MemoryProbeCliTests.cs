@@ -277,6 +277,144 @@ public sealed class MemoryProbeCliTests
     }
 
     [Fact]
+    public void Correlation_normalizes_real_export_numeric_shapes_and_reports_field_eligibility()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var capturePath = Path.Combine(directory, "probe.json");
+            var csvPath = Path.Combine(directory, "players.csv");
+            File.WriteAllText(
+                capturePath,
+                Serialize(
+                    CreateCapture(
+                        "normalized-capture",
+                        Player(1001, 120, 160, 15, 10_000_000, 1, starts: 32, substitutes: 5, rating: 7.25f, distanceTenths: 2051, sparseValue: 0),
+                        Player(1002, 145, 170, 11, 3_000_000, 2, starts: 12, substitutes: 1, rating: 6.80f, distanceTenths: 1558, sparseValue: 0),
+                        Player(1003, 130, 165, 13, 5_000_000, 3, starts: 4, substitutes: 0, rating: 0f, distanceTenths: 0, sparseValue: 0))));
+            File.WriteAllText(
+                csvPath,
+                "UID;Appearances;Rating;Distance;Sparse\n"
+                + "1001;32 (5);7.25;205.1km;0\n"
+                + "1002;12 (1);6.80;155.8km;-\n"
+                + "1003;4 (0);-;;-\n");
+
+            var result = Run(
+                "correlate",
+                "--csv",
+                csvPath,
+                "--capture",
+                capturePath,
+                "--uid-column",
+                "UID",
+                "--field",
+                "starts=Appearances",
+                "--field",
+                "substitutes=Appearances",
+                "--field",
+                "rating=Rating",
+                "--field",
+                "distance=Distance",
+                "--field",
+                "sparse=Sparse",
+                "--transform",
+                "starts=appearances-starts",
+                "--transform",
+                "substitutes=appearances-subs",
+                "--transform",
+                "rating=decimal:2",
+                "--transform",
+                "distance=unit-decimal:km:1");
+
+            Assert.Equal(0, result.ExitCode);
+            using var document = JsonDocument.Parse(result.Output);
+            AssertNormalizedCandidate(
+                document.RootElement,
+                "starts",
+                "appearances-starts",
+                "player-block+0x60",
+                "uint16-le",
+                "exact",
+                new[] { 1001u, 1002u, 1003u },
+                Array.Empty<uint>());
+            AssertNormalizedCandidate(
+                document.RootElement,
+                "substitutes",
+                "appearances-subs",
+                "player-block+0x62",
+                "uint16-le",
+                "exact",
+                new[] { 1001u, 1002u, 1003u },
+                Array.Empty<uint>());
+            AssertNormalizedCandidate(
+                document.RootElement,
+                "rating",
+                "decimal:2",
+                "player-block+0x64",
+                "float32-le-rounded-2",
+                "rounded",
+                new[] { 1001u, 1002u },
+                new[] { 1003u });
+            AssertNormalizedCandidate(
+                document.RootElement,
+                "distance",
+                "unit-decimal:km:1",
+                "player-block+0x68",
+                "uint32-le-fixed-scale-10",
+                "fixed-scale",
+                new[] { 1001u, 1002u },
+                new[] { 1003u });
+
+            var sparse = GetField(document.RootElement, "sparse");
+            Assert.NotEqual("candidate", sparse.GetProperty("outcome").GetString());
+            Assert.False(sparse.GetProperty("evidenceSufficient").GetBoolean());
+            Assert.Equal(new[] { 1001u }, sparse.GetProperty("eligibleUids").EnumerateArray().Select(value => value.GetUInt32()).ToArray());
+            Assert.Equal(new[] { 1002u, 1003u }, sparse.GetProperty("excludedUids").EnumerateArray().Select(value => value.GetUInt32()).ToArray());
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Correlation_rejects_unsupported_display_text_instead_of_guessing_a_scalar()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var capturePath = Path.Combine(directory, "probe.json");
+            var csvPath = Path.Combine(directory, "players.csv");
+            File.WriteAllText(
+                capturePath,
+                Serialize(
+                    CreateCapture(
+                        "display-text-capture",
+                        Player(1001, 120, 160, 15, 10_000_000, 1),
+                        Player(1002, 145, 170, 11, 3_000_000, 2))));
+            File.WriteAllText(csvPath, "UID;Wage\n1001;£1K - £2K\n1002;£3K - £4K\n");
+
+            var result = Run(
+                "correlate",
+                "--csv",
+                csvPath,
+                "--capture",
+                capturePath,
+                "--uid-column",
+                "UID",
+                "--field",
+                "wage=Wage");
+
+            Assert.NotEqual(0, result.ExitCode);
+            Assert.Contains("field 'Wage' has unsupported numeric value", result.Error, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Capture_writes_a_uid_scoped_request_and_awaits_a_new_ready_capture()
     {
         var directory = CreateTempDirectory();
@@ -503,6 +641,123 @@ public sealed class MemoryProbeCliTests
     }
 
     [Fact]
+    public void Diff_excludes_missing_decimal_values_and_reports_rounded_evidence()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var beforeCapturePath = Path.Combine(directory, "before-probe.json");
+            var afterCapturePath = Path.Combine(directory, "after-probe.json");
+            var beforeCsvPath = Path.Combine(directory, "before.csv");
+            var afterCsvPath = Path.Combine(directory, "after.csv");
+            File.WriteAllText(
+                beforeCapturePath,
+                Serialize(
+                    CreateCapture(
+                        "before-capture",
+                        Player(1001, 120, 160, 15, 10_000_000, 1, rating: 7.25f),
+                        Player(1002, 145, 170, 11, 3_000_000, 2, rating: 6.80f),
+                        Player(1003, 130, 165, 13, 5_000_000, 3, rating: 0f))));
+            File.WriteAllText(
+                afterCapturePath,
+                Serialize(
+                    CreateCapture(
+                        "after-capture",
+                        Player(1001, 120, 160, 15, 10_000_000, 1, rating: 7.30f),
+                        Player(1002, 145, 170, 11, 3_000_000, 2, rating: 6.90f),
+                        Player(1003, 130, 165, 13, 5_000_000, 3, rating: 0f))));
+            File.WriteAllText(beforeCsvPath, "UID;Rating\n1001;7.25\n1002;6.80\n1003;-\n");
+            File.WriteAllText(afterCsvPath, "UID;Rating\n1001;7.30\n1002;6.90\n1003;-\n");
+
+            var result = Run(
+                "diff",
+                "--before-csv",
+                beforeCsvPath,
+                "--after-csv",
+                afterCsvPath,
+                "--before-capture",
+                beforeCapturePath,
+                "--after-capture",
+                afterCapturePath,
+                "--uid-column",
+                "UID",
+                "--field",
+                "rating=Rating",
+                "--transform",
+                "rating=decimal:2");
+
+            Assert.Equal(0, result.ExitCode);
+            using var document = JsonDocument.Parse(result.Output);
+            var field = GetField(document.RootElement, "rating");
+            Assert.Equal("candidate", field.GetProperty("outcome").GetString());
+            Assert.Equal("decimal:2", field.GetProperty("normalization").GetString());
+            Assert.Equal(new[] { 1001u, 1002u }, field.GetProperty("changedUids").EnumerateArray().Select(value => value.GetUInt32()).ToArray());
+            Assert.Equal(new[] { 1001u, 1002u }, field.GetProperty("eligibleUids").EnumerateArray().Select(value => value.GetUInt32()).ToArray());
+            Assert.Equal(new[] { 1003u }, field.GetProperty("excludedUids").EnumerateArray().Select(value => value.GetUInt32()).ToArray());
+            Assert.Equal("float32-le-rounded-2", field.GetProperty("candidates")[0].GetProperty("encoding").GetString());
+            Assert.Equal("rounded", field.GetProperty("candidates")[0].GetProperty("evidenceKind").GetString());
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Diff_requires_cross_player_variation_before_reporting_a_candidate()
+    {
+        var directory = CreateTempDirectory();
+        try
+        {
+            var beforeCapturePath = Path.Combine(directory, "before-probe.json");
+            var afterCapturePath = Path.Combine(directory, "after-probe.json");
+            var beforeCsvPath = Path.Combine(directory, "before.csv");
+            var afterCsvPath = Path.Combine(directory, "after.csv");
+            File.WriteAllText(
+                beforeCapturePath,
+                Serialize(
+                    CreateCapture(
+                        "before-capture",
+                        Player(1001, 120, 160, 0, 10_000_000, 1),
+                        Player(1002, 145, 170, 0, 3_000_000, 2))));
+            File.WriteAllText(
+                afterCapturePath,
+                Serialize(
+                    CreateCapture(
+                        "after-capture",
+                        Player(1001, 120, 160, 1, 10_000_000, 1),
+                        Player(1002, 145, 170, 1, 3_000_000, 2))));
+            File.WriteAllText(beforeCsvPath, "UID,Determination\n1001,0\n1002,0\n");
+            File.WriteAllText(afterCsvPath, "UID,Determination\n1001,1\n1002,1\n");
+
+            var result = Run(
+                "diff",
+                "--before-csv",
+                beforeCsvPath,
+                "--after-csv",
+                afterCsvPath,
+                "--before-capture",
+                beforeCapturePath,
+                "--after-capture",
+                afterCapturePath,
+                "--uid-column",
+                "UID",
+                "--field",
+                "determination=Determination");
+
+            Assert.Equal(0, result.ExitCode);
+            using var document = JsonDocument.Parse(result.Output);
+            var field = GetField(document.RootElement, "determination");
+            Assert.False(field.GetProperty("evidenceSufficient").GetBoolean());
+            Assert.NotEqual("candidate", field.GetProperty("outcome").GetString());
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Diff_requires_varied_multi_player_evidence_before_reporting_a_candidate()
     {
         var directory = CreateTempDirectory();
@@ -661,6 +916,26 @@ public sealed class MemoryProbeCliTests
         Assert.Equal(expectedEncoding, field.GetProperty("candidates")[0].GetProperty("encoding").GetString());
     }
 
+    private static void AssertNormalizedCandidate(
+        JsonElement document,
+        string name,
+        string expectedNormalization,
+        string expectedPath,
+        string expectedEncoding,
+        string expectedEvidenceKind,
+        IReadOnlyList<uint> expectedEligibleUids,
+        IReadOnlyList<uint> expectedExcludedUids)
+    {
+        var field = GetField(document, name);
+        Assert.Equal("candidate", field.GetProperty("outcome").GetString());
+        Assert.Equal(expectedNormalization, field.GetProperty("normalization").GetString());
+        Assert.Equal(expectedEligibleUids, field.GetProperty("eligibleUids").EnumerateArray().Select(value => value.GetUInt32()).ToArray());
+        Assert.Equal(expectedExcludedUids, field.GetProperty("excludedUids").EnumerateArray().Select(value => value.GetUInt32()).ToArray());
+        Assert.Equal(expectedPath, field.GetProperty("candidates")[0].GetProperty("path").GetString());
+        Assert.Equal(expectedEncoding, field.GetProperty("candidates")[0].GetProperty("encoding").GetString());
+        Assert.Equal(expectedEvidenceKind, field.GetProperty("candidates")[0].GetProperty("evidenceKind").GetString());
+    }
+
     private static JsonElement GetField(JsonElement document, string name) =>
         document.GetProperty("fields").EnumerateArray().Single(field => field.GetProperty("name").GetString() == name);
 
@@ -668,11 +943,12 @@ public sealed class MemoryProbeCliTests
         string requestId,
         PlayerFixture first,
         PlayerFixture? second = null,
+        PlayerFixture? third = null,
         bool includeUnreadableRange = false,
         string supportedGameVersion = "26.3",
         string? generatedAtUtc = null)
     {
-        var players = new[] { first, second }
+        var players = new[] { first, second, third }
             .Where(player => player is not null)
             .Cast<PlayerFixture>()
             .Select(player => CreateProbePlayer(player, includeUnreadableRange))
@@ -746,6 +1022,11 @@ public sealed class MemoryProbeCliTests
         playerBytes[0x38] = fixture.RawByteValue;
         playerBytes[0x39] = unchecked((byte)fixture.SignedByteValue);
         BinaryPrimitives.WriteInt32LittleEndian(playerBytes.AsSpan(0x3C), fixture.SignedInt32Value);
+        BinaryPrimitives.WriteUInt16LittleEndian(playerBytes.AsSpan(0x60), fixture.Starts);
+        BinaryPrimitives.WriteUInt16LittleEndian(playerBytes.AsSpan(0x62), fixture.Substitutes);
+        BinaryPrimitives.WriteInt32LittleEndian(playerBytes.AsSpan(0x64), BitConverter.SingleToInt32Bits(fixture.Rating));
+        BinaryPrimitives.WriteUInt16LittleEndian(playerBytes.AsSpan(0x68), fixture.DistanceTenths);
+        playerBytes[0x6A] = fixture.SparseValue;
 
         var personBytes = new byte[0x100];
         BinaryPrimitives.WriteUInt32LittleEndian(personBytes.AsSpan(0x0C), fixture.Uid);
@@ -808,8 +1089,28 @@ public sealed class MemoryProbeCliTests
         short signedValue = -1,
         byte rawByteValue = 0,
         sbyte signedByteValue = 0,
-        int signedInt32Value = 0) =>
-        new(uid, ca, pa, determination, marketValue, decoyCa, signedValue, rawByteValue, signedByteValue, signedInt32Value);
+        int signedInt32Value = 0,
+        ushort starts = 0,
+        ushort substitutes = 0,
+        float rating = 0f,
+        ushort distanceTenths = 0,
+        byte sparseValue = 0) =>
+        new(
+            uid,
+            ca,
+            pa,
+            determination,
+            marketValue,
+            decoyCa,
+            signedValue,
+            rawByteValue,
+            signedByteValue,
+            signedInt32Value,
+            starts,
+            substitutes,
+            rating,
+            distanceTenths,
+            sparseValue);
 
     private static string Serialize<T>(T value) =>
         JsonSerializer.Serialize(value, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
@@ -831,5 +1132,10 @@ public sealed class MemoryProbeCliTests
         short SignedValue,
         byte RawByteValue,
         sbyte SignedByteValue,
-        int SignedInt32Value);
+        int SignedInt32Value,
+        ushort Starts,
+        ushort Substitutes,
+        float Rating,
+        ushort DistanceTenths,
+        byte SparseValue);
 }

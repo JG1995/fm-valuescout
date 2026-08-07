@@ -222,7 +222,24 @@ public sealed class ProbeCaptureTests
     }
 
     [Fact]
-    public void Capture_boundary_rejects_too_many_uids_before_replacing_prior_probe()
+    public void Probe_request_accepts_103_uids_with_a_fixed_full_export_capture_budget()
+    {
+        var request = new ProbeRequest
+        {
+            ProtocolVersion = ProbeProtocol.ProtocolVersion,
+            RequestId = "full-export-request",
+            CreatedAtUtc = DateTimeOffset.Parse("2026-08-07T12:00:00Z"),
+            Uids = Enumerable.Range(1, 103).Select(value => (uint)value).ToArray(),
+        };
+
+        Assert.True(ProbeRequestAcceptance.TryValidateForCapture(request, out var rejectReason));
+        Assert.Null(rejectReason);
+        Assert.Equal(128, ProbeRequestAcceptance.MaxRequestedUids);
+        Assert.Equal(180_224, ProbeRequestAcceptance.MaxRequestedUids * ProbeCaptureLimits.MaxBytesPerPlayer);
+    }
+
+    [Fact]
+    public void Capture_boundary_rejects_129_uids_before_replacing_prior_probe()
     {
         var bridgeDirectory = CreateTempBridgeDirectory();
         try
@@ -239,7 +256,7 @@ public sealed class ProbeCaptureTests
                     ProtocolVersion = ProbeProtocol.ProtocolVersion,
                     RequestId = "too-many-uids",
                     CreatedAtUtc = DateTimeOffset.Parse("2026-08-07T12:00:00Z"),
-                    Uids = Enumerable.Range(1, ProbeRequestAcceptance.MaxRequestedUids + 1)
+                    Uids = Enumerable.Range(1, 129)
                         .Select(value => (uint)value)
                         .ToArray(),
                 },

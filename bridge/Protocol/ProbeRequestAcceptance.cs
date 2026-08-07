@@ -7,7 +7,7 @@ namespace FmDataBridge.Protocol;
 /// </summary>
 public static class ProbeRequestAcceptance
 {
-    public const int MaxRequestedUids = 16;
+    public const int MaxRequestedUids = 128;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {

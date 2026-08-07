@@ -244,7 +244,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 3 — Adapt real FM exports for bounded research
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-probe): adapt real FM research exports`
 
@@ -283,7 +283,7 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 #### Commit 4 — Document and validate the research workflow
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `docs(memory-probe): document the research workflow`
 
@@ -323,21 +323,21 @@ With fake memory, accept one research request containing one UID, reuse candidat
 
 **PR:** PR 1 — Add reusable FM memory research tooling
 
-**Commit:** Adapt real FM exports for bounded research
+**Commit:** Document and validate the research workflow
 
 ### RED proof
 
-Use the current CLI against the revised sample shapes. A 103-row capture fails the bridge's 16-UID limit, and decimal, missing, unit-bearing, or compound values fail integer parsing. Confirm each failure at the focused test seam before implementing the corresponding behavior.
+The delivered commands have no durable research runbook or evidence checklist. Verify each documented command, probe artifact, prerequisite, and safety boundary against the implementation before claiming that the workflow is ready for manual FM validation.
 
 ### Expected outcome
 
-The CLI can capture and correlate each unchanged export up to 128 players. Declared transforms handle the supported numeric display shapes, reports preserve per-field exclusions and evidence quality, and unsupported display text remains actionable rather than guessed.
+A developer can prepare synchronized FM exports, capture bounded memory, run explicit correlation, retain raw artifacts outside Git, and distinguish a candidate from a production-verified field. The durable instructions define the independent-capture and known-anchor evidence required before later implementation work may use a discovered field.
 
 ### Explicit exclusions
 
 - No speculative Academy or Moneyball offset is recorded.
 - No raw CSV, memory, screenshot, or machine-specific artifact is committed.
-- No per-player capture-bound increase, structure-specific stat reader, production schema change, or product-facing UI is added.
+- No product-facing UI, production schema change, or broadened capture bound is added.
 
 ## Discoveries and replanning
 
@@ -359,7 +359,7 @@ Record material deviations, blockers, and decisions that change remaining work. 
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Capture bounded player memory by UID | 393f75f | Isolated C# research protocol, scan-gate integration, bounded capture, atomic output, and fake-memory coverage | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Root window set to 0x280 bytes during review to include planned known anchors; no scope change. |
 | PR 1 | Correlate CSV truth with probe captures | ccd6102 | Dependency-free .NET CLI and repository command for bounded request capture, mapped numeric CSV correlation, and synchronized before/after comparison | Sol High accepted after two correction rounds; no Critical, High, or Medium findings remain | Explicit IDs are single-use while matching artifacts remain; candidates require varied multi-player evidence. |
-| PR 1 | Adapt real FM exports for bounded research | Pending record | Pending | Pending | Added after five real exports exposed the 16-player ceiling and non-integer field shapes. |
+| PR 1 | Adapt real FM exports for bounded research | Pending record | Raised the fixed cap to 128; added declared real-export normalization, field-local eligibility, provenance, and focused coverage | Sol High accepted after one correction round; no Critical, High, or Medium findings remain | Uniform cross-player before/after shifts no longer qualify as varied evidence; no scope change. |
 | PR 1 | Document and validate the research workflow | Pending record | Pending | Pending | Renumbered from commit 3 after the real-export gap was found. |
 
 ## Final validation

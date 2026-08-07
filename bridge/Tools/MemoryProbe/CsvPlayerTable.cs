@@ -3,16 +3,18 @@ using System.Text;
 
 namespace FmDataBridge.MemoryProbe;
 
-internal sealed record FieldMapping(string Name, string CsvColumn)
+internal sealed record FieldMapping(string Name, string CsvColumn, FieldNormalization Normalization)
 {
-    public static IReadOnlyList<FieldMapping> Parse(IReadOnlyList<string> values)
+    public static IReadOnlyList<FieldMapping> Parse(
+        IReadOnlyList<string> values,
+        IReadOnlyList<string> transformValues)
     {
         if (values.Count == 0)
         {
             throw new MemoryProbeException("at least one --field metric=CSV header mapping is required");
         }
 
-        var mappings = new List<FieldMapping>();
+        var mappings = new List<(string Name, string Column)>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var value in values)
         {
@@ -29,14 +31,171 @@ internal sealed record FieldMapping(string Name, string CsvColumn)
                 throw new MemoryProbeException($"field mapping '{value}' has an empty or duplicate metric name");
             }
 
-            mappings.Add(new FieldMapping(name, column));
+            mappings.Add((name, column));
         }
 
-        return mappings;
+        var transforms = new Dictionary<string, FieldNormalization>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in transformValues)
+        {
+            var separator = value.IndexOf('=');
+            if (separator <= 0 || separator == value.Length - 1)
+            {
+                throw new MemoryProbeException($"invalid --transform mapping '{value}'; use metric=transform");
+            }
+
+            var name = value[..separator].Trim();
+            var transform = value[(separator + 1)..].Trim();
+            if (!names.Contains(name))
+            {
+                throw new MemoryProbeException($"--transform mapping '{value}' does not name a declared --field metric");
+            }
+
+            if (!transforms.TryAdd(name, FieldNormalization.Parse(transform)))
+            {
+                throw new MemoryProbeException($"--transform mapping '{value}' duplicates metric '{name}'");
+            }
+        }
+
+        return mappings
+            .Select(
+                mapping => new FieldMapping(
+                    mapping.Name,
+                    mapping.Column,
+                    transforms.TryGetValue(mapping.Name, out var transform)
+                        ? transform
+                        : FieldNormalization.Integer))
+            .ToArray();
     }
 }
 
-internal sealed record CsvPlayer(uint Uid, IReadOnlyDictionary<string, long> Values, int RowNumber);
+internal enum FieldNormalizationKind
+{
+    Integer,
+    AppearancesStarts,
+    AppearancesSubstitutes,
+    Decimal,
+    UnitDecimal,
+}
+
+internal sealed record FieldNormalization(
+    string Name,
+    FieldNormalizationKind Kind,
+    int DecimalPlaces = 0,
+    string? Unit = null)
+{
+    public static FieldNormalization Integer { get; } = new("integer", FieldNormalizationKind.Integer);
+
+    public static FieldNormalization Parse(string value)
+    {
+        if (string.Equals(value, "integer", StringComparison.OrdinalIgnoreCase))
+        {
+            return Integer;
+        }
+
+        if (string.Equals(value, "appearances-starts", StringComparison.OrdinalIgnoreCase))
+        {
+            return new FieldNormalization("appearances-starts", FieldNormalizationKind.AppearancesStarts);
+        }
+
+        if (string.Equals(value, "appearances-subs", StringComparison.OrdinalIgnoreCase))
+        {
+            return new FieldNormalization("appearances-subs", FieldNormalizationKind.AppearancesSubstitutes);
+        }
+
+        var parts = value.Split(':');
+        if (parts.Length == 2
+            && string.Equals(parts[0], "decimal", StringComparison.OrdinalIgnoreCase)
+            && TryParseDecimalPlaces(parts[1], out var decimalPlaces))
+        {
+            return new FieldNormalization($"decimal:{decimalPlaces}", FieldNormalizationKind.Decimal, decimalPlaces);
+        }
+
+        if (parts.Length == 3
+            && string.Equals(parts[0], "unit-decimal", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(parts[1])
+            && TryParseDecimalPlaces(parts[2], out decimalPlaces))
+        {
+            var unit = parts[1].Trim();
+            return new FieldNormalization(
+                $"unit-decimal:{unit}:{decimalPlaces}",
+                FieldNormalizationKind.UnitDecimal,
+                decimalPlaces,
+                unit);
+        }
+
+        throw new MemoryProbeException(
+            $"unsupported transform '{value}'; use integer, appearances-starts, appearances-subs, decimal:<0-6>, or unit-decimal:<unit>:<0-6>");
+    }
+
+    public bool TryParse(string raw, out decimal value)
+    {
+        switch (Kind)
+        {
+            case FieldNormalizationKind.Integer:
+                if (CsvNumericParser.TryParseInteger(raw, out var integer) && IsSupportedIntegerScalar(integer))
+                {
+                    value = integer;
+                    return true;
+                }
+
+                break;
+            case FieldNormalizationKind.AppearancesStarts:
+            case FieldNormalizationKind.AppearancesSubstitutes:
+                if (TryParseAppearances(raw, out var starts, out var substitutes)
+                    && IsSupportedIntegerScalar(starts)
+                    && IsSupportedIntegerScalar(substitutes))
+                {
+                    value = Kind == FieldNormalizationKind.AppearancesStarts ? starts : substitutes;
+                    return true;
+                }
+
+                break;
+            case FieldNormalizationKind.Decimal:
+                return CsvNumericParser.TryParseDecimal(raw, DecimalPlaces, out value);
+            case FieldNormalizationKind.UnitDecimal:
+                var trimmed = raw.Trim();
+                if (Unit is not null && trimmed.EndsWith(Unit, StringComparison.OrdinalIgnoreCase))
+                {
+                    return CsvNumericParser.TryParseDecimal(
+                        trimmed[..^Unit.Length].TrimEnd(),
+                        DecimalPlaces,
+                        out value);
+                }
+
+                break;
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static bool TryParseDecimalPlaces(string value, out int decimalPlaces) =>
+        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out decimalPlaces)
+        && decimalPlaces is >= 0 and <= 6;
+
+    private static bool IsSupportedIntegerScalar(long value) => value is >= int.MinValue and <= uint.MaxValue;
+
+    private static bool TryParseAppearances(string raw, out long starts, out long substitutes)
+    {
+        starts = default;
+        substitutes = default;
+        var trimmed = raw.Trim();
+        var opening = trimmed.IndexOf('(');
+        if (opening <= 0 || !trimmed.EndsWith(')') || trimmed.IndexOf('(', opening + 1) >= 0)
+        {
+            return false;
+        }
+
+        var startsText = trimmed[..opening].Trim();
+        var substitutesText = trimmed[(opening + 1)..^1].Trim();
+        return CsvNumericParser.TryParseInteger(startsText, out starts)
+            && CsvNumericParser.TryParseInteger(substitutesText, out substitutes);
+    }
+}
+
+internal sealed record CsvFieldValue(decimal Value);
+
+internal sealed record CsvPlayer(uint Uid, IReadOnlyDictionary<string, CsvFieldValue?> Values, int RowNumber);
 
 internal sealed class CsvPlayerTable
 {
@@ -113,23 +272,23 @@ internal sealed class CsvPlayerTable
                 throw new MemoryProbeException($"CSV row {displayRow} has duplicate UID {uid}");
             }
 
-            var values = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            var values = new Dictionary<string, CsvFieldValue?>(StringComparer.OrdinalIgnoreCase);
             foreach (var mapping in mappings)
             {
                 var raw = row[fieldIndexes[mapping.Name]];
-                if (!TryParseNumeric(raw, out var value))
+                if (IsMissing(raw))
                 {
-                    throw new MemoryProbeException(
-                        $"CSV row {displayRow} field '{mapping.CsvColumn}' has unsupported numeric value '{raw}'");
+                    values.Add(mapping.Name, null);
+                    continue;
                 }
 
-                if (value < int.MinValue || value > uint.MaxValue)
+                if (!mapping.Normalization.TryParse(raw, out var value))
                 {
                     throw new MemoryProbeException(
-                        $"CSV row {displayRow} field '{mapping.CsvColumn}' is outside supported 8/16/32-bit scalar values");
+                        $"CSV row {displayRow} field '{mapping.CsvColumn}' has unsupported numeric value '{raw}' for transform '{mapping.Normalization.Name}'");
                 }
 
-                values.Add(mapping.Name, value);
+                values.Add(mapping.Name, new CsvFieldValue(value));
             }
 
             players.Add(new CsvPlayer(uid, values, displayRow));
@@ -168,7 +327,13 @@ internal sealed class CsvPlayerTable
         return index;
     }
 
-    private static bool TryParseNumeric(string raw, out long value)
+    private static bool IsMissing(string raw) =>
+        string.IsNullOrWhiteSpace(raw) || string.Equals(raw.Trim(), "-", StringComparison.Ordinal);
+}
+
+internal static class CsvNumericParser
+{
+    public static bool TryParseInteger(string raw, out long value)
     {
         var normalized = raw.Trim().Replace(" ", string.Empty).Replace("\u00A0", string.Empty).Replace("'", string.Empty);
         if (long.TryParse(
@@ -191,6 +356,30 @@ internal sealed class CsvPlayerTable
 
         value = default;
         return false;
+    }
+
+    public static bool TryParseDecimal(string raw, int decimalPlaces, out decimal value)
+    {
+        var normalized = raw.Trim().Replace(" ", string.Empty).Replace("\u00A0", string.Empty).Replace("'", string.Empty);
+        if (!HasAtMostDecimalPlaces(normalized, decimalPlaces)
+            || !decimal.TryParse(
+                normalized,
+                NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowThousands,
+                CultureInfo.InvariantCulture,
+                out value))
+        {
+            value = default;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool HasAtMostDecimalPlaces(string value, int decimalPlaces)
+    {
+        var unsigned = value.StartsWith('+') || value.StartsWith('-') ? value[1..] : value;
+        var point = unsigned.LastIndexOf('.');
+        return point < 0 || (point < unsigned.Length - 1 && unsigned[(point + 1)..].All(char.IsDigit) && unsigned.Length - point - 1 <= decimalPlaces);
     }
 
     private static bool HasThreeDigitGroups(string value, char separator)
