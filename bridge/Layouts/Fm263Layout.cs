@@ -24,9 +24,23 @@ public sealed class Fm263Layout : IFmMemoryLayout
         0x380, // player who is also staff
     };
 
+    public IReadOnlyList<int> StaffClassOffsets { get; } = new[]
+    {
+        0x100, // pure staff
+    };
+
+    public IReadOnlyList<int> HumanManagerClassOffsets { get; } = new[]
+    {
+        0x450,
+    };
+
     public int CurrentAbilityOffset => 0x264;
 
     public int PotentialAbilityOffset => 0x266;
+
+    public int StaffCurrentAbilityOffset => 0xDA;
+
+    public int StaffPotentialAbilityOffset => 0xDC;
 
     public int FirstNameOffset => 0x50;
 

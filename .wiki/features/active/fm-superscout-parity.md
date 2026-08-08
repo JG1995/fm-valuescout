@@ -193,7 +193,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 1 — Discover non-player people
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-read): discover non-player people`
 
@@ -230,7 +230,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 2 — Discover the complete club graph
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(memory-read): discover the complete club graph`
 
@@ -606,20 +606,20 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 **PR:** PR 1 — Add SuperScout direct-data parity
 
-**Commit:** Commit 1 — Discover non-player people
+**Commit:** Commit 2 — Discover the complete club graph
 
 ### RED proof
 
-Create fake memory with a pure player, a player/staff person, a pure staff member, a human manager, duplicate facets, and class-shaped near misses. The current player-only scanner returns no typed staff or manager candidates. The focused test must fail for that missing behavior while its existing player assertions remain green.
+Create fake scan memory with valid clubs, malformed vectors, implausible names, duplicate addresses, contract-only fallbacks, squad wrappers, multi-club loans, and manager-team candidates. The typed scanner currently has no club candidates, so the focused club and pipeline tests must fail before bounded club discovery exists.
 
 ### Expected outcome
 
-The scanner returns one deterministic typed result with unchanged player candidates plus validated staff and human-manager candidates, address provenance for bridge-internal readers, overlap evidence, cap/cancellation state, and class diagnostics. It does not read or emit staff fields yet.
+The typed scan result retains deterministic, structurally validated clubs from the existing region pass. Squad and manager resolution use them as primary bounded input while contract-derived links remain fallback, with diagnostics that expose accepted, rejected, and incomplete discovery.
 
 ### Explicit exclusions
 
-- No global clubs, new player fields, staff extraction, schema, Rust, SQLite, UI, concurrency, snapshot, or probe code.
-- No unpinned class discovery or heuristic staff acceptance.
+- No persisted club table, public club API, new player or staff fields, schema, Rust, SQLite, UI, concurrency, snapshot, or probe code.
+- No extra heap pass, unbounded name scan, or heuristic club acceptance.
 - No raw process address outside bridge-internal models and diagnostics that remain local.
 
 ## Discoveries and replanning
@@ -632,7 +632,7 @@ The scanner returns one deterministic typed result with unchanged player candida
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| — | — | — | None | None | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 1 — Discover non-player people | Pending record | Typed scan result classifies pinned player, staff, and human-manager candidates while preserving the player-only pipeline. | Sol High: accepted after correction review. | None |
 
 ## Final validation
 

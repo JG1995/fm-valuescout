@@ -1,7 +1,5 @@
 namespace FmDataBridge.Scanning;
 
-public readonly record struct PersonCandidate(ulong ObjectAddress, uint Uid, int Ca, int Pa, int ClassOffset);
-
 public sealed class ScanDiagnostics
 {
     public string GameVersion { get; set; } = "";
@@ -19,6 +17,12 @@ public sealed class ScanDiagnostics
     public int VtableHits { get; set; }
 
     public int CandidatesAccepted { get; set; }
+
+    public int StaffCandidatesAccepted { get; set; }
+
+    public int HumanManagerCandidatesAccepted { get; set; }
+
+    public int PlayerStaffOverlapCount { get; set; }
 
     public int CandidatesRejected { get; set; }
 

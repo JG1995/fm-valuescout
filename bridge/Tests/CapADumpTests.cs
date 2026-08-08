@@ -29,8 +29,12 @@ public sealed class CapADumpTests
         Assert.Equal("26.3", layout.VersionKey);
         Assert.Equal(0x0C, layout.ObjectUidOffset);
         Assert.Contains(0x288, layout.PlayerClassOffsets);
+        Assert.Contains(0x100, layout.StaffClassOffsets);
+        Assert.Contains(0x450, layout.HumanManagerClassOffsets);
         Assert.Equal(0x264, layout.CurrentAbilityOffset);
         Assert.Equal(0x266, layout.PotentialAbilityOffset);
+        Assert.Equal(0xDA, layout.StaffCurrentAbilityOffset);
+        Assert.Equal(0xDC, layout.StaffPotentialAbilityOffset);
         Assert.True(layout.IsProvisional);
     }
 
@@ -250,13 +254,14 @@ public sealed class CapADumpTests
         var diagnostics = new ScanDiagnostics();
         var gameAssembly = new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd);
 
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             gameAssembly,
             gamePlugin: null,
             regions,
             diagnostics);
+        var candidates = scan.Players;
 
         Assert.Single(candidates);
         Assert.Equal(12345u, candidates[0].Uid);
@@ -286,13 +291,14 @@ public sealed class CapADumpTests
 
         var reader = new CountingMemoryReader(inner);
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
             gamePlugin: null,
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics);
+        var candidates = scan.Players;
 
         Assert.Single(candidates);
         Assert.Equal(4242u, candidates[0].Uid);
@@ -337,13 +343,14 @@ public sealed class CapADumpTests
 
         var reader = new CountingMemoryReader(inner);
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
             gamePlugin: null,
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics);
+        var candidates = scan.Players;
 
         Assert.Empty(candidates);
         Assert.Equal(hitCount, diagnostics.VtableHits);
@@ -371,13 +378,14 @@ public sealed class CapADumpTests
             pa: 180,
             playerBlockBase: highPlayerBase);
 
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
             gamePlugin: null,
             RegionEnumerator.GetCandidateRegions(reader),
             new ScanDiagnostics());
+        var candidates = scan.Players;
 
         Assert.Single(candidates);
         Assert.Equal(55555u, candidates[0].Uid);
@@ -393,13 +401,14 @@ public sealed class CapADumpTests
         PlacePlayerFixture(reader, layout, PersonAddress, uid: 99, ca: 0, pa: 170);
 
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
             gamePlugin: null,
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics);
+        var candidates = scan.Players;
 
         Assert.Empty(candidates);
         Assert.True(diagnostics.CandidatesRejected > 0);
@@ -429,7 +438,7 @@ public sealed class CapADumpTests
             playerBlockBase: PlayerBlockBase + 0x200);
 
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
@@ -437,9 +446,11 @@ public sealed class CapADumpTests
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics,
             maxAccepted: 2);
+        var candidates = scan.Players;
 
         Assert.Equal(2, candidates.Count);
         Assert.True(diagnostics.StoppedEarly);
+        Assert.True(scan.StoppedEarly);
         Assert.Equal(2, diagnostics.MaxAccepted);
         Assert.Equal(2, diagnostics.CandidatesAccepted);
     }
@@ -460,7 +471,7 @@ public sealed class CapADumpTests
             playerBlockBase: PlayerBlockBase + 0x100);
 
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
@@ -468,9 +479,11 @@ public sealed class CapADumpTests
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics,
             maxAccepted: 2);
+        var candidates = scan.Players;
 
         Assert.Equal(2, candidates.Count);
         Assert.False(diagnostics.StoppedEarly);
+        Assert.False(scan.StoppedEarly);
     }
 
     [Fact]
@@ -550,7 +563,7 @@ public sealed class CapADumpTests
         cts.Cancel();
 
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
@@ -558,8 +571,10 @@ public sealed class CapADumpTests
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics,
             cancellationToken: cts.Token);
+        var candidates = scan.Players;
 
         Assert.True(diagnostics.Cancelled);
+        Assert.True(scan.Cancelled);
         Assert.False(diagnostics.StoppedEarly);
         Assert.Empty(candidates);
     }

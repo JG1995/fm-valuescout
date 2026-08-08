@@ -55,7 +55,7 @@ public sealed class CapADumpPipeline
         diagnostics.RegionEnumerationMs = phaseSw.ElapsedMilliseconds;
 
         phaseSw.Restart();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             gameAssembly,
@@ -65,6 +65,7 @@ public sealed class CapADumpPipeline
             maxAccepted,
             cancellationToken);
         diagnostics.CandidateDiscoveryMs = phaseSw.ElapsedMilliseconds;
+        var candidates = scan.Players;
 
         if (diagnostics.Cancelled)
         {

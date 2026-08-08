@@ -16,11 +16,23 @@ public interface IFmMemoryLayout
     /// <summary>Known person→player class offsets (from Il2Cpp meta+4).</summary>
     IReadOnlyList<int> PlayerClassOffsets { get; }
 
+    /// <summary>Known person→pure-staff class offsets (from Il2Cpp meta+4).</summary>
+    IReadOnlyList<int> StaffClassOffsets { get; }
+
+    /// <summary>Known person→human-manager class offsets (from Il2Cpp meta+4).</summary>
+    IReadOnlyList<int> HumanManagerClassOffsets { get; }
+
     /// <summary>Current ability (u16) relative to player block base (<c>person - classOffset</c>).</summary>
     int CurrentAbilityOffset { get; }
 
     /// <summary>Potential ability (u16) relative to player block base.</summary>
     int PotentialAbilityOffset { get; }
+
+    /// <summary>Current ability (u16) relative to staff block base.</summary>
+    int StaffCurrentAbilityOffset { get; }
+
+    /// <summary>Potential ability (u16) relative to staff block base.</summary>
+    int StaffPotentialAbilityOffset { get; }
 
     /// <summary>Nested string slot: first name (relative to person).</summary>
     int FirstNameOffset { get; }
