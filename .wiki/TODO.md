@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No active feature selected.
+- [FM SuperScout reader parity](./features/active/fm-superscout-parity.md) — add and persist the remaining direct memory-backed player, staff, manager, and club data, then harden scans without changing their semantic results
 
 ## Next
 
