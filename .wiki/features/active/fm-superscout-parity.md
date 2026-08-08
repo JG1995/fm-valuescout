@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -420,7 +420,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 ### PR 2 — Harden FM memory scans
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -566,7 +566,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 4 — Validate hardened scan behavior
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(memory-read): validate hardened scan behavior`
 
@@ -589,7 +589,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 **Review profile:** Sol High — final PR review must verify semantic equality, measured claims, native-resource safety, failure behavior, and documentation accuracy.
 
-**Validation:** Run `./scripts/dev bridge-test`, `./scripts/dev test`, `./scripts/dev check`, and `./scripts/dev bridge-install`. After one FM restart, run an unlimited schema-v6 Load Data cycle, compare its complete counts and representative values with PR 1, inspect read-quality and resource diagnostics, exercise prior-dump preservation through a safe failure path, and record comparable timings. Run feature close-out with the exact merged PR 1 ref and PR 2 commit set.
+**Validation:** `./scripts/dev bridge-test` passed 159 tests with 3 expected Windows-only skips; `./scripts/dev test` passed 205 tests; and `./scripts/dev check` passed with 240 Rust tests and 2 ignored. `./scripts/dev bridge-install` built and installed the final DLL. After an FM26 restart, an unlimited Windows Load Data run completed successfully. Its 247,781 player and 134,316 staff totals, manager record, `men` scope with derived `next-fixture-consensus` date basis, unlimited non-truncated status, zero player/staff overlap, and 491,761,405-byte dump size matched the PR 1 aggregate baseline. The developer compared a representative player's fields and club link, a staff record's identity/attributes/contract and club, and the human manager with managed club against the PR 1 result; all matched. No names, UIDs, or field values were retained. Diagnostics recorded a live source, zero retries, 99.9034% readable coverage, eight 32 MiB workers, 23.618 s total bridge time, and 19,837,038 aggregate process-memory reads requesting 5,378,910,136 bytes. The run did not force an unsafe low-memory failure; deterministic bridge and Rust tests remain the evidence that failed, cancelled, and incomplete attempts preserve prior data.
 
 **Stop conditions:** Do not publish any layer that causes unexplained value/count drift, increases failure risk, exceeds fixed resource bounds, or lacks adequate Windows evidence. Remove that layer and retain the stable schema-v6 reader.
 
@@ -608,13 +608,13 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 **Commit:** Commit 4 — Validate hardened scan behavior
 
-### Manual validation boundary
+### Manual validation result
 
-Install the final bridge, restart FM26, then run one unlimited Load Data scan against the unchanged reference save. Compare semantic results with the PR 1 baseline and inspect retry, source, read-quality, worker, timing, and process-memory diagnostics.
+The final bridge was installed, FM26 restarted, and one unlimited Load Data scan completed. Aggregate counts, manager presence, scope/date basis, and dump size match the PR 1 baseline. The developer confirmed representative player, staff, manager, and club comparisons against that result; the healthy live attempt needed no snapshot retry.
 
 ### Expected outcome
 
-The hardened scan preserves the PR 1 semantic result and records enough bounded operational evidence to retain or remove concurrency and snapshot recovery safely.
+The hardened scan preserves the PR 1 aggregate and representative semantic baseline on the supported save and records bounded read-quality, worker, source, retry, timing, and process-memory evidence. One successful live attempt does not prove a general speedup; deterministic tests retain the failure and snapshot-lifecycle evidence.
 
 ### Explicit exclusions
 
@@ -635,6 +635,7 @@ The hardened scan preserves the PR 1 semantic result and records enough bounded 
 - Commit 3 reuses that fixed 2 GiB boundary for available commit: an incomplete live scan captures one VA clone only when commit memory is known and sufficient. The clone handle closes before PSS frees its snapshot, and retry diagnostics retain the final read source, retry count, capture timing, preflight commit value, and safe failure reason.
 - Commit 3 correction review requires snapshot readers to enumerate through their VA-clone process handle, diagnostics to omit module address ranges, and the retry worker-failure proof to use the parallel scan path.
 - Commit 4 keeps corrupt staff attribute bytes and non-leap-year day 366 contract expiries null. Player attribute compatibility decoding remains unchanged.
+- Commit 4's final Windows Load Data run retained the hardened scan: player and staff totals and dump size matched the PR 1 baseline; the live scan needed no retry, stayed below the ten-percent unread boundary, and used the fixed eight-worker 32 MiB bound. Its 23.618 s bridge time is a single observation, not a performance promise. Existing deterministic tests remain the safe failure-preservation evidence.
 
 ## Completed work
 
@@ -646,9 +647,10 @@ The hardened scan preserves the PR 1 semantic result and records enough bounded 
 | PR 1 — Add SuperScout direct-data parity | Commit 4 — Extract non-player records | 3e68e09 | Retains validated non-player staff fields and deterministic human-manager metadata inside the bridge without changing schema v5 output. | Sol High: accepted after correction review. | None |
 | PR 1 — Add SuperScout direct-data parity | Commit 5 — Publish and persist dump schema v6 | 4ea5a43 | Schema v6 bridge, validation, migration v15, and transactional ingest preserve player, staff, manager, scope, and date-basis data. | Sol xhigh: accepted after C5-01 and C5-02 correction review. | None |
 | PR 1 — Add SuperScout direct-data parity | Commit 6 — Validate SuperScout data parity | 8553e9f | A live unlimited FM 26.3.2 Load Data run matched bridge declarations with active SQLite rows and recorded the sanitized baseline. | Sol High: accepted after correction review. | None |
-| PR 2 — Harden FM memory scans | Commit 1 — Measure scan read quality | Pending record | Adds exact readable coverage, unread-quality diagnostics, and pre-write failure at more than ten percent unread coverage while preserving caps and prior dumps. | Sol High: accepted after stale-buffer correction review. | None |
-| PR 2 — Harden FM memory scans | Commit 2 — Parallelize deterministic region scanning | Pending record | Adds bounded worker-local region scans, stable result/diagnostic merging, memory-pressure diagnostics, and serial fallbacks for capped or non-concurrent reads. | Sol xhigh: accepted after low-memory boundary correction review. | None |
-| PR 2 — Harden FM memory scans | Commit 3 — Retry incomplete scans from a frozen snapshot | Pending record | Adds one guarded VA-clone retry with commit-memory preflight, clone-backed region enumeration, safe diagnostics, and one-owner native cleanup. | Sol xhigh: accepted after correction review. | None |
+| PR 2 — Harden FM memory scans | Commit 1 — Measure scan read quality | 0de1985 | Adds exact readable coverage, unread-quality diagnostics, and pre-write failure at more than ten percent unread coverage while preserving caps and prior dumps. | Sol High: accepted after stale-buffer correction review. | None |
+| PR 2 — Harden FM memory scans | Commit 2 — Parallelize deterministic region scanning | b377aed | Adds bounded worker-local region scans, stable result/diagnostic merging, memory-pressure diagnostics, and serial fallbacks for capped or non-concurrent reads. | Sol xhigh: accepted after low-memory boundary correction review. | None |
+| PR 2 — Harden FM memory scans | Commit 3 — Retry incomplete scans from a frozen snapshot | 4c46f41 | Adds one guarded VA-clone retry with commit-memory preflight, clone-backed region enumeration, safe diagnostics, and one-owner native cleanup. | Sol xhigh: accepted after correction review. | None |
+| PR 2 — Harden FM memory scans | Commit 4 — Validate hardened scan behavior | Pending record | Records the final supported Windows run: PR 1 aggregate and representative parity, bounded live read quality, worker resources, timings, and prior-data safety evidence. | Sol High: accepted after correction review. | None |
 
 ## Final validation
 
