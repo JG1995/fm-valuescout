@@ -343,7 +343,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 5 — Publish and persist dump schema v6
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(snapshot): ingest SuperScout parity data`
 
@@ -382,7 +382,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 6 — Validate SuperScout data parity
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `docs(memory-read): validate SuperScout data parity`
 
@@ -606,21 +606,15 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 **PR:** PR 1 — Add SuperScout direct-data parity
 
-**Commit:** Commit 5 — Publish and persist dump schema v6
+**Commit:** Commit 6 — Validate SuperScout data parity
 
-### RED proof
+### Automated completion evidence
 
-Create a schema-v6 fixture with one player, one staff record, manager metadata, scope/date metadata, and mixed nulls. Confirm the current validator rejects it for the expected schema version before adding the atomic bridge, Rust, migration, and ingest transition.
+Schema v6 now validates and persists the full player, staff, manager, scope, and date-basis payload atomically. `./scripts/dev bridge-test`, `./scripts/dev test`, and `./scripts/dev check` passed before this checkpoint.
 
-### Expected outcome
+### Required live validation
 
-Schema v6 is the single production contract for the full player, staff, manager, scope, and date-basis payload. Validation, SQLite migration, and transactional ingest retain every field or reject the dump without replacing the current snapshot.
-
-### Explicit exclusions
-
-- No staff query API or UI, role scoring, per-attribute staff SQL columns, or invented backfills.
-- No stale schema-v5 fallback or partial schema-v6 ingest.
-- No raw process address, private live artifact, or local path in the published contract.
+Install the committed bridge, fully restart FM26 with one unchanged loaded save, and run an unlimited Load Data cycle. Confirm schema-v6 ingest and representative player, staff, manager, club, scope, and null values; compare existing product screens before and after; record sanitized counts, sizes, and phase timings.
 
 ## Discoveries and replanning
 
@@ -641,6 +635,7 @@ Schema v6 is the single production contract for the full player, staff, manager,
 | PR 1 — Add SuperScout direct-data parity | Commit 2 — Discover the complete club graph | Pending record | Same-pass, bounded club discovery feeds deterministic squad resolution while contract-derived clubs remain fallback. | Sol High: accepted after alignment correction review. | None |
 | PR 1 — Add SuperScout direct-data parity | Commit 3 — Read remaining player metadata | Pending record | Reads player nation UID and gender, carries selected-team raw type/reputation, applies closed request scope, and labels schedule dates with an explicit derived basis. | Sol High: accepted. | None |
 | PR 1 — Add SuperScout direct-data parity | Commit 4 — Extract non-player records | Pending record | Retains validated non-player staff fields and deterministic human-manager metadata inside the bridge without changing schema v5 output. | Sol High: accepted after correction review. | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 5 — Publish and persist dump schema v6 | Pending record | Schema v6 bridge, validation, migration v15, and transactional ingest preserve player, staff, manager, scope, and date-basis data. | Sol xhigh: accepted after C5-01 and C5-02 correction review. | None |
 
 ## Final validation
 

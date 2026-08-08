@@ -126,7 +126,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               ? {
                   id: 1,
                   saveId: 1,
-                  schemaVersion: 5,
+                  schemaVersion: 6,
                   generatedAtUtc: "2026-07-28T15:00:00.000Z",
                   gameVersion: "26.0.0",
                   supportedGameVersion: "26.0.0",
@@ -289,7 +289,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               snapshot: {
                 id: 1,
                 saveId: 1,
-                schemaVersion: 5,
+                schemaVersion: 6,
                 generatedAtUtc: "2026-07-28T15:00:00.000Z",
                 gameVersion: "26.0.0",
                 supportedGameVersion: "26.0.0",

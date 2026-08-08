@@ -317,7 +317,7 @@ mod tests {
 
     fn ingest_players(conn: &mut Connection, players: Vec<Value>) {
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v5.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v6.json"))
                 .expect("parse golden fixture");
         root["players"] = Value::Array(players);
         root["playerCount"] = json!(root["players"].as_array().unwrap().len());
@@ -338,6 +338,8 @@ mod tests {
             "birthDayOfYear": 100,
             "age": 26,
             "nationalities": ["ENG"],
+            "nationUid": null,
+            "gender": "unknown",
             "heightCm": 180,
             "preferredFoot": "right",
             "positions": { "MC": 18 },
@@ -357,7 +359,9 @@ mod tests {
             "parentClub": null,
             "onLoan": false,
             "division": "League One",
-            "teamLevel": "senior"
+            "teamLevel": "senior",
+            "clubReputation": null,
+            "teamType": null
         })
     }
 
@@ -383,7 +387,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("known-uid.db"));
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v5.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v6.json");
         ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
         set_role_score(&conn, 77, "goalkeeper_ip", Some(42));
 

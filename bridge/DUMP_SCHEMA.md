@@ -1,94 +1,84 @@
-# Dump schema v5 (frozen)
+# Dump schema v6 (frozen)
 
-Contract between the FM26 BepInEx bridge (`dump.json`) and snapshot ingest (feature 2). File protocol details: [README.md](./README.md). Architecture: [ADR-0016](../.wiki/decisions/0016-csharp-bepinex-fm26-bridge.md).
+Contract between the FM26 BepInEx bridge (`dump.json`) and Rust snapshot ingest. File protocol details: [README.md](./README.md). Architecture: [ADR-0016](../.wiki/decisions/0016-csharp-bepinex-fm26-bridge.md).
 
-**Schema version:** `5` (constant `BridgeProtocol.DumpSchemaVersion` / Rust `DUMP_SCHEMA_VERSION`).
+**Schema version:** `6` (`BridgeProtocol.DumpSchemaVersion` / Rust `DUMP_SCHEMA_VERSION`). Schema v5 dumps are rejected with an instruction to update the bridge plugin and rescan.
 
 ## Document shape
 
-Top-level JSON object, camelCase keys, compact (unindented) JSON streamed by the bridge. Whitespace is not significant for validation.
+The bridge streams one compact, camelCase JSON object. Whitespace is not significant.
 
 | Field | Type | Required | Notes |
 | --- | --- | --- | --- |
-| `schemaVersion` | number | yes | Must be `5` for this contract |
+| `schemaVersion` | number | yes | Must be `6` |
 | `generatedAtUtc` | string | yes | ISO-8601 UTC timestamp |
-| `gameVersion` | string | yes | FM build string from the running process |
-| `supportedGameVersion` | string | yes | Layout key, e.g. `26.3` |
-| `bridgeVersion` | string | yes | Plugin assembly version |
-| `protocolVersion` | number | yes | File-protocol version (`1`) |
-| `gameDate` | string \| null | no | In-game date `yyyy-MM-dd` when known |
+| `gameVersion`, `supportedGameVersion`, `bridgeVersion` | string | yes | Running build, layout key, and plugin version |
+| `protocolVersion` | number | yes | File-protocol version `1` |
+| `gameDate` | string \| null | no | In-game `yyyy-MM-dd` when known |
 | `gameDateSource` | string | yes | `memory` \| `derived` \| `unknown` |
-| `scanTruncated` | boolean | yes | `true` when the person scanner stopped at `maxAccepted` |
-| `maxAccepted` | number \| null | yes | Accepted-player cap used for this dump; `null` when unlimited |
-| `emptySave` | boolean | no | Explicit marker when `playerCount` is `0` (bridge normally omits empty dumps) |
-| `playerCount` | number | yes | Must equal `players.length` |
-| `players` | array | yes | Player objects (see below) |
+| `gameDateBasis` | string | yes | `next-fixture-consensus` \| `birth-cohort-and-system-date` \| `unknown` |
+| `playerDatabaseScope` | string | yes | `men` \| `women` \| `both` |
+| `scanTruncated` | boolean | yes | True only when the accepted-player cap caused an early stop |
+| `maxAccepted` | number \| null | yes | Accepted-player cap; null when unlimited |
+| `emptySave` | boolean | no | Explicit marker for an empty player and staff result |
+| `playerCount`, `players` | number, array | yes | Count must equal array length |
+| `staffCount`, `staff` | number, array | yes | Count must equal array length |
+| `manager` | object \| null | yes | Human-manager metadata when resolved |
 
-### Scan truncation
+Unlimited production scans write `scanTruncated: false` and `maxAccepted: null`. A capped scan still records its positive cap. It sets `scanTruncated: true` only when the accepted-player cap stops the walk; that flag means discovery may be incomplete.
 
-Production Load Data requests `maxAccepted: null` (unlimited). A positive request `maxAccepted` stops the person scanner after that many accepted players; the dump then sets `scanTruncated: true` and echoes the cap. Ingest must not treat a truncated dump as a complete world database. Unlimited walks set `maxAccepted` to JSON `null` and `scanTruncated` to `false`. `PersonScanner.DefaultMaxAccepted` (500) is the diagnostic/test constant for capped characterization, not the production default.
+## Ingestibility rules
 
-`status.json` mirrors the same signals on a successful `ready` state (`scanTruncated`, `maxAccepted`).
+Rust accepts only a schema-v6, protocol-v1 object with valid count, enum, and field types. Player UIDs and staff UIDs must each be unique and cannot overlap. A non-null manager must identify one emitted staff record. An empty result requires `emptySave: true`, zero players, zero staff, and `manager: null`.
 
-### Ingestibility rules (Rust `validate_dump_json`)
-
-1. Valid JSON object with all required top-level keys.
-2. `schemaVersion == 5` and `protocolVersion == 1`.
-3. `scanTruncated` is a boolean; `maxAccepted` is a non-negative number or JSON `null`.
-4. `playerCount` equals `players` array length.
-5. Either `playerCount > 0` with at least one player object, **or** `emptySave: true` with `playerCount == 0` and an empty `players` array.
-6. Each player object has the required structural fields below (types checked).
-
-The bridge **never** replaces a prior good dump with zero players (`DumpWriter.TryWriteReplaceOnSuccess`). `emptySave` exists for tests and future explicit empty-save handling.
+The bridge never replaces a prior good dump with an empty player result. `emptySave` supports explicit tests and future handling only.
 
 ## Player object
 
+All v5 player fields remain unchanged. Schema v6 adds:
+
 | Field | Type | Null when |
 | --- | --- | --- |
-| `uid` | number | never (required) |
-| `ca`, `pa` | number | never (required) |
-| `name` | string | never (empty names are skipped at scan time) |
-| `birthYear`, `birthDayOfYear` | number | never |
-| `age` | number \| null | DOB or game date missing |
-| `nationalities` | string[] | never (may be empty) |
-| `heightCm` | number \| null | unread |
-| `preferredFoot` | string | never (`left` / `right` / `either` / `""`) |
-| `positions` | object | never (map of position → suitability 0–20) |
-| `attributes` | object | never (PascalCase keys → `number` 1–20 or `null`) |
-| `hiddenAttributes` | object | never (same encoding as visible) |
-| `personality` | object | never (PascalCase keys → raw 1–20 or `null`) |
-| `weeklyWageGbp` | number \| null | free agent, unread, or `0xFFFFFFFF` sentinel |
-| `contractExpiryYear` | number \| null | free agent or unread |
-| `contractExpiryDayOfYear` | number \| null | with `contractExpiryYear` |
-| `transferListed`, `loanListed`, `notForSale`, `setForRelease` | boolean \| null | free agent or unread flags |
-| `marketValueGbp` | number \| null | unread, unset, or FM unfixed `300000000` |
-| `reputation` | object | `{ current, world }` each `number` \| `null` |
-| `currentClub`, `parentClub` | string \| null | unresolved / free agent |
-| `onLoan` | boolean \| null | when either club unresolved |
-| `division` | string \| null | competition unread |
-| `teamLevel` | string \| null | `senior` \| `reserve` \| `youth` or null |
+| `nationUid` | number \| null | Nation unread |
+| `gender` | string | Never; `unknown` \| `male` \| `female` |
+| `clubReputation` | number \| null | Selected-team club unread |
+| `teamType` | number \| null | Selected team unread |
 
-Attribute keys are stable English PascalCase (e.g. `Acceleration`, `Consistency`, `Ambition`). JSON `null` means unread or out of range — **not** a real score of zero.
+Existing nullable fields preserve JSON `null` for unread or out-of-range values, never a sentinel zero. Attribute maps remain PascalCase keys with number or null values. `loanListed` uses SuperScout status bit1, pending live confirmation.
 
-`loanListed` uses SuperScout contract status **bit1**. That bit is still provisional until confirmed on a known loan-listed player in a live dump.
+## Staff object
 
-## Intentional gaps (not in v5)
+Each staff record is snapshot-owned and has this shape:
 
-Deferred to later features or derivable at ingest:
+| Field | Type | Null when |
+| --- | --- | --- |
+| `uid` | number | never |
+| `name` | string \| null | Unread |
+| `birthYear`, `birthDayOfYear`, `age` | number \| null | DOB or date unread |
+| `nationalities` | string[] | never; may be empty |
+| `nationUid` | number \| null | Nation unread |
+| `gender` | string | Never; `unknown` \| `male` \| `female` |
+| `ca`, `pa` | number | never |
+| `attributes` | object | never; exactly the 22 keys below, each integer 1-20 or null |
+| `jobId`, `weeklyWageGbp` | number \| null | Unread or absent |
+| `contractExpiryYear`, `contractExpiryDayOfYear` | number \| null | Unread or absent |
+| `club`, `division` | string \| null | Unresolved or unread |
 
-- Manager name, managed club, currency metadata
-- Asking price / transfer estimate heuristics
-- Staff or non-player records
-- Explicit loaned-in vs loaned-out relative to the human manager (`onLoan` is parent ≠ current only)
-- Clubs with no contracted players in the accepted scan set (squad walk is contract-seeded only)
+The fixed keys are `Attacking`, `Defending`, `Fitness`, `Possession`, `Technical`, `Tactical`, `SetPieces`, `Determination`, `ManManagement`, `Motivating`, `JudgingPlayerAbility`, `JudgingPlayerPotential`, `JudgingStaffAbility`, `Negotiating`, `TacticalKnowledge`, `Physiotherapy`, `SportsScience`, `DataAnalysis`, `WorkingWithYoungsters`, `GoalkeepingDistribution`, `GoalkeepingHandling`, and `GoalkeepingReflexes`.
+
+Staff data is persisted for future features. It has no query API, UI, per-attribute SQL columns, or search indexes in this schema.
+
+## Manager object
+
+When present, `manager` contains `uid`, non-empty `name`, nullable `club`, and nullable `clubReputation`. Its UID must match an emitted staff record. The object contains no raw address or process detail.
 
 ## Related files
 
 | File | Writer | Purpose |
 | --- | --- | --- |
-| `request.json` | Tauri | Scan request (`operation: "full-dump"`, optional `maxAccepted`, 30s TTL) |
-| `status.json` | Bridge | Idle / scanning / ready / failed; ready carries `scanTruncated` / `maxAccepted` |
+| `request.json` | Tauri | Scan request (`operation: "full-dump"`, optional `maxAccepted`) |
+| `status.json` | Bridge | Idle, scanning, ready, or failed; ready carries cap signals |
 | `dump.json` | Bridge | This schema |
-| `diagnostics.txt` | Bridge | Scan diagnostics (not validated for ingest) |
+| `diagnostics.txt` | Bridge | Scan diagnostics, never ingested |
 
-Golden fixture for Rust tests: `src-tauri/src/features/memory_read/fixtures/golden_dump_v5.json`.
+Golden v6 fixture: `src-tauri/src/features/memory_read/fixtures/golden_dump_v6.json`. The v5 fixture remains only to prove stale-dump rejection.

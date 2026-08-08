@@ -158,7 +158,7 @@ public sealed class ClubExtractionTests
     }
 
     [Fact]
-    public void Pipeline_writes_schema_v5_clubs_loan_game_date_and_age()
+    public void Pipeline_writes_schema_v6_clubs_loan_game_date_and_age()
     {
         var bridgeDir = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(bridgeDir);
@@ -179,7 +179,7 @@ public sealed class ClubExtractionTests
             Assert.Equal(2, result.PlayerCount);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
-            Assert.Equal(5, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(BridgeProtocol.DumpSchemaVersion, doc.RootElement.GetProperty("schemaVersion").GetInt32());
             Assert.Equal("2026-08-14", doc.RootElement.GetProperty("gameDate").GetString());
             Assert.Equal("derived", doc.RootElement.GetProperty("gameDateSource").GetString());
 

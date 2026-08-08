@@ -170,7 +170,7 @@ public sealed class ContractExtractionTests
             Assert.Equal(1, result.PlayerCount);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
-            Assert.Equal(5, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(BridgeProtocol.DumpSchemaVersion, doc.RootElement.GetProperty("schemaVersion").GetInt32());
             var player = doc.RootElement.GetProperty("players")[0];
             Assert.Equal(50_000, player.GetProperty("weeklyWageGbp").GetInt64());
             Assert.Equal(2029, player.GetProperty("contractExpiryYear").GetInt32());

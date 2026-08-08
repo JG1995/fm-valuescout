@@ -189,9 +189,16 @@ public sealed class StaffExtractionTests
             Assert.DoesNotContain(typeof(HumanManager).GetProperties(), property => property.Name.Contains("Address", StringComparison.Ordinal));
 
             using var dump = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDirectory)));
-            Assert.False(dump.RootElement.TryGetProperty("staff", out _));
-            Assert.False(dump.RootElement.TryGetProperty("manager", out _));
-            Assert.DoesNotContain("First Manager", dump.RootElement.GetRawText(), StringComparison.Ordinal);
+            Assert.Equal(BridgeProtocol.DumpSchemaVersion, dump.RootElement.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(3, dump.RootElement.GetProperty("staffCount").GetInt32());
+            Assert.Equal(
+                new uint[] { 200, 201, 300 },
+                dump.RootElement.GetProperty("staff").EnumerateArray()
+                    .Select(record => record.GetProperty("uid").GetUInt32()));
+            Assert.Equal("First Manager", dump.RootElement.GetProperty("manager").GetProperty("name").GetString());
+            Assert.Equal("First FC", dump.RootElement.GetProperty("manager").GetProperty("club").GetString());
+            Assert.Equal(7100, dump.RootElement.GetProperty("manager").GetProperty("clubReputation").GetInt32());
+            Assert.DoesNotContain("Address", dump.RootElement.GetRawText(), StringComparison.Ordinal);
         }
         finally
         {

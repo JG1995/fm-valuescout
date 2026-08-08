@@ -390,7 +390,7 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Barrier};
 
-    const INGESTIBLE_DUMP_FIXTURE: &str = include_str!("fixtures/golden_dump_v5.json");
+    const INGESTIBLE_DUMP_FIXTURE: &str = include_str!("fixtures/golden_dump_v6.json");
 
     const HAPPY_STATUS_JSON: &str = r#"{
   "protocolVersion": 1,

@@ -297,6 +297,8 @@ public sealed class CapADumpPipeline
                     BirthYear = draft.Identity.BirthYear,
                     BirthDayOfYear = draft.Identity.BirthDayOfYear,
                     Nationalities = draft.Identity.Nationalities,
+                    NationUid = draft.Identity.NationUid,
+                    Gender = PlayerGenderValues.ToWireValue(draft.Gender),
                     HeightCm = draft.Identity.HeightCm,
                     PreferredFoot = draft.Identity.PreferredFoot,
                     Positions = draft.Identity.Positions,
@@ -317,6 +319,8 @@ public sealed class CapADumpPipeline
                     OnLoan = onLoan,
                     Division = division,
                     TeamLevel = teamLevel,
+                    ClubReputation = clubReputation,
+                    TeamType = teamType,
                     Age = age,
                 });
 
@@ -344,6 +348,37 @@ public sealed class CapADumpPipeline
                 $"club resolution failed for {diagnostics.ClubUnresolved}/{players.Count} players";
         }
 
+        var dumpStaff = staff.Select(record => new DumpStaff
+        {
+            Uid = record.Uid,
+            Name = record.Name,
+            BirthYear = record.BirthYear,
+            BirthDayOfYear = record.BirthDayOfYear,
+            Age = record.Age,
+            Nationalities = record.Nationalities,
+            NationUid = record.NationUid,
+            Gender = PlayerGenderValues.ToWireValue(record.Gender),
+            Ca = record.Ca,
+            Pa = record.Pa,
+            Attributes = record.Attributes,
+            JobId = record.JobId,
+            WeeklyWageGbp = record.WeeklyWageGbp,
+            ContractExpiryYear = record.ContractExpiryYear,
+            ContractExpiryDayOfYear = record.ContractExpiryDayOfYear,
+            Club = record.Club,
+            Division = record.Division,
+        }).ToList();
+
+        var dumpManager = manager is null
+            ? null
+            : new DumpManager
+            {
+                Uid = manager.Uid,
+                Name = manager.Name,
+                Club = manager.Club,
+                ClubReputation = manager.ClubReputation,
+            };
+
         var document = new DumpDocument
         {
             SchemaVersion = BridgeProtocol.DumpSchemaVersion,
@@ -354,10 +389,15 @@ public sealed class CapADumpPipeline
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
             GameDate = gameDate.GameDate,
             GameDateSource = gameDate.Source,
+            GameDateBasis = gameDate.Basis,
+            PlayerDatabaseScope = PlayerDatabaseScopes.ToWireValue(playerDatabaseScope),
             ScanTruncated = diagnostics.StoppedEarly,
             MaxAccepted = diagnostics.MaxAccepted,
             PlayerCount = players.Count,
             Players = players,
+            StaffCount = dumpStaff.Count,
+            Staff = dumpStaff,
+            Manager = dumpManager,
         };
 
         phaseSw.Restart();

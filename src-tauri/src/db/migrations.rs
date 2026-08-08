@@ -308,6 +308,66 @@ WHERE is_current = 1
 ON CONFLICT(save_id, class_year) DO UPDATE SET is_automatic = 1;
 ";
 
+pub const SUPERSCOUT_PARITY_SCHEMA_SQL: &str = "
+ALTER TABLE snapshots
+    ADD COLUMN game_date_basis TEXT;
+
+ALTER TABLE snapshots
+    ADD COLUMN player_database_scope TEXT
+    CHECK (player_database_scope IS NULL OR player_database_scope IN ('men', 'women', 'both'));
+
+ALTER TABLE snapshots
+    ADD COLUMN staff_count INTEGER NOT NULL DEFAULT 0
+    CHECK (staff_count >= 0);
+
+ALTER TABLE snapshots
+    ADD COLUMN manager_uid INTEGER;
+
+ALTER TABLE snapshots
+    ADD COLUMN manager_name TEXT;
+
+ALTER TABLE snapshots
+    ADD COLUMN manager_club TEXT;
+
+ALTER TABLE snapshots
+    ADD COLUMN manager_club_reputation INTEGER;
+
+ALTER TABLE players
+    ADD COLUMN nation_uid INTEGER;
+
+ALTER TABLE players
+    ADD COLUMN gender TEXT NOT NULL DEFAULT 'unknown'
+    CHECK (gender IN ('unknown', 'male', 'female'));
+
+ALTER TABLE players
+    ADD COLUMN club_reputation INTEGER;
+
+ALTER TABLE players
+    ADD COLUMN team_type INTEGER;
+
+CREATE TABLE staff (
+    snapshot_id INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
+    uid INTEGER NOT NULL,
+    name TEXT,
+    birth_year INTEGER,
+    birth_day_of_year INTEGER,
+    age INTEGER,
+    nationalities_json TEXT NOT NULL,
+    nation_uid INTEGER,
+    gender TEXT NOT NULL CHECK (gender IN ('unknown', 'male', 'female')),
+    ca INTEGER NOT NULL,
+    pa INTEGER NOT NULL,
+    staff_attributes_json TEXT NOT NULL,
+    job_id INTEGER,
+    weekly_wage_gbp INTEGER,
+    contract_expiry_year INTEGER,
+    contract_expiry_day_of_year INTEGER,
+    club TEXT,
+    division TEXT,
+    PRIMARY KEY (snapshot_id, uid)
+);
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -379,6 +439,11 @@ pub fn all() -> &'static [Migration] {
             version: 14,
             description: "backfill_current_snapshot_academy_classes",
             sql: ACADEMY_CURRENT_SNAPSHOT_CLASSES_SQL,
+        },
+        Migration {
+            version: 15,
+            description: "add_superscout_parity_snapshot_data",
+            sql: SUPERSCOUT_PARITY_SCHEMA_SQL,
         },
     ]
 }
@@ -460,7 +525,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
 
         let table_name: String = conn
             .query_row(
@@ -536,7 +601,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -584,7 +649,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -663,6 +728,24 @@ mod tests {
         .expect("insert malformed current snapshot");
 
         apply(&conn).expect("backfill current snapshot class");
+
+        let (game_date_basis, player_database_scope, staff_count, manager_uid): (
+            Option<String>,
+            Option<String>,
+            i64,
+            Option<i64>,
+        ) = conn
+            .query_row(
+                "SELECT game_date_basis, player_database_scope, staff_count, manager_uid
+                 FROM snapshots WHERE save_id = ?1",
+                [save_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("read v15 migration fields");
+        assert_eq!(game_date_basis, None);
+        assert_eq!(player_database_scope, None);
+        assert_eq!(staff_count, 0);
+        assert_eq!(manager_uid, None);
 
         let class_years = conn
             .prepare(
@@ -807,7 +890,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -892,7 +975,7 @@ mod tests {
         let db_path = temp_dir.path().join("snapshot-migration-test.db");
         let conn = open_migrated(&db_path);
 
-        for expected_table in ["saves", "snapshots", "players"] {
+        for expected_table in ["saves", "snapshots", "players", "staff"] {
             let table_name: String = conn
                 .query_row(
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?1",
@@ -913,7 +996,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
 
         let table_name: String = conn
             .query_row(
@@ -964,6 +1047,13 @@ mod tests {
                 "max_accepted",
                 "player_count",
                 "loaded_at_utc",
+                "game_date_basis",
+                "player_database_scope",
+                "staff_count",
+                "manager_uid",
+                "manager_name",
+                "manager_club",
+                "manager_club_reputation",
             ]
         );
         assert_eq!(
@@ -999,6 +1089,33 @@ mod tests {
                 "on_loan",
                 "division",
                 "team_level",
+                "nation_uid",
+                "gender",
+                "club_reputation",
+                "team_type",
+            ]
+        );
+        assert_eq!(
+            table_columns(&conn, "staff"),
+            [
+                "snapshot_id",
+                "uid",
+                "name",
+                "birth_year",
+                "birth_day_of_year",
+                "age",
+                "nationalities_json",
+                "nation_uid",
+                "gender",
+                "ca",
+                "pa",
+                "staff_attributes_json",
+                "job_id",
+                "weekly_wage_gbp",
+                "contract_expiry_year",
+                "contract_expiry_day_of_year",
+                "club",
+                "division",
             ]
         );
     }
@@ -1125,14 +1242,51 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 14);
+        assert_eq!(version, 15);
+    }
+
+    #[test]
+    fn migrates_superscout_schema_from_every_prior_version() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+
+        for legacy_version in 1..15 {
+            let conn = Connection::open(
+                temp_dir
+                    .path()
+                    .join(format!("superscout-v{legacy_version}-migration-test.db")),
+            )
+            .expect("open test db");
+            conn.pragma_update(None, "foreign_keys", true)
+                .expect("enable foreign keys");
+            for migration in all()
+                .iter()
+                .filter(|migration| migration.version <= legacy_version)
+            {
+                conn.execute_batch(migration.sql)
+                    .expect("apply legacy migration");
+                conn.pragma_update(None, "user_version", migration.version)
+                    .expect("set legacy user version");
+            }
+
+            apply(&conn).expect("apply superscout migration");
+
+            let version: i32 = conn
+                .pragma_query_value(None, "user_version", |row| row.get(0))
+                .expect("read user version");
+            assert_eq!(version, 15, "legacy version {legacy_version}");
+            assert_eq!(
+                table_columns(&conn, "staff").first().map(String::as_str),
+                Some("snapshot_id"),
+                "legacy version {legacy_version}"
+            );
+        }
     }
 
     #[test]
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 14);
+        assert_eq!(migrations.len(), 15);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -1182,6 +1336,12 @@ mod tests {
         assert_eq!(migrations[13].version, 14);
         assert_eq!(migrations[12].description, "create_academy_member_outcomes");
         assert_eq!(migrations[12].sql, ACADEMY_MEMBER_OUTCOMES_SQL);
+        assert_eq!(migrations[14].version, 15);
+        assert_eq!(
+            migrations[14].description,
+            "add_superscout_parity_snapshot_data"
+        );
+        assert_eq!(migrations[14].sql, SUPERSCOUT_PARITY_SCHEMA_SQL);
     }
 
     #[test]

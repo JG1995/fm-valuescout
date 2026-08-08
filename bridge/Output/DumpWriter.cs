@@ -46,7 +46,7 @@ public static class DumpWriter
     }
 
     /// <summary>
-    /// Streams compact schema-v5 dump JSON to <paramref name="stream"/> without building a second full document string.
+    /// Streams compact schema-v6 dump JSON to <paramref name="stream"/> without building a second full document string.
     /// </summary>
     public static void WriteCompact(Stream stream, DumpDocument document)
     {
@@ -71,6 +71,8 @@ public static class DumpWriter
         }
 
         writer.WriteString("gameDateSource", document.GameDateSource);
+        writer.WriteString("gameDateBasis", document.GameDateBasis);
+        writer.WriteString("playerDatabaseScope", document.PlayerDatabaseScope);
         writer.WriteBoolean("scanTruncated", document.ScanTruncated);
         if (document.MaxAccepted is { } maxAccepted)
         {
@@ -91,6 +93,26 @@ public static class DumpWriter
         }
 
         writer.WriteEndArray();
+        writer.WriteNumber("staffCount", document.StaffCount);
+        writer.WritePropertyName("staff");
+        writer.WriteStartArray();
+        foreach (var staff in document.Staff)
+        {
+            JsonSerializer.Serialize(writer, staff, SerializerOptions);
+            writer.Flush();
+        }
+
+        writer.WriteEndArray();
+        writer.WritePropertyName("manager");
+        if (document.Manager is null)
+        {
+            writer.WriteNullValue();
+        }
+        else
+        {
+            JsonSerializer.Serialize(writer, document.Manager, SerializerOptions);
+        }
+
         writer.WriteEndObject();
         writer.Flush();
     }

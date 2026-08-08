@@ -89,6 +89,7 @@ fn ingest_dump_json_for_save(
     let tx = conn.transaction().map_err(|error| error.to_string())?;
     let snapshot_id = insert_snapshot(&tx, save_id, object)?;
     insert_players(&tx, snapshot_id, object)?;
+    insert_staff(&tx, snapshot_id, object)?;
     // ponytail: score every catalog role synchronously during ingest (one INSERT per role × player)
     // Upgrade to lazy/on-demand or batched scoring if ingest scoring time dominates Load Data
     insert_role_scores(&tx, snapshot_id, object)?;
@@ -132,10 +133,20 @@ fn insert_snapshot(
             protocol_version,
             game_date,
             game_date_source,
+            game_date_basis,
+            player_database_scope,
             scan_truncated,
             max_accepted,
-            player_count
-        ) VALUES (?1, 0, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            player_count,
+            staff_count,
+            manager_uid,
+            manager_name,
+            manager_club,
+            manager_club_reputation
+        ) VALUES (
+            ?1, 0, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+            ?16, ?17, ?18, ?19
+        )",
         params![
             save_id,
             require_i64(object, "schemaVersion")?,
@@ -146,9 +157,16 @@ fn insert_snapshot(
             require_i64(object, "protocolVersion")?,
             optional_string(object.get("gameDate"))?,
             require_string(object, "gameDateSource")?,
+            require_string(object, "gameDateBasis")?,
+            require_string(object, "playerDatabaseScope")?,
             i32::from(require_bool(object, "scanTruncated")?),
             optional_i64(object.get("maxAccepted"))?,
             require_i64(object, "playerCount")?,
+            require_i64(object, "staffCount")?,
+            optional_i64(manager_field(object, "uid")?)?,
+            optional_string(manager_field(object, "name")?)?,
+            optional_string(manager_field(object, "club")?)?,
+            optional_i64(manager_field(object, "clubReputation")?)?,
         ],
     )
     .map_err(|error| error.to_string())?;
@@ -198,10 +216,15 @@ fn insert_players(
                 parent_club,
                 on_loan,
                 division,
-                team_level
+                team_level,
+                nation_uid,
+                gender,
+                club_reputation,
+                team_type
             ) VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30
+                ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30,
+                ?31, ?32, ?33, ?34
             )",
         )
         .map_err(|error| error.to_string())?;
@@ -242,6 +265,79 @@ fn insert_players(
             optional_bool(player.get("onLoan"))?,
             optional_string(player.get("division"))?,
             optional_string(player.get("teamLevel"))?,
+            optional_i64(player.get("nationUid"))?,
+            require_string(player, "gender")?,
+            optional_i64(player.get("clubReputation"))?,
+            optional_i64(player.get("teamType"))?,
+        ])
+        .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn insert_staff(
+    tx: &Transaction<'_>,
+    snapshot_id: i64,
+    object: &serde_json::Map<String, Value>,
+) -> Result<(), String> {
+    let staff = object
+        .get("staff")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "dump staff must be an array".to_string())?;
+
+    let mut stmt = tx
+        .prepare(
+            "INSERT INTO staff (
+                snapshot_id,
+                uid,
+                name,
+                birth_year,
+                birth_day_of_year,
+                age,
+                nationalities_json,
+                nation_uid,
+                gender,
+                ca,
+                pa,
+                staff_attributes_json,
+                job_id,
+                weekly_wage_gbp,
+                contract_expiry_year,
+                contract_expiry_day_of_year,
+                club,
+                division
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16,
+                ?17, ?18
+            )",
+        )
+        .map_err(|error| error.to_string())?;
+
+    for staff_record in staff {
+        let staff_record = staff_record
+            .as_object()
+            .ok_or_else(|| "each staff record must be a JSON object".to_string())?;
+
+        stmt.execute(params![
+            snapshot_id,
+            require_u64(staff_record, "uid")? as i64,
+            optional_string(staff_record.get("name"))?,
+            optional_i64(staff_record.get("birthYear"))?,
+            optional_i64(staff_record.get("birthDayOfYear"))?,
+            optional_i64(staff_record.get("age"))?,
+            json_string(required_value(staff_record, "nationalities")?)?,
+            optional_i64(staff_record.get("nationUid"))?,
+            require_string(staff_record, "gender")?,
+            require_i64(staff_record, "ca")?,
+            require_i64(staff_record, "pa")?,
+            json_string(required_value(staff_record, "attributes")?)?,
+            optional_i64(staff_record.get("jobId"))?,
+            optional_i64(staff_record.get("weeklyWageGbp"))?,
+            optional_i64(staff_record.get("contractExpiryYear"))?,
+            optional_i64(staff_record.get("contractExpiryDayOfYear"))?,
+            optional_string(staff_record.get("club"))?,
+            optional_string(staff_record.get("division"))?,
         ])
         .map_err(|error| error.to_string())?;
     }
@@ -450,6 +546,18 @@ fn optional_bool(value: Option<&Value>) -> Result<Option<i32>, String> {
     }
 }
 
+fn manager_field<'a>(
+    object: &'a serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<Option<&'a Value>, String> {
+    match object.get("manager") {
+        Some(Value::Null) => Ok(None),
+        Some(Value::Object(manager)) => Ok(manager.get(field)),
+        Some(_) => Err("manager must be an object or null".to_string()),
+        None => Err("missing `manager`".to_string()),
+    }
+}
+
 fn json_string(value: &Value) -> Result<String, String> {
     serde_json::to_string(value).map_err(|error| error.to_string())
 }
@@ -479,7 +587,7 @@ mod tests {
     use crate::features::snapshot::service::list_saves;
     use std::path::Path;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v5.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v6.json");
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -512,6 +620,15 @@ mod tests {
             |row| row.get(0),
         )
         .expect("count players")
+    }
+
+    fn staff_count_for_snapshot(conn: &Connection, snapshot_id: i64) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM staff WHERE snapshot_id = ?1",
+            params![snapshot_id],
+            |row| row.get(0),
+        )
+        .expect("count staff")
     }
 
     fn role_score_count_for_snapshot(conn: &Connection, snapshot_id: i64) -> i64 {
@@ -652,7 +769,7 @@ mod tests {
         let prior_count = role_score_count_for_snapshot(&conn, first.id);
         assert!(prior_count > 0);
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 5", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 6", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let _ = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -681,16 +798,16 @@ mod tests {
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
 
         assert_eq!(snapshot.save_id, active_save.id);
-        assert_eq!(snapshot.schema_version, 5);
-        assert_eq!(snapshot.generated_at_utc, "2026-07-29T10:00:00.000Z");
+        assert_eq!(snapshot.schema_version, 6);
+        assert_eq!(snapshot.generated_at_utc, "2026-08-08T10:00:00.000Z");
         assert_eq!(snapshot.game_version, "26.3.2.2329565");
         assert_eq!(snapshot.supported_game_version, "26.3");
         assert_eq!(snapshot.bridge_version, "0.1.0");
         assert_eq!(snapshot.protocol_version, 1);
         assert_eq!(snapshot.game_date.as_deref(), Some("2026-08-14"));
-        assert_eq!(snapshot.game_date_source, "memory");
+        assert_eq!(snapshot.game_date_source, "derived");
         assert!(!snapshot.scan_truncated);
-        assert_eq!(snapshot.max_accepted, Some(500));
+        assert_eq!(snapshot.max_accepted, None);
         assert_eq!(snapshot.player_count, 1);
 
         assert_eq!(
@@ -699,18 +816,96 @@ mod tests {
         );
         assert_eq!(player_count_for_snapshot(&conn, snapshot.id), 1);
 
-        let (player_ca, current_club, attributes_json): (i64, Option<String>, String) = conn
+        struct SnapshotParity {
+            game_date_basis: String,
+            player_database_scope: String,
+            staff_count: i64,
+            manager_uid: Option<i64>,
+            manager_name: Option<String>,
+            manager_club: Option<String>,
+            manager_club_reputation: Option<i64>,
+        }
+
+        let snapshot_parity = conn
             .query_row(
-                "SELECT ca, current_club, attributes_json FROM players WHERE snapshot_id = ?1",
+                "SELECT
+                    game_date_basis,
+                    player_database_scope,
+                    staff_count,
+                    manager_uid,
+                    manager_name,
+                    manager_club,
+                    manager_club_reputation
+                 FROM snapshots WHERE id = ?1",
                 params![snapshot.id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| {
+                    Ok(SnapshotParity {
+                        game_date_basis: row.get(0)?,
+                        player_database_scope: row.get(1)?,
+                        staff_count: row.get(2)?,
+                        manager_uid: row.get(3)?,
+                        manager_name: row.get(4)?,
+                        manager_club: row.get(5)?,
+                        manager_club_reputation: row.get(6)?,
+                    })
+                },
+            )
+            .expect("snapshot parity fields");
+        assert_eq!(snapshot_parity.game_date_basis, "next-fixture-consensus");
+        assert_eq!(snapshot_parity.player_database_scope, "men");
+        assert_eq!(snapshot_parity.staff_count, 1);
+        assert_eq!(snapshot_parity.manager_uid, Some(88));
+        assert_eq!(
+            snapshot_parity.manager_name.as_deref(),
+            Some("Golden Fixture Staff")
+        );
+        assert_eq!(snapshot_parity.manager_club.as_deref(), Some("Golden FC"));
+        assert_eq!(snapshot_parity.manager_club_reputation, Some(6400));
+
+        struct PlayerParity {
+            ca: i64,
+            current_club: Option<String>,
+            attributes_json: String,
+            nation_uid: Option<i64>,
+            gender: String,
+            club_reputation: Option<i64>,
+            team_type: Option<i64>,
+        }
+
+        let player_parity = conn
+            .query_row(
+                "SELECT
+                    ca,
+                    current_club,
+                    attributes_json,
+                    nation_uid,
+                    gender,
+                    club_reputation,
+                    team_type
+                 FROM players WHERE snapshot_id = ?1",
+                params![snapshot.id],
+                |row| {
+                    Ok(PlayerParity {
+                        ca: row.get(0)?,
+                        current_club: row.get(1)?,
+                        attributes_json: row.get(2)?,
+                        nation_uid: row.get(3)?,
+                        gender: row.get(4)?,
+                        club_reputation: row.get(5)?,
+                        team_type: row.get(6)?,
+                    })
+                },
             )
             .expect("player row");
-        assert_eq!(player_ca, 150);
-        assert_eq!(current_club.as_deref(), Some("Loan FC"));
+        assert_eq!(player_parity.ca, 150);
+        assert_eq!(player_parity.current_club.as_deref(), Some("Loan FC"));
+        assert_eq!(player_parity.nation_uid, Some(44));
+        assert_eq!(player_parity.gender, "male");
+        assert_eq!(player_parity.club_reputation, Some(6200));
+        assert_eq!(player_parity.team_type, Some(0));
 
         let attributes: Value =
-            serde_json::from_str(&attributes_json).expect("parse attributes_json");
+            serde_json::from_str(&player_parity.attributes_json).expect("parse attributes_json");
         assert_eq!(attributes["Acceleration"], 14);
         assert_eq!(attributes["Pace"], 15);
         assert_eq!(
@@ -718,6 +913,34 @@ mod tests {
             Some(&Value::Null),
             "null attribute must be stored as JSON null, not omitted"
         );
+
+        let (staff_uid, staff_name, staff_gender, staff_attributes_json): (
+            i64,
+            Option<String>,
+            String,
+            String,
+        ) = conn
+            .query_row(
+                "SELECT uid, name, gender, staff_attributes_json
+                 FROM staff WHERE snapshot_id = ?1",
+                params![snapshot.id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .expect("staff row");
+        assert_eq!(staff_uid, 88);
+        assert_eq!(staff_name.as_deref(), Some("Golden Fixture Staff"));
+        assert_eq!(staff_gender, "female");
+        let staff_attributes: Value =
+            serde_json::from_str(&staff_attributes_json).expect("parse staff_attributes_json");
+        assert_eq!(
+            staff_attributes
+                .as_object()
+                .expect("staff attributes")
+                .len(),
+            22
+        );
+        assert_eq!(staff_attributes["Attacking"], 15);
+        assert_eq!(staff_attributes.get("DataAnalysis"), Some(&Value::Null));
     }
 
     #[test]
@@ -741,7 +964,9 @@ mod tests {
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(second.id));
         assert!(!snapshot_row_exists(&conn, first.id));
         assert_eq!(player_count_for_snapshot(&conn, first.id), 0);
+        assert_eq!(staff_count_for_snapshot(&conn, first.id), 0);
         assert_eq!(player_count_for_snapshot(&conn, second.id), 1);
+        assert_eq!(staff_count_for_snapshot(&conn, second.id), 1);
 
         let ca: i64 = conn
             .query_row(
@@ -766,7 +991,7 @@ mod tests {
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 5", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 6", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let error = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -784,7 +1009,7 @@ mod tests {
 
         let truncated_json = GOLDEN_FIXTURE
             .replace("\"scanTruncated\": false", "\"scanTruncated\": true")
-            .replace("\"maxAccepted\": 500", "\"maxAccepted\": 250");
+            .replace("\"maxAccepted\": null", "\"maxAccepted\": 250");
         let dump_path = write_dump(&temp_dir, "truncated.json", &truncated_json);
 
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest truncated dump");
@@ -794,7 +1019,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_player_insert_leaves_prior_snapshot_current() {
+    fn rejects_duplicate_player_uid_without_changing_prior_snapshot() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("ingest-rollback.db"));
         let active_save = list_saves(&conn)
@@ -806,17 +1031,59 @@ mod tests {
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
 
-        let duplicate_uid_json = GOLDEN_FIXTURE
-            .replace("\"playerCount\": 1", "\"playerCount\": 2")
-            .replace(
-                "    }\n  ]",
-                "    },\n    {\n      \"uid\": 77,\n      \"ca\": 140,\n      \"pa\": 160,\n      \"name\": \"Duplicate UID\",\n      \"birthYear\": 2001,\n      \"birthDayOfYear\": 101,\n      \"age\": 25,\n      \"nationalities\": [\"SCO\"],\n      \"heightCm\": 180,\n      \"preferredFoot\": \"left\",\n      \"positions\": { \"ST\": 15 },\n      \"attributes\": { \"Finishing\": 13 },\n      \"hiddenAttributes\": { \"Consistency\": 10 },\n      \"personality\": { \"Ambition\": 12 },\n      \"weeklyWageGbp\": null,\n      \"contractExpiryYear\": null,\n      \"contractExpiryDayOfYear\": null,\n      \"transferListed\": null,\n      \"loanListed\": null,\n      \"notForSale\": null,\n      \"setForRelease\": null,\n      \"marketValueGbp\": null,\n      \"reputation\": { \"current\": 90, \"world\": 80 },\n      \"currentClub\": null,\n      \"parentClub\": null,\n      \"onLoan\": null,\n      \"division\": null,\n      \"teamLevel\": null\n    }\n  ]",
-            );
-        let broken_path = write_dump(&temp_dir, "broken.json", &duplicate_uid_json);
+        let mut duplicate_root: Value =
+            serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
+        let duplicate = duplicate_root["players"][0].clone();
+        duplicate_root["players"]
+            .as_array_mut()
+            .expect("fixture players")
+            .push(duplicate);
+        duplicate_root["playerCount"] = Value::from(2);
+        let broken_path = write_dump(&temp_dir, "broken.json", &duplicate_root.to_string());
         let _ = ingest_dump_file(&mut conn, &broken_path).expect_err("reject duplicate uid");
 
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
         assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
+    }
+
+    #[test]
+    fn failed_staff_insert_rolls_back_the_new_snapshot_and_children() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-staff-rollback.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+
+        let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
+        let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
+        let prior_role_score_count = role_score_count_for_snapshot(&conn, first.id);
+        conn.execute_batch(
+            "CREATE TRIGGER reject_staff_insert
+             BEFORE INSERT ON staff
+             BEGIN
+                 SELECT RAISE(FAIL, 'staff insert failure');
+             END;",
+        )
+        .expect("create staff failure trigger");
+
+        let rejected_path = write_dump(&temp_dir, "rejected.json", GOLDEN_FIXTURE);
+        let error = ingest_dump_file(&mut conn, &rejected_path).expect_err("reject staff insert");
+
+        assert!(error.contains("staff insert failure"));
+        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
+        assert!(snapshot_row_exists(&conn, first.id));
+        assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
+        assert_eq!(staff_count_for_snapshot(&conn, first.id), 1);
+        assert_eq!(
+            role_score_count_for_snapshot(&conn, first.id),
+            prior_role_score_count
+        );
+        let snapshot_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM snapshots", [], |row| row.get(0))
+            .expect("count snapshots");
+        assert_eq!(snapshot_count, 1);
     }
 
     fn write_generated_minimal_dump(path: &Path, player_count: usize) {
@@ -826,9 +1093,10 @@ mod tests {
         write!(
             file,
             concat!(
-                r#"{{"schemaVersion":5,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
+                r#"{{"schemaVersion":6,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
                 r#""gameVersion":"26.3.2","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","#,
-                r#""protocolVersion":1,"gameDate":null,"gameDateSource":"unknown","#,
+                r#""protocolVersion":1,"gameDate":null,"gameDateSource":"unknown","gameDateBasis":"unknown","#,
+                r#""playerDatabaseScope":"men","#,
                 r#""scanTruncated":false,"maxAccepted":null,"playerCount":{player_count},"players":["#
             ),
             player_count = player_count
@@ -843,19 +1111,20 @@ mod tests {
                 file,
                 concat!(
                     r#"{{"uid":{uid},"ca":1,"pa":1,"name":"P{uid}","birthYear":2000,"birthDayOfYear":1,"#,
-                    r#""age":null,"nationalities":[],"heightCm":null,"preferredFoot":"right","#,
+                    r#""age":null,"nationalities":[],"nationUid":null,"gender":"unknown","heightCm":null,"preferredFoot":"right","#,
                     r#""positions":{{}},"attributes":{{}},"hiddenAttributes":{{}},"personality":{{}},"#,
                     r#""weeklyWageGbp":null,"contractExpiryYear":null,"contractExpiryDayOfYear":null,"#,
                     r#""transferListed":null,"loanListed":null,"notForSale":null,"setForRelease":null,"#,
                     r#""marketValueGbp":null,"reputation":{{"current":null,"world":null}},"#,
-                    r#""currentClub":null,"parentClub":null,"onLoan":null,"division":null,"teamLevel":null}}"#
+                    r#""currentClub":null,"parentClub":null,"onLoan":null,"division":null,"teamLevel":null,"clubReputation":null,"teamType":null}}"#
                 ),
                 uid = uid
             )
             .expect("write player");
         }
 
-        write!(file, "]}}").expect("write dump footer");
+        write!(file, "],\"staffCount\":0,\"staff\":[],\"manager\":null}}")
+            .expect("write dump footer");
         file.flush().expect("flush dump");
     }
 
