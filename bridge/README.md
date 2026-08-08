@@ -45,6 +45,26 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 3. Inspect `dump.json` / `diagnostics.txt` and `status.json` (`scanning` → `ready` / `failed`).
 4. Record player and staff counts, then spot-check representative player fields, staff identity/attributes/contracts, manager club metadata, scope, and date basis against FM. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs, `sampleAttributes`, `sampleContracts`, `sampleClubs`, `multiClubSamples`, identity skip counts, `clubUnresolved`) to adjust `Fm263Layout`.
 
+### Live schema-v6 baseline
+
+One loaded FM 26.3.2 save completed an unlimited Windows **Load Data** run on 2026-08-08. The app showed its success banner. This is a reference run for semantic validation, not a performance target or a result for women's or combined databases.
+
+| Check | Result |
+| --- | --- |
+| Player database scope | `men` |
+| Date source and basis | `derived`; `next-fixture-consensus` |
+| Scan cap and truncation | Unlimited (`null`); not truncated |
+| Player records | 247,781 dump records and SQLite rows; no duplicate player UIDs |
+| Staff records | 134,316 dump records and SQLite rows; no duplicate staff UIDs |
+| Manager and club links | Manager metadata present; 237,023 player and 47,154 staff rows have a club value |
+| Player/staff overlap | 0 in this run |
+| Dump size | 491,761,405 bytes (491.8 MB) |
+| App database after ingest | 7,107,915,776 bytes (7.11 GB) |
+| Bridge scan | 38.365 s total; selected phases were 0.060 s region enumeration, 21.444 s candidate discovery, 10.458 s extraction, 2.492 s club indexing, and 3.183 s dump writing |
+| Ready-to-committed snapshot interval | 55.7 s observed from bridge `ready` to the active snapshot commit; this is not the app-reported `ingestMs` value |
+
+The documented row counts matched the dump declarations and the active app-save snapshot. The app database check used only aggregate counts and did not retain names, addresses, dump contents, or machine paths.
+
 ## Prerequisites (Windows host)
 
 | Requirement | Notes |

@@ -36,7 +36,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
-**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 player dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v14: `saves`, `snapshots`, `players`, `player_role_scores`, save-scoped Planner club-family, tactic, depth-string, and assignment rows with provenance, and Academy classes, memberships, outcomes, and automatic-class backfill).
+**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v15: `saves`, `snapshots`, `players`, `staff`, `player_role_scores`, save-scoped Planner club-family, tactic, depth-string, and assignment rows with provenance, and Academy classes, memberships, outcomes, and automatic-class backfill).
 
 **FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), `status.json` / `dump.json` / diagnostics with phase timings. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
@@ -404,7 +404,7 @@ User opens home route
   → Rust memory_read: resolve %LOCALAPPDATA%\fm-valuescout\fm-bridge\, parse status.json
   → Panel shows ready / missing / error / unsupported platform
 
-Dump contract: bridge/DUMP_SCHEMA.md schema v5 (frozen). Scan writes dump.json on disk; ingest reads it in Rust (§5.5).
+Dump contract: [bridge/DUMP_SCHEMA.md](../bridge/DUMP_SCHEMA.md) schema v6 (frozen). A dump contains players plus staff, optional human-manager metadata, player-database scope, and date basis. Rust rejects stale schemas before ingest. The scan writes `dump.json` on disk; ingest reads it in Rust (§5.5).
 ```
 
 ### 5.5 Load Data and snapshot ingest
@@ -424,7 +424,7 @@ User clicks Load Data (AppTopBar)
   → On scan failure: LoadDataError { phase: "scan", kind, message }; prior snapshot unchanged
   → On scan success: lock Db → load_data_after_scan → ingest::ingest_dump_file_for_save(save_id, dump path)
       validate_dump_json (memory_read::dump_validation) — hard-fail before insert
-      Transaction: insert new snapshot + players + player_role_scores, promote to current, delete prior current,
+      Transaction: insert new snapshot + players + staff + player_role_scores, promote to current, delete prior current,
                    ensure the valid trusted (`memory` or `derived`) in-game year's automatic Academy class
       On ingest failure: roll back; prior current snapshot remains
   → Returns LoadDataResult { requestId, playersFound, scanTruncated, maxAccepted, snapshot,
@@ -434,13 +434,14 @@ User clicks Load Data (AppTopBar)
   → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
 
-**Saves model** (migrations v2–v14, `src-tauri/src/db/migrations.rs`):
+**Saves model** (migrations v2–v15, `src-tauri/src/db/migrations.rs`):
 
 | Table | Role |
 | --- | --- |
 | `saves` | App-side game save slots (not FM save files). Exactly one row has `is_active = 1` (partial unique index). Default save created when the DB has none. |
-| `snapshots` | One **current** snapshot per save (`is_current = 1`, partial unique index per `save_id`). Stores dump metadata: schema/game/bridge versions, `game_date`, `scan_truncated`, `max_accepted`, `player_count`, `loaded_at_utc`. Snapshot **history** is out of scope — schema allows future rows. |
-| `players` | Rows keyed by `(snapshot_id, uid)`. Scalars for list/search foundations; attribute maps and arrays as JSON text columns. `null` in dump JSON means unknown — never coerced to 0 on ingest. |
+| `snapshots` | One **current** snapshot per save (`is_current = 1`, partial unique index per `save_id`). Stores schema/game/bridge versions, date and date basis, player database scope, scan state, player and staff counts, optional manager metadata, and load time. Snapshot **history** is out of scope — schema allows future rows. |
+| `players` | Rows keyed by `(snapshot_id, uid)`. Scalars for list/search foundations include nullable nation UID, gender, club reputation, and team type; attribute maps and arrays remain JSON text. `null` in dump JSON means unknown — never coerced to 0 on ingest. |
+| `staff` | Rows keyed by `(snapshot_id, uid)`, with stable scalar metadata and one `staff_attributes_json` object. They cascade when the snapshot is replaced. No staff query API or UI exists yet. |
 | `player_role_scores` | Per-player role-fit scores keyed by `(snapshot_id, uid, role_id)` with `phase` (`in_possession` \| `out_of_possession`) and nullable integer `score` (0–100). FK to `players` with `ON DELETE CASCADE`. Index on `(snapshot_id, role_id)` for role-filtered queries. |
 | `planner_club_settings` | One optional club-family configuration per save. Stores the explicitly selected primary club and survives current-snapshot replacement. |
 | `planner_club_sources` | Primary and attached club sources assigned to Senior, Reserves, or Youth. The legacy optional `team_level` value remains persisted but does not restrict Planner eligibility. Source rows reference the save, not a snapshot. |
@@ -451,7 +452,7 @@ User clicks Load Data (AppTopBar)
 | `academy_memberships` | One player UID may belong to one class per save. Stores last-known name and uses a composite `(save_id, class_id)` foreign key to prevent a cross-save class reference. |
 | `academy_member_outcomes` | One optional outcome per save-scoped membership. `sold` stores a non-empty buying club and non-negative whole-euro fee; `released` stores neither. Its composite foreign key cascades when the selected membership is removed. |
 
-Migration v14 backfills a missing 2025 baseline for every save and promotes a matching class to automatic for a current snapshot only when its date source is `memory` or `derived` and its date is valid and at least 2025. It does not replace class identifiers or memberships, and it ignores unknown, malformed, untrusted, pre-2025, or non-current dates.
+Migration v15 adds the schema-v6 fields and the snapshot-owned `staff` table. Existing snapshots retain null or default values where the old dump had no equivalent field. Migration v14 backfills a missing 2025 baseline for every save and promotes a matching class to automatic for a current snapshot only when its date source is `memory` or `derived` and its date is valid and at least 2025. It does not replace class identifiers or memberships, and it ignores unknown, malformed, untrusted, pre-2025, or non-current dates.
 
 **Query and save-management IPC** (`features/snapshot/commands.rs`):
 
@@ -750,7 +751,7 @@ Each item links to an ADR with alternatives and consequences.
 | SQLite (Rust-owned) | [0015](./decisions/0015-sqlite-rust-owned.md) |
 | C# BepInEx FM26 bridge | [0016](./decisions/0016-csharp-bepinex-fm26-bridge.md) |
 
-**@tanstack/react-virtual** is in the stack for the player search results table. TanStack Table, Form, and TanStack Start remain intentionally **not** in the default stack — add per feature when needed. The FM26 bridge is implemented per [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [fm26-memory-read](./features/completed/fm26-memory-read.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md); dump schema v5 is frozen in `bridge/DUMP_SCHEMA.md`.
+**@tanstack/react-virtual** is in the stack for the player search results table. TanStack Table, Form, and TanStack Start remain intentionally **not** in the default stack — add per feature when needed. The FM26 bridge is implemented per [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [fm26-memory-read](./features/completed/fm26-memory-read.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md); dump schema v6 is frozen in [bridge/DUMP_SCHEMA.md](../bridge/DUMP_SCHEMA.md).
 
 ---
 

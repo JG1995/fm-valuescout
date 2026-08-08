@@ -159,7 +159,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 ### PR 1 — Add SuperScout direct-data parity
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -382,7 +382,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 6 — Validate SuperScout data parity
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(memory-read): validate SuperScout data parity`
 
@@ -405,7 +405,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 **Review profile:** Sol High — the recorded contract becomes the oracle for persistence and later hardening, so review must verify every claim against code and concise live evidence.
 
-**Validation:** Run `./scripts/dev bridge-test`, `./scripts/dev test`, `./scripts/dev check`, and `./scripts/dev bridge-install`. After one FM restart, create an unlimited schema-v6 dump, validate and ingest it, inspect representative values and nulls, confirm replacement and rollback safety, and record counts, sizes, and phase timings. Run a fresh-context Sol High review over the exact PR 1 diff and sanitized evidence.
+**Validation:** `./scripts/dev bridge-install` installed the schema-v6 DLL, then one FM restart and an unlimited Windows Load Data cycle completed successfully on FM 26.3.2. The bridge and active SQLite snapshot both recorded 247,781 players and 134,316 staff, with no duplicate UIDs, a manager record, `men` scope, derived `next-fixture-consensus` date basis, `scanTruncated: false`, and `maxAccepted: null`. The dump was 491,761,405 bytes; the app database after ingest was 7,107,915,776 bytes. The bridge total was 38.365 s and the observed bridge-ready-to-snapshot-commit interval was 55.7 s. The developer confirmed the representative field checks and existing product screens worked correctly in the Windows app. Existing automated replacement and rollback tests remain the proof for failure preservation. A fresh-context Sol High review accepted the exact PR 1 diff and sanitized evidence after documentation corrections.
 
 **Stop conditions:** Do not publish if required fields are systematically wrong, staff completeness or dual-role behavior is unexplained, manager selection is ambiguous, stale v5 can replace current data, or the expanded dump is impractical. Remove an unproven field instead of weakening the evidence rule.
 
@@ -606,15 +606,19 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 **PR:** PR 1 — Add SuperScout direct-data parity
 
-**Commit:** Commit 6 — Validate SuperScout data parity
+**Commit:** None — PR 1 is ready for publication
 
 ### Automated completion evidence
 
 Schema v6 now validates and persists the full player, staff, manager, scope, and date-basis payload atomically. `./scripts/dev bridge-test`, `./scripts/dev test`, and `./scripts/dev check` passed before this checkpoint.
 
-### Required live validation
+### Live validation evidence
 
-Install the committed bridge, fully restart FM26 with one unchanged loaded save, and run an unlimited Load Data cycle. Confirm schema-v6 ingest and representative player, staff, manager, club, scope, and null values; compare existing product screens before and after; record sanitized counts, sizes, and phase timings.
+The developer installed the DLL, restarted FM26 with one loaded FM 26.3.2 save, and ran one unlimited Windows Load Data cycle. The app showed the success banner. The bridge and active app-save snapshot both contain 247,781 players and 134,316 staff; each entity family has zero duplicate UIDs. The run stored a manager record, `men` scope, and a derived `next-fixture-consensus` date basis without truncation. It had no player/staff overlaps, 237,023 player club values, and 47,154 staff club values.
+
+The dump was 491,761,405 bytes. The app database after ingest was 7,107,915,776 bytes. Bridge diagnostics recorded 38.365 s total; selected phases were 0.060 s region enumeration, 21.444 s candidate discovery, 10.458 s extraction, 2.492 s club indexing, and 3.183 s dump writing. The active snapshot committed 55.7 s after the bridge became ready. This is the observed ready-to-snapshot-commit interval, not an end-to-end duration or the app-reported `ingestMs` metric. No dump content, names, addresses, screenshots, or machine paths were retained.
+
+The developer confirmed that representative player, staff, manager, club, date, and null checks plus Search, Player, Planner, Academy, and Academy-year behavior worked correctly in the Windows app. This was an operator check; no raw values were retained.
 
 ## Discoveries and replanning
 
@@ -636,6 +640,7 @@ Install the committed bridge, fully restart FM26 with one unchanged loaded save,
 | PR 1 — Add SuperScout direct-data parity | Commit 3 — Read remaining player metadata | Pending record | Reads player nation UID and gender, carries selected-team raw type/reputation, applies closed request scope, and labels schedule dates with an explicit derived basis. | Sol High: accepted. | None |
 | PR 1 — Add SuperScout direct-data parity | Commit 4 — Extract non-player records | Pending record | Retains validated non-player staff fields and deterministic human-manager metadata inside the bridge without changing schema v5 output. | Sol High: accepted after correction review. | None |
 | PR 1 — Add SuperScout direct-data parity | Commit 5 — Publish and persist dump schema v6 | Pending record | Schema v6 bridge, validation, migration v15, and transactional ingest preserve player, staff, manager, scope, and date-basis data. | Sol xhigh: accepted after C5-01 and C5-02 correction review. | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 6 — Validate SuperScout data parity | Pending record | A live unlimited FM 26.3.2 Load Data run matched bridge declarations with active SQLite rows and recorded the sanitized baseline. | Sol High: accepted after correction review. | None |
 
 ## Final validation
 
