@@ -1,7 +1,5 @@
 namespace FmDataBridge.Scanning;
 
-public readonly record struct PersonCandidate(ulong ObjectAddress, uint Uid, int Ca, int Pa, int ClassOffset);
-
 public sealed class ScanDiagnostics
 {
     public string GameVersion { get; set; } = "";
@@ -20,9 +18,29 @@ public sealed class ScanDiagnostics
 
     public int CandidatesAccepted { get; set; }
 
+    public int StaffCandidatesAccepted { get; set; }
+
+    public int HumanManagerCandidatesAccepted { get; set; }
+
+    public int PlayerStaffOverlapCount { get; set; }
+
+    public int ClubCandidatesAccepted { get; set; }
+
+    public int ClubCandidatesRejected { get; set; }
+
+    public int ClubCandidateDuplicatesSkipped { get; set; }
+
+    public bool ClubDiscoveryIncomplete { get; set; }
+
     public int CandidatesRejected { get; set; }
 
     public int DuplicatesSkipped { get; set; }
+
+    /// <summary>Closed player database scope applied during candidate acceptance.</summary>
+    public string? PlayerDatabaseScope { get; set; }
+
+    /// <summary>Valid player candidates excluded only by the requested database scope.</summary>
+    public int PlayersExcludedByDatabaseScope { get; set; }
 
     /// <summary>Candidates skipped because display name was empty.</summary>
     public int IdentitySkippedEmptyName { get; set; }
@@ -59,6 +77,9 @@ public sealed class ScanDiagnostics
     public string? GameDate { get; set; }
 
     public string? GameDateSource { get; set; }
+
+    /// <summary>Basis for a derived game date.</summary>
+    public string? GameDateBasis { get; set; }
 
     /// <summary>Accepted-player ceiling for this run; null means unlimited.</summary>
     public int? MaxAccepted { get; set; }

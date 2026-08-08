@@ -24,7 +24,9 @@ public static class FmStringReader
             return null;
         }
 
-        return TryReadCString(reader, inner + 4, maxLength);
+        return TryAdd(inner, sizeof(uint), out var stringAddress)
+            ? TryReadCString(reader, stringAddress, maxLength)
+            : null;
     }
 
     public static string? TryReadIndirect(IMemoryReader reader, ulong address, int maxLength = DefaultMaxLength)
@@ -35,13 +37,20 @@ public static class FmStringReader
             return null;
         }
 
-        return TryReadCString(reader, ptr + 4, maxLength);
+        return TryAdd(ptr, sizeof(uint), out var stringAddress)
+            ? TryReadCString(reader, stringAddress, maxLength)
+            : null;
     }
 
     public static string? TryReadCString(IMemoryReader reader, ulong address, int maxLength = DefaultMaxLength)
     {
         ArgumentNullException.ThrowIfNull(reader);
         if (maxLength <= 0)
+        {
+            return null;
+        }
+
+        if (!TryAdd(address, (ulong)(maxLength - 1), out _))
         {
             return null;
         }
@@ -92,7 +101,8 @@ public static class FmStringReader
             var n = 0;
             while (n < maxLength)
             {
-                if (!reader.TryReadByte(address + (ulong)n, out var b))
+                if (!TryAdd(address, (ulong)n, out var byteAddress)
+                    || !reader.TryReadByte(byteAddress, out var b))
                 {
                     break;
                 }
@@ -117,5 +127,17 @@ public static class FmStringReader
         {
             ArrayPool<byte>.Shared.Return(buffer);
         }
+    }
+
+    private static bool TryAdd(ulong address, ulong offset, out ulong result)
+    {
+        result = 0;
+        if (offset > ulong.MaxValue - address)
+        {
+            return false;
+        }
+
+        result = address + offset;
+        return true;
     }
 }

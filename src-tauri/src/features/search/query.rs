@@ -437,6 +437,8 @@ mod tests {
             "birthDayOfYear": 100,
             "age": 26,
             "nationalities": ["ENG"],
+            "nationUid": null,
+            "gender": "unknown",
             "heightCm": 180,
             "preferredFoot": "right",
             "positions": { "MC": 18 },
@@ -456,13 +458,15 @@ mod tests {
             "parentClub": null,
             "onLoan": false,
             "division": "League One",
-            "teamLevel": "senior"
+            "teamLevel": "senior",
+            "clubReputation": null,
+            "teamType": null
         })
     }
 
     fn ingest_players(conn: &mut rusqlite::Connection, players: Vec<Value>) {
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v5.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v6.json"))
                 .expect("parse golden fixture");
         root["players"] = Value::Array(players);
         root["playerCount"] = json!(root["players"].as_array().unwrap().len());

@@ -9,7 +9,7 @@ namespace FmDataBridge.Tests;
 public sealed class DumpWriterStreamingTests
 {
     [Fact]
-    public void Dump_writer_emits_compact_schema_v5_json()
+    public void Dump_writer_emits_compact_schema_v6_json()
     {
         var document = MinimalDocument(playerCount: 2);
         var json = DumpWriter.Serialize(document);
@@ -19,7 +19,7 @@ public sealed class DumpWriterStreamingTests
 
         using var parsed = JsonDocument.Parse(json);
         var root = parsed.RootElement;
-        Assert.Equal(BridgeProtocol.DumpSchemaVersion, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(6, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("2026-07-30T00:00:00+00:00", root.GetProperty("generatedAtUtc").GetString());
         Assert.Equal("26.3.2", root.GetProperty("gameVersion").GetString());
         Assert.Equal("26.3", root.GetProperty("supportedGameVersion").GetString());
@@ -27,10 +27,15 @@ public sealed class DumpWriterStreamingTests
         Assert.Equal(BridgeProtocol.ProtocolVersion, root.GetProperty("protocolVersion").GetInt32());
         Assert.Equal(JsonValueKind.Null, root.GetProperty("gameDate").ValueKind);
         Assert.Equal("unknown", root.GetProperty("gameDateSource").GetString());
+        Assert.Equal("unknown", root.GetProperty("gameDateBasis").GetString());
+        Assert.Equal("men", root.GetProperty("playerDatabaseScope").GetString());
         Assert.False(root.GetProperty("scanTruncated").GetBoolean());
         Assert.Equal(JsonValueKind.Null, root.GetProperty("maxAccepted").ValueKind);
         Assert.Equal(2, root.GetProperty("playerCount").GetInt32());
         Assert.Equal(2, root.GetProperty("players").GetArrayLength());
+        Assert.Equal(0, root.GetProperty("staffCount").GetInt32());
+        Assert.Empty(root.GetProperty("staff").EnumerateArray());
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("manager").ValueKind);
         Assert.Equal(1u, root.GetProperty("players")[0].GetProperty("uid").GetUInt32());
         Assert.Equal(2u, root.GetProperty("players")[1].GetProperty("uid").GetUInt32());
     }

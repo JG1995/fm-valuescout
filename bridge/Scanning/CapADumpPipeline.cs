@@ -25,6 +25,7 @@ public sealed class CapADumpPipeline
         ModuleBounds gameAssembly,
         ModuleBounds? gamePlugin = null,
         int? maxAccepted = null,
+        PlayerDatabaseScope playerDatabaseScope = PlayerDatabaseScope.Men,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -55,7 +56,7 @@ public sealed class CapADumpPipeline
         diagnostics.RegionEnumerationMs = phaseSw.ElapsedMilliseconds;
 
         phaseSw.Restart();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             gameAssembly,
@@ -63,8 +64,10 @@ public sealed class CapADumpPipeline
             regions,
             diagnostics,
             maxAccepted,
+            playerDatabaseScope,
             cancellationToken);
         diagnostics.CandidateDiscoveryMs = phaseSw.ElapsedMilliseconds;
+        var candidates = scan.Players;
 
         if (diagnostics.Cancelled)
         {
@@ -81,6 +84,7 @@ public sealed class CapADumpPipeline
         }
 
         var drafts = new List<PlayerDraft>(candidates.Count);
+        var staffDrafts = new List<StaffDraft>(scan.Staff.Count);
         var personToUid = new Dictionary<ulong, uint>();
         var parentClubByUid = new Dictionary<uint, string?>();
         var clubAddresses = new HashSet<ulong>();
@@ -124,6 +128,7 @@ public sealed class CapADumpPipeline
                 layout);
 
             var parentLink = ContractClubReader.TryRead(reader, candidate.ObjectAddress, layout);
+            var gender = PlayerGenderReader.Read(reader, candidate.ObjectAddress, layout);
             if (parentLink is { ClubAddress: not 0 })
             {
                 clubAddresses.Add(parentLink.ClubAddress);
@@ -138,7 +143,8 @@ public sealed class CapADumpPipeline
                     identity,
                     attrs,
                     contract,
-                    parentLink));
+                    parentLink,
+                    gender));
 
             if (diagnostics.SampleAttributeSnapshots.Count < ScanDiagnostics.MaxSampleAttributeSnapshots)
             {
@@ -151,6 +157,32 @@ public sealed class CapADumpPipeline
                 diagnostics.SampleContractSnapshots.Add(
                     FormatContractSample(candidate.Uid, identity.Name, contract));
             }
+        }
+
+        var playerUids = candidates.Select(candidate => candidate.Uid).ToHashSet();
+        foreach (var candidate in scan.Staff)
+        {
+            if (playerUids.Contains(candidate.Uid))
+            {
+                continue;
+            }
+
+            var record = StaffReader.Read(
+                reader,
+                candidate.ObjectAddress,
+                candidate.BlockAddress,
+                candidate.Uid,
+                candidate.Ca,
+                candidate.Pa,
+                layout,
+                out var clubLink);
+
+            if (clubLink is { ClubAddress: not 0 })
+            {
+                clubAddresses.Add(clubLink.ClubAddress);
+            }
+
+            staffDrafts.Add(new StaffDraft(candidate, record, clubLink));
         }
 
         diagnostics.ExtractionMs = phaseSw.ElapsedMilliseconds;
@@ -169,7 +201,9 @@ public sealed class CapADumpPipeline
             layout,
             personToUid,
             parentClubByUid,
-            clubAddresses);
+            scan.Clubs,
+            clubAddresses,
+            scan.HumanManagers.Select(candidate => candidate.ObjectAddress));
 
         foreach (var sample in squadIndex.MultiClubSamples.Take(ScanDiagnostics.MaxSampleClubSnapshots))
         {
@@ -187,7 +221,27 @@ public sealed class CapADumpPipeline
                 minCohortSize: Math.Min(30, Math.Max(1, drafts.Count))));
 
         diagnostics.GameDateSource = gameDate.Source;
+        diagnostics.GameDateBasis = gameDate.Basis;
         diagnostics.GameDate = gameDate.GameDate;
+
+        var staff = staffDrafts
+            .Select(draft => draft.Record with
+            {
+                Age = draft.Record.BirthYear is { } birthYear
+                    && draft.Record.BirthDayOfYear is { } birthDayOfYear
+                    ? PlayerAge.At(birthYear, birthDayOfYear, gameDate.Year, gameDate.DayOfYear)
+                    : null,
+            })
+            .ToList();
+        var staffByUid = staff.ToDictionary(record => record.Uid);
+        var staffContractLinks = staffDrafts.ToDictionary(
+            draft => draft.Candidate.Uid,
+            draft => draft.ClubLink);
+        var manager = HumanManagerSelector.Select(
+            scan.HumanManagers,
+            staffByUid,
+            staffContractLinks,
+            squadIndex);
 
         var players = new List<DumpPlayer>(drafts.Count);
         foreach (var draft in drafts)
@@ -197,12 +251,14 @@ public sealed class CapADumpPipeline
             string? division = draft.ParentLink?.Division;
             string? teamLevel = null;
             int? teamType = null;
+            int? clubReputation = null;
 
             if (squadIndex.TryGet(draft.Candidate.Uid, out var squad))
             {
                 currentName = squad.ClubName;
                 division = squad.Division ?? division;
                 teamType = squad.TeamType;
+                clubReputation = squad.TeamReputation;
                 teamLevel = TeamLevelMap.FromTeamType(squad.TeamType);
             }
             else if (parentName is not null)
@@ -241,6 +297,8 @@ public sealed class CapADumpPipeline
                     BirthYear = draft.Identity.BirthYear,
                     BirthDayOfYear = draft.Identity.BirthDayOfYear,
                     Nationalities = draft.Identity.Nationalities,
+                    NationUid = draft.Identity.NationUid,
+                    Gender = PlayerGenderValues.ToWireValue(draft.Gender),
                     HeightCm = draft.Identity.HeightCm,
                     PreferredFoot = draft.Identity.PreferredFoot,
                     Positions = draft.Identity.Positions,
@@ -261,6 +319,8 @@ public sealed class CapADumpPipeline
                     OnLoan = onLoan,
                     Division = division,
                     TeamLevel = teamLevel,
+                    ClubReputation = clubReputation,
+                    TeamType = teamType,
                     Age = age,
                 });
 
@@ -274,7 +334,10 @@ public sealed class CapADumpPipeline
                         parentName,
                         onLoan,
                         teamLevel,
-                        teamType));
+                        teamType,
+                        clubReputation,
+                        draft.Identity.NationUid,
+                        draft.Gender));
             }
         }
 
@@ -284,6 +347,37 @@ public sealed class CapADumpPipeline
             diagnostics.ClubResolutionWarning =
                 $"club resolution failed for {diagnostics.ClubUnresolved}/{players.Count} players";
         }
+
+        var dumpStaff = staff.Select(record => new DumpStaff
+        {
+            Uid = record.Uid,
+            Name = record.Name,
+            BirthYear = record.BirthYear,
+            BirthDayOfYear = record.BirthDayOfYear,
+            Age = record.Age,
+            Nationalities = record.Nationalities,
+            NationUid = record.NationUid,
+            Gender = PlayerGenderValues.ToWireValue(record.Gender),
+            Ca = record.Ca,
+            Pa = record.Pa,
+            Attributes = record.Attributes,
+            JobId = record.JobId,
+            WeeklyWageGbp = record.WeeklyWageGbp,
+            ContractExpiryYear = record.ContractExpiryYear,
+            ContractExpiryDayOfYear = record.ContractExpiryDayOfYear,
+            Club = record.Club,
+            Division = record.Division,
+        }).ToList();
+
+        var dumpManager = manager is null
+            ? null
+            : new DumpManager
+            {
+                Uid = manager.Uid,
+                Name = manager.Name,
+                Club = manager.Club,
+                ClubReputation = manager.ClubReputation,
+            };
 
         var document = new DumpDocument
         {
@@ -295,10 +389,15 @@ public sealed class CapADumpPipeline
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
             GameDate = gameDate.GameDate,
             GameDateSource = gameDate.Source,
+            GameDateBasis = gameDate.Basis,
+            PlayerDatabaseScope = PlayerDatabaseScopes.ToWireValue(playerDatabaseScope),
             ScanTruncated = diagnostics.StoppedEarly,
             MaxAccepted = diagnostics.MaxAccepted,
             PlayerCount = players.Count,
             Players = players,
+            StaffCount = dumpStaff.Count,
+            Staff = dumpStaff,
+            Manager = dumpManager,
         };
 
         phaseSw.Restart();
@@ -310,7 +409,9 @@ public sealed class CapADumpPipeline
             ? CapADumpResult.Succeeded(
                 players.Count,
                 scanTruncated: diagnostics.StoppedEarly,
-                maxAccepted: diagnostics.MaxAccepted)
+                maxAccepted: diagnostics.MaxAccepted,
+                staff: staff,
+                manager: manager)
             : CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
     }
 
@@ -355,14 +456,19 @@ public sealed class CapADumpPipeline
         string? parent,
         bool? onLoan,
         string? teamLevel,
-        int? teamType)
+        int? teamType,
+        int? clubReputation,
+        uint? nationUid,
+        PlayerGender gender)
     {
         static string Fmt(string? v) => v ?? "null";
         static string FmtBool(bool? v) => v is { } b ? (b ? "true" : "false") : "null";
 
         return
             $"uid={uid} name={name} current={Fmt(current)} parent={Fmt(parent)} " +
-            $"onLoan={FmtBool(onLoan)} level={Fmt(teamLevel)} tt={teamType?.ToString() ?? "null"}";
+            $"onLoan={FmtBool(onLoan)} level={Fmt(teamLevel)} tt={teamType?.ToString() ?? "null"} " +
+            $"clubRep={clubReputation?.ToString() ?? "null"} nationUid={nationUid?.ToString() ?? "null"} " +
+            $"gender={gender.ToString().ToLowerInvariant()}";
     }
 
     private sealed record PlayerDraft(
@@ -370,7 +476,13 @@ public sealed class CapADumpPipeline
         PlayerIdentity Identity,
         PlayerAttributes Attrs,
         PlayerContractFields Contract,
-        ContractClubLink? ParentLink);
+        ContractClubLink? ParentLink,
+        PlayerGender Gender);
+
+    private sealed record StaffDraft(
+        PersonCandidate Candidate,
+        StaffRecord Record,
+        ContractClubLink? ClubLink);
 }
 
 public readonly record struct CapADumpResult(
@@ -378,15 +490,27 @@ public readonly record struct CapADumpResult(
     string? Error,
     int PlayerCount,
     bool DumpReplaced,
-    bool ScanTruncated = false,
-    int? MaxAccepted = null)
+    bool ScanTruncated,
+    int? MaxAccepted,
+    IReadOnlyList<StaffRecord> Staff,
+    HumanManager? Manager)
 {
     public static CapADumpResult Succeeded(
         int playerCount,
         bool scanTruncated = false,
-        int? maxAccepted = null) =>
-        new(true, null, playerCount, DumpReplaced: true, scanTruncated, maxAccepted);
+        int? maxAccepted = null,
+        IReadOnlyList<StaffRecord>? staff = null,
+        HumanManager? manager = null) =>
+        new(
+            true,
+            null,
+            playerCount,
+            DumpReplaced: true,
+            scanTruncated,
+            maxAccepted,
+            staff ?? Array.Empty<StaffRecord>(),
+            manager);
 
     public static CapADumpResult Failed(string error, bool dumpReplaced) =>
-        new(false, error, 0, dumpReplaced);
+        new(false, error, 0, dumpReplaced, false, null, Array.Empty<StaffRecord>(), null);
 }

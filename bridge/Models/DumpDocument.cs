@@ -16,6 +16,12 @@ public sealed class DumpPlayer
 
     public IReadOnlyList<string> Nationalities { get; init; } = Array.Empty<string>();
 
+    /// <summary>UID from the primary nation object; null when unread or invalid.</summary>
+    public uint? NationUid { get; init; }
+
+    /// <summary>Closed person gender value: unknown, male, or female.</summary>
+    public string Gender { get; init; } = PlayerGenderValues.Unknown;
+
     public int? HeightCm { get; init; }
 
     public string PreferredFoot { get; init; } = "";
@@ -77,6 +83,12 @@ public sealed class DumpPlayer
     /// <summary>senior / reserve / youth from FM team type; null when unknown.</summary>
     public string? TeamLevel { get; init; }
 
+    /// <summary>Selected current-team reputation; null when unread or unresolved.</summary>
+    public int? ClubReputation { get; init; }
+
+    /// <summary>Raw selected current-team type; null when unread or unresolved.</summary>
+    public int? TeamType { get; init; }
+
     /// <summary>Age at dump game date; null when DOB or game date missing.</summary>
     public int? Age { get; init; }
 }
@@ -86,6 +98,55 @@ public sealed class DumpReputation
     public int? Current { get; init; }
 
     public int? World { get; init; }
+}
+
+public sealed class DumpStaff
+{
+    public uint Uid { get; init; }
+
+    public string? Name { get; init; }
+
+    public int? BirthYear { get; init; }
+
+    public int? BirthDayOfYear { get; init; }
+
+    public int? Age { get; init; }
+
+    public IReadOnlyList<string> Nationalities { get; init; } = Array.Empty<string>();
+
+    public uint? NationUid { get; init; }
+
+    public string Gender { get; init; } = PlayerGenderValues.Unknown;
+
+    public int Ca { get; init; }
+
+    public int Pa { get; init; }
+
+    public IReadOnlyDictionary<string, int?> Attributes { get; init; } =
+        new Dictionary<string, int?>();
+
+    public int? JobId { get; init; }
+
+    public long? WeeklyWageGbp { get; init; }
+
+    public int? ContractExpiryYear { get; init; }
+
+    public int? ContractExpiryDayOfYear { get; init; }
+
+    public string? Club { get; init; }
+
+    public string? Division { get; init; }
+}
+
+public sealed class DumpManager
+{
+    public uint Uid { get; init; }
+
+    public string Name { get; init; } = "";
+
+    public string? Club { get; init; }
+
+    public int? ClubReputation { get; init; }
 }
 
 public sealed class DumpDocument
@@ -108,6 +169,12 @@ public sealed class DumpDocument
     /// <summary>memory | derived | unknown</summary>
     public string GameDateSource { get; init; } = "unknown";
 
+    /// <summary>Reason for the game-date value, such as next-fixture-consensus.</summary>
+    public string GameDateBasis { get; init; } = "unknown";
+
+    /// <summary>Closed player database scope: men, women, or both.</summary>
+    public string PlayerDatabaseScope { get; init; } = "men";
+
     /// <summary>True when the person scanner stopped because <see cref="MaxAccepted"/> was reached.</summary>
     public bool ScanTruncated { get; init; }
 
@@ -117,4 +184,10 @@ public sealed class DumpDocument
     public int PlayerCount { get; init; }
 
     public IReadOnlyList<DumpPlayer> Players { get; init; } = Array.Empty<DumpPlayer>();
+
+    public int StaffCount { get; init; }
+
+    public IReadOnlyList<DumpStaff> Staff { get; init; } = Array.Empty<DumpStaff>();
+
+    public DumpManager? Manager { get; init; }
 }

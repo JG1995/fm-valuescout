@@ -877,7 +877,7 @@ mod tests {
 
     fn fixture_player(uid: i64, name: &str, current_club: &str, team_level: &str) -> Value {
         let mut player: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v5.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v6.json"))
                 .expect("parse fixture");
         let player = player["players"].get_mut(0).expect("fixture player");
         player["uid"] = json!(uid);
@@ -895,7 +895,7 @@ mod tests {
         players: Vec<Value>,
     ) {
         let mut dump: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v5.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v6.json"))
                 .expect("parse fixture");
         dump["players"] = Value::Array(players);
         dump["playerCount"] = json!(dump["players"].as_array().expect("players").len());
@@ -917,7 +917,7 @@ mod tests {
         game_date_source: &str,
     ) -> Result<(), String> {
         let mut dump: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v5.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v6.json"))
                 .expect("parse fixture");
         dump["gameDate"] = game_date;
         dump["gameDateSource"] = json!(game_date_source);
@@ -1082,6 +1082,32 @@ mod tests {
     }
 
     #[test]
+    fn derived_game_date_creates_the_same_observed_year_class_at_a_year_boundary() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-derived-date.db"));
+        let save = snapshot_service::create_save(&conn, "Academy save").expect("create save");
+
+        ingest_with_game_date(
+            &temp_dir,
+            &mut conn,
+            save.id,
+            "derived-date.json",
+            json!("2026-01-01"),
+            "derived",
+        )
+        .expect("ingest derived date");
+
+        assert_eq!(
+            super::list_classes(&conn, save.id)
+                .expect("list classes")
+                .into_iter()
+                .map(|academy_class| academy_class.class_year)
+                .collect::<Vec<_>>(),
+            vec![2025, 2026]
+        );
+    }
+
+    #[test]
     fn automatic_classes_reject_deletion_while_manual_classes_remain_deletable() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("academy-automatic-delete.db"));
@@ -1136,8 +1162,8 @@ mod tests {
             "memory",
         )
         .expect("ingest early date");
-        let failed_json = include_str!("../memory_read/fixtures/golden_dump_v5.json")
-            .replace("\"schemaVersion\": 5", "\"schemaVersion\": 4")
+        let failed_json = include_str!("../memory_read/fixtures/golden_dump_v6.json")
+            .replace("\"schemaVersion\": 6", "\"schemaVersion\": 4")
             .replace(
                 "\"gameDate\": \"2026-08-14\"",
                 "\"gameDate\": \"2027-01-01\"",

@@ -15,7 +15,7 @@ C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2
 
 Exact folder names: `fm-valuescout` / `fm-bridge`.
 
-**Dump contract:** frozen schema v5 field list, null rules, and ingestibility checks — [DUMP_SCHEMA.md](./DUMP_SCHEMA.md). Rust validates shape via `validate_dump_json` (see `src-tauri/src/features/memory_read/dump_validation.rs`).
+**Dump contract:** frozen schema v6 field list, null rules, and ingestibility checks — [DUMP_SCHEMA.md](./DUMP_SCHEMA.md). Rust validates shape via `validate_dump_json` (see `src-tauri/src/features/memory_read/dump_validation.rs`).
 
 ### Memory access (`Memory/`)
 
@@ -27,7 +27,7 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 - `Fm263Layout` ports FMSuperScout’s 26.3 field pins (author permission — see `.wiki/notes/superscout-permission.md`). Confirm identity fields against known players after first live dump; still marked provisional until then.
 - `Scanning/PersonScanner` — heap walk via bounded `TryReadBlock` regions (32 MiB blocks, local aligned-word inspection, in-buffer UID, cached vtable→class-offset), Il2Cpp dynamic class offset, UID/CA/PA sanity (`1..200`), UID dedupe. Request-scoped `maxAccepted`: omit/`null` = unlimited (production Load Data default); a positive integer stops after that many accepted players (`DefaultMaxAccepted` = 500 remains the diagnostic/test constant). Cap hits are signaled in `dump.json` / ready `status.json` as `scanTruncated` + `maxAccepted` (see [DUMP_SCHEMA.md](./DUMP_SCHEMA.md)). See [bridge scan performance](../.wiki/features/completed/bridge-scan-performance.md) for live budgets and phase diagnostics.
 - `Extraction/` — dedicated readers for nested/indirect UTF-8 names, FM packed DOB, nationality, height, preferred foot (from foot attrs ÷5), natural positions (suitability ≥ max(15, top−2)), attribute groups (visible/hidden ÷5; personality raw 1–20), contract/value/reputation (person→contract pointer; wages and market value in GBP as stored), and club/loan resolution (contract→team→club parent; squad walk for current club with deterministic multi-hit rules; schedule date-votes for in-game date). Contiguous attribute, position, personality, and bounded string ranges are read via `TryReadBlock` into rented buffers and decoded locally; pointer-chain hops stay scalar and nullable. Empty names or impossible DOBs are skipped and counted in diagnostics. Age is computed from DOB against the resolved game date.
-- Dump schema **v5** players: `{ uid, ca, pa, name, birthYear, birthDayOfYear, age, nationalities, heightCm, preferredFoot, positions, attributes, hiddenAttributes, personality, weeklyWageGbp, contractExpiryYear, contractExpiryDayOfYear, transferListed, loanListed, notForSale, setForRelease, marketValueGbp, reputation, currentClub, parentClub, onLoan, division, teamLevel }`. Document metadata adds `gameDate` / `gameDateSource` (`memory` | `derived` | `unknown`), plus `scanTruncated` / `maxAccepted` for the person-scanner cap. Attribute keys are stable PascalCase names (e.g. `Acceleration`, `Consistency`, `Ambition`). Unread or out-of-range attribute values are JSON `null` (never `0` as a sentinel). Free agents / missing contract blocks leave wage, expiry, and transfer flags as `null`; money uses `null` for FM unset (`0xFFFFFFFF`) and unfixed market value (`300000000`). Club fields are `null` when unresolved; `onLoan` is true when current and parent both resolve and differ. `DumpWriter` streams compact (unindented) schema-v5 JSON to a temp file via `Utf8JsonWriter` (per-player flush) and atomically replaces `dump.json` only on non-empty success. Unknown FM builds (including undetectable `game_plugin.dll` version) fail closed — no layout fallback.
+- Dump schema **v6** retains the player payload and adds `nationUid`, `gender`, selected-team `clubReputation` / `teamType`, top-level `gameDateBasis` / `playerDatabaseScope`, complete `staff` records, and optional human `manager` metadata. Attribute keys are stable PascalCase names (e.g. `Acceleration`, `Consistency`, `Ambition`); unread values are JSON `null`, never sentinel zero. `DumpWriter` streams compact schema-v6 JSON to a temp file (per-record flush) and atomically replaces `dump.json` only on non-empty success. Unknown FM builds, including an undetectable `game_plugin.dll` version, fail closed with no layout fallback. The exact field, null, and identity rules live in [DUMP_SCHEMA.md](./DUMP_SCHEMA.md).
 
 ### In-app request protocol
 
@@ -35,7 +35,7 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 2. In the Tauri app, click **Load Data** in the top bar.
 3. Rust writes `request.json` (`protocolVersion`, `requestId`, `createdAtUtc`, `operation: "full-dump"`, optional `maxAccepted`: `null` = unlimited, positive integer = cap).
 4. The plugin polls every ~2s, rejects requests older than **30 seconds**, runs the dump off the Unity main thread, and updates `status.json` (`idle` → `scanning` → `ready` / `failed`).
-5. The app waits for a terminal status matching the request id (default timeout 120s; unlimited reference save bridge dump measured ~26s on 2026-07-30). On success, Rust reads `dump.json` from disk, validates schema v5, and ingests players into SQLite for the active app save (`load_data` IPC). The dump body never crosses IPC. Scan or ingest failure leaves the prior snapshot unchanged; the UI shows a typed error or ingest summary (player count, truncated banner when `scanTruncated`).
+5. The app waits for a terminal status matching the request id (default timeout 120s; unlimited reference save bridge dump measured ~26s on 2026-07-30). On success, Rust reads `dump.json` from disk, validates schema v6, and atomically ingests player, staff, manager, scope, and date-basis data into SQLite for the active app save (`load_data` IPC). The dump body never crosses IPC. Scan or ingest failure leaves the prior snapshot unchanged; the UI shows a typed error or ingest summary (player count, truncated banner when `scanTruncated`).
 
 ### Manual force-scan fallback
 
@@ -43,7 +43,27 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
    `%LOCALAPPDATA%\fm-valuescout\fm-bridge\force-scan`
 2. The plugin treats it like a request (`requestId: force-scan`, `maxAccepted: null` — **unlimited**, same as production Load Data), then deletes the file.
 3. Inspect `dump.json` / `diagnostics.txt` and `status.json` (`scanning` → `ready` / `failed`).
-4. Spot-check several known players’ UID/CA/PA plus name, DOB, nationality, height, foot, positions, a few visible/hidden/personality attributes, wage/expiry/transfer flags, market value, reputation, current/parent club, loan cases, division/team level, and dump `gameDate` vs FM’s save date. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs, `sampleAttributes`, `sampleContracts`, `sampleClubs`, `multiClubSamples`, identity skip counts, `clubUnresolved`) to adjust `Fm263Layout`.
+4. Record player and staff counts, then spot-check representative player fields, staff identity/attributes/contracts, manager club metadata, scope, and date basis against FM. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs, `sampleAttributes`, `sampleContracts`, `sampleClubs`, `multiClubSamples`, identity skip counts, `clubUnresolved`) to adjust `Fm263Layout`.
+
+### Live schema-v6 baseline
+
+One loaded FM 26.3.2 save completed an unlimited Windows **Load Data** run on 2026-08-08. The app showed its success banner. This is a reference run for semantic validation, not a performance target or a result for women's or combined databases.
+
+| Check | Result |
+| --- | --- |
+| Player database scope | `men` |
+| Date source and basis | `derived`; `next-fixture-consensus` |
+| Scan cap and truncation | Unlimited (`null`); not truncated |
+| Player records | 247,781 dump records and SQLite rows; no duplicate player UIDs |
+| Staff records | 134,316 dump records and SQLite rows; no duplicate staff UIDs |
+| Manager and club links | Manager metadata present; 237,023 player and 47,154 staff rows have a club value |
+| Player/staff overlap | 0 in this run |
+| Dump size | 491,761,405 bytes (491.8 MB) |
+| App database after ingest | 7,107,915,776 bytes (7.11 GB) |
+| Bridge scan | 38.365 s total; selected phases were 0.060 s region enumeration, 21.444 s candidate discovery, 10.458 s extraction, 2.492 s club indexing, and 3.183 s dump writing |
+| Ready-to-committed snapshot interval | 55.7 s observed from bridge `ready` to the active snapshot commit; this is not the app-reported `ingestMs` value |
+
+The documented row counts matched the dump declarations and the active app-save snapshot. The app database check used only aggregate counts and did not retain names, addresses, dump contents, or machine paths.
 
 ## Prerequisites (Windows host)
 

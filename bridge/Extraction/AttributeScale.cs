@@ -11,13 +11,12 @@ public static class AttributeScale
     /// </summary>
     public static int DecodeScaled(byte raw)
     {
-        var value = (int)Math.Floor(raw / 5.0 + 0.5);
+        var value = DecodeScaledUnclamped(raw);
         return Math.Clamp(value, 0, 20);
     }
 
     /// <summary>
-    /// Decode a dumped player attribute to the 1–20 scale.
-    /// Returns null when the decoded value is outside 1–20 (unknown / invalid).
+    /// Decode a dumped player attribute through the compatibility clamp, then return the 1–20 scale.
     /// </summary>
     public static int? TryDecodeScaled(byte raw)
     {
@@ -25,6 +24,17 @@ public static class AttributeScale
         return value is >= 1 and <= 20 ? value : null;
     }
 
+    /// <summary>
+    /// Decode a stored attribute without treating an out-of-range byte as a valid maximum rating.
+    /// </summary>
+    public static int? TryDecodeScaledStrict(byte raw)
+    {
+        var value = DecodeScaledUnclamped(raw);
+        return value is >= 1 and <= 20 ? value : null;
+    }
+
     /// <summary>Personality bytes are raw 1–20; out of range is null (not zero).</summary>
     public static int? TryPersonality(byte raw) => raw is >= 1 and <= 20 ? raw : null;
+
+    private static int DecodeScaledUnclamped(byte raw) => (int)Math.Floor(raw / 5.0 + 0.5);
 }

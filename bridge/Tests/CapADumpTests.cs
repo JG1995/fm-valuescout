@@ -29,8 +29,14 @@ public sealed class CapADumpTests
         Assert.Equal("26.3", layout.VersionKey);
         Assert.Equal(0x0C, layout.ObjectUidOffset);
         Assert.Contains(0x288, layout.PlayerClassOffsets);
+        Assert.Contains(0x100, layout.StaffClassOffsets);
+        Assert.Contains(0x450, layout.HumanManagerClassOffsets);
         Assert.Equal(0x264, layout.CurrentAbilityOffset);
         Assert.Equal(0x266, layout.PotentialAbilityOffset);
+        Assert.Equal(0xDA, layout.StaffCurrentAbilityOffset);
+        Assert.Equal(0xDC, layout.StaffPotentialAbilityOffset);
+        Assert.Equal(0x19, layout.GenderOffset);
+        Assert.Equal(0x10, layout.FemaleGenderBit);
         Assert.True(layout.IsProvisional);
     }
 
@@ -167,6 +173,8 @@ public sealed class CapADumpTests
             ProtocolVersion = BridgeProtocol.ProtocolVersion,
             GameDate = "2026-08-14",
             GameDateSource = "memory",
+            GameDateBasis = "next-fixture-consensus",
+            PlayerDatabaseScope = "both",
             ScanTruncated = false,
             MaxAccepted = PersonScanner.DefaultMaxAccepted,
             PlayerCount = 1,
@@ -181,6 +189,8 @@ public sealed class CapADumpTests
                     BirthYear = 2001,
                     BirthDayOfYear = 33,
                     Nationalities = new[] { "ENG" },
+                    NationUid = 44,
+                    Gender = PlayerGenderValues.Male,
                     HeightCm = 180,
                     PreferredFoot = "right",
                     Positions = new Dictionary<string, int> { ["ST"] = 20 },
@@ -201,17 +211,54 @@ public sealed class CapADumpTests
                     OnLoan = false,
                     Division = "Premier League",
                     TeamLevel = "senior",
+                    ClubReputation = 6200,
+                    TeamType = 0,
                     Age = 25,
                 },
+            },
+            StaffCount = 1,
+            Staff = new[]
+            {
+                new DumpStaff
+                {
+                    Uid = 8,
+                    Name = "Meta Staff",
+                    BirthYear = 1985,
+                    BirthDayOfYear = 100,
+                    Age = 24,
+                    Nationalities = new[] { "DEN" },
+                    NationUid = 208,
+                    Gender = PlayerGenderValues.Female,
+                    Ca = 100,
+                    Pa = 120,
+                    Attributes = Fm263Layout.Instance.StaffAttributeEntries.ToDictionary(
+                        entry => entry.Key,
+                        _ => (int?)15),
+                    JobId = 16,
+                    WeeklyWageGbp = 20_000,
+                    ContractExpiryYear = 2028,
+                    ContractExpiryDayOfYear = 80,
+                    Club = "Example FC",
+                    Division = "Premier League",
+                },
+            },
+            Manager = new DumpManager
+            {
+                Uid = 8,
+                Name = "Meta Staff",
+                Club = "Example FC",
+                ClubReputation = 6200,
             },
         };
 
         var json = DumpWriter.Serialize(document);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        Assert.Equal(5, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(BridgeProtocol.DumpSchemaVersion, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("2026-08-14", root.GetProperty("gameDate").GetString());
         Assert.Equal("memory", root.GetProperty("gameDateSource").GetString());
+        Assert.Equal("next-fixture-consensus", root.GetProperty("gameDateBasis").GetString());
+        Assert.Equal("both", root.GetProperty("playerDatabaseScope").GetString());
         Assert.False(root.GetProperty("scanTruncated").GetBoolean());
         Assert.Equal(
             PersonScanner.DefaultMaxAccepted,
@@ -224,6 +271,8 @@ public sealed class CapADumpTests
         Assert.Equal(1, root.GetProperty("protocolVersion").GetInt32());
         Assert.Equal(1, root.GetProperty("playerCount").GetInt32());
         Assert.Equal(7u, root.GetProperty("players")[0].GetProperty("uid").GetUInt32());
+        Assert.Equal(44u, root.GetProperty("players")[0].GetProperty("nationUid").GetUInt32());
+        Assert.Equal("male", root.GetProperty("players")[0].GetProperty("gender").GetString());
         Assert.Equal(120, root.GetProperty("players")[0].GetProperty("ca").GetInt32());
         Assert.Equal(50_000, root.GetProperty("players")[0].GetProperty("weeklyWageGbp").GetInt64());
         Assert.True(root.GetProperty("players")[0].GetProperty("notForSale").GetBoolean());
@@ -232,6 +281,17 @@ public sealed class CapADumpTests
         Assert.Equal("Meta Player", root.GetProperty("players")[0].GetProperty("name").GetString());
         Assert.Equal(2001, root.GetProperty("players")[0].GetProperty("birthYear").GetInt32());
         Assert.Equal(33, root.GetProperty("players")[0].GetProperty("birthDayOfYear").GetInt32());
+        Assert.Equal(6200, root.GetProperty("players")[0].GetProperty("clubReputation").GetInt32());
+        Assert.Equal(0, root.GetProperty("players")[0].GetProperty("teamType").GetInt32());
+        Assert.Equal(1, root.GetProperty("staffCount").GetInt32());
+        Assert.Equal(8u, root.GetProperty("staff")[0].GetProperty("uid").GetUInt32());
+        Assert.Equal("female", root.GetProperty("staff")[0].GetProperty("gender").GetString());
+        Assert.Equal(
+            Fm263Layout.Instance.StaffAttributeEntries.Count,
+            root.GetProperty("staff")[0].GetProperty("attributes").EnumerateObject().Count());
+        Assert.Equal(15, root.GetProperty("staff")[0].GetProperty("attributes").GetProperty("Attacking").GetInt32());
+        Assert.Equal(8u, root.GetProperty("manager").GetProperty("uid").GetUInt32());
+        Assert.Equal("Example FC", root.GetProperty("manager").GetProperty("club").GetString());
         Assert.Equal("ENG", root.GetProperty("players")[0].GetProperty("nationalities")[0].GetString());
         Assert.Equal(180, root.GetProperty("players")[0].GetProperty("heightCm").GetInt32());
         Assert.Equal("right", root.GetProperty("players")[0].GetProperty("preferredFoot").GetString());
@@ -250,13 +310,14 @@ public sealed class CapADumpTests
         var diagnostics = new ScanDiagnostics();
         var gameAssembly = new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd);
 
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             gameAssembly,
             gamePlugin: null,
             regions,
             diagnostics);
+        var candidates = scan.Players;
 
         Assert.Single(candidates);
         Assert.Equal(12345u, candidates[0].Uid);
@@ -286,13 +347,14 @@ public sealed class CapADumpTests
 
         var reader = new CountingMemoryReader(inner);
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
             gamePlugin: null,
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics);
+        var candidates = scan.Players;
 
         Assert.Single(candidates);
         Assert.Equal(4242u, candidates[0].Uid);
@@ -337,13 +399,14 @@ public sealed class CapADumpTests
 
         var reader = new CountingMemoryReader(inner);
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
             gamePlugin: null,
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics);
+        var candidates = scan.Players;
 
         Assert.Empty(candidates);
         Assert.Equal(hitCount, diagnostics.VtableHits);
@@ -371,13 +434,14 @@ public sealed class CapADumpTests
             pa: 180,
             playerBlockBase: highPlayerBase);
 
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
             gamePlugin: null,
             RegionEnumerator.GetCandidateRegions(reader),
             new ScanDiagnostics());
+        var candidates = scan.Players;
 
         Assert.Single(candidates);
         Assert.Equal(55555u, candidates[0].Uid);
@@ -393,13 +457,14 @@ public sealed class CapADumpTests
         PlacePlayerFixture(reader, layout, PersonAddress, uid: 99, ca: 0, pa: 170);
 
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
             gamePlugin: null,
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics);
+        var candidates = scan.Players;
 
         Assert.Empty(candidates);
         Assert.True(diagnostics.CandidatesRejected > 0);
@@ -429,7 +494,7 @@ public sealed class CapADumpTests
             playerBlockBase: PlayerBlockBase + 0x200);
 
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
@@ -437,9 +502,12 @@ public sealed class CapADumpTests
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics,
             maxAccepted: 2);
+        var candidates = scan.Players;
 
         Assert.Equal(2, candidates.Count);
         Assert.True(diagnostics.StoppedEarly);
+        Assert.True(diagnostics.ClubDiscoveryIncomplete);
+        Assert.True(scan.StoppedEarly);
         Assert.Equal(2, diagnostics.MaxAccepted);
         Assert.Equal(2, diagnostics.CandidatesAccepted);
     }
@@ -460,7 +528,7 @@ public sealed class CapADumpTests
             playerBlockBase: PlayerBlockBase + 0x100);
 
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
@@ -468,9 +536,12 @@ public sealed class CapADumpTests
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics,
             maxAccepted: 2);
+        var candidates = scan.Players;
 
         Assert.Equal(2, candidates.Count);
         Assert.False(diagnostics.StoppedEarly);
+        Assert.False(diagnostics.ClubDiscoveryIncomplete);
+        Assert.False(scan.StoppedEarly);
     }
 
     [Fact]
@@ -550,7 +621,7 @@ public sealed class CapADumpTests
         cts.Cancel();
 
         var diagnostics = new ScanDiagnostics();
-        var candidates = PersonScanner.Scan(
+        var scan = PersonScanner.Scan(
             reader,
             layout,
             new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
@@ -558,8 +629,11 @@ public sealed class CapADumpTests
             RegionEnumerator.GetCandidateRegions(reader),
             diagnostics,
             cancellationToken: cts.Token);
+        var candidates = scan.Players;
 
         Assert.True(diagnostics.Cancelled);
+        Assert.True(diagnostics.ClubDiscoveryIncomplete);
+        Assert.True(scan.Cancelled);
         Assert.False(diagnostics.StoppedEarly);
         Assert.Empty(candidates);
     }

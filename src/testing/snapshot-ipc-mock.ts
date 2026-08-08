@@ -84,7 +84,7 @@ function buildSnapshot(overrides?: Partial<SnapshotSummary>): SnapshotSummary {
   return {
     id: 1,
     saveId: activeSave.id,
-    schemaVersion: 5,
+    schemaVersion: 6,
     generatedAtUtc: "2026-07-28T15:00:00.000Z",
     gameVersion: "26.0.0",
     supportedGameVersion: "26.0.0",

@@ -20,6 +20,9 @@ public sealed class PlayerIdentity
 
     public IReadOnlyList<string> Nationalities { get; init; } = Array.Empty<string>();
 
+    /// <summary>UID from the primary nation object; null when unread or invalid.</summary>
+    public uint? NationUid { get; init; }
+
     public int? HeightCm { get; init; }
 
     public string PreferredFoot { get; init; } = "";
@@ -66,6 +69,7 @@ public static class PlayerIdentityReader
         }
 
         var nationalities = NationReader.TryRead(reader, personAddress, layout);
+        var nationUid = NationReader.TryReadUid(reader, personAddress, layout);
         var heightCm = TryReadHeight(reader, playerBlockBase, layout);
         var preferredFoot = ReadPreferredFoot(reader, playerBlockBase, layout);
         var positions = ReadNaturalPositions(reader, playerBlockBase, layout);
@@ -76,6 +80,7 @@ public static class PlayerIdentityReader
             BirthYear = birthYear,
             BirthDayOfYear = birthDoy,
             Nationalities = nationalities,
+            NationUid = nationUid,
             HeightCm = heightCm,
             PreferredFoot = preferredFoot,
             Positions = positions,

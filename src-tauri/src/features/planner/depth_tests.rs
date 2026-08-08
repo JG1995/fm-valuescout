@@ -331,7 +331,7 @@ fn clearing_all_requires_confirmation_and_preserves_other_saves_and_settings() {
     let second_dump_path = temp_dir.path().join("second-save.json");
     std::fs::write(
         &second_dump_path,
-        include_str!("../memory_read/fixtures/golden_dump_v5.json"),
+        include_str!("../memory_read/fixtures/golden_dump_v6.json"),
     )
     .expect("write second save dump");
     snapshot::ingest::ingest_dump_file_for_save(&mut conn, second_save_id, &second_dump_path)
@@ -439,7 +439,7 @@ fn preserves_assignment_as_unresolved_when_snapshot_replaces_player() {
     assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
 
     let replacement_path = temp_dir.path().join("replacement.json");
-    let replacement = include_str!("../memory_read/fixtures/golden_dump_v5.json")
+    let replacement = include_str!("../memory_read/fixtures/golden_dump_v6.json")
         .replace("\"uid\": 77", "\"uid\": 78")
         .replace("\"name\": \"Loan Player\"", "\"name\": \"Replacement\"");
     std::fs::write(&replacement_path, replacement).expect("write replacement dump");
@@ -486,7 +486,7 @@ fn resolves_combined_scores_and_marks_current_players_outside_the_pool() {
     assert_eq!(assignment.combined_score, Some(80));
 
     let moved_path = temp_dir.path().join("moved.json");
-    let moved = include_str!("../memory_read/fixtures/golden_dump_v5.json").replace(
+    let moved = include_str!("../memory_read/fixtures/golden_dump_v6.json").replace(
         "\"currentClub\": \"Loan FC\"",
         "\"currentClub\": \"Other FC\"",
     );
@@ -539,7 +539,7 @@ fn source_and_tactic_updates_preserve_existing_assignments_and_saves_are_isolate
     let second_dump_path = temp_dir.path().join("second-save.json");
     std::fs::write(
         &second_dump_path,
-        include_str!("../memory_read/fixtures/golden_dump_v5.json"),
+        include_str!("../memory_read/fixtures/golden_dump_v6.json"),
     )
     .expect("write second save dump");
     snapshot::ingest::ingest_dump_file_for_save(&mut conn, second_save_id, &second_dump_path)

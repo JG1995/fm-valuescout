@@ -107,6 +107,13 @@ public static class RequestAcceptance
             return false;
         }
 
+        if (!PlayerDatabaseScopes.TryParse(parsed.PlayerDatabaseScope, out var playerDatabaseScope))
+        {
+            rejectReason = "playerDatabaseScope must be one of: men, women, both";
+            TryDelete(requestPath);
+            return false;
+        }
+
         if (!IsFresh(parsed.CreatedAtUtc, now, ttl))
         {
             rejectReason =
@@ -116,7 +123,15 @@ public static class RequestAcceptance
         }
 
         TryDelete(requestPath);
-        request = parsed;
+        request = new BridgeRequest
+        {
+            ProtocolVersion = parsed.ProtocolVersion,
+            RequestId = parsed.RequestId,
+            CreatedAtUtc = parsed.CreatedAtUtc,
+            Operation = parsed.Operation,
+            MaxAccepted = parsed.MaxAccepted,
+            PlayerDatabaseScope = PlayerDatabaseScopes.ToWireValue(playerDatabaseScope),
+        };
         return true;
     }
 
@@ -157,7 +172,8 @@ public static class RequestAcceptance
             || !string.Equals(
                 parsed.Operation,
                 BridgeProtocol.OperationFullDump,
-                StringComparison.Ordinal))
+                StringComparison.Ordinal)
+            || !PlayerDatabaseScopes.TryParse(parsed.PlayerDatabaseScope, out var playerDatabaseScope))
         {
             return false;
         }
@@ -169,6 +185,7 @@ public static class RequestAcceptance
             CreatedAtUtc = now,
             Operation = parsed.Operation,
             MaxAccepted = parsed.MaxAccepted,
+            PlayerDatabaseScope = PlayerDatabaseScopes.ToWireValue(playerDatabaseScope),
         };
 
         try

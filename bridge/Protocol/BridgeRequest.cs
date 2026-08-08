@@ -19,4 +19,7 @@ public sealed class BridgeRequest
     /// a positive integer stops after that many accepted players.
     /// </summary>
     public int? MaxAccepted { get; init; }
+
+    /// <summary>Closed player database scope: men, women, or both.</summary>
+    public string PlayerDatabaseScope { get; init; } = PlayerDatabaseScopes.Men;
 }

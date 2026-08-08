@@ -16,11 +16,29 @@ public interface IFmMemoryLayout
     /// <summary>Known person→player class offsets (from Il2Cpp meta+4).</summary>
     IReadOnlyList<int> PlayerClassOffsets { get; }
 
+    /// <summary>Known person→pure-staff class offsets (from Il2Cpp meta+4).</summary>
+    IReadOnlyList<int> StaffClassOffsets { get; }
+
+    /// <summary>Known person→human-manager class offsets (from Il2Cpp meta+4).</summary>
+    IReadOnlyList<int> HumanManagerClassOffsets { get; }
+
     /// <summary>Current ability (u16) relative to player block base (<c>person - classOffset</c>).</summary>
     int CurrentAbilityOffset { get; }
 
     /// <summary>Potential ability (u16) relative to player block base.</summary>
     int PotentialAbilityOffset { get; }
+
+    /// <summary>Current ability (u16) relative to staff block base.</summary>
+    int StaffCurrentAbilityOffset { get; }
+
+    /// <summary>Potential ability (u16) relative to staff block base.</summary>
+    int StaffPotentialAbilityOffset { get; }
+
+    /// <summary>Base of staff attribute bytes (stored ×5) relative to staff block.</summary>
+    int StaffAttrsOffset { get; }
+
+    /// <summary>Stable staff attribute key → byte offset from <see cref="StaffAttrsOffset"/>.</summary>
+    IReadOnlyList<AttributeLayoutEntry> StaffAttributeEntries { get; }
 
     /// <summary>Nested string slot: first name (relative to person).</summary>
     int FirstNameOffset { get; }
@@ -33,6 +51,12 @@ public interface IFmMemoryLayout
 
     /// <summary>Pointer to nation object (relative to person).</summary>
     int NationPtrOffset { get; }
+
+    /// <summary>Person gender flag byte.</summary>
+    int GenderOffset { get; }
+
+    /// <summary>Bit set in <see cref="GenderOffset"/> for a female person.</summary>
+    byte FemaleGenderBit { get; }
 
     /// <summary>Packed FM date of birth (u32) relative to person.</summary>
     int DobOffset { get; }
@@ -79,6 +103,9 @@ public interface IFmMemoryLayout
     /// <summary>Contract expiry packed FM date (u32) relative to contract object.</summary>
     int ContractExpiryOffset { get; }
 
+    /// <summary>Language-independent job enum byte relative to contract object.</summary>
+    int ContractJobIdOffset { get; }
+
     /// <summary>Transfer-status bitfield (byte) relative to contract object.</summary>
     int ContractStatusFlagsOffset { get; }
 
@@ -96,6 +123,9 @@ public interface IFmMemoryLayout
 
     /// <summary>Pointer to club object relative to team.</summary>
     int TeamClubPtrOffset { get; }
+
+    /// <summary>Pointer to the human manager person object relative to team.</summary>
+    int TeamManagerPtrOffset { get; }
 
     /// <summary>Team type byte (0 = first team, ~3 = reserves, ≥10 = youth).</summary>
     int TeamTypeOffset { get; }

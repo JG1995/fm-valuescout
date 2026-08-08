@@ -41,6 +41,21 @@ public sealed class ClubExtractionTests
     private static readonly ulong SeedPerson = SeedPlayerBase + (ulong)PlayerClassOffset;
     private static readonly ulong SeedContract = SeedPerson + 0x3000UL;
 
+    private const ulong GlobalPlayerBase = 0x350000UL;
+    private static readonly ulong GlobalPerson = GlobalPlayerBase + (ulong)PlayerClassOffset;
+    private const ulong FalseClub = 0x330000UL;
+    private const ulong FalseTeam = 0x331000UL;
+    private const ulong FalseComp = 0x332000UL;
+    private const ulong FalseSchedule = 0x333000UL;
+    private const ulong FalseTeamArray = 0x334001UL;
+    private const ulong FalseSquadArray = 0x335000UL;
+    private const ulong GlobalClub = 0x340000UL;
+    private const ulong GlobalTeam = 0x341000UL;
+    private const ulong GlobalComp = 0x342000UL;
+    private const ulong GlobalSchedule = 0x343000UL;
+    private const ulong GlobalTeamArray = 0x344000UL;
+    private const ulong GlobalSquadArray = 0x345000UL;
+
     [Theory]
     [InlineData(0, "senior")]
     [InlineData(3, "reserve")]
@@ -105,7 +120,7 @@ public sealed class ClubExtractionTests
     }
 
     [Fact]
-    public void Game_date_resolver_uses_majority_memory_vote()
+    public void Game_date_resolver_labels_next_fixture_consensus_as_derived()
     {
         var votes = new Dictionary<uint, int>
         {
@@ -116,9 +131,23 @@ public sealed class ClubExtractionTests
         var resolved = GameDateResolver.Resolve(votes, youngestBirthCohortYear: 2010);
 
         Assert.Equal("2026-08-14", resolved.GameDate);
-        Assert.Equal("memory", resolved.Source);
+        Assert.Equal("derived", resolved.Source);
+        Assert.Equal(GameDateResolver.BasisNextFixtureConsensus, resolved.Basis);
         Assert.Equal(2026, resolved.Year);
         Assert.Equal(226, resolved.DayOfYear);
+    }
+
+    [Fact]
+    public void Game_date_resolver_labels_the_birth_cohort_fallback_explicitly()
+    {
+        var resolved = GameDateResolver.Resolve(
+            new Dictionary<uint, int>(),
+            youngestBirthCohortYear: 2010,
+            systemNow: new DateTime(2026, 1, 1));
+
+        Assert.Equal("2026-01-01", resolved.GameDate);
+        Assert.Equal(GameDateResolver.SourceDerived, resolved.Source);
+        Assert.Equal(GameDateResolver.BasisBirthCohortAndSystemDate, resolved.Basis);
     }
 
     [Fact]
@@ -129,7 +158,7 @@ public sealed class ClubExtractionTests
     }
 
     [Fact]
-    public void Pipeline_writes_schema_v5_clubs_loan_game_date_and_age()
+    public void Pipeline_writes_schema_v6_clubs_loan_game_date_and_age()
     {
         var bridgeDir = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(bridgeDir);
@@ -150,9 +179,9 @@ public sealed class ClubExtractionTests
             Assert.Equal(2, result.PlayerCount);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
-            Assert.Equal(5, doc.RootElement.GetProperty("schemaVersion").GetInt32());
+            Assert.Equal(BridgeProtocol.DumpSchemaVersion, doc.RootElement.GetProperty("schemaVersion").GetInt32());
             Assert.Equal("2026-08-14", doc.RootElement.GetProperty("gameDate").GetString());
-            Assert.Equal("memory", doc.RootElement.GetProperty("gameDateSource").GetString());
+            Assert.Equal("derived", doc.RootElement.GetProperty("gameDateSource").GetString());
 
             var players = doc.RootElement.GetProperty("players");
             var loaned = FindPlayer(players, 77);
@@ -171,12 +200,111 @@ public sealed class ClubExtractionTests
             var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
             Assert.Contains("sampleClubs:", diagnostics, StringComparison.Ordinal);
             Assert.Contains("uid=77", diagnostics, StringComparison.Ordinal);
-            Assert.Contains("gameDateSource=memory", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("gameDateSource=derived", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("gameDateBasis=next-fixture-consensus", diagnostics, StringComparison.Ordinal);
         }
         finally
         {
             Directory.Delete(bridgeDir, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Pipeline_uses_discovered_clubs_before_contract_seeded_fallbacks()
+    {
+        var bridgeDir = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(bridgeDir);
+        try
+        {
+            var layout = Fm263Layout.Instance;
+            var reader = new FakeMemoryReader();
+            PlaceLoanScenario(reader, layout, includeGlobalClub: true);
+
+            var result = new CapADumpPipeline().Run(
+                reader,
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success);
+            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            var players = doc.RootElement.GetProperty("players");
+            Assert.Equal("Global FC", FindPlayer(players, 99).GetProperty("currentClub").GetString());
+            Assert.Equal("Loan FC", FindPlayer(players, 77).GetProperty("currentClub").GetString());
+            Assert.Equal("Loan FC", FindPlayer(players, 88).GetProperty("currentClub").GetString());
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Reordered_discovered_clubs_keep_the_same_squad_selection()
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        PlaceLoanScenario(reader, layout);
+
+        var personToUid = new Dictionary<ulong, uint> { [LoanPerson] = 77 };
+        var parentClubByUid = new Dictionary<uint, string?> { [77] = "Parent FC" };
+        var clubs = new[]
+        {
+            new ClubCandidate(LoanClub, "Loan FC"),
+            new ClubCandidate(ParentClub, "Parent FC"),
+        };
+
+        var forward = SquadClubIndex.Build(
+            reader,
+            layout,
+            personToUid,
+            parentClubByUid,
+            clubs,
+            Array.Empty<ulong>());
+        var reversed = SquadClubIndex.Build(
+            reader,
+            layout,
+            personToUid,
+            parentClubByUid,
+            clubs.Reverse(),
+            Array.Empty<ulong>());
+
+        Assert.True(forward.TryGet(77, out var forwardAssignment));
+        Assert.True(reversed.TryGet(77, out var reversedAssignment));
+        Assert.Equal("Loan FC", forwardAssignment.ClubName);
+        Assert.Equal(forwardAssignment.ClubName, reversedAssignment.ClubName);
+        Assert.Equal(forwardAssignment.TeamType, reversedAssignment.TeamType);
+        Assert.Equal(forwardAssignment.Division, reversedAssignment.Division);
+    }
+
+    [Fact]
+    public void Squad_assignment_carries_raw_type_and_reputation_from_the_selected_team()
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        PlaceLoanScenario(
+            reader,
+            layout,
+            loanTeamType: 11,
+            loanTeamReputation: 6200);
+
+        var index = SquadClubIndex.Build(
+            reader,
+            layout,
+            new Dictionary<ulong, uint> { [LoanPerson] = 77 },
+            new Dictionary<uint, string?> { [77] = "Parent FC" },
+            new[]
+            {
+                new ClubCandidate(ParentClub, "Parent FC"),
+                new ClubCandidate(LoanClub, "Loan FC"),
+            },
+            Array.Empty<ulong>());
+
+        Assert.True(index.TryGet(77, out var assignment));
+        Assert.Equal("Loan FC", assignment.ClubName);
+        Assert.Equal(11, assignment.TeamType);
+        Assert.Equal(6200, assignment.TeamReputation);
     }
 
     private static JsonElement FindPlayer(JsonElement players, uint uid)
@@ -192,9 +320,16 @@ public sealed class ClubExtractionTests
         throw new InvalidOperationException($"player uid={uid} not found in dump");
     }
 
-    private static void PlaceLoanScenario(FakeMemoryReader reader, IFmMemoryLayout layout)
+    private static void PlaceLoanScenario(
+        FakeMemoryReader reader,
+        IFmMemoryLayout layout,
+        bool includeGlobalClub = false,
+        int loanTeamType = 0,
+        ushort loanTeamReputation = 5000)
     {
-        var regionEnd = SeedContract + 0x200;
+        var regionEnd = includeGlobalClub
+            ? GlobalPlayerBase + 0x12000
+            : SeedContract + 0x200;
         reader.AddRegion(
             new MemoryRegion(
                 LoanPlayerBase,
@@ -224,10 +359,11 @@ public sealed class ClubExtractionTests
             LoanClub,
             LoanComp,
             "Championship",
-            teamType: 0,
+            teamType: loanTeamType,
             schedule: LoanSchedule,
             scheduleYear: 2026,
-            scheduleDoy: 226);
+            scheduleDoy: 226,
+            teamReputation: loanTeamReputation);
 
         // Parent club → [ParentTeam]; squad lists loan person.
         reader.AddBytes(ParentClub + (ulong)layout.ClubTeamsBeginOffset, BitConverter.GetBytes(ParentTeamArray));
@@ -242,9 +378,15 @@ public sealed class ClubExtractionTests
         reader.AddBytes(LoanClub + (ulong)layout.ClubTeamsEndOffset, BitConverter.GetBytes(LoanTeamArray + 8));
         reader.AddBytes(LoanTeamArray, BitConverter.GetBytes(LoanTeam));
         reader.AddBytes(LoanTeam + (ulong)layout.TeamSquadBeginOffset, BitConverter.GetBytes(LoanSquadArray));
-        reader.AddBytes(LoanTeam + (ulong)layout.TeamSquadEndOffset, BitConverter.GetBytes(LoanSquadArray + 16));
+        reader.AddBytes(
+            LoanTeam + (ulong)layout.TeamSquadEndOffset,
+            BitConverter.GetBytes(LoanSquadArray + (includeGlobalClub ? 24UL : 16UL)));
         reader.AddBytes(LoanSquadArray, BitConverter.GetBytes(LoanPerson));
         reader.AddBytes(LoanSquadArray + 8, BitConverter.GetBytes(SeedPerson));
+        if (includeGlobalClub)
+        {
+            reader.AddBytes(LoanSquadArray + 16, BitConverter.GetBytes(GlobalPerson));
+        }
 
         PlaceScannablePlayer(
             reader,
@@ -273,6 +415,83 @@ public sealed class ClubExtractionTests
             name: "Seed Player",
             birthYear: 1998,
             birthDoy: 50);
+
+        if (!includeGlobalClub)
+        {
+            return;
+        }
+
+        PlaceClubObject(reader, layout, FalseClub, "False FC");
+        PlaceTeamObject(
+            reader,
+            layout,
+            FalseTeam,
+            FalseClub,
+            FalseComp,
+            "False League",
+            teamType: 0,
+            schedule: FalseSchedule,
+            scheduleYear: 2026,
+            scheduleDoy: 226);
+        reader.AddBytes(FalseClub + (ulong)layout.ClubTeamsBeginOffset, BitConverter.GetBytes(FalseTeamArray));
+        reader.AddBytes(FalseClub + (ulong)layout.ClubTeamsEndOffset, BitConverter.GetBytes(FalseTeamArray + 8));
+        reader.AddBytes(FalseTeamArray, BitConverter.GetBytes(FalseTeam));
+        reader.AddBytes(FalseTeam + (ulong)layout.TeamSquadBeginOffset, BitConverter.GetBytes(FalseSquadArray));
+        reader.AddBytes(FalseTeam + (ulong)layout.TeamSquadEndOffset, BitConverter.GetBytes(FalseSquadArray + 8));
+        reader.AddBytes(FalseSquadArray, BitConverter.GetBytes(GlobalPerson));
+        PlaceScannableClub(reader, layout, FalseClub, uid: 9000);
+
+        PlaceClubObject(reader, layout, GlobalClub, "Global FC");
+        PlaceTeamObject(
+            reader,
+            layout,
+            GlobalTeam,
+            GlobalClub,
+            GlobalComp,
+            "Global League",
+            teamType: 0,
+            schedule: GlobalSchedule,
+            scheduleYear: 2026,
+            scheduleDoy: 226);
+        reader.AddBytes(GlobalClub + (ulong)layout.ClubTeamsBeginOffset, BitConverter.GetBytes(GlobalTeamArray));
+        reader.AddBytes(GlobalClub + (ulong)layout.ClubTeamsEndOffset, BitConverter.GetBytes(GlobalTeamArray + 8));
+        reader.AddBytes(GlobalTeamArray, BitConverter.GetBytes(GlobalTeam));
+        reader.AddBytes(GlobalTeam + (ulong)layout.TeamSquadBeginOffset, BitConverter.GetBytes(GlobalSquadArray));
+        reader.AddBytes(GlobalTeam + (ulong)layout.TeamSquadEndOffset, BitConverter.GetBytes(GlobalSquadArray + 8));
+        reader.AddBytes(GlobalSquadArray, BitConverter.GetBytes(GlobalPerson));
+        PlaceScannableClub(reader, layout, GlobalClub, uid: 9001);
+        PlaceScannablePlayer(
+            reader,
+            layout,
+            playerBase: GlobalPlayerBase,
+            person: GlobalPerson,
+            contract: 0,
+            team: 0,
+            uid: 99,
+            ca: 110,
+            pa: 130,
+            name: "Global Player",
+            birthYear: 2001,
+            birthDoy: 120);
+    }
+
+    private static void PlaceScannableClub(
+        FakeMemoryReader reader,
+        IFmMemoryLayout layout,
+        ulong club,
+        uint uid)
+    {
+        var metadata = GameAssemblyBase + 0x3100UL;
+        var vtable = GameAssemblyBase + 0x3000UL;
+        var metaBytes = new byte[8];
+        BitConverter.TryWriteBytes(metaBytes.AsSpan(4), 0x600);
+        reader.AddBytes(metadata, metaBytes);
+        reader.AddBytes(vtable - 8, BitConverter.GetBytes(metadata));
+
+        var header = new byte[0x10];
+        BitConverter.TryWriteBytes(header.AsSpan(), vtable);
+        BitConverter.TryWriteBytes(header.AsSpan(layout.ObjectUidOffset), uid);
+        reader.AddBytes(club, header);
     }
 
     private static void PlaceScannablePlayer(
@@ -342,12 +561,15 @@ public sealed class ClubExtractionTests
             BitConverter.GetBytes(((uint)birthYear << 16) | (uint)birthDoy));
 
         reader.AddBytes(person + (ulong)layout.FullContractPtrOffset, BitConverter.GetBytes(contract));
-        reader.AddBytes(contract + (ulong)layout.ContractTeamPtrOffset, BitConverter.GetBytes(team));
-        reader.AddBytes(contract + (ulong)layout.ContractWeeklyWageOffset, BitConverter.GetBytes(10_000u));
-        reader.AddBytes(
-            contract + (ulong)layout.ContractExpiryOffset,
-            BitConverter.GetBytes((2029u << 16) | 1u));
-        reader.AddBytes(contract + (ulong)layout.ContractStatusFlagsOffset, new byte[] { 0 });
+        if (contract != 0)
+        {
+            reader.AddBytes(contract + (ulong)layout.ContractTeamPtrOffset, BitConverter.GetBytes(team));
+            reader.AddBytes(contract + (ulong)layout.ContractWeeklyWageOffset, BitConverter.GetBytes(10_000u));
+            reader.AddBytes(
+                contract + (ulong)layout.ContractExpiryOffset,
+                BitConverter.GetBytes((2029u << 16) | 1u));
+            reader.AddBytes(contract + (ulong)layout.ContractStatusFlagsOffset, new byte[] { 0 });
+        }
     }
 
     private static void PlaceClubObject(FakeMemoryReader reader, IFmMemoryLayout layout, ulong club, string name)
@@ -366,11 +588,12 @@ public sealed class ClubExtractionTests
         int teamType,
         ulong schedule,
         int scheduleYear,
-        int scheduleDoy)
+        int scheduleDoy,
+        ushort teamReputation = 5000)
     {
         reader.AddBytes(team + (ulong)layout.TeamClubPtrOffset, BitConverter.GetBytes(club));
         reader.AddBytes(team + (ulong)layout.TeamTypeOffset, new[] { (byte)teamType });
-        reader.AddBytes(team + (ulong)layout.TeamReputationOffset, BitConverter.GetBytes((ushort)5000));
+        reader.AddBytes(team + (ulong)layout.TeamReputationOffset, BitConverter.GetBytes(teamReputation));
         reader.AddBytes(team + (ulong)layout.TeamCompPtrOffset, BitConverter.GetBytes(comp));
         PlaceIndirectString(reader, comp + 0x100, division);
         reader.AddBytes(comp + (ulong)layout.CompNameOffset, BitConverter.GetBytes(comp + 0x100));

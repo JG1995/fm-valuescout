@@ -1,7 +1,11 @@
 namespace FmDataBridge.Extraction;
 
 /// <summary>One squad-walk hit for a player UID.</summary>
-public readonly record struct SquadHit(string ClubName, int TeamType, string? Division);
+public readonly record struct SquadHit(
+    string ClubName,
+    int TeamType,
+    string? Division,
+    int? TeamReputation = null);
 
 /// <summary>
 /// Deterministic multi-squad conflict rules (SuperScout PickSquad).
