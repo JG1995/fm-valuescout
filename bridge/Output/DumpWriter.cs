@@ -142,6 +142,8 @@ public static class DiagnosticsWriter
         sb.AppendLine($"clubDiscoveryIncomplete={diagnostics.ClubDiscoveryIncomplete}");
         sb.AppendLine($"candidatesRejected={diagnostics.CandidatesRejected}");
         sb.AppendLine($"duplicatesSkipped={diagnostics.DuplicatesSkipped}");
+        sb.AppendLine($"playerDatabaseScope={diagnostics.PlayerDatabaseScope ?? "men"}");
+        sb.AppendLine($"playersExcludedByDatabaseScope={diagnostics.PlayersExcludedByDatabaseScope}");
         sb.AppendLine($"identitySkippedEmptyName={diagnostics.IdentitySkippedEmptyName}");
         sb.AppendLine($"identitySkippedImpossibleDob={diagnostics.IdentitySkippedImpossibleDob}");
         sb.AppendLine($"regionEnumerationMs={diagnostics.RegionEnumerationMs}");
@@ -196,6 +198,7 @@ public static class DiagnosticsWriter
 
         sb.AppendLine($"gameDate={diagnostics.GameDate ?? "(none)"}");
         sb.AppendLine($"gameDateSource={diagnostics.GameDateSource ?? "unknown"}");
+        sb.AppendLine($"gameDateBasis={diagnostics.GameDateBasis ?? "unknown"}");
         sb.AppendLine("sampleAttributes:");
         foreach (var sample in diagnostics.SampleAttributeSnapshots)
         {

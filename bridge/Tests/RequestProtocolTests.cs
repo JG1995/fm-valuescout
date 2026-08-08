@@ -35,6 +35,7 @@ public sealed class RequestProtocolTests
             Assert.Equal("req-1", request.RequestId);
             Assert.Equal("req-1", observedRequestId);
             Assert.Equal(BridgeProtocol.OperationFullDump, request.Operation);
+            Assert.Equal(PlayerDatabaseScopes.Men, request.PlayerDatabaseScope);
             Assert.False(File.Exists(path));
         }
         finally
@@ -287,6 +288,75 @@ public sealed class RequestProtocolTests
         }
     }
 
+    [Theory]
+    [InlineData("men")]
+    [InlineData("women")]
+    [InlineData("both")]
+    public void Accept_preserves_supported_player_database_scopes(string scope)
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-07-28T18:30:00Z");
+            WriteRequest(
+                path,
+                protocolVersion: 1,
+                requestId: $"req-{scope}",
+                createdAtUtc: now,
+                operation: BridgeProtocol.OperationFullDump,
+                playerDatabaseScopeJson: $"\"{scope}\"");
+
+            Assert.True(
+                RequestAcceptance.TryAccept(
+                    path,
+                    now,
+                    Ttl,
+                    out var request,
+                    out _,
+                    out _));
+            Assert.Equal(scope, request.PlayerDatabaseScope);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Accept_rejects_invalid_player_database_scope()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-07-28T18:30:00Z");
+            WriteRequest(
+                path,
+                protocolVersion: 1,
+                requestId: "req-invalid-scope",
+                createdAtUtc: now,
+                operation: BridgeProtocol.OperationFullDump,
+                playerDatabaseScopeJson: "\"mixed\"");
+
+            Assert.False(
+                RequestAcceptance.TryAccept(
+                    path,
+                    now,
+                    Ttl,
+                    out _,
+                    out var rejectReason,
+                    out var observedRequestId));
+            Assert.Contains("playerDatabaseScope", rejectReason, StringComparison.Ordinal);
+            Assert.Equal("req-invalid-scope", observedRequestId);
+            Assert.False(File.Exists(path));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     [Fact]
     public void Refresh_created_at_preserves_max_accepted()
     {
@@ -302,12 +372,14 @@ public sealed class RequestProtocolTests
                 requestId: "req-wait-cap",
                 createdAtUtc: original,
                 operation: BridgeProtocol.OperationFullDump,
-                maxAcceptedJson: "250");
+                maxAcceptedJson: "250",
+                playerDatabaseScopeJson: "\"women\"");
 
             Assert.True(RequestAcceptance.TryRefreshCreatedAtUtc(path, refreshedAt));
 
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
             Assert.Equal(250, doc.RootElement.GetProperty("maxAccepted").GetInt32());
+            Assert.Equal("women", doc.RootElement.GetProperty("playerDatabaseScope").GetString());
 
             Assert.True(
                 RequestAcceptance.TryAccept(
@@ -318,6 +390,7 @@ public sealed class RequestProtocolTests
                     out _,
                     out _));
             Assert.Equal(250, request.MaxAccepted);
+            Assert.Equal(PlayerDatabaseScopes.Women, request.PlayerDatabaseScope);
         }
         finally
         {
@@ -331,19 +404,30 @@ public sealed class RequestProtocolTests
         string requestId,
         DateTimeOffset createdAtUtc,
         string operation,
-        string? maxAcceptedJson = null)
+        string? maxAcceptedJson = null,
+        string? playerDatabaseScopeJson = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var maxAcceptedLine = maxAcceptedJson is null
+        var optionalProperties = new[]
+            {
+                maxAcceptedJson is null ? null : $"\"maxAccepted\": {maxAcceptedJson}",
+                playerDatabaseScopeJson is null
+                    ? null
+                    : $"\"playerDatabaseScope\": {playerDatabaseScopeJson}",
+            }
+            .Where(value => value is not null)
+            .Cast<string>()
+            .ToList();
+        var optionalLines = optionalProperties.Count == 0
             ? ""
-            : $",\n  \"maxAccepted\": {maxAcceptedJson}";
+            : $",\n  {string.Join(",\n  ", optionalProperties)}";
         File.WriteAllText(
             path,
             "{\n"
             + $"  \"protocolVersion\": {protocolVersion},\n"
             + $"  \"requestId\": \"{requestId}\",\n"
             + $"  \"createdAtUtc\": \"{createdAtUtc:O}\",\n"
-            + $"  \"operation\": \"{operation}\"{maxAcceptedLine}\n"
+            + $"  \"operation\": \"{operation}\"{optionalLines}\n"
             + "}\n");
     }
 

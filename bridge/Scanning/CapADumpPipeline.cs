@@ -25,6 +25,7 @@ public sealed class CapADumpPipeline
         ModuleBounds gameAssembly,
         ModuleBounds? gamePlugin = null,
         int? maxAccepted = null,
+        PlayerDatabaseScope playerDatabaseScope = PlayerDatabaseScope.Men,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -63,6 +64,7 @@ public sealed class CapADumpPipeline
             regions,
             diagnostics,
             maxAccepted,
+            playerDatabaseScope,
             cancellationToken);
         diagnostics.CandidateDiscoveryMs = phaseSw.ElapsedMilliseconds;
         var candidates = scan.Players;
@@ -125,6 +127,7 @@ public sealed class CapADumpPipeline
                 layout);
 
             var parentLink = ContractClubReader.TryRead(reader, candidate.ObjectAddress, layout);
+            var gender = PlayerGenderReader.Read(reader, candidate.ObjectAddress, layout);
             if (parentLink is { ClubAddress: not 0 })
             {
                 clubAddresses.Add(parentLink.ClubAddress);
@@ -139,7 +142,8 @@ public sealed class CapADumpPipeline
                     identity,
                     attrs,
                     contract,
-                    parentLink));
+                    parentLink,
+                    gender));
 
             if (diagnostics.SampleAttributeSnapshots.Count < ScanDiagnostics.MaxSampleAttributeSnapshots)
             {
@@ -189,6 +193,7 @@ public sealed class CapADumpPipeline
                 minCohortSize: Math.Min(30, Math.Max(1, drafts.Count))));
 
         diagnostics.GameDateSource = gameDate.Source;
+        diagnostics.GameDateBasis = gameDate.Basis;
         diagnostics.GameDate = gameDate.GameDate;
 
         var players = new List<DumpPlayer>(drafts.Count);
@@ -199,12 +204,14 @@ public sealed class CapADumpPipeline
             string? division = draft.ParentLink?.Division;
             string? teamLevel = null;
             int? teamType = null;
+            int? clubReputation = null;
 
             if (squadIndex.TryGet(draft.Candidate.Uid, out var squad))
             {
                 currentName = squad.ClubName;
                 division = squad.Division ?? division;
                 teamType = squad.TeamType;
+                clubReputation = squad.TeamReputation;
                 teamLevel = TeamLevelMap.FromTeamType(squad.TeamType);
             }
             else if (parentName is not null)
@@ -276,7 +283,10 @@ public sealed class CapADumpPipeline
                         parentName,
                         onLoan,
                         teamLevel,
-                        teamType));
+                        teamType,
+                        clubReputation,
+                        draft.Identity.NationUid,
+                        draft.Gender));
             }
         }
 
@@ -357,14 +367,19 @@ public sealed class CapADumpPipeline
         string? parent,
         bool? onLoan,
         string? teamLevel,
-        int? teamType)
+        int? teamType,
+        int? clubReputation,
+        uint? nationUid,
+        PlayerGender gender)
     {
         static string Fmt(string? v) => v ?? "null";
         static string FmtBool(bool? v) => v is { } b ? (b ? "true" : "false") : "null";
 
         return
             $"uid={uid} name={name} current={Fmt(current)} parent={Fmt(parent)} " +
-            $"onLoan={FmtBool(onLoan)} level={Fmt(teamLevel)} tt={teamType?.ToString() ?? "null"}";
+            $"onLoan={FmtBool(onLoan)} level={Fmt(teamLevel)} tt={teamType?.ToString() ?? "null"} " +
+            $"clubRep={clubReputation?.ToString() ?? "null"} nationUid={nationUid?.ToString() ?? "null"} " +
+            $"gender={gender.ToString().ToLowerInvariant()}";
     }
 
     private sealed record PlayerDraft(
@@ -372,7 +387,8 @@ public sealed class CapADumpPipeline
         PlayerIdentity Identity,
         PlayerAttributes Attrs,
         PlayerContractFields Contract,
-        ContractClubLink? ParentLink);
+        ContractClubLink? ParentLink,
+        PlayerGender Gender);
 }
 
 public readonly record struct CapADumpResult(

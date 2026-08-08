@@ -3,17 +3,20 @@ namespace FmDataBridge.Extraction;
 public readonly record struct GameDateResolution(
     string? GameDate,
     string Source,
+    string Basis,
     int Year,
     int DayOfYear);
 
 /// <summary>
-/// Resolve in-game date from schedule date-votes, with cohort-derived fallback.
+/// Derive an in-game date from next-fixture consensus, with a cohort/system-date fallback.
 /// </summary>
 public static class GameDateResolver
 {
-    public const string SourceMemory = "memory";
     public const string SourceDerived = "derived";
     public const string SourceUnknown = "unknown";
+    public const string BasisNextFixtureConsensus = "next-fixture-consensus";
+    public const string BasisBirthCohortAndSystemDate = "birth-cohort-and-system-date";
+    public const string BasisUnknown = "unknown";
 
     public static GameDateResolution Resolve(
         IReadOnlyDictionary<uint, int> dateVotes,
@@ -26,7 +29,12 @@ public static class GameDateResolver
             var (year, doy) = FmDateDecoder.Decode(best.Key);
             if (year >= 2020 && FmDateDecoder.IsPlausible(year, doy) && TryIso(year, doy, out var iso))
             {
-                return new GameDateResolution(iso, SourceMemory, year, doy);
+                return new GameDateResolution(
+                    iso,
+                    SourceDerived,
+                    BasisNextFixtureConsensus,
+                    year,
+                    doy);
             }
         }
 
@@ -42,10 +50,15 @@ public static class GameDateResolver
         var doyFallback = now.DayOfYear;
         if (TryIso(gameYear, doyFallback, out var derivedIso))
         {
-            return new GameDateResolution(derivedIso, SourceDerived, gameYear, doyFallback);
+            return new GameDateResolution(
+                derivedIso,
+                SourceDerived,
+                BasisBirthCohortAndSystemDate,
+                gameYear,
+                doyFallback);
         }
 
-        return new GameDateResolution(null, SourceUnknown, 0, 0);
+        return new GameDateResolution(null, SourceUnknown, BasisUnknown, 0, 0);
     }
 
     public static int YoungestBirthCohortYear(IEnumerable<int> birthYears, int minCohortSize = 30)

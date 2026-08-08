@@ -1,5 +1,6 @@
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
+using FmDataBridge.Protocol;
 using FmDataBridge.Scanning;
 using FmDataBridge.Tests.Fakes;
 using Xunit;
@@ -122,6 +123,96 @@ public sealed class PersonScannerTypedResultTests
         Assert.Empty(result.Players);
     }
 
+    [Fact]
+    public void Person_scanner_filters_only_players_by_the_requested_database_scope()
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        reader.AddRegion(
+            new MemoryRegion(
+                RegionBase,
+                RegionSize,
+                MemoryConstants.PageReadWrite,
+                MemoryConstants.MemPrivate,
+                MemoryConstants.MemCommit));
+
+        PlacePlayer(
+            reader,
+            layout,
+            0x101000,
+            PurePlayerClassOffset,
+            uid: 101,
+            ca: 120,
+            pa: 160,
+            slot: 1,
+            gender: 0x02);
+        PlacePlayer(
+            reader,
+            layout,
+            0x103000,
+            PurePlayerClassOffset,
+            uid: 102,
+            ca: 120,
+            pa: 160,
+            slot: 2,
+            gender: 0x12);
+        PlacePlayer(
+            reader,
+            layout,
+            0x105000,
+            PurePlayerClassOffset,
+            uid: 103,
+            ca: 120,
+            pa: 160,
+            slot: 3);
+        PlaceStaff(reader, layout, 0x107000, PureStaffClassOffset, uid: 201, ca: 100, pa: 140, slot: 4);
+        reader.AddBytes(
+            0x107000UL + (ulong)PureStaffClassOffset + (ulong)layout.GenderOffset,
+            new byte[] { 0x12 });
+
+        var gameAssembly = new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd);
+        var regions = RegionEnumerator.GetCandidateRegions(reader);
+
+        var menDiagnostics = new ScanDiagnostics();
+        var men = PersonScanner.Scan(
+            reader,
+            layout,
+            gameAssembly,
+            gamePlugin: null,
+            regions,
+            menDiagnostics,
+            playerDatabaseScope: PlayerDatabaseScope.Men);
+        Assert.Equal(new uint[] { 101, 103 }, men.Players.Select(candidate => candidate.Uid));
+        Assert.Equal(new uint[] { 201 }, men.Staff.Select(candidate => candidate.Uid));
+        Assert.Equal(1, menDiagnostics.PlayersExcludedByDatabaseScope);
+
+        var womenDiagnostics = new ScanDiagnostics();
+        var women = PersonScanner.Scan(
+            reader,
+            layout,
+            gameAssembly,
+            gamePlugin: null,
+            regions,
+            womenDiagnostics,
+            playerDatabaseScope: PlayerDatabaseScope.Women);
+        Assert.Equal(new uint[] { 102 }, women.Players.Select(candidate => candidate.Uid));
+        Assert.Equal(new uint[] { 201 }, women.Staff.Select(candidate => candidate.Uid));
+        Assert.Equal(2, womenDiagnostics.PlayersExcludedByDatabaseScope);
+
+        var bothDiagnostics = new ScanDiagnostics();
+        var both = PersonScanner.Scan(
+            reader,
+            layout,
+            gameAssembly,
+            gamePlugin: null,
+            regions,
+            bothDiagnostics,
+            playerDatabaseScope: PlayerDatabaseScope.Both);
+        Assert.Equal(new uint[] { 101, 102, 103 }, both.Players.Select(candidate => candidate.Uid));
+        Assert.Equal(new uint[] { 201 }, both.Staff.Select(candidate => candidate.Uid));
+        Assert.Equal(0, bothDiagnostics.PlayersExcludedByDatabaseScope);
+    }
+
     private static void PlacePlayer(
         FakeMemoryReader reader,
         IFmMemoryLayout layout,
@@ -131,13 +222,20 @@ public sealed class PersonScannerTypedResultTests
         int ca,
         int pa,
         int slot,
-        ulong? metadataAddress = null)
+        ulong? metadataAddress = null,
+        byte? gender = null)
     {
         PlaceObject(reader, layout, blockAddress, classOffset, uid, slot, metadataAddress);
         var bytes = new byte[Math.Max(layout.CurrentAbilityOffset, layout.PotentialAbilityOffset) + sizeof(ushort)];
         BitConverter.TryWriteBytes(bytes.AsSpan(layout.CurrentAbilityOffset), (ushort)ca);
         BitConverter.TryWriteBytes(bytes.AsSpan(layout.PotentialAbilityOffset), (ushort)pa);
         reader.AddBytes(blockAddress, bytes);
+        if (gender is { } value)
+        {
+            reader.AddBytes(
+                blockAddress + (ulong)classOffset + (ulong)layout.GenderOffset,
+                new[] { value });
+        }
     }
 
     private static void PlaceStaff(

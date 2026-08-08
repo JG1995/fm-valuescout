@@ -50,6 +50,10 @@ public sealed class Fm263Layout : IFmMemoryLayout
 
     public int NationPtrOffset => 0x68;
 
+    public int GenderOffset => 0x19;
+
+    public byte FemaleGenderBit => 0x10;
+
     public int DobOffset => 0x88;
 
     public int HeightOffset => 0x22E;

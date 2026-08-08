@@ -267,7 +267,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 3 — Read remaining player metadata
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-read): read remaining player metadata`
 
@@ -305,7 +305,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 4 — Extract non-player records
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(memory-read): extract non-player records`
 
@@ -606,21 +606,21 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 **PR:** PR 1 — Add SuperScout direct-data parity
 
-**Commit:** Commit 3 — Read remaining player metadata
+**Commit:** Commit 4 — Extract non-player records
 
 ### RED proof
 
-Create fake-memory cases for player nation UID, gender, club reputation, raw team type, unknown reads, and all database scopes. Add request tests for omitted/default and invalid scope values, and prove next-fixture consensus uses an explicit derived basis without changing Academy year handling.
+Create fake-memory cases for staff identity, nation UID, gender, CA/PA, all 22 staff attributes, job ID, contract fields, club/division, player/staff overlap, manager selection, and invalid reads.
 
 ### Expected outcome
 
-The bridge retains player nation UID, explicit gender state, selected-team reputation and raw type, and a closed `men`/`women`/`both` request scope with `men` as the app default. Schedule consensus remains an explicit derived next-fixture basis while current club, loan, team-level, age, and Academy behavior stay stable.
+The bridge retains one deterministic, bridge-internal staff collection and human-manager result with direct pinned fields, stable job IDs, bounded club resolution, explicit nulls, and no raw address output.
 
 ### Explicit exclusions
 
-- No staff or manager extraction, schema v6, SQLite, UI controls, dormant offsets, or derived estimates.
-- No change to club, loan, or team-level selection beyond carrying the selected team's raw type and reputation.
-- No scope filtering for staff or raw process address outside bridge-internal models and local diagnostics.
+- No dump or SQLite changes, localized job names, staff UI, coaching calculations, or staff reputation.
+- No duplicate staff record for a player/staff dual-role person or guessed manager when no pinned candidate validates.
+- No process address beyond bridge-internal reads or local diagnostics.
 
 ## Discoveries and replanning
 
@@ -628,6 +628,8 @@ The bridge retains player nation UID, explicit gender state, selected-team reput
 - The abandoned research branch is not a dependency. Its unmerged probe cannot validate dormant pins on this clean `main` branch, and direct parity does not require those un-emitted fields.
 - The old PR 2 and PR 3 remain separate in this new plan as PR 1 and PR 2. Data parity is independently mergeable; scan hardening has separate concurrency, measurement, and native-resource stop conditions.
 - Commit 2 review found that a pointer-sized team vector can still be invalid when both endpoints are misaligned. Discovery and squad walking now require aligned endpoints; the focused regression proves the malformed club cannot displace a valid association.
+- Commit 3 retains unread player gender as explicit `unknown`: men keeps it to preserve the existing default path, women requires a known female value, and both keeps every player. Staff remains unfiltered.
+- Commit 3 labels schedule consensus as derived `next-fixture-consensus`; the no-vote fallback is derived `birth-cohort-and-system-date`. The basis remains diagnostics-only until schema v6 adds its persisted field.
 
 ## Completed work
 
@@ -635,6 +637,7 @@ The bridge retains player nation UID, explicit gender state, selected-team reput
 | --- | --- | --- | --- | --- | --- |
 | PR 1 — Add SuperScout direct-data parity | Commit 1 — Discover non-player people | Pending record | Typed scan result classifies pinned player, staff, and human-manager candidates while preserving the player-only pipeline. | Sol High: accepted after correction review. | None |
 | PR 1 — Add SuperScout direct-data parity | Commit 2 — Discover the complete club graph | Pending record | Same-pass, bounded club discovery feeds deterministic squad resolution while contract-derived clubs remain fallback. | Sol High: accepted after alignment correction review. | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 3 — Read remaining player metadata | Pending record | Reads player nation UID and gender, carries selected-team raw type/reputation, applies closed request scope, and labels schedule dates with an explicit derived basis. | Sol High: accepted. | None |
 
 ## Final validation
 

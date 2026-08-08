@@ -111,6 +111,7 @@ public class Plugin : BasePlugin
     {
         string? requestId = null;
         int? maxAccepted = null;
+        var playerDatabaseScope = PlayerDatabaseScope.Men;
 
         lock (ScanGate)
         {
@@ -151,6 +152,10 @@ public class Plugin : BasePlugin
 
                 requestId = request.RequestId;
                 maxAccepted = request.MaxAccepted;
+                if (!PlayerDatabaseScopes.TryParse(request.PlayerDatabaseScope, out playerDatabaseScope))
+                {
+                    throw new InvalidOperationException("Accepted request has an invalid player database scope.");
+                }
             }
             else if (File.Exists(BridgePaths.GetForceScanPath(bridgeDirectory)))
             {
@@ -158,6 +163,7 @@ public class Plugin : BasePlugin
                 // Unlimited — same as production Load Data (null maxAccepted).
                 requestId = "force-scan";
                 maxAccepted = null;
+                playerDatabaseScope = PlayerDatabaseScope.Men;
             }
             else
             {
@@ -169,12 +175,18 @@ public class Plugin : BasePlugin
 
         var scanRequestId = requestId!;
         var scanMaxAccepted = maxAccepted;
+        var scanPlayerDatabaseScope = playerDatabaseScope;
         var cancelToken = s_unloadCts?.Token ?? CancellationToken.None;
         s_scanThread = new Thread(() =>
         {
             try
             {
-                RunDumpScan(bridgeDirectory, scanRequestId, scanMaxAccepted, cancelToken);
+                RunDumpScan(
+                    bridgeDirectory,
+                    scanRequestId,
+                    scanMaxAccepted,
+                    scanPlayerDatabaseScope,
+                    cancelToken);
             }
             finally
             {
@@ -195,6 +207,7 @@ public class Plugin : BasePlugin
         string bridgeDirectory,
         string requestId,
         int? maxAccepted,
+        PlayerDatabaseScope playerDatabaseScope,
         CancellationToken cancellationToken)
     {
         try
@@ -254,6 +267,7 @@ public class Plugin : BasePlugin
                 gameAssembly,
                 known.GamePlugin,
                 maxAccepted,
+                playerDatabaseScope,
                 cancellationToken: cancellationToken);
 
             TryDeleteForceScanFlag(bridgeDirectory);

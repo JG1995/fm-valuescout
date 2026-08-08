@@ -12,6 +12,11 @@ pub const STATUS_FILE_NAME: &str = "status.json";
 pub const REQUEST_FILE_NAME: &str = "request.json";
 pub const DUMP_FILE_NAME: &str = "dump.json";
 pub const OPERATION_FULL_DUMP: &str = "full-dump";
+pub const PLAYER_DATABASE_SCOPE_MEN: &str = "men";
+
+fn default_player_database_scope() -> String {
+    PLAYER_DATABASE_SCOPE_MEN.to_string()
+}
 
 /// Default wait for the bridge to finish a dump after a request is written.
 pub const DEFAULT_DUMP_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
@@ -47,6 +52,8 @@ pub struct BridgeRequest {
     pub operation: String,
     /// Optional accepted-player cap. `None` means unlimited (serialized as JSON `null`).
     pub max_accepted: Option<i32>,
+    #[serde(default = "default_player_database_scope")]
+    pub player_database_scope: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -308,6 +315,7 @@ pub fn request_player_dump_with_limit(
         created_at_utc: utc_now_rfc3339(),
         operation: OPERATION_FULL_DUMP.to_string(),
         max_accepted,
+        player_database_scope: PLAYER_DATABASE_SCOPE_MEN.to_string(),
     };
 
     write_player_dump_request(bridge_directory, &request)?;
@@ -489,6 +497,7 @@ mod tests {
             created_at_utc: "2026-07-28T18:30:00.000Z".to_string(),
             operation: OPERATION_FULL_DUMP.to_string(),
             max_accepted: None,
+            player_database_scope: PLAYER_DATABASE_SCOPE_MEN.to_string(),
         };
 
         write_player_dump_request(bridge_dir, &request).expect("write request");
@@ -499,6 +508,11 @@ mod tests {
         assert_eq!(parsed.operation, "full-dump");
         assert_eq!(parsed.protocol_version, 1);
         assert_eq!(parsed.max_accepted, None);
+        assert_eq!(parsed.player_database_scope, PLAYER_DATABASE_SCOPE_MEN);
+        assert!(
+            json.contains("\"playerDatabaseScope\": \"men\""),
+            "production request must default playerDatabaseScope to men, got: {json}"
+        );
         assert!(
             json.contains("\"maxAccepted\": null") || !json.contains("maxAccepted"),
             "unlimited request must omit maxAccepted or set it null, got: {json}"
@@ -515,6 +529,7 @@ mod tests {
             created_at_utc: "2026-07-28T18:30:00.000Z".to_string(),
             operation: OPERATION_FULL_DUMP.to_string(),
             max_accepted: Some(500),
+            player_database_scope: PLAYER_DATABASE_SCOPE_MEN.to_string(),
         };
 
         write_player_dump_request(bridge_dir, &request).expect("write request");
@@ -547,6 +562,7 @@ mod tests {
             let json = fs::read_to_string(request_path(&writer_dir)).expect("read request");
             let request: BridgeRequest = serde_json::from_str(&json).expect("parse request");
             assert_eq!(request.max_accepted, None);
+            assert_eq!(request.player_database_scope, PLAYER_DATABASE_SCOPE_MEN);
             assert!(
                 json.contains("\"maxAccepted\": null") || !json.contains("maxAccepted"),
                 "production request must be unlimited, got: {json}"
@@ -640,6 +656,7 @@ mod tests {
             created_at_utc: "2026-07-28T18:30:00.000Z".to_string(),
             operation: OPERATION_FULL_DUMP.to_string(),
             max_accepted: Some(500),
+            player_database_scope: PLAYER_DATABASE_SCOPE_MEN.to_string(),
         };
         write_player_dump_request(&bridge_dir, &request).expect("write");
 

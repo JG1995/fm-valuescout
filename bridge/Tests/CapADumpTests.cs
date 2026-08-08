@@ -35,6 +35,8 @@ public sealed class CapADumpTests
         Assert.Equal(0x266, layout.PotentialAbilityOffset);
         Assert.Equal(0xDA, layout.StaffCurrentAbilityOffset);
         Assert.Equal(0xDC, layout.StaffPotentialAbilityOffset);
+        Assert.Equal(0x19, layout.GenderOffset);
+        Assert.Equal(0x10, layout.FemaleGenderBit);
         Assert.True(layout.IsProvisional);
     }
 

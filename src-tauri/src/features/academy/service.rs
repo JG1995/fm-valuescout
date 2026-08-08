@@ -1082,6 +1082,32 @@ mod tests {
     }
 
     #[test]
+    fn derived_game_date_creates_the_same_observed_year_class_at_a_year_boundary() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-derived-date.db"));
+        let save = snapshot_service::create_save(&conn, "Academy save").expect("create save");
+
+        ingest_with_game_date(
+            &temp_dir,
+            &mut conn,
+            save.id,
+            "derived-date.json",
+            json!("2026-01-01"),
+            "derived",
+        )
+        .expect("ingest derived date");
+
+        assert_eq!(
+            super::list_classes(&conn, save.id)
+                .expect("list classes")
+                .into_iter()
+                .map(|academy_class| academy_class.class_year)
+                .collect::<Vec<_>>(),
+            vec![2025, 2026]
+        );
+    }
+
+    #[test]
     fn automatic_classes_reject_deletion_while_manual_classes_remain_deletable() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = open_migrated(&temp_dir.path().join("academy-automatic-delete.db"));

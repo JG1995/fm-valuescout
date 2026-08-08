@@ -91,6 +91,32 @@ public sealed class IdentityExtractionTests
     }
 
     [Fact]
+    public void Nation_reader_reads_uid_from_the_nation_object_header()
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        const ulong nationObj = 0x4000;
+        reader.AddBytes(PersonAddress + (ulong)layout.NationPtrOffset, BitConverter.GetBytes(nationObj));
+        reader.AddBytes(nationObj + (ulong)layout.ObjectUidOffset, BitConverter.GetBytes(208u));
+
+        Assert.Equal(208u, NationReader.TryReadUid(reader, PersonAddress, layout));
+    }
+
+    [Theory]
+    [InlineData(0u)]
+    [InlineData(uint.MaxValue)]
+    public void Nation_reader_rejects_invalid_object_header_uids(uint uid)
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        const ulong nationObj = 0x4000;
+        reader.AddBytes(PersonAddress + (ulong)layout.NationPtrOffset, BitConverter.GetBytes(nationObj));
+        reader.AddBytes(nationObj + (ulong)layout.ObjectUidOffset, BitConverter.GetBytes(uid));
+
+        Assert.Null(NationReader.TryReadUid(reader, PersonAddress, layout));
+    }
+
+    [Fact]
     public void Identity_reader_rejects_empty_name()
     {
         var layout = Fm263Layout.Instance;
@@ -180,6 +206,7 @@ public sealed class IdentityExtractionTests
         Assert.Equal(2005, identity.BirthYear);
         Assert.Equal(142, identity.BirthDayOfYear);
         Assert.Equal(new[] { "DEN" }, identity.Nationalities);
+        Assert.Equal(208u, identity.NationUid);
         Assert.Equal(186, identity.HeightCm);
         Assert.Equal("right", identity.PreferredFoot);
         Assert.Equal(20, identity.Positions["DC"]);
@@ -397,6 +424,7 @@ public sealed class IdentityExtractionTests
             var nationStr = personAddress + 0x21000;
             PlaceIndirectString(reader, nationStr, nationality);
             reader.AddBytes(nationObj + (ulong)layout.NationShortNameOffset, BitConverter.GetBytes(nationStr));
+            reader.AddBytes(nationObj + (ulong)layout.ObjectUidOffset, BitConverter.GetBytes(208u));
             reader.AddBytes(personAddress + (ulong)layout.NationPtrOffset, BitConverter.GetBytes(nationObj));
         }
     }

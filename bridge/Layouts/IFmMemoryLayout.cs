@@ -46,6 +46,12 @@ public interface IFmMemoryLayout
     /// <summary>Pointer to nation object (relative to person).</summary>
     int NationPtrOffset { get; }
 
+    /// <summary>Person gender flag byte.</summary>
+    int GenderOffset { get; }
+
+    /// <summary>Bit set in <see cref="GenderOffset"/> for a female person.</summary>
+    byte FemaleGenderBit { get; }
+
     /// <summary>Packed FM date of birth (u32) relative to person.</summary>
     int DobOffset { get; }
 

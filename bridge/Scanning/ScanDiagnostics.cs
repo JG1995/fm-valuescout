@@ -36,6 +36,12 @@ public sealed class ScanDiagnostics
 
     public int DuplicatesSkipped { get; set; }
 
+    /// <summary>Closed player database scope applied during candidate acceptance.</summary>
+    public string? PlayerDatabaseScope { get; set; }
+
+    /// <summary>Valid player candidates excluded only by the requested database scope.</summary>
+    public int PlayersExcludedByDatabaseScope { get; set; }
+
     /// <summary>Candidates skipped because display name was empty.</summary>
     public int IdentitySkippedEmptyName { get; set; }
 
@@ -71,6 +77,9 @@ public sealed class ScanDiagnostics
     public string? GameDate { get; set; }
 
     public string? GameDateSource { get; set; }
+
+    /// <summary>Basis for a derived game date.</summary>
+    public string? GameDateBasis { get; set; }
 
     /// <summary>Accepted-player ceiling for this run; null means unlimited.</summary>
     public int? MaxAccepted { get; set; }

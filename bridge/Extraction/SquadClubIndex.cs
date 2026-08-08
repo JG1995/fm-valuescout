@@ -10,6 +10,9 @@ public sealed class SquadAssignment
 
     public int TeamType { get; init; }
 
+    /// <summary>Raw reputation of the selected squad team; null when unread or invalid.</summary>
+    public int? TeamReputation { get; init; }
+
     public string? Division { get; init; }
 }
 
@@ -147,6 +150,13 @@ public sealed class SquadClubIndex
                 teamType = tt;
             }
 
+            int? teamReputation = null;
+            if (TryReadUInt16At(reader, team, layout.TeamReputationOffset, out var reputation)
+                && reputation <= 12000)
+            {
+                teamReputation = reputation;
+            }
+
             RecordDateVote(reader, layout, team, votes);
             var division = CompetitionNameReader.TryRead(reader, team, layout);
             WalkSquad(
@@ -155,6 +165,7 @@ public sealed class SquadClubIndex
                 team,
                 clubName,
                 teamType,
+                teamReputation,
                 division,
                 personToUid,
                 parentClubByUid,
@@ -168,6 +179,7 @@ public sealed class SquadClubIndex
         ulong team,
         string clubName,
         int teamType,
+        int? teamReputation,
         string? division,
         IReadOnlyDictionary<ulong, uint> personToUid,
         IReadOnlyDictionary<uint, string?> parentClubByUid,
@@ -203,14 +215,18 @@ public sealed class SquadClubIndex
             }
 
             parentClubByUid.TryGetValue(uid, out var parent);
-            var candidate = new SquadHit(clubName, teamType, division);
+            var candidate = new SquadHit(clubName, teamType, division, teamReputation);
             if (!index._assignments.TryGetValue(uid, out var cur))
             {
                 index._assignments[uid] = ToAssignment(candidate);
                 continue;
             }
 
-            var currentHit = new SquadHit(cur.ClubName, cur.TeamType, cur.Division);
+            var currentHit = new SquadHit(
+                cur.ClubName,
+                cur.TeamType,
+                cur.Division,
+                cur.TeamReputation);
             var chosen = SquadPick.Choose(currentHit, candidate, parent);
             if (currentHit.ClubName != candidate.ClubName
                 && index.MultiClubUids.Add(uid)
@@ -231,6 +247,7 @@ public sealed class SquadClubIndex
         {
             ClubName = hit.ClubName,
             TeamType = hit.TeamType,
+            TeamReputation = hit.TeamReputation,
             Division = hit.Division,
         };
 
@@ -326,6 +343,17 @@ public sealed class SquadClubIndex
         value = 0;
         return TryAdd(address, offset, out var fieldAddress)
             && reader.TryReadUInt32(fieldAddress, out value);
+    }
+
+    private static bool TryReadUInt16At(
+        IMemoryReader reader,
+        ulong address,
+        int offset,
+        out ushort value)
+    {
+        value = 0;
+        return TryAdd(address, offset, out var fieldAddress)
+            && reader.TryReadUInt16(fieldAddress, out value);
     }
 
     private static bool TryReadVectorEntry(

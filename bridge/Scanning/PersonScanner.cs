@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using FmDataBridge.Extraction;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
+using FmDataBridge.Protocol;
 
 namespace FmDataBridge.Scanning;
 
@@ -28,6 +29,7 @@ public static class PersonScanner
         IReadOnlyList<MemoryRegion> candidateRegions,
         ScanDiagnostics diagnostics,
         int? maxAccepted = null,
+        PlayerDatabaseScope playerDatabaseScope = PlayerDatabaseScope.Men,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reader);
@@ -50,6 +52,7 @@ public static class PersonScanner
         diagnostics.LayoutVersionKey = layout.VersionKey;
         diagnostics.LayoutProvisional = layout.IsProvisional;
         diagnostics.MaxAccepted = maxAccepted;
+        diagnostics.PlayerDatabaseScope = PlayerDatabaseScopes.ToWireValue(playerDatabaseScope);
         diagnostics.GameAssembly = new ModuleBoundsSnapshot(
             gameAssembly.BaseAddress,
             gameAssembly.EndAddress);
@@ -207,6 +210,13 @@ public static class PersonScanner
                     var candidate = new PersonCandidate(address, blockAddress, uid, ca, pa, classOffset, facet);
                     if (facet == PersonFacet.Player)
                     {
+                        var gender = PlayerGenderReader.Read(reader, address, layout);
+                        if (!PlayerDatabaseScopes.Includes(playerDatabaseScope, gender))
+                        {
+                            diagnostics.PlayersExcludedByDatabaseScope++;
+                            continue;
+                        }
+
                         if (players.ContainsKey(uid))
                         {
                             KeepLowestAddress(players, candidate);
