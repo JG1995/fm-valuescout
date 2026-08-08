@@ -603,6 +603,9 @@ public sealed class CapADumpTests
             Assert.True(doc.RootElement.GetProperty("scanTruncated").GetBoolean());
             Assert.Equal(2, doc.RootElement.GetProperty("maxAccepted").GetInt32());
             Assert.Equal(2, doc.RootElement.GetProperty("playerCount").GetInt32());
+
+            var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
+            Assert.Contains("scanMateriallyIncomplete=False", diagnostics, StringComparison.Ordinal);
         }
         finally
         {
@@ -635,6 +638,8 @@ public sealed class CapADumpTests
         Assert.True(diagnostics.ClubDiscoveryIncomplete);
         Assert.True(scan.Cancelled);
         Assert.False(diagnostics.StoppedEarly);
+        Assert.Equal(0, scan.ReadQuality.RequestedBytes);
+        Assert.Equal(0, scan.ReadQuality.UnreadBytes);
         Assert.Empty(candidates);
     }
 
@@ -699,6 +704,128 @@ public sealed class CapADumpTests
         {
             Directory.Delete(bridgeDir, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Pipeline_preserves_prior_dump_when_scan_read_quality_is_materially_incomplete()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var prior = new DumpDocument
+            {
+                SchemaVersion = BridgeProtocol.DumpSchemaVersion,
+                GeneratedAtUtc = "2026-08-08T00:00:00Z",
+                GameVersion = "26.3.2",
+                SupportedGameVersion = "26.3",
+                BridgeVersion = "0.1.0",
+                ProtocolVersion = BridgeProtocol.ProtocolVersion,
+                PlayerCount = 1,
+                Players = new[]
+                {
+                    new DumpPlayer
+                    {
+                        Uid = 9,
+                        Ca = 11,
+                        Pa = 12,
+                        Name = "Prior Player",
+                        BirthYear = 1990,
+                        BirthDayOfYear = 2,
+                        PreferredFoot = "right",
+                    },
+                },
+            };
+            Assert.True(DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, prior));
+
+            var layout = Fm263Layout.Instance;
+            var reader = new FakeMemoryReader();
+            PlacePlayerFixture(reader, layout, PersonAddress, uid: 201, ca: 150, pa: 170);
+            AddCandidateRegion(reader, 0x300000, 0x20000);
+            reader.AddUnreadableRange(0x300000, 0x20000);
+
+            var result = new CapADumpPipeline().Run(
+                reader,
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.False(result.Success);
+            Assert.False(result.DumpReplaced);
+            Assert.Contains("incomplete", result.Error, StringComparison.OrdinalIgnoreCase);
+
+            using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            Assert.Equal(9u, doc.RootElement.GetProperty("players")[0].GetProperty("uid").GetUInt32());
+
+            var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
+            Assert.Contains("scanReadSource=live", diagnostics, StringComparison.Ordinal);
+            Assert.True(ParseDiagnosticLong(diagnostics, "scanUnreadBytes") > 0);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Person_scanner_records_recovered_readable_and_unread_region_bytes()
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        var regionSize = MemoryConstants.MinBlockReadSize * 3;
+        AddCandidateRegion(reader, PlayerBlockBase, (ulong)regionSize);
+        reader.AddUnreadableRange(
+            PlayerBlockBase + (ulong)MemoryConstants.MinBlockReadSize,
+            (ulong)MemoryConstants.MinBlockReadSize);
+        PlacePlayerBytes(reader, layout, PersonAddress, uid: 201, ca: 150, pa: 170);
+
+        var diagnostics = new ScanDiagnostics();
+        var scan = PersonScanner.Scan(
+            reader,
+            layout,
+            new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+            gamePlugin: null,
+            RegionEnumerator.GetCandidateRegions(reader),
+            diagnostics);
+
+        Assert.Single(scan.Players);
+        Assert.Equal(regionSize, scan.ReadQuality.RequestedBytes);
+        Assert.Equal(regionSize - MemoryConstants.MinBlockReadSize, scan.ReadQuality.ReadableBytes);
+        Assert.Equal(MemoryConstants.MinBlockReadSize, scan.ReadQuality.UnreadBytes);
+        Assert.Equal(0, scan.ReadQuality.InternalFailureBytes);
+        Assert.Equal(scan.ReadQuality, diagnostics.ReadQuality);
+    }
+
+    [Fact]
+    public void Person_scanner_marks_region_read_exceptions_as_internal_unread_bytes()
+    {
+        var reader = new FakeMemoryReader();
+        AddCandidateRegion(reader, PlayerBlockBase, MemoryConstants.MinBlockReadSize);
+
+        var diagnostics = new ScanDiagnostics();
+        var scan = PersonScanner.Scan(
+            new ThrowingBlockReader(reader),
+            Fm263Layout.Instance,
+            new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+            gamePlugin: null,
+            RegionEnumerator.GetCandidateRegions(reader),
+            diagnostics);
+
+        Assert.Empty(scan.Players);
+        Assert.Equal(MemoryConstants.MinBlockReadSize, scan.ReadQuality.RequestedBytes);
+        Assert.Equal(0, scan.ReadQuality.ReadableBytes);
+        Assert.Equal(MemoryConstants.MinBlockReadSize, scan.ReadQuality.UnreadBytes);
+        Assert.Equal(MemoryConstants.MinBlockReadSize, scan.ReadQuality.InternalFailureBytes);
+    }
+
+    [Fact]
+    public void Scan_read_quality_allows_exactly_ten_percent_unread_coverage()
+    {
+        var atThreshold = default(ScanReadQuality).Record(requestedBytes: 10, readableBytes: 9);
+        var overThreshold = default(ScanReadQuality).Record(requestedBytes: 11, readableBytes: 9);
+
+        Assert.False(atThreshold.IsMateriallyIncomplete);
+        Assert.True(overThreshold.IsMateriallyIncomplete);
     }
 
     [Fact]
@@ -794,6 +921,15 @@ public sealed class CapADumpTests
             AssertNonNegativeDiagnostic(diagnostics, "totalMs");
             AssertNonNegativeDiagnostic(diagnostics, "processMemoryCalls");
             AssertNonNegativeDiagnostic(diagnostics, "processMemoryRequestedBytes");
+            AssertNonNegativeDiagnostic(diagnostics, "scanRequestedBytes");
+            AssertNonNegativeDiagnostic(diagnostics, "scanReadableBytes");
+            AssertNonNegativeDiagnostic(diagnostics, "scanUnreadBytes");
+            AssertNonNegativeDiagnostic(diagnostics, "scanInternalFailureBytes");
+            Assert.Contains("scanReadSource=live", diagnostics, StringComparison.Ordinal);
+            Assert.Equal(
+                ParseDiagnosticLong(diagnostics, "scanRequestedBytes"),
+                ParseDiagnosticLong(diagnostics, "scanReadableBytes")
+                    + ParseDiagnosticLong(diagnostics, "scanUnreadBytes"));
             Assert.True(
                 ParseDiagnosticLong(diagnostics, "processMemoryCalls") > 0,
                 "successful fake scan should perform at least one memory read");
@@ -892,6 +1028,26 @@ public sealed class CapADumpTests
             birthYear: 2000,
             birthDoy: 100);
         return reader;
+    }
+
+    private sealed class ThrowingBlockReader : IMemoryReader
+    {
+        private readonly IMemoryReader _inner;
+
+        public ThrowingBlockReader(IMemoryReader inner)
+        {
+            _inner = inner;
+        }
+
+        public string ReadSource => _inner.ReadSource;
+
+        public IEnumerable<MemoryRegion> EnumerateRegions() => _inner.EnumerateRegions();
+
+        public bool TryRead(ulong address, Span<byte> destination, out int bytesRead) =>
+            _inner.TryRead(address, destination, out bytesRead);
+
+        public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead) =>
+            throw new InvalidOperationException("synthetic region failure");
     }
 
     private static void PlacePlayerFixture(

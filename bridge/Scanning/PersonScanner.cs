@@ -51,6 +51,7 @@ public static class PersonScanner
         diagnostics.RegionCount = candidateRegions.Count;
         diagnostics.LayoutVersionKey = layout.VersionKey;
         diagnostics.LayoutProvisional = layout.IsProvisional;
+        diagnostics.ReadSource = reader.ReadSource;
         diagnostics.MaxAccepted = maxAccepted;
         diagnostics.PlayerDatabaseScope = PlayerDatabaseScopes.ToWireValue(playerDatabaseScope);
         diagnostics.GameAssembly = new ModuleBoundsSnapshot(
@@ -71,6 +72,7 @@ public static class PersonScanner
         var classOffsetByVtable = new Dictionary<ulong, int>();
         var atCap = false;
         var stoppedDueToCap = false;
+        var readQuality = default(ScanReadQuality);
         var headerBytes = Math.Max(MinObjectHeaderBytes, layout.ObjectUidOffset + sizeof(uint));
         if (!TryAlignUp((ulong)headerBytes, 8, out var overlap))
         {
@@ -106,6 +108,7 @@ public static class PersonScanner
                 continue;
             }
 
+            var hasPriorBlock = false;
             while (end - blockStart >= (ulong)headerBytes)
             {
                 if (stoppedDueToCap)
@@ -116,7 +119,7 @@ public static class PersonScanner
                 if (cancellationToken.IsCancellationRequested)
                 {
                     diagnostics.Cancelled = true;
-                    return BuildResult(players, staff, managers, clubs, diagnostics);
+                    return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
                 }
 
                 var remaining = end - blockStart;
@@ -126,8 +129,19 @@ public static class PersonScanner
                     break;
                 }
 
-                // Failed/partial fills leave cleared gaps as zero — scan the full requested length.
-                _ = reader.TryReadBlock(blockStart, buffer, 0, toRead, out _);
+                if (!TryReadScanBlock(
+                        reader,
+                        blockStart,
+                        buffer,
+                        toRead,
+                        hasPriorBlock ? Math.Min((int)overlap, toRead) : 0,
+                        diagnostics,
+                        ref readQuality))
+                {
+                    return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
+                }
+
+                hasPriorBlock = true;
 
                 for (var local = 0;
                      local + headerBytes <= toRead && blockStart + (ulong)local + (ulong)headerBytes <= end;
@@ -136,7 +150,7 @@ public static class PersonScanner
                     if (cancellationToken.IsCancellationRequested)
                     {
                         diagnostics.Cancelled = true;
-                        return BuildResult(players, staff, managers, clubs, diagnostics);
+                        return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
                     }
 
                     diagnostics.BytesScanned += 8;
@@ -293,7 +307,7 @@ public static class PersonScanner
         }
 
         diagnostics.StoppedEarly = stoppedDueToCap;
-        return BuildResult(players, staff, managers, clubs, diagnostics);
+        return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
     }
 
     public static bool IsValidUid(uint uid) => uid != 0 && uid != InvalidUid;
@@ -305,7 +319,8 @@ public static class PersonScanner
         IReadOnlyDictionary<uint, PersonCandidate> staff,
         IReadOnlyDictionary<uint, PersonCandidate> managers,
         IReadOnlyDictionary<ulong, ClubCandidate> clubs,
-        ScanDiagnostics diagnostics)
+        ScanDiagnostics diagnostics,
+        ScanReadQuality readQuality)
     {
         var overlapUids = staff.Keys
             .Where(players.ContainsKey)
@@ -313,6 +328,7 @@ public static class PersonScanner
             .ToList();
         diagnostics.PlayerStaffOverlapCount = overlapUids.Count;
         diagnostics.ClubDiscoveryIncomplete = diagnostics.StoppedEarly || diagnostics.Cancelled;
+        diagnostics.ReadQuality = readQuality;
 
         return new PersonScanResult(
             OrderCandidates(players.Values),
@@ -321,7 +337,60 @@ public static class PersonScanner
             clubs.Values.OrderBy(candidate => candidate.Address).ToList(),
             overlapUids,
             diagnostics.StoppedEarly,
-            diagnostics.Cancelled);
+            diagnostics.Cancelled,
+            readQuality);
+    }
+
+    private static bool TryReadScanBlock(
+        IMemoryReader reader,
+        ulong address,
+        byte[] buffer,
+        int length,
+        int qualityOffset,
+        ScanDiagnostics diagnostics,
+        ref ScanReadQuality readQuality)
+    {
+        try
+        {
+            _ = reader.TryReadBlockWithCoverage(address, buffer, 0, length, out var blockRead);
+            var qualityLength = length - qualityOffset;
+            if (!blockRead.HasExactCoverage)
+            {
+                Array.Clear(buffer, 0, length);
+                if (qualityLength > 0)
+                {
+                    readQuality = readQuality.Record(qualityLength, 0, internalFailure: true);
+                }
+
+                return true;
+            }
+
+            if (qualityLength > 0)
+            {
+                readQuality = readQuality.Record(
+                    qualityLength,
+                    blockRead.CountReadableBytes(qualityOffset, qualityLength));
+            }
+
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            Array.Clear(buffer, 0, length);
+            diagnostics.Cancelled = true;
+            return false;
+        }
+        catch (Exception)
+        {
+            Array.Clear(buffer, 0, length);
+            var qualityLength = length - qualityOffset;
+            if (qualityLength > 0)
+            {
+                readQuality = readQuality.Record(qualityLength, 0, internalFailure: true);
+            }
+
+            return true;
+        }
     }
 
     private static List<PersonCandidate> OrderCandidates(IEnumerable<PersonCandidate> candidates) =>

@@ -9,8 +9,22 @@ public sealed class FakeMemoryReader : IMemoryReader
 {
     private readonly List<MemoryRegion> _regions = new();
     private readonly List<(ulong Address, byte[] Bytes)> _segments = new();
+    private readonly List<(ulong Address, ulong Size)> _unreadableRanges = new();
 
     public void AddRegion(MemoryRegion region) => _regions.Add(region);
+
+    /// <summary>
+    /// Marks part of an added region unreadable while leaving its zero-filled bytes distinct from readable zero data.
+    /// </summary>
+    public void AddUnreadableRange(ulong address, ulong size)
+    {
+        if (size == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(size));
+        }
+
+        _unreadableRanges.Add((address, size));
+    }
 
     public void AddBytes(ulong address, byte[] bytes)
     {
@@ -22,88 +36,108 @@ public sealed class FakeMemoryReader : IMemoryReader
 
     public bool TryRead(ulong address, Span<byte> destination, out int bytesRead)
     {
-        bytesRead = 0;
         if (destination.IsEmpty)
         {
+            bytesRead = 0;
             return true;
         }
 
-        foreach (var (segmentAddress, bytes) in _segments)
-        {
-            if (address < segmentAddress)
-            {
-                continue;
-            }
-
-            var offset = address - segmentAddress;
-            if (offset >= (ulong)bytes.Length)
-            {
-                continue;
-            }
-
-            var available = bytes.Length - (int)offset;
-            var toCopy = Math.Min(available, destination.Length);
-            bytes.AsSpan((int)offset, toCopy).CopyTo(destination);
-            bytesRead = toCopy;
-            return toCopy == destination.Length;
-        }
-
-        return false;
+        var result = Fill(address, destination);
+        bytesRead = result.ReadableBytes;
+        return bytesRead == destination.Length;
     }
 
-    public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead) =>
-        BlockReadHelper.TryFill(address, buffer, offset, length, out bytesRead, TryReadDirect);
-
-    private bool TryReadDirect(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
+    public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
     {
-        bytesRead = 0;
+        var completed = TryReadBlockWithCoverage(address, buffer, offset, length, out var result);
+        bytesRead = result.ReadableBytes;
+        return completed;
+    }
+
+    public bool TryReadBlockWithCoverage(
+        ulong address,
+        byte[] buffer,
+        int offset,
+        int length,
+        out BlockReadResult result) =>
+        BlockReadHelper.TryFill(address, buffer, offset, length, out result, TryReadDirect);
+
+    private BlockReadResult TryReadDirect(ulong address, byte[] buffer, int offset, int length)
+    {
         if (length == 0)
         {
-            return true;
+            return BlockReadResult.Empty;
         }
 
-        // Compose every overlapping segment into the range (production RPM returns a contiguous
-        // page image; tests store sparse AddBytes fragments).
-        var hit = new bool[length];
-        var reqEnd = address + (ulong)length;
+        return Fill(address, buffer.AsSpan(offset, length));
+    }
+
+    private BlockReadResult Fill(ulong address, Span<byte> destination)
+    {
+        destination.Clear();
+        var readable = new bool[destination.Length];
+        var unreadable = new bool[destination.Length];
+        var written = new bool[destination.Length];
+
+        foreach (var region in _regions)
+        {
+            MarkRange(readable, address, region.BaseAddress, region.Size, value: true);
+        }
+
+        foreach (var (unreadableAddress, unreadableSize) in _unreadableRanges)
+        {
+            MarkRange(readable, address, unreadableAddress, unreadableSize, value: false);
+            MarkRange(unreadable, address, unreadableAddress, unreadableSize, value: true);
+        }
+
+        var requestEnd = address + (ulong)destination.Length;
         foreach (var (segmentAddress, bytes) in _segments)
         {
-            var segEnd = segmentAddress + (ulong)bytes.Length;
-            if (segEnd <= address || segmentAddress >= reqEnd)
+            var segmentEnd = segmentAddress + (ulong)bytes.Length;
+            if (segmentEnd <= address || segmentAddress >= requestEnd)
             {
                 continue;
             }
 
-            var dstStart = segmentAddress > address ? (int)(segmentAddress - address) : 0;
-            var srcStart = address > segmentAddress ? (int)(address - segmentAddress) : 0;
-            var copyLen = Math.Min(bytes.Length - srcStart, length - dstStart);
-            if (copyLen <= 0)
+            var destinationStart = segmentAddress > address ? (int)(segmentAddress - address) : 0;
+            var sourceStart = address > segmentAddress ? (int)(address - segmentAddress) : 0;
+            var copyLength = Math.Min(bytes.Length - sourceStart, destination.Length - destinationStart);
+            for (var i = 0; i < copyLength; i++)
             {
-                continue;
-            }
-
-            for (var i = 0; i < copyLen; i++)
-            {
-                if (hit[dstStart + i])
+                var destinationIndex = destinationStart + i;
+                if (unreadable[destinationIndex] || written[destinationIndex])
                 {
                     continue;
                 }
 
-                buffer[offset + dstStart + i] = bytes[srcStart + i];
-                hit[dstStart + i] = true;
+                destination[destinationIndex] = bytes[sourceStart + i];
+                readable[destinationIndex] = true;
+                written[destinationIndex] = true;
             }
         }
 
-        var filled = 0;
-        for (var i = 0; i < length; i++)
+        return BlockReadResult.FromReadabilityMask(readable);
+    }
+
+    private static void MarkRange(
+        bool[] mask,
+        ulong requestAddress,
+        ulong rangeAddress,
+        ulong rangeSize,
+        bool value)
+    {
+        var requestEnd = requestAddress + (ulong)mask.Length;
+        var rangeEnd = rangeAddress + rangeSize;
+        if (requestEnd < requestAddress
+            || rangeEnd < rangeAddress
+            || rangeEnd <= requestAddress
+            || rangeAddress >= requestEnd)
         {
-            if (hit[i])
-            {
-                filled++;
-            }
+            return;
         }
 
-        bytesRead = filled;
-        return filled == length;
+        var start = Math.Max(requestAddress, rangeAddress);
+        var end = Math.Min(requestEnd, rangeEnd);
+        Array.Fill(mask, value, (int)(start - requestAddress), (int)(end - start));
     }
 }

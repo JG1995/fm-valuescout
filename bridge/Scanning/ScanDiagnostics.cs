@@ -14,6 +14,10 @@ public sealed class ScanDiagnostics
 
     public long BytesScanned { get; set; }
 
+    public string ReadSource { get; set; } = "live";
+
+    public ScanReadQuality ReadQuality { get; set; }
+
     public int VtableHits { get; set; }
 
     public int CandidatesAccepted { get; set; }

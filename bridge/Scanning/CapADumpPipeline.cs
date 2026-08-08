@@ -38,6 +38,7 @@ public sealed class CapADumpPipeline
         var diagnostics = new ScanDiagnostics
         {
             GameVersion = gameVersion,
+            ReadSource = reader.ReadSource,
             GamePlugin = gamePlugin is { } gp
                 ? new ModuleBoundsSnapshot(gp.BaseAddress, gp.EndAddress)
                 : null,
@@ -72,6 +73,14 @@ public sealed class CapADumpPipeline
         if (diagnostics.Cancelled)
         {
             diagnostics.FailureReason = "scan cancelled";
+            WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
+            return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+        }
+
+        if (scan.ReadQuality.IsMateriallyIncomplete)
+        {
+            diagnostics.FailureReason =
+                $"scan read quality incomplete: {scan.ReadQuality.UnreadBytes}/{scan.ReadQuality.RequestedBytes} region bytes unread";
             WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }

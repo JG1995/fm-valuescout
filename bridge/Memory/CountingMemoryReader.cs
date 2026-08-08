@@ -17,6 +17,8 @@ public sealed class CountingMemoryReader : IMemoryReader
 
     public long RequestedBytes { get; private set; }
 
+    public string ReadSource => _inner.ReadSource;
+
     public bool TryRead(ulong address, Span<byte> destination, out int bytesRead)
     {
         CallCount++;
@@ -29,6 +31,18 @@ public sealed class CountingMemoryReader : IMemoryReader
         CallCount++;
         RequestedBytes += length;
         return _inner.TryReadBlock(address, buffer, offset, length, out bytesRead);
+    }
+
+    public bool TryReadBlockWithCoverage(
+        ulong address,
+        byte[] buffer,
+        int offset,
+        int length,
+        out BlockReadResult result)
+    {
+        CallCount++;
+        RequestedBytes += length;
+        return _inner.TryReadBlockWithCoverage(address, buffer, offset, length, out result);
     }
 
     public IEnumerable<MemoryRegion> EnumerateRegions() => _inner.EnumerateRegions();

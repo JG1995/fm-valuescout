@@ -159,11 +159,11 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 ### PR 1 — Add SuperScout direct-data parity
 
-**Status:** Ready for publication
+**Status:** Merged
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/34
 
-**Merge ref:** Not merged
+**Merge ref:** d3f1cad1f6d9f33155f51a8cb74a43b5a77d09d7
 
 **Branch:** feature/fm-superscout-parity
 
@@ -420,7 +420,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 ### PR 2 — Harden FM memory scans
 
-**Status:** Awaiting prior PR merge
+**Status:** Active
 
 **PR ref:** Not published
 
@@ -454,7 +454,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 1 — Measure scan read quality
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-read): measure scan read quality`
 
@@ -491,7 +491,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 2 — Parallelize deterministic region scanning
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `perf(memory-read): parallelize deterministic region scans`
 
@@ -604,21 +604,22 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 ## Active work
 
-**PR:** PR 1 — Add SuperScout direct-data parity
+**PR:** PR 2 — Harden FM memory scans
 
-**Commit:** None — PR 1 is ready for publication
+**Commit:** Commit 2 — Parallelize deterministic region scanning
 
-### Automated completion evidence
+### RED proof
 
-Schema v6 now validates and persists the full player, staff, manager, scope, and date-basis payload atomically. `./scripts/dev bridge-test`, `./scripts/dev test`, and `./scripts/dev check` passed before this checkpoint.
+Use a deterministic blocking fake to prove the current serial scanner does not overlap independent candidate regions. Then compare serial and bounded-worker results across permuted regions, duplicate objects, boundaries, unread holes, caps, cancellation, and worker exceptions.
 
-### Live validation evidence
+### Expected outcome
 
-The developer installed the DLL, restarted FM26 with one loaded FM 26.3.2 save, and ran one unlimited Windows Load Data cycle. The app showed the success banner. The bridge and active app-save snapshot both contain 247,781 players and 134,316 staff; each entity family has zero duplicate UIDs. The run stored a manager record, `men` scope, and a derived `next-fixture-consensus` date basis without truncation. It had no player/staff overlaps, 237,023 player club values, and 47,154 staff club values.
+The bridge scans independent candidate regions with bounded worker-local buffers and merges every typed entity, diagnostic, and quality result by stable address and UID, independent of task scheduling.
 
-The dump was 491,761,405 bytes. The app database after ingest was 7,107,915,776 bytes. Bridge diagnostics recorded 38.365 s total; selected phases were 0.060 s region enumeration, 21.444 s candidate discovery, 10.458 s extraction, 2.492 s club indexing, and 3.183 s dump writing. The active snapshot committed 55.7 s after the bridge became ready. This is the observed ready-to-snapshot-commit interval, not an end-to-end duration or the app-reported `ingestMs` metric. No dump content, names, addresses, screenshots, or machine paths were retained.
+### Explicit exclusions
 
-The developer confirmed that representative player, staff, manager, club, date, and null checks plus Search, Player, Planner, Academy, and Academy-year behavior worked correctly in the Windows app. This was an operator check; no raw values were retained.
+- Process snapshots, retry policy, data/schema/UI changes, tuning controls, and unmeasured performance claims.
+- Completion-order-dependent results, global hot-loop locks, unbounded workers or buffers, and altered cap/cancellation/read-quality semantics.
 
 ## Discoveries and replanning
 
@@ -629,18 +630,20 @@ The developer confirmed that representative player, staff, manager, club, date, 
 - Commit 3 retains unread player gender as explicit `unknown`: men keeps it to preserve the existing default path, women requires a known female value, and both keeps every player. Staff remains unfiltered.
 - Commit 3 labels schedule consensus as derived `next-fixture-consensus`; the no-vote fallback is derived `birth-cohort-and-system-date`. The basis remains diagnostics-only until schema v6 adds its persisted field.
 - Commit 4 retains staff and manager data inside the bridge until schema v6. The complete club graph matches human-manager person pointers at team `+0x80`, prefers a first-team match, and falls back to the manager's bounded contract chain; candidates without a readable name produce no manager metadata.
+- Commit 1 adds exact readable block ranges so the scanner's deliberate 16-byte overlap is never double-counted. Readers that cannot identify partial coverage fail closed as internally unread bytes, and block fills clear bytes outside final coverage when a child retry invalidates an earlier partial parent read.
 - Commit 4 keeps corrupt staff attribute bytes and non-leap-year day 366 contract expiries null. Player attribute compatibility decoding remains unchanged.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 — Add SuperScout direct-data parity | Commit 1 — Discover non-player people | Pending record | Typed scan result classifies pinned player, staff, and human-manager candidates while preserving the player-only pipeline. | Sol High: accepted after correction review. | None |
-| PR 1 — Add SuperScout direct-data parity | Commit 2 — Discover the complete club graph | Pending record | Same-pass, bounded club discovery feeds deterministic squad resolution while contract-derived clubs remain fallback. | Sol High: accepted after alignment correction review. | None |
-| PR 1 — Add SuperScout direct-data parity | Commit 3 — Read remaining player metadata | Pending record | Reads player nation UID and gender, carries selected-team raw type/reputation, applies closed request scope, and labels schedule dates with an explicit derived basis. | Sol High: accepted. | None |
-| PR 1 — Add SuperScout direct-data parity | Commit 4 — Extract non-player records | Pending record | Retains validated non-player staff fields and deterministic human-manager metadata inside the bridge without changing schema v5 output. | Sol High: accepted after correction review. | None |
-| PR 1 — Add SuperScout direct-data parity | Commit 5 — Publish and persist dump schema v6 | Pending record | Schema v6 bridge, validation, migration v15, and transactional ingest preserve player, staff, manager, scope, and date-basis data. | Sol xhigh: accepted after C5-01 and C5-02 correction review. | None |
-| PR 1 — Add SuperScout direct-data parity | Commit 6 — Validate SuperScout data parity | Pending record | A live unlimited FM 26.3.2 Load Data run matched bridge declarations with active SQLite rows and recorded the sanitized baseline. | Sol High: accepted after correction review. | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 1 — Discover non-player people | 0f0dc83 | Typed scan result classifies pinned player, staff, and human-manager candidates while preserving the player-only pipeline. | Sol High: accepted after correction review. | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 2 — Discover the complete club graph | fce0d07 | Same-pass, bounded club discovery feeds deterministic squad resolution while contract-derived clubs remain fallback. | Sol High: accepted after alignment correction review. | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 3 — Read remaining player metadata | 92823ca | Reads player nation UID and gender, carries selected-team raw type/reputation, applies closed request scope, and labels schedule dates with an explicit derived basis. | Sol High: accepted. | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 4 — Extract non-player records | 3e68e09 | Retains validated non-player staff fields and deterministic human-manager metadata inside the bridge without changing schema v5 output. | Sol High: accepted after correction review. | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 5 — Publish and persist dump schema v6 | 4ea5a43 | Schema v6 bridge, validation, migration v15, and transactional ingest preserve player, staff, manager, scope, and date-basis data. | Sol xhigh: accepted after C5-01 and C5-02 correction review. | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 6 — Validate SuperScout data parity | 8553e9f | A live unlimited FM 26.3.2 Load Data run matched bridge declarations with active SQLite rows and recorded the sanitized baseline. | Sol High: accepted after correction review. | None |
+| PR 2 — Harden FM memory scans | Commit 1 — Measure scan read quality | Pending record | Adds exact readable coverage, unread-quality diagnostics, and pre-write failure at more than ten percent unread coverage while preserving caps and prior dumps. | Sol High: accepted after stale-buffer correction review. | None |
 
 ## Final validation
 

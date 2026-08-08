@@ -153,6 +153,12 @@ public static class DiagnosticsWriter
 
         sb.AppendLine($"regionCount={diagnostics.RegionCount}");
         sb.AppendLine($"bytesScanned={diagnostics.BytesScanned}");
+        sb.AppendLine($"scanReadSource={diagnostics.ReadSource}");
+        sb.AppendLine($"scanRequestedBytes={diagnostics.ReadQuality.RequestedBytes}");
+        sb.AppendLine($"scanReadableBytes={diagnostics.ReadQuality.ReadableBytes}");
+        sb.AppendLine($"scanUnreadBytes={diagnostics.ReadQuality.UnreadBytes}");
+        sb.AppendLine($"scanInternalFailureBytes={diagnostics.ReadQuality.InternalFailureBytes}");
+        sb.AppendLine($"scanMateriallyIncomplete={diagnostics.ReadQuality.IsMateriallyIncomplete}");
         sb.AppendLine($"vtableHits={diagnostics.VtableHits}");
         sb.AppendLine($"candidatesAccepted={diagnostics.CandidatesAccepted}");
         sb.AppendLine($"staffCandidatesAccepted={diagnostics.StaffCandidatesAccepted}");

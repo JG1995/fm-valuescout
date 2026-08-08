@@ -48,29 +48,40 @@ public sealed class WindowsMemoryReader : IMemoryReader
         return ok && bytesRead == destination.Length;
     }
 
-    public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead) =>
-        BlockReadHelper.TryFill(address, buffer, offset, length, out bytesRead, TryReadDirect);
-
-    private bool TryReadDirect(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
+    public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
     {
-        bytesRead = 0;
+        var completed = TryReadBlockWithCoverage(address, buffer, offset, length, out var result);
+        bytesRead = result.ReadableBytes;
+        return completed;
+    }
+
+    public bool TryReadBlockWithCoverage(
+        ulong address,
+        byte[] buffer,
+        int offset,
+        int length,
+        out BlockReadResult result) =>
+        BlockReadHelper.TryFill(address, buffer, offset, length, out result, TryReadDirect);
+
+    private BlockReadResult TryReadDirect(ulong address, byte[] buffer, int offset, int length)
+    {
         if (length == 0)
         {
-            return true;
+            return BlockReadResult.Empty;
         }
 
         unsafe
         {
             fixed (byte* ptr = &buffer[offset])
             {
-                var ok = NativeMethods.ReadProcessMemory(
+                _ = NativeMethods.ReadProcessMemory(
                     _processHandle,
                     (IntPtr)address,
                     (IntPtr)ptr,
                     (IntPtr)length,
                     out var read);
-                bytesRead = (int)read;
-                return ok && bytesRead == length;
+                var bytesRead = (int)read;
+                return BlockReadResult.FromReadablePrefix(length, bytesRead);
             }
         }
     }

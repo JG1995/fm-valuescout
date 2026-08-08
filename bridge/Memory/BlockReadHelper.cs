@@ -5,19 +5,18 @@ namespace FmDataBridge.Memory;
 /// </summary>
 internal static class BlockReadHelper
 {
-    internal delegate bool ReadRange(
+    internal delegate BlockReadResult ReadRange(
         ulong address,
         byte[] buffer,
         int offset,
-        int length,
-        out int bytesRead);
+        int length);
 
     public static bool TryFill(
         ulong address,
         byte[] buffer,
         int offset,
         int length,
-        out int bytesRead,
+        out BlockReadResult result,
         ReadRange direct,
         int minBlockSize = MemoryConstants.MinBlockReadSize)
     {
@@ -30,31 +29,51 @@ internal static class BlockReadHelper
 
         if (length == 0)
         {
-            bytesRead = 0;
+            result = BlockReadResult.Empty;
             return true;
         }
 
         Array.Clear(buffer, offset, length);
-        return Fill(address, buffer, offset, length, out bytesRead, direct, minBlockSize);
+        result = Fill(address, buffer, offset, length, direct, minBlockSize);
+        ClearUnreadBytes(buffer, offset, length, result);
+        return result.IsComplete;
     }
 
-    private static bool Fill(
+    private static void ClearUnreadBytes(
+        byte[] buffer,
+        int offset,
+        int length,
+        BlockReadResult result)
+    {
+        var clearedThrough = 0;
+        foreach (var range in result.ReadableRanges)
+        {
+            if (range.Offset > clearedThrough)
+            {
+                Array.Clear(buffer, offset + clearedThrough, range.Offset - clearedThrough);
+            }
+
+            clearedThrough = range.Offset + range.Length;
+        }
+
+        if (clearedThrough < length)
+        {
+            Array.Clear(buffer, offset + clearedThrough, length - clearedThrough);
+        }
+    }
+
+    private static BlockReadResult Fill(
         ulong address,
         byte[] buffer,
         int offset,
         int length,
-        out int bytesRead,
         ReadRange direct,
         int minBlockSize)
     {
-        if (direct(address, buffer, offset, length, out bytesRead) && bytesRead == length)
+        var directResult = direct(address, buffer, offset, length);
+        if (directResult.IsComplete || length <= minBlockSize)
         {
-            return true;
-        }
-
-        if (length <= minBlockSize)
-        {
-            return bytesRead == length;
+            return directResult;
         }
 
         var half = length / 2;
@@ -64,16 +83,14 @@ internal static class BlockReadHelper
             half = aligned > 0 ? aligned : minBlockSize;
         }
 
-        var leftOk = Fill(address, buffer, offset, half, out var leftRead, direct, minBlockSize);
-        var rightOk = Fill(
+        var left = Fill(address, buffer, offset, half, direct, minBlockSize);
+        var right = Fill(
             address + (ulong)half,
             buffer,
             offset + half,
             length - half,
-            out var rightRead,
             direct,
             minBlockSize);
-        bytesRead = leftRead + rightRead;
-        return leftOk && rightOk;
+        return BlockReadResult.Combine(length, left, right, half);
     }
 }
