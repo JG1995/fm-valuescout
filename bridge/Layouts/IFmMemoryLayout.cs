@@ -34,6 +34,12 @@ public interface IFmMemoryLayout
     /// <summary>Potential ability (u16) relative to staff block base.</summary>
     int StaffPotentialAbilityOffset { get; }
 
+    /// <summary>Base of staff attribute bytes (stored ×5) relative to staff block.</summary>
+    int StaffAttrsOffset { get; }
+
+    /// <summary>Stable staff attribute key → byte offset from <see cref="StaffAttrsOffset"/>.</summary>
+    IReadOnlyList<AttributeLayoutEntry> StaffAttributeEntries { get; }
+
     /// <summary>Nested string slot: first name (relative to person).</summary>
     int FirstNameOffset { get; }
 
@@ -97,6 +103,9 @@ public interface IFmMemoryLayout
     /// <summary>Contract expiry packed FM date (u32) relative to contract object.</summary>
     int ContractExpiryOffset { get; }
 
+    /// <summary>Language-independent job enum byte relative to contract object.</summary>
+    int ContractJobIdOffset { get; }
+
     /// <summary>Transfer-status bitfield (byte) relative to contract object.</summary>
     int ContractStatusFlagsOffset { get; }
 
@@ -114,6 +123,9 @@ public interface IFmMemoryLayout
 
     /// <summary>Pointer to club object relative to team.</summary>
     int TeamClubPtrOffset { get; }
+
+    /// <summary>Pointer to the human manager person object relative to team.</summary>
+    int TeamManagerPtrOffset { get; }
 
     /// <summary>Team type byte (0 = first team, ~3 = reserves, ≥10 = youth).</summary>
     int TeamTypeOffset { get; }

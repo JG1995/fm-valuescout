@@ -16,6 +16,16 @@ public sealed class SquadAssignment
     public string? Division { get; init; }
 }
 
+/// <summary>One discovered team assignment for a pinned human-manager person.</summary>
+public sealed class HumanManagerClubAssignment
+{
+    public string ClubName { get; init; } = "";
+
+    public int? TeamType { get; init; }
+
+    public int? TeamReputation { get; init; }
+}
+
 /// <summary>
 /// Walk club → teams → squads and assign current club with deterministic multi-hit rules.
 /// </summary>
@@ -26,6 +36,7 @@ public sealed class SquadClubIndex
     public const int MaxPlayersPerSquad = 60;
 
     private readonly Dictionary<uint, SquadAssignment> _assignments = new();
+    private readonly Dictionary<ulong, HumanManagerHit> _humanManagerAssignments = new();
 
     public IReadOnlyDictionary<uint, int> DateVotes { get; private set; } =
         new Dictionary<uint, int>();
@@ -44,7 +55,8 @@ public sealed class SquadClubIndex
         IReadOnlyDictionary<ulong, uint> personToUid,
         IReadOnlyDictionary<uint, string?> parentClubByUid,
         IEnumerable<ClubCandidate> discoveredClubs,
-        IEnumerable<ulong> fallbackClubAddresses)
+        IEnumerable<ulong> fallbackClubAddresses,
+        IEnumerable<ulong>? humanManagerAddresses = null)
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(layout);
@@ -56,6 +68,9 @@ public sealed class SquadClubIndex
         var index = new SquadClubIndex();
         var votes = new Dictionary<uint, int>();
         var seenClubs = new HashSet<ulong>();
+        var managers = humanManagerAddresses is null
+            ? new HashSet<ulong>()
+            : humanManagerAddresses.Where(address => address != 0).ToHashSet();
 
         foreach (var discovered in discoveredClubs.OrderBy(candidate => candidate.Address))
         {
@@ -73,6 +88,7 @@ public sealed class SquadClubIndex
                 discovered.Name,
                 personToUid,
                 parentClubByUid,
+                managers,
                 votes,
                 index);
         }
@@ -97,6 +113,7 @@ public sealed class SquadClubIndex
                 clubName,
                 personToUid,
                 parentClubByUid,
+                managers,
                 votes,
                 index);
         }
@@ -109,6 +126,25 @@ public sealed class SquadClubIndex
     public bool TryGet(uint uid, out SquadAssignment assignment) =>
         _assignments.TryGetValue(uid, out assignment!);
 
+    public bool TryGetHumanManager(
+        ulong personAddress,
+        out HumanManagerClubAssignment assignment)
+    {
+        if (_humanManagerAssignments.TryGetValue(personAddress, out var hit))
+        {
+            assignment = new HumanManagerClubAssignment
+            {
+                ClubName = hit.ClubName,
+                TeamType = hit.TeamType,
+                TeamReputation = hit.TeamReputation,
+            };
+            return true;
+        }
+
+        assignment = null!;
+        return false;
+    }
+
     private static void WalkClub(
         IMemoryReader reader,
         IFmMemoryLayout layout,
@@ -116,6 +152,7 @@ public sealed class SquadClubIndex
         string clubName,
         IReadOnlyDictionary<ulong, uint> personToUid,
         IReadOnlyDictionary<uint, string?> parentClubByUid,
+        IReadOnlySet<ulong> humanManagerAddresses,
         Dictionary<uint, int> votes,
         SquadClubIndex index)
     {
@@ -144,17 +181,31 @@ public sealed class SquadClubIndex
                 continue;
             }
 
-            var teamType = 0;
+            int? discoveredTeamType = null;
             if (TryReadByteAt(reader, team, layout.TeamTypeOffset, out var tt))
             {
-                teamType = tt;
+                discoveredTeamType = tt;
             }
+
+            var teamType = discoveredTeamType ?? 0;
 
             int? teamReputation = null;
             if (TryReadUInt16At(reader, team, layout.TeamReputationOffset, out var reputation)
                 && reputation <= 12000)
             {
                 teamReputation = reputation;
+            }
+
+            if (TryReadPointerAt(reader, team, layout.TeamManagerPtrOffset, out var managerAddress)
+                && humanManagerAddresses.Contains(managerAddress))
+            {
+                index.RecordHumanManager(
+                    managerAddress,
+                    new HumanManagerHit(
+                        clubName,
+                        discoveredTeamType,
+                        teamReputation,
+                        team));
             }
 
             RecordDateVote(reader, layout, team, votes);
@@ -250,6 +301,17 @@ public sealed class SquadClubIndex
             TeamReputation = hit.TeamReputation,
             Division = hit.Division,
         };
+
+    private void RecordHumanManager(ulong personAddress, HumanManagerHit candidate)
+    {
+        if (_humanManagerAssignments.TryGetValue(personAddress, out var current)
+            && !HumanManagerPick.Choose(candidate, current))
+        {
+            return;
+        }
+
+        _humanManagerAssignments[personAddress] = candidate;
+    }
 
     private static bool TryResolvePersonUid(
         IMemoryReader reader,
@@ -396,5 +458,28 @@ public sealed class SquadClubIndex
 
         result = value * multiplier;
         return true;
+    }
+
+    private readonly record struct HumanManagerHit(
+        string ClubName,
+        int? TeamType,
+        int? TeamReputation,
+        ulong TeamAddress);
+
+    private static class HumanManagerPick
+    {
+        public static bool Choose(HumanManagerHit candidate, HumanManagerHit current)
+        {
+            var candidateType = candidate.TeamType ?? int.MaxValue;
+            var currentType = current.TeamType ?? int.MaxValue;
+            if (candidateType != currentType)
+            {
+                return candidateType < currentType;
+            }
+
+            var clubOrder = string.CompareOrdinal(candidate.ClubName, current.ClubName);
+            return clubOrder < 0
+                || (clubOrder == 0 && candidate.TeamAddress < current.TeamAddress);
+        }
     }
 }

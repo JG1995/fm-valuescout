@@ -84,6 +84,7 @@ public sealed class CapADumpPipeline
         }
 
         var drafts = new List<PlayerDraft>(candidates.Count);
+        var staffDrafts = new List<StaffDraft>(scan.Staff.Count);
         var personToUid = new Dictionary<ulong, uint>();
         var parentClubByUid = new Dictionary<uint, string?>();
         var clubAddresses = new HashSet<ulong>();
@@ -158,6 +159,32 @@ public sealed class CapADumpPipeline
             }
         }
 
+        var playerUids = candidates.Select(candidate => candidate.Uid).ToHashSet();
+        foreach (var candidate in scan.Staff)
+        {
+            if (playerUids.Contains(candidate.Uid))
+            {
+                continue;
+            }
+
+            var record = StaffReader.Read(
+                reader,
+                candidate.ObjectAddress,
+                candidate.BlockAddress,
+                candidate.Uid,
+                candidate.Ca,
+                candidate.Pa,
+                layout,
+                out var clubLink);
+
+            if (clubLink is { ClubAddress: not 0 })
+            {
+                clubAddresses.Add(clubLink.ClubAddress);
+            }
+
+            staffDrafts.Add(new StaffDraft(candidate, record, clubLink));
+        }
+
         diagnostics.ExtractionMs = phaseSw.ElapsedMilliseconds;
 
         if (drafts.Count == 0)
@@ -175,7 +202,8 @@ public sealed class CapADumpPipeline
             personToUid,
             parentClubByUid,
             scan.Clubs,
-            clubAddresses);
+            clubAddresses,
+            scan.HumanManagers.Select(candidate => candidate.ObjectAddress));
 
         foreach (var sample in squadIndex.MultiClubSamples.Take(ScanDiagnostics.MaxSampleClubSnapshots))
         {
@@ -195,6 +223,25 @@ public sealed class CapADumpPipeline
         diagnostics.GameDateSource = gameDate.Source;
         diagnostics.GameDateBasis = gameDate.Basis;
         diagnostics.GameDate = gameDate.GameDate;
+
+        var staff = staffDrafts
+            .Select(draft => draft.Record with
+            {
+                Age = draft.Record.BirthYear is { } birthYear
+                    && draft.Record.BirthDayOfYear is { } birthDayOfYear
+                    ? PlayerAge.At(birthYear, birthDayOfYear, gameDate.Year, gameDate.DayOfYear)
+                    : null,
+            })
+            .ToList();
+        var staffByUid = staff.ToDictionary(record => record.Uid);
+        var staffContractLinks = staffDrafts.ToDictionary(
+            draft => draft.Candidate.Uid,
+            draft => draft.ClubLink);
+        var manager = HumanManagerSelector.Select(
+            scan.HumanManagers,
+            staffByUid,
+            staffContractLinks,
+            squadIndex);
 
         var players = new List<DumpPlayer>(drafts.Count);
         foreach (var draft in drafts)
@@ -322,7 +369,9 @@ public sealed class CapADumpPipeline
             ? CapADumpResult.Succeeded(
                 players.Count,
                 scanTruncated: diagnostics.StoppedEarly,
-                maxAccepted: diagnostics.MaxAccepted)
+                maxAccepted: diagnostics.MaxAccepted,
+                staff: staff,
+                manager: manager)
             : CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
     }
 
@@ -389,6 +438,11 @@ public sealed class CapADumpPipeline
         PlayerContractFields Contract,
         ContractClubLink? ParentLink,
         PlayerGender Gender);
+
+    private sealed record StaffDraft(
+        PersonCandidate Candidate,
+        StaffRecord Record,
+        ContractClubLink? ClubLink);
 }
 
 public readonly record struct CapADumpResult(
@@ -396,15 +450,27 @@ public readonly record struct CapADumpResult(
     string? Error,
     int PlayerCount,
     bool DumpReplaced,
-    bool ScanTruncated = false,
-    int? MaxAccepted = null)
+    bool ScanTruncated,
+    int? MaxAccepted,
+    IReadOnlyList<StaffRecord> Staff,
+    HumanManager? Manager)
 {
     public static CapADumpResult Succeeded(
         int playerCount,
         bool scanTruncated = false,
-        int? maxAccepted = null) =>
-        new(true, null, playerCount, DumpReplaced: true, scanTruncated, maxAccepted);
+        int? maxAccepted = null,
+        IReadOnlyList<StaffRecord>? staff = null,
+        HumanManager? manager = null) =>
+        new(
+            true,
+            null,
+            playerCount,
+            DumpReplaced: true,
+            scanTruncated,
+            maxAccepted,
+            staff ?? Array.Empty<StaffRecord>(),
+            manager);
 
     public static CapADumpResult Failed(string error, bool dumpReplaced) =>
-        new(false, error, 0, dumpReplaced);
+        new(false, error, 0, dumpReplaced, false, null, Array.Empty<StaffRecord>(), null);
 }

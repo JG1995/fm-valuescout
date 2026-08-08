@@ -13,7 +13,7 @@ public sealed class ContractClubLink
 
     public string? Division { get; init; }
 
-    public int TeamReputation { get; init; }
+    public int? TeamReputation { get; init; }
 }
 
 /// <summary>
@@ -41,9 +41,9 @@ public static class ContractClubReader
             return null;
         }
 
-        var rep = 0;
+        int? rep = null;
         if (TryReadUInt16At(reader, team, layout.TeamReputationOffset, out var trep)
-            && trep is >= 0 and <= 12000)
+            && trep <= 12000)
         {
             rep = trep;
         }

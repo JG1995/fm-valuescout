@@ -42,6 +42,35 @@ public sealed class Fm263Layout : IFmMemoryLayout
 
     public int StaffPotentialAbilityOffset => 0xDC;
 
+    public int StaffAttrsOffset => 0x10;
+
+    // Stable English keys for the audited FMSuperScout StaffAttrs offsets; stored ×5.
+    public IReadOnlyList<AttributeLayoutEntry> StaffAttributeEntries { get; } = new AttributeLayoutEntry[]
+    {
+        new("Attacking", 0x22),
+        new("Defending", 0x23),
+        new("Fitness", 0x24),
+        new("Possession", 0x25),
+        new("Technical", 0x26),
+        new("Tactical", 0x27),
+        new("SetPieces", 0x33),
+        new("Determination", 0x0D),
+        new("ManManagement", 0x1E),
+        new("Motivating", 0x1F),
+        new("JudgingPlayerAbility", 0x1C),
+        new("JudgingPlayerPotential", 0x1D),
+        new("JudgingStaffAbility", 0x32),
+        new("Negotiating", 0x31),
+        new("TacticalKnowledge", 0x21),
+        new("Physiotherapy", 0x20),
+        new("SportsScience", 0x2F),
+        new("DataAnalysis", 0x2C),
+        new("WorkingWithYoungsters", 0x0C),
+        new("GoalkeepingDistribution", 0x2A),
+        new("GoalkeepingHandling", 0x29),
+        new("GoalkeepingReflexes", 0x1B),
+    };
+
     public int FirstNameOffset => 0x50;
 
     public int SecondNameOffset => 0x58;
@@ -169,6 +198,9 @@ public sealed class Fm263Layout : IFmMemoryLayout
 
     public int ContractExpiryOffset => 0x48;
 
+    // personJobTypes enum byte (FMSuperScout Dumper.cs ReadStaff).
+    public int ContractJobIdOffset => 0x26;
+
     public int ContractStatusFlagsOffset => 0x57;
 
     // PLAO_GUIDE_VALUE — SuperScout verified as FM's real transfer value (GBP).
@@ -182,6 +214,9 @@ public sealed class Fm263Layout : IFmMemoryLayout
     public int ContractTeamPtrOffset => 0x10;
 
     public int TeamClubPtrOffset => 0x30;
+
+    // Human-manager person pointer used by the FMSuperScout club walk.
+    public int TeamManagerPtrOffset => 0x80;
 
     public int TeamTypeOffset => 0x28;
 
