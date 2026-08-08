@@ -1008,6 +1008,46 @@ public sealed class CapADumpTests
         }
     }
 
+    [Fact]
+    public void Pipeline_preserves_prior_dump_and_disposes_snapshot_when_retry_extraction_is_cancelled()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            WritePriorDump(bridgeDir);
+            using var cancellation = new CancellationTokenSource();
+            var layout = Fm263Layout.Instance;
+            var snapshot = new TrackingSnapshot(
+                new CancelAtAddressReader(
+                    new ReadSourceMemoryReader(
+                        BuildReaderWithTwoIdenticalPlayers(layout),
+                        "snapshot-va-clone"),
+                    PersonAddress + (ulong)layout.CommonNameOffset,
+                    cancellation));
+            var factory = new FakeProcessSnapshotFactory(
+                () => ProcessSnapshotCaptureResult.Succeeded(snapshot));
+
+            var result = CreateSnapshotPipeline(factory).Run(
+                BuildMateriallyIncompleteReader(layout),
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+                cancellationToken: cancellation.Token);
+
+            Assert.False(result.Success);
+            Assert.False(result.DumpReplaced);
+            Assert.Equal(1, factory.CaptureCount);
+            Assert.Equal(1, snapshot.DisposeCount);
+            Assert.Contains("cancelled", result.Error, StringComparison.OrdinalIgnoreCase);
+            AssertPriorDumpWasPreserved(bridgeDir);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
     [MultiCoreFact]
     public void Pipeline_preserves_prior_dump_and_disposes_snapshot_once_when_retry_worker_throws()
     {
@@ -1502,6 +1542,50 @@ public sealed class CapADumpTests
             if (address == _throwAddress)
             {
                 throw new InvalidOperationException("synthetic extraction failure");
+            }
+
+            return _inner.TryRead(address, destination, out bytesRead);
+        }
+
+        public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead) =>
+            _inner.TryReadBlock(address, buffer, offset, length, out bytesRead);
+
+        public bool TryReadBlockWithCoverage(
+            ulong address,
+            byte[] buffer,
+            int offset,
+            int length,
+            out BlockReadResult result) =>
+            _inner.TryReadBlockWithCoverage(address, buffer, offset, length, out result);
+    }
+
+    private sealed class CancelAtAddressReader : IMemoryReader
+    {
+        private readonly IMemoryReader _inner;
+        private readonly ulong _cancelAddress;
+        private readonly CancellationTokenSource _cancellation;
+
+        public CancelAtAddressReader(
+            IMemoryReader inner,
+            ulong cancelAddress,
+            CancellationTokenSource cancellation)
+        {
+            _inner = inner;
+            _cancelAddress = cancelAddress;
+            _cancellation = cancellation;
+        }
+
+        public string ReadSource => _inner.ReadSource;
+
+        public bool SupportsConcurrentReads => _inner.SupportsConcurrentReads;
+
+        public IEnumerable<MemoryRegion> EnumerateRegions() => _inner.EnumerateRegions();
+
+        public bool TryRead(ulong address, Span<byte> destination, out int bytesRead)
+        {
+            if (address == _cancelAddress)
+            {
+                _cancellation.Cancel();
             }
 
             return _inner.TryRead(address, destination, out bytesRead);

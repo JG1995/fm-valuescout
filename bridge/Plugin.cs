@@ -311,7 +311,7 @@ public class Plugin : BasePlugin
                     DetectModulesBestEffort(),
                     requestId: requestId,
                     playersFound: null,
-                    error: ex.Message);
+                    error: "scan failed unexpectedly");
             }
             catch
             {

@@ -195,6 +195,11 @@ public sealed class CapADumpPipeline
             }
         }
 
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+        }
+
         if (candidates.Count == 0)
         {
             diagnostics.FailureReason = "scan produced zero player candidates";
@@ -211,6 +216,11 @@ public sealed class CapADumpPipeline
         phaseSw.Restart();
         foreach (var candidate in candidates)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+            }
+
             var playerBase = candidate.ObjectAddress - (ulong)candidate.ClassOffset;
             var identity = PlayerIdentityReader.TryRead(
                 reader,
@@ -218,6 +228,11 @@ public sealed class CapADumpPipeline
                 playerBase,
                 layout,
                 out var rejectReason);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+            }
 
             if (identity is null)
             {
@@ -281,6 +296,11 @@ public sealed class CapADumpPipeline
         var playerUids = candidates.Select(candidate => candidate.Uid).ToHashSet();
         foreach (var candidate in scan.Staff)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+            }
+
             if (playerUids.Contains(candidate.Uid))
             {
                 continue;
@@ -295,6 +315,11 @@ public sealed class CapADumpPipeline
                 candidate.Pa,
                 layout,
                 out var clubLink);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+            }
 
             if (clubLink is { ClubAddress: not 0 })
             {
@@ -314,6 +339,11 @@ public sealed class CapADumpPipeline
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
 
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+        }
+
         phaseSw.Restart();
         var squadIndex = SquadClubIndex.Build(
             reader,
@@ -323,6 +353,11 @@ public sealed class CapADumpPipeline
             scan.Clubs,
             clubAddresses,
             scan.HumanManagers.Select(candidate => candidate.ObjectAddress));
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+        }
 
         foreach (var sample in squadIndex.MultiClubSamples.Take(ScanDiagnostics.MaxSampleClubSnapshots))
         {
@@ -365,6 +400,11 @@ public sealed class CapADumpPipeline
         var players = new List<DumpPlayer>(drafts.Count);
         foreach (var draft in drafts)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+            }
+
             var parentName = draft.ParentLink?.ClubName;
             string? currentName = null;
             string? division = draft.ParentLink?.Division;
@@ -519,8 +559,26 @@ public sealed class CapADumpPipeline
             Manager = dumpManager,
         };
 
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+        }
+
         phaseSw.Restart();
-        var replaced = DumpWriter.TryWriteReplaceOnSuccess(bridgeDirectory, document);
+        bool replaced;
+        try
+        {
+            replaced = DumpWriter.TryWriteReplaceOnSuccess(
+                bridgeDirectory,
+                document,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            diagnostics.DumpWritingMs = phaseSw.ElapsedMilliseconds;
+            return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+        }
+
         diagnostics.DumpWritingMs = phaseSw.ElapsedMilliseconds;
         WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
 
@@ -532,6 +590,18 @@ public sealed class CapADumpPipeline
                 staff: staff,
                 manager: manager)
             : CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
+    }
+
+    private static CapADumpResult Cancelled(
+        string bridgeDirectory,
+        ScanDiagnostics diagnostics,
+        CountingMemoryReader counting,
+        Stopwatch totalSw)
+    {
+        diagnostics.Cancelled = true;
+        diagnostics.FailureReason = "scan cancelled";
+        WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
+        return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
     }
 
     private sealed class SnapshotScope : IDisposable
