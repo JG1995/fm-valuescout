@@ -16,6 +16,18 @@ public sealed class ScanDiagnostics
 
     public string ReadSource { get; set; } = "live";
 
+    /// <summary>Number of bounded retries after the live attempt.</summary>
+    public int ScanRetryCount { get; set; }
+
+    /// <summary>Elapsed time to capture the optional VA clone.</summary>
+    public long? SnapshotCaptureMs { get; set; }
+
+    /// <summary>Available commit memory checked immediately before snapshot capture.</summary>
+    public ulong? SnapshotAvailableCommitBytes { get; set; }
+
+    /// <summary>Snapshot capture failure without process addresses or memory contents.</summary>
+    public string? SnapshotFailureReason { get; set; }
+
     public ScanReadQuality ReadQuality { get; set; }
 
     public int ScanWorkerCount { get; set; }

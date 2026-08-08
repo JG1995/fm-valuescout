@@ -528,7 +528,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 3 — Retry incomplete scans from a frozen snapshot
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-read): retry incomplete scans from snapshots`
 
@@ -566,7 +566,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 4 — Validate hardened scan behavior
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `docs(memory-read): validate hardened scan behavior`
 
@@ -606,20 +606,20 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 **PR:** PR 2 — Harden FM memory scans
 
-**Commit:** Commit 3 — Retry incomplete scans from a frozen snapshot
+**Commit:** Commit 4 — Validate hardened scan behavior
 
-### RED proof
+### Manual validation boundary
 
-Use fakes to prove a complete live scan does not snapshot, a materially incomplete live scan retries once through a snapshot, and low memory, snapshot creation failure, cancellation, worker failure, or a materially incomplete retry preserves the prior dump.
+Install the final bridge, restart FM26, then run one unlimited Load Data scan against the unchanged reference save. Compare semantic results with the PR 1 baseline and inspect retry, source, read-quality, worker, timing, and process-memory diagnostics.
 
 ### Expected outcome
 
-The bridge retries only a materially incomplete live scan through one safely owned PSS VA clone, applies the same semantic and quality gate, and preserves prior data on every failed or cancelled attempt.
+The hardened scan preserves the PR 1 semantic result and records enough bounded operational evidence to retain or remove concurrency and snapshot recovery safely.
 
 ### Explicit exclusions
 
-- Unconditional snapshots, more than one retry, data/schema/UI changes, tuning controls, and unmeasured performance claims.
-- Combining live and snapshot values, native-handle leaks, low-memory capture, or altered cap/cancellation/read-quality semantics.
+- New data, schemas, UI, tuning controls, or unsupported performance claims.
+- Dangerous forced low-memory conditions, private live artifacts, or unexplained result drift.
 
 ## Discoveries and replanning
 
@@ -632,6 +632,8 @@ The bridge retries only a materially incomplete live scan through one safely own
 - Commit 4 retains staff and manager data inside the bridge until schema v6. The complete club graph matches human-manager person pointers at team `+0x80`, prefers a first-team match, and falls back to the manager's bounded contract chain; candidates without a readable name produce no manager metadata.
 - Commit 1 adds exact readable block ranges so the scanner's deliberate 16-byte overlap is never double-counted. Readers that cannot identify partial coverage fail closed as internally unread bytes, and block fills clear bytes outside final coverage when a child retry invalidates an earlier partial parent read.
 - Commit 2 partitions regions in original order, uses at most `min(regions, clamp(cores - 1, 1, 8))` worker-local 32 MiB buffers, and reduces the bound to two below 2 GiB available physical memory. Capped and non-concurrent readers retain the serial path so their established semantics remain exact.
+- Commit 3 reuses that fixed 2 GiB boundary for available commit: an incomplete live scan captures one VA clone only when commit memory is known and sufficient. The clone handle closes before PSS frees its snapshot, and retry diagnostics retain the final read source, retry count, capture timing, preflight commit value, and safe failure reason.
+- Commit 3 correction review requires snapshot readers to enumerate through their VA-clone process handle, diagnostics to omit module address ranges, and the retry worker-failure proof to use the parallel scan path.
 - Commit 4 keeps corrupt staff attribute bytes and non-leap-year day 366 contract expiries null. Player attribute compatibility decoding remains unchanged.
 
 ## Completed work
@@ -646,6 +648,7 @@ The bridge retries only a materially incomplete live scan through one safely own
 | PR 1 — Add SuperScout direct-data parity | Commit 6 — Validate SuperScout data parity | 8553e9f | A live unlimited FM 26.3.2 Load Data run matched bridge declarations with active SQLite rows and recorded the sanitized baseline. | Sol High: accepted after correction review. | None |
 | PR 2 — Harden FM memory scans | Commit 1 — Measure scan read quality | Pending record | Adds exact readable coverage, unread-quality diagnostics, and pre-write failure at more than ten percent unread coverage while preserving caps and prior dumps. | Sol High: accepted after stale-buffer correction review. | None |
 | PR 2 — Harden FM memory scans | Commit 2 — Parallelize deterministic region scanning | Pending record | Adds bounded worker-local region scans, stable result/diagnostic merging, memory-pressure diagnostics, and serial fallbacks for capped or non-concurrent reads. | Sol xhigh: accepted after low-memory boundary correction review. | None |
+| PR 2 — Harden FM memory scans | Commit 3 — Retry incomplete scans from a frozen snapshot | Pending record | Adds one guarded VA-clone retry with commit-memory preflight, clone-backed region enumeration, safe diagnostics, and one-owner native cleanup. | Sol xhigh: accepted after correction review. | None |
 
 ## Final validation
 

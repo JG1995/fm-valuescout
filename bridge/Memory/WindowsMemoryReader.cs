@@ -4,22 +4,27 @@ using System.Runtime.InteropServices;
 namespace FmDataBridge.Memory;
 
 /// <summary>
-/// Production reader for the current process using ReadProcessMemory / VirtualQuery.
+/// Production reader for a process image using ReadProcessMemory / VirtualQueryEx.
 /// Invalid addresses fail the read; they must not hard-crash via raw pointer deref.
 /// </summary>
 public sealed class WindowsMemoryReader : IMemoryReader
 {
     private readonly IntPtr _processHandle;
 
+    private readonly string _readSource;
+
     public WindowsMemoryReader()
-        : this(NativeMethods.GetCurrentProcess())
+        : this(NativeMethods.GetCurrentProcess(), "live")
     {
     }
 
-    internal WindowsMemoryReader(IntPtr processHandle)
+    internal WindowsMemoryReader(IntPtr processHandle, string readSource = "live")
     {
         _processHandle = processHandle;
+        _readSource = readSource;
     }
+
+    public string ReadSource => _readSource;
 
     public bool SupportsConcurrentReads => true;
 
@@ -93,7 +98,8 @@ public sealed class WindowsMemoryReader : IMemoryReader
         var address = 0UL;
         while (true)
         {
-            var result = NativeMethods.VirtualQuery(
+            var result = NativeMethods.VirtualQueryEx(
+                _processHandle,
                 (IntPtr)address,
                 out var info,
                 (UIntPtr)Marshal.SizeOf<NativeMethods.MemoryBasicInformation>());
@@ -159,6 +165,27 @@ internal static class NativeMethods
     internal static extern IntPtr GetCurrentProcess();
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern uint PssCaptureSnapshot(
+        IntPtr processHandle,
+        uint captureFlags,
+        uint threadContextFlags,
+        out IntPtr snapshotHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern uint PssQuerySnapshot(
+        IntPtr snapshotHandle,
+        uint informationClass,
+        out PssVaCloneInformation buffer,
+        uint bufferLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern uint PssFreeSnapshot(IntPtr processHandle, IntPtr snapshotHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ReadProcessMemory(
         IntPtr hProcess,
@@ -181,7 +208,8 @@ internal static class NativeMethods
         out IntPtr lpNumberOfBytesRead);
 
     [DllImport("kernel32.dll", SetLastError = true)]
-    internal static extern UIntPtr VirtualQuery(
+    internal static extern UIntPtr VirtualQueryEx(
+        IntPtr processHandle,
         IntPtr lpAddress,
         out MemoryBasicInformation lpBuffer,
         UIntPtr dwLength);
@@ -210,5 +238,11 @@ internal static class NativeMethods
         public ulong TotalVirtualBytes;
         public ulong AvailableVirtualBytes;
         public ulong AvailableExtendedVirtualBytes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PssVaCloneInformation
+    {
+        public IntPtr VaCloneHandle;
     }
 }

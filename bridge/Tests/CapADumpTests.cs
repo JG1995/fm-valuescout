@@ -20,6 +20,17 @@ public sealed class CapADumpTests
     private const int PlayerClassOffset = 0x288;
     private static readonly ulong PersonAddress = PlayerBlockBase + (ulong)PlayerClassOffset;
 
+    private sealed class MultiCoreFactAttribute : FactAttribute
+    {
+        public MultiCoreFactAttribute()
+        {
+            if (Environment.ProcessorCount < 3)
+            {
+                Skip = "parallel scan needs two worker slots";
+            }
+        }
+    }
+
     [Fact]
     public void Layout_registry_resolves_26_3_from_full_game_version()
     {
@@ -768,6 +779,307 @@ public sealed class CapADumpTests
     }
 
     [Fact]
+    public void Pipeline_does_not_snapshot_after_a_complete_live_scan()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var factory = new FakeProcessSnapshotFactory(() => throw new InvalidOperationException("unexpected snapshot"));
+            var result = CreateSnapshotPipeline(factory).Run(
+                BuildReaderWithTwoIdenticalPlayers(Fm263Layout.Instance),
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success);
+            Assert.Equal(0, factory.CaptureCount);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_retries_an_incomplete_live_scan_once_from_a_snapshot()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var snapshot = new TrackingSnapshot(
+                new ReadSourceMemoryReader(
+                    BuildReaderWithTwoIdenticalPlayers(Fm263Layout.Instance, uid: 202),
+                    "snapshot-va-clone"));
+            var factory = new FakeProcessSnapshotFactory(
+                () => ProcessSnapshotCaptureResult.Succeeded(snapshot));
+
+            var result = CreateSnapshotPipeline(factory).Run(
+                BuildMateriallyIncompleteReader(Fm263Layout.Instance, uid: 101),
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success);
+            Assert.Equal(1, factory.CaptureCount);
+            Assert.Equal(1, snapshot.DisposeCount);
+
+            using var dump = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+            Assert.Equal(202u, dump.RootElement.GetProperty("players")[0].GetProperty("uid").GetUInt32());
+
+            var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
+            Assert.Contains("scanReadSource=snapshot-va-clone", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("scanRetryCount=1", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_preserves_prior_dump_when_snapshot_creation_fails()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            WritePriorDump(bridgeDir);
+            var factory = new FakeProcessSnapshotFactory(
+                () => ProcessSnapshotCaptureResult.Failed("synthetic snapshot creation failure"));
+
+            var result = CreateSnapshotPipeline(factory).Run(
+                BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.False(result.Success);
+            Assert.False(result.DumpReplaced);
+            Assert.Equal(1, factory.CaptureCount);
+            Assert.Contains("snapshot", result.Error, StringComparison.OrdinalIgnoreCase);
+            AssertPriorDumpWasPreserved(bridgeDir);
+
+            var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
+            Assert.Contains("scanReadSource=live", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("scanRetryCount=1", diagnostics, StringComparison.Ordinal);
+            Assert.Contains("snapshotFailureReason=synthetic snapshot creation failure", diagnostics, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_skips_snapshot_and_preserves_prior_dump_when_commit_memory_is_low()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            WritePriorDump(bridgeDir);
+            var factory = new FakeProcessSnapshotFactory(() => throw new InvalidOperationException("unexpected snapshot"));
+            var lowMemory = new SystemMemoryStatus(
+                AvailablePhysicalBytes: ProcessSnapshotPolicy.MinimumAvailableCommitBytes,
+                AvailableCommitBytes: ProcessSnapshotPolicy.MinimumAvailableCommitBytes - 1,
+                MemoryLoadPercent: 90);
+
+            var result = CreateSnapshotPipeline(factory, lowMemory).Run(
+                BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.False(result.Success);
+            Assert.False(result.DumpReplaced);
+            Assert.Equal(0, factory.CaptureCount);
+            Assert.Contains("memory", result.Error, StringComparison.OrdinalIgnoreCase);
+            AssertPriorDumpWasPreserved(bridgeDir);
+
+            var diagnostics = File.ReadAllText(BridgePaths.GetDiagnosticsPath(bridgeDir));
+            Assert.Contains("scanRetryCount=1", diagnostics, StringComparison.Ordinal);
+            Assert.Contains(
+                $"snapshotAvailableCommitBytes={ProcessSnapshotPolicy.MinimumAvailableCommitBytes - 1}",
+                diagnostics,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_preserves_prior_dump_when_snapshot_retry_is_incomplete()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            WritePriorDump(bridgeDir);
+            var snapshot = new TrackingSnapshot(
+                new ReadSourceMemoryReader(BuildMateriallyIncompleteReader(Fm263Layout.Instance), "snapshot-va-clone"));
+            var factory = new FakeProcessSnapshotFactory(
+                () => ProcessSnapshotCaptureResult.Succeeded(snapshot));
+
+            var result = CreateSnapshotPipeline(factory).Run(
+                BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.False(result.Success);
+            Assert.False(result.DumpReplaced);
+            Assert.Equal(1, factory.CaptureCount);
+            Assert.Equal(1, snapshot.DisposeCount);
+            Assert.Contains("incomplete", result.Error, StringComparison.OrdinalIgnoreCase);
+            AssertPriorDumpWasPreserved(bridgeDir);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_does_not_snapshot_after_cancellation()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var factory = new FakeProcessSnapshotFactory(() => throw new InvalidOperationException("unexpected snapshot"));
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            var result = CreateSnapshotPipeline(factory).Run(
+                BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+                cancellationToken: cancellation.Token);
+
+            Assert.False(result.Success);
+            Assert.Equal(0, factory.CaptureCount);
+            Assert.Contains("cancelled", result.Error, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_preserves_prior_dump_and_disposes_snapshot_when_retry_is_cancelled()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            WritePriorDump(bridgeDir);
+            using var cancellation = new CancellationTokenSource();
+            var snapshot = new TrackingSnapshot(
+                new ReadSourceMemoryReader(BuildReaderWithTwoIdenticalPlayers(Fm263Layout.Instance), "snapshot-va-clone"));
+            var factory = new FakeProcessSnapshotFactory(() =>
+            {
+                cancellation.Cancel();
+                return ProcessSnapshotCaptureResult.Succeeded(snapshot);
+            });
+
+            var result = CreateSnapshotPipeline(factory).Run(
+                BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+                cancellationToken: cancellation.Token);
+
+            Assert.False(result.Success);
+            Assert.False(result.DumpReplaced);
+            Assert.Equal(1, factory.CaptureCount);
+            Assert.Equal(1, snapshot.DisposeCount);
+            Assert.Contains("cancelled", result.Error, StringComparison.OrdinalIgnoreCase);
+            AssertPriorDumpWasPreserved(bridgeDir);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [MultiCoreFact]
+    public void Pipeline_preserves_prior_dump_and_disposes_snapshot_once_when_retry_worker_throws()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            WritePriorDump(bridgeDir);
+            var snapshot = new TrackingSnapshot(
+                new ThrowingAtAddressReader(
+                    new ReadSourceMemoryReader(
+                        BuildReaderWithTwoIdenticalPlayers(Fm263Layout.Instance),
+                        "snapshot-va-clone"),
+                    VtableInAssembly - sizeof(ulong)));
+            var factory = new FakeProcessSnapshotFactory(
+                () => ProcessSnapshotCaptureResult.Succeeded(snapshot));
+
+            Assert.True(snapshot.Reader.SupportsConcurrentReads);
+            Assert.Equal(2, RegionEnumerator.GetCandidateRegions(snapshot.Reader).Count);
+
+            var exception = Assert.Throws<InvalidOperationException>(() =>
+                CreateSnapshotPipeline(factory).Run(
+                    BuildMateriallyIncompleteReader(Fm263Layout.Instance),
+                    bridgeDir,
+                    gameVersion: "26.3.2",
+                    bridgeVersion: "0.1.0",
+                    gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd)));
+
+            Assert.Equal("synthetic extraction failure", exception.Message);
+            Assert.Equal(1, factory.CaptureCount);
+            Assert.Equal(1, snapshot.DisposeCount);
+            AssertPriorDumpWasPreserved(bridgeDir);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Pipeline_disposes_snapshot_and_preserves_prior_dump_when_retry_extraction_throws()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            WritePriorDump(bridgeDir);
+            var layout = Fm263Layout.Instance;
+            var snapshot = new TrackingSnapshot(
+                new ThrowingAtAddressReader(
+                    new ReadSourceMemoryReader(BuildReaderWithTwoIdenticalPlayers(layout), "snapshot-va-clone"),
+                    PersonAddress + (ulong)layout.CommonNameOffset));
+            var factory = new FakeProcessSnapshotFactory(
+                () => ProcessSnapshotCaptureResult.Succeeded(snapshot));
+
+            Assert.Throws<InvalidOperationException>(() =>
+                CreateSnapshotPipeline(factory).Run(
+                    BuildMateriallyIncompleteReader(layout),
+                    bridgeDir,
+                    gameVersion: "26.3.2",
+                    bridgeVersion: "0.1.0",
+                    gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd)));
+
+            Assert.Equal(1, factory.CaptureCount);
+            Assert.Equal(1, snapshot.DisposeCount);
+            AssertPriorDumpWasPreserved(bridgeDir);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Person_scanner_records_recovered_readable_and_unread_region_bytes()
     {
         var layout = Fm263Layout.Instance;
@@ -908,7 +1220,8 @@ public sealed class CapADumpTests
                 bridgeDir,
                 gameVersion: "26.3.1",
                 bridgeVersion: "0.1.0",
-                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+                gamePlugin: new ModuleBounds("game_plugin.dll", 0x190000000UL, 0x190100000UL));
 
             Assert.True(result.Success);
 
@@ -942,6 +1255,8 @@ public sealed class CapADumpTests
             Assert.Equal(
                 MemoryConstants.DefaultScanBlockSize,
                 ParseDiagnosticLong(diagnostics, "scanWorkerBufferBytes"));
+            Assert.DoesNotContain("gameAssembly=", diagnostics, StringComparison.Ordinal);
+            Assert.DoesNotContain("gamePlugin=", diagnostics, StringComparison.Ordinal);
             Assert.True(
                 ParseDiagnosticLong(diagnostics, "totalMs")
                 >= ParseDiagnosticLong(diagnostics, "regionEnumerationMs"),
@@ -1008,14 +1323,16 @@ public sealed class CapADumpTests
         }
     }
 
-    private static FakeMemoryReader BuildReaderWithTwoIdenticalPlayers(IFmMemoryLayout layout)
+    private static FakeMemoryReader BuildReaderWithTwoIdenticalPlayers(
+        IFmMemoryLayout layout,
+        uint uid = 12345)
     {
         var reader = new FakeMemoryReader();
         PlacePlayerFixture(
             reader,
             layout,
             PersonAddress,
-            uid: 12345,
+        uid,
             ca: 150,
             pa: 170,
             name: "Test Player",
@@ -1026,7 +1343,7 @@ public sealed class CapADumpTests
             reader,
             layout,
             PersonAddress + 0x80,
-            uid: 12345,
+        uid,
             ca: 150,
             pa: 170,
             playerBlockBase: PlayerBlockBase + 0x80,
@@ -1034,6 +1351,172 @@ public sealed class CapADumpTests
             birthYear: 2000,
             birthDoy: 100);
         return reader;
+    }
+
+    private static FakeMemoryReader BuildMateriallyIncompleteReader(
+        IFmMemoryLayout layout,
+        uint uid = 12345)
+    {
+        var reader = BuildReaderWithTwoIdenticalPlayers(layout, uid);
+        const ulong unreadRegionBase = 0x300000;
+        const ulong unreadRegionSize = 0x20000;
+        AddCandidateRegion(reader, unreadRegionBase, unreadRegionSize);
+        reader.AddUnreadableRange(unreadRegionBase, unreadRegionSize);
+        return reader;
+    }
+
+    private static CapADumpPipeline CreateSnapshotPipeline(
+        FakeProcessSnapshotFactory snapshotFactory,
+        SystemMemoryStatus? memoryStatus = null) =>
+        new(
+            layouts: null,
+            snapshotFactory: snapshotFactory,
+            memoryStatusReader: () => memoryStatus ?? new SystemMemoryStatus(
+                AvailablePhysicalBytes: ProcessSnapshotPolicy.MinimumAvailableCommitBytes,
+                AvailableCommitBytes: ProcessSnapshotPolicy.MinimumAvailableCommitBytes,
+                MemoryLoadPercent: 0));
+
+    private static void WritePriorDump(string bridgeDir)
+    {
+        var prior = new DumpDocument
+        {
+            SchemaVersion = BridgeProtocol.DumpSchemaVersion,
+            GeneratedAtUtc = "2026-08-08T00:00:00Z",
+            GameVersion = "26.3.2",
+            SupportedGameVersion = "26.3",
+            BridgeVersion = "0.1.0",
+            ProtocolVersion = BridgeProtocol.ProtocolVersion,
+            PlayerCount = 1,
+            Players = new[]
+            {
+                new DumpPlayer
+                {
+                    Uid = 9,
+                    Ca = 11,
+                    Pa = 12,
+                    Name = "Prior Player",
+                    BirthYear = 1990,
+                    BirthDayOfYear = 2,
+                    PreferredFoot = "right",
+                },
+            },
+        };
+        Assert.True(DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, prior));
+    }
+
+    private static void AssertPriorDumpWasPreserved(string bridgeDir)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
+        Assert.Equal(9u, doc.RootElement.GetProperty("players")[0].GetProperty("uid").GetUInt32());
+    }
+
+    private sealed class FakeProcessSnapshotFactory : IProcessSnapshotFactory
+    {
+        private readonly Func<ProcessSnapshotCaptureResult> _capture;
+
+        public FakeProcessSnapshotFactory(Func<ProcessSnapshotCaptureResult> capture)
+        {
+            _capture = capture;
+        }
+
+        public int CaptureCount { get; private set; }
+
+        public ProcessSnapshotCaptureResult TryCapture()
+        {
+            CaptureCount++;
+            return _capture();
+        }
+    }
+
+    private sealed class TrackingSnapshot : IProcessSnapshot
+    {
+        public TrackingSnapshot(IMemoryReader reader)
+        {
+            Reader = reader;
+        }
+
+        public IMemoryReader Reader { get; }
+
+        public int DisposeCount { get; private set; }
+
+        public void Dispose()
+        {
+            DisposeCount++;
+            if (DisposeCount > 1)
+            {
+                throw new InvalidOperationException("snapshot was disposed more than once");
+            }
+        }
+    }
+
+    private sealed class ReadSourceMemoryReader : IMemoryReader
+    {
+        private readonly IMemoryReader _inner;
+
+        public ReadSourceMemoryReader(IMemoryReader inner, string readSource)
+        {
+            _inner = inner;
+            ReadSource = readSource;
+        }
+
+        public string ReadSource { get; }
+
+        public bool SupportsConcurrentReads => _inner.SupportsConcurrentReads;
+
+        public IEnumerable<MemoryRegion> EnumerateRegions() => _inner.EnumerateRegions();
+
+        public bool TryRead(ulong address, Span<byte> destination, out int bytesRead) =>
+            _inner.TryRead(address, destination, out bytesRead);
+
+        public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead) =>
+            _inner.TryReadBlock(address, buffer, offset, length, out bytesRead);
+
+        public bool TryReadBlockWithCoverage(
+            ulong address,
+            byte[] buffer,
+            int offset,
+            int length,
+            out BlockReadResult result) =>
+                _inner.TryReadBlockWithCoverage(address, buffer, offset, length, out result);
+    }
+
+    private sealed class ThrowingAtAddressReader : IMemoryReader
+    {
+        private readonly IMemoryReader _inner;
+        private readonly ulong _throwAddress;
+
+        public ThrowingAtAddressReader(IMemoryReader inner, ulong throwAddress)
+        {
+            _inner = inner;
+            _throwAddress = throwAddress;
+        }
+
+        public string ReadSource => _inner.ReadSource;
+
+        public bool SupportsConcurrentReads => _inner.SupportsConcurrentReads;
+
+        public IEnumerable<MemoryRegion> EnumerateRegions() => _inner.EnumerateRegions();
+
+        public bool TryRead(ulong address, Span<byte> destination, out int bytesRead)
+        {
+            if (address == _throwAddress)
+            {
+                throw new InvalidOperationException("synthetic extraction failure");
+            }
+
+            return _inner.TryRead(address, destination, out bytesRead);
+        }
+
+        public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead) =>
+            _inner.TryReadBlock(address, buffer, offset, length, out bytesRead);
+
+        public bool TryReadBlockWithCoverage(
+            ulong address,
+            byte[] buffer,
+            int offset,
+            int length,
+            out BlockReadResult result) =>
+            _inner.TryReadBlockWithCoverage(address, buffer, offset, length, out result);
     }
 
     private sealed class ThrowingBlockReader : IMemoryReader

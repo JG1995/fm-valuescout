@@ -154,6 +154,13 @@ public static class DiagnosticsWriter
         sb.AppendLine($"regionCount={diagnostics.RegionCount}");
         sb.AppendLine($"bytesScanned={diagnostics.BytesScanned}");
         sb.AppendLine($"scanReadSource={diagnostics.ReadSource}");
+        sb.AppendLine($"scanRetryCount={diagnostics.ScanRetryCount}");
+        sb.AppendLine($"snapshotCaptureMs={diagnostics.SnapshotCaptureMs?.ToString() ?? "(none)"}");
+        sb.AppendLine($"snapshotAvailableCommitBytes={diagnostics.SnapshotAvailableCommitBytes?.ToString() ?? "(unknown)"}");
+        if (!string.IsNullOrEmpty(diagnostics.SnapshotFailureReason))
+        {
+            sb.AppendLine($"snapshotFailureReason={diagnostics.SnapshotFailureReason}");
+        }
         sb.AppendLine($"scanRequestedBytes={diagnostics.ReadQuality.RequestedBytes}");
         sb.AppendLine($"scanReadableBytes={diagnostics.ReadQuality.ReadableBytes}");
         sb.AppendLine($"scanUnreadBytes={diagnostics.ReadQuality.UnreadBytes}");
@@ -193,16 +200,6 @@ public static class DiagnosticsWriter
         }
 
         sb.AppendLine($"stoppedEarly={diagnostics.StoppedEarly}");
-
-        if (diagnostics.GameAssembly is { } ga)
-        {
-            sb.AppendLine($"gameAssembly=0x{ga.BaseAddress:X}-0x{ga.EndAddress:X}");
-        }
-
-        if (diagnostics.GamePlugin is { } gp)
-        {
-            sb.AppendLine($"gamePlugin=0x{gp.BaseAddress:X}-0x{gp.EndAddress:X}");
-        }
 
         sb.AppendLine("classOffsetHistogram:");
         foreach (var pair in diagnostics.ClassOffsetHistogram.OrderBy(p => p.Key))

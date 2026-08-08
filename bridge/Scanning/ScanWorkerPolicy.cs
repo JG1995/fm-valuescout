@@ -6,7 +6,7 @@ internal static class ScanWorkerPolicy
 {
     internal const int MaximumWorkerCount = 8;
     internal const int LowMemoryWorkerCount = 2;
-    internal const ulong LowMemoryThresholdBytes = 2UL * 1024 * 1024 * 1024;
+    internal const ulong LowMemoryThresholdBytes = MemoryPressurePolicy.LowMemoryThresholdBytes;
 
     internal static int GetWorkerCount(
         int candidateRegionCount,

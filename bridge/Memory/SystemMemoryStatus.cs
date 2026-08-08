@@ -13,6 +13,11 @@ public readonly record struct SystemMemoryStatus(
     public bool IsKnown => AvailablePhysicalBytes != 0 || AvailableCommitBytes != 0;
 }
 
+internal static class MemoryPressurePolicy
+{
+    internal const ulong LowMemoryThresholdBytes = 2UL * 1024 * 1024 * 1024;
+}
+
 public static class SystemMemoryStatusReader
 {
     public static SystemMemoryStatus Read()
