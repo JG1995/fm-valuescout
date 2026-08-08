@@ -24,6 +24,14 @@ public sealed class ScanDiagnostics
 
     public int PlayerStaffOverlapCount { get; set; }
 
+    public int ClubCandidatesAccepted { get; set; }
+
+    public int ClubCandidatesRejected { get; set; }
+
+    public int ClubCandidateDuplicatesSkipped { get; set; }
+
+    public bool ClubDiscoveryIncomplete { get; set; }
+
     public int CandidatesRejected { get; set; }
 
     public int DuplicatesSkipped { get; set; }

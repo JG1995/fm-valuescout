@@ -40,10 +40,15 @@ public static class ClubNameReader
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(layout);
 
-        var name = FmStringReader.TryReadIndirect(reader, clubAddress + (ulong)layout.ClubNameOffset)
-                   ?? FmStringReader.TryReadIndirect(reader, clubAddress + (ulong)layout.ClubShortNameOffset);
+        var name = TryReadIndirectAt(reader, clubAddress, layout.ClubNameOffset)
+                   ?? TryReadIndirectAt(reader, clubAddress, layout.ClubShortNameOffset);
         return ClubNamePlausibility.IsPlausible(name) ? name : null;
     }
+
+    private static string? TryReadIndirectAt(IMemoryReader reader, ulong address, int offset) =>
+        offset >= 0 && (ulong)offset <= ulong.MaxValue - address
+            ? FmStringReader.TryReadIndirect(reader, address + (ulong)offset)
+            : null;
 }
 
 public static class CompetitionNameReader
@@ -55,15 +60,15 @@ public static class CompetitionNameReader
 
         foreach (var toff in new[] { layout.TeamCompPtrOffset, layout.TeamCompAltPtrOffset })
         {
-            if (!reader.TryReadUInt64(teamAddress + (ulong)toff, out var comp) || comp == 0)
+            if (!TryReadPointerAt(reader, teamAddress, toff, out var comp) || comp == 0)
             {
                 continue;
             }
 
-            var full = FmStringReader.TryReadIndirect(reader, comp + (ulong)layout.CompNameOffset);
+            var full = TryReadIndirectAt(reader, comp, layout.CompNameOffset);
             if (!ClubNamePlausibility.IsPlausible(full))
             {
-                full = FmStringReader.TryReadIndirect(reader, comp + (ulong)layout.CompShortNameOffset);
+                full = TryReadIndirectAt(reader, comp, layout.CompShortNameOffset);
             }
 
             if (ClubNamePlausibility.IsPlausible(full))
@@ -74,4 +79,21 @@ public static class CompetitionNameReader
 
         return null;
     }
+
+    private static bool TryReadPointerAt(
+        IMemoryReader reader,
+        ulong address,
+        int offset,
+        out ulong value)
+    {
+        value = 0;
+        return offset >= 0
+            && (ulong)offset <= ulong.MaxValue - address
+            && reader.TryReadUInt64(address + (ulong)offset, out value);
+    }
+
+    private static string? TryReadIndirectAt(IMemoryReader reader, ulong address, int offset) =>
+        offset >= 0 && (ulong)offset <= ulong.MaxValue - address
+            ? FmStringReader.TryReadIndirect(reader, address + (ulong)offset)
+            : null;
 }

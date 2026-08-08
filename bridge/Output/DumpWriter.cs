@@ -136,6 +136,10 @@ public static class DiagnosticsWriter
         sb.AppendLine($"staffCandidatesAccepted={diagnostics.StaffCandidatesAccepted}");
         sb.AppendLine($"humanManagerCandidatesAccepted={diagnostics.HumanManagerCandidatesAccepted}");
         sb.AppendLine($"playerStaffOverlapCount={diagnostics.PlayerStaffOverlapCount}");
+        sb.AppendLine($"clubCandidatesAccepted={diagnostics.ClubCandidatesAccepted}");
+        sb.AppendLine($"clubCandidatesRejected={diagnostics.ClubCandidatesRejected}");
+        sb.AppendLine($"clubCandidateDuplicatesSkipped={diagnostics.ClubCandidateDuplicatesSkipped}");
+        sb.AppendLine($"clubDiscoveryIncomplete={diagnostics.ClubDiscoveryIncomplete}");
         sb.AppendLine($"candidatesRejected={diagnostics.CandidatesRejected}");
         sb.AppendLine($"duplicatesSkipped={diagnostics.DuplicatesSkipped}");
         sb.AppendLine($"identitySkippedEmptyName={diagnostics.IdentitySkippedEmptyName}");

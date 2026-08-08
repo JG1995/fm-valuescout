@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using FmDataBridge.Extraction;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
 
@@ -63,6 +64,7 @@ public static class PersonScanner
         var players = new Dictionary<uint, PersonCandidate>();
         var staff = new Dictionary<uint, PersonCandidate>();
         var managers = new Dictionary<uint, PersonCandidate>();
+        var clubs = new Dictionary<ulong, ClubCandidate>();
         var classOffsetByVtable = new Dictionary<ulong, int>();
         var atCap = false;
         var stoppedDueToCap = false;
@@ -111,7 +113,7 @@ public static class PersonScanner
                 if (cancellationToken.IsCancellationRequested)
                 {
                     diagnostics.Cancelled = true;
-                    return BuildResult(players, staff, managers, diagnostics);
+                    return BuildResult(players, staff, managers, clubs, diagnostics);
                 }
 
                 var remaining = end - blockStart;
@@ -131,7 +133,7 @@ public static class PersonScanner
                     if (cancellationToken.IsCancellationRequested)
                     {
                         diagnostics.Cancelled = true;
-                        return BuildResult(players, staff, managers, diagnostics);
+                        return BuildResult(players, staff, managers, clubs, diagnostics);
                     }
 
                     diagnostics.BytesScanned += 8;
@@ -158,12 +160,6 @@ public static class PersonScanner
                         diagnostics.RecordClassOffsetHit(classOffset);
                     }
 
-                    if (!TryGetFacet(classOffset, playerOffsets, staffOffsets, managerOffsets, out var facet))
-                    {
-                        diagnostics.CandidatesRejected++;
-                        continue;
-                    }
-
                     var uid = BinaryPrimitives.ReadUInt32LittleEndian(
                         buffer.AsSpan(local + layout.ObjectUidOffset, sizeof(uint)));
                     if (!IsValidUid(uid))
@@ -172,6 +168,27 @@ public static class PersonScanner
                         continue;
                     }
 
+                    if (!TryGetFacet(classOffset, playerOffsets, staffOffsets, managerOffsets, out var facet))
+                    {
+                        diagnostics.CandidatesRejected++;
+                        if (TryReadClubCandidate(reader, layout, address, out var clubCandidate))
+                        {
+                            if (clubs.TryAdd(address, clubCandidate))
+                            {
+                                diagnostics.ClubCandidatesAccepted++;
+                            }
+                            else
+                            {
+                                diagnostics.ClubCandidateDuplicatesSkipped++;
+                            }
+                        }
+                        else
+                        {
+                            diagnostics.ClubCandidatesRejected++;
+                        }
+
+                        continue;
+                    }
                     if (!TrySubtract(address, classOffset, out var blockAddress))
                     {
                         diagnostics.CandidatesRejected++;
@@ -266,7 +283,7 @@ public static class PersonScanner
         }
 
         diagnostics.StoppedEarly = stoppedDueToCap;
-        return BuildResult(players, staff, managers, diagnostics);
+        return BuildResult(players, staff, managers, clubs, diagnostics);
     }
 
     public static bool IsValidUid(uint uid) => uid != 0 && uid != InvalidUid;
@@ -277,6 +294,7 @@ public static class PersonScanner
         IReadOnlyDictionary<uint, PersonCandidate> players,
         IReadOnlyDictionary<uint, PersonCandidate> staff,
         IReadOnlyDictionary<uint, PersonCandidate> managers,
+        IReadOnlyDictionary<ulong, ClubCandidate> clubs,
         ScanDiagnostics diagnostics)
     {
         var overlapUids = staff.Keys
@@ -284,11 +302,13 @@ public static class PersonScanner
             .OrderBy(uid => uid)
             .ToList();
         diagnostics.PlayerStaffOverlapCount = overlapUids.Count;
+        diagnostics.ClubDiscoveryIncomplete = diagnostics.StoppedEarly || diagnostics.Cancelled;
 
         return new PersonScanResult(
             OrderCandidates(players.Values),
             OrderCandidates(staff.Values.Where(candidate => !players.ContainsKey(candidate.Uid))),
             OrderCandidates(managers.Values),
+            clubs.Values.OrderBy(candidate => candidate.Address).ToList(),
             overlapUids,
             diagnostics.StoppedEarly,
             diagnostics.Cancelled);
@@ -340,6 +360,40 @@ public static class PersonScanner
         return false;
     }
 
+    private static bool TryReadClubCandidate(
+        IMemoryReader reader,
+        IFmMemoryLayout layout,
+        ulong address,
+        out ClubCandidate candidate)
+    {
+        candidate = default;
+        if (!TryReadPointerAt(reader, address, layout.ClubTeamsBeginOffset, out var teamsBegin)
+            || !TryReadPointerAt(reader, address, layout.ClubTeamsEndOffset, out var teamsEnd)
+            || teamsBegin == 0
+            || teamsEnd <= teamsBegin
+            || teamsBegin % sizeof(ulong) != 0
+            || teamsEnd % sizeof(ulong) != 0
+            || (teamsEnd - teamsBegin) % sizeof(ulong) != 0)
+        {
+            return false;
+        }
+
+        var teamCount = (teamsEnd - teamsBegin) / sizeof(ulong);
+        if (teamCount is 0 or > SquadClubIndex.MaxTeamsPerClub)
+        {
+            return false;
+        }
+
+        var name = ClubNameReader.TryRead(reader, address, layout);
+        if (name is null)
+        {
+            return false;
+        }
+
+        candidate = new ClubCandidate(address, name);
+        return true;
+    }
+
     private static bool TryReadAbilities(
         IMemoryReader reader,
         ulong blockAddress,
@@ -363,6 +417,17 @@ public static class PersonScanner
         ca = currentAbility;
         pa = potentialAbility;
         return true;
+    }
+
+    private static bool TryReadPointerAt(
+        IMemoryReader reader,
+        ulong address,
+        int offset,
+        out ulong value)
+    {
+        value = 0;
+        return TryAdd(address, offset, out var fieldAddress)
+            && reader.TryReadUInt64(fieldAddress, out value);
     }
 
     private static bool TrySubtract(ulong address, int offset, out ulong result)

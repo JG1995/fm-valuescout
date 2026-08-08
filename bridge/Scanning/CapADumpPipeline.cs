@@ -170,6 +170,7 @@ public sealed class CapADumpPipeline
             layout,
             personToUid,
             parentClubByUid,
+            scan.Clubs,
             clubAddresses);
 
         foreach (var sample in squadIndex.MultiClubSamples.Take(ScanDiagnostics.MaxSampleClubSnapshots))

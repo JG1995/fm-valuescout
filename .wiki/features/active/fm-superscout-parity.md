@@ -230,7 +230,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 2 — Discover the complete club graph
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-read): discover the complete club graph`
 
@@ -267,7 +267,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 3 — Read remaining player metadata
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(memory-read): read remaining player metadata`
 
@@ -606,33 +606,35 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 **PR:** PR 1 — Add SuperScout direct-data parity
 
-**Commit:** Commit 2 — Discover the complete club graph
+**Commit:** Commit 3 — Read remaining player metadata
 
 ### RED proof
 
-Create fake scan memory with valid clubs, malformed vectors, implausible names, duplicate addresses, contract-only fallbacks, squad wrappers, multi-club loans, and manager-team candidates. The typed scanner currently has no club candidates, so the focused club and pipeline tests must fail before bounded club discovery exists.
+Create fake-memory cases for player nation UID, gender, club reputation, raw team type, unknown reads, and all database scopes. Add request tests for omitted/default and invalid scope values, and prove next-fixture consensus uses an explicit derived basis without changing Academy year handling.
 
 ### Expected outcome
 
-The typed scan result retains deterministic, structurally validated clubs from the existing region pass. Squad and manager resolution use them as primary bounded input while contract-derived links remain fallback, with diagnostics that expose accepted, rejected, and incomplete discovery.
+The bridge retains player nation UID, explicit gender state, selected-team reputation and raw type, and a closed `men`/`women`/`both` request scope with `men` as the app default. Schedule consensus remains an explicit derived next-fixture basis while current club, loan, team-level, age, and Academy behavior stay stable.
 
 ### Explicit exclusions
 
-- No persisted club table, public club API, new player or staff fields, schema, Rust, SQLite, UI, concurrency, snapshot, or probe code.
-- No extra heap pass, unbounded name scan, or heuristic club acceptance.
-- No raw process address outside bridge-internal models and diagnostics that remain local.
+- No staff or manager extraction, schema v6, SQLite, UI controls, dormant offsets, or derived estimates.
+- No change to club, loan, or team-level selection beyond carrying the selected team's raw type and reputation.
+- No scope filtering for staff or raw process address outside bridge-internal models and local diagnostics.
 
 ## Discoveries and replanning
 
 - The 2026-08-08 audit used a temporary local clone of FMSuperScout at `0f270d39`. The `plugin/` tree has no diff from the earlier audited `4ec3c657`, so the prior field and scan findings remain current.
 - The abandoned research branch is not a dependency. Its unmerged probe cannot validate dormant pins on this clean `main` branch, and direct parity does not require those un-emitted fields.
 - The old PR 2 and PR 3 remain separate in this new plan as PR 1 and PR 2. Data parity is independently mergeable; scan hardening has separate concurrency, measurement, and native-resource stop conditions.
+- Commit 2 review found that a pointer-sized team vector can still be invalid when both endpoints are misaligned. Discovery and squad walking now require aligned endpoints; the focused regression proves the malformed club cannot displace a valid association.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 — Add SuperScout direct-data parity | Commit 1 — Discover non-player people | Pending record | Typed scan result classifies pinned player, staff, and human-manager candidates while preserving the player-only pipeline. | Sol High: accepted after correction review. | None |
+| PR 1 — Add SuperScout direct-data parity | Commit 2 — Discover the complete club graph | Pending record | Same-pass, bounded club discovery feeds deterministic squad resolution while contract-derived clubs remain fallback. | Sol High: accepted after alignment correction review. | None |
 
 ## Final validation
 

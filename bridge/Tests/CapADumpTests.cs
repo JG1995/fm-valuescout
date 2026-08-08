@@ -450,6 +450,7 @@ public sealed class CapADumpTests
 
         Assert.Equal(2, candidates.Count);
         Assert.True(diagnostics.StoppedEarly);
+        Assert.True(diagnostics.ClubDiscoveryIncomplete);
         Assert.True(scan.StoppedEarly);
         Assert.Equal(2, diagnostics.MaxAccepted);
         Assert.Equal(2, diagnostics.CandidatesAccepted);
@@ -483,6 +484,7 @@ public sealed class CapADumpTests
 
         Assert.Equal(2, candidates.Count);
         Assert.False(diagnostics.StoppedEarly);
+        Assert.False(diagnostics.ClubDiscoveryIncomplete);
         Assert.False(scan.StoppedEarly);
     }
 
@@ -574,6 +576,7 @@ public sealed class CapADumpTests
         var candidates = scan.Players;
 
         Assert.True(diagnostics.Cancelled);
+        Assert.True(diagnostics.ClubDiscoveryIncomplete);
         Assert.True(scan.Cancelled);
         Assert.False(diagnostics.StoppedEarly);
         Assert.Empty(candidates);
