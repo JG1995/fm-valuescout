@@ -491,7 +491,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 2 — Parallelize deterministic region scanning
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `perf(memory-read): parallelize deterministic region scans`
 
@@ -528,7 +528,7 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 #### Commit 3 — Retry incomplete scans from a frozen snapshot
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(memory-read): retry incomplete scans from snapshots`
 
@@ -606,20 +606,20 @@ Carry one known player's nation UID and one staff record from a typed memory sca
 
 **PR:** PR 2 — Harden FM memory scans
 
-**Commit:** Commit 2 — Parallelize deterministic region scanning
+**Commit:** Commit 3 — Retry incomplete scans from a frozen snapshot
 
 ### RED proof
 
-Use a deterministic blocking fake to prove the current serial scanner does not overlap independent candidate regions. Then compare serial and bounded-worker results across permuted regions, duplicate objects, boundaries, unread holes, caps, cancellation, and worker exceptions.
+Use fakes to prove a complete live scan does not snapshot, a materially incomplete live scan retries once through a snapshot, and low memory, snapshot creation failure, cancellation, worker failure, or a materially incomplete retry preserves the prior dump.
 
 ### Expected outcome
 
-The bridge scans independent candidate regions with bounded worker-local buffers and merges every typed entity, diagnostic, and quality result by stable address and UID, independent of task scheduling.
+The bridge retries only a materially incomplete live scan through one safely owned PSS VA clone, applies the same semantic and quality gate, and preserves prior data on every failed or cancelled attempt.
 
 ### Explicit exclusions
 
-- Process snapshots, retry policy, data/schema/UI changes, tuning controls, and unmeasured performance claims.
-- Completion-order-dependent results, global hot-loop locks, unbounded workers or buffers, and altered cap/cancellation/read-quality semantics.
+- Unconditional snapshots, more than one retry, data/schema/UI changes, tuning controls, and unmeasured performance claims.
+- Combining live and snapshot values, native-handle leaks, low-memory capture, or altered cap/cancellation/read-quality semantics.
 
 ## Discoveries and replanning
 
@@ -631,6 +631,7 @@ The bridge scans independent candidate regions with bounded worker-local buffers
 - Commit 3 labels schedule consensus as derived `next-fixture-consensus`; the no-vote fallback is derived `birth-cohort-and-system-date`. The basis remains diagnostics-only until schema v6 adds its persisted field.
 - Commit 4 retains staff and manager data inside the bridge until schema v6. The complete club graph matches human-manager person pointers at team `+0x80`, prefers a first-team match, and falls back to the manager's bounded contract chain; candidates without a readable name produce no manager metadata.
 - Commit 1 adds exact readable block ranges so the scanner's deliberate 16-byte overlap is never double-counted. Readers that cannot identify partial coverage fail closed as internally unread bytes, and block fills clear bytes outside final coverage when a child retry invalidates an earlier partial parent read.
+- Commit 2 partitions regions in original order, uses at most `min(regions, clamp(cores - 1, 1, 8))` worker-local 32 MiB buffers, and reduces the bound to two below 2 GiB available physical memory. Capped and non-concurrent readers retain the serial path so their established semantics remain exact.
 - Commit 4 keeps corrupt staff attribute bytes and non-leap-year day 366 contract expiries null. Player attribute compatibility decoding remains unchanged.
 
 ## Completed work
@@ -644,6 +645,7 @@ The bridge scans independent candidate regions with bounded worker-local buffers
 | PR 1 — Add SuperScout direct-data parity | Commit 5 — Publish and persist dump schema v6 | 4ea5a43 | Schema v6 bridge, validation, migration v15, and transactional ingest preserve player, staff, manager, scope, and date-basis data. | Sol xhigh: accepted after C5-01 and C5-02 correction review. | None |
 | PR 1 — Add SuperScout direct-data parity | Commit 6 — Validate SuperScout data parity | 8553e9f | A live unlimited FM 26.3.2 Load Data run matched bridge declarations with active SQLite rows and recorded the sanitized baseline. | Sol High: accepted after correction review. | None |
 | PR 2 — Harden FM memory scans | Commit 1 — Measure scan read quality | Pending record | Adds exact readable coverage, unread-quality diagnostics, and pre-write failure at more than ten percent unread coverage while preserving caps and prior dumps. | Sol High: accepted after stale-buffer correction review. | None |
+| PR 2 — Harden FM memory scans | Commit 2 — Parallelize deterministic region scanning | Pending record | Adds bounded worker-local region scans, stable result/diagnostic merging, memory-pressure diagnostics, and serial fallbacks for capped or non-concurrent reads. | Sol xhigh: accepted after low-memory boundary correction review. | None |
 
 ## Final validation
 

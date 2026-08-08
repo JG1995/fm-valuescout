@@ -21,6 +21,8 @@ public sealed class WindowsMemoryReader : IMemoryReader
         _processHandle = processHandle;
     }
 
+    public bool SupportsConcurrentReads => true;
+
     public bool TryRead(ulong address, Span<byte> destination, out int bytesRead)
     {
         bytesRead = 0;
@@ -167,6 +169,10 @@ internal static class NativeMethods
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ReadProcessMemory(
         IntPtr hProcess,
         IntPtr lpBaseAddress,
@@ -190,5 +196,19 @@ internal static class NativeMethods
         public uint State;
         public uint Protect;
         public uint Type;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MemoryStatusEx
+    {
+        public uint Length;
+        public uint MemoryLoadPercent;
+        public ulong TotalPhysicalBytes;
+        public ulong AvailablePhysicalBytes;
+        public ulong TotalPageFileBytes;
+        public ulong AvailableCommitBytes;
+        public ulong TotalVirtualBytes;
+        public ulong AvailableVirtualBytes;
+        public ulong AvailableExtendedVirtualBytes;
     }
 }

@@ -35,4 +35,11 @@ public readonly record struct ScanReadQuality(
             InternalFailureBytes + (internalFailure ? unreadBytes : 0));
     }
 
+    public ScanReadQuality Add(ScanReadQuality other) =>
+        new(
+            RequestedBytes + other.RequestedBytes,
+            ReadableBytes + other.ReadableBytes,
+            UnreadBytes + other.UnreadBytes,
+            InternalFailureBytes + other.InternalFailureBytes);
+
 }

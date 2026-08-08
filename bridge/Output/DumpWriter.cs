@@ -159,6 +159,11 @@ public static class DiagnosticsWriter
         sb.AppendLine($"scanUnreadBytes={diagnostics.ReadQuality.UnreadBytes}");
         sb.AppendLine($"scanInternalFailureBytes={diagnostics.ReadQuality.InternalFailureBytes}");
         sb.AppendLine($"scanMateriallyIncomplete={diagnostics.ReadQuality.IsMateriallyIncomplete}");
+        sb.AppendLine($"scanWorkerCount={diagnostics.ScanWorkerCount}");
+        sb.AppendLine($"scanWorkerBufferBytes={diagnostics.ScanWorkerBufferBytes}");
+        sb.AppendLine($"availablePhysicalBytes={diagnostics.AvailablePhysicalBytes?.ToString() ?? "(unknown)"}");
+        sb.AppendLine($"availableCommitBytes={diagnostics.AvailableCommitBytes?.ToString() ?? "(unknown)"}");
+        sb.AppendLine($"memoryLoadPercent={diagnostics.MemoryLoadPercent?.ToString() ?? "(unknown)"}");
         sb.AppendLine($"vtableHits={diagnostics.VtableHits}");
         sb.AppendLine($"candidatesAccepted={diagnostics.CandidatesAccepted}");
         sb.AppendLine($"staffCandidatesAccepted={diagnostics.StaffCandidatesAccepted}");

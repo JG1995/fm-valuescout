@@ -7,29 +7,33 @@ namespace FmDataBridge.Memory;
 public sealed class CountingMemoryReader : IMemoryReader
 {
     private readonly IMemoryReader _inner;
+    private long _callCount;
+    private long _requestedBytes;
 
     public CountingMemoryReader(IMemoryReader inner)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
     }
 
-    public long CallCount { get; private set; }
+    public long CallCount => Interlocked.Read(ref _callCount);
 
-    public long RequestedBytes { get; private set; }
+    public long RequestedBytes => Interlocked.Read(ref _requestedBytes);
 
     public string ReadSource => _inner.ReadSource;
 
+    public bool SupportsConcurrentReads => _inner.SupportsConcurrentReads;
+
     public bool TryRead(ulong address, Span<byte> destination, out int bytesRead)
     {
-        CallCount++;
-        RequestedBytes += destination.Length;
+        Interlocked.Increment(ref _callCount);
+        Interlocked.Add(ref _requestedBytes, destination.Length);
         return _inner.TryRead(address, destination, out bytesRead);
     }
 
     public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
     {
-        CallCount++;
-        RequestedBytes += length;
+        Interlocked.Increment(ref _callCount);
+        Interlocked.Add(ref _requestedBytes, length);
         return _inner.TryReadBlock(address, buffer, offset, length, out bytesRead);
     }
 
@@ -40,8 +44,8 @@ public sealed class CountingMemoryReader : IMemoryReader
         int length,
         out BlockReadResult result)
     {
-        CallCount++;
-        RequestedBytes += length;
+        Interlocked.Increment(ref _callCount);
+        Interlocked.Add(ref _requestedBytes, length);
         return _inner.TryReadBlockWithCoverage(address, buffer, offset, length, out result);
     }
 

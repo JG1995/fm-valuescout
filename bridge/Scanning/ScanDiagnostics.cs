@@ -18,6 +18,18 @@ public sealed class ScanDiagnostics
 
     public ScanReadQuality ReadQuality { get; set; }
 
+    public int ScanWorkerCount { get; set; }
+
+    public int ScanWorkerBufferBytes { get; set; }
+
+    public ulong? AvailablePhysicalBytes { get; set; }
+
+    public ulong? AvailableCommitBytes { get; set; }
+
+    public uint? MemoryLoadPercent { get; set; }
+
+    internal List<uint> AcceptedPlayerUids { get; } = new();
+
     public int VtableHits { get; set; }
 
     public int CandidatesAccepted { get; set; }

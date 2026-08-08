@@ -11,6 +11,11 @@ public interface IMemoryReader
     string ReadSource => "live";
 
     /// <summary>
+    /// Whether block and scalar reads may run concurrently on this reader.
+    /// </summary>
+    bool SupportsConcurrentReads => false;
+
+    /// <summary>
     /// Attempts to read <paramref name="destination"/>.Length bytes at <paramref name="address"/>.
     /// Returns true only when the full buffer is filled. On short or failed reads,
     /// <paramref name="bytesRead"/> reports how many bytes were copied (may be zero).

@@ -925,6 +925,8 @@ public sealed class CapADumpTests
             AssertNonNegativeDiagnostic(diagnostics, "scanReadableBytes");
             AssertNonNegativeDiagnostic(diagnostics, "scanUnreadBytes");
             AssertNonNegativeDiagnostic(diagnostics, "scanInternalFailureBytes");
+            AssertNonNegativeDiagnostic(diagnostics, "scanWorkerCount");
+            AssertNonNegativeDiagnostic(diagnostics, "scanWorkerBufferBytes");
             Assert.Contains("scanReadSource=live", diagnostics, StringComparison.Ordinal);
             Assert.Equal(
                 ParseDiagnosticLong(diagnostics, "scanRequestedBytes"),
@@ -936,6 +938,10 @@ public sealed class CapADumpTests
             Assert.True(
                 ParseDiagnosticLong(diagnostics, "processMemoryRequestedBytes") > 0,
                 "successful fake scan should request at least one memory byte");
+            Assert.True(ParseDiagnosticLong(diagnostics, "scanWorkerCount") > 0);
+            Assert.Equal(
+                MemoryConstants.DefaultScanBlockSize,
+                ParseDiagnosticLong(diagnostics, "scanWorkerBufferBytes"));
             Assert.True(
                 ParseDiagnosticLong(diagnostics, "totalMs")
                 >= ParseDiagnosticLong(diagnostics, "regionEnumerationMs"),

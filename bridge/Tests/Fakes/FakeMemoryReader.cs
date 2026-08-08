@@ -13,6 +13,8 @@ public sealed class FakeMemoryReader : IMemoryReader
 
     public void AddRegion(MemoryRegion region) => _regions.Add(region);
 
+    public bool SupportsConcurrentReads => true;
+
     /// <summary>
     /// Marks part of an added region unreadable while leaving its zero-filled bytes distinct from readable zero data.
     /// </summary>

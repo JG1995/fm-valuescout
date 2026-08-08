@@ -1,4 +1,7 @@
+using System.Buffers;
 using System.Buffers.Binary;
+using System.Runtime.ExceptionServices;
+using System.Threading.Tasks;
 using FmDataBridge.Extraction;
 using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
@@ -30,7 +33,30 @@ public static class PersonScanner
         ScanDiagnostics diagnostics,
         int? maxAccepted = null,
         PlayerDatabaseScope playerDatabaseScope = PlayerDatabaseScope.Men,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        Scan(
+            reader,
+            layout,
+            gameAssembly,
+            gamePlugin,
+            candidateRegions,
+            diagnostics,
+            maxAccepted,
+            playerDatabaseScope,
+            cancellationToken,
+            allowParallel: true);
+
+    private static PersonScanResult Scan(
+        IMemoryReader reader,
+        IFmMemoryLayout layout,
+        ModuleBounds gameAssembly,
+        ModuleBounds? gamePlugin,
+        IReadOnlyList<MemoryRegion> candidateRegions,
+        ScanDiagnostics diagnostics,
+        int? maxAccepted,
+        PlayerDatabaseScope playerDatabaseScope,
+        CancellationToken cancellationToken,
+        bool allowParallel)
     {
         ArgumentNullException.ThrowIfNull(reader);
         ArgumentNullException.ThrowIfNull(layout);
@@ -62,6 +88,45 @@ public static class PersonScanner
             diagnostics.GamePlugin = new ModuleBoundsSnapshot(gp.BaseAddress, gp.EndAddress);
         }
 
+        var memoryStatus = SystemMemoryStatusReader.Read();
+        if (memoryStatus.IsKnown)
+        {
+            diagnostics.AvailablePhysicalBytes = memoryStatus.AvailablePhysicalBytes;
+            diagnostics.AvailableCommitBytes = memoryStatus.AvailableCommitBytes;
+            diagnostics.MemoryLoadPercent = memoryStatus.MemoryLoadPercent;
+        }
+
+        var workerCount = ScanWorkerPolicy.GetWorkerCount(
+            candidateRegions.Count,
+            Environment.ProcessorCount,
+            memoryStatus);
+        var useParallel = allowParallel
+            && maxAccepted is null
+            && reader.SupportsConcurrentReads
+            && workerCount > 1;
+        diagnostics.ScanWorkerCount = candidateRegions.Count == 0
+            ? 0
+            : useParallel
+                ? workerCount
+                : 1;
+        diagnostics.ScanWorkerBufferBytes = diagnostics.ScanWorkerCount == 0
+            ? 0
+            : MemoryConstants.DefaultScanBlockSize;
+
+        if (useParallel)
+        {
+            return ScanParallel(
+                reader,
+                layout,
+                gameAssembly,
+                gamePlugin,
+                candidateRegions,
+                diagnostics,
+                playerDatabaseScope,
+                cancellationToken,
+                workerCount);
+        }
+
         var playerOffsets = new HashSet<int>(layout.PlayerClassOffsets);
         var staffOffsets = new HashSet<int>(layout.StaffClassOffsets);
         var managerOffsets = new HashSet<int>(layout.HumanManagerClassOffsets);
@@ -79,37 +144,15 @@ public static class PersonScanner
             throw new ArgumentOutOfRangeException(nameof(layout), "ObjectUidOffset cannot produce an aligned scan header.");
         }
 
-        var buffer = new byte[MemoryConstants.DefaultScanBlockSize];
-
-        foreach (var region in candidateRegions)
+        if (candidateRegions.Count == 0)
         {
-            if (stoppedDueToCap)
-            {
-                break;
-            }
+            return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
+        }
 
-            if (cancellationToken.IsCancellationRequested)
-            {
-                diagnostics.Cancelled = true;
-                break;
-            }
-
-            if (region.Size < (ulong)headerBytes)
-            {
-                continue;
-            }
-
-            if (!TryAdd(region.BaseAddress, region.Size, out var end)
-                || !TryAlignUp(region.BaseAddress, 8, out var blockStart)
-                || blockStart > end
-                || end - blockStart < (ulong)headerBytes)
-            {
-                diagnostics.CandidatesRejected++;
-                continue;
-            }
-
-            var hasPriorBlock = false;
-            while (end - blockStart >= (ulong)headerBytes)
+        var buffer = ArrayPool<byte>.Shared.Rent(MemoryConstants.DefaultScanBlockSize);
+        try
+        {
+            foreach (var region in candidateRegions)
             {
                 if (stoppedDueToCap)
                 {
@@ -119,195 +162,229 @@ public static class PersonScanner
                 if (cancellationToken.IsCancellationRequested)
                 {
                     diagnostics.Cancelled = true;
-                    return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
-                }
-
-                var remaining = end - blockStart;
-                var toRead = (int)Math.Min((ulong)buffer.Length, remaining);
-                if (toRead < headerBytes)
-                {
                     break;
                 }
 
-                if (!TryReadScanBlock(
-                        reader,
-                        blockStart,
-                        buffer,
-                        toRead,
-                        hasPriorBlock ? Math.Min((int)overlap, toRead) : 0,
-                        diagnostics,
-                        ref readQuality))
+                if (region.Size < (ulong)headerBytes)
                 {
-                    return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
+                    continue;
                 }
 
-                hasPriorBlock = true;
-
-                for (var local = 0;
-                     local + headerBytes <= toRead && blockStart + (ulong)local + (ulong)headerBytes <= end;
-                     local += 8)
+                if (!TryAdd(region.BaseAddress, region.Size, out var end)
+                    || !TryAlignUp(region.BaseAddress, 8, out var blockStart)
+                    || blockStart > end
+                    || end - blockStart < (ulong)headerBytes)
                 {
+                    diagnostics.CandidatesRejected++;
+                    continue;
+                }
+
+                var hasPriorBlock = false;
+                while (end - blockStart >= (ulong)headerBytes)
+                {
+                    if (stoppedDueToCap)
+                    {
+                        break;
+                    }
+
                     if (cancellationToken.IsCancellationRequested)
                     {
                         diagnostics.Cancelled = true;
                         return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
                     }
 
-                    diagnostics.BytesScanned += 8;
-
-                    var address = blockStart + (ulong)local;
-                    var vtable = BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(local, sizeof(ulong)));
-
-                    if (!IsModuleVtable(vtable, gameAssembly, gamePlugin))
+                    var remaining = end - blockStart;
+                    var toRead = (int)Math.Min((ulong)MemoryConstants.DefaultScanBlockSize, remaining);
+                    if (toRead < headerBytes)
                     {
-                        continue;
+                        break;
                     }
 
-                    diagnostics.VtableHits++;
-
-                    if (!TryResolveDynamicOffsetCached(reader, vtable, classOffsetByVtable, out var classOffset)
-                        || classOffset == 0)
+                    if (!TryReadScanBlock(
+                            reader,
+                            blockStart,
+                            buffer,
+                            toRead,
+                            hasPriorBlock ? Math.Min((int)overlap, toRead) : 0,
+                            diagnostics,
+                            ref readQuality))
                     {
-                        diagnostics.CandidatesRejected++;
-                        continue;
+                        return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
                     }
 
-                    if (classOffset is > 0 and < 0x2000)
-                    {
-                        diagnostics.RecordClassOffsetHit(classOffset);
-                    }
+                    hasPriorBlock = true;
 
-                    var uid = BinaryPrimitives.ReadUInt32LittleEndian(
-                        buffer.AsSpan(local + layout.ObjectUidOffset, sizeof(uint)));
-                    if (!IsValidUid(uid))
+                    for (var local = 0;
+                         local + headerBytes <= toRead && blockStart + (ulong)local + (ulong)headerBytes <= end;
+                         local += 8)
                     {
-                        diagnostics.CandidatesRejected++;
-                        continue;
-                    }
-
-                    if (!TryGetFacet(classOffset, playerOffsets, staffOffsets, managerOffsets, out var facet))
-                    {
-                        diagnostics.CandidatesRejected++;
-                        if (TryReadClubCandidate(reader, layout, address, out var clubCandidate))
+                        if (cancellationToken.IsCancellationRequested)
                         {
-                            if (clubs.TryAdd(address, clubCandidate))
+                            diagnostics.Cancelled = true;
+                            return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
+                        }
+
+                        diagnostics.BytesScanned += 8;
+
+                        var address = blockStart + (ulong)local;
+                        var vtable = BinaryPrimitives.ReadUInt64LittleEndian(buffer.AsSpan(local, sizeof(ulong)));
+
+                        if (!IsModuleVtable(vtable, gameAssembly, gamePlugin))
+                        {
+                            continue;
+                        }
+
+                        diagnostics.VtableHits++;
+
+                        if (!TryResolveDynamicOffsetCached(reader, vtable, classOffsetByVtable, out var classOffset)
+                            || classOffset == 0)
+                        {
+                            diagnostics.CandidatesRejected++;
+                            continue;
+                        }
+
+                        if (classOffset is > 0 and < 0x2000)
+                        {
+                            diagnostics.RecordClassOffsetHit(classOffset);
+                        }
+
+                        var uid = BinaryPrimitives.ReadUInt32LittleEndian(
+                            buffer.AsSpan(local + layout.ObjectUidOffset, sizeof(uint)));
+                        if (!IsValidUid(uid))
+                        {
+                            diagnostics.CandidatesRejected++;
+                            continue;
+                        }
+
+                        if (!TryGetFacet(classOffset, playerOffsets, staffOffsets, managerOffsets, out var facet))
+                        {
+                            diagnostics.CandidatesRejected++;
+                            if (TryReadClubCandidate(reader, layout, address, out var clubCandidate))
                             {
-                                diagnostics.ClubCandidatesAccepted++;
+                                if (clubs.TryAdd(address, clubCandidate))
+                                {
+                                    diagnostics.ClubCandidatesAccepted++;
+                                }
+                                else
+                                {
+                                    diagnostics.ClubCandidateDuplicatesSkipped++;
+                                }
                             }
                             else
                             {
-                                diagnostics.ClubCandidateDuplicatesSkipped++;
+                                diagnostics.ClubCandidatesRejected++;
+                            }
+
+                            continue;
+                        }
+                        if (!TrySubtract(address, classOffset, out var blockAddress))
+                        {
+                            diagnostics.CandidatesRejected++;
+                            continue;
+                        }
+
+                        var abilityOffsets = facet == PersonFacet.Player
+                            ? (layout.CurrentAbilityOffset, layout.PotentialAbilityOffset)
+                            : (layout.StaffCurrentAbilityOffset, layout.StaffPotentialAbilityOffset);
+                        if (!TryReadAbilities(reader, blockAddress, abilityOffsets.Item1, abilityOffsets.Item2, out var ca, out var pa))
+                        {
+                            diagnostics.CandidatesRejected++;
+                            continue;
+                        }
+
+                        var candidate = new PersonCandidate(address, blockAddress, uid, ca, pa, classOffset, facet);
+                        if (facet == PersonFacet.Player)
+                        {
+                            var gender = PlayerGenderReader.Read(reader, address, layout);
+                            if (!PlayerDatabaseScopes.Includes(playerDatabaseScope, gender))
+                            {
+                                diagnostics.PlayersExcludedByDatabaseScope++;
+                                continue;
+                            }
+
+                            if (players.ContainsKey(uid))
+                            {
+                                KeepLowestAddress(players, candidate);
+                                diagnostics.DuplicatesSkipped++;
+                                continue;
+                            }
+
+                            if (atCap)
+                            {
+                                stoppedDueToCap = true;
+                                break;
+                            }
+
+                            players[uid] = candidate;
+                            diagnostics.AcceptedPlayerUids.Add(uid);
+                            diagnostics.CandidatesAccepted++;
+                            if (diagnostics.SampleUids.Count < 16)
+                            {
+                                diagnostics.SampleUids.Add(uid);
+                            }
+
+                            if (maxAccepted is { } limit && players.Count >= limit)
+                            {
+                                atCap = true;
+                            }
+
+                            continue;
+                        }
+
+                        if (staff.ContainsKey(uid))
+                        {
+                            KeepLowestAddress(staff, candidate);
+                            diagnostics.DuplicatesSkipped++;
+                        }
+                        else
+                        {
+                            staff[uid] = candidate;
+                            diagnostics.StaffCandidatesAccepted++;
+                        }
+
+                        if (facet == PersonFacet.HumanManager)
+                        {
+                            if (managers.ContainsKey(uid))
+                            {
+                                KeepLowestAddress(managers, candidate);
+                                diagnostics.DuplicatesSkipped++;
+                            }
+                            else
+                            {
+                                managers[uid] = candidate;
+                                diagnostics.HumanManagerCandidatesAccepted++;
                             }
                         }
-                        else
-                        {
-                            diagnostics.ClubCandidatesRejected++;
-                        }
-
-                        continue;
                     }
-                    if (!TrySubtract(address, classOffset, out var blockAddress))
+
+                    if (stoppedDueToCap)
+                    {
+                        break;
+                    }
+
+                    var advance = (ulong)toRead > overlap
+                        ? toRead - (int)overlap
+                        : 8;
+                    if (advance < 8)
+                    {
+                        advance = 8;
+                    }
+
+                    if (!TryAdd(blockStart, (ulong)advance, out blockStart))
                     {
                         diagnostics.CandidatesRejected++;
-                        continue;
+                        break;
                     }
-
-                    var abilityOffsets = facet == PersonFacet.Player
-                        ? (layout.CurrentAbilityOffset, layout.PotentialAbilityOffset)
-                        : (layout.StaffCurrentAbilityOffset, layout.StaffPotentialAbilityOffset);
-                    if (!TryReadAbilities(reader, blockAddress, abilityOffsets.Item1, abilityOffsets.Item2, out var ca, out var pa))
-                    {
-                        diagnostics.CandidatesRejected++;
-                        continue;
-                    }
-
-                    var candidate = new PersonCandidate(address, blockAddress, uid, ca, pa, classOffset, facet);
-                    if (facet == PersonFacet.Player)
-                    {
-                        var gender = PlayerGenderReader.Read(reader, address, layout);
-                        if (!PlayerDatabaseScopes.Includes(playerDatabaseScope, gender))
-                        {
-                            diagnostics.PlayersExcludedByDatabaseScope++;
-                            continue;
-                        }
-
-                        if (players.ContainsKey(uid))
-                        {
-                            KeepLowestAddress(players, candidate);
-                            diagnostics.DuplicatesSkipped++;
-                            continue;
-                        }
-
-                        if (atCap)
-                        {
-                            stoppedDueToCap = true;
-                            break;
-                        }
-
-                        players[uid] = candidate;
-                        diagnostics.CandidatesAccepted++;
-                        if (diagnostics.SampleUids.Count < 16)
-                        {
-                            diagnostics.SampleUids.Add(uid);
-                        }
-
-                        if (maxAccepted is { } limit && players.Count >= limit)
-                        {
-                            atCap = true;
-                        }
-
-                        continue;
-                    }
-
-                    if (staff.ContainsKey(uid))
-                    {
-                        KeepLowestAddress(staff, candidate);
-                        diagnostics.DuplicatesSkipped++;
-                    }
-                    else
-                    {
-                        staff[uid] = candidate;
-                        diagnostics.StaffCandidatesAccepted++;
-                    }
-
-                    if (facet == PersonFacet.HumanManager)
-                    {
-                        if (managers.ContainsKey(uid))
-                        {
-                            KeepLowestAddress(managers, candidate);
-                            diagnostics.DuplicatesSkipped++;
-                        }
-                        else
-                        {
-                            managers[uid] = candidate;
-                            diagnostics.HumanManagerCandidatesAccepted++;
-                        }
-                    }
-                }
-
-                if (stoppedDueToCap)
-                {
-                    break;
-                }
-
-                var advance = (ulong)toRead > overlap
-                    ? toRead - (int)overlap
-                    : 8;
-                if (advance < 8)
-                {
-                    advance = 8;
-                }
-
-                if (!TryAdd(blockStart, (ulong)advance, out blockStart))
-                {
-                    diagnostics.CandidatesRejected++;
-                    break;
                 }
             }
-        }
 
-        diagnostics.StoppedEarly = stoppedDueToCap;
-        return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
+            diagnostics.StoppedEarly = stoppedDueToCap;
+            return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     public static bool IsValidUid(uint uid) => uid != 0 && uid != InvalidUid;
@@ -330,16 +407,226 @@ public static class PersonScanner
         diagnostics.ClubDiscoveryIncomplete = diagnostics.StoppedEarly || diagnostics.Cancelled;
         diagnostics.ReadQuality = readQuality;
 
-        return new PersonScanResult(
+        var rawStaff = OrderCandidates(staff.Values);
+        var result = new PersonScanResult(
             OrderCandidates(players.Values),
-            OrderCandidates(staff.Values.Where(candidate => !players.ContainsKey(candidate.Uid))),
+            OrderCandidates(rawStaff.Where(candidate => !players.ContainsKey(candidate.Uid))),
             OrderCandidates(managers.Values),
             clubs.Values.OrderBy(candidate => candidate.Address).ToList(),
             overlapUids,
             diagnostics.StoppedEarly,
             diagnostics.Cancelled,
             readQuality);
+        return result with { RawStaff = rawStaff };
     }
+
+    private static PersonScanResult ScanParallel(
+        IMemoryReader reader,
+        IFmMemoryLayout layout,
+        ModuleBounds gameAssembly,
+        ModuleBounds? gamePlugin,
+        IReadOnlyList<MemoryRegion> candidateRegions,
+        ScanDiagnostics diagnostics,
+        PlayerDatabaseScope playerDatabaseScope,
+        CancellationToken cancellationToken,
+        int workerCount)
+    {
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var workerScans = new WorkerScan?[workerCount];
+        var failures = new ExceptionDispatchInfo?[workerCount];
+        var tasks = new Task[workerCount];
+
+        for (var worker = 0; worker < workerCount; worker++)
+        {
+            var workerIndex = worker;
+            var start = (int)((long)candidateRegions.Count * workerIndex / workerCount);
+            var end = (int)((long)candidateRegions.Count * (workerIndex + 1) / workerCount);
+            var regions = candidateRegions.Skip(start).Take(end - start).ToArray();
+            tasks[workerIndex] = Task.Run(() =>
+            {
+                var workerDiagnostics = new ScanDiagnostics();
+                try
+                {
+                    var scan = Scan(
+                        reader,
+                        layout,
+                        gameAssembly,
+                        gamePlugin,
+                        regions,
+                        workerDiagnostics,
+                        maxAccepted: null,
+                        playerDatabaseScope,
+                        cancellation.Token,
+                        allowParallel: false);
+                    workerScans[workerIndex] = new WorkerScan(scan, workerDiagnostics);
+                    if (scan.Cancelled)
+                    {
+                        cancellation.Cancel();
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    workerDiagnostics.Cancelled = true;
+                    workerScans[workerIndex] = new WorkerScan(CancelledResult(), workerDiagnostics);
+                    cancellation.Cancel();
+                }
+                catch (Exception exception)
+                {
+                    failures[workerIndex] = ExceptionDispatchInfo.Capture(exception);
+                    cancellation.Cancel();
+                }
+            });
+        }
+
+        Task.WaitAll(tasks);
+        foreach (var failure in failures)
+        {
+            if (failure is not null)
+            {
+                failure.Throw();
+            }
+        }
+
+        var players = new Dictionary<uint, PersonCandidate>();
+        var staff = new Dictionary<uint, PersonCandidate>();
+        var managers = new Dictionary<uint, PersonCandidate>();
+        var clubs = new Dictionary<ulong, ClubCandidate>();
+        var readQuality = default(ScanReadQuality);
+        foreach (var workerScan in workerScans)
+        {
+            if (workerScan is null)
+            {
+                throw new InvalidOperationException("Parallel scan worker did not return a result.");
+            }
+
+            MergeWorkerDiagnostics(diagnostics, workerScan.Diagnostics);
+            readQuality = readQuality.Add(workerScan.Result.ReadQuality);
+
+            var playersByUid = workerScan.Result.Players.ToDictionary(candidate => candidate.Uid);
+            foreach (var uid in workerScan.Diagnostics.AcceptedPlayerUids)
+            {
+                if (playersByUid.TryGetValue(uid, out var candidate))
+                {
+                    MergePlayer(players, candidate, diagnostics);
+                }
+            }
+
+            foreach (var candidate in workerScan.Result.RawStaff)
+            {
+                MergeStaff(staff, candidate, diagnostics);
+            }
+
+            foreach (var candidate in workerScan.Result.HumanManagers)
+            {
+                MergeManager(managers, candidate, diagnostics);
+            }
+
+            foreach (var candidate in workerScan.Result.Clubs)
+            {
+                MergeClub(clubs, candidate, diagnostics);
+            }
+        }
+
+        diagnostics.StoppedEarly = false;
+        return BuildResult(players, staff, managers, clubs, diagnostics, readQuality);
+    }
+
+    private static void MergeWorkerDiagnostics(ScanDiagnostics diagnostics, ScanDiagnostics workerDiagnostics)
+    {
+        diagnostics.BytesScanned += workerDiagnostics.BytesScanned;
+        diagnostics.VtableHits += workerDiagnostics.VtableHits;
+        diagnostics.CandidatesRejected += workerDiagnostics.CandidatesRejected;
+        diagnostics.DuplicatesSkipped += workerDiagnostics.DuplicatesSkipped;
+        diagnostics.ClubCandidatesRejected += workerDiagnostics.ClubCandidatesRejected;
+        diagnostics.ClubCandidateDuplicatesSkipped += workerDiagnostics.ClubCandidateDuplicatesSkipped;
+        diagnostics.PlayersExcludedByDatabaseScope += workerDiagnostics.PlayersExcludedByDatabaseScope;
+        diagnostics.Cancelled |= workerDiagnostics.Cancelled;
+
+        foreach (var (classOffset, count) in workerDiagnostics.ClassOffsetHistogram)
+        {
+            diagnostics.ClassOffsetHistogram.TryGetValue(classOffset, out var currentCount);
+            diagnostics.ClassOffsetHistogram[classOffset] = currentCount + count;
+        }
+    }
+
+    private static void MergePlayer(
+        IDictionary<uint, PersonCandidate> players,
+        PersonCandidate candidate,
+        ScanDiagnostics diagnostics)
+    {
+        if (players.ContainsKey(candidate.Uid))
+        {
+            KeepLowestAddress(players, candidate);
+            diagnostics.DuplicatesSkipped++;
+            return;
+        }
+
+        players[candidate.Uid] = candidate;
+        diagnostics.CandidatesAccepted++;
+        if (diagnostics.SampleUids.Count < 16)
+        {
+            diagnostics.SampleUids.Add(candidate.Uid);
+        }
+    }
+
+    private static void MergeStaff(
+        IDictionary<uint, PersonCandidate> staff,
+        PersonCandidate candidate,
+        ScanDiagnostics diagnostics)
+    {
+        if (staff.ContainsKey(candidate.Uid))
+        {
+            KeepLowestAddress(staff, candidate);
+            diagnostics.DuplicatesSkipped++;
+            return;
+        }
+
+        staff[candidate.Uid] = candidate;
+        diagnostics.StaffCandidatesAccepted++;
+    }
+
+    private static void MergeManager(
+        IDictionary<uint, PersonCandidate> managers,
+        PersonCandidate candidate,
+        ScanDiagnostics diagnostics)
+    {
+        if (managers.ContainsKey(candidate.Uid))
+        {
+            KeepLowestAddress(managers, candidate);
+            diagnostics.DuplicatesSkipped++;
+            return;
+        }
+
+        managers[candidate.Uid] = candidate;
+        diagnostics.HumanManagerCandidatesAccepted++;
+    }
+
+    private static void MergeClub(
+        IDictionary<ulong, ClubCandidate> clubs,
+        ClubCandidate candidate,
+        ScanDiagnostics diagnostics)
+    {
+        if (clubs.TryAdd(candidate.Address, candidate))
+        {
+            diagnostics.ClubCandidatesAccepted++;
+            return;
+        }
+
+        diagnostics.ClubCandidateDuplicatesSkipped++;
+    }
+
+    private static PersonScanResult CancelledResult() =>
+        new(
+            Array.Empty<PersonCandidate>(),
+            Array.Empty<PersonCandidate>(),
+            Array.Empty<PersonCandidate>(),
+            Array.Empty<ClubCandidate>(),
+            Array.Empty<uint>(),
+            StoppedEarly: false,
+            Cancelled: true,
+            ReadQuality: default);
+
+    private sealed record WorkerScan(PersonScanResult Result, ScanDiagnostics Diagnostics);
 
     private static bool TryReadScanBlock(
         IMemoryReader reader,
