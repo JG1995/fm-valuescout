@@ -4,6 +4,7 @@ export type PlayerRoleScore = {
   phase: string;
   positionTags: string[];
   score: number | null;
+  potentialScore: number | null;
 };
 
 export type PlayerDetail = {
@@ -17,6 +18,7 @@ export type PlayerDetail = {
   preferredFoot: string;
   positions: Record<string, number>;
   attributes: Record<string, number | null>;
+  potentialAttributes: Record<string, number | null>;
   hiddenAttributes: Record<string, number | null>;
   personality: Record<string, number | null>;
   weeklyWageGbp: number | null;

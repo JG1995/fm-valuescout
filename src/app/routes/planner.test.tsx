@@ -30,6 +30,7 @@ import {
   getPlannerClearAllIpcMockCalls,
   getPlannerClubFamilySaveCalls,
   getPlannerDepthIpcMockCalls,
+  getPlannerOptimizeIpcMockBases,
   getPlannerOptimizeIpcMockCalls,
   getPlannerSlotCandidateFetchCount,
   resolvePlannerClubFamilyIpcMock,
@@ -1354,7 +1355,14 @@ describe("planner route", () => {
       within(matrix).getByText("OOP: GK · Line-Holding Keeper"),
     ).toBeInTheDocument();
     expect(
-      within(matrix).getByRole("img", { name: /Combined role score: 82/ }),
+      within(matrix).getByRole("img", {
+        name: /Current combined role score: 82/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("img", {
+        name: /Potential combined role score: 91/,
+      }),
     ).toBeInTheDocument();
     expect(within(matrix).getByText("Outside pool")).toBeInTheDocument();
     expect(within(matrix).getByText("Unresolved")).toBeInTheDocument();
@@ -1364,7 +1372,7 @@ describe("planner route", () => {
       }),
     ).toBeInTheDocument();
     const unavailableCell = within(matrix).getByRole("button", {
-      name: /No Score Player, Resolved, score —/,
+      name: /No Score Player, Resolved, current score —, potential score —/,
     });
     expect(unavailableCell).not.toBeDisabled();
     unavailableCell.focus();
@@ -1627,7 +1635,7 @@ describe("planner route", () => {
       await screen.findByRole("button", { name: "Optimize squads" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Squads optimized.",
+      "Squads optimized by current scores.",
     );
 
     await user.click(screen.getByRole("button", { name: "Clear all" }));
@@ -1820,6 +1828,7 @@ describe("planner route", () => {
                         currentName: "String Keeper",
                         state: "resolved",
                         combinedScore: 82,
+                        potentialCombinedScore: null,
                       },
                     ],
                   }
@@ -2085,6 +2094,7 @@ describe("planner route", () => {
                         currentName: "Senior Keeper",
                         state: "resolved",
                         combinedScore: 82,
+                        potentialCombinedScore: null,
                       },
                     ],
                   }
@@ -2423,9 +2433,12 @@ describe("planner route", () => {
     await user.click(optimizeButton);
 
     await waitFor(() =>
-      expect(screen.getByText("Squads optimized.")).toBeInTheDocument(),
+      expect(
+        screen.getByText("Squads optimized by current scores."),
+      ).toBeInTheDocument(),
     );
     expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
+    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current"]);
     await user.click(screen.getByRole("tab", { name: "Reserves" }));
     expect(
       screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
@@ -2435,6 +2448,16 @@ describe("planner route", () => {
     expect(
       await screen.findByRole("option", { name: /Reserve Keeper/ }),
     ).toHaveTextContent(`Assigned: ${RESERVES_FIRST_KEEPER}`);
+    await user.keyboard("{Escape}");
+    await user.click(
+      screen.getByRole("button", { name: "Optimize by potential" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText("Squads optimized by potential."),
+      ).toBeInTheDocument(),
+    );
+    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current", "potential"]);
   });
 
   it("keeps the depth unchanged and reports optimizer errors", async () => {
@@ -2456,6 +2479,14 @@ describe("planner route", () => {
         name: /Senior, 1st string, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize by potential" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Potential optimization failed: Optimize failed",
+    );
+    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current", "potential"]);
   });
 
   it("prevents duplicate optimizer runs while pending", async () => {
@@ -2468,12 +2499,40 @@ describe("planner route", () => {
     const optimizeButton = await screen.findByRole("button", {
       name: "Optimize squads",
     });
+    const potentialButton = screen.getByRole("button", {
+      name: "Optimize by potential",
+    });
     await user.click(optimizeButton);
     await user.click(optimizeButton);
+    await user.click(potentialButton);
 
     expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
     expect(optimizeButton).toBeDisabled();
-    expect(optimizeButton).toHaveAccessibleName("Optimizing…");
+    expect(potentialButton).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clear all" })).toBeDisabled();
+    expect(optimizeButton).toHaveAccessibleName("Optimizing current…");
+    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current"]);
+  });
+
+  it("identifies a pending potential optimization", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerOptimizePending(true);
+    renderPlannerRoute();
+
+    const potentialButton = await screen.findByRole("button", {
+      name: "Optimize by potential",
+    });
+    await user.click(potentialButton);
+
+    expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
+    expect(potentialButton).toHaveAccessibleName("Optimizing potential…");
+    expect(
+      screen.getByRole("button", { name: "Optimize squads" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clear all" })).toBeDisabled();
+    expect(getPlannerOptimizeIpcMockBases()).toEqual(["potential"]);
   });
 });
 
@@ -2511,6 +2570,7 @@ function withReserveGoalkeeper(depth: PlannerDepth): PlannerDepth {
                     currentName: "Reserve Keeper",
                     state: "resolved",
                     combinedScore: 80,
+                    potentialCombinedScore: null,
                   },
                 ],
               },
@@ -2574,6 +2634,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     currentName: "Alex Keeper",
                     state: "resolved",
                     combinedScore: 82,
+                    potentialCombinedScore: 91,
                   },
                   {
                     id: 102,
@@ -2583,6 +2644,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     currentName: "Outside Full-Back",
                     state: "outside_pool",
                     combinedScore: 61,
+                    potentialCombinedScore: 70,
                   },
                   {
                     id: 103,
@@ -2592,6 +2654,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     currentName: null,
                     state: "unresolved",
                     combinedScore: null,
+                    potentialCombinedScore: null,
                   },
                   {
                     id: 104,
@@ -2601,6 +2664,7 @@ function withDepthAssignments(depth: PlannerDepth): PlannerDepth {
                     currentName: "No Score Player",
                     state: "resolved",
                     combinedScore: null,
+                    potentialCombinedScore: null,
                   },
                 ],
               },
@@ -2626,6 +2690,7 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
               currentName: "Senior Keeper",
               state: "resolved" as const,
               combinedScore: 82,
+              potentialCombinedScore: null,
             }
           : team.team === "reserves"
             ? {
@@ -2636,6 +2701,7 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
                 currentName: "Reserve Keeper",
                 state: "resolved" as const,
                 combinedScore: 80,
+                potentialCombinedScore: null,
               }
             : {
                 id: 103,
@@ -2645,6 +2711,7 @@ function withAllTeamDepthAssignments(depth: PlannerDepth): PlannerDepth {
                 currentName: "Youth Keeper",
                 state: "resolved" as const,
                 combinedScore: 78,
+                potentialCombinedScore: null,
               };
 
       return {

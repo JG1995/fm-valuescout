@@ -109,6 +109,7 @@ export type AttributeRow = {
   key: string;
   label: string;
   value: number | null;
+  potentialValue?: number | null;
 };
 
 export function labelFromPascal(key: string): string {
@@ -119,10 +120,20 @@ export function labelFromPascal(key: string): string {
 export function attributeRows(
   keys: readonly string[],
   values: Record<string, number | null>,
+  potentialValues?: Record<string, number | null>,
 ): AttributeRow[] {
-  return keys.map((key) => ({
-    key,
-    label: labelFromPascal(key),
-    value: Object.hasOwn(values, key) ? values[key] : null,
-  }));
+  return keys.map((key) => {
+    const value = Object.hasOwn(values, key) ? values[key] : null;
+    if (potentialValues === undefined) {
+      return { key, label: labelFromPascal(key), value };
+    }
+    return {
+      key,
+      label: labelFromPascal(key),
+      value,
+      potentialValue: Object.hasOwn(potentialValues, key)
+        ? potentialValues[key]
+        : null,
+    };
+  });
 }

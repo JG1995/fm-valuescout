@@ -13,6 +13,7 @@ pub struct PlayerRoleScoreDto {
     pub phase: String,
     pub position_tags: Vec<String>,
     pub score: Option<i64>,
+    pub potential_score: Option<i64>,
 }
 
 impl From<PlayerRoleScore> for PlayerRoleScoreDto {
@@ -23,6 +24,7 @@ impl From<PlayerRoleScore> for PlayerRoleScoreDto {
             phase: row.phase,
             position_tags: row.position_tags,
             score: row.score,
+            potential_score: row.potential_score,
         }
     }
 }
@@ -40,6 +42,7 @@ pub struct PlayerDetailDto {
     pub preferred_foot: String,
     pub positions: std::collections::BTreeMap<String, i64>,
     pub attributes: std::collections::BTreeMap<String, Option<i64>>,
+    pub potential_attributes: std::collections::BTreeMap<String, Option<i64>>,
     pub hidden_attributes: std::collections::BTreeMap<String, Option<i64>>,
     pub personality: std::collections::BTreeMap<String, Option<i64>>,
     pub weekly_wage_gbp: Option<i64>,
@@ -75,6 +78,7 @@ impl From<PlayerDetail> for PlayerDetailDto {
             preferred_foot: player.preferred_foot,
             positions: player.positions,
             attributes: player.attributes,
+            potential_attributes: player.potential_attributes,
             hidden_attributes: player.hidden_attributes,
             personality: player.personality,
             weekly_wage_gbp: player.weekly_wage_gbp,

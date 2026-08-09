@@ -1,22 +1,36 @@
 import { Button } from "@/components/ui/button/button";
+import type { PlannerScoreBasis } from "../api/optimize-planner-depth";
 
 type PlannerOptimizerControlsProps = {
-  pending: boolean;
-  onOptimize: () => void;
+  pendingBasis: PlannerScoreBasis | null;
+  disabled: boolean;
+  onOptimize: (scoreBasis: PlannerScoreBasis) => void;
 };
 
 export function PlannerOptimizerControls({
-  pending,
+  pendingBasis,
+  disabled,
   onOptimize,
 }: PlannerOptimizerControlsProps) {
   return (
-    <Button
-      disabled={pending}
-      loading={pending}
-      loadingLabel="Optimizing…"
-      onClick={onOptimize}
-    >
-      Optimize squads
-    </Button>
+    <div className="flex flex-wrap gap-2">
+      <Button
+        disabled={disabled}
+        loading={pendingBasis === "current"}
+        loadingLabel="Optimizing current…"
+        onClick={() => onOptimize("current")}
+      >
+        Optimize squads
+      </Button>
+      <Button
+        variant="secondary"
+        disabled={disabled}
+        loading={pendingBasis === "potential"}
+        loadingLabel="Optimizing potential…"
+        onClick={() => onOptimize("potential")}
+      >
+        Optimize by potential
+      </Button>
+    </div>
   );
 }

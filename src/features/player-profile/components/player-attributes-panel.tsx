@@ -31,8 +31,21 @@ function AttributeSection({ title, rows }: AttributeSectionProps) {
             <dt className="truncate text-body-md text-on-surface-variant">
               {row.label}
             </dt>
-            <dd className="font-mono text-mono-sm text-on-surface tabular-nums">
-              {formatMissable(row.value)}
+            <dd className="shrink-0 font-mono text-mono-sm text-on-surface tabular-nums">
+              {row.potentialValue === undefined ? (
+                formatMissable(row.value)
+              ) : (
+                <>
+                  <span aria-hidden="true">
+                    <span>{formatMissable(row.value)}</span>
+                    <span className="px-1 text-on-surface-variant">→</span>
+                    <span>{formatMissable(row.potentialValue)}</span>
+                  </span>
+                  <span className="sr-only">
+                    {`Current ${formatMissable(row.value)}, Potential ${formatMissable(row.potentialValue)}`}
+                  </span>
+                </>
+              )}
             </dd>
           </div>
         ))}
@@ -53,7 +66,11 @@ export function PlayerAttributesPanel({ player }: PlayerAttributesPanelProps) {
           <div key={group.id} className={index === 0 ? undefined : "pt-6"}>
             <AttributeSection
               title={group.title}
-              rows={attributeRows(group.keys, player.attributes)}
+              rows={attributeRows(
+                group.keys,
+                player.attributes,
+                player.potentialAttributes,
+              )}
             />
           </div>
         ))}

@@ -139,7 +139,7 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows attribute groups with tabular values and em dash for nulls", async () => {
+  it("shows visible attributes as current to potential values and keeps other groups current-only", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -147,6 +147,11 @@ describe("player profile route", () => {
           Acceleration: 14,
           Crossing: null,
           Handling: 11,
+        },
+        potentialAttributes: {
+          Acceleration: 16,
+          Crossing: null,
+          Handling: 12,
         },
         hiddenAttributes: {
           Consistency: null,
@@ -181,16 +186,21 @@ describe("player profile route", () => {
 
     const technical = screen.getByRole("region", { name: "Technical" });
     const crossingTerm = within(technical).getByText("Crossing");
-    expect(crossingTerm.parentElement).toHaveTextContent(/^Crossing—$/);
+    expect(
+      crossingTerm.parentElement?.querySelector('[aria-hidden="true"]'),
+    ).toHaveTextContent("—→—");
+    expect(
+      crossingTerm.parentElement?.querySelector(".sr-only"),
+    ).toHaveTextContent("Current —, Potential —");
 
     const physical = screen.getByRole("region", { name: "Physical" });
     const accelerationTerm = within(physical).getByText("Acceleration");
-    expect(accelerationTerm.parentElement).toHaveTextContent(
-      /^Acceleration14$/,
-    );
-    expect(accelerationTerm.parentElement?.querySelector("dd")).toHaveClass(
-      "tabular-nums",
-    );
+    expect(
+      accelerationTerm.parentElement?.querySelector('[aria-hidden="true"]'),
+    ).toHaveTextContent("14→16");
+    expect(
+      within(physical).getByText("Current 14, Potential 16").parentElement,
+    ).toHaveClass("tabular-nums");
 
     const hidden = screen.getByRole("region", { name: "Hidden" });
     expect(
@@ -209,19 +219,72 @@ describe("player profile route", () => {
     ).toHaveTextContent(/^Loyalty—$/);
   });
 
-  it("shows a hero ScoreBadge for the best non-null role on Overview", async () => {
+  it("shows independent current and potential best-role summaries on Overview", async () => {
     await resolveLoadDataIpcMock();
-    setGetPlayerOverride(fixturePlayerDetail());
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        roleScores: [
+          {
+            roleId: "current-specialist",
+            displayName: "Current Specialist",
+            phase: "in_possession",
+            positionTags: ["MC"],
+            score: 82,
+            potentialScore: 88,
+          },
+          {
+            roleId: "potential-specialist",
+            displayName: "Potential Specialist",
+            phase: "in_possession",
+            positionTags: ["ST"],
+            score: 70,
+            potentialScore: 94,
+          },
+        ],
+      }),
+    );
     renderProfileRoute("/players/42");
 
     expect(
-      await screen.findByLabelText("Deep-Lying Playmaker: 82, Starter"),
+      await screen.findByLabelText("Best role (Current): 82, Starter"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Best role")).toBeInTheDocument();
-    expect(screen.getByText("Deep-Lying Playmaker")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Best potential role (Potential): 94, Elite"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Best role (Current)")).toBeInTheDocument();
+    expect(
+      screen.getByText("Best potential role (Potential)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Current Specialist")).toBeInTheDocument();
+    expect(screen.getByText("Potential Specialist")).toBeInTheDocument();
   });
 
-  it("groups Roles by position family with card badges and em dash for nulls", async () => {
+  it("renders unavailable potential summary values without a score badge", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        roleScores: [
+          {
+            roleId: "current-only",
+            displayName: "Current Only",
+            phase: "in_possession",
+            positionTags: ["MC"],
+            score: 82,
+            potentialScore: null,
+          },
+        ],
+      }),
+    );
+    renderProfileRoute("/players/42");
+
+    const potential = await screen.findByRole("img", {
+      name: "Best potential role (Potential): unavailable",
+    });
+    expect(potential).toHaveTextContent("—");
+    expect(potential).not.toHaveClass("inline-flex");
+  });
+
+  it("groups Roles by position family with labelled current and potential badges", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
     renderProfileRoute("/players/42?tab=roles");
@@ -244,20 +307,66 @@ describe("player profile route", () => {
 
     const centreBack = screen.getByRole("region", { name: "Centre-back" });
     expect(within(centreBack).getByText("Centre-Back")).toBeInTheDocument();
-    expect(within(centreBack).getByText("—")).toBeInTheDocument();
+    expect(
+      within(centreBack).getByLabelText("Centre-Back (Potential): unavailable"),
+    ).toHaveTextContent("—");
 
     expect(
-      screen.getByLabelText("Deep-Lying Playmaker: 82, Starter"),
+      screen.getByLabelText("Deep-Lying Playmaker (Current): 82, Starter"),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Central Midfielder: 72, Starter"),
+      screen.getByLabelText("Deep-Lying Playmaker (Potential): 94, Elite"),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Goalkeeper: 40, Fringe")).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Advanced Forward: 55, Rotation"),
+      screen.getByLabelText("Central Midfielder (Current): 72, Starter"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Central Midfielder (Potential): 84, Starter"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Goalkeeper (Current): 40, Fringe"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Goalkeeper (Potential): 47, Fringe"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Advanced Forward (Current): 55, Rotation"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Advanced Forward (Potential): 67, Rotation"),
     ).toBeInTheDocument();
 
     const goalkeeper = screen.getByRole("region", { name: "Goalkeeper" });
     expect(within(goalkeeper).getByText("IP")).toBeInTheDocument();
+  });
+
+  it("shows labelled current and potential values for every supplied role", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        roleScores: Array.from({ length: 68 }, (_, index) => ({
+          roleId: `catalog-role-${index}`,
+          displayName: `Catalog Role ${index + 1}`,
+          phase: "in_possession",
+          positionTags: ["MC"],
+          score: 60,
+          potentialScore: 70,
+        })),
+      }),
+    );
+    renderProfileRoute("/players/42?tab=roles");
+
+    expect(
+      await screen.findByLabelText("Catalog Role 1 (Current): 60, Rotation"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Catalog Role 68 (Potential): 70, Starter"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByLabelText(/Catalog Role \d+ \(Current\):/),
+    ).toHaveLength(68);
+    expect(
+      screen.getAllByLabelText(/Catalog Role \d+ \(Potential\):/),
+    ).toHaveLength(68);
   });
 });

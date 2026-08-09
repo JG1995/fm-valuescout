@@ -262,6 +262,7 @@ let optimizeDepth: PlannerDepth | null = null;
 let optimizeError: string | null = null;
 let optimizePending = false;
 let optimizeCalls = 0;
+let optimizeBases: string[] = [];
 
 function cloneTactic(value: PlannerTactic): PlannerTactic {
   return {
@@ -325,6 +326,7 @@ export function resetPlannerIpcMock() {
   optimizeError = null;
   optimizePending = false;
   optimizeCalls = 0;
+  optimizeBases = [];
 }
 
 export function setPlannerAvailableClubs(clubs: string[]) {
@@ -424,6 +426,10 @@ export function setPlannerOptimizePending(value: boolean) {
 
 export function getPlannerOptimizeIpcMockCalls() {
   return optimizeCalls;
+}
+
+export function getPlannerOptimizeIpcMockBases() {
+  return [...optimizeBases];
 }
 
 export function resolvePlannerSlotCandidatesIpcMock(args: unknown) {
@@ -553,6 +559,7 @@ function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
     currentName: candidate?.name ?? `Player ${playerUid}`,
     state: "resolved",
     combinedScore: candidate?.combinedScore ?? null,
+    potentialCombinedScore: null,
   });
   return cloneDepth(depth);
 }
@@ -683,12 +690,14 @@ export function resolveClearPlannerDepthIpcMock(args: unknown) {
 export function resolveOptimizePlannerDepthIpcMock(args: unknown) {
   optimizeCalls += 1;
   if (
-    args !== undefined &&
-    args !== null &&
-    (typeof args !== "object" || Object.keys(args).length > 0)
+    typeof args !== "object" ||
+    args === null ||
+    !("scoreBasis" in args) ||
+    (args.scoreBasis !== "current" && args.scoreBasis !== "potential")
   ) {
-    throw "Optimizer does not accept arguments";
+    throw "Optimizer requires a valid score basis";
   }
+  optimizeBases.push(args.scoreBasis);
   if (optimizeError) {
     throw optimizeError;
   }

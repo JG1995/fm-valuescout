@@ -9,7 +9,10 @@ import {
 import { Panel } from "@/components/ui/panel/panel";
 import { addPlannerString } from "../api/add-planner-string";
 import { clearPlannerDepth } from "../api/clear-planner-depth";
-import { optimizePlannerDepth } from "../api/optimize-planner-depth";
+import {
+  optimizePlannerDepth,
+  type PlannerScoreBasis,
+} from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
 import { removePlannerString } from "../api/remove-planner-string";
 import { PLANNER_TEAMS, type PlannerTeam } from "../types/club-family";
@@ -365,23 +368,43 @@ export function PlannerDepthMatrix({
 
   const optimize = useMutation({
     mutationFn: optimizePlannerDepth,
-    onSuccess: async (nextDepth) => {
+    onSuccess: async (nextDepth, scoreBasis) => {
       queryClient.setQueryData(plannerKeys.depth(), nextDepth);
       await queryClient.invalidateQueries({
         queryKey: plannerKeys.slotCandidates(),
       });
       setOptimizeError(null);
-      setActionStatus("Squads optimized.");
+      setActionStatus(
+        scoreBasis === "potential"
+          ? "Squads optimized by potential."
+          : "Squads optimized by current scores.",
+      );
     },
-    onError: (error) => {
-      setOptimizeError(errorMessage(error));
+    onError: (error, scoreBasis) => {
+      setOptimizeError(
+        `${scoreBasis === "potential" ? "Potential" : "Current"} optimization failed: ${errorMessage(error)}`,
+      );
     },
   });
 
+  const optimizePendingBasis = optimize.isPending ? optimize.variables : null;
+
   const requestClearAll = () => {
+    if (clearAll.isPending || optimize.isPending) {
+      return;
+    }
     setClearAllError(null);
     setActionStatus(null);
     setClearAllOpen(true);
+  };
+
+  const runOptimization = (scoreBasis: PlannerScoreBasis) => {
+    if (clearAll.isPending || optimize.isPending) {
+      return;
+    }
+    setOptimizeError(null);
+    setActionStatus(null);
+    optimize.mutate(scoreBasis);
   };
 
   const closeClearAll = () => {
@@ -504,15 +527,9 @@ export function PlannerDepthMatrix({
           ) : null}
           <div className="flex flex-wrap items-center justify-end gap-2">
             <PlannerOptimizerControls
-              pending={optimize.isPending}
-              onOptimize={() => {
-                if (optimize.isPending) {
-                  return;
-                }
-                setOptimizeError(null);
-                setActionStatus(null);
-                optimize.mutate();
-              }}
+              pendingBasis={optimizePendingBasis}
+              disabled={clearAll.isPending || optimize.isPending}
+              onOptimize={runOptimization}
             />
             <PlannerClearAllControl
               open={clearAllOpen}
@@ -524,7 +541,11 @@ export function PlannerDepthMatrix({
                 lastFocusContext.current = { kind: "clear" };
               }}
               onClose={closeClearAll}
-              onConfirm={() => clearAll.mutate()}
+              onConfirm={() => {
+                if (!clearAll.isPending && !optimize.isPending) {
+                  clearAll.mutate();
+                }
+              }}
             />
           </div>
         </fieldset>

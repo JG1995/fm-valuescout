@@ -362,26 +362,62 @@ test.describe("walking skeleton smoke", () => {
     }
   });
 
-  test("planner depth optimizes squads and shows the reconciled matrix", async ({
+  test("planner depth optimizes current and potential squads within desktop widths", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 900, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
 
-    const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Squad" }).click();
-    await expect(
-      main.getByRole("group", { name: "Squad controls" }),
-    ).toBeVisible();
-    await main.getByRole("button", { name: "Optimize squads" }).click();
-    await expect(main.getByRole("status")).toHaveText("Squads optimized.");
-    await main.getByRole("tab", { name: "Reserves" }).click();
-    await expect(
-      main.getByRole("button", {
-        name: /Reserves, 1st string, IP: GK .* Optimized Keeper, Resolved/,
-      }),
-    ).toBeVisible();
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await page.goto("/planner");
+
+      const main = page.getByRole("main");
+      await main.getByRole("tab", { name: "Squad" }).click();
+      const controls = main.getByRole("group", { name: "Squad controls" });
+      const current = main.getByRole("button", { name: "Optimize squads" });
+      const potential = main.getByRole("button", {
+        name: "Optimize by potential",
+      });
+      await expect(controls).toBeVisible();
+      await current.click();
+      await expect(main.getByRole("status")).toHaveText(
+        "Squads optimized by current scores.",
+      );
+      await potential.click();
+      await expect(main.getByRole("status")).toHaveText(
+        "Squads optimized by potential.",
+      );
+      await expect(
+        main.getByRole("button", {
+          name: /Reserves, 1st string, IP: GK .* Optimized Keeper, Resolved/,
+        }),
+      ).toBeVisible();
+
+      const [controlsBox, potentialBox] = await Promise.all([
+        controls.boundingBox(),
+        potential.boundingBox(),
+      ]);
+      expect(controlsBox).not.toBeNull();
+      expect(potentialBox).not.toBeNull();
+      if (!controlsBox || !potentialBox) {
+        throw new Error("Expected visible Planner optimization controls.");
+      }
+      expect(potentialBox.x + potentialBox.width).toBeLessThanOrEqual(
+        controlsBox.x + controlsBox.width,
+      );
+      expect(controlsBox.x + controlsBox.width).toBeLessThanOrEqual(width);
+      expect(
+        await page
+          .locator("html")
+          .evaluate(
+            (element) =>
+              (element as unknown as { scrollWidth: number }).scrollWidth,
+          ),
+      ).toBeLessThanOrEqual(width);
+    }
   });
 
   test("planner depth clears every squad from one confirmed action", async ({
@@ -394,7 +430,9 @@ test.describe("walking skeleton smoke", () => {
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Squad" }).click();
     await main.getByRole("button", { name: "Optimize squads" }).click();
-    await expect(main.getByRole("status")).toHaveText("Squads optimized.");
+    await expect(main.getByRole("status")).toHaveText(
+      "Squads optimized by current scores.",
+    );
 
     const clearAll = main.getByRole("button", { name: "Clear all" });
     await clearAll.click();
@@ -438,6 +476,56 @@ test.describe("walking skeleton smoke", () => {
     await expect(main.getByRole("tab", { name: "Senior" })).toHaveCount(0);
   });
 
+  test("planner depth keeps assigned current and potential scores readable at desktop widths", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      plannerPotentialScores: true,
+    });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Squad" }).click();
+    const scoreCell = main.getByRole("button", {
+      name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved, current score 82, potential score 91/,
+    });
+    const currentScore = scoreCell.getByRole("img", {
+      name: /Current combined role score: 82/,
+    });
+    const potentialScore = scoreCell.getByRole("img", {
+      name: /Potential combined role score: 91/,
+    });
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await expect(scoreCell).toContainText("Potential Keeper");
+      await expect(currentScore).toBeVisible();
+      await expect(potentialScore).toBeVisible();
+
+      const [cellBox, currentBox, potentialBox] = await Promise.all([
+        scoreCell.boundingBox(),
+        currentScore.boundingBox(),
+        potentialScore.boundingBox(),
+      ]);
+      expect(cellBox).not.toBeNull();
+      expect(currentBox).not.toBeNull();
+      expect(potentialBox).not.toBeNull();
+      if (!cellBox || !currentBox || !potentialBox) {
+        throw new Error(
+          "Expected assigned score content to have layout bounds.",
+        );
+      }
+      expect(currentBox.x).toBeGreaterThanOrEqual(cellBox.x);
+      expect(potentialBox.x + potentialBox.width).toBeLessThanOrEqual(
+        cellBox.x + cellBox.width,
+      );
+    }
+  });
+
   test("player profile route shows no-snapshot empty state from stubbed IPC", async ({
     page,
   }) => {
@@ -445,6 +533,76 @@ test.describe("walking skeleton smoke", () => {
 
     const main = page.getByRole("main");
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
+  });
+
+  test("player profile Overview keeps independent best-role summaries visible", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { playerProfile: true });
+    await page.goto("/players/42");
+
+    const main = page.getByRole("main");
+    const current = main.getByRole("img", {
+      name: "Best role (Current): 82, Starter",
+    });
+    const potential = main.getByRole("img", {
+      name: "Best potential role (Potential): 94, Elite",
+    });
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await expect(current).toBeVisible();
+      await expect(potential).toBeVisible();
+
+      const [currentBox, potentialBox] = await Promise.all([
+        current.boundingBox(),
+        potential.boundingBox(),
+      ]);
+      expect(currentBox).not.toBeNull();
+      expect(potentialBox).not.toBeNull();
+      if (!currentBox || !potentialBox) {
+        throw new Error("Expected visible best-role summary badges.");
+      }
+      expect(currentBox.x + currentBox.width).toBeLessThanOrEqual(
+        potentialBox.x,
+      );
+    }
+  });
+
+  test("player profile Attributes keeps visible potential pairs within desktop widths", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { playerProfile: true });
+    await page.goto("/players/42?tab=attributes");
+
+    const technical = page.getByRole("region", { name: "Technical" });
+    const passing = technical.locator("dd", {
+      hasText: "Current 14, Potential 16",
+    });
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await expect(passing).toContainText("14→16");
+
+      const [technicalBox, passingBox] = await Promise.all([
+        technical.boundingBox(),
+        passing.boundingBox(),
+      ]);
+      expect(technicalBox).not.toBeNull();
+      expect(passingBox).not.toBeNull();
+      if (!technicalBox || !passingBox) {
+        throw new Error("Expected visible projected Passing attribute pair.");
+      }
+      expect(passingBox.x + passingBox.width).toBeLessThanOrEqual(
+        technicalBox.x + technicalBox.width,
+      );
+    }
   });
 
   test("top bar exposes global player search", async ({ page }) => {

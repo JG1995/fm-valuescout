@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PlayerRoleScore } from "../types/player-detail";
 import {
+  bestPotentialRoleScore,
   bestRoleScore,
   groupRolesByFamily,
   primaryFamily,
@@ -11,10 +12,11 @@ function role(
     PlayerRoleScore,
     "roleId" | "displayName" | "positionTags" | "score"
   > &
-    Partial<Pick<PlayerRoleScore, "phase">>,
+    Partial<Pick<PlayerRoleScore, "phase" | "potentialScore">>,
 ): PlayerRoleScore {
   return {
     phase: "in_possession",
+    potentialScore: null,
     ...partial,
   };
 }
@@ -118,6 +120,57 @@ describe("bestRoleScore", () => {
           displayName: "Only null",
           positionTags: ["GK"],
           score: null,
+        }),
+      ]),
+    ).toBeNull();
+  });
+});
+
+describe("bestPotentialRoleScore", () => {
+  it("picks the highest non-null potential score and keeps catalog order on ties", () => {
+    const scores = [
+      role({
+        roleId: "a",
+        displayName: "Current specialist",
+        positionTags: ["MC"],
+        score: 82,
+        potentialScore: 88,
+      }),
+      role({
+        roleId: "b",
+        displayName: "Potential specialist",
+        positionTags: ["ST"],
+        score: 70,
+        potentialScore: 94,
+      }),
+      role({
+        roleId: "c",
+        displayName: "Potential tie",
+        positionTags: ["ST"],
+        score: 69,
+        potentialScore: 94,
+      }),
+      role({
+        roleId: "d",
+        displayName: "No potential score",
+        positionTags: ["GK"],
+        score: 40,
+        potentialScore: null,
+      }),
+    ];
+
+    expect(bestPotentialRoleScore(scores)?.displayName).toBe(
+      "Potential specialist",
+    );
+    expect(bestPotentialRoleScore([])).toBeNull();
+    expect(
+      bestPotentialRoleScore([
+        role({
+          roleId: "n",
+          displayName: "Only null",
+          positionTags: ["GK"],
+          score: 42,
+          potentialScore: null,
         }),
       ]),
     ).toBeNull();

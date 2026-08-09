@@ -63,6 +63,58 @@ function assignmentStateLabel(
   return "Resolved";
 }
 
+function AssignmentScore({
+  label,
+  score,
+}: {
+  label: "Current" | "Potential";
+  score: number | null;
+}) {
+  return (
+    <span className="inline-flex shrink-0 items-center">
+      {score === null ? (
+        <span
+          role="img"
+          aria-label={`${label} combined role score: unavailable`}
+          className="font-mono text-mono-sm text-on-surface-variant tabular-nums"
+        >
+          —
+        </span>
+      ) : (
+        <ScoreBadge
+          score={score}
+          roleName={`${label} combined role score`}
+          className="shrink-0"
+        />
+      )}
+    </span>
+  );
+}
+
+function AssignmentScores({
+  currentScore,
+  potentialScore,
+}: {
+  currentScore: number | null;
+  potentialScore: number | null;
+}) {
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1"
+      title="Current to potential combined role score"
+    >
+      <AssignmentScore label="Current" score={currentScore} />
+      <span
+        aria-hidden="true"
+        className="text-label-sm text-on-surface-variant"
+      >
+        →
+      </span>
+      <AssignmentScore label="Potential" score={potentialScore} />
+    </span>
+  );
+}
+
 function PlannerStringHeader({
   team,
   plannerString,
@@ -207,8 +259,9 @@ function AssignmentCell({
   const name = assignmentName(assignment);
   const state = assignmentStateLabel(assignment);
   const score = assignment?.combinedScore ?? null;
+  const potentialScore = assignment?.potentialCombinedScore ?? null;
   const ariaLabel = assignment
-    ? `${teamLabel}, ${stringLabel}, ${laneName}, ${name}, ${state}, score ${score ?? "—"}`
+    ? `${teamLabel}, ${stringLabel}, ${laneName}, ${name}, ${state}, current score ${score ?? "—"}, potential score ${potentialScore ?? "—"}`
     : `${teamLabel}, ${stringLabel}, ${laneName}, Empty`;
 
   return (
@@ -244,16 +297,13 @@ function AssignmentCell({
             >
               {name}
             </span>
-            {score === null ? (
-              <span className="shrink-0 font-mono text-mono-sm text-on-surface-variant">
-                —
-              </span>
-            ) : (
-              <ScoreBadge
-                score={score}
-                roleName="Combined role score"
-                className="shrink-0"
+            {assignment ? (
+              <AssignmentScores
+                currentScore={score}
+                potentialScore={potentialScore}
               />
+            ) : (
+              <span className="text-body-sm text-on-surface-variant">—</span>
             )}
           </span>
           {assignment?.state === "outside_pool" ? (

@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No active feature is selected. [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md) is complete locally; PR 2 remains ready for publication but is not published or merged.
+No active feature selected.
 
 ## Next
 
@@ -60,6 +60,7 @@ No next feature selected.
 
 ## Completed
 
+- [Potential role scores](./features/completed/potential-role-scores.md) — CA-to-PA visible-attribute projection, Current/Potential profile and assigned-role scores, and explicit current or potential Planner optimization
 - [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md) — schema-v6 direct player, staff, manager, scope, and club parity plus deterministic scan hardening and prior-output safety; PR 2 remains unpublished and unmerged
 - [Planner workspace redesign](./features/completed/planner-workspace-redesign.md) — URL-backed Planner workspaces, adaptive dual-phase tactic pitches, responsive three-team depth matrix, and transactional Clear all
 - [Youth Academy](./features/completed/youth-academy.md) — save-scoped `Class of YYYY` cohorts, club-family player tracking, manual sale/release outcomes, and honest placeholders for career statistics pending memory-reader support
