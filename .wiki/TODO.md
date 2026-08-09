@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No active feature is selected. [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md) is complete locally; PR 2 remains ready for publication but is not published or merged.
+- [Potential role scores](./features/active/potential-role-scores.md) — project position-sensitive future role scores on bounded Rust read paths, then show every profile role and only the selected Planner lane score
 
 ## Next
 
