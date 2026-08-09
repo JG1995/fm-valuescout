@@ -56,13 +56,13 @@ This feature is an accepted narrow exception to the current read-only product bo
 
 ## Current-state map
 
-- Relevant components: `bridge/Plugin.cs` polls the file protocol and serializes full-dump scans; `bridge/Scanning/CapADumpPipeline.cs` and `PersonScanResult.cs` discover player UIDs plus person and player-block addresses; `src-tauri/src/features/memory_read/` owns the Rust protocol client; `src-tauri/src/features/player/` owns the player profile query; `src/features/player-profile/` and `src/app/routes/players.$uid.tsx` own profile presentation and route composition.
+- Relevant components: `bridge/Plugin.cs` polls the file protocol and serializes full-dump scans and player boost operations; `bridge/Scanning/CapADumpPipeline.cs` and `PersonScanResult.cs` discover player UIDs plus person and player-block addresses; `src-tauri/src/features/memory_read/` owns the Rust protocol client; `src-tauri/src/features/player/` owns the player profile query; `src/features/player-profile/` and `src/app/routes/players.$uid.tsx` own profile presentation and route composition.
 - Data model: `players` stores CA, PA, age, visible attributes JSON, and personality JSON for one current snapshot. `player_role_scores` stores current role scores. The profile DTO already exposes CA, PA, age, Determination, Ambition, and Professionalism.
 - Persistence and migrations: snapshots do not persist the bridge request ID that produced them. Migration v16 is available for a nullable source request ID; existing rows must remain readable but ineligible for writes until a fresh Load Data.
 - Existing behavioral assumptions: player age is computed during bridge extraction against the resolved in-game date and stored in the snapshot. Load Data captures the active app save before scanning and replaces that save's snapshot transactionally.
 - Architectural seams: the C# bridge owns process memory; Rust owns trust-boundary rules, SQLite, and bounded IPC; React owns presentation and Query mutation state. Route files may compose cross-feature cache invalidation, while feature code must not import another feature.
-- Memory layout: `Fm263Layout` already reads CA at player block `+0x264`, Ambition at person `+0x71`, Professionalism at person `+0x74`, and Determination at player block `+0x15F+0x33`. The current reader has no write abstraction.
-- Bridge protocol: protocol v1 accepts only `full-dump`; status has no typed mutation result or write capability signal. Successful scan results currently discard candidate addresses after dump creation.
+- Memory layout: `Fm263Layout` reads CA at player block `+0x264`, Ambition at person `+0x71`, Professionalism at person `+0x74`, and Determination at player block `+0x15F+0x33`. Exact build `26.3.2` supports typed byte and unsigned-16-bit writes for those fields only.
+- Bridge protocol: protocol v1 accepts `full-dump` plus the two closed boost operations. Status has additive capability and typed verified-result fields. A successful live scan retains candidates in a process-private index; snapshot-backed scans and plugin restarts do not.
 - Scan source: healthy scans use live memory. One guarded PSS VA-clone retry may provide scan data after incomplete live reads, so every mutation must reopen and validate live memory.
 - Query invalidation analogue: `AppTopBar` invalidates snapshot, search, player, Planner, and Academy roots after Load Data or save switching.
 - Test seams: C# uses `FakeMemoryReader`, request/status serialization tests, and pipeline tests; Rust uses temporary migrated SQLite databases and file-protocol fixtures; the profile route uses `mockIPC` and the Playwright IPC stub.
@@ -103,12 +103,11 @@ This feature is an accepted narrow exception to the current read-only product bo
 - All four offsets and encodings are already used by the current reader and agree with the permitted FM26.3 SuperScout pins.
 - The developer confirms that FM26 redistributes visible attributes after a CA change over several in-game days, sometimes up to one month. This feature only writes CA and does not simulate that redistribution.
 - The current bridge runs in FM, already discovers both player address bases, and already serializes scans through one background worker.
-- FM26.3.2 has a successful read baseline. The current layout remains marked provisional for writes until the controlled live gate passes.
+- Exact build `26.3.2` has successful live proof for the two bridge operations, including verified readback and FM save/reload persistence.
+- The controlled proof confirmed that typed writes use the existing process handle without a page-protection change.
 
 ### Assumptions
 
-- The four object fields are writable through the current process handle without changing page protection.
-- A successful scan's virtual addresses remain useful live hints for the same loaded save long enough to make a user-requested change; UID, request provenance, and expected-value checks remain mandatory.
 - Repeated Boost CA actions are intentional when the user confirms each new target and CA remains below 200.
 - **Wonderkid Mentality** is the accepted working label; changing that copy later does not change the feature contract.
 
@@ -126,7 +125,7 @@ This feature is an accepted narrow exception to the current read-only product bo
 
 ### Unknowns
 
-- Which exact FM26.3 patch/build identifiers should advertise write support after the first live proof.
+- Which builds beyond exact `26.3.2` should advertise write support after their own controlled proof.
 - Whether FM refreshes every affected screen immediately or only after navigation or time advancement. Bridge readback, not screen repaint timing, defines write success.
 - Whether a failed multi-byte operation can always restore earlier bytes. The result contract must expose an unverified partial state when rollback cannot be proved.
 
@@ -141,13 +140,13 @@ This feature is an accepted narrow exception to the current read-only product bo
 
 ## Walking skeleton
 
-PR 1 is the walking skeleton. After one successful Load Data, a manually issued action-specific request bound to that dump changes the intended bytes for a known player in a throwaway save, returns verified old and new values, keeps CA at or below PA, leaves PA and neighboring fields unchanged, emits no address, and survives an FM save/reload. Failure at this boundary stops the feature before SQLite or profile work.
+PR 1 is the walking skeleton. Its controlled Windows proof used the documented force-scan fallback because PR 1 has no Rust or UI caller. On exact build `26.3.2`, a live zero-retry scan advertised boost support; the developer confirmed verified CA and Wonderkid actions, both age increments, and FM save/reload persistence. The bridge emitted no address. Rust, SQLite, and profile work remain outside this PR.
 
 ## Delivery plan
 
 ### PR 1 — Add safe player boost bridge
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -223,7 +222,7 @@ PR 1 is the walking skeleton. After one successful Load Data, a manually issued 
 
 #### Commit 2 — Expose player boost operations
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-write): expose player boost operations`
 
@@ -464,21 +463,7 @@ PR 1 is the walking skeleton. After one successful Load Data, a manually issued 
 
 ## Active work
 
-**PR:** PR 1 — Add safe player boost bridge
-
-**Commit:** Expose player boost operations
-
-### RED proof
-
-Add bridge tests for closed request and status contracts, index lifetime, stale provenance, duplicate requests, deterministic mentality targets, unsupported builds, and scan/write exclusion. The tests must fail because the bridge accepts only full-dump requests and retains no mutation index or operation result.
-
-### Expected outcome
-
-The C# bridge accepts only the two approved player-boost operations, binds them to a successful scan, reopens and validates live memory, returns verified results without addresses, and keeps scans and writes serialized. The controlled Windows/FM26 proof remains required before this commit can complete.
-
-### Explicit exclusions
-
-Do not add Rust protocol callers, snapshot provenance persistence, SQLite reconciliation, Tauri commands, profile UI, or additional edit operations. Do not store or publish candidate addresses.
+No commit is active. PR 1 is ready for publication; PR 2 remains blocked on its merge.
 
 ## Discoveries and replanning
 
@@ -487,12 +472,18 @@ Do not add Rust protocol callers, snapshot provenance persistence, SQLite reconc
 - 2026-08-09: The current snapshot does not store the dump request ID, so expected field values alone cannot safely bind an app save to the plugin's live player index. PR 2 adds nullable request provenance instead of widening dump schema v6.
 - 2026-08-09: A complete Load Data currently costs a full scan and multi-gigabyte ingest on the reference save. The accepted design performs a verified targeted snapshot transaction after each boost and retains explicit Load Data for later FM progression.
 - 2026-08-09: Repowise was stale at commit `4ad07c4`; planning used direct source, tests, documents, configuration, and Git evidence.
+- 2026-08-09: A successful PSS snapshot retry can produce a valid dump but its candidate addresses are not safe for live writes. The bridge therefore retains its mutation index only from a successful live-reader dump and clears it after a successful snapshot-backed dump or plugin restart.
+- 2026-08-09: Exact build `26.3.2` is write-validated; the implementation refuses other `26.3.x` builds until each has its own proof.
+- 2026-08-09: Wonderkid requests now carry nullable per-field snapshot expectations. `null` is an immutable unknown field, preventing a later live reread from turning it into an eligible write.
+- 2026-08-09: Each manual force scan receives a unique provenance ID, and a request that has already expired cannot have its TTL refreshed while bridge work is busy.
+- 2026-08-09: The controlled Windows proof used the documented force-scan fallback on exact build `26.3.2`. A live zero-retry scan advertised boost support; the developer confirmed CA and Wonderkid actions, both age increments, and save/reload persistence. This record retains only sanitized pass/fail evidence.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | Add verified scalar memory writes | Pending record | Added internal typed CA, Ambition, Professionalism, and Determination writes with live preconditions, readback, and verified rollback reporting. | Sol xhigh accepted after one local correction to narrow the writer seam to byte/u16 operations. | None |
+| PR 1 | Add verified scalar memory writes | `4826495` | Added internal typed CA, Ambition, Professionalism, and Determination writes with live preconditions, readback, and verified rollback reporting. | Sol xhigh accepted after one local correction to narrow the writer seam to byte/u16 operations. | None |
+| PR 1 | Expose player boost operations | Pending record | Added the closed boost protocol, private live-scan index, exact-build capability, verified result status, and scan/write serialization. | Sol xhigh accepted after one correction round; controlled Windows proof passed. | Manual proof used the documented force-scan fallback. Rust, SQLite, and profile integration remain PR 2. |
 
 ## Final validation
 
@@ -513,8 +504,6 @@ Do not add Rust protocol callers, snapshot provenance persistence, SQLite reconc
 ## Documentation impact
 
 - Planning: this ledger, `.wiki/TODO.md`, and [ADR-0017](../../decisions/0017-action-specific-fm26-player-boosts.md) own the accepted feature intent and write boundary.
-- During implementation or final reconciliation: update `.wiki/CONCEPT.md` to permit only these fixed in-app boosts while retaining general editing and transfers as out of scope.
-- During implementation or final reconciliation: update `.wiki/ARCHITECTURE.md` with the live write path, source-request provenance, targeted snapshot reconciliation, score updates, and query invalidation.
-- During implementation or final reconciliation: update `.wiki/DESIGN.md` with the Development boosts profile panel, action hierarchy, confirmation, and outcome states.
-- During the bridge protocol commit: update `bridge/README.md` and the related-files section of `bridge/DUMP_SCHEMA.md` without changing dump schema v6.
+- PR 1: `.wiki/CONCEPT.md`, `.wiki/ARCHITECTURE.md`, `bridge/README.md`, and `bridge/DUMP_SCHEMA.md` describe the narrow bridge-only write capability without changing dump schema v6.
+- PR 2 and final reconciliation: update `.wiki/DESIGN.md` with the Development boosts profile panel, action hierarchy, confirmation, and outcome states.
 - At feature completion: condense this ledger into `.wiki/features/completed/`, update TODO state, and reconcile ADR-0017 follow-up references with the exact delivered refs.

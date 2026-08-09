@@ -8,6 +8,12 @@ public interface IFmMemoryLayout
     /// <summary>Major.minor key, e.g. <c>26.3</c>.</summary>
     string VersionKey { get; }
 
+    /// <summary>
+    /// True only for an exact FM build approved for the two bounded player-boost writes.
+    /// Read-layout resolution remains major.minor based and must not use this capability.
+    /// </summary>
+    bool SupportsPlayerBoosts(string gameVersion);
+
     string DisplayName { get; }
 
     /// <summary>Unique ID on the person/object header.</summary>

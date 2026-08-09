@@ -33,6 +33,21 @@ Rust accepts only a schema-v6, protocol-v1 object with valid count, enum, and fi
 
 The bridge never replaces a prior good dump with an empty player result. `emptySave` supports explicit tests and future handling only.
 
+## File-protocol player boosts
+
+Dump schema v6 remains unchanged. The shared protocol-v1 request file also permits two optional closed operations after a successful live full dump:
+
+| Operation | Required action fields | Bridge rule |
+| --- | --- | --- |
+| `boost-current-ability` | `sourceRequestId`, `playerUid`, expected CA/PA, `currentAbilityIncrement` | Increment must be `5` or `10`; bridge caps live CA at live PA and `200` |
+| `wonderkid-mentality` | `sourceRequestId`, `playerUid`, expected CA/PA, nullable expected Ambition/Professionalism/Determination | At least one known field must be `1..10`; the bridge generates its `11..20` target itself |
+
+For Wonderkid Mentality, a `null` expected field means the source snapshot did not supply a writable value: the bridge neither reads nor changes that field. A known value above `10` is revalidated and remains unchanged.
+
+`sourceRequestId` binds the action to the plugin's in-memory live candidate index. The index is replaced only after a successful live dump and is absent after a snapshot-backed scan or plugin restart. Manual force scans receive a distinct source request ID each time. Requests never carry memory addresses, field selectors, or arbitrary target values.
+
+`status.json` may add `playerBoostsSupported` and a `playerBoost` result object. The result reports only verified CA/PA and mentality values plus rollback state. It contains no player UID, address, raw bytes, or process path. Existing full-dump readers can ignore these optional fields.
+
 ## Player object
 
 All v5 player fields remain unchanged. Schema v6 adds:
@@ -76,8 +91,8 @@ When present, `manager` contains `uid`, non-empty `name`, nullable `club`, and n
 
 | File | Writer | Purpose |
 | --- | --- | --- |
-| `request.json` | Tauri | Scan request (`operation: "full-dump"`, optional `maxAccepted`) |
-| `status.json` | Bridge | Idle, scanning, ready, or failed; ready carries cap signals |
+| `request.json` | Tauri | Full-dump request or one closed player boost |
+| `status.json` | Bridge | Idle, scanning, ready, or failed; optional cap and boost result signals |
 | `dump.json` | Bridge | This schema |
 | `diagnostics.txt` | Bridge | Scan diagnostics, never ingested |
 

@@ -66,6 +66,8 @@ public static class StatusWriter
             Error = "scan failed unexpectedly",
             ScanTruncated = status.ScanTruncated,
             MaxAccepted = status.MaxAccepted,
+            PlayerBoostsSupported = status.PlayerBoostsSupported,
+            PlayerBoost = status.PlayerBoost,
         };
     }
 

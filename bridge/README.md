@@ -6,8 +6,8 @@ C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2
 
 ```text
 %LOCALAPPDATA%\fm-valuescout\fm-bridge\
-  ├── request.json      ← Tauri writes to request a dump (30s TTL)
-  ├── status.json       ← plugin writes on load / scan phases
+  ├── request.json      ← Tauri writes a dump or closed player-boost request (30s TTL)
+  ├── status.json       ← plugin writes on load and bridge-work phases
   ├── dump.json         ← successful CA/PA candidate dump (replace-only-on-success)
   ├── diagnostics.txt   ← every scan attempt (including failures)
   └── force-scan        ← optional manual fallback (empty file; deleted after run)
@@ -19,7 +19,7 @@ Exact folder names: `fm-valuescout` / `fm-bridge`.
 
 ### Memory access (`Memory/`)
 
-Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
+Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). The only write seam is internal `IMemoryWriter`, which exposes byte and `u16` writes for the two fixed player actions. Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
 
 ### Layouts, identity extraction, and dump
 
@@ -37,11 +37,18 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 4. The plugin polls every ~2s, rejects requests older than **30 seconds**, runs the dump off the Unity main thread, and updates `status.json` (`idle` → `scanning` → `ready` / `failed`).
 5. The app waits for a terminal status matching the request id (default timeout 120s; unlimited reference save bridge dump measured ~26s on 2026-07-30). On success, Rust reads `dump.json` from disk, validates schema v6, and atomically ingests player, staff, manager, scope, and date-basis data into SQLite for the active app save (`load_data` IPC). The dump body never crosses IPC. Scan or ingest failure leaves the prior snapshot unchanged; failed status errors replace machine-local paths with generic failure text before publication; the UI shows a typed error or ingest summary (player count, truncated banner when `scanTruncated`).
 
+The same protocol v1 file supports two closed player actions after a successful **live** full dump:
+
+- `boost-current-ability` requires the source dump request ID, player UID, expected CA and PA, and a fixed increment of `5` or `10`. The bridge caps the target at live PA and `200`.
+- `wonderkid-mentality` requires the same source and expected CA/PA preconditions plus a snapshot expectation for each known mentality field. A `null` field is neither read nor written; a known value above `10` is rechecked and left unchanged. The bridge generates independent inclusive `11..20` targets only for known values at `10` or below.
+
+The bridge retains candidate locations only in memory for the one successful live dump. A failed dump does not replace the previous live index; snapshot-retry candidates, restarts, source-request mismatches, changed UIDs, changed CA/PA, and failed boost operations all fail closed. `status.json` can contain optional `playerBoostsSupported` and `playerBoost` fields with verified scalar results and rollback state; it never contains a UID, address, raw memory, or an arbitrary target supplied by the app. Full-dump consumers remain protocol-v1 compatible because the new request and status fields are optional.
+
 ### Manual force-scan fallback
 
 1. With FM26 running and a save loaded, create an empty file:
    `%LOCALAPPDATA%\fm-valuescout\fm-bridge\force-scan`
-2. The plugin treats it like a request (`requestId: force-scan`, `maxAccepted: null` — **unlimited**, same as production Load Data), then deletes the file.
+2. The plugin creates a unique `force-scan-*` request ID (reported in `status.json`), treats it as an unlimited request, then deletes the file. A later manual scan has a different source ID and replaces the prior live candidate index.
 3. Inspect `dump.json` / `diagnostics.txt` and `status.json` (`scanning` → `ready` / `failed`).
 4. Record player and staff counts, then spot-check representative player fields, staff identity/attributes/contracts, manager club metadata, scope, and date basis against FM. If wrong or empty, use diagnostics (class-offset histogram, sample UIDs, `sampleAttributes`, `sampleContracts`, `sampleClubs`, `multiClubSamples`, identity skip counts, `clubUnresolved`) to adjust `Fm263Layout`.
 

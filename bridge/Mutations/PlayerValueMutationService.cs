@@ -65,6 +65,13 @@ internal sealed class PlayerValueMutationService
         PersonCandidate player,
         int expectedCurrentAbility,
         int targetCurrentAbility)
+        => SetCurrentAbility(player, expectedCurrentAbility, expectedPotentialAbility: null, targetCurrentAbility);
+
+    public PlayerValueMutationResult SetCurrentAbility(
+        PersonCandidate player,
+        int expectedCurrentAbility,
+        int? expectedPotentialAbility,
+        int targetCurrentAbility)
     {
         if (!IsPlayer(player))
         {
@@ -72,6 +79,8 @@ internal sealed class PlayerValueMutationService
         }
 
         if (!PersonScanner.IsValidAbility(expectedCurrentAbility)
+            || (expectedPotentialAbility is not null
+                && !PersonScanner.IsValidAbility(expectedPotentialAbility.Value))
             || !PersonScanner.IsValidAbility(targetCurrentAbility))
         {
             return Failed(PlayerValueMutationFailure.InvalidValue);
@@ -96,6 +105,12 @@ internal sealed class PlayerValueMutationService
         }
 
         if (liveCurrentAbility != expectedCurrentAbility)
+        {
+            return Failed(PlayerValueMutationFailure.ExpectedValueMismatch, liveCurrentAbility);
+        }
+
+        if (expectedPotentialAbility is not null
+            && livePotentialAbility != expectedPotentialAbility.Value)
         {
             return Failed(PlayerValueMutationFailure.ExpectedValueMismatch, liveCurrentAbility);
         }
