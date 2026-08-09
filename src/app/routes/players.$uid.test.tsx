@@ -209,16 +209,69 @@ describe("player profile route", () => {
     ).toHaveTextContent(/^Loyalty—$/);
   });
 
-  it("shows a hero ScoreBadge for the best non-null role on Overview", async () => {
+  it("shows independent current and potential best-role summaries on Overview", async () => {
     await resolveLoadDataIpcMock();
-    setGetPlayerOverride(fixturePlayerDetail());
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        roleScores: [
+          {
+            roleId: "current-specialist",
+            displayName: "Current Specialist",
+            phase: "in_possession",
+            positionTags: ["MC"],
+            score: 82,
+            potentialScore: 88,
+          },
+          {
+            roleId: "potential-specialist",
+            displayName: "Potential Specialist",
+            phase: "in_possession",
+            positionTags: ["ST"],
+            score: 70,
+            potentialScore: 94,
+          },
+        ],
+      }),
+    );
     renderProfileRoute("/players/42");
 
     expect(
-      await screen.findByLabelText("Deep-Lying Playmaker: 82, Starter"),
+      await screen.findByLabelText("Best role (Current): 82, Starter"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Best role")).toBeInTheDocument();
-    expect(screen.getByText("Deep-Lying Playmaker")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Best potential role (Potential): 94, Elite"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Best role (Current)")).toBeInTheDocument();
+    expect(
+      screen.getByText("Best potential role (Potential)"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Current Specialist")).toBeInTheDocument();
+    expect(screen.getByText("Potential Specialist")).toBeInTheDocument();
+  });
+
+  it("renders unavailable potential summary values without a score badge", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        roleScores: [
+          {
+            roleId: "current-only",
+            displayName: "Current Only",
+            phase: "in_possession",
+            positionTags: ["MC"],
+            score: 82,
+            potentialScore: null,
+          },
+        ],
+      }),
+    );
+    renderProfileRoute("/players/42");
+
+    const potential = await screen.findByRole("img", {
+      name: "Best potential role (Potential): unavailable",
+    });
+    expect(potential).toHaveTextContent("—");
+    expect(potential).not.toHaveClass("inline-flex");
   });
 
   it("groups Roles by position family with labelled current and potential badges", async () => {

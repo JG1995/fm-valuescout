@@ -7,7 +7,10 @@ import {
   formatPreferredFoot,
 } from "@/utils/format";
 import type { PlayerDetail } from "../types/player-detail";
-import { bestRoleScore } from "../utils/position-families";
+import {
+  bestPotentialRoleScore,
+  bestRoleScore,
+} from "../utils/position-families";
 
 type FieldProps = {
   label: string;
@@ -39,6 +42,46 @@ function flagLabel(value: boolean | null | undefined, yes: string) {
   return value === true ? yes : null;
 }
 
+type BestRoleSummaryProps = {
+  label: string;
+  basis: "Current" | "Potential";
+  roleName: string | null;
+  score: number | null;
+};
+
+function BestRoleSummary({
+  label,
+  basis,
+  roleName,
+  score,
+}: BestRoleSummaryProps) {
+  const accessibleLabel = `${label} (${basis})`;
+
+  return (
+    <div className="flex min-w-0 items-center gap-4">
+      {score === null ? (
+        <span
+          role="img"
+          aria-label={`${accessibleLabel}: unavailable`}
+          className="font-mono text-mono-lg text-on-surface-variant tabular-nums"
+        >
+          {formatMissable(null)}
+        </span>
+      ) : (
+        <ScoreBadge score={score} roleName={accessibleLabel} variant="hero" />
+      )}
+      <div className="min-w-0">
+        <p className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
+          {accessibleLabel}
+        </p>
+        <p className="truncate text-body-md text-on-surface">
+          {roleName ?? formatMissable(null)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 type PlayerOverviewPanelProps = {
   player: PlayerDetail;
 };
@@ -54,27 +97,25 @@ export function PlayerOverviewPanel({ player }: PlayerOverviewPanelProps) {
     flagLabel(player.onLoan, "On loan"),
   ].filter((label): label is string => label !== null);
   const bestRole = bestRoleScore(player.roleScores);
+  const bestPotentialRole = bestPotentialRoleScore(player.roleScores);
 
   return (
     <Panel title="Overview">
       <div className="space-y-6">
-        {bestRole !== null ? (
-          <div className="flex items-center gap-4">
-            <ScoreBadge
-              score={bestRole.score}
-              roleName={bestRole.displayName}
-              variant="hero"
-            />
-            <div className="min-w-0">
-              <p className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
-                Best role
-              </p>
-              <p className="truncate text-body-md text-on-surface">
-                {bestRole.displayName}
-              </p>
-            </div>
-          </div>
-        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <BestRoleSummary
+            label="Best role"
+            basis="Current"
+            roleName={bestRole?.displayName ?? null}
+            score={bestRole?.score ?? null}
+          />
+          <BestRoleSummary
+            label="Best potential role"
+            basis="Potential"
+            roleName={bestPotentialRole?.displayName ?? null}
+            score={bestPotentialRole?.potentialScore ?? null}
+          />
+        </div>
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
           <Field label="Name" value={player.name} />
           <Field

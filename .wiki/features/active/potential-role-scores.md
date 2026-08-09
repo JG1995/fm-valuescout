@@ -279,7 +279,7 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 #### Commit 4 — Show the best potential role on Overview
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): show the best potential role`
 
@@ -316,7 +316,7 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 #### Commit 5 — Show projected visible attributes
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): show projected visible attributes`
 
@@ -398,19 +398,19 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 **PR:** PR 1 — Potential role scores
 
-**Commit:** Commit 4 — Show the best potential role on Overview
+**Commit:** Commit 5 — Show projected visible attributes
 
 ### RED proof
 
-Add a profile route fixture whose highest current role differs from its highest potential role. The focused route and selector tests must fail because Overview currently selects only `score` and renders one Best Role summary.
+Add a player-query fixture that expects the exact projected visible-attribute map, and an Attributes-tab route fixture that expects visible Current → Potential pairs. The focused Rust and route tests must fail because the profile DTO returns only current attributes and the panel renders one value per row.
 
 ### Expected outcome
 
-Overview shows adjacent, responsive Best Role and Best Potential Role summaries. Each independently ignores nulls, keeps catalog order on ties, identifies Current or Potential accessibly, and renders `—` when unavailable without adding backend computation.
+`get_player` projects visible attributes once, returns that exact map with unchanged potential role scores, and the Attributes tab renders accessible Current → Potential pairs for visible sections only. Nulls stay unavailable, while Hidden and Personality remain current-only.
 
 ### Explicit exclusions
 
-Do not change profile DTOs, projected-attribute presentation, role-row scoring or grouping, Planner behavior, search, snapshot ingest, or database schema in this commit.
+Do not project Hidden or Personality attributes, add charts, deltas, colour-coded growth, editing, search, sorting, a second profile query, a new tab, or Planner behavior.
 
 ## Discoveries and replanning
 
@@ -430,6 +430,7 @@ Do not change profile DTOs, projected-attribute presentation, role-row scoring o
 | PR 1 — Potential role scores | Commit 1 — Project visible attributes to player potential | `ce7c87a` | Pure Rust projection API with pinned profiles and regression tests | Sol High — Accept after 1 fix round | None |
 | PR 1 — Potential role scores | Commit 2 — Show potential scores for every profile role | `126bf76` | One profile-read projection shared by all catalog roles, plus accessible Current/Potential rows | Sol Medium — Accept | None |
 | PR 1 — Potential role scores | Commit 3 — Show potential score for assigned Planner roles | `273b111` | One assignment-read projection shared by the selected IP/OOP role pair, plus compact accessible current-to-potential score pairs | Sol High — Accept | None |
+| PR 1 — Potential role scores | Commit 4 — Show the best potential role on Overview | Pending record | Independent current/potential best-role selectors and responsive, accessible Overview summaries | Sol Medium — Accept | None |
 
 ## Final validation
 

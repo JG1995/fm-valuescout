@@ -3,16 +3,19 @@ import type { Page } from "@playwright/test";
 type SmokeStubOptions = {
   plannerSnapshot?: boolean;
   plannerPotentialScores?: boolean;
+  playerProfile?: boolean;
 };
 
 export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const plannerSnapshot = options.plannerSnapshot ?? false;
   const plannerPotentialScores = options.plannerPotentialScores ?? false;
+  const playerProfile = options.playerProfile ?? false;
   await page.addInitScript({
     content: `
       let demoValue = "";
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
       const plannerPotentialScores = ${plannerPotentialScores ? "true" : "false"};
+      const playerProfile = ${playerProfile ? "true" : "false"};
       const plannerTactic = {
         lanes: [
           ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
@@ -138,7 +141,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_current_snapshot") {
-            return plannerSnapshot
+            return plannerSnapshot || playerProfile
               ? {
                   id: 1,
                   saveId: 1,
@@ -171,7 +174,55 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_player") {
-            return null;
+            return playerProfile ? {
+              uid: 42,
+              name: "Potential Scout",
+              age: 22,
+              birthYear: 2004,
+              birthDayOfYear: 80,
+              nationalities: ["ENG"],
+              heightCm: 182,
+              preferredFoot: "right",
+              positions: { MC: 20 },
+              attributes: { Passing: 14 },
+              hiddenAttributes: { Consistency: 12 },
+              personality: { Ambition: 15 },
+              weeklyWageGbp: 50000,
+              contractExpiryYear: 2028,
+              contractExpiryDayOfYear: 1,
+              transferListed: false,
+              loanListed: null,
+              notForSale: null,
+              setForRelease: null,
+              marketValueGbp: 12500000,
+              reputationCurrent: 5000,
+              reputationWorld: 4000,
+              club: "Test FC",
+              parentClub: null,
+              onLoan: false,
+              division: "Premier Division",
+              teamLevel: "First",
+              ca: 140,
+              pa: 160,
+              roleScores: [
+                {
+                  roleId: "current-specialist",
+                  displayName: "Current Specialist",
+                  phase: "in_possession",
+                  positionTags: ["MC"],
+                  score: 82,
+                  potentialScore: 88,
+                },
+                {
+                  roleId: "potential-specialist",
+                  displayName: "Potential Specialist",
+                  phase: "in_possession",
+                  positionTags: ["ST"],
+                  score: 70,
+                  potentialScore: 94,
+                },
+              ],
+            } : null;
           }
 
           if (cmd === "get_planner_club_family") {

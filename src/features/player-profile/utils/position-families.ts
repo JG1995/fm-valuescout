@@ -49,6 +49,7 @@ export type RoleFamilyGroup = {
 };
 
 export type ScoredRole = PlayerRoleScore & { score: number };
+export type PotentialScoredRole = PlayerRoleScore & { potentialScore: number };
 
 /** Resolve primary family from the first position tag that maps to a family. */
 export function primaryFamily(
@@ -102,6 +103,22 @@ export function bestRoleScore(
     }
     if (best === null || role.score > best.score) {
       best = { ...role, score: role.score };
+    }
+  }
+  return best;
+}
+
+/** Highest non-null potential score; ties keep the earlier catalog entry. */
+export function bestPotentialRoleScore(
+  roleScores: readonly PlayerRoleScore[],
+): PotentialScoredRole | null {
+  let best: PotentialScoredRole | null = null;
+  for (const role of roleScores) {
+    if (role.potentialScore === null) {
+      continue;
+    }
+    if (best === null || role.potentialScore > best.potentialScore) {
+      best = { ...role, potentialScore: role.potentialScore };
     }
   }
   return best;

@@ -497,6 +497,43 @@ test.describe("walking skeleton smoke", () => {
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
   });
 
+  test("player profile Overview keeps independent best-role summaries visible", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { playerProfile: true });
+    await page.goto("/players/42");
+
+    const main = page.getByRole("main");
+    const current = main.getByRole("img", {
+      name: "Best role (Current): 82, Starter",
+    });
+    const potential = main.getByRole("img", {
+      name: "Best potential role (Potential): 94, Elite",
+    });
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await expect(current).toBeVisible();
+      await expect(potential).toBeVisible();
+
+      const [currentBox, potentialBox] = await Promise.all([
+        current.boundingBox(),
+        potential.boundingBox(),
+      ]);
+      expect(currentBox).not.toBeNull();
+      expect(potentialBox).not.toBeNull();
+      if (!currentBox || !potentialBox) {
+        throw new Error("Expected visible best-role summary badges.");
+      }
+      expect(currentBox.x + currentBox.width).toBeLessThanOrEqual(
+        potentialBox.x,
+      );
+    }
+  });
+
   test("top bar exposes global player search", async ({ page }) => {
     await page.goto("/");
 
