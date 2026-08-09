@@ -1,14 +1,17 @@
 use rusqlite::params;
 
+use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
+
 use super::depth::{add_string, assign_player, get_depth, PlannerTeam};
 use super::optimizer::{
-    allocation_score, foot_matches, match_lanes, optimize_depth, OptimizerCandidate,
+    allocation_score, foot_matches, match_lanes, optimize_depth, optimize_depth_with_basis,
+    OptimizerCandidate, ScoreBasis,
 };
 use super::tactic;
 use super::test_support::{
-    add_picker_candidates, assigned_player_uid, assignment_provenance, open_with_snapshot,
-    set_player_age, set_player_positions, set_player_preferred_foot, set_right_winger_scores,
-    set_role_score, team_strings,
+    add_picker_candidates, assigned_player_uid, assignment_provenance, current_snapshot_id,
+    open_with_snapshot, set_player_age, set_player_positions, set_player_preferred_foot,
+    set_right_winger_scores, set_role_score, team_strings,
 };
 
 #[test]
@@ -92,6 +95,74 @@ fn soft_foot_mismatches_are_capped_at_zero() {
     lane.preferred_foot = "right".to_string();
 
     assert_eq!(allocation_score(3, "left", &lane), Some(0));
+}
+
+#[test]
+fn optimizer_switches_between_current_and_projected_candidate_scores() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    let complete_attributes = serde_json::to_string(
+        &DUMP_ATTRIBUTE_KEYS
+            .iter()
+            .map(|key| ((*key).to_string(), serde_json::Value::from(10)))
+            .collect::<serde_json::Map<_, _>>(),
+    )
+    .expect("serialize complete attributes");
+
+    conn.execute(
+        "UPDATE players
+         SET ca = ?1, pa = ?2, age = ?3, positions_json = ?4, attributes_json = ?5
+         WHERE snapshot_id = ?6 AND uid = ?7",
+        params![
+            100,
+            100,
+            20,
+            r#"{"AMR": 18, "MR": 18}"#,
+            "{}",
+            snapshot_id,
+            77
+        ],
+    )
+    .expect("make current-fit player missing projected requirements");
+    conn.execute(
+        "UPDATE players
+         SET ca = ?1, pa = ?2, age = ?3, positions_json = ?4, attributes_json = ?5
+         WHERE snapshot_id = ?6 AND uid = ?7",
+        params![
+            80,
+            170,
+            20,
+            r#"{"AMR": 18, "MR": 18}"#,
+            complete_attributes,
+            snapshot_id,
+            78
+        ],
+    )
+    .expect("make future-fit player projectable");
+    set_right_winger_scores(&conn, save_id, 77, Some(100));
+    set_right_winger_scores(&conn, save_id, 78, Some(90));
+
+    let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
+    tactic.lanes[9].importance_rank = Some(1);
+    tactic::save_tactic(&conn, save_id, &tactic).expect("rank right winger");
+
+    let current = optimize_depth(&conn, save_id).expect("optimize current scores");
+    let potential = optimize_depth_with_basis(&conn, save_id, ScoreBasis::Potential)
+        .expect("optimize potential scores");
+
+    assert_eq!(
+        assigned_player_uid(&current, PlannerTeam::Senior, "right_winger"),
+        Some(77)
+    );
+    assert_eq!(
+        assigned_player_uid(&potential, PlannerTeam::Senior, "right_winger"),
+        Some(78)
+    );
+    assert_eq!(
+        ScoreBasis::parse("unsupported").expect_err("reject unknown basis"),
+        "Unknown optimizer score basis `unsupported`"
+    );
 }
 
 #[test]

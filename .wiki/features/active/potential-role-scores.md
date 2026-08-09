@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -133,7 +133,7 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 ### PR 1 — Potential role scores
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -355,7 +355,7 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 #### Commit 6 — Optimize squads by potential
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): optimize squads by potential`
 
@@ -396,21 +396,7 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 ## Active work
 
-**PR:** PR 1 — Potential role scores
-
-**Commit:** Commit 6 — Optimize squads by potential
-
-### RED proof
-
-Add a source-scoped optimizer fixture where the current-best and potential-best players differ, and Planner route assertions for the missing potential action and score-basis argument. The focused Rust and route tests must fail because the optimizer accepts no basis and the toolbar exposes only current optimization.
-
-### Expected outcome
-
-Current optimization keeps selecting from persisted role scores; potential optimization projects each configured-source candidate once and selects the future-fit player through the same allocation, foot, transaction, cache, and manual-reservation paths. The Planner exposes clear, mutually exclusive current and potential actions with basis-specific pending and outcome state.
-
-### Explicit exclusions
-
-Do not add potential scores to the slot picker or candidate DTO, change optimizer eligibility/ranking/matching/foot/tie-break rules, add a second command or matcher, persist the basis, optimize automatically, or move potential work into Load Data or navigation.
+PR 1 implementation is complete and ready for publication. Feature validation, cross-commit review, documentation reconciliation, and final-publication readiness remain pending `$workflow-finish-feature`.
 
 ## Discoveries and replanning
 
@@ -422,6 +408,7 @@ Do not add potential scores to the slot picker or candidate DTO, change optimize
 - Before PR 1 publication, the developer expanded the feature with Best Potential Role, projected visible-attribute presentation, and an explicit potential optimizer. The unpublished branch and existing projection contract remain one coherent PR; feature close-out remains not run.
 - Profile inspection confirmed that Overview already receives all ordered current/potential role rows, so both best-role summaries stay frontend-derived. The Attributes addition must move the already-computed projected map into the profile DTO rather than run `project_attributes` twice.
 - Optimizer inspection confirmed that candidate score construction is separate from ranked and exact allocation through `OptimizerCandidate.lane_scores`. The new score basis therefore belongs before allocation; potential mode must not duplicate the matcher or change assignment provenance.
+- Commit 6 validates the score basis at the command boundary and applies it only while constructing candidate lane scores. Potential candidates are loaded only from configured sources, projected once per candidate, then passed through the unchanged allocation, transaction, and provenance pipeline.
 
 ## Completed work
 
@@ -431,7 +418,8 @@ Do not add potential scores to the slot picker or candidate DTO, change optimize
 | PR 1 — Potential role scores | Commit 2 — Show potential scores for every profile role | `126bf76` | One profile-read projection shared by all catalog roles, plus accessible Current/Potential rows | Sol Medium — Accept | None |
 | PR 1 — Potential role scores | Commit 3 — Show potential score for assigned Planner roles | `273b111` | One assignment-read projection shared by the selected IP/OOP role pair, plus compact accessible current-to-potential score pairs | Sol High — Accept | None |
 | PR 1 — Potential role scores | Commit 4 — Show the best potential role on Overview | `156037c` | Independent current/potential best-role selectors and responsive, accessible Overview summaries | Sol Medium — Accept | None |
-| PR 1 — Potential role scores | Commit 5 — Show projected visible attributes | Pending record | One shared visible-attribute projection for role scoring and profile presentation, with accessible Current → Potential rows | Sol Medium — Accept | None |
+| PR 1 — Potential role scores | Commit 5 — Show projected visible attributes | `d78c24a` | One shared visible-attribute projection for role scoring and profile presentation, with accessible Current → Potential rows | Sol Medium — Accept | None |
+| PR 1 — Potential role scores | Commit 6 — Optimize squads by potential | Pending record | Validated current/potential optimizer basis, source-scoped once-per-candidate potential scoring, shared allocation pipeline, and responsive mutually exclusive Planner actions | Sol High — Accept after 1 fix round | None |
 
 ## Final validation
 

@@ -3,7 +3,10 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use rusqlite::{params, Connection};
 
-use crate::features::scoring::combine::combine_role_scores;
+use crate::features::scoring::{
+    catalog::all_roles, combine::combine_role_scores, projection::project_attributes,
+    score::score_role,
+};
 
 use super::depth::{
     current_snapshot_id, ensure_depth, get_depth, insert_assignment, AssignmentProvenance,
@@ -16,6 +19,22 @@ pub(super) struct OptimizerCandidate {
     pub(super) player_uid: i64,
     pub(super) last_known_name: String,
     pub(super) lane_scores: Vec<Option<u8>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ScoreBasis {
+    Current,
+    Potential,
+}
+
+impl ScoreBasis {
+    pub(super) fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "current" => Ok(Self::Current),
+            "potential" => Ok(Self::Potential),
+            _ => Err(format!("Unknown optimizer score basis `{value}`")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -215,7 +234,16 @@ pub(super) fn match_lanes(
         .collect()
 }
 
+#[cfg(test)]
 pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
+    optimize_depth_with_basis(conn, save_id, ScoreBasis::Current)
+}
+
+pub(super) fn optimize_depth_with_basis(
+    conn: &Connection,
+    save_id: i64,
+    score_basis: ScoreBasis,
+) -> Result<PlannerDepth, String> {
     let tactic = ensure_depth(conn, save_id)?;
     let snapshot_id = current_snapshot_id(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
@@ -243,7 +271,8 @@ pub(super) fn optimize_depth(conn: &Connection, save_id: i64) -> Result<PlannerD
 
     let strings = load_ordered_strings(&tx, save_id)?;
     for team in PLANNER_TEAMS {
-        let candidates = load_optimizer_candidates(&tx, save_id, snapshot_id, team, &tactic)?;
+        let candidates =
+            load_optimizer_candidates(&tx, save_id, snapshot_id, team, &tactic, score_basis)?;
         for planner_string in strings
             .iter()
             .filter(|planner_string| planner_string.team == team)
@@ -403,6 +432,24 @@ fn load_optimizer_candidates(
     snapshot_id: i64,
     team: PlannerTeam,
     tactic: &PlannerTactic,
+    score_basis: ScoreBasis,
+) -> Result<Vec<OptimizerCandidate>, String> {
+    match score_basis {
+        ScoreBasis::Current => {
+            load_current_optimizer_candidates(tx, save_id, snapshot_id, team, tactic)
+        }
+        ScoreBasis::Potential => {
+            load_potential_optimizer_candidates(tx, save_id, snapshot_id, team, tactic)
+        }
+    }
+}
+
+fn load_current_optimizer_candidates(
+    tx: &rusqlite::Transaction<'_>,
+    save_id: i64,
+    snapshot_id: i64,
+    team: PlannerTeam,
+    tactic: &PlannerTactic,
 ) -> Result<Vec<OptimizerCandidate>, String> {
     let mut score_statement = tx
         .prepare(
@@ -495,6 +542,124 @@ fn load_optimizer_candidates(
                                         .get(lane.oop_role_id.as_str())
                                         .copied()
                                         .flatten(),
+                                    lane.ip_weight,
+                                )
+                                .and_then(|score| allocation_score(score, &preferred_foot, lane))
+                            })
+                            .flatten()
+                    })
+                    .collect::<Vec<_>>();
+                Ok(OptimizerCandidate {
+                    player_uid,
+                    last_known_name,
+                    lane_scores,
+                })
+            },
+        )
+        .filter_map(|candidate| match candidate {
+            Ok(candidate) if candidate.lane_scores.iter().any(Option::is_some) => {
+                Some(Ok(candidate))
+            }
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect()
+}
+
+fn load_potential_optimizer_candidates(
+    tx: &rusqlite::Transaction<'_>,
+    save_id: i64,
+    snapshot_id: i64,
+    team: PlannerTeam,
+    tactic: &PlannerTactic,
+) -> Result<Vec<OptimizerCandidate>, String> {
+    let lane_roles = tactic
+        .lanes
+        .iter()
+        .map(|lane| {
+            let ip_role = all_roles()
+                .iter()
+                .find(|role| role.role_id == lane.ip_role_id)
+                .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.ip_role_id))?;
+            let oop_role = all_roles()
+                .iter()
+                .find(|role| role.role_id == lane.oop_role_id)
+                .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.oop_role_id))?;
+            Ok((ip_role, oop_role))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    let mut player_statement = tx
+        .prepare(
+            "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json,
+                    p.attributes_json, p.ca, p.pa
+             FROM players p
+             WHERE p.snapshot_id = ?1
+               AND EXISTS(
+                   SELECT 1
+                   FROM planner_club_sources source
+                   WHERE source.save_id = ?2
+                     AND source.team = ?3
+                     AND source.club_name = p.current_club
+               )
+             ORDER BY p.uid",
+        )
+        .map_err(|error| error.to_string())?;
+    let players = player_statement
+        .query_map(params![snapshot_id, save_id, team.as_str()], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, i64>(7)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    players
+        .into_iter()
+        .filter(|(_, _, age, _, _, _, _, _)| is_age_eligible(team, *age))
+        .map(
+            |(
+                player_uid,
+                last_known_name,
+                age,
+                preferred_foot,
+                positions_json,
+                attributes_json,
+                ca,
+                pa,
+            )| {
+                let positions = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
+                    &positions_json,
+                )
+                .map_err(|error| error.to_string())?;
+                let attributes =
+                    serde_json::from_str::<HashMap<String, Option<u8>>>(&attributes_json)
+                        .map_err(|error| error.to_string())?;
+                let projected_attributes = project_attributes(
+                    &attributes,
+                    ca,
+                    pa,
+                    age,
+                    positions.keys().map(String::as_str),
+                );
+                let lane_scores = tactic
+                    .lanes
+                    .iter()
+                    .zip(&lane_roles)
+                    .map(|(lane, (ip_role, oop_role))| {
+                        is_suitable_for_lane(&positions, lane)
+                            .then(|| {
+                                combine_role_scores(
+                                    score_role(&projected_attributes, ip_role),
+                                    score_role(&projected_attributes, oop_role),
                                     lane.ip_weight,
                                 )
                                 .and_then(|score| allocation_score(score, &preferred_foot, lane))

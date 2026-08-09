@@ -362,26 +362,62 @@ test.describe("walking skeleton smoke", () => {
     }
   });
 
-  test("planner depth optimizes squads and shows the reconciled matrix", async ({
+  test("planner depth optimizes current and potential squads within desktop widths", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 900, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
 
-    const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Squad" }).click();
-    await expect(
-      main.getByRole("group", { name: "Squad controls" }),
-    ).toBeVisible();
-    await main.getByRole("button", { name: "Optimize squads" }).click();
-    await expect(main.getByRole("status")).toHaveText("Squads optimized.");
-    await main.getByRole("tab", { name: "Reserves" }).click();
-    await expect(
-      main.getByRole("button", {
-        name: /Reserves, 1st string, IP: GK .* Optimized Keeper, Resolved/,
-      }),
-    ).toBeVisible();
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await page.goto("/planner");
+
+      const main = page.getByRole("main");
+      await main.getByRole("tab", { name: "Squad" }).click();
+      const controls = main.getByRole("group", { name: "Squad controls" });
+      const current = main.getByRole("button", { name: "Optimize squads" });
+      const potential = main.getByRole("button", {
+        name: "Optimize by potential",
+      });
+      await expect(controls).toBeVisible();
+      await current.click();
+      await expect(main.getByRole("status")).toHaveText(
+        "Squads optimized by current scores.",
+      );
+      await potential.click();
+      await expect(main.getByRole("status")).toHaveText(
+        "Squads optimized by potential.",
+      );
+      await expect(
+        main.getByRole("button", {
+          name: /Reserves, 1st string, IP: GK .* Optimized Keeper, Resolved/,
+        }),
+      ).toBeVisible();
+
+      const [controlsBox, potentialBox] = await Promise.all([
+        controls.boundingBox(),
+        potential.boundingBox(),
+      ]);
+      expect(controlsBox).not.toBeNull();
+      expect(potentialBox).not.toBeNull();
+      if (!controlsBox || !potentialBox) {
+        throw new Error("Expected visible Planner optimization controls.");
+      }
+      expect(potentialBox.x + potentialBox.width).toBeLessThanOrEqual(
+        controlsBox.x + controlsBox.width,
+      );
+      expect(controlsBox.x + controlsBox.width).toBeLessThanOrEqual(width);
+      expect(
+        await page
+          .locator("html")
+          .evaluate(
+            (element) =>
+              (element as unknown as { scrollWidth: number }).scrollWidth,
+          ),
+      ).toBeLessThanOrEqual(width);
+    }
   });
 
   test("planner depth clears every squad from one confirmed action", async ({
@@ -394,7 +430,9 @@ test.describe("walking skeleton smoke", () => {
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Squad" }).click();
     await main.getByRole("button", { name: "Optimize squads" }).click();
-    await expect(main.getByRole("status")).toHaveText("Squads optimized.");
+    await expect(main.getByRole("status")).toHaveText(
+      "Squads optimized by current scores.",
+    );
 
     const clearAll = main.getByRole("button", { name: "Clear all" });
     await clearAll.click();

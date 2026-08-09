@@ -249,6 +249,12 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "optimize_planner_depth") {
+            if (
+              args?.scoreBasis !== "current" &&
+              args?.scoreBasis !== "potential"
+            ) {
+              throw new Error("Optimizer requires a valid score basis");
+            }
             const reserves = plannerDepth.teams.find(
               (team) => team.team === "reserves",
             );

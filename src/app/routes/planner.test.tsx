@@ -30,6 +30,7 @@ import {
   getPlannerClearAllIpcMockCalls,
   getPlannerClubFamilySaveCalls,
   getPlannerDepthIpcMockCalls,
+  getPlannerOptimizeIpcMockBases,
   getPlannerOptimizeIpcMockCalls,
   getPlannerSlotCandidateFetchCount,
   resolvePlannerClubFamilyIpcMock,
@@ -1634,7 +1635,7 @@ describe("planner route", () => {
       await screen.findByRole("button", { name: "Optimize squads" }),
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Squads optimized.",
+      "Squads optimized by current scores.",
     );
 
     await user.click(screen.getByRole("button", { name: "Clear all" }));
@@ -2432,9 +2433,12 @@ describe("planner route", () => {
     await user.click(optimizeButton);
 
     await waitFor(() =>
-      expect(screen.getByText("Squads optimized.")).toBeInTheDocument(),
+      expect(
+        screen.getByText("Squads optimized by current scores."),
+      ).toBeInTheDocument(),
     );
     expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
+    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current"]);
     await user.click(screen.getByRole("tab", { name: "Reserves" }));
     expect(
       screen.getByRole("button", { name: /Reserve Keeper, Resolved/ }),
@@ -2444,6 +2448,16 @@ describe("planner route", () => {
     expect(
       await screen.findByRole("option", { name: /Reserve Keeper/ }),
     ).toHaveTextContent(`Assigned: ${RESERVES_FIRST_KEEPER}`);
+    await user.keyboard("{Escape}");
+    await user.click(
+      screen.getByRole("button", { name: "Optimize by potential" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText("Squads optimized by potential."),
+      ).toBeInTheDocument(),
+    );
+    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current", "potential"]);
   });
 
   it("keeps the depth unchanged and reports optimizer errors", async () => {
@@ -2465,6 +2479,14 @@ describe("planner route", () => {
         name: /Senior, 1st string, IP: GK .* Empty/,
       }),
     ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize by potential" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Potential optimization failed: Optimize failed",
+    );
+    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current", "potential"]);
   });
 
   it("prevents duplicate optimizer runs while pending", async () => {
@@ -2477,12 +2499,40 @@ describe("planner route", () => {
     const optimizeButton = await screen.findByRole("button", {
       name: "Optimize squads",
     });
+    const potentialButton = screen.getByRole("button", {
+      name: "Optimize by potential",
+    });
     await user.click(optimizeButton);
     await user.click(optimizeButton);
+    await user.click(potentialButton);
 
     expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
     expect(optimizeButton).toBeDisabled();
-    expect(optimizeButton).toHaveAccessibleName("Optimizing…");
+    expect(potentialButton).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clear all" })).toBeDisabled();
+    expect(optimizeButton).toHaveAccessibleName("Optimizing current…");
+    expect(getPlannerOptimizeIpcMockBases()).toEqual(["current"]);
+  });
+
+  it("identifies a pending potential optimization", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerOptimizePending(true);
+    renderPlannerRoute();
+
+    const potentialButton = await screen.findByRole("button", {
+      name: "Optimize by potential",
+    });
+    await user.click(potentialButton);
+
+    expect(getPlannerOptimizeIpcMockCalls()).toBe(1);
+    expect(potentialButton).toHaveAccessibleName("Optimizing potential…");
+    expect(
+      screen.getByRole("button", { name: "Optimize squads" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clear all" })).toBeDisabled();
+    expect(getPlannerOptimizeIpcMockBases()).toEqual(["potential"]);
   });
 });
 

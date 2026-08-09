@@ -397,12 +397,16 @@ pub fn get_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
 }
 
 #[tauri::command]
-pub fn optimize_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
+pub fn optimize_planner_depth(
+    score_basis: String,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let score_basis = optimizer::ScoreBasis::parse(&score_basis)?;
     let conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
-    Ok(optimizer::optimize_depth(&conn, save_id)?.into())
+    Ok(optimizer::optimize_depth_with_basis(&conn, save_id, score_basis)?.into())
 }
 
 #[tauri::command]
