@@ -754,7 +754,9 @@ public sealed class CapADumpTests
             AddCandidateRegion(reader, 0x300000, 0x20000);
             reader.AddUnreadableRange(0x300000, 0x20000);
 
-            var result = new CapADumpPipeline().Run(
+            var factory = new FakeProcessSnapshotFactory(
+                () => throw new InvalidOperationException("unexpected snapshot"));
+            var result = CreateSnapshotPipeline(factory, new SystemMemoryStatus(0, 0, 0)).Run(
                 reader,
                 bridgeDir,
                 gameVersion: "26.3.2",
@@ -763,6 +765,7 @@ public sealed class CapADumpTests
 
             Assert.False(result.Success);
             Assert.False(result.DumpReplaced);
+            Assert.Equal(0, factory.CaptureCount);
             Assert.Contains("incomplete", result.Error, StringComparison.OrdinalIgnoreCase);
 
             using var doc = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
