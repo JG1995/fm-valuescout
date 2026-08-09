@@ -142,7 +142,7 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 #### Commit 1 — Project visible attributes to player potential
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(scoring): project attributes to player potential`
 
@@ -180,7 +180,7 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 #### Commit 2 — Show potential scores for every profile role
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): show potential scores for every role`
 
@@ -258,19 +258,19 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 **PR:** PR 1 — Potential role scores
 
-**Commit:** Commit 1 — Project visible attributes to player potential
+**Commit:** Commit 2 — Show potential scores for every profile role
 
 ### RED proof
 
-Add the smallest Rust projection fixtures before production code. The initial suite must fail because no projection API exists and must specifically detect: a pinned young-player golden result, a physical-factor boundary, active mental multiplication at ages 28 and 32, multiple-position averaging, `ALL` fallback, identity when `PA <= CA`, null preservation, and the attribute cap. A fixture that only asserts attributes do not decrease is insufficient because it would allow the upstream inert mental helper to pass.
+Extend the player-query fixture and profile route test before production code. The tests must fail because role rows have no `potential_score` and the Roles tab has no distinct accessible Current/Potential values. Cover a populated profile plus an unavailable potential score rendered as an em dash.
 
 ### Expected outcome
 
-A pure, attributed, fully tested Rust projection API accepts current visible attributes, CA, PA, age, and natural positions and returns projected visible attributes ready for the existing role scorer. No runtime query or user interface changes yet.
+`get_player` projects one requested player once, scores all catalog roles with the existing scorer, and returns current plus potential scores. The Roles tab presents both values accessibly without changing Overview or Attributes behavior.
 
 ### Explicit exclusions
 
-Do not touch player-profile or Planner read models, React code, snapshot ingest, database migrations, or bridge code in the active commit.
+Do not change the profile Overview or Attributes tabs, search, navigation, snapshot ingest, Planner behavior, projected-attribute presentation, or database schema.
 
 ## Discoveries and replanning
 
@@ -280,7 +280,9 @@ Do not touch player-profile or Planner read models, React code, snapshot ingest,
 
 ## Completed work
 
-No implementation commits are complete.
+| PR | Commit | Git ref | Implementation | Review | Deviations |
+| --- | --- | --- | --- | --- | --- |
+| PR 1 — Potential role scores | Commit 1 — Project visible attributes to player potential | Pending record | Pure Rust projection API with pinned profiles and regression tests | Sol High — Accept after 1 fix round | None |
 
 ## Final validation
 
