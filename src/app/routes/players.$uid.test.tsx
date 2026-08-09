@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
@@ -12,6 +12,9 @@ import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import {
   fixturePlayerDetail,
+  getCurrentAbilityBoostIpcMockCalls,
+  resolvePendingCurrentAbilityBoostIpcMock,
+  setCurrentAbilityBoostIpcMockMode,
   setGetPlayerOverride,
 } from "@/testing/player-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
@@ -368,5 +371,162 @@ describe("player profile route", () => {
     expect(
       screen.getAllByLabelText(/Catalog Role \d+ \(Potential\):/),
     ).toHaveLength(68);
+  });
+
+  it("previews and confirms the age-21 CA boost from the current snapshot", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const action = await screen.findByRole("button", { name: "Boost CA" });
+    expect(screen.getByText("CA 140 → 145 (+5)")).toBeInTheDocument();
+
+    await user.click(action);
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Boost CA?" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("This raises current ability from 140 to 145."),
+    ).toBeInTheDocument();
+  });
+
+  it("uses the age-22 increment while capping the preview at PA", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: 22, ca: 192, pa: 195 }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText("CA 192 → 195 (+3) · capped by PA"),
+    ).toBeInTheDocument();
+  });
+
+  it("disables CA boost when age is unknown", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: null }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText(
+        "Age is unavailable. Load Data again to refresh this player.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+  });
+
+  it("disables CA boost when PA is unavailable", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ pa: null }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText(
+        "Potential ability is unavailable. Load Data again to refresh this player.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+  });
+
+  it("disables CA boost when CA already equals PA", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ ca: 160, pa: 160 }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText(
+        "Current ability is already at this player’s potential ability.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+  });
+
+  it("disables CA boost at the 200 ceiling", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ ca: 200, pa: 200 }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText(
+        "Current ability is already at the maximum of 200.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+  });
+
+  it("reports the verified CA result and refreshes the profile", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+
+    expect(
+      await screen.findByText("CA boosted from 140 to 145."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("CA 145 → 150 (+5)")).toBeInTheDocument();
+    expect(getCurrentAbilityBoostIpcMockCalls()).toEqual([{ uid: 42 }]);
+  });
+
+  it("prevents a duplicate CA boost while the first request is pending", async () => {
+    await resolveLoadDataIpcMock();
+    setCurrentAbilityBoostIpcMockMode("pending");
+    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Boost CA",
+    });
+    await user.click(confirm);
+    await user.click(confirm);
+
+    expect(getCurrentAbilityBoostIpcMockCalls()).toHaveLength(1);
+    expect(confirm).toBeDisabled();
+
+    resolvePendingCurrentAbilityBoostIpcMock();
+    expect(
+      await screen.findByText("CA boosted from 140 to 145."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps phase-specific bridge errors in the confirmation", async () => {
+    await resolveLoadDataIpcMock();
+    setCurrentAbilityBoostIpcMockMode("snapshotSyncError");
+    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+
+    expect(
+      await within(dialog).findByRole("alert", { name: "" }),
+    ).toHaveTextContent(
+      "Load Data required. FM may have changed. Load Data again.",
+    );
+  });
+
+  it("restores focus to the CA action after cancelling confirmation", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const action = await screen.findByRole("button", { name: "Boost CA" });
+    action.focus();
+    await user.click(action);
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
+
+    await waitFor(() => expect(action).toHaveFocus());
   });
 });

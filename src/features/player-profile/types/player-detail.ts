@@ -37,6 +37,6 @@ export type PlayerDetail = {
   division: string | null;
   teamLevel: string | null;
   ca: number;
-  pa: number;
+  pa: number | null;
   roleScores: PlayerRoleScore[];
 };

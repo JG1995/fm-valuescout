@@ -381,7 +381,7 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 #### Commit 3 — Add the CA boost action
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): add CA boost action`
 
@@ -422,7 +422,7 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 #### Commit 4 — Add Wonderkid Mentality
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): add Wonderkid Mentality action`
 
@@ -465,19 +465,19 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 **PR:** PR 2
 
-**Commit:** Commit 3
+**Commit:** Commit 4
 
 ### RED proof
 
-Add profile-route coverage for the age-21 and age-22 CA previews, PA and 200 caps, confirmation, pending lock, verified success, phase errors, focus restoration, and route-owned cache invalidation. It must fail because the Development boosts panel and CA mutation do not exist.
+Add profile-route coverage for each inclusive threshold, mixed eligible, ineligible, and null values, no-op disablement, confirmation content, exact verified success values, duplicate-submit prevention, errors, and focus restoration. It must fail because the Wonderkid Mentality action does not exist.
 
 ### Expected outcome
 
-The profile shows one guarded Boost CA action. React presents only a snapshot-derived preview while Rust remains authoritative, and the route refreshes every affected snapshot-derived cache after verified success.
+The existing panel shows a guarded Wonderkid Mentality action beside Boost CA. React presents only eligibility from the snapshot; the bridge chooses the random values and the UI shows its verified result.
 
 ### Explicit exclusions
 
-No Wonderkid Mentality UI, arbitrary targets, full-dump refreshes, history, undo, or another scoring path.
+No rerolls for values above 10, random-seed configuration, direct value selection, a separate action panel or route, full-dump refreshes, history, undo, or another scoring path.
 
 ## Discoveries and replanning
 
@@ -499,7 +499,8 @@ No Wonderkid Mentality UI, arbitrary targets, full-dump refreshes, history, undo
 | PR 1 | Add verified scalar memory writes | `4826495` | Added internal typed CA, Ambition, Professionalism, and Determination writes with live preconditions, readback, and verified rollback reporting. | Sol xhigh accepted after one local correction to narrow the writer seam to byte/u16 operations. | None |
 | PR 1 | Expose player boost operations | `c695556` | Added the closed boost protocol, private live-scan index, exact-build capability, verified result status, and scan/write serialization. | Sol xhigh accepted after one correction round; controlled Windows proof passed. | Manual proof used the documented force-scan fallback. Rust, SQLite, and profile integration remain PR 2. |
 | PR 2 | Bind snapshots to bridge scans | `9f0b598` | Added migration v16, atomically persisted source request IDs, captured each completed dump before ingest, and rejected changed request status. | Sol xhigh accepted after a request/dump correlation and transaction-boundary correction. | Snapshot summaries now load before commit so an error rolls back the new binding. |
-| PR 2 | Persist verified player boosts | Pending record | Added the closed Rust bridge client, UID-only commands, snapshot-derived eligibility, verified targeted reconciliation, role-score refresh, and explicit uncertain-result recovery. | Sol xhigh accepted after one ledger lifecycle correction. | React boost controls remain Commit 3 and Commit 4 work. |
+| PR 2 | Persist verified player boosts | `bc5678c` | Added the closed Rust bridge client, UID-only commands, snapshot-derived eligibility, verified targeted reconciliation, role-score refresh, and explicit uncertain-result recovery. | Sol xhigh accepted after one ledger lifecycle correction. | React boost controls remain Commit 3 and Commit 4 work. |
+| PR 2 | Add CA boost action | Pending record | Added the guarded Overview action, snapshot-only preview, confirmation, verified outcome, and route-owned cache invalidation. | Sol High accepted after one architecture-summary correction. | Wonderkid Mentality remains Commit 4 work. |
 
 ## Final validation
 
