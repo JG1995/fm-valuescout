@@ -9,6 +9,35 @@ type PlayerRolesPanelProps = {
   player: PlayerDetail;
 };
 
+type RoleScoreProps = {
+  roleName: string;
+  label: "Current" | "Potential";
+  score: number | null;
+};
+
+function RoleScore({ roleName, label, score }: RoleScoreProps) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-[11px] text-on-surface-variant">{label}</span>
+      {score === null ? (
+        <span
+          role="img"
+          aria-label={`${roleName} (${label}): unavailable`}
+          className="font-mono text-mono-sm text-on-surface-variant tabular-nums"
+        >
+          {formatMissable(null)}
+        </span>
+      ) : (
+        <ScoreBadge
+          score={score}
+          roleName={`${roleName} (${label})`}
+          variant="card"
+        />
+      )}
+    </div>
+  );
+}
+
 export function PlayerRolesPanel({ player }: PlayerRolesPanelProps) {
   const groups = groupRolesByFamily(player.roleScores);
 
@@ -40,17 +69,18 @@ export function PlayerRolesPanel({ player }: PlayerRolesPanelProps) {
                         {rolePhaseLabel(role.phase)}
                       </p>
                     </div>
-                    {role.score === null ? (
-                      <span className="font-mono text-mono-sm text-on-surface-variant tabular-nums">
-                        {formatMissable(null)}
-                      </span>
-                    ) : (
-                      <ScoreBadge
-                        score={role.score}
+                    <div className="flex shrink-0 items-center gap-3">
+                      <RoleScore
                         roleName={role.displayName}
-                        variant="card"
+                        label="Current"
+                        score={role.score}
                       />
-                    )}
+                      <RoleScore
+                        roleName={role.displayName}
+                        label="Potential"
+                        score={role.potentialScore}
+                      />
+                    </div>
                   </li>
                 ))}
               </ul>

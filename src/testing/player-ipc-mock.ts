@@ -50,13 +50,15 @@ export function fixturePlayerDetail(
         phase: "in_possession",
         positionTags: ["GK"],
         score: 40,
+        potentialScore: 47,
       },
       {
         roleId: "centre_back_ip",
         displayName: "Centre-Back",
         phase: "in_possession",
         positionTags: ["DC"],
-        score: null,
+        score: 48,
+        potentialScore: null,
       },
       {
         roleId: "deep_lying_playmaker_ip",
@@ -64,6 +66,7 @@ export function fixturePlayerDetail(
         phase: "in_possession",
         positionTags: ["DM", "MC"],
         score: 82,
+        potentialScore: 94,
       },
       {
         roleId: "central_midfielder_ip",
@@ -71,6 +74,7 @@ export function fixturePlayerDetail(
         phase: "in_possession",
         positionTags: ["MC"],
         score: 72,
+        potentialScore: 84,
       },
       {
         roleId: "advanced_forward_ip",
@@ -78,6 +82,7 @@ export function fixturePlayerDetail(
         phase: "in_possession",
         positionTags: ["ST"],
         score: 55,
+        potentialScore: 67,
       },
     ],
     ...overrides,

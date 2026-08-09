@@ -13,6 +13,7 @@ pub struct PlayerRoleScoreDto {
     pub phase: String,
     pub position_tags: Vec<String>,
     pub score: Option<i64>,
+    pub potential_score: Option<i64>,
 }
 
 impl From<PlayerRoleScore> for PlayerRoleScoreDto {
@@ -23,6 +24,7 @@ impl From<PlayerRoleScore> for PlayerRoleScoreDto {
             phase: row.phase,
             position_tags: row.position_tags,
             score: row.score,
+            potential_score: row.potential_score,
         }
     }
 }

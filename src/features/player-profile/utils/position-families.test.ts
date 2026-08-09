@@ -15,6 +15,7 @@ function role(
 ): PlayerRoleScore {
   return {
     phase: "in_possession",
+    potentialScore: null,
     ...partial,
   };
 }

@@ -221,7 +221,7 @@ describe("player profile route", () => {
     expect(screen.getByText("Deep-Lying Playmaker")).toBeInTheDocument();
   });
 
-  it("groups Roles by position family with card badges and em dash for nulls", async () => {
+  it("groups Roles by position family with labelled current and potential badges", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
     renderProfileRoute("/players/42?tab=roles");
@@ -244,20 +244,66 @@ describe("player profile route", () => {
 
     const centreBack = screen.getByRole("region", { name: "Centre-back" });
     expect(within(centreBack).getByText("Centre-Back")).toBeInTheDocument();
-    expect(within(centreBack).getByText("—")).toBeInTheDocument();
+    expect(
+      within(centreBack).getByLabelText("Centre-Back (Potential): unavailable"),
+    ).toHaveTextContent("—");
 
     expect(
-      screen.getByLabelText("Deep-Lying Playmaker: 82, Starter"),
+      screen.getByLabelText("Deep-Lying Playmaker (Current): 82, Starter"),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Central Midfielder: 72, Starter"),
+      screen.getByLabelText("Deep-Lying Playmaker (Potential): 94, Elite"),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Goalkeeper: 40, Fringe")).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Advanced Forward: 55, Rotation"),
+      screen.getByLabelText("Central Midfielder (Current): 72, Starter"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Central Midfielder (Potential): 84, Starter"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Goalkeeper (Current): 40, Fringe"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Goalkeeper (Potential): 47, Fringe"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Advanced Forward (Current): 55, Rotation"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Advanced Forward (Potential): 67, Rotation"),
     ).toBeInTheDocument();
 
     const goalkeeper = screen.getByRole("region", { name: "Goalkeeper" });
     expect(within(goalkeeper).getByText("IP")).toBeInTheDocument();
+  });
+
+  it("shows labelled current and potential values for every supplied role", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        roleScores: Array.from({ length: 68 }, (_, index) => ({
+          roleId: `catalog-role-${index}`,
+          displayName: `Catalog Role ${index + 1}`,
+          phase: "in_possession",
+          positionTags: ["MC"],
+          score: 60,
+          potentialScore: 70,
+        })),
+      }),
+    );
+    renderProfileRoute("/players/42?tab=roles");
+
+    expect(
+      await screen.findByLabelText("Catalog Role 1 (Current): 60, Rotation"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Catalog Role 68 (Potential): 70, Starter"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByLabelText(/Catalog Role \d+ \(Current\):/),
+    ).toHaveLength(68);
+    expect(
+      screen.getAllByLabelText(/Catalog Role \d+ \(Potential\):/),
+    ).toHaveLength(68);
   });
 });

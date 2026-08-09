@@ -4,6 +4,7 @@ export type PlayerRoleScore = {
   phase: string;
   positionTags: string[];
   score: number | null;
+  potentialScore: number | null;
 };
 
 export type PlayerDetail = {

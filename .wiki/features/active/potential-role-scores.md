@@ -180,7 +180,7 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 #### Commit 2 — Show potential scores for every profile role
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): show potential scores for every role`
 
@@ -218,7 +218,7 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 #### Commit 3 — Show potential score for assigned Planner roles
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): show potential score for assigned roles`
 
@@ -258,19 +258,19 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 **PR:** PR 1 — Potential role scores
 
-**Commit:** Commit 2 — Show potential scores for every profile role
+**Commit:** Commit 3 — Show potential score for assigned Planner roles
 
 ### RED proof
 
-Extend the player-query fixture and profile route test before production code. The tests must fail because role rows have no `potential_score` and the Roles tab has no distinct accessible Current/Potential values. Cover a populated profile plus an unavailable potential score rendered as an em dash.
+Extend Planner depth tests and the Planner route test before production code. The tests must fail because resolved assignments have no potential combined score and the depth matrix has no distinct accessible Current/Potential values. Cover a populated assignment, unavailable potential, and the existing unresolved/outside-pool state behavior.
 
 ### Expected outcome
 
-`get_player` projects one requested player once, scores all catalog roles with the existing scorer, and returns current plus potential scores. The Roles tab presents both values accessibly without changing Overview or Attributes behavior.
+Resolved Planner assignments project each player once per request, score only the selected lane's IP/OOP roles, and combine them with the saved lane weight. The depth matrix presents the current and potential combined score accessibly without changing candidates or optimizer behavior.
 
 ### Explicit exclusions
 
-Do not change the profile Overview or Attributes tabs, search, navigation, snapshot ingest, Planner behavior, projected-attribute presentation, or database schema.
+Do not change player-profile behavior, slot candidates, optimizer inputs/ranking, tactic persistence, search, snapshot ingest, projected-attribute presentation, or database schema.
 
 ## Discoveries and replanning
 
@@ -282,7 +282,8 @@ Do not change the profile Overview or Attributes tabs, search, navigation, snaps
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 — Potential role scores | Commit 1 — Project visible attributes to player potential | Pending record | Pure Rust projection API with pinned profiles and regression tests | Sol High — Accept after 1 fix round | None |
+| PR 1 — Potential role scores | Commit 1 — Project visible attributes to player potential | `ce7c87a` | Pure Rust projection API with pinned profiles and regression tests | Sol High — Accept after 1 fix round | None |
+| PR 1 — Potential role scores | Commit 2 — Show potential scores for every profile role | Pending record | One profile-read projection shared by all catalog roles, plus accessible Current/Potential rows | Sol Medium — Accept | None |
 
 ## Final validation
 
