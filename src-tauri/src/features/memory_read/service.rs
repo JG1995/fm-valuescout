@@ -1,5 +1,8 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -12,7 +15,26 @@ pub const STATUS_FILE_NAME: &str = "status.json";
 pub const REQUEST_FILE_NAME: &str = "request.json";
 pub const DUMP_FILE_NAME: &str = "dump.json";
 pub const OPERATION_FULL_DUMP: &str = "full-dump";
+pub const OPERATION_BOOST_CURRENT_ABILITY: &str = "boost-current-ability";
+pub const OPERATION_WONDERKID_MENTALITY: &str = "wonderkid-mentality";
 pub const PLAYER_DATABASE_SCOPE_MEN: &str = "men";
+
+static REQUEST_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+static ACTIVE_BRIDGE_DIRECTORIES: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+
+struct BridgeRequestGuard {
+    bridge_directory: PathBuf,
+}
+
+impl Drop for BridgeRequestGuard {
+    fn drop(&mut self) {
+        if let Some(active) = ACTIVE_BRIDGE_DIRECTORIES.get() {
+            if let Ok(mut directories) = active.lock() {
+                directories.remove(&self.bridge_directory);
+            }
+        }
+    }
+}
 
 fn default_player_database_scope() -> String {
     PLAYER_DATABASE_SCOPE_MEN.to_string()
@@ -41,6 +63,10 @@ pub struct BridgeStatus {
     pub scan_truncated: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_accepted: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player_boosts_supported: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub player_boost: Option<PlayerBoostResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,6 +94,66 @@ pub struct DumpRequestResult {
     pub scan_truncated: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_accepted: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerBoostResult {
+    pub operation: String,
+    pub outcome: String,
+    pub rollback: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_current_ability: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_ability: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub potential_ability: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_ambition: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambition: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_professionalism: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub professionalism: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_determination: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub determination: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlayerBoostOperation {
+    CurrentAbility {
+        increment: i32,
+    },
+    WonderkidMentality {
+        expected_ambition: Option<i32>,
+        expected_professionalism: Option<i32>,
+        expected_determination: Option<i32>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PlayerBoostRequest {
+    protocol_version: u32,
+    request_id: String,
+    created_at_utc: String,
+    operation: String,
+    player_database_scope: String,
+    source_request_id: String,
+    player_uid: u32,
+    expected_current_ability: i32,
+    expected_potential_ability: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    current_ability_increment: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_ambition: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_professionalism: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expected_determination: Option<i32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -116,6 +202,36 @@ impl std::fmt::Display for DumpRequestError {
 
 impl std::error::Error for DumpRequestError {}
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", content = "message", rename_all = "camelCase")]
+pub enum PlayerBoostRequestError {
+    UnsupportedPlatform(String),
+    Missing(String),
+    Corrupt(String),
+    Timeout(String),
+    WriteFailed(String),
+    Unavailable(String),
+    Failed(String),
+    Unconfirmed(String),
+}
+
+impl std::fmt::Display for PlayerBoostRequestError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedPlatform(message)
+            | Self::Missing(message)
+            | Self::Corrupt(message)
+            | Self::Timeout(message)
+            | Self::WriteFailed(message)
+            | Self::Unavailable(message)
+            | Self::Failed(message)
+            | Self::Unconfirmed(message) => write!(f, "{message}"),
+        }
+    }
+}
+
+impl std::error::Error for PlayerBoostRequestError {}
+
 impl From<BridgeStatusError> for DumpRequestError {
     fn from(value: BridgeStatusError) -> Self {
         match value {
@@ -123,6 +239,17 @@ impl From<BridgeStatusError> for DumpRequestError {
             BridgeStatusError::Missing(message) => Self::Missing(message),
             BridgeStatusError::Corrupt(message) => Self::Corrupt(message),
             BridgeStatusError::UnsupportedVersion(message) => Self::Corrupt(message),
+        }
+    }
+}
+
+impl From<BridgeStatusError> for PlayerBoostRequestError {
+    fn from(value: BridgeStatusError) -> Self {
+        match value {
+            BridgeStatusError::UnsupportedPlatform(message) => Self::UnsupportedPlatform(message),
+            BridgeStatusError::Missing(message) => Self::Missing(message),
+            BridgeStatusError::Corrupt(message)
+            | BridgeStatusError::UnsupportedVersion(message) => Self::Corrupt(message),
         }
     }
 }
@@ -223,7 +350,8 @@ pub fn new_request_id() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    format!("req-{millis}")
+    let sequence = REQUEST_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    format!("req-{millis}-{sequence}")
 }
 
 pub fn utc_now_rfc3339() -> String {
@@ -307,6 +435,8 @@ pub fn request_player_dump_with_limit(
             ));
         }
     }
+    let _bridge_request_guard =
+        acquire_bridge_request_guard(bridge_directory).map_err(DumpRequestError::WriteFailed)?;
 
     let request_id = new_request_id();
     let request = BridgeRequest {
@@ -320,6 +450,333 @@ pub fn request_player_dump_with_limit(
 
     write_player_dump_request(bridge_directory, &request)?;
     wait_for_request_terminal(bridge_directory, &request_id, wait)
+}
+
+pub fn request_player_boost_from_local_app_data(
+    source_request_id: &str,
+    player_uid: u32,
+    expected_current_ability: i32,
+    expected_potential_ability: i32,
+    operation: PlayerBoostOperation,
+    wait: DumpWaitConfig,
+) -> Result<PlayerBoostResult, PlayerBoostRequestError> {
+    let bridge_directory = resolve_bridge_directory().map_err(PlayerBoostRequestError::from)?;
+    request_player_boost(
+        &bridge_directory,
+        source_request_id,
+        player_uid,
+        expected_current_ability,
+        expected_potential_ability,
+        operation,
+        wait,
+    )
+}
+
+pub fn request_player_boost(
+    bridge_directory: &Path,
+    source_request_id: &str,
+    player_uid: u32,
+    expected_current_ability: i32,
+    expected_potential_ability: i32,
+    operation: PlayerBoostOperation,
+    wait: DumpWaitConfig,
+) -> Result<PlayerBoostResult, PlayerBoostRequestError> {
+    validate_player_boost_request(
+        source_request_id,
+        player_uid,
+        expected_current_ability,
+        expected_potential_ability,
+        &operation,
+    )?;
+    let _bridge_request_guard = acquire_bridge_request_guard(bridge_directory)
+        .map_err(PlayerBoostRequestError::Unavailable)?;
+    ensure_player_boost_is_available(bridge_directory)?;
+
+    let request_id = new_request_id();
+    let request = PlayerBoostRequest::from_operation(
+        request_id.clone(),
+        source_request_id.to_string(),
+        player_uid,
+        expected_current_ability,
+        expected_potential_ability,
+        operation,
+    );
+    write_player_boost_request(bridge_directory, &request)?;
+
+    match wait_for_player_boost_terminal(bridge_directory, &request_id, wait) {
+        Ok(result) => Ok(result),
+        Err(error @ PlayerBoostRequestError::Failed(_))
+        | Err(error @ PlayerBoostRequestError::Unconfirmed(_)) => Err(error),
+        Err(error) => Err(PlayerBoostRequestError::Unconfirmed(format!(
+            "could not confirm the player boost result; Load Data again before retrying ({error})"
+        ))),
+    }
+}
+
+impl PlayerBoostRequest {
+    fn from_operation(
+        request_id: String,
+        source_request_id: String,
+        player_uid: u32,
+        expected_current_ability: i32,
+        expected_potential_ability: i32,
+        operation: PlayerBoostOperation,
+    ) -> Self {
+        let (
+            operation,
+            current_ability_increment,
+            expected_ambition,
+            expected_professionalism,
+            expected_determination,
+        ) = match operation {
+            PlayerBoostOperation::CurrentAbility { increment } => (
+                OPERATION_BOOST_CURRENT_ABILITY.to_string(),
+                Some(increment),
+                None,
+                None,
+                None,
+            ),
+            PlayerBoostOperation::WonderkidMentality {
+                expected_ambition,
+                expected_professionalism,
+                expected_determination,
+            } => (
+                OPERATION_WONDERKID_MENTALITY.to_string(),
+                None,
+                expected_ambition,
+                expected_professionalism,
+                expected_determination,
+            ),
+        };
+
+        Self {
+            protocol_version: PROTOCOL_VERSION,
+            request_id,
+            created_at_utc: utc_now_rfc3339(),
+            operation,
+            player_database_scope: PLAYER_DATABASE_SCOPE_MEN.to_string(),
+            source_request_id,
+            player_uid,
+            expected_current_ability,
+            expected_potential_ability,
+            current_ability_increment,
+            expected_ambition,
+            expected_professionalism,
+            expected_determination,
+        }
+    }
+}
+
+fn validate_player_boost_request(
+    source_request_id: &str,
+    player_uid: u32,
+    expected_current_ability: i32,
+    expected_potential_ability: i32,
+    operation: &PlayerBoostOperation,
+) -> Result<(), PlayerBoostRequestError> {
+    if source_request_id.trim().is_empty() {
+        return Err(PlayerBoostRequestError::WriteFailed(
+            "source request ID is required for player boosts".to_string(),
+        ));
+    }
+    if player_uid == 0 {
+        return Err(PlayerBoostRequestError::WriteFailed(
+            "player UID is required for player boosts".to_string(),
+        ));
+    }
+    if !is_ability(expected_current_ability)
+        || !is_ability(expected_potential_ability)
+        || expected_current_ability > expected_potential_ability
+    {
+        return Err(PlayerBoostRequestError::WriteFailed(
+            "expected current ability and potential ability must be 1 through 200 with CA not above PA"
+                .to_string(),
+        ));
+    }
+
+    match operation {
+        PlayerBoostOperation::CurrentAbility { increment: 5 | 10 } => {}
+        PlayerBoostOperation::CurrentAbility { .. } => {
+            return Err(PlayerBoostRequestError::WriteFailed(
+                "current ability increment must be 5 or 10".to_string(),
+            ));
+        }
+        PlayerBoostOperation::WonderkidMentality {
+            expected_ambition,
+            expected_professionalism,
+            expected_determination,
+        } => {
+            let values = [
+                expected_ambition,
+                expected_professionalism,
+                expected_determination,
+            ];
+            if values
+                .iter()
+                .any(|value| value.is_some_and(|value| !is_mentality(value)))
+            {
+                return Err(PlayerBoostRequestError::WriteFailed(
+                    "Wonderkid Mentality values must be null or 1 through 20".to_string(),
+                ));
+            }
+            if !values
+                .iter()
+                .any(|value| value.is_some_and(|value| value <= 10))
+            {
+                return Err(PlayerBoostRequestError::WriteFailed(
+                    "Wonderkid Mentality requires a known value from 1 through 10".to_string(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_player_boost_is_available(
+    bridge_directory: &Path,
+) -> Result<(), PlayerBoostRequestError> {
+    let status = read_bridge_status(bridge_directory).map_err(PlayerBoostRequestError::from)?;
+    if status.state != "ready" || status.player_boosts_supported != Some(true) {
+        return Err(PlayerBoostRequestError::Unavailable(
+            "Load Data again before using player boosts".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn write_player_boost_request(
+    bridge_directory: &Path,
+    request: &PlayerBoostRequest,
+) -> Result<PathBuf, PlayerBoostRequestError> {
+    fs::create_dir_all(bridge_directory).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!(
+            "could not create bridge directory for player boost: {error}"
+        ))
+    })?;
+
+    let path = request_path(bridge_directory);
+    let temp_path = path.with_extension("json.tmp");
+    let json = serde_json::to_string_pretty(request).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!(
+            "could not serialize player boost request: {error}"
+        ))
+    })?;
+    fs::write(&temp_path, json).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!(
+            "could not write player boost request temp file: {error}"
+        ))
+    })?;
+    fs::rename(&temp_path, &path).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!(
+            "could not replace player boost request: {error}"
+        ))
+    })?;
+
+    Ok(path)
+}
+
+pub fn wait_for_player_boost_terminal(
+    bridge_directory: &Path,
+    request_id: &str,
+    wait: DumpWaitConfig,
+) -> Result<PlayerBoostResult, PlayerBoostRequestError> {
+    let deadline = Instant::now() + wait.timeout;
+
+    loop {
+        match read_bridge_status(bridge_directory) {
+            Ok(status)
+                if status.request_id.as_deref() == Some(request_id)
+                    && is_terminal_state(&status.state) =>
+            {
+                if status.state == "failed" {
+                    let message = status.error.unwrap_or_else(|| {
+                        "player boost failed without a bridge error".to_string()
+                    });
+                    if status
+                        .player_boost
+                        .as_ref()
+                        .is_some_and(|boost| boost.rollback == "unverified")
+                        || (status.player_boost.is_none()
+                            && !is_known_pre_write_player_boost_failure(&message))
+                    {
+                        return Err(PlayerBoostRequestError::Unconfirmed(
+                            format!(
+                                "player boost may have changed FM before its result could be verified; Load Data again before retrying ({message})"
+                            ),
+                        ));
+                    }
+                    return Err(PlayerBoostRequestError::Failed(message));
+                }
+
+                let boost = status.player_boost.ok_or_else(|| {
+                    PlayerBoostRequestError::Corrupt(
+                        "bridge reported a ready player boost without a verified result"
+                            .to_string(),
+                    )
+                })?;
+                if boost.outcome != "verified" || boost.rollback != "not-needed" {
+                    return Err(PlayerBoostRequestError::Unconfirmed(
+                        status
+                            .error
+                            .unwrap_or_else(|| "player boost was not verified".to_string()),
+                    ));
+                }
+                return Ok(boost);
+            }
+            Ok(_) => {}
+            Err(BridgeStatusError::Missing(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        if Instant::now() >= deadline {
+            return Err(PlayerBoostRequestError::Timeout(format!(
+                "timed out waiting for player boost request {request_id}"
+            )));
+        }
+
+        thread::sleep(wait.poll_interval);
+    }
+}
+
+fn is_ability(value: i32) -> bool {
+    (1..=200).contains(&value)
+}
+
+fn is_mentality(value: i32) -> bool {
+    (1..=20).contains(&value)
+}
+
+fn is_known_pre_write_player_boost_failure(message: &str) -> bool {
+    matches!(
+        message,
+        "invalid player boost request; update the app and retry"
+            | "this FM build is not approved for player boosts; update the bridge plugin and Load Data"
+            | "Load Data again before using player boosts"
+            | "player was not found in the latest live scan; Load Data again"
+            | "player values changed in FM; Load Data again"
+            | "player identity changed in FM; Load Data again"
+            | "could not safely read the player; Load Data again"
+            | "player values are not valid for this boost; Load Data again"
+            | "current ability is already at its potential limit"
+            | "player boost cancelled before it started"
+            | "could not detect FM game_plugin.dll version; refusing player boost (fail closed)"
+            | "bridge work is already in progress; retry the request"
+    )
+}
+
+fn acquire_bridge_request_guard(bridge_directory: &Path) -> Result<BridgeRequestGuard, String> {
+    let active = ACTIVE_BRIDGE_DIRECTORIES.get_or_init(|| Mutex::new(HashSet::new()));
+    let mut directories = active
+        .lock()
+        .map_err(|_| "bridge request state is unavailable".to_string())?;
+    let bridge_directory = bridge_directory.to_path_buf();
+    if !directories.insert(bridge_directory.clone()) {
+        return Err("a bridge request is already in progress; wait for it to finish".to_string());
+    }
+
+    Ok(BridgeRequestGuard { bridge_directory })
 }
 
 pub fn wait_for_request_terminal(
@@ -784,6 +1241,352 @@ mod tests {
         validate_dump_at_bridge_directory(&bridge_dir).expect("dump ingestible after ready");
     }
 
+    #[test]
+    fn player_boost_request_serializes_only_the_closed_ca_operation_fields() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let request = PlayerBoostRequest::from_operation(
+            "boost-ca-1".to_string(),
+            "scan-1".to_string(),
+            77,
+            99,
+            172,
+            PlayerBoostOperation::CurrentAbility { increment: 5 },
+        );
+
+        write_player_boost_request(temp_dir.path(), &request).expect("write boost request");
+
+        let json = fs::read_to_string(request_path(temp_dir.path())).expect("read boost request");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("parse boost request");
+        assert_eq!(value["protocolVersion"], 1);
+        assert_eq!(value["operation"], OPERATION_BOOST_CURRENT_ABILITY);
+        assert_eq!(value["sourceRequestId"], "scan-1");
+        assert_eq!(value["playerUid"], 77);
+        assert_eq!(value["expectedCurrentAbility"], 99);
+        assert_eq!(value["expectedPotentialAbility"], 172);
+        assert_eq!(value["currentAbilityIncrement"], 5);
+        assert_eq!(value["playerDatabaseScope"], PLAYER_DATABASE_SCOPE_MEN);
+        assert!(value.get("expectedAmbition").is_none());
+        assert!(value.get("expectedProfessionalism").is_none());
+        assert!(value.get("expectedDetermination").is_none());
+    }
+
+    #[test]
+    fn player_boost_request_submits_null_mentality_expectations_as_unchanged_fields() {
+        let request = PlayerBoostRequest::from_operation(
+            "boost-mentality-1".to_string(),
+            "scan-1".to_string(),
+            77,
+            99,
+            172,
+            PlayerBoostOperation::WonderkidMentality {
+                expected_ambition: Some(10),
+                expected_professionalism: Some(12),
+                expected_determination: None,
+            },
+        );
+        let json = serde_json::to_value(request).expect("serialize boost request");
+
+        assert_eq!(json["operation"], OPERATION_WONDERKID_MENTALITY);
+        assert_eq!(json["expectedAmbition"], 10);
+        assert_eq!(json["expectedProfessionalism"], 12);
+        assert!(json.get("expectedDetermination").is_none());
+        assert!(json.get("currentAbilityIncrement").is_none());
+    }
+
+    #[test]
+    fn player_boost_requires_an_advertised_ready_bridge_before_writing_a_request() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        write_player_boost_status_fixture(
+            temp_dir.path(),
+            "ready",
+            Some("scan-1"),
+            None,
+            false,
+            None,
+        );
+
+        let error = request_player_boost(
+            temp_dir.path(),
+            "scan-1",
+            77,
+            99,
+            172,
+            PlayerBoostOperation::CurrentAbility { increment: 5 },
+            DumpWaitConfig {
+                timeout: Duration::from_millis(100),
+                poll_interval: Duration::from_millis(10),
+            },
+        )
+        .expect_err("bridge without boost support must be rejected");
+
+        assert!(matches!(error, PlayerBoostRequestError::Unavailable(_)));
+        assert!(!request_path(temp_dir.path()).exists());
+    }
+
+    #[test]
+    fn bridge_requests_for_the_same_directory_cannot_overwrite_each_other() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let _guard = acquire_bridge_request_guard(temp_dir.path()).expect("hold bridge request");
+
+        let dump_error = request_player_dump(
+            temp_dir.path(),
+            DumpWaitConfig {
+                timeout: Duration::from_millis(100),
+                poll_interval: Duration::from_millis(10),
+            },
+        )
+        .expect_err("second dump request must not replace the in-flight request");
+        assert!(matches!(dump_error, DumpRequestError::WriteFailed(_)));
+
+        let boost_error = request_player_boost(
+            temp_dir.path(),
+            "scan-1",
+            77,
+            99,
+            172,
+            PlayerBoostOperation::CurrentAbility { increment: 5 },
+            DumpWaitConfig {
+                timeout: Duration::from_millis(100),
+                poll_interval: Duration::from_millis(10),
+            },
+        )
+        .expect_err("boost request must not replace the in-flight request");
+        assert!(matches!(
+            boost_error,
+            PlayerBoostRequestError::Unavailable(_)
+        ));
+        assert!(!request_path(temp_dir.path()).exists());
+    }
+
+    #[test]
+    fn player_boost_accepts_a_supported_status_from_a_prior_boost_for_repeat_actions() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let bridge_dir = temp_dir.path().to_path_buf();
+        write_player_boost_status_fixture(
+            &bridge_dir,
+            "ready",
+            Some("boost-ca-prior"),
+            None,
+            true,
+            Some(verified_ca_status_result(99, 104, 172)),
+        );
+
+        let responder_dir = bridge_dir.clone();
+        let responder = thread::spawn(move || {
+            loop {
+                if request_path(&responder_dir).is_file() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            let request: serde_json::Value = serde_json::from_str(
+                &fs::read_to_string(request_path(&responder_dir)).expect("read boost request"),
+            )
+            .expect("parse boost request");
+            assert_eq!(request["sourceRequestId"], "scan-1");
+            assert_eq!(request["expectedCurrentAbility"], 104);
+            write_player_boost_status_fixture(
+                &responder_dir,
+                "ready",
+                request["requestId"].as_str(),
+                None,
+                true,
+                Some(verified_ca_status_result(104, 109, 172)),
+            );
+        });
+
+        let result = request_player_boost(
+            &bridge_dir,
+            "scan-1",
+            77,
+            104,
+            172,
+            PlayerBoostOperation::CurrentAbility { increment: 5 },
+            DumpWaitConfig {
+                timeout: Duration::from_secs(2),
+                poll_interval: Duration::from_millis(20),
+            },
+        )
+        .expect("repeat boost request");
+        responder.join().expect("join boost responder");
+
+        assert_eq!(result.current_ability, Some(109));
+        assert_eq!(result.potential_ability, Some(172));
+    }
+
+    #[test]
+    fn player_boost_timeout_is_an_uncertain_outcome_that_requires_a_fresh_load() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        write_player_boost_status_fixture(
+            temp_dir.path(),
+            "ready",
+            Some("scan-1"),
+            None,
+            true,
+            None,
+        );
+
+        let error = request_player_boost(
+            temp_dir.path(),
+            "scan-1",
+            77,
+            99,
+            172,
+            PlayerBoostOperation::CurrentAbility { increment: 5 },
+            DumpWaitConfig {
+                timeout: Duration::from_millis(50),
+                poll_interval: Duration::from_millis(10),
+            },
+        )
+        .expect_err("timeout must not be exposed as a safe retry");
+
+        assert!(matches!(error, PlayerBoostRequestError::Unconfirmed(_)));
+        assert!(request_path(temp_dir.path()).exists());
+    }
+
+    #[test]
+    fn player_boost_partial_rollback_is_an_uncertain_outcome() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let bridge_dir = temp_dir.path().to_path_buf();
+        write_player_boost_status_fixture(&bridge_dir, "ready", Some("scan-1"), None, true, None);
+
+        let responder_dir = bridge_dir.clone();
+        let responder = thread::spawn(move || {
+            loop {
+                if request_path(&responder_dir).is_file() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            let request: serde_json::Value = serde_json::from_str(
+                &fs::read_to_string(request_path(&responder_dir)).expect("read boost request"),
+            )
+            .expect("parse boost request");
+            write_player_boost_status_fixture(
+                &responder_dir,
+                "failed",
+                request["requestId"].as_str(),
+                Some("player boost could not verify rollback; Load Data again before making another change"),
+                false,
+                Some(PlayerBoostResult {
+                    operation: OPERATION_BOOST_CURRENT_ABILITY.to_string(),
+                    outcome: "partial-unverified".to_string(),
+                    rollback: "unverified".to_string(),
+                    previous_current_ability: Some(99),
+                    current_ability: None,
+                    potential_ability: Some(172),
+                    previous_ambition: None,
+                    ambition: None,
+                    previous_professionalism: None,
+                    professionalism: None,
+                    previous_determination: None,
+                    determination: None,
+                }),
+            );
+        });
+
+        let error = request_player_boost(
+            &bridge_dir,
+            "scan-1",
+            77,
+            99,
+            172,
+            PlayerBoostOperation::CurrentAbility { increment: 5 },
+            DumpWaitConfig {
+                timeout: Duration::from_secs(2),
+                poll_interval: Duration::from_millis(20),
+            },
+        )
+        .expect_err("partial rollback must not be a retryable bridge failure");
+        responder.join().expect("join boost responder");
+
+        assert!(matches!(error, PlayerBoostRequestError::Unconfirmed(_)));
+    }
+
+    #[test]
+    fn player_boost_unexpected_failed_status_is_an_uncertain_outcome() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let bridge_dir = temp_dir.path().to_path_buf();
+        write_player_boost_status_fixture(&bridge_dir, "ready", Some("scan-1"), None, true, None);
+
+        let responder_dir = bridge_dir.clone();
+        let responder = thread::spawn(move || {
+            loop {
+                if request_path(&responder_dir).is_file() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            let request: serde_json::Value = serde_json::from_str(
+                &fs::read_to_string(request_path(&responder_dir)).expect("read boost request"),
+            )
+            .expect("parse boost request");
+            write_player_boost_status_fixture(
+                &responder_dir,
+                "failed",
+                request["requestId"].as_str(),
+                Some("player boost failed unexpectedly"),
+                false,
+                None,
+            );
+        });
+
+        let error = request_player_boost(
+            &bridge_dir,
+            "scan-1",
+            77,
+            99,
+            172,
+            PlayerBoostOperation::CurrentAbility { increment: 5 },
+            DumpWaitConfig {
+                timeout: Duration::from_secs(2),
+                poll_interval: Duration::from_millis(20),
+            },
+        )
+        .expect_err("unexpected bridge failure must not be retryable");
+        responder.join().expect("join boost responder");
+
+        assert!(matches!(error, PlayerBoostRequestError::Unconfirmed(_)));
+    }
+
+    #[test]
+    fn player_boost_ready_status_without_a_verified_result_is_uncertain() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        write_player_boost_status_fixture(
+            temp_dir.path(),
+            "ready",
+            Some("boost-ca-1"),
+            Some("player boost was not verified"),
+            false,
+            Some(PlayerBoostResult {
+                operation: OPERATION_BOOST_CURRENT_ABILITY.to_string(),
+                outcome: "failed".to_string(),
+                rollback: "not-needed".to_string(),
+                previous_current_ability: Some(99),
+                current_ability: None,
+                potential_ability: Some(172),
+                previous_ambition: None,
+                ambition: None,
+                previous_professionalism: None,
+                professionalism: None,
+                previous_determination: None,
+                determination: None,
+            }),
+        );
+
+        let error = wait_for_player_boost_terminal(
+            temp_dir.path(),
+            "boost-ca-1",
+            DumpWaitConfig {
+                timeout: Duration::from_millis(100),
+                poll_interval: Duration::from_millis(10),
+            },
+        )
+        .expect_err("unverified ready result must not be accepted");
+
+        assert!(matches!(error, PlayerBoostRequestError::Unconfirmed(_)));
+    }
+
     fn write_status_fixture(
         bridge_dir: &Path,
         state: &str,
@@ -805,12 +1608,65 @@ mod tests {
             error: error.map(str::to_string),
             scan_truncated,
             max_accepted,
+            player_boosts_supported: None,
+            player_boost: None,
         };
+        write_status(bridge_dir, &status);
+    }
+
+    fn write_player_boost_status_fixture(
+        bridge_dir: &Path,
+        state: &str,
+        request_id: Option<&str>,
+        error: Option<&str>,
+        player_boosts_supported: bool,
+        player_boost: Option<PlayerBoostResult>,
+    ) {
+        let status = BridgeStatus {
+            protocol_version: 1,
+            plugin_version: "0.1.0".to_string(),
+            state: state.to_string(),
+            updated_at_utc: "2026-07-28T18:30:00+00:00".to_string(),
+            game_plugin_module_present: true,
+            game_assembly_module_present: true,
+            request_id: request_id.map(str::to_string),
+            players_found: None,
+            error: error.map(str::to_string),
+            scan_truncated: None,
+            max_accepted: None,
+            player_boosts_supported: Some(player_boosts_supported),
+            player_boost,
+        };
+        write_status(bridge_dir, &status);
+    }
+
+    fn write_status(bridge_dir: &Path, status: &BridgeStatus) {
         let json = serde_json::to_string_pretty(&status).expect("serialize");
         let path = status_path(bridge_dir);
         let temp = path.with_extension("json.tmp");
         fs::write(&temp, &json).expect("write status tmp");
         fs::rename(&temp, &path).expect("rename status");
+    }
+
+    fn verified_ca_status_result(
+        previous_current_ability: i32,
+        current_ability: i32,
+        potential_ability: i32,
+    ) -> PlayerBoostResult {
+        PlayerBoostResult {
+            operation: OPERATION_BOOST_CURRENT_ABILITY.to_string(),
+            outcome: "verified".to_string(),
+            rollback: "not-needed".to_string(),
+            previous_current_ability: Some(previous_current_ability),
+            current_ability: Some(current_ability),
+            potential_ability: Some(potential_ability),
+            previous_ambition: None,
+            ambition: None,
+            previous_professionalism: None,
+            professionalism: None,
+            previous_determination: None,
+            determination: None,
+        }
     }
 
     #[test]

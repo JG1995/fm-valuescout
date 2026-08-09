@@ -56,13 +56,13 @@ This feature is an accepted narrow exception to the current read-only product bo
 
 ## Current-state map
 
-- Relevant components: `bridge/Plugin.cs` polls the file protocol and serializes full-dump scans and player boost operations; `bridge/Scanning/CapADumpPipeline.cs` and `PersonScanResult.cs` discover player UIDs plus person and player-block addresses; `src-tauri/src/features/memory_read/` owns the Rust protocol client; `src-tauri/src/features/player/` owns the player profile query; `src/features/player-profile/` and `src/app/routes/players.$uid.tsx` own profile presentation and route composition.
+- Relevant components: `bridge/Plugin.cs` polls the file protocol and serializes full-dump scans and player boost operations; `bridge/Scanning/CapADumpPipeline.cs` and `PersonScanResult.cs` discover player UIDs plus person and player-block addresses; `src-tauri/src/features/memory_read/` owns the Rust protocol client; `src-tauri/src/features/player/` owns the profile query and snapshot-bound boost reconciliation; `src/features/player-profile/` and `src/app/routes/players.$uid.tsx` own profile presentation and route composition.
 - Data model: `players` stores CA, PA, age, visible attributes JSON, and personality JSON for one current snapshot. `player_role_scores` stores current role scores. The profile DTO already exposes CA, PA, age, Determination, Ambition, and Professionalism.
 - Persistence and migrations: migration v16 stores the nullable bridge request ID that produced each newly ingested snapshot. Existing rows remain readable but ineligible for writes until a fresh Load Data.
 - Existing behavioral assumptions: player age is computed during bridge extraction against the resolved in-game date and stored in the snapshot. Load Data captures the active app save before scanning and replaces that save's snapshot transactionally.
 - Architectural seams: the C# bridge owns process memory; Rust owns trust-boundary rules, SQLite, and bounded IPC; React owns presentation and Query mutation state. Route files may compose cross-feature cache invalidation, while feature code must not import another feature.
 - Memory layout: `Fm263Layout` reads CA at player block `+0x264`, Ambition at person `+0x71`, Professionalism at person `+0x74`, and Determination at player block `+0x15F+0x33`. Exact build `26.3.2` supports typed byte and unsigned-16-bit writes for those fields only.
-- Bridge protocol: protocol v1 accepts `full-dump` plus the two closed boost operations. Status has additive capability and typed verified-result fields. A successful live scan retains candidates in a process-private index; snapshot-backed scans and plugin restarts do not.
+- Bridge protocol: protocol v1 accepts `full-dump` plus the two closed boost operations. The Rust client serializes same-directory request files, requires the advertised capability, sends snapshot-derived expectations, and treats timeouts or unverified rollback as requiring Load Data. Status has additive capability and typed verified-result fields. A successful live scan retains candidates in a process-private index; snapshot-backed scans and plugin restarts do not.
 - Scan source: healthy scans use live memory. One guarded PSS VA-clone retry may provide scan data after incomplete live reads, so every mutation must reopen and validate live memory.
 - Query invalidation analogue: `AppTopBar` invalidates snapshot, search, player, Planner, and Academy roots after Load Data or save switching.
 - Test seams: C# uses `FakeMemoryReader`, request/status serialization tests, and pipeline tests; Rust uses temporary migrated SQLite databases and file-protocol fixtures; the profile route uses `mockIPC` and the Playwright IPC stub.
@@ -339,7 +339,7 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 #### Commit 2 — Persist verified player boosts
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(player): persist verified player boosts`
 
@@ -381,7 +381,7 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 #### Commit 3 — Add the CA boost action
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): add CA boost action`
 
@@ -465,19 +465,19 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 **PR:** PR 2
 
-**Commit:** Commit 2
+**Commit:** Commit 3
 
 ### RED proof
 
-Add a focused Rust test that expects a UID-only CA boost for a snapshot-bound player aged 21 to resolve and submit a +5 target. It must fail because the high-level boost command and bridge client do not exist.
+Add profile-route coverage for the age-21 and age-22 CA previews, PA and 200 caps, confirmation, pending lock, verified success, phase errors, focus restoration, and route-owned cache invalidation. It must fail because the Development boosts panel and CA mutation do not exist.
 
 ### Expected outcome
 
-Rust derives both boost actions from the captured current snapshot, calls only the closed bridge operations without holding the Db lock, and reconciles verified values into that exact still-current snapshot in one transaction.
+The profile shows one guarded Boost CA action. React presents only a snapshot-derived preview while Rust remains authoritative, and the route refreshes every affected snapshot-derived cache after verified success.
 
 ### Explicit exclusions
 
-No React UI, arbitrary targets, full-dump refreshes, history, undo, or another scoring path.
+No Wonderkid Mentality UI, arbitrary targets, full-dump refreshes, history, undo, or another scoring path.
 
 ## Discoveries and replanning
 
@@ -498,7 +498,8 @@ No React UI, arbitrary targets, full-dump refreshes, history, undo, or another s
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Add verified scalar memory writes | `4826495` | Added internal typed CA, Ambition, Professionalism, and Determination writes with live preconditions, readback, and verified rollback reporting. | Sol xhigh accepted after one local correction to narrow the writer seam to byte/u16 operations. | None |
 | PR 1 | Expose player boost operations | `c695556` | Added the closed boost protocol, private live-scan index, exact-build capability, verified result status, and scan/write serialization. | Sol xhigh accepted after one correction round; controlled Windows proof passed. | Manual proof used the documented force-scan fallback. Rust, SQLite, and profile integration remain PR 2. |
-| PR 2 | Bind snapshots to bridge scans | Pending record | Added migration v16, atomically persisted source request IDs, captured each completed dump before ingest, and rejected changed request status. | Sol xhigh accepted after a request/dump correlation and transaction-boundary correction. | Snapshot summaries now load before commit so an error rolls back the new binding. |
+| PR 2 | Bind snapshots to bridge scans | `9f0b598` | Added migration v16, atomically persisted source request IDs, captured each completed dump before ingest, and rejected changed request status. | Sol xhigh accepted after a request/dump correlation and transaction-boundary correction. | Snapshot summaries now load before commit so an error rolls back the new binding. |
+| PR 2 | Persist verified player boosts | Pending record | Added the closed Rust bridge client, UID-only commands, snapshot-derived eligibility, verified targeted reconciliation, role-score refresh, and explicit uncertain-result recovery. | Sol xhigh accepted after one ledger lifecycle correction. | React boost controls remain Commit 3 and Commit 4 work. |
 
 ## Final validation
 

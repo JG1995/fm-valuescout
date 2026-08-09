@@ -257,6 +257,8 @@ mod tests {
             error: error.map(str::to_string),
             scan_truncated,
             max_accepted,
+            player_boosts_supported: None,
+            player_boost: None,
         };
         let json = serde_json::to_string_pretty(&status).expect("serialize");
         let path = status_path(bridge_dir);

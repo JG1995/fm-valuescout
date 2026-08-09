@@ -40,6 +40,8 @@ pub fn run() {
             features::search::commands::search_players,
             features::search::commands::suggest_players,
             features::player::commands::get_player,
+            features::player::commands::boost_current_ability,
+            features::player::commands::boost_wonderkid_mentality,
             features::academy::commands::list_academy_classes,
             features::academy::commands::get_academy_class,
             features::academy::commands::create_academy_class,
