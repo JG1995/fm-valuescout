@@ -36,11 +36,11 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Backend / computation:** Rust in `src-tauri/` — commands, services, SQLite queries, validation at trust boundaries
 
-**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** validates and ingests `dump.json` into the active app save’s current snapshot (migrations v2–v15: `saves`, `snapshots`, `players`, `staff`, `player_role_scores`, save-scoped Planner club-family, tactic, depth-string, and assignment rows with provenance, and Academy classes, memberships, outcomes, and automatic-class backfill).
+**Data:** SQLite via **rusqlite** (bundled) in Rust — migrations (`PRAGMA user_version`) and queries; WebView never opens the database directly. Live FM26 dumps land on disk via the bridge file protocol (`%LOCALAPPDATA%\fm-valuescout\fm-bridge\`); **Load Data** captures, validates, and ingests the completed `dump.json` into the active app save’s current snapshot (migrations v2–v16: `saves`, `snapshots`, `players`, `staff`, `player_role_scores`, save-scoped Planner club-family, tactic, depth-string, and assignment rows with provenance, and Academy classes, memberships, outcomes, and automatic-class backfill).
 
 **FM26 bridge:** C# BepInEx 6 IL2CPP plugin in `bridge/` — memory layouts, safe block-based heap scanning (`TryReadBlock`), and `status.json` / `dump.json` / diagnostics with phase timings. On the live-validated exact build, it also exposes two bounded player-boost operations through the local file protocol; the bridge owns all process-memory writes, while Rust and UI integration remain pending. Rust `features/memory_read` orchestrates requests, validates dump shape, and installs the plugin DLL into Steam `BepInEx/plugins`; React `features/memory-read` shows install controls and bridge status. **Load Data** lives in `AppTopBar`. Windows Steam FM26 only. See [bridge/README.md](../bridge/README.md), [bridge scan performance](./features/completed/bridge-scan-performance.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md).
 
-**Snapshot ingest:** Rust `features/snapshot` owns save slots, transactional ingest from `dump.json`, and query IPC; React `features/snapshot` owns the save switcher, snapshot overview, and sanity list. `load_data` captures `active_save_id` under a brief Db lock, runs the bridge scan without holding the Db mutex, then ingests via `ingest_dump_file_for_save` with the captured id. See [snapshot-ingest](./features/completed/snapshot-ingest.md).
+**Snapshot ingest:** Rust `features/snapshot` owns save slots, transactional ingest from `dump.json`, and query IPC; React `features/snapshot` owns the save switcher, snapshot overview, and sanity list. `load_data` captures `active_save_id` under a brief Db lock, runs the bridge scan without holding the Db mutex, captures a private copy only while `status.json` still identifies that ready request, then ingests it with the captured save ID and request ID. See [snapshot-ingest](./features/completed/snapshot-ingest.md).
 
 **Role scoring:** Rust `features/scoring` owns a static FM26 IP/OOP catalog (68 roles), `score_role`, `combine_role_scores`, and the pure CA-to-PA visible-attribute projection. During snapshot ingest, `features/snapshot` computes and persists current role scores in the same transaction. Potential attributes and role scores are derived on bounded player and Planner reads or during an explicit potential optimization; they are not persisted. See [role-scoring-engine](./features/completed/role-scoring-engine.md) and [potential-role-scores](./features/completed/potential-role-scores.md).
 
@@ -428,11 +428,12 @@ User clicks Load Data (AppTopBar)
       Brief Db lock → active_save_id (target save for this load; released before scan)
       memory_read::request_player_dump — no Db lock during scan:
         writes request.json (30s TTL), polls status.json until terminal (120s default)
-        Bridge plugin (off Unity main thread): block heap scan → dump.json + diagnostics.txt
+        Bridge plugin (off Unity main thread): writes scanning status → block heap scan → atomically replaces dump.json + diagnostics.txt → ready status
   → On scan failure: LoadDataError { phase: "scan", kind, message }; prior snapshot unchanged
-  → On scan success: lock Db → load_data_after_scan → ingest::ingest_dump_file_for_save(save_id, dump path)
+  → On scan success: capture dump to a private temporary path, then re-read status.json; reject if request ID or ready state changed
+  → lock Db → load_data_after_scan → ingest::ingest_dump_file_for_save_with_bridge_source_request_id(save_id, captured dump path, request ID)
       validate_dump_json (memory_read::dump_validation) — hard-fail before insert
-      Transaction: insert new snapshot + players + staff + player_role_scores, promote to current, delete prior current,
+      Transaction: insert new snapshot with nullable bridge source request ID + players + staff + player_role_scores, promote to current, delete prior current,
                    ensure the valid trusted (`memory` or `derived`) in-game year's automatic Academy class
       On ingest failure: roll back; prior current snapshot remains
   → Returns LoadDataResult { requestId, playersFound, scanTruncated, maxAccepted, snapshot,
@@ -442,12 +443,12 @@ User clicks Load Data (AppTopBar)
   → Snapshot panels show ingest outcome (player count, truncated banner when scanTruncated)
 ```
 
-**Saves model** (migrations v2–v15, `src-tauri/src/db/migrations.rs`):
+**Saves model** (migrations v2–v16, `src-tauri/src/db/migrations.rs`):
 
 | Table | Role |
 | --- | --- |
 | `saves` | App-side game save slots (not FM save files). Exactly one row has `is_active = 1` (partial unique index). Default save created when the DB has none. |
-| `snapshots` | One **current** snapshot per save (`is_current = 1`, partial unique index per `save_id`). Stores schema/game/bridge versions, date and date basis, player database scope, scan state, player and staff counts, optional manager metadata, and load time. Snapshot **history** is out of scope — schema allows future rows. |
+| `snapshots` | One **current** snapshot per save (`is_current = 1`, partial unique index per `save_id`). Stores schema/game/bridge versions, date and date basis, player database scope, scan state, player and staff counts, optional manager metadata, load time, and the nullable bridge request ID that produced the dump. The persisted value is internal snapshot provenance and is not added to snapshot DTOs; the existing Load Data result still returns its scan request ID. Snapshot **history** is out of scope — schema allows future rows. |
 | `players` | Rows keyed by `(snapshot_id, uid)`. Scalars for list/search foundations include nullable nation UID, gender, club reputation, and team type; attribute maps and arrays remain JSON text. `null` in dump JSON means unknown — never coerced to 0 on ingest. |
 | `staff` | Rows keyed by `(snapshot_id, uid)`, with stable scalar metadata and one `staff_attributes_json` object. They cascade when the snapshot is replaced. No staff query API or UI exists yet. |
 | `player_role_scores` | Per-player **current** role-fit scores keyed by `(snapshot_id, uid, role_id)` with `phase` (`in_possession` \| `out_of_possession`) and nullable integer `score` (0–100). FK to `players` with `ON DELETE CASCADE`. Index on `(snapshot_id, role_id)` for role-filtered queries. Potential scores are derived at read time and have no table. |
@@ -460,7 +461,7 @@ User clicks Load Data (AppTopBar)
 | `academy_memberships` | One player UID may belong to one class per save. Stores last-known name and uses a composite `(save_id, class_id)` foreign key to prevent a cross-save class reference. |
 | `academy_member_outcomes` | One optional outcome per save-scoped membership. `sold` stores a non-empty buying club and non-negative whole-euro fee; `released` stores neither. Its composite foreign key cascades when the selected membership is removed. |
 
-Migration v15 adds the schema-v6 fields and the snapshot-owned `staff` table. Existing snapshots retain null or default values where the old dump had no equivalent field. Migration v14 backfills a missing 2025 baseline for every save and promotes a matching class to automatic for a current snapshot only when its date source is `memory` or `derived` and its date is valid and at least 2025. It does not replace class identifiers or memberships, and it ignores unknown, malformed, untrusted, pre-2025, or non-current dates.
+Migration v16 adds the nullable `bridge_source_request_id` to `snapshots`. Existing snapshots retain `null` provenance and remain readable. Migration v15 adds the schema-v6 fields and the snapshot-owned `staff` table. Existing snapshots retain null or default values where the old dump had no equivalent field. Migration v14 backfills a missing 2025 baseline for every save and promotes a matching class to automatic for a current snapshot only when its date source is `memory` or `derived` and its date is valid and at least 2025. It does not replace class identifiers or memberships, and it ignores unknown, malformed, untrusted, pre-2025, or non-current dates.
 
 **Query and save-management IPC** (`features/snapshot/commands.rs`):
 

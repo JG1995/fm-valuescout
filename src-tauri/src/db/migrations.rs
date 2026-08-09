@@ -368,6 +368,11 @@ CREATE TABLE staff (
 );
 ";
 
+pub const SNAPSHOT_BRIDGE_SOURCE_REQUEST_SQL: &str = "
+ALTER TABLE snapshots
+    ADD COLUMN bridge_source_request_id TEXT;
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -444,6 +449,11 @@ pub fn all() -> &'static [Migration] {
             version: 15,
             description: "add_superscout_parity_snapshot_data",
             sql: SUPERSCOUT_PARITY_SCHEMA_SQL,
+        },
+        Migration {
+            version: 16,
+            description: "add_snapshot_bridge_source_request_id",
+            sql: SNAPSHOT_BRIDGE_SOURCE_REQUEST_SQL,
         },
     ]
 }
@@ -525,7 +535,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
 
         let table_name: String = conn
             .query_row(
@@ -601,7 +611,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -649,7 +659,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -890,7 +900,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -996,7 +1006,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
 
         let table_name: String = conn
             .query_row(
@@ -1054,6 +1064,7 @@ mod tests {
                 "manager_name",
                 "manager_club",
                 "manager_club_reputation",
+                "bridge_source_request_id",
             ]
         );
         assert_eq!(
@@ -1242,18 +1253,61 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 15);
+        assert_eq!(version, 16);
     }
 
     #[test]
-    fn migrates_superscout_schema_from_every_prior_version() {
+    fn migrates_v15_snapshot_with_null_bridge_source_request_id() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("v15-provenance-migration.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 15) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v15");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Existing save', 1)",
+            [],
+        )
+        .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert existing snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+
+        apply(&conn).expect("apply bridge provenance migration");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user version");
+        assert_eq!(version, 16);
+        let (source_request_id, is_current): (Option<String>, i32) = conn
+            .query_row(
+                "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
+                [snapshot_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read migrated snapshot");
+        assert_eq!(source_request_id, None);
+        assert_eq!(is_current, 1);
+    }
+
+    #[test]
+    fn migrates_snapshot_schema_from_every_prior_version() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
 
-        for legacy_version in 1..15 {
+        for legacy_version in 1..16 {
             let conn = Connection::open(
                 temp_dir
                     .path()
-                    .join(format!("superscout-v{legacy_version}-migration-test.db")),
+                    .join(format!("snapshot-v{legacy_version}-migration-test.db")),
             )
             .expect("open test db");
             conn.pragma_update(None, "foreign_keys", true)
@@ -1268,12 +1322,12 @@ mod tests {
                     .expect("set legacy user version");
             }
 
-            apply(&conn).expect("apply superscout migration");
+            apply(&conn).expect("apply snapshot migration");
 
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 15, "legacy version {legacy_version}");
+            assert_eq!(version, 16, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -1286,7 +1340,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 15);
+        assert_eq!(migrations.len(), 16);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -1342,6 +1396,12 @@ mod tests {
             "add_superscout_parity_snapshot_data"
         );
         assert_eq!(migrations[14].sql, SUPERSCOUT_PARITY_SCHEMA_SQL);
+        assert_eq!(migrations[15].version, 16);
+        assert_eq!(
+            migrations[15].description,
+            "add_snapshot_bridge_source_request_id"
+        );
+        assert_eq!(migrations[15].sql, SNAPSHOT_BRIDGE_SOURCE_REQUEST_SQL);
     }
 
     #[test]

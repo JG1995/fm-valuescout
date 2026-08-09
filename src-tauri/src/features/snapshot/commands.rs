@@ -217,7 +217,7 @@ pub fn load_data(
         })?
     };
     let scan_started = Instant::now();
-    let (bridge_directory, dump_result) =
+    let (captured_dump_path, dump_result) =
         load_data::scan_dump_from_local_app_data(DumpWaitConfig::default(), max_accepted)?;
     let scan_ms = scan_started.elapsed().as_millis() as u64;
     let ingest_started = Instant::now();
@@ -225,8 +225,12 @@ pub fn load_data(
         kind: "internal".to_string(),
         message: "database lock poisoned".to_string(),
     })?;
-    let mut result =
-        load_data::load_data_after_scan(&mut conn, &bridge_directory, dump_result, save_id)?;
+    let mut result = load_data::load_data_after_scan(
+        &mut conn,
+        captured_dump_path.as_ref(),
+        dump_result,
+        save_id,
+    )?;
     result.timings = load_data::LoadDataTimings {
         scan_ms,
         ingest_ms: ingest_started.elapsed().as_millis() as u64,

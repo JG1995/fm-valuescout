@@ -58,7 +58,7 @@ This feature is an accepted narrow exception to the current read-only product bo
 
 - Relevant components: `bridge/Plugin.cs` polls the file protocol and serializes full-dump scans and player boost operations; `bridge/Scanning/CapADumpPipeline.cs` and `PersonScanResult.cs` discover player UIDs plus person and player-block addresses; `src-tauri/src/features/memory_read/` owns the Rust protocol client; `src-tauri/src/features/player/` owns the player profile query; `src/features/player-profile/` and `src/app/routes/players.$uid.tsx` own profile presentation and route composition.
 - Data model: `players` stores CA, PA, age, visible attributes JSON, and personality JSON for one current snapshot. `player_role_scores` stores current role scores. The profile DTO already exposes CA, PA, age, Determination, Ambition, and Professionalism.
-- Persistence and migrations: snapshots do not persist the bridge request ID that produced them. Migration v16 is available for a nullable source request ID; existing rows must remain readable but ineligible for writes until a fresh Load Data.
+- Persistence and migrations: migration v16 stores the nullable bridge request ID that produced each newly ingested snapshot. Existing rows remain readable but ineligible for writes until a fresh Load Data.
 - Existing behavioral assumptions: player age is computed during bridge extraction against the resolved in-game date and stored in the snapshot. Load Data captures the active app save before scanning and replaces that save's snapshot transactionally.
 - Architectural seams: the C# bridge owns process memory; Rust owns trust-boundary rules, SQLite, and bounded IPC; React owns presentation and Query mutation state. Route files may compose cross-feature cache invalidation, while feature code must not import another feature.
 - Memory layout: `Fm263Layout` reads CA at player block `+0x264`, Ambition at person `+0x71`, Professionalism at person `+0x74`, and Determination at player block `+0x15F+0x33`. Exact build `26.3.2` supports typed byte and unsigned-16-bit writes for those fields only.
@@ -146,11 +146,11 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 ### PR 1 — Add safe player boost bridge
 
-**Status:** Ready for publication
+**Status:** Merged
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/37
 
-**Merge ref:** Not merged
+**Merge ref:** `1f4c57754de3585fe71cfc1830963601a8da296c`
 
 **Provisional PR title:** `feat(memory-write): add safe player boost bridge`
 
@@ -266,7 +266,7 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 ### PR 2 — Add player development boosts
 
-**Status:** Awaiting prior PR merge
+**Status:** Active
 
 **PR ref:** Not published
 
@@ -300,7 +300,7 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 #### Commit 1 — Bind snapshots to bridge scans
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(snapshot): bind snapshots to bridge scans`
 
@@ -315,7 +315,7 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 - Owners and files: `src-tauri/src/db/migrations.rs`, `src-tauri/src/features/snapshot/ingest.rs`, `load_data.rs`, snapshot models/queries as needed, and migration/load tests.
 - Existing patterns to verify: migration v15 registration, transactional snapshot insert/replace, captured active-save semantics, `DumpRequestResult.request_id`, and current snapshot preservation on ingest failure.
-- Constraints and invariants: migration v16 is additive and nullable; existing databases open unchanged; direct fixture ingest may supply null; Load Data supplies the matching request ID before commit; no request ID is exposed to React unless a later packet proves it necessary.
+- Constraints and invariants: migration v16 is additive and nullable; existing databases open unchanged; direct fixture ingest may supply null; Load Data captures the completed dump before it releases the scan result, confirms that `status.json` still names the same ready request, then supplies that request ID before commit; no persisted provenance field is added to snapshot DTOs or UI, and the existing Load Data result keeps its scan request ID.
 - Dependencies and ordering: starts only after PR 1 merges. The persisted value must match the request whose dump was ingested, not a later status file.
 
 **Implementation profile:** Terra xhigh — the schema change is small, but provenance must remain correct across active-save capture, ingest rollback, and current-snapshot replacement.
@@ -339,7 +339,7 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 #### Commit 2 — Persist verified player boosts
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(player): persist verified player boosts`
 
@@ -463,7 +463,21 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 ## Active work
 
-No commit is active. PR 1 is ready for publication; PR 2 remains blocked on its merge.
+**PR:** PR 2
+
+**Commit:** Commit 2
+
+### RED proof
+
+Add a focused Rust test that expects a UID-only CA boost for a snapshot-bound player aged 21 to resolve and submit a +5 target. It must fail because the high-level boost command and bridge client do not exist.
+
+### Expected outcome
+
+Rust derives both boost actions from the captured current snapshot, calls only the closed bridge operations without holding the Db lock, and reconciles verified values into that exact still-current snapshot in one transaction.
+
+### Explicit exclusions
+
+No React UI, arbitrary targets, full-dump refreshes, history, undo, or another scoring path.
 
 ## Discoveries and replanning
 
@@ -483,7 +497,8 @@ No commit is active. PR 1 is ready for publication; PR 2 remains blocked on its 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Add verified scalar memory writes | `4826495` | Added internal typed CA, Ambition, Professionalism, and Determination writes with live preconditions, readback, and verified rollback reporting. | Sol xhigh accepted after one local correction to narrow the writer seam to byte/u16 operations. | None |
-| PR 1 | Expose player boost operations | Pending record | Added the closed boost protocol, private live-scan index, exact-build capability, verified result status, and scan/write serialization. | Sol xhigh accepted after one correction round; controlled Windows proof passed. | Manual proof used the documented force-scan fallback. Rust, SQLite, and profile integration remain PR 2. |
+| PR 1 | Expose player boost operations | `c695556` | Added the closed boost protocol, private live-scan index, exact-build capability, verified result status, and scan/write serialization. | Sol xhigh accepted after one correction round; controlled Windows proof passed. | Manual proof used the documented force-scan fallback. Rust, SQLite, and profile integration remain PR 2. |
+| PR 2 | Bind snapshots to bridge scans | Pending record | Added migration v16, atomically persisted source request IDs, captured each completed dump before ingest, and rejected changed request status. | Sol xhigh accepted after a request/dump correlation and transaction-boundary correction. | Snapshot summaries now load before commit so an error rolls back the new binding. |
 
 ## Final validation
 
