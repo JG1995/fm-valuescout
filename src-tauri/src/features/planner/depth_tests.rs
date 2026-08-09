@@ -2,6 +2,12 @@ use rusqlite::params;
 
 use crate::features::planner::service::{self, ClubSourceInput};
 use crate::features::planner::tactic;
+use crate::features::scoring::{
+    catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
+    combine::combine_role_scores,
+    projection::project_attributes,
+    score::score_role,
+};
 use crate::features::snapshot;
 
 use super::depth::{
@@ -9,7 +15,8 @@ use super::depth::{
     move_player, remove_string, AssignmentState, PlannerTeam,
 };
 use super::test_support::{
-    add_picker_candidates, assignment_provenance, open_with_snapshot, team_strings,
+    add_picker_candidates, assignment_provenance, current_snapshot_id, open_with_snapshot,
+    team_strings,
 };
 
 #[test]
@@ -451,13 +458,14 @@ fn preserves_assignment_as_unresolved_when_snapshot_replaces_player() {
     assert_eq!(assignment.current_name, None);
     assert_eq!(assignment.state, AssignmentState::Unresolved);
     assert_eq!(assignment.combined_score, None);
+    assert_eq!(assignment.potential_combined_score, None);
 }
 
 #[test]
-fn resolves_combined_scores_and_marks_current_players_outside_the_pool() {
-    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+fn combines_selected_lane_potential_scores_for_resolved_and_outside_pool_players() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
-    tactic.lanes[0].ip_weight = 1.0;
+    tactic.lanes[0].ip_weight = 0.25;
     tactic::save_tactic(&conn, save_id, &tactic).expect("save lane weight");
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
@@ -469,6 +477,24 @@ fn resolves_combined_scores_and_marks_current_players_outside_the_pool() {
             |row| row.get(0),
         )
         .expect("current snapshot");
+    let attributes = DUMP_ATTRIBUTE_KEYS
+        .iter()
+        .map(|key| ((*key).to_string(), Some(10)))
+        .collect();
+    conn.execute(
+        "UPDATE players
+         SET ca = 80,
+             pa = 170,
+             age = 20,
+             positions_json = '{\"GK\": 18}',
+             attributes_json = ?1
+         WHERE snapshot_id = ?2 AND uid = 77",
+        params![
+            serde_json::to_string(&attributes).expect("serialize attributes"),
+            snapshot_id
+        ],
+    )
+    .expect("set projection inputs");
     conn.execute(
         "UPDATE player_role_scores
          SET score = CASE role_id
@@ -480,23 +506,65 @@ fn resolves_combined_scores_and_marks_current_players_outside_the_pool() {
         params![snapshot_id],
     )
     .expect("set role scores");
+
+    let projected_attributes = project_attributes(&attributes, 80, 170, Some(20), ["GK"]);
+    let ip_role = all_roles()
+        .iter()
+        .find(|role| role.role_id == "goalkeeper_ip")
+        .expect("goalkeeper role");
+    let oop_role = all_roles()
+        .iter()
+        .find(|role| role.role_id == "line_holding_keeper_oop")
+        .expect("line-holding keeper role");
+    let expected_potential = combine_role_scores(
+        score_role(&projected_attributes, ip_role),
+        score_role(&projected_attributes, oop_role),
+        0.25,
+    );
+
     let scored = get_depth(&conn, save_id).expect("load score");
     let assignment = &team_strings(&scored, PlannerTeam::Senior)[0].assignments[0];
     assert_eq!(assignment.state, AssignmentState::Resolved);
-    assert_eq!(assignment.combined_score, Some(80));
+    assert_eq!(assignment.combined_score, Some(65));
+    assert_eq!(assignment.potential_combined_score, expected_potential);
 
-    let moved_path = temp_dir.path().join("moved.json");
-    let moved = include_str!("../memory_read/fixtures/golden_dump_v6.json").replace(
-        "\"currentClub\": \"Loan FC\"",
-        "\"currentClub\": \"Other FC\"",
-    );
-    std::fs::write(&moved_path, moved).expect("write moved dump");
-    snapshot::ingest::ingest_dump_file(&mut conn, &moved_path).expect("replace snapshot");
+    conn.execute(
+        "UPDATE players SET current_club = 'Other FC' WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("move player outside pool");
 
     let reloaded = get_depth(&conn, save_id).expect("reload depth");
     let assignment = &team_strings(&reloaded, PlannerTeam::Senior)[0].assignments[0];
     assert_eq!(assignment.state, AssignmentState::OutsidePool);
-    assert_eq!(assignment.combined_score, None);
+    assert_eq!(assignment.combined_score, Some(65));
+    assert_eq!(assignment.potential_combined_score, expected_potential);
+}
+
+#[test]
+fn keeps_potential_combined_score_unavailable_when_selected_attributes_are_missing() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE player_role_scores
+         SET score = CASE role_id
+             WHEN 'goalkeeper_ip' THEN 80
+             WHEN 'line_holding_keeper_oop' THEN 60
+             ELSE score
+         END
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("set role scores");
+
+    let resolved = get_depth(&conn, save_id).expect("load depth");
+    let assignment = &team_strings(&resolved, PlannerTeam::Senior)[0].assignments[0];
+    assert_eq!(assignment.state, AssignmentState::Resolved);
+    assert_eq!(assignment.combined_score, Some(70));
+    assert_eq!(assignment.potential_combined_score, None);
 }
 
 #[test]

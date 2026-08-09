@@ -1,6 +1,9 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::features::scoring::combine::combine_role_scores;
+use crate::features::scoring::{
+    catalog::all_roles, combine::combine_role_scores, projection::project_attributes,
+    score::score_role,
+};
 
 use super::tactic::{self, PlannerTactic, TacticLane};
 
@@ -64,6 +67,7 @@ pub struct PlannerAssignment {
     pub current_name: Option<String>,
     pub state: AssignmentState,
     pub combined_score: Option<u8>,
+    pub potential_combined_score: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -596,6 +600,7 @@ fn load_assignments(
                 current_name: resolved.current_name,
                 state: resolved.state,
                 combined_score: resolved.combined_score,
+                potential_combined_score: resolved.potential_combined_score,
             })
         })
         .collect()
@@ -605,6 +610,7 @@ struct ResolvedAssignment {
     current_name: Option<String>,
     state: AssignmentState,
     combined_score: Option<u8>,
+    potential_combined_score: Option<u8>,
 }
 
 fn resolve_assignment(
@@ -620,6 +626,7 @@ fn resolve_assignment(
             current_name: None,
             state: AssignmentState::Unresolved,
             combined_score: None,
+            potential_combined_score: None,
         });
     };
 
@@ -634,6 +641,11 @@ fn resolve_assignment(
                       AND source.team = ?2
                       AND source.club_name = p.current_club
                 ),
+                p.attributes_json,
+                p.ca,
+                p.pa,
+                p.age,
+                p.positions_json,
                 ip.score,
                 oop.score
              FROM players p
@@ -658,21 +670,57 @@ fn resolve_assignment(
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, i32>(1)? == 1,
-                    row.get::<_, Option<u8>>(2)?,
-                    row.get::<_, Option<u8>>(3)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, Option<u8>>(7)?,
+                    row.get::<_, Option<u8>>(8)?,
                 ))
             },
         )
         .optional()
         .map_err(|error| error.to_string())?;
 
-    let Some((current_name, is_in_pool, ip_score, oop_score)) = player else {
+    let Some((
+        current_name,
+        is_in_pool,
+        attributes_json,
+        ca,
+        pa,
+        age,
+        positions_json,
+        ip_score,
+        oop_score,
+    )) = player
+    else {
         return Ok(ResolvedAssignment {
             current_name: None,
             state: AssignmentState::Unresolved,
             combined_score: None,
+            potential_combined_score: None,
         });
     };
+    let attributes = serde_json::from_str(&attributes_json).map_err(|error| error.to_string())?;
+    let positions =
+        serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&positions_json)
+            .map_err(|error| error.to_string())?;
+    let projected_attributes = project_attributes(
+        &attributes,
+        ca,
+        pa,
+        age,
+        positions.keys().map(String::as_str),
+    );
+    let ip_role = all_roles()
+        .iter()
+        .find(|role| role.role_id == lane.ip_role_id)
+        .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.ip_role_id))?;
+    let oop_role = all_roles()
+        .iter()
+        .find(|role| role.role_id == lane.oop_role_id)
+        .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.oop_role_id))?;
     let state = if is_in_pool {
         AssignmentState::Resolved
     } else {
@@ -683,6 +731,11 @@ fn resolve_assignment(
         current_name: Some(current_name),
         state,
         combined_score: combine_role_scores(ip_score, oop_score, lane.ip_weight),
+        potential_combined_score: combine_role_scores(
+            score_role(&projected_attributes, ip_role),
+            score_role(&projected_attributes, oop_role),
+            lane.ip_weight,
+        ),
     })
 }
 

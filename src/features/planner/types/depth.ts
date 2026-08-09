@@ -11,6 +11,7 @@ export type PlannerAssignment = {
   currentName: string | null;
   state: PlannerAssignmentState;
   combinedScore: number | null;
+  potentialCombinedScore: number | null;
 };
 
 export type PlannerString = {

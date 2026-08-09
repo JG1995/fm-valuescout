@@ -438,6 +438,56 @@ test.describe("walking skeleton smoke", () => {
     await expect(main.getByRole("tab", { name: "Senior" })).toHaveCount(0);
   });
 
+  test("planner depth keeps assigned current and potential scores readable at desktop widths", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      plannerPotentialScores: true,
+    });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Squad" }).click();
+    const scoreCell = main.getByRole("button", {
+      name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved, current score 82, potential score 91/,
+    });
+    const currentScore = scoreCell.getByRole("img", {
+      name: /Current combined role score: 82/,
+    });
+    const potentialScore = scoreCell.getByRole("img", {
+      name: /Potential combined role score: 91/,
+    });
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await expect(scoreCell).toContainText("Potential Keeper");
+      await expect(currentScore).toBeVisible();
+      await expect(potentialScore).toBeVisible();
+
+      const [cellBox, currentBox, potentialBox] = await Promise.all([
+        scoreCell.boundingBox(),
+        currentScore.boundingBox(),
+        potentialScore.boundingBox(),
+      ]);
+      expect(cellBox).not.toBeNull();
+      expect(currentBox).not.toBeNull();
+      expect(potentialBox).not.toBeNull();
+      if (!cellBox || !currentBox || !potentialBox) {
+        throw new Error(
+          "Expected assigned score content to have layout bounds.",
+        );
+      }
+      expect(currentBox.x).toBeGreaterThanOrEqual(cellBox.x);
+      expect(potentialBox.x + potentialBox.width).toBeLessThanOrEqual(
+        cellBox.x + cellBox.width,
+      );
+    }
+  });
+
   test("player profile route shows no-snapshot empty state from stubbed IPC", async ({
     page,
   }) => {

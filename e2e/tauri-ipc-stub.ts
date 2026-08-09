@@ -2,14 +2,17 @@ import type { Page } from "@playwright/test";
 
 type SmokeStubOptions = {
   plannerSnapshot?: boolean;
+  plannerPotentialScores?: boolean;
 };
 
 export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const plannerSnapshot = options.plannerSnapshot ?? false;
+  const plannerPotentialScores = options.plannerPotentialScores ?? false;
   await page.addInitScript({
     content: `
       let demoValue = "";
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
+      const plannerPotentialScores = ${plannerPotentialScores ? "true" : "false"};
       const plannerTactic = {
         lanes: [
           ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
@@ -39,7 +42,20 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         tactic: plannerTactic,
         teams: ["senior", "reserves", "youth"].map((team, index) => ({
           team,
-          strings: [{ id: index + 1, stringOrder: 0, assignments: [] }],
+          strings: [{
+            id: index + 1,
+            stringOrder: 0,
+            assignments: plannerPotentialScores && team === "senior" ? [{
+              id: 77,
+              laneId: "goalkeeper",
+              playerUid: 77,
+              lastKnownName: "Potential Keeper",
+              currentName: "Potential Keeper",
+              state: "resolved",
+              combinedScore: 82,
+              potentialCombinedScore: 91,
+            }] : [],
+          }],
         })),
       };
 
@@ -196,6 +212,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 currentName: "Optimized Keeper",
                 state: "resolved",
                 combinedScore: 82,
+                potentialCombinedScore: 91,
               },
             ];
             return plannerDepth;

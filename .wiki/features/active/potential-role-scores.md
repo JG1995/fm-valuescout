@@ -110,7 +110,7 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 ### PR 1 — Potential role scores
 
-**Status:** Active
+**Status:** Completed
 
 **PR ref:** Not published
 
@@ -258,15 +258,15 @@ A Rust fixture player with CA below PA is projected through one recognized posit
 
 **PR:** PR 1 — Potential role scores
 
-**Commit:** Commit 3 — Show potential score for assigned Planner roles
+**Commit:** PR 1 delivery complete — stop at the publication boundary
 
 ### RED proof
 
-Extend Planner depth tests and the Planner route test before production code. The tests must fail because resolved assignments have no potential combined score and the depth matrix has no distinct accessible Current/Potential values. Cover a populated assignment, unavailable potential, and the existing unresolved/outside-pool state behavior.
+The focused backend test initially failed because `PlannerAssignment` had no potential score field; the route test initially failed because the matrix had no distinct accessible Current/Potential score badges. The green coverage verifies a selected-role projection with a non-default phase weight, unavailable attributes, resolved/outside-pool/unresolved states, and accessible score pairs.
 
 ### Expected outcome
 
-Resolved Planner assignments project each player once per request, score only the selected lane's IP/OOP roles, and combine them with the saved lane weight. The depth matrix presents the current and potential combined score accessibly without changing candidates or optimizer behavior.
+Resolved Planner assignments project each player once per request, score only the selected lane's IP/OOP roles, and combine them with the saved lane weight. The depth matrix presents the compact current-to-potential pair accessibly without changing candidates or optimizer behavior.
 
 ### Explicit exclusions
 
@@ -277,13 +277,16 @@ Do not change player-profile behavior, slot candidates, optimizer inputs/ranking
 - Planning confirmed that ingest already computes all 68 current role scores for every loaded player and contains a documented lazy/on-demand upgrade trigger. Potential calculation therefore moved to bounded profile and Planner reads rather than adding to Load Data.
 - Planning found FMSuperScout's `mentalGrowthFactor` is defined but unused. This feature deliberately applies it and requires direct threshold tests rather than treating upstream output as authoritative for mental growth.
 - Branch handoff completed on 2026-08-09: local `main` was fast-forwarded to `b9ff83b`, and `feature/potential-role-scores` was created from that commit. The feature therefore includes the merged scan-hardening foundation without carrying branch-only history.
+- Commit 3 extends the existing assignment query with the projection inputs, rather than issuing a second player query. Each matching assignment projects its visible attributes once, then scores only the lane's configured IP/OOP roles. Slot candidates and optimizer inputs retain their current-score-only shape.
+- Browser smoke coverage confirms the assigned player name and both score badges remain within the Planner cell at 1280x800 and 1600x900. The visible arrow denotes current-to-potential; score badges retain distinct accessible Current and Potential names.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 — Potential role scores | Commit 1 — Project visible attributes to player potential | `ce7c87a` | Pure Rust projection API with pinned profiles and regression tests | Sol High — Accept after 1 fix round | None |
-| PR 1 — Potential role scores | Commit 2 — Show potential scores for every profile role | Pending record | One profile-read projection shared by all catalog roles, plus accessible Current/Potential rows | Sol Medium — Accept | None |
+| PR 1 — Potential role scores | Commit 2 — Show potential scores for every profile role | `126bf76` | One profile-read projection shared by all catalog roles, plus accessible Current/Potential rows | Sol Medium — Accept | None |
+| PR 1 — Potential role scores | Commit 3 — Show potential score for assigned Planner roles | Pending record | One assignment-read projection shared by the selected IP/OOP role pair, plus compact accessible current-to-potential score pairs | Sol High — Accept | None |
 
 ## Final validation
 

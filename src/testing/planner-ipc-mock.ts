@@ -553,6 +553,7 @@ function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
     currentName: candidate?.name ?? `Player ${playerUid}`,
     state: "resolved",
     combinedScore: candidate?.combinedScore ?? null,
+    potentialCombinedScore: null,
   });
   return cloneDepth(depth);
 }

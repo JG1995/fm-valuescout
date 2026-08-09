@@ -196,6 +196,7 @@ pub struct PlannerAssignmentDto {
     pub current_name: Option<String>,
     pub state: String,
     pub combined_score: Option<u8>,
+    pub potential_combined_score: Option<u8>,
 }
 
 impl From<PlannerAssignment> for PlannerAssignmentDto {
@@ -208,6 +209,7 @@ impl From<PlannerAssignment> for PlannerAssignmentDto {
             current_name: assignment.current_name,
             state: assignment.state.as_str().to_string(),
             combined_score: assignment.combined_score,
+            potential_combined_score: assignment.potential_combined_score,
         }
     }
 }
