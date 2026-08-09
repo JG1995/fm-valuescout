@@ -534,6 +534,39 @@ test.describe("walking skeleton smoke", () => {
     }
   });
 
+  test("player profile Attributes keeps visible potential pairs within desktop widths", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { playerProfile: true });
+    await page.goto("/players/42?tab=attributes");
+
+    const technical = page.getByRole("region", { name: "Technical" });
+    const passing = technical.locator("dd", {
+      hasText: "Current 14, Potential 16",
+    });
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await expect(passing).toContainText("14→16");
+
+      const [technicalBox, passingBox] = await Promise.all([
+        technical.boundingBox(),
+        passing.boundingBox(),
+      ]);
+      expect(technicalBox).not.toBeNull();
+      expect(passingBox).not.toBeNull();
+      if (!technicalBox || !passingBox) {
+        throw new Error("Expected visible projected Passing attribute pair.");
+      }
+      expect(passingBox.x + passingBox.width).toBeLessThanOrEqual(
+        technicalBox.x + technicalBox.width,
+      );
+    }
+  });
+
   test("top bar exposes global player search", async ({ page }) => {
     await page.goto("/");
 

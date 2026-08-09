@@ -139,7 +139,7 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows attribute groups with tabular values and em dash for nulls", async () => {
+  it("shows visible attributes as current to potential values and keeps other groups current-only", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -147,6 +147,11 @@ describe("player profile route", () => {
           Acceleration: 14,
           Crossing: null,
           Handling: 11,
+        },
+        potentialAttributes: {
+          Acceleration: 16,
+          Crossing: null,
+          Handling: 12,
         },
         hiddenAttributes: {
           Consistency: null,
@@ -181,16 +186,21 @@ describe("player profile route", () => {
 
     const technical = screen.getByRole("region", { name: "Technical" });
     const crossingTerm = within(technical).getByText("Crossing");
-    expect(crossingTerm.parentElement).toHaveTextContent(/^Crossing—$/);
+    expect(
+      crossingTerm.parentElement?.querySelector('[aria-hidden="true"]'),
+    ).toHaveTextContent("—→—");
+    expect(
+      crossingTerm.parentElement?.querySelector(".sr-only"),
+    ).toHaveTextContent("Current —, Potential —");
 
     const physical = screen.getByRole("region", { name: "Physical" });
     const accelerationTerm = within(physical).getByText("Acceleration");
-    expect(accelerationTerm.parentElement).toHaveTextContent(
-      /^Acceleration14$/,
-    );
-    expect(accelerationTerm.parentElement?.querySelector("dd")).toHaveClass(
-      "tabular-nums",
-    );
+    expect(
+      accelerationTerm.parentElement?.querySelector('[aria-hidden="true"]'),
+    ).toHaveTextContent("14→16");
+    expect(
+      within(physical).getByText("Current 14, Potential 16").parentElement,
+    ).toHaveClass("tabular-nums");
 
     const hidden = screen.getByRole("region", { name: "Hidden" });
     expect(

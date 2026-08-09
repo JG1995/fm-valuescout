@@ -185,6 +185,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               preferredFoot: "right",
               positions: { MC: 20 },
               attributes: { Passing: 14 },
+              potentialAttributes: { Passing: 16 },
               hiddenAttributes: { Consistency: 12 },
               personality: { Ambition: 15 },
               weeklyWageGbp: 50000,

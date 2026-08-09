@@ -29,6 +29,7 @@ pub struct PlayerDetail {
     pub preferred_foot: String,
     pub positions: BTreeMap<String, i64>,
     pub attributes: BTreeMap<String, Option<i64>>,
+    pub potential_attributes: BTreeMap<String, Option<i64>>,
     pub hidden_attributes: BTreeMap<String, Option<i64>>,
     pub personality: BTreeMap<String, Option<i64>>,
     pub weekly_wage_gbp: Option<i64>,
@@ -115,7 +116,20 @@ pub fn get_player(conn: &Connection, uid: i64) -> Result<Option<PlayerDetail>, S
         return Ok(None);
     };
 
-    let role_scores = load_role_scores(conn, snapshot_id, uid, &player)?;
+    let attributes = scoring_attributes(&player.attributes)?;
+    let projected_attributes = project_attributes(
+        &attributes,
+        player.ca,
+        player.pa,
+        player.age,
+        player.positions.keys().map(String::as_str),
+    );
+    let potential_attributes = projected_attributes
+        .iter()
+        .map(|(key, value)| (key.clone(), value.map(i64::from)))
+        .collect();
+    let role_scores = load_role_scores(conn, snapshot_id, uid, &projected_attributes)?;
+    player.potential_attributes = potential_attributes;
     player.role_scores = role_scores;
     Ok(Some(player))
 }
@@ -156,6 +170,7 @@ fn map_player_row(row: &Row<'_>) -> rusqlite::Result<PlayerDetail> {
                 message.into(),
             )
         })?,
+        potential_attributes: BTreeMap::new(),
         hidden_attributes: parse_nullable_int_map(&hidden_attributes_json).map_err(|message| {
             rusqlite::Error::FromSqlConversionFailure(
                 10,
@@ -208,7 +223,7 @@ fn load_role_scores(
     conn: &Connection,
     snapshot_id: i64,
     uid: i64,
-    player: &PlayerDetail,
+    projected_attributes: &HashMap<String, Option<u8>>,
 ) -> Result<Vec<PlayerRoleScore>, String> {
     let mut stmt = conn
         .prepare(
@@ -230,15 +245,6 @@ fn load_role_scores(
         scores_by_role.insert(role_id, score);
     }
 
-    let attributes = scoring_attributes(&player.attributes)?;
-    let projected_attributes = project_attributes(
-        &attributes,
-        player.ca,
-        player.pa,
-        player.age,
-        player.positions.keys().map(String::as_str),
-    );
-
     let mut role_scores = Vec::with_capacity(all_roles().len());
     for role in all_roles() {
         role_scores.push(PlayerRoleScore {
@@ -251,7 +257,7 @@ fn load_role_scores(
                 .map(|tag| (*tag).to_string())
                 .collect(),
             score: scores_by_role.get(role.role_id).copied().unwrap_or(None),
-            potential_score: score_role(&projected_attributes, role).map(i64::from),
+            potential_score: score_role(projected_attributes, role).map(i64::from),
         });
     }
 
@@ -474,6 +480,10 @@ mod tests {
             .map(|key| ((*key).to_string(), Some(10)))
             .collect();
         let projected_attributes = project_attributes(&attributes, 80, 170, Some(20), ["ST"]);
+        let expected_potential_attributes = projected_attributes
+            .iter()
+            .map(|(key, value)| (key.clone(), value.map(i64::from)))
+            .collect::<BTreeMap<_, _>>();
         let centre_forward = all_roles()
             .iter()
             .find(|role| role.role_id == "centre_forward_ip")
@@ -484,6 +494,7 @@ mod tests {
         let detail = get_player(&conn, 1)
             .expect("get_player")
             .expect("player present");
+        assert_eq!(detail.potential_attributes, expected_potential_attributes);
         assert_eq!(detail.role_scores.len(), all_roles().len());
         assert!(detail
             .role_scores
@@ -541,6 +552,7 @@ mod tests {
 
         assert_eq!(detail.attributes.get("Acceleration"), Some(&None));
         assert_eq!(detail.attributes.get("Pace"), Some(&Some(12)));
+        assert_eq!(detail.potential_attributes.get("Acceleration"), Some(&None));
         assert_ne!(
             detail.attributes.get("Acceleration"),
             Some(&Some(0)),

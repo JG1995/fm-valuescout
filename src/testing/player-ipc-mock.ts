@@ -24,6 +24,7 @@ export function fixturePlayerDetail(
     preferredFoot: "right",
     positions: { MC: 20 },
     attributes: { Acceleration: 14 },
+    potentialAttributes: { Acceleration: 16 },
     hiddenAttributes: { Consistency: 12 },
     personality: { Ambition: 15 },
     weeklyWageGbp: 50_000,

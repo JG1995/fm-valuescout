@@ -31,6 +31,35 @@ describe("attribute-groups", () => {
     ]);
   });
 
+  it("pairs visible current values with potential values without changing nulls", () => {
+    const rows = attributeRows(
+      ["Crossing", "Acceleration", "Pace"],
+      { Crossing: null, Acceleration: 14 },
+      { Crossing: null, Acceleration: 16 },
+    );
+
+    expect(rows).toEqual([
+      {
+        key: "Crossing",
+        label: "Crossing",
+        value: null,
+        potentialValue: null,
+      },
+      {
+        key: "Acceleration",
+        label: "Acceleration",
+        value: 14,
+        potentialValue: 16,
+      },
+      {
+        key: "Pace",
+        label: "Pace",
+        value: null,
+        potentialValue: null,
+      },
+    ]);
+  });
+
   it("splits PascalCase keys into readable labels", () => {
     expect(labelFromPascal("OffTheBall")).toBe("Off The Ball");
     expect(labelFromPascal("JumpingReach")).toBe("Jumping Reach");
