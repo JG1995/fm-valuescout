@@ -47,6 +47,7 @@ import {
 import {
   resetGetPlayerOverride,
   resolveBoostCurrentAbilityIpcMock,
+  resolveBoostWonderkidMentalityIpcMock,
   resolveGetPlayerIpcMock,
 } from "@/testing/player-ipc-mock";
 import {
@@ -137,6 +138,10 @@ function registerIpcMocks() {
 
     if (cmd === "boost_current_ability") {
       return resolveBoostCurrentAbilityIpcMock(args);
+    }
+
+    if (cmd === "boost_wonderkid_mentality") {
+      return resolveBoostWonderkidMentalityIpcMock(args);
     }
 
     if (cmd === "list_academy_classes") {

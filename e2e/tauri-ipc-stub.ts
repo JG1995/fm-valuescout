@@ -13,6 +13,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   await page.addInitScript({
     content: `
       let demoValue = "";
+      let playerProfileMentalityUpdated = false;
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
       const plannerPotentialScores = ${plannerPotentialScores ? "true" : "false"};
       const playerProfile = ${playerProfile ? "true" : "false"};
@@ -184,10 +185,16 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               heightCm: 182,
               preferredFoot: "right",
               positions: { MC: 20 },
-              attributes: { Passing: 14 },
+              attributes: {
+                Passing: 14,
+                Determination: playerProfileMentalityUpdated ? 18 : 8,
+              },
               potentialAttributes: { Passing: 16 },
               hiddenAttributes: { Consistency: 12 },
-              personality: { Ambition: 15 },
+              personality: {
+                Ambition: playerProfileMentalityUpdated ? 20 : 10,
+                Professionalism: 15,
+              },
               weeklyWageGbp: 50000,
               contractExpiryYear: 2028,
               contractExpiryDayOfYear: 1,
@@ -224,6 +231,23 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 },
               ],
             } : null;
+          }
+
+          if (cmd === "boost_wonderkid_mentality") {
+            playerProfileMentalityUpdated = true;
+            return {
+              snapshotId: 1,
+              operation: "wonderkid-mentality",
+              previousCurrentAbility: null,
+              currentAbility: null,
+              potentialAbility: null,
+              previousAmbition: 10,
+              ambition: 20,
+              previousProfessionalism: 15,
+              professionalism: 15,
+              previousDetermination: 8,
+              determination: 18,
+            };
           }
 
           if (cmd === "get_planner_club_family") {

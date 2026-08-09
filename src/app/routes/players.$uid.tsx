@@ -11,6 +11,7 @@ import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { boostCurrentAbility } from "@/features/player-profile/api/boost-current-ability";
+import { boostWonderkidMentality } from "@/features/player-profile/api/boost-wonderkid-mentality";
 import { getPlayerQueryOptions } from "@/features/player-profile/api/get-player-query-options";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { PlayerAttributesPanel } from "@/features/player-profile/components/player-attributes-panel";
@@ -33,6 +34,8 @@ import { cn } from "@/utils/cn";
 export type PlayerProfileSearch = {
   tab: ProfileTab;
 };
+
+type PlayerBoostAction = "currentAbility" | "wonderkidMentality";
 
 function parseUid(raw: string): number | null {
   const uid = Number(raw);
@@ -207,7 +210,10 @@ function PlayerProfileContent({
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
   const boost = useMutation({
-    mutationFn: () => boostCurrentAbility(uid),
+    mutationFn: (action: PlayerBoostAction) =>
+      action === "currentAbility"
+        ? boostCurrentAbility(uid)
+        : boostWonderkidMentality(uid),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
@@ -247,7 +253,11 @@ function PlayerProfileContent({
               pending={boost.isPending}
               result={boost.data}
               error={boost.error}
-              onBoostCurrentAbility={boost.mutateAsync}
+              onBoostCurrentAbility={() => boost.mutateAsync("currentAbility")}
+              onBoostWonderkidMentality={() =>
+                boost.mutateAsync("wonderkidMentality")
+              }
+              onOpenConfirmation={boost.reset}
             />
           </div>
         ) : null}

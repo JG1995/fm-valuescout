@@ -132,7 +132,10 @@ export function Modal({
       return;
     }
     shouldReturnFocusRef.current = false;
-    if (triggerRef.current?.isConnected) {
+    if (
+      triggerRef.current?.isConnected &&
+      !triggerRef.current.matches(":disabled")
+    ) {
       triggerRef.current.focus();
       return;
     }

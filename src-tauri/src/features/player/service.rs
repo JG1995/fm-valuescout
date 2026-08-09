@@ -139,7 +139,6 @@ pub(super) fn prepare_wonderkid_mentality_boost(
     validate_ability_snapshot(&player)?;
     let mentality = parse_mentality_snapshot(&player.attributes_json, &player.personality_json)
         .map_err(|message| eligibility_error("invalidSnapshot", message))?;
-    validate_mentality_snapshot(&mentality)?;
 
     if !mentality.is_eligible() {
         return Err(eligibility_error(
@@ -326,27 +325,10 @@ fn parse_mentality_snapshot(
     let attributes = parse_json_object(attributes_json, "attributes")?;
     let personality = parse_json_object(personality_json, "personality")?;
     Ok(MentalitySnapshot {
-        ambition: nullable_integer(&personality, "Ambition")?,
-        professionalism: nullable_integer(&personality, "Professionalism")?,
-        determination: nullable_integer(&attributes, "Determination")?,
+        ambition: known_mentality_value(&personality, "Ambition"),
+        professionalism: known_mentality_value(&personality, "Professionalism"),
+        determination: known_mentality_value(&attributes, "Determination"),
     })
-}
-
-fn validate_mentality_snapshot(mentality: &MentalitySnapshot) -> Result<(), PlayerBoostError> {
-    for value in [
-        mentality.ambition,
-        mentality.professionalism,
-        mentality.determination,
-    ] {
-        if value.is_some_and(|value| !is_mentality(value)) {
-            return Err(eligibility_error(
-                "invalidSnapshot",
-                "snapshot mentality values are invalid; Load Data again",
-            ));
-        }
-    }
-
-    Ok(())
 }
 
 fn verify_bridge_result(
@@ -518,11 +500,9 @@ fn reconcile_mentality(
     let mut personality =
         parse_json_object(&current.personality_json, "personality").map_err(snapshot_sync_error)?;
     let current_mentality = MentalitySnapshot {
-        ambition: nullable_integer(&personality, "Ambition").map_err(snapshot_sync_error)?,
-        professionalism: nullable_integer(&personality, "Professionalism")
-            .map_err(snapshot_sync_error)?,
-        determination: nullable_integer(&attributes, "Determination")
-            .map_err(snapshot_sync_error)?,
+        ambition: known_mentality_value(&personality, "Ambition"),
+        professionalism: known_mentality_value(&personality, "Professionalism"),
+        determination: known_mentality_value(&attributes, "Determination"),
     };
     if current_mentality.ambition != prepared.expected_ambition
         || current_mentality.professionalism != prepared.expected_professionalism
@@ -533,13 +513,19 @@ fn reconcile_mentality(
         ));
     }
 
-    set_nullable_integer(&mut personality, "Ambition", verified.ambition);
-    set_nullable_integer(
-        &mut personality,
-        "Professionalism",
-        verified.professionalism,
-    );
-    set_nullable_integer(&mut attributes, "Determination", verified.determination);
+    if prepared.expected_ambition.is_some() {
+        set_nullable_integer(&mut personality, "Ambition", verified.ambition);
+    }
+    if prepared.expected_professionalism.is_some() {
+        set_nullable_integer(
+            &mut personality,
+            "Professionalism",
+            verified.professionalism,
+        );
+    }
+    if prepared.expected_determination.is_some() {
+        set_nullable_integer(&mut attributes, "Determination", verified.determination);
+    }
     let attributes_json = serde_json::to_string(&attributes).map_err(database_sync_error)?;
     let personality_json = serde_json::to_string(&personality).map_err(database_sync_error)?;
 
@@ -629,16 +615,11 @@ fn parse_json_object(json: &str, label: &str) -> Result<Map<String, Value>, Stri
         .ok_or_else(|| format!("{label} must be a JSON object"))
 }
 
-fn nullable_integer(object: &Map<String, Value>, key: &str) -> Result<Option<i64>, String> {
-    match object.get(key) {
-        Some(Value::Null) => Ok(None),
-        Some(Value::Number(number)) => number
-            .as_i64()
-            .map(Some)
-            .ok_or_else(|| format!("{key} must be an integer or null")),
-        Some(_) => Err(format!("{key} must be an integer or null")),
-        None => Err(format!("{key} is missing")),
-    }
+fn known_mentality_value(object: &Map<String, Value>, key: &str) -> Option<i64> {
+    object
+        .get(key)
+        .and_then(Value::as_i64)
+        .filter(|value| is_mentality(*value))
 }
 
 fn set_nullable_integer(object: &mut Map<String, Value>, key: &str, value: Option<i64>) {
@@ -865,11 +846,9 @@ mod tests {
         let personality: Map<String, Value> =
             serde_json::from_str(&personality_json).expect("parse personality");
         Mentality {
-            ambition: super::nullable_integer(&personality, "Ambition").expect("read ambition"),
-            professionalism: super::nullable_integer(&personality, "Professionalism")
-                .expect("read professionalism"),
-            determination: super::nullable_integer(&attributes, "Determination")
-                .expect("read determination"),
+            ambition: super::known_mentality_value(&personality, "Ambition"),
+            professionalism: super::known_mentality_value(&personality, "Professionalism"),
+            determination: super::known_mentality_value(&attributes, "Determination"),
         }
     }
 
@@ -1097,6 +1076,79 @@ mod tests {
                 .expect_err("all high or unknown values must be ineligible"),
             "noEligibleMentality",
         );
+    }
+
+    #[test]
+    fn wonderkid_mentality_preserves_missing_and_invalid_snapshot_values() {
+        let mut fixture = seeded_player(
+            Some(19),
+            150,
+            170,
+            Mentality {
+                ambition: Some(10),
+                professionalism: Some(11),
+                determination: Some(12),
+            },
+        );
+        fixture
+            .conn
+            .execute(
+                "UPDATE players
+                 SET attributes_json = ?1, personality_json = ?2
+                 WHERE snapshot_id = ?3 AND uid = ?4",
+                params![
+                    r#"{"Pace":15,"Determination":0}"#,
+                    r#"{"Ambition":10}"#,
+                    fixture.snapshot_id,
+                    PLAYER_UID
+                ],
+            )
+            .expect("set unknown mentality fields");
+
+        let prepared = super::prepare_wonderkid_mentality_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare mixed known and unknown values");
+
+        assert_eq!(prepared.expected_ambition, Some(10));
+        assert_eq!(prepared.expected_professionalism, None);
+        assert_eq!(prepared.expected_determination, None);
+
+        super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_mentality_result(
+                150,
+                170,
+                Mentality {
+                    ambition: Some(10),
+                    professionalism: None,
+                    determination: None,
+                },
+                Mentality {
+                    ambition: Some(19),
+                    professionalism: None,
+                    determination: None,
+                },
+            ),
+        )
+        .expect("reconcile mixed known and unknown values");
+
+        let (attributes_json, personality_json): (String, String) = fixture
+            .conn
+            .query_row(
+                "SELECT attributes_json, personality_json
+                 FROM players WHERE snapshot_id = ?1 AND uid = ?2",
+                params![fixture.snapshot_id, PLAYER_UID],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read reconciled mentality JSON");
+        let attributes: Map<String, Value> =
+            serde_json::from_str(&attributes_json).expect("parse attributes JSON");
+        let personality: Map<String, Value> =
+            serde_json::from_str(&personality_json).expect("parse personality JSON");
+
+        assert_eq!(personality.get("Ambition"), Some(&Value::from(19)));
+        assert!(!personality.contains_key("Professionalism"));
+        assert_eq!(attributes.get("Determination"), Some(&Value::from(0)));
     }
 
     #[test]

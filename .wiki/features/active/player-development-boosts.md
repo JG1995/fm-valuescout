@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -422,7 +422,7 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 #### Commit 4 — Add Wonderkid Mentality
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): add Wonderkid Mentality action`
 
@@ -465,19 +465,9 @@ PR 1 is the walking skeleton. Its controlled Windows proof used the documented f
 
 **PR:** PR 2
 
-**Commit:** Commit 4
+**Commit:** Completed
 
-### RED proof
-
-Add profile-route coverage for each inclusive threshold, mixed eligible, ineligible, and null values, no-op disablement, confirmation content, exact verified success values, duplicate-submit prevention, errors, and focus restoration. It must fail because the Wonderkid Mentality action does not exist.
-
-### Expected outcome
-
-The existing panel shows a guarded Wonderkid Mentality action beside Boost CA. React presents only eligibility from the snapshot; the bridge chooses the random values and the UI shows its verified result.
-
-### Explicit exclusions
-
-No rerolls for values above 10, random-seed configuration, direct value selection, a separate action panel or route, full-dump refreshes, history, undo, or another scoring path.
+All planned content commits passed their commit-level reviews. Final validation and feature review remain.
 
 ## Discoveries and replanning
 
@@ -488,7 +478,7 @@ No rerolls for values above 10, random-seed configuration, direct value selectio
 - 2026-08-09: Repowise was stale at commit `4ad07c4`; planning used direct source, tests, documents, configuration, and Git evidence.
 - 2026-08-09: A successful PSS snapshot retry can produce a valid dump but its candidate addresses are not safe for live writes. The bridge therefore retains its mutation index only from a successful live-reader dump and clears it after a successful snapshot-backed dump or plugin restart.
 - 2026-08-09: Exact build `26.3.2` is write-validated; the implementation refuses other `26.3.x` builds until each has its own proof.
-- 2026-08-09: Wonderkid requests now carry nullable per-field snapshot expectations. `null` is an immutable unknown field, preventing a later live reread from turning it into an eligible write.
+- 2026-08-09: Wonderkid requests now carry nullable per-field snapshot expectations. Missing, null, non-integer, and out-of-range values are immutable unknowns, so a later live reread cannot turn them into an eligible write.
 - 2026-08-09: Each manual force scan receives a unique provenance ID, and a request that has already expired cannot have its TTL refreshed while bridge work is busy.
 - 2026-08-09: The controlled Windows proof used the documented force-scan fallback on exact build `26.3.2`. A live zero-retry scan advertised boost support; the developer confirmed CA and Wonderkid actions, both age increments, and save/reload persistence. This record retains only sanitized pass/fail evidence.
 
@@ -501,6 +491,7 @@ No rerolls for values above 10, random-seed configuration, direct value selectio
 | PR 2 | Bind snapshots to bridge scans | `9f0b598` | Added migration v16, atomically persisted source request IDs, captured each completed dump before ingest, and rejected changed request status. | Sol xhigh accepted after a request/dump correlation and transaction-boundary correction. | Snapshot summaries now load before commit so an error rolls back the new binding. |
 | PR 2 | Persist verified player boosts | `bc5678c` | Added the closed Rust bridge client, UID-only commands, snapshot-derived eligibility, verified targeted reconciliation, role-score refresh, and explicit uncertain-result recovery. | Sol xhigh accepted after one ledger lifecycle correction. | React boost controls remain Commit 3 and Commit 4 work. |
 | PR 2 | Add CA boost action | Pending record | Added the guarded Overview action, snapshot-only preview, confirmation, verified outcome, and route-owned cache invalidation. | Sol High accepted after one architecture-summary correction. | Wonderkid Mentality remains Commit 4 work. |
+| PR 2 | Add Wonderkid Mentality action | Pending record | Added the secondary action, guarded snapshot preview, confirmation, exact verified feedback, shared pending lock, and cache refresh. | Sol High accepted after two correction rounds. | Unknown snapshot fields remain immutable during request and reconciliation. |
 
 ## Final validation
 
