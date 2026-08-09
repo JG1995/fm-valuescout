@@ -181,7 +181,7 @@ PR 1 is the walking skeleton. After one successful Load Data, a manually issued 
 
 #### Commit 1 — Add verified scalar memory writes
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-write): add verified scalar writes`
 
@@ -223,7 +223,7 @@ PR 1 is the walking skeleton. After one successful Load Data, a manually issued 
 
 #### Commit 2 — Expose player boost operations
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(memory-write): expose player boost operations`
 
@@ -466,19 +466,19 @@ PR 1 is the walking skeleton. After one successful Load Data, a manually issued 
 
 **PR:** PR 1 — Add safe player boost bridge
 
-**Commit:** Add verified scalar memory writes
+**Commit:** Expose player boost operations
 
 ### RED proof
 
-Add fake-memory tests that expect exact writes at the current CA, Ambition, Professionalism, and Determination locations, reject a CA target above PA, require Determination ×5 encoding, and prove PA and neighboring bytes remain unchanged. The tests must fail because the repository has no memory-write abstraction or mutation service.
+Add bridge tests for closed request and status contracts, index lifetime, stale provenance, duplicate requests, deterministic mentality targets, unsupported builds, and scan/write exclusion. The tests must fail because the bridge accepts only full-dump requests and retains no mutation index or operation result.
 
 ### Expected outcome
 
-The C# bridge has an internal, fully tested typed write service for only the four approved values. The service rejects CA above live PA and is not reachable from the plugin request loop or application yet.
+The C# bridge accepts only the two approved player-boost operations, binds them to a successful scan, reopens and validates live memory, returns verified results without addresses, and keeps scans and writes serialized. The controlled Windows/FM26 proof remains required before this commit can complete.
 
 ### Explicit exclusions
 
-Do not add request operations, candidate caching, randomization, Rust code, SQLite changes, Tauri commands, UI, or live installation in this commit.
+Do not add Rust protocol callers, snapshot provenance persistence, SQLite reconciliation, Tauri commands, profile UI, or additional edit operations. Do not store or publish candidate addresses.
 
 ## Discoveries and replanning
 
@@ -490,7 +490,9 @@ Do not add request operations, candidate caching, randomization, Rust code, SQLi
 
 ## Completed work
 
-No delivery commits completed.
+| PR | Commit | Git ref | Implementation | Review | Deviations |
+| --- | --- | --- | --- | --- | --- |
+| PR 1 | Add verified scalar memory writes | Pending record | Added internal typed CA, Ambition, Professionalism, and Determination writes with live preconditions, readback, and verified rollback reporting. | Sol xhigh accepted after one local correction to narrow the writer seam to byte/u16 operations. | None |
 
 ## Final validation
 

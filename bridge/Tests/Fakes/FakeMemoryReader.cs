@@ -5,7 +5,7 @@ namespace FmDataBridge.Tests.Fakes;
 /// <summary>
 /// In-memory <see cref="IMemoryReader"/> for unit tests — no process or Windows APIs.
 /// </summary>
-public sealed class FakeMemoryReader : IMemoryReader
+public sealed class FakeMemoryReader : IMemoryReader, IMemoryWriter
 {
     private readonly List<MemoryRegion> _regions = new();
     private readonly List<(ulong Address, byte[] Bytes)> _segments = new();
@@ -47,6 +47,45 @@ public sealed class FakeMemoryReader : IMemoryReader
         var result = Fill(address, destination);
         bytesRead = result.ReadableBytes;
         return bytesRead == destination.Length;
+    }
+
+    public bool TryWriteByte(ulong address, byte value, out int bytesWritten) =>
+        TryWriteScalar(address, new[] { value }, out bytesWritten);
+
+    public bool TryWriteUInt16(ulong address, ushort value, out int bytesWritten)
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(ushort)];
+        BitConverter.TryWriteBytes(bytes, value);
+        return TryWriteScalar(address, bytes, out bytesWritten);
+    }
+
+    private bool TryWriteScalar(ulong address, ReadOnlySpan<byte> source, out int bytesWritten)
+    {
+        bytesWritten = 0;
+        if (source.IsEmpty)
+        {
+            return true;
+        }
+
+        var destinations = new (byte[] Bytes, int Offset)[source.Length];
+        for (var i = 0; i < source.Length; i++)
+        {
+            if (address > ulong.MaxValue - (ulong)i
+                || !TryFindWritableByte(address + (ulong)i, out var bytes, out var offset))
+            {
+                return false;
+            }
+
+            destinations[i] = (bytes, offset);
+        }
+
+        for (var i = 0; i < source.Length; i++)
+        {
+            destinations[i].Bytes[destinations[i].Offset] = source[i];
+        }
+
+        bytesWritten = source.Length;
+        return true;
     }
 
     public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
@@ -119,6 +158,29 @@ public sealed class FakeMemoryReader : IMemoryReader
         }
 
         return BlockReadResult.FromReadabilityMask(readable);
+    }
+
+    private bool TryFindWritableByte(ulong address, out byte[] bytes, out int offset)
+    {
+        foreach (var (segmentAddress, segmentBytes) in _segments)
+        {
+            if (address < segmentAddress)
+            {
+                continue;
+            }
+
+            var relativeOffset = address - segmentAddress;
+            if (relativeOffset < (ulong)segmentBytes.Length)
+            {
+                bytes = segmentBytes;
+                offset = (int)relativeOffset;
+                return true;
+            }
+        }
+
+        bytes = Array.Empty<byte>();
+        offset = 0;
+        return false;
     }
 
     private static void MarkRange(
