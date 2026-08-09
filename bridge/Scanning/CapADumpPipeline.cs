@@ -12,9 +12,26 @@ public sealed class CapADumpPipeline
 {
     private readonly LayoutRegistry _layouts;
 
+    private readonly IProcessSnapshotFactory _snapshotFactory;
+
+    private readonly Func<SystemMemoryStatus> _memoryStatusReader;
+
     public CapADumpPipeline(LayoutRegistry? layouts = null)
+        : this(
+            layouts,
+            new WindowsProcessSnapshotFactory(),
+            SystemMemoryStatusReader.Read)
+    {
+    }
+
+    internal CapADumpPipeline(
+        LayoutRegistry? layouts,
+        IProcessSnapshotFactory snapshotFactory,
+        Func<SystemMemoryStatus> memoryStatusReader)
     {
         _layouts = layouts ?? LayoutRegistry.CreateDefault();
+        _snapshotFactory = snapshotFactory ?? throw new ArgumentNullException(nameof(snapshotFactory));
+        _memoryStatusReader = memoryStatusReader ?? throw new ArgumentNullException(nameof(memoryStatusReader));
     }
 
     public CapADumpResult Run(
@@ -31,6 +48,7 @@ public sealed class CapADumpPipeline
         ArgumentNullException.ThrowIfNull(reader);
         Directory.CreateDirectory(bridgeDirectory);
 
+        using var snapshotScope = new SnapshotScope();
         var totalSw = Stopwatch.StartNew();
         var counting = reader as CountingMemoryReader ?? new CountingMemoryReader(reader);
         reader = counting;
@@ -38,6 +56,7 @@ public sealed class CapADumpPipeline
         var diagnostics = new ScanDiagnostics
         {
             GameVersion = gameVersion,
+            ReadSource = reader.ReadSource,
             GamePlugin = gamePlugin is { } gp
                 ? new ModuleBoundsSnapshot(gp.BaseAddress, gp.EndAddress)
                 : null,
@@ -76,6 +95,111 @@ public sealed class CapADumpPipeline
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
 
+        if (scan.ReadQuality.IsMateriallyIncomplete)
+        {
+            diagnostics.ScanRetryCount = 1;
+            var memoryStatus = _memoryStatusReader();
+            if (memoryStatus.IsKnown)
+            {
+                diagnostics.SnapshotAvailableCommitBytes = memoryStatus.AvailableCommitBytes;
+            }
+
+            if (!memoryStatus.IsKnown)
+            {
+                diagnostics.FailureReason =
+                    "live scan read quality incomplete; snapshot retry skipped because available commit memory could not be measured";
+                WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
+                return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+            }
+
+            if (!ProcessSnapshotPolicy.HasSufficientAvailableCommit(memoryStatus))
+            {
+                diagnostics.FailureReason =
+                    "live scan read quality incomplete; snapshot retry skipped because available commit memory is below the safety threshold";
+                WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
+                return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+            }
+
+            ProcessSnapshotCaptureResult capture;
+            try
+            {
+                capture = _snapshotFactory.TryCapture();
+            }
+            catch (Exception exception)
+            {
+                diagnostics.SnapshotFailureReason =
+                    $"snapshot factory threw {exception.GetType().Name}: {exception.Message}";
+                diagnostics.FailureReason =
+                    $"live scan read quality incomplete; snapshot retry failed: {diagnostics.SnapshotFailureReason}";
+                WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
+                return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+            }
+
+            diagnostics.SnapshotCaptureMs = capture.CaptureMilliseconds;
+            if (!capture.IsSuccess)
+            {
+                diagnostics.SnapshotFailureReason = capture.FailureReason;
+                diagnostics.FailureReason =
+                    $"live scan read quality incomplete; snapshot retry failed: {capture.FailureReason}";
+                WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
+                return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+            }
+
+            snapshotScope.Set(capture.Snapshot!);
+            reader = snapshotScope.Reader;
+            counting = reader as CountingMemoryReader ?? new CountingMemoryReader(reader);
+            reader = counting;
+            diagnostics = new ScanDiagnostics
+            {
+                GameVersion = gameVersion,
+                ReadSource = reader.ReadSource,
+                GamePlugin = gamePlugin is { } snapshotGamePlugin
+                    ? new ModuleBoundsSnapshot(snapshotGamePlugin.BaseAddress, snapshotGamePlugin.EndAddress)
+                    : null,
+                ScanRetryCount = 1,
+                SnapshotCaptureMs = capture.CaptureMilliseconds,
+                SnapshotAvailableCommitBytes = memoryStatus.AvailableCommitBytes,
+            };
+
+            phaseSw.Restart();
+            regions = RegionEnumerator.GetCandidateRegions(reader);
+            diagnostics.RegionEnumerationMs = phaseSw.ElapsedMilliseconds;
+
+            phaseSw.Restart();
+            scan = PersonScanner.Scan(
+                reader,
+                layout,
+                gameAssembly,
+                gamePlugin,
+                regions,
+                diagnostics,
+                maxAccepted,
+                playerDatabaseScope,
+                cancellationToken);
+            diagnostics.CandidateDiscoveryMs = phaseSw.ElapsedMilliseconds;
+            candidates = scan.Players;
+
+            if (diagnostics.Cancelled)
+            {
+                diagnostics.FailureReason = "snapshot retry cancelled";
+                WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
+                return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+            }
+
+            if (scan.ReadQuality.IsMateriallyIncomplete)
+            {
+                diagnostics.FailureReason =
+                    $"snapshot retry read quality incomplete: {scan.ReadQuality.UnreadBytes}/{scan.ReadQuality.RequestedBytes} region bytes unread";
+                WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
+                return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+            }
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+        }
+
         if (candidates.Count == 0)
         {
             diagnostics.FailureReason = "scan produced zero player candidates";
@@ -92,6 +216,11 @@ public sealed class CapADumpPipeline
         phaseSw.Restart();
         foreach (var candidate in candidates)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+            }
+
             var playerBase = candidate.ObjectAddress - (ulong)candidate.ClassOffset;
             var identity = PlayerIdentityReader.TryRead(
                 reader,
@@ -99,6 +228,11 @@ public sealed class CapADumpPipeline
                 playerBase,
                 layout,
                 out var rejectReason);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+            }
 
             if (identity is null)
             {
@@ -162,6 +296,11 @@ public sealed class CapADumpPipeline
         var playerUids = candidates.Select(candidate => candidate.Uid).ToHashSet();
         foreach (var candidate in scan.Staff)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+            }
+
             if (playerUids.Contains(candidate.Uid))
             {
                 continue;
@@ -176,6 +315,11 @@ public sealed class CapADumpPipeline
                 candidate.Pa,
                 layout,
                 out var clubLink);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+            }
 
             if (clubLink is { ClubAddress: not 0 })
             {
@@ -195,6 +339,11 @@ public sealed class CapADumpPipeline
             return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
         }
 
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+        }
+
         phaseSw.Restart();
         var squadIndex = SquadClubIndex.Build(
             reader,
@@ -204,6 +353,11 @@ public sealed class CapADumpPipeline
             scan.Clubs,
             clubAddresses,
             scan.HumanManagers.Select(candidate => candidate.ObjectAddress));
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+        }
 
         foreach (var sample in squadIndex.MultiClubSamples.Take(ScanDiagnostics.MaxSampleClubSnapshots))
         {
@@ -246,6 +400,11 @@ public sealed class CapADumpPipeline
         var players = new List<DumpPlayer>(drafts.Count);
         foreach (var draft in drafts)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+            }
+
             var parentName = draft.ParentLink?.ClubName;
             string? currentName = null;
             string? division = draft.ParentLink?.Division;
@@ -400,8 +559,26 @@ public sealed class CapADumpPipeline
             Manager = dumpManager,
         };
 
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+        }
+
         phaseSw.Restart();
-        var replaced = DumpWriter.TryWriteReplaceOnSuccess(bridgeDirectory, document);
+        bool replaced;
+        try
+        {
+            replaced = DumpWriter.TryWriteReplaceOnSuccess(
+                bridgeDirectory,
+                document,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            diagnostics.DumpWritingMs = phaseSw.ElapsedMilliseconds;
+            return Cancelled(bridgeDirectory, diagnostics, counting, totalSw);
+        }
+
         diagnostics.DumpWritingMs = phaseSw.ElapsedMilliseconds;
         WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
 
@@ -413,6 +590,44 @@ public sealed class CapADumpPipeline
                 staff: staff,
                 manager: manager)
             : CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
+    }
+
+    private static CapADumpResult Cancelled(
+        string bridgeDirectory,
+        ScanDiagnostics diagnostics,
+        CountingMemoryReader counting,
+        Stopwatch totalSw)
+    {
+        diagnostics.Cancelled = true;
+        diagnostics.FailureReason = "scan cancelled";
+        WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
+        return CapADumpResult.Failed(diagnostics.FailureReason, dumpReplaced: false);
+    }
+
+    private sealed class SnapshotScope : IDisposable
+    {
+        private IProcessSnapshot? _snapshot;
+
+        public IMemoryReader Reader => _snapshot?.Reader
+            ?? throw new InvalidOperationException("Snapshot reader is unavailable.");
+
+        public void Set(IProcessSnapshot snapshot)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+            if (_snapshot is not null)
+            {
+                throw new InvalidOperationException("A scan can use only one snapshot retry.");
+            }
+
+            _snapshot = snapshot;
+        }
+
+        public void Dispose()
+        {
+            var snapshot = _snapshot;
+            _snapshot = null;
+            snapshot?.Dispose();
+        }
     }
 
     private static void WriteDiagnostics(

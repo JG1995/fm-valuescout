@@ -407,6 +407,8 @@ User opens home route
 Dump contract: [bridge/DUMP_SCHEMA.md](../bridge/DUMP_SCHEMA.md) schema v6 (frozen). A dump contains players plus staff, optional human-manager metadata, player-database scope, and date basis. Rust rejects stale schemas before ingest. The scan writes `dump.json` on disk; ingest reads it in Rust (§5.5).
 ```
 
+For an unlimited concurrent reader, `PersonScanner` uses at most `min(regionCount, clamp(processorCount - 1, 1, 8))` worker-local 32 MiB buffers. Available physical memory below 2 GiB reduces that bound to two; capped or non-concurrent readers remain serial. The bridge counts requested, readable, unread, and internal-failure bytes, and fails closed when unread bytes exceed ten percent. Only then may it take one Windows PSS VA clone, after a separate 2 GiB available-commit check; cancellation, failed retries, and incomplete retries leave the prior dump and snapshot intact. `diagnostics.txt` records the source, retry count, quality, worker bound, phase timings, and aggregate memory-read volume. It can also include save-derived samples, so durable documentation uses only aggregate fields; module addresses are never emitted. Failed status errors replace machine-local paths with generic failure text before they are written.
+
 ### 5.5 Load Data and snapshot ingest
 
 **Load Data** is one user action: bridge scan, then SQLite ingest for the **active app save**. The dump body never crosses IPC.

@@ -25,4 +25,8 @@ public sealed record PersonScanResult(
     IReadOnlyList<ClubCandidate> Clubs,
     IReadOnlyList<uint> PlayerStaffOverlapUids,
     bool StoppedEarly,
-    bool Cancelled);
+    bool Cancelled,
+    ScanReadQuality ReadQuality)
+{
+    internal IReadOnlyList<PersonCandidate> RawStaff { get; init; } = Array.Empty<PersonCandidate>();
+}

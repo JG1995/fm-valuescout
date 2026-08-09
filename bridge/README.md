@@ -35,7 +35,7 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 2. In the Tauri app, click **Load Data** in the top bar.
 3. Rust writes `request.json` (`protocolVersion`, `requestId`, `createdAtUtc`, `operation: "full-dump"`, optional `maxAccepted`: `null` = unlimited, positive integer = cap).
 4. The plugin polls every ~2s, rejects requests older than **30 seconds**, runs the dump off the Unity main thread, and updates `status.json` (`idle` → `scanning` → `ready` / `failed`).
-5. The app waits for a terminal status matching the request id (default timeout 120s; unlimited reference save bridge dump measured ~26s on 2026-07-30). On success, Rust reads `dump.json` from disk, validates schema v6, and atomically ingests player, staff, manager, scope, and date-basis data into SQLite for the active app save (`load_data` IPC). The dump body never crosses IPC. Scan or ingest failure leaves the prior snapshot unchanged; the UI shows a typed error or ingest summary (player count, truncated banner when `scanTruncated`).
+5. The app waits for a terminal status matching the request id (default timeout 120s; unlimited reference save bridge dump measured ~26s on 2026-07-30). On success, Rust reads `dump.json` from disk, validates schema v6, and atomically ingests player, staff, manager, scope, and date-basis data into SQLite for the active app save (`load_data` IPC). The dump body never crosses IPC. Scan or ingest failure leaves the prior snapshot unchanged; failed status errors replace machine-local paths with generic failure text before publication; the UI shows a typed error or ingest summary (player count, truncated banner when `scanTruncated`).
 
 ### Manual force-scan fallback
 
@@ -64,6 +64,23 @@ One loaded FM 26.3.2 save completed an unlimited Windows **Load Data** run on 20
 | Ready-to-committed snapshot interval | 55.7 s observed from bridge `ready` to the active snapshot commit; this is not the app-reported `ingestMs` value |
 
 The documented row counts matched the dump declarations and the active app-save snapshot. The app database check used only aggregate counts and did not retain names, addresses, dump contents, or machine paths.
+
+### Hardened scan validation
+
+One unlimited Windows **Load Data** run on 2026-08-08 exercised the final scan-hardening DLL after an FM26 restart. The developer confirmed the visible result was correct. Its aggregate player and staff totals and dump size matched the schema-v6 baseline above; this is one supported-machine observation, not a performance target.
+
+| Check | Result |
+| --- | --- |
+| Result contract | 247,781 players; 134,316 staff; manager metadata present; `men` scope with derived `next-fixture-consensus` date basis; unlimited, not truncated; no player/staff overlap; the same 491,761,405-byte dump size as the baseline |
+| Read quality | 5,018,877,952 / 5,023,731,712 bytes readable (99.9034%); 4,853,760 unread bytes (0.0966%), below the fixed `>10%` failure threshold; no internal read-failure bytes |
+| Source and retry | `live`; zero retries; no VA-clone snapshot was needed for this healthy attempt |
+| Fixed resource bound | 8 workers with one 32 MiB buffer each (256 MiB maximum scan-buffer allocation) |
+| Bridge phases | 0.065 s region enumeration, 6.422 s candidate discovery, 11.188 s extraction, 2.452 s club indexing, and 3.110 s dump writing; 23.618 s total |
+| Process-memory I/O | 19,837,038 reads requesting 5,378,910,136 bytes (5.010 GiB) |
+
+The prior-dump and snapshot-preservation paths remain covered by the deterministic bridge and Rust tests. This live run did not manufacture a low-memory or failed-scan condition merely to force a snapshot retry.
+
+The developer also compared a representative player's fields and club link, a staff record's identity/attributes/contract and club, and the human manager with managed club against the PR 1 result. All matched; no names, UIDs, or field values were retained.
 
 ## Prerequisites (Windows host)
 

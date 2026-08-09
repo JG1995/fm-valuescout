@@ -64,6 +64,45 @@ public sealed class DumpWriterStreamingTests
     }
 
     [Fact]
+    public void Dump_writer_cancellation_during_streaming_preserves_prior_dump()
+    {
+        var bridgeDir = Path.Combine(Path.GetTempPath(), "fm-dump-stream-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(bridgeDir);
+        try
+        {
+            Assert.True(DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, MinimalDocument(playerCount: 1)));
+            using var cancellation = new CancellationTokenSource();
+            var pending = MinimalDocument(playerCount: 2);
+            var document = new DumpDocument
+            {
+                SchemaVersion = pending.SchemaVersion,
+                GeneratedAtUtc = pending.GeneratedAtUtc,
+                GameVersion = pending.GameVersion,
+                SupportedGameVersion = pending.SupportedGameVersion,
+                BridgeVersion = pending.BridgeVersion,
+                ProtocolVersion = pending.ProtocolVersion,
+                GameDateSource = pending.GameDateSource,
+                GameDateBasis = pending.GameDateBasis,
+                PlayerDatabaseScope = pending.PlayerDatabaseScope,
+                PlayerCount = pending.PlayerCount,
+                Players = new CancelOnEnumerationPlayers(pending.Players, cancellation),
+            };
+
+            Assert.Throws<OperationCanceledException>(() =>
+                DumpWriter.TryWriteReplaceOnSuccess(bridgeDir, document, cancellation.Token));
+
+            var path = BridgePaths.GetDumpPath(bridgeDir);
+            Assert.False(File.Exists(path + ".tmp"));
+            using var parsed = JsonDocument.Parse(File.ReadAllText(path));
+            Assert.Equal(1, parsed.RootElement.GetProperty("playerCount").GetInt32());
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Dump_writer_streams_players_with_bounded_write_chunks()
     {
         var document = MinimalDocument(playerCount: 5_000);
@@ -205,5 +244,34 @@ public sealed class DumpWriterStreamingTests
 
             base.Write(buffer);
         }
+    }
+
+    private sealed class CancelOnEnumerationPlayers : IReadOnlyList<DumpPlayer>
+    {
+        private readonly IReadOnlyList<DumpPlayer> _players;
+        private readonly CancellationTokenSource _cancellation;
+
+        public CancelOnEnumerationPlayers(
+            IReadOnlyList<DumpPlayer> players,
+            CancellationTokenSource cancellation)
+        {
+            _players = players;
+            _cancellation = cancellation;
+        }
+
+        public int Count => _players.Count;
+
+        public DumpPlayer this[int index] => _players[index];
+
+        public IEnumerator<DumpPlayer> GetEnumerator()
+        {
+            foreach (var player in _players)
+            {
+                _cancellation.Cancel();
+                yield return player;
+            }
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 }

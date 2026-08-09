@@ -4,22 +4,29 @@ using System.Runtime.InteropServices;
 namespace FmDataBridge.Memory;
 
 /// <summary>
-/// Production reader for the current process using ReadProcessMemory / VirtualQuery.
+/// Production reader for a process image using ReadProcessMemory / VirtualQueryEx.
 /// Invalid addresses fail the read; they must not hard-crash via raw pointer deref.
 /// </summary>
 public sealed class WindowsMemoryReader : IMemoryReader
 {
     private readonly IntPtr _processHandle;
 
+    private readonly string _readSource;
+
     public WindowsMemoryReader()
-        : this(NativeMethods.GetCurrentProcess())
+        : this(NativeMethods.GetCurrentProcess(), "live")
     {
     }
 
-    internal WindowsMemoryReader(IntPtr processHandle)
+    internal WindowsMemoryReader(IntPtr processHandle, string readSource = "live")
     {
         _processHandle = processHandle;
+        _readSource = readSource;
     }
+
+    public string ReadSource => _readSource;
+
+    public bool SupportsConcurrentReads => true;
 
     public bool TryRead(ulong address, Span<byte> destination, out int bytesRead)
     {
@@ -48,29 +55,40 @@ public sealed class WindowsMemoryReader : IMemoryReader
         return ok && bytesRead == destination.Length;
     }
 
-    public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead) =>
-        BlockReadHelper.TryFill(address, buffer, offset, length, out bytesRead, TryReadDirect);
-
-    private bool TryReadDirect(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
+    public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
     {
-        bytesRead = 0;
+        var completed = TryReadBlockWithCoverage(address, buffer, offset, length, out var result);
+        bytesRead = result.ReadableBytes;
+        return completed;
+    }
+
+    public bool TryReadBlockWithCoverage(
+        ulong address,
+        byte[] buffer,
+        int offset,
+        int length,
+        out BlockReadResult result) =>
+        BlockReadHelper.TryFill(address, buffer, offset, length, out result, TryReadDirect);
+
+    private BlockReadResult TryReadDirect(ulong address, byte[] buffer, int offset, int length)
+    {
         if (length == 0)
         {
-            return true;
+            return BlockReadResult.Empty;
         }
 
         unsafe
         {
             fixed (byte* ptr = &buffer[offset])
             {
-                var ok = NativeMethods.ReadProcessMemory(
+                _ = NativeMethods.ReadProcessMemory(
                     _processHandle,
                     (IntPtr)address,
                     (IntPtr)ptr,
                     (IntPtr)length,
                     out var read);
-                bytesRead = (int)read;
-                return ok && bytesRead == length;
+                var bytesRead = (int)read;
+                return BlockReadResult.FromReadablePrefix(length, bytesRead);
             }
         }
     }
@@ -80,7 +98,8 @@ public sealed class WindowsMemoryReader : IMemoryReader
         var address = 0UL;
         while (true)
         {
-            var result = NativeMethods.VirtualQuery(
+            var result = NativeMethods.VirtualQueryEx(
+                _processHandle,
                 (IntPtr)address,
                 out var info,
                 (UIntPtr)Marshal.SizeOf<NativeMethods.MemoryBasicInformation>());
@@ -146,6 +165,27 @@ internal static class NativeMethods
     internal static extern IntPtr GetCurrentProcess();
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern uint PssCaptureSnapshot(
+        IntPtr processHandle,
+        uint captureFlags,
+        uint threadContextFlags,
+        out IntPtr snapshotHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern uint PssQuerySnapshot(
+        IntPtr snapshotHandle,
+        uint informationClass,
+        out PssVaCloneInformation buffer,
+        uint bufferLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern uint PssFreeSnapshot(IntPtr processHandle, IntPtr snapshotHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool CloseHandle(IntPtr handle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ReadProcessMemory(
         IntPtr hProcess,
@@ -153,6 +193,10 @@ internal static class NativeMethods
         [Out] byte[] lpBuffer,
         IntPtr nSize,
         out IntPtr lpNumberOfBytesRead);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -164,7 +208,8 @@ internal static class NativeMethods
         out IntPtr lpNumberOfBytesRead);
 
     [DllImport("kernel32.dll", SetLastError = true)]
-    internal static extern UIntPtr VirtualQuery(
+    internal static extern UIntPtr VirtualQueryEx(
+        IntPtr processHandle,
         IntPtr lpAddress,
         out MemoryBasicInformation lpBuffer,
         UIntPtr dwLength);
@@ -179,5 +224,25 @@ internal static class NativeMethods
         public uint State;
         public uint Protect;
         public uint Type;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MemoryStatusEx
+    {
+        public uint Length;
+        public uint MemoryLoadPercent;
+        public ulong TotalPhysicalBytes;
+        public ulong AvailablePhysicalBytes;
+        public ulong TotalPageFileBytes;
+        public ulong AvailableCommitBytes;
+        public ulong TotalVirtualBytes;
+        public ulong AvailableVirtualBytes;
+        public ulong AvailableExtendedVirtualBytes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PssVaCloneInformation
+    {
+        public IntPtr VaCloneHandle;
     }
 }

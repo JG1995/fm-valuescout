@@ -71,6 +71,38 @@ public sealed class BridgeStatusSerializationTests
     }
 
     [Fact]
+    public void Write_replaces_machine_local_paths_in_failed_status_errors()
+    {
+        var bridgeDir = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(bridgeDir);
+
+        try
+        {
+            StatusWriter.Write(
+                bridgeDir,
+                new BridgeStatus
+                {
+                    ProtocolVersion = BridgeProtocol.ProtocolVersion,
+                    PluginVersion = "0.1.0",
+                    State = BridgeProtocol.StateFailed,
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                    GamePluginModulePresent = true,
+                    GameAssemblyModulePresent = true,
+                    Error = "Could not create C:\\Users\\player\\AppData\\Local\\fm-valuescout\\fm-bridge\\dump.json",
+                });
+
+            var serialized = File.ReadAllText(BridgePaths.GetStatusPath(bridgeDir));
+            Assert.DoesNotContain("C:\\Users\\player", serialized, StringComparison.Ordinal);
+            Assert.True(StatusWriter.TryRead(bridgeDir, out var status));
+            Assert.Equal("scan failed unexpectedly", status!.Error);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Bridge_directory_is_localappdata_fm_valuescout_fm_bridge()
     {
         var expected = Path.Combine(

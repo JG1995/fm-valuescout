@@ -23,7 +23,10 @@ public static class DumpWriter
     /// Never replaces an existing dump with an empty or failed result.
     /// </summary>
     /// <returns>True when the dump file was replaced.</returns>
-    public static bool TryWriteReplaceOnSuccess(string bridgeDirectory, DumpDocument document)
+    public static bool TryWriteReplaceOnSuccess(
+        string bridgeDirectory,
+        DumpDocument document,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(document);
         Directory.CreateDirectory(bridgeDirectory);
@@ -36,22 +39,37 @@ public static class DumpWriter
         var path = BridgePaths.GetDumpPath(bridgeDirectory);
         var tempPath = path + ".tmp";
 
-        using (var stream = File.Create(tempPath))
+        try
         {
-            WriteCompact(stream, document);
-        }
+            using (var stream = File.Create(tempPath))
+            {
+                WriteCompact(stream, document, cancellationToken);
+            }
 
-        File.Move(tempPath, path, overwrite: true);
-        return true;
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(tempPath, path, overwrite: true);
+            return true;
+        }
+        finally
+        {
+            if (File.Exists(tempPath))
+            {
+                File.Delete(tempPath);
+            }
+        }
     }
 
     /// <summary>
     /// Streams compact schema-v6 dump JSON to <paramref name="stream"/> without building a second full document string.
     /// </summary>
-    public static void WriteCompact(Stream stream, DumpDocument document)
+    public static void WriteCompact(
+        Stream stream,
+        DumpDocument document,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(document);
+        cancellationToken.ThrowIfCancellationRequested();
 
         using var writer = new Utf8JsonWriter(stream, WriterOptions);
         writer.WriteStartObject();
@@ -88,6 +106,7 @@ public static class DumpWriter
         writer.WriteStartArray();
         foreach (var player in document.Players)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             JsonSerializer.Serialize(writer, player, SerializerOptions);
             writer.Flush();
         }
@@ -98,6 +117,7 @@ public static class DumpWriter
         writer.WriteStartArray();
         foreach (var staff in document.Staff)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             JsonSerializer.Serialize(writer, staff, SerializerOptions);
             writer.Flush();
         }
@@ -113,6 +133,7 @@ public static class DumpWriter
             JsonSerializer.Serialize(writer, document.Manager, SerializerOptions);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         writer.WriteEndObject();
         writer.Flush();
     }
@@ -153,6 +174,24 @@ public static class DiagnosticsWriter
 
         sb.AppendLine($"regionCount={diagnostics.RegionCount}");
         sb.AppendLine($"bytesScanned={diagnostics.BytesScanned}");
+        sb.AppendLine($"scanReadSource={diagnostics.ReadSource}");
+        sb.AppendLine($"scanRetryCount={diagnostics.ScanRetryCount}");
+        sb.AppendLine($"snapshotCaptureMs={diagnostics.SnapshotCaptureMs?.ToString() ?? "(none)"}");
+        sb.AppendLine($"snapshotAvailableCommitBytes={diagnostics.SnapshotAvailableCommitBytes?.ToString() ?? "(unknown)"}");
+        if (!string.IsNullOrEmpty(diagnostics.SnapshotFailureReason))
+        {
+            sb.AppendLine($"snapshotFailureReason={diagnostics.SnapshotFailureReason}");
+        }
+        sb.AppendLine($"scanRequestedBytes={diagnostics.ReadQuality.RequestedBytes}");
+        sb.AppendLine($"scanReadableBytes={diagnostics.ReadQuality.ReadableBytes}");
+        sb.AppendLine($"scanUnreadBytes={diagnostics.ReadQuality.UnreadBytes}");
+        sb.AppendLine($"scanInternalFailureBytes={diagnostics.ReadQuality.InternalFailureBytes}");
+        sb.AppendLine($"scanMateriallyIncomplete={diagnostics.ReadQuality.IsMateriallyIncomplete}");
+        sb.AppendLine($"scanWorkerCount={diagnostics.ScanWorkerCount}");
+        sb.AppendLine($"scanWorkerBufferBytes={diagnostics.ScanWorkerBufferBytes}");
+        sb.AppendLine($"availablePhysicalBytes={diagnostics.AvailablePhysicalBytes?.ToString() ?? "(unknown)"}");
+        sb.AppendLine($"availableCommitBytes={diagnostics.AvailableCommitBytes?.ToString() ?? "(unknown)"}");
+        sb.AppendLine($"memoryLoadPercent={diagnostics.MemoryLoadPercent?.ToString() ?? "(unknown)"}");
         sb.AppendLine($"vtableHits={diagnostics.VtableHits}");
         sb.AppendLine($"candidatesAccepted={diagnostics.CandidatesAccepted}");
         sb.AppendLine($"staffCandidatesAccepted={diagnostics.StaffCandidatesAccepted}");
@@ -182,16 +221,6 @@ public static class DiagnosticsWriter
         }
 
         sb.AppendLine($"stoppedEarly={diagnostics.StoppedEarly}");
-
-        if (diagnostics.GameAssembly is { } ga)
-        {
-            sb.AppendLine($"gameAssembly=0x{ga.BaseAddress:X}-0x{ga.EndAddress:X}");
-        }
-
-        if (diagnostics.GamePlugin is { } gp)
-        {
-            sb.AppendLine($"gamePlugin=0x{gp.BaseAddress:X}-0x{gp.EndAddress:X}");
-        }
 
         sb.AppendLine("classOffsetHistogram:");
         foreach (var pair in diagnostics.ClassOffsetHistogram.OrderBy(p => p.Key))

@@ -14,6 +14,34 @@ public sealed class ScanDiagnostics
 
     public long BytesScanned { get; set; }
 
+    public string ReadSource { get; set; } = "live";
+
+    /// <summary>Number of bounded retries after the live attempt.</summary>
+    public int ScanRetryCount { get; set; }
+
+    /// <summary>Elapsed time to capture the optional VA clone.</summary>
+    public long? SnapshotCaptureMs { get; set; }
+
+    /// <summary>Available commit memory checked immediately before snapshot capture.</summary>
+    public ulong? SnapshotAvailableCommitBytes { get; set; }
+
+    /// <summary>Snapshot capture failure without process addresses or memory contents.</summary>
+    public string? SnapshotFailureReason { get; set; }
+
+    public ScanReadQuality ReadQuality { get; set; }
+
+    public int ScanWorkerCount { get; set; }
+
+    public int ScanWorkerBufferBytes { get; set; }
+
+    public ulong? AvailablePhysicalBytes { get; set; }
+
+    public ulong? AvailableCommitBytes { get; set; }
+
+    public uint? MemoryLoadPercent { get; set; }
+
+    internal List<uint> AcceptedPlayerUids { get; } = new();
+
     public int VtableHits { get; set; }
 
     public int CandidatesAccepted { get; set; }

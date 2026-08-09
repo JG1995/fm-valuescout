@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [FM SuperScout reader parity](./features/active/fm-superscout-parity.md) — add and persist the remaining direct memory-backed player, staff, manager, and club data, then harden scans without changing their semantic results
+No active feature is selected. [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md) is complete locally; PR 2 remains ready for publication but is not published or merged.
 
 ## Next
 
@@ -60,6 +60,7 @@ No next feature selected.
 
 ## Completed
 
+- [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md) — schema-v6 direct player, staff, manager, scope, and club parity plus deterministic scan hardening and prior-output safety; PR 2 remains unpublished and unmerged
 - [Planner workspace redesign](./features/completed/planner-workspace-redesign.md) — URL-backed Planner workspaces, adaptive dual-phase tactic pitches, responsive three-team depth matrix, and transactional Clear all
 - [Youth Academy](./features/completed/youth-academy.md) — save-scoped `Class of YYYY` cohorts, club-family player tracking, manual sale/release outcomes, and honest placeholders for career statistics pending memory-reader support
 - [Codex workflow migration](./features/completed/codex-workflow-migration.md) — Codex-only repository guidance, specialist agents, and product-focused validation
@@ -70,7 +71,7 @@ No next feature selected.
 - [Planner module refactor](./features/completed/planner-module-refactor.md) — behavior-preserving Planner-private Rust and React component decomposition
 - [Player search](./features/completed/player-search.md) — `/search` route, virtualized table, operator filters (scalars through role scores), URL-persisted filter/sort state, global Ctrl+K name suggest
 - [Role scoring engine](./features/completed/role-scoring-engine.md) — FM26 IP/OOP catalog (68 roles), scores on ingest into `player_role_scores`, DLP IP sanity proof, `combine_role_scores` helper
-- [FM26 memory read](./features/completed/fm26-memory-read.md) — BepInEx bridge, file protocol, dump schema v5, Rust validation, bridge status + Load Data UI
+- [FM26 memory read](./features/completed/fm26-memory-read.md) — initial BepInEx bridge, file protocol, dump schema v5, Rust validation, bridge status + Load Data UI; current schema-v6 parity is recorded in [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md)
 - [In-app bridge plugin install](./features/completed/bridge-plugin-install.md) — install / update / remove `FmDataBridge.dll` for default Steam FM26 from the app
 - [Snapshot ingest + Load Data](./features/completed/snapshot-ingest.md) — app save slots, current snapshot ingest, Load Data scan+ingest, sanity list
 - [Bridge scan performance](./features/completed/bridge-scan-performance.md) — block heap scanning, streaming dump, optimized ingest, unlimited Load Data default, UI cap controls and timings

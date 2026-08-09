@@ -244,6 +244,42 @@ public sealed class MemoryReaderTests
     }
 
     [Fact]
+    public void TryReadBlock_clears_parent_bytes_when_a_child_retry_becomes_unreadable()
+    {
+        const ulong address = 0x10000;
+        var pageSize = MemoryConstants.MinBlockReadSize;
+        var buffer = new byte[pageSize * 2];
+        var calls = 0;
+
+        BlockReadResult ReadRange(ulong readAddress, byte[] target, int offset, int length)
+        {
+            calls++;
+            return calls switch
+            {
+                1 => WritePrefix(target, offset, length, pageSize, 0xA1),
+                2 => BlockReadResult.FromReadablePrefix(length, 0),
+                3 => WritePrefix(target, offset, length, length, 0xB2),
+                _ => throw new InvalidOperationException($"unexpected read at {readAddress:X}"),
+            };
+        }
+
+        var completed = BlockReadHelper.TryFill(
+            address,
+            buffer,
+            0,
+            buffer.Length,
+            out var result,
+            ReadRange);
+
+        Assert.False(completed);
+        Assert.Equal(pageSize, result.ReadableBytes);
+        Assert.Equal(0, result.CountReadableBytes(0, pageSize));
+        Assert.Equal(pageSize, result.CountReadableBytes(pageSize, pageSize));
+        Assert.True(buffer.AsSpan(0, pageSize).ToArray().All(value => value == 0));
+        Assert.True(buffer.AsSpan(pageSize, pageSize).ToArray().All(value => value == 0xB2));
+    }
+
+    [Fact]
     public void TryReadBlock_writes_into_caller_buffer_offset()
     {
         var reader = new FakeMemoryReader();
@@ -311,6 +347,17 @@ public sealed class MemoryReaderTests
         };
 
         Assert.False(ModuleLocator.TryFind(modules, ModuleLocator.GamePluginModuleName, out _));
+    }
+
+    private static BlockReadResult WritePrefix(
+        byte[] target,
+        int offset,
+        int length,
+        int readableBytes,
+        byte value)
+    {
+        target.AsSpan(offset, readableBytes).Fill(value);
+        return BlockReadResult.FromReadablePrefix(length, readableBytes);
     }
 
     private static MemoryRegion MakeRegion(
