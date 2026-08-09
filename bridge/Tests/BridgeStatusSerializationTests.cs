@@ -36,6 +36,42 @@ public sealed class BridgeStatusSerializationTests
     }
 
     [Fact]
+    public void Serialize_player_boost_status_exposes_verified_values_without_identity_or_memory_details()
+    {
+        var json = StatusWriter.Serialize(
+            new BridgeStatus
+            {
+                ProtocolVersion = BridgeProtocol.ProtocolVersion,
+                PluginVersion = "0.1.0",
+                State = BridgeProtocol.StateReady,
+                UpdatedAtUtc = new DateTimeOffset(2026, 8, 9, 12, 0, 0, TimeSpan.Zero),
+                GamePluginModulePresent = true,
+                GameAssemblyModulePresent = true,
+                RequestId = "boost-ca-1",
+                PlayerBoostsSupported = true,
+                PlayerBoost = new PlayerBoostResult
+                {
+                    Operation = BridgeProtocol.OperationBoostCurrentAbility,
+                    Outcome = "verified",
+                    Rollback = "not-needed",
+                    PreviousCurrentAbility = 120,
+                    CurrentAbility = 125,
+                    PotentialAbility = 150,
+                },
+            });
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("playerBoostsSupported").GetBoolean());
+        var result = root.GetProperty("playerBoost");
+        Assert.Equal(BridgeProtocol.OperationBoostCurrentAbility, result.GetProperty("operation").GetString());
+        Assert.Equal("verified", result.GetProperty("outcome").GetString());
+        Assert.Equal(125, result.GetProperty("currentAbility").GetInt32());
+        Assert.DoesNotContain("address", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("uid", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Write_creates_status_json_under_bridge_directory()
     {
         var bridgeDir = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));

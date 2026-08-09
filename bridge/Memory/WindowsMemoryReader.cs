@@ -7,7 +7,7 @@ namespace FmDataBridge.Memory;
 /// Production reader for a process image using ReadProcessMemory / VirtualQueryEx.
 /// Invalid addresses fail the read; they must not hard-crash via raw pointer deref.
 /// </summary>
-public sealed class WindowsMemoryReader : IMemoryReader
+public sealed class WindowsMemoryReader : IMemoryReader, IMemoryWriter
 {
     private readonly IntPtr _processHandle;
 
@@ -53,6 +53,36 @@ public sealed class WindowsMemoryReader : IMemoryReader
         }
 
         return ok && bytesRead == destination.Length;
+    }
+
+    bool IMemoryWriter.TryWriteByte(ulong address, byte value, out int bytesWritten) =>
+        TryWriteScalar(address, new[] { value }, out bytesWritten);
+
+    bool IMemoryWriter.TryWriteUInt16(ulong address, ushort value, out int bytesWritten)
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(ushort)];
+        BitConverter.TryWriteBytes(bytes, value);
+        return TryWriteScalar(address, bytes, out bytesWritten);
+    }
+
+    private bool TryWriteScalar(ulong address, ReadOnlySpan<byte> source, out int bytesWritten)
+    {
+        bytesWritten = 0;
+        if (source.IsEmpty)
+        {
+            return true;
+        }
+
+        var buffer = source.ToArray();
+        var ok = NativeMethods.WriteProcessMemory(
+            _processHandle,
+            (IntPtr)address,
+            buffer,
+            (IntPtr)buffer.Length,
+            out var written);
+
+        bytesWritten = (int)written;
+        return ok && bytesWritten == buffer.Length;
     }
 
     public bool TryReadBlock(ulong address, byte[] buffer, int offset, int length, out int bytesRead)
@@ -193,6 +223,15 @@ internal static class NativeMethods
         [Out] byte[] lpBuffer,
         IntPtr nSize,
         out IntPtr lpNumberOfBytesRead);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool WriteProcessMemory(
+        IntPtr hProcess,
+        IntPtr lpBaseAddress,
+        [In] byte[] lpBuffer,
+        IntPtr nSize,
+        out IntPtr lpNumberOfBytesWritten);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

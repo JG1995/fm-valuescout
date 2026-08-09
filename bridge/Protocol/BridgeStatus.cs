@@ -28,4 +28,10 @@ public sealed class BridgeStatus
 
     /// <summary>Accepted-player cap used for the last ready dump; null when unlimited.</summary>
     public int? MaxAccepted { get; init; }
+
+    /// <summary>Whether this loaded exact FM build has a live candidate index for the two boost actions.</summary>
+    public bool? PlayerBoostsSupported { get; init; }
+
+    /// <summary>Sanitized verified result for the last player-boost request, when applicable.</summary>
+    public PlayerBoostResult? PlayerBoost { get; init; }
 }

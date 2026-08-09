@@ -1,7 +1,9 @@
 using BepInEx;
 using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
+using FmDataBridge.Layouts;
 using FmDataBridge.Memory;
+using FmDataBridge.Mutations;
 using FmDataBridge.Output;
 using FmDataBridge.Protocol;
 using FmDataBridge.Scanning;
@@ -19,7 +21,7 @@ public class Plugin : BasePlugin
 
     private static CancellationTokenSource? s_unloadCts;
 
-    private static Thread? s_scanThread;
+    private static Thread? s_operationThread;
 
     private static readonly TimeSpan RequestPollInterval = TimeSpan.FromSeconds(2);
 
@@ -29,9 +31,15 @@ public class Plugin : BasePlugin
 
     private static readonly TimeSpan ScanThreadJoinTimeout = TimeSpan.FromSeconds(30);
 
-    private static readonly object ScanGate = new();
+    private static readonly object WorkStartGate = new();
 
-    private static bool _scanInProgress;
+    private static readonly BridgeWorkGate WorkGate = new();
+
+    private static readonly LayoutRegistry Layouts = LayoutRegistry.CreateDefault();
+
+    private static readonly PlayerMutationIndex PlayerMutationIndex = new();
+
+    private static readonly PlayerBoostOperationService PlayerBoosts = new(Layouts, PlayerMutationIndex);
 
     public override void Load()
     {
@@ -40,6 +48,7 @@ public class Plugin : BasePlugin
         try
         {
             var bridgeDirectory = BridgePaths.EnsureBridgeDirectory();
+            PlayerMutationIndex.Clear();
             WriteIdleStatus(bridgeDirectory, DetectModulesBestEffort());
             Log.LogInfo(
                 $"FM Data Bridge {MyPluginInfo.PLUGIN_VERSION} loaded; wrote {BridgePaths.GetStatusPath(bridgeDirectory)}");
@@ -79,12 +88,14 @@ public class Plugin : BasePlugin
                 $"Request poll thread did not exit within {PollThreadJoinTimeout.TotalSeconds:0}s");
         }
 
-        if (s_scanThread is { IsAlive: true } scanThread
-            && !scanThread.Join(ScanThreadJoinTimeout))
+        if (s_operationThread is { IsAlive: true } operationThread
+            && !operationThread.Join(ScanThreadJoinTimeout))
         {
             Log.LogWarning(
-                $"Scan thread did not exit within {ScanThreadJoinTimeout.TotalSeconds:0}s");
+                $"Bridge work thread did not exit within {ScanThreadJoinTimeout.TotalSeconds:0}s");
         }
+
+        PlayerMutationIndex.Clear();
 
         return true;
     }
@@ -95,7 +106,7 @@ public class Plugin : BasePlugin
         {
             try
             {
-                TryStartScanFromRequestOrForceFlag(bridgeDirectory);
+                TryStartBridgeWorkFromRequestOrForceFlag(bridgeDirectory);
                 TryRefreshStaleModuleFlags(bridgeDirectory);
             }
             catch (Exception ex)
@@ -107,20 +118,20 @@ public class Plugin : BasePlugin
         }
     }
 
-    private static void TryStartScanFromRequestOrForceFlag(string bridgeDirectory)
+    private static void TryStartBridgeWorkFromRequestOrForceFlag(string bridgeDirectory)
     {
-        string? requestId = null;
-        int? maxAccepted = null;
+        BridgeRequest? request = null;
         var playerDatabaseScope = PlayerDatabaseScope.Men;
 
-        lock (ScanGate)
+        lock (WorkStartGate)
         {
-            if (_scanInProgress)
+            if (WorkGate.IsBusy)
             {
-                // Keep a waiting request.json fresh so a long scan does not TTL-kill it.
+                // Keep a waiting request.json fresh so a long dump or boost does not TTL-kill it.
                 RequestAcceptance.TryRefreshCreatedAtUtc(
                     BridgePaths.GetRequestPath(bridgeDirectory),
-                    DateTimeOffset.UtcNow);
+                    DateTimeOffset.UtcNow,
+                    RequestTtl);
                 return;
             }
 
@@ -131,7 +142,7 @@ public class Plugin : BasePlugin
                         requestPath,
                         DateTimeOffset.UtcNow,
                         RequestTtl,
-                        out var request,
+                        out request,
                         out var rejectReason,
                         out var observedRequestId))
                 {
@@ -149,58 +160,68 @@ public class Plugin : BasePlugin
 
                     return;
                 }
-
-                requestId = request.RequestId;
-                maxAccepted = request.MaxAccepted;
-                if (!PlayerDatabaseScopes.TryParse(request.PlayerDatabaseScope, out playerDatabaseScope))
-                {
-                    throw new InvalidOperationException("Accepted request has an invalid player database scope.");
-                }
             }
             else if (File.Exists(BridgePaths.GetForceScanPath(bridgeDirectory)))
             {
                 // Manual fallback until operators prefer only the in-app request path.
                 // Unlimited — same as production Load Data (null maxAccepted).
-                requestId = "force-scan";
-                maxAccepted = null;
-                playerDatabaseScope = PlayerDatabaseScope.Men;
+                request = ForceScanRequestFactory.Create(DateTimeOffset.UtcNow);
             }
             else
             {
                 return;
             }
 
-            _scanInProgress = true;
+            if (request.Operation == BridgeProtocol.OperationFullDump
+                && !PlayerDatabaseScopes.TryParse(request.PlayerDatabaseScope, out playerDatabaseScope))
+            {
+                throw new InvalidOperationException("Accepted request has an invalid player database scope.");
+            }
+
+            if (!WorkGate.TryEnter())
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    DetectModulesBestEffort(),
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "bridge work is already in progress; retry the request");
+                return;
+            }
         }
 
-        var scanRequestId = requestId!;
-        var scanMaxAccepted = maxAccepted;
-        var scanPlayerDatabaseScope = playerDatabaseScope;
+        var acceptedRequest = request!;
+        var acceptedScope = playerDatabaseScope;
         var cancelToken = s_unloadCts?.Token ?? CancellationToken.None;
-        s_scanThread = new Thread(() =>
+        s_operationThread = new Thread(() =>
         {
             try
             {
-                RunDumpScan(
-                    bridgeDirectory,
-                    scanRequestId,
-                    scanMaxAccepted,
-                    scanPlayerDatabaseScope,
-                    cancelToken);
+                if (acceptedRequest.Operation == BridgeProtocol.OperationFullDump)
+                {
+                    RunDumpScan(
+                        bridgeDirectory,
+                        acceptedRequest.RequestId,
+                        acceptedRequest.MaxAccepted,
+                        acceptedScope,
+                        cancelToken);
+                }
+                else
+                {
+                    RunPlayerBoost(bridgeDirectory, acceptedRequest, cancelToken);
+                }
             }
             finally
             {
-                lock (ScanGate)
-                {
-                    _scanInProgress = false;
-                }
+                WorkGate.Exit();
             }
         })
         {
             IsBackground = true,
-            Name = "FmBridge-Scan",
+            Name = "FmBridge-Work",
         };
-        s_scanThread.Start();
+        s_operationThread.Start();
     }
 
     private static void RunDumpScan(
@@ -259,7 +280,7 @@ public class Plugin : BasePlugin
                 return;
             }
 
-            var result = new CapADumpPipeline().Run(
+            var result = new CapADumpPipeline(Layouts).Run(
                 reader,
                 bridgeDirectory,
                 gameVersion,
@@ -274,6 +295,18 @@ public class Plugin : BasePlugin
 
             if (result.Success)
             {
+                if (result.LivePlayerCandidates.Count > 0
+                    && PlayerBoosts.SupportsExactGameBuild(gameVersion))
+                {
+                    PlayerMutationIndex.Replace(requestId, gameVersion, result.LivePlayerCandidates);
+                }
+                else
+                {
+                    PlayerMutationIndex.Clear();
+                }
+
+                var playerBoostsSupported = PlayerBoosts.HasSupportedLiveIndex(gameVersion);
+
                 WriteStatus(
                     bridgeDirectory,
                     BridgeProtocol.StateReady,
@@ -282,7 +315,8 @@ public class Plugin : BasePlugin
                     playersFound: result.PlayerCount,
                     error: null,
                     scanTruncated: result.ScanTruncated,
-                    maxAccepted: result.MaxAccepted);
+                    maxAccepted: result.MaxAccepted,
+                    playerBoostsSupported: playerBoostsSupported);
                 Log.LogInfo(
                     $"Dump request {requestId} wrote {result.PlayerCount} players"
                     + (result.ScanTruncated ? " (scan truncated)" : ""));
@@ -295,7 +329,8 @@ public class Plugin : BasePlugin
                     modules,
                     requestId: requestId,
                     playersFound: null,
-                    error: result.Error);
+                    error: result.Error,
+                    playerBoostsSupported: PlayerBoosts.HasSupportedLiveIndex(gameVersion));
                 Log.LogWarning($"Dump request {requestId} failed: {result.Error}");
             }
         }
@@ -320,17 +355,131 @@ public class Plugin : BasePlugin
         }
     }
 
+    private static void RunPlayerBoost(
+        string bridgeDirectory,
+        BridgeRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reader = new WindowsMemoryReader();
+            var known = reader.LocateKnownModules();
+            var modules = ModulePresence.FromBounds(known);
+            WriteStatus(
+                bridgeDirectory,
+                BridgeProtocol.StateScanning,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: null,
+                playerBoostsSupported: false);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "player boost cancelled before it started",
+                    playerBoostsSupported: false);
+                return;
+            }
+
+            if (!GameVersionDetector.TryDetectFromCurrentProcess(out var gameVersion)
+                || string.IsNullOrWhiteSpace(gameVersion))
+            {
+                const string message =
+                    "could not detect FM game_plugin.dll version; refusing player boost (fail closed)";
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: message,
+                    playerBoostsSupported: false);
+                Log.LogWarning(message);
+                return;
+            }
+
+            var result = PlayerBoosts.Execute(request, gameVersion, reader, reader);
+            if (result.Succeeded)
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateReady,
+                    modules,
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: null,
+                    playerBoostsSupported: PlayerBoosts.HasSupportedLiveIndex(gameVersion),
+                    playerBoost: result.BoostResult);
+                return;
+            }
+
+            PlayerMutationIndex.Clear();
+
+            WriteStatus(
+                bridgeDirectory,
+                BridgeProtocol.StateFailed,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: PlayerBoostFailureMessage(result.Failure),
+                playerBoostsSupported: false,
+                playerBoost: result.BoostResult);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError($"Player boost crashed: {ex}");
+            try
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    DetectModulesBestEffort(),
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "player boost failed unexpectedly",
+                    playerBoostsSupported: false);
+            }
+            catch
+            {
+                // ignored — status best-effort
+            }
+        }
+    }
+
+    private static string PlayerBoostFailureMessage(PlayerBoostFailure failure) =>
+        failure switch
+        {
+            PlayerBoostFailure.InvalidRequest => "invalid player boost request; update the app and retry",
+            PlayerBoostFailure.UnsupportedGameBuild =>
+                "this FM build is not approved for player boosts; update the bridge plugin and Load Data",
+            PlayerBoostFailure.NoLiveScan => "Load Data again before using player boosts",
+            PlayerBoostFailure.SourceRequestMismatch => "Load Data again before using player boosts",
+            PlayerBoostFailure.PlayerNotFound => "player was not found in the latest live scan; Load Data again",
+            PlayerBoostFailure.ExpectedValuesMismatch => "player values changed in FM; Load Data again",
+            PlayerBoostFailure.LiveIdentityMismatch => "player identity changed in FM; Load Data again",
+            PlayerBoostFailure.LiveReadFailed => "could not safely read the player; Load Data again",
+            PlayerBoostFailure.InvalidLiveValue => "player values are not valid for this boost; Load Data again",
+            PlayerBoostFailure.CurrentAbilityAtLimit => "current ability is already at its potential limit",
+            PlayerBoostFailure.MutationFailed => "player boost could not be verified; Load Data again",
+            PlayerBoostFailure.PartialRollbackUnverified =>
+                "player boost could not verify rollback; Load Data again before making another change",
+            _ => "player boost failed; Load Data again",
+        };
+
     /// <summary>
     /// game_plugin.dll may appear after plugin Load; rewrite status module flags without changing state.
     /// </summary>
     private static void TryRefreshStaleModuleFlags(string bridgeDirectory)
     {
-        lock (ScanGate)
+        if (WorkGate.IsBusy)
         {
-            if (_scanInProgress)
-            {
-                return;
-            }
+            return;
         }
 
         var modules = DetectModulesBestEffort();
@@ -345,12 +494,9 @@ public class Plugin : BasePlugin
             return;
         }
 
-        lock (ScanGate)
+        if (WorkGate.IsBusy)
         {
-            if (_scanInProgress)
-            {
-                return;
-            }
+            return;
         }
 
         WriteStatus(
@@ -361,7 +507,9 @@ public class Plugin : BasePlugin
             playersFound: current.PlayersFound,
             error: current.Error,
             scanTruncated: current.ScanTruncated,
-            maxAccepted: current.MaxAccepted);
+            maxAccepted: current.MaxAccepted,
+            playerBoostsSupported: current.PlayerBoostsSupported,
+            playerBoost: current.PlayerBoost);
     }
 
     private static void TryDeleteForceScanFlag(string bridgeDirectory)
@@ -387,7 +535,8 @@ public class Plugin : BasePlugin
             modules,
             requestId: null,
             playersFound: null,
-            error: null);
+            error: null,
+            playerBoostsSupported: false);
 
     private static void WriteStatus(
         string bridgeDirectory,
@@ -397,7 +546,9 @@ public class Plugin : BasePlugin
         int? playersFound,
         string? error,
         bool? scanTruncated = null,
-        int? maxAccepted = null)
+        int? maxAccepted = null,
+        bool? playerBoostsSupported = null,
+        PlayerBoostResult? playerBoost = null)
     {
         var status = new BridgeStatus
         {
@@ -412,6 +563,8 @@ public class Plugin : BasePlugin
             Error = error,
             ScanTruncated = scanTruncated,
             MaxAccepted = maxAccepted,
+            PlayerBoostsSupported = playerBoostsSupported,
+            PlayerBoost = playerBoost,
         };
         StatusWriter.Write(bridgeDirectory, status);
     }

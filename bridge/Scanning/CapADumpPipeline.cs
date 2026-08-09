@@ -582,14 +582,20 @@ public sealed class CapADumpPipeline
         diagnostics.DumpWritingMs = phaseSw.ElapsedMilliseconds;
         WriteDiagnostics(bridgeDirectory, diagnostics, counting, totalSw);
 
-        return replaced
-            ? CapADumpResult.Succeeded(
+        if (!replaced)
+        {
+            return CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
+        }
+
+        var result = CapADumpResult.Succeeded(
                 players.Count,
                 scanTruncated: diagnostics.StoppedEarly,
                 maxAccepted: diagnostics.MaxAccepted,
                 staff: staff,
-                manager: manager)
-            : CapADumpResult.Failed("dump write did not replace file", dumpReplaced: false);
+                manager: manager);
+        return string.Equals(reader.ReadSource, "live", StringComparison.Ordinal)
+            ? result with { LivePlayerCandidates = drafts.Select(draft => draft.Candidate).ToArray() }
+            : result;
     }
 
     private static CapADumpResult Cancelled(
@@ -710,6 +716,11 @@ public readonly record struct CapADumpResult(
     IReadOnlyList<StaffRecord> Staff,
     HumanManager? Manager)
 {
+    /// <summary>
+    /// Candidate locations from a successful live read only. This remains internal and never enters a dump or status.
+    /// </summary>
+    internal IReadOnlyList<PersonCandidate> LivePlayerCandidates { get; init; } = Array.Empty<PersonCandidate>();
+
     public static CapADumpResult Succeeded(
         int playerCount,
         bool scanTruncated = false,

@@ -782,6 +782,30 @@ public sealed class CapADumpTests
     }
 
     [Fact]
+    public void Successful_live_pipeline_retains_only_internal_player_candidates_for_a_later_boost()
+    {
+        var bridgeDir = CreateTempBridgeDir();
+        try
+        {
+            var result = new CapADumpPipeline().Run(
+                BuildReaderWithTwoIdenticalPlayers(Fm263Layout.Instance, uid: 101),
+                bridgeDir,
+                gameVersion: "26.3.2",
+                bridgeVersion: "0.1.0",
+                gameAssembly: new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd));
+
+            Assert.True(result.Success);
+            var candidate = Assert.Single(result.LivePlayerCandidates);
+            Assert.Equal(101u, candidate.Uid);
+            Assert.Equal(PersonFacet.Player, candidate.Facet);
+        }
+        finally
+        {
+            Directory.Delete(bridgeDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Pipeline_does_not_snapshot_after_a_complete_live_scan()
     {
         var bridgeDir = CreateTempBridgeDir();
@@ -827,6 +851,7 @@ public sealed class CapADumpTests
             Assert.True(result.Success);
             Assert.Equal(1, factory.CaptureCount);
             Assert.Equal(1, snapshot.DisposeCount);
+            Assert.Empty(result.LivePlayerCandidates);
 
             using var dump = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
             Assert.Equal(202u, dump.RootElement.GetProperty("players")[0].GetProperty("uid").GetUInt32());
