@@ -229,7 +229,7 @@ function ActionTooltip({
       <span
         id={tooltipId}
         role="tooltip"
-        className="pointer-events-none invisible absolute right-0 bottom-[calc(100%+0.5rem)] z-20 w-72 rounded-md border border-outline-variant bg-surface-container-highest p-3 text-left opacity-0 shadow-overlay transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+        className="pointer-events-none invisible absolute top-[calc(100%+0.5rem)] right-0 z-20 w-72 rounded-md border border-outline-variant bg-surface-container-highest p-3 text-left opacity-0 shadow-overlay transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
       >
         {content}
       </span>

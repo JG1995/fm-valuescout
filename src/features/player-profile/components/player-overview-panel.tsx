@@ -59,7 +59,7 @@ function BestRoleSummary({
   const accessibleLabel = `${label} (${basis})`;
 
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className="flex min-w-0 items-start gap-3">
       {score === null ? (
         <span
           role="img"
@@ -116,7 +116,7 @@ export function PlayerOverviewPanel({
       aria-label={`${player.name} summary`}
       className="rounded-lg border border-outline-variant bg-surface-container p-4"
     >
-      <div className="grid gap-4 lg:grid-cols-[minmax(260px,1.15fr)_minmax(300px,1fr)_minmax(260px,0.9fr)] lg:items-start">
+      <div className="grid gap-x-4 gap-y-2 lg:grid-cols-[minmax(260px,1.15fr)_minmax(300px,1fr)_minmax(260px,0.9fr)] lg:items-start">
         <div className="min-w-0">
           <h1
             className="truncate text-headline-lg text-on-surface"
@@ -128,26 +128,6 @@ export function PlayerOverviewPanel({
             {formatMissable(player.club)}
             {player.division ? ` · ${player.division}` : ""}
           </p>
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
-            <SummaryFact
-              label="Age / DOB"
-              value={formatPlayerDob(
-                player.birthYear,
-                player.birthDayOfYear,
-                player.age,
-              )}
-            />
-            <SummaryFact label="Nationality" value={nationality} />
-            <SummaryFact
-              label="Height"
-              value={player.heightCm === null ? "—" : `${player.heightCm} cm`}
-              numeric
-            />
-            <SummaryFact
-              label="Foot"
-              value={formatPreferredFoot(player.preferredFoot)}
-            />
-          </dl>
           {flags.length > 0 ? (
             <p
               className="mt-2 truncate text-body-sm text-warning"
@@ -157,6 +137,31 @@ export function PlayerOverviewPanel({
             </p>
           ) : null}
         </div>
+
+        <div className="min-w-0 lg:col-span-2 lg:flex lg:self-end lg:justify-end">
+          {actions}
+        </div>
+
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+          <SummaryFact
+            label="Age / DOB"
+            value={formatPlayerDob(
+              player.birthYear,
+              player.birthDayOfYear,
+              player.age,
+            )}
+          />
+          <SummaryFact label="Nationality" value={nationality} />
+          <SummaryFact
+            label="Height"
+            value={player.heightCm === null ? "—" : `${player.heightCm} cm`}
+            numeric
+          />
+          <SummaryFact
+            label="Foot"
+            value={formatPreferredFoot(player.preferredFoot)}
+          />
+        </dl>
 
         <div className="grid min-w-0 grid-cols-2 gap-3 border-outline-variant lg:border-x lg:px-4">
           <BestRoleSummary
@@ -173,22 +178,19 @@ export function PlayerOverviewPanel({
           />
         </div>
 
-        <div className="min-w-0">
-          <dl className="grid grid-cols-3 gap-3">
-            <SummaryFact label="CA" value={player.ca} numeric />
-            <SummaryFact label="PA" value={formatMissable(player.pa)} numeric />
-            <SummaryFact
-              label="Value"
-              value={
-                player.marketValueGbp === null
-                  ? "—"
-                  : formatMoney(player.marketValueGbp)
-              }
-              numeric
-            />
-          </dl>
-          <div className="mt-3">{actions}</div>
-        </div>
+        <dl className="grid min-w-0 grid-cols-3 gap-3">
+          <SummaryFact label="CA" value={player.ca} numeric />
+          <SummaryFact label="PA" value={formatMissable(player.pa)} numeric />
+          <SummaryFact
+            label="Value"
+            value={
+              player.marketValueGbp === null
+                ? "—"
+                : formatMoney(player.marketValueGbp)
+            }
+            numeric
+          />
+        </dl>
       </div>
     </section>
   );

@@ -603,23 +603,63 @@ test.describe("walking skeleton smoke", () => {
         potentialBox.x,
       );
 
-      const [identityBox, bestRoleBox, abilityBox] = await Promise.all([
-        summary.getByRole("heading", { level: 1 }).locator("..").boundingBox(),
-        summary
-          .getByText("Best role (Current)", { exact: true })
-          .locator("..")
-          .locator("..")
-          .boundingBox(),
-        summary.getByText("CA", { exact: true }).locator("..").boundingBox(),
-      ]);
-      expect(identityBox).not.toBeNull();
-      expect(bestRoleBox).not.toBeNull();
-      expect(abilityBox).not.toBeNull();
-      if (!identityBox || !bestRoleBox || !abilityBox) {
-        throw new Error("Expected aligned player-summary columns.");
+      const detailLabels = await Promise.all(
+        [
+          "Age / DOB",
+          "Nationality",
+          "Height",
+          "Foot",
+          "Best role (Current)",
+          "Best potential role (Potential)",
+          "CA",
+          "PA",
+          "Value",
+        ].map((label) =>
+          summary.getByText(label, { exact: true }).boundingBox(),
+        ),
+      );
+      expect(detailLabels.every((box) => box !== null)).toBe(true);
+      const detailRowY = detailLabels[0]?.y;
+      if (detailRowY === undefined) {
+        throw new Error("Expected a visible player-summary detail row.");
       }
-      expect(Math.abs(identityBox.y - bestRoleBox.y)).toBeLessThanOrEqual(1);
-      expect(Math.abs(identityBox.y - abilityBox.y)).toBeLessThanOrEqual(1);
+      for (const labelBox of detailLabels) {
+        expect(
+          Math.abs((labelBox?.y ?? detailRowY) - detailRowY),
+        ).toBeLessThanOrEqual(1);
+      }
+
+      const [boostBox, wonderkidBox, caLabelBox, abilityRowBox] =
+        await Promise.all([
+          summary.getByRole("button", { name: "Boost CA" }).boundingBox(),
+          summary
+            .getByRole("button", { name: "Wonderkid Mentality" })
+            .boundingBox(),
+          summary.getByText("CA", { exact: true }).boundingBox(),
+          summary
+            .getByText("Value", { exact: true })
+            .locator("..")
+            .locator("..")
+            .boundingBox(),
+        ]);
+      expect(boostBox).not.toBeNull();
+      expect(wonderkidBox).not.toBeNull();
+      expect(caLabelBox).not.toBeNull();
+      expect(abilityRowBox).not.toBeNull();
+      if (!boostBox || !wonderkidBox || !caLabelBox || !abilityRowBox) {
+        throw new Error("Expected visible player-development actions.");
+      }
+      expect(boostBox.y + boostBox.height).toBeLessThanOrEqual(caLabelBox.y);
+      expect(caLabelBox.y - (boostBox.y + boostBox.height)).toBeLessThanOrEqual(
+        24,
+      );
+      expect(
+        Math.abs(
+          wonderkidBox.x +
+            wonderkidBox.width -
+            (abilityRowBox.x + abilityRowBox.width),
+        ),
+      ).toBeLessThanOrEqual(1);
     }
 
     const currentHeader = roleFit.getByRole("columnheader", {
@@ -655,11 +695,21 @@ test.describe("walking skeleton smoke", () => {
     const action = main.getByRole("button", { name: "Wonderkid Mentality" });
     await expect(action).toBeVisible();
     await action.focus();
-    await expect(
-      main
-        .getByRole("tooltip")
-        .filter({ hasText: "Ambition 10 → random 11–20" }),
-    ).toBeVisible();
+    const tooltip = main
+      .getByRole("tooltip")
+      .filter({ hasText: "Ambition 10 → random 11–20" });
+    await expect(tooltip).toBeVisible();
+    const [actionBox, tooltipBox] = await Promise.all([
+      action.boundingBox(),
+      tooltip.boundingBox(),
+    ]);
+    expect(actionBox).not.toBeNull();
+    expect(tooltipBox).not.toBeNull();
+    if (!actionBox || !tooltipBox) {
+      throw new Error("Expected the development tooltip below its action.");
+    }
+    expect(tooltipBox.y).toBeGreaterThanOrEqual(actionBox.y + actionBox.height);
+    expect(tooltipBox.y + tooltipBox.height).toBeLessThanOrEqual(800);
     await action.click();
 
     const dialog = page.getByRole("dialog");
