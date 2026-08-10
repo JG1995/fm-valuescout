@@ -253,7 +253,7 @@ function SearchResultsVirtualTable({
     void navigate({
       to: "/players/$uid",
       params: { uid: String(uid) },
-      search: { tab: "overview" },
+      search: { tab: "technical" },
     });
   };
 

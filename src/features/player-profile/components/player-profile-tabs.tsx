@@ -4,9 +4,12 @@ import type { ProfileTab } from "../utils/profile-tab";
 import { PROFILE_TABS } from "../utils/profile-tab";
 
 const TAB_LABELS: Record<ProfileTab, string> = {
-  overview: "Overview",
-  attributes: "Attributes",
-  roles: "Roles",
+  technical: "Technical",
+  mental: "Mental",
+  physical: "Physical",
+  goalkeeping: "GK",
+  hidden: "Hidden",
+  personality: "Personality",
 };
 
 type PlayerProfileTabsProps = {
@@ -50,8 +53,8 @@ export function PlayerProfileTabs({
   return (
     <div
       role="tablist"
-      aria-label="Player profile sections"
-      className="inline-flex rounded-full bg-surface-container-high p-0.5"
+      aria-label="Attribute groups"
+      className="inline-flex max-w-full rounded-full bg-surface-container-high p-0.5"
       onKeyDown={onKeyDown}
     >
       {PROFILE_TABS.map((id) => {
@@ -66,7 +69,7 @@ export function PlayerProfileTabs({
             aria-controls={`profile-panel-${id}`}
             tabIndex={selected ? 0 : -1}
             className={cn(
-              "cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out",
+              "cursor-pointer rounded-full px-3 py-1.5 text-label-md transition-colors duration-150 ease-out",
               "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
               selected
                 ? "bg-primary text-on-primary"

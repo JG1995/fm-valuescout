@@ -112,6 +112,27 @@ export type AttributeRow = {
   potentialValue?: number | null;
 };
 
+export type AttributeTier = 1 | 2 | 3 | 4;
+
+const ATTRIBUTE_TIER_LABELS: Record<AttributeTier, string> = {
+  1: "Weak",
+  2: "Average",
+  3: "Good",
+  4: "Excellent",
+};
+
+/** Map FM's 1–20 attribute scale to its four familiar display bands. */
+export function attributeValueTier(value: number): AttributeTier {
+  if (value >= 16) return 4;
+  if (value >= 11) return 3;
+  if (value >= 6) return 2;
+  return 1;
+}
+
+export function attributeTierLabel(tier: AttributeTier): string {
+  return ATTRIBUTE_TIER_LABELS[tier];
+}
+
 export function labelFromPascal(key: string): string {
   return key.replaceAll(/([a-z])([A-Z])/g, "$1 $2");
 }

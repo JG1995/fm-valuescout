@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   attributeRows,
+  attributeTierLabel,
+  attributeValueTier,
   HIDDEN_ATTRIBUTE_KEYS,
   labelFromPascal,
   PERSONALITY_ATTRIBUTE_KEYS,
@@ -63,6 +65,13 @@ describe("attribute-groups", () => {
   it("splits PascalCase keys into readable labels", () => {
     expect(labelFromPascal("OffTheBall")).toBe("Off The Ball");
     expect(labelFromPascal("JumpingReach")).toBe("Jumping Reach");
+  });
+
+  it("maps the FM attribute scale to its four familiar display tiers", () => {
+    expect([1, 5, 6, 10, 11, 15, 16, 20].map(attributeValueTier)).toEqual([
+      1, 1, 2, 2, 3, 3, 4, 4,
+    ]);
+    expect(attributeTierLabel(4)).toBe("Excellent");
   });
 });
 

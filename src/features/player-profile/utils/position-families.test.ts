@@ -3,8 +3,9 @@ import type { PlayerRoleScore } from "../types/player-detail";
 import {
   bestPotentialRoleScore,
   bestRoleScore,
-  groupRolesByFamily,
-  primaryFamily,
+  defaultProfilePosition,
+  rolesForPlayablePositions,
+  rolesForProfilePosition,
 } from "./position-families";
 
 function role(
@@ -20,67 +21,6 @@ function role(
     ...partial,
   };
 }
-
-describe("primaryFamily", () => {
-  it("uses the first tag that maps to a known family", () => {
-    expect(primaryFamily(["DM", "MC"])?.id).toBe("defensive-midfield");
-    expect(primaryFamily(["MC"])?.id).toBe("central-midfield");
-    expect(primaryFamily(["GK"])?.title).toBe("Goalkeeper");
-    expect(primaryFamily(["XX"])).toBeNull();
-  });
-});
-
-describe("groupRolesByFamily", () => {
-  it("groups by position family in pitch order and keeps catalog order", () => {
-    const scores = [
-      role({
-        roleId: "gk",
-        displayName: "Goalkeeper",
-        positionTags: ["GK"],
-        score: 40,
-      }),
-      role({
-        roleId: "st",
-        displayName: "Advanced Forward",
-        positionTags: ["ST"],
-        score: 55,
-      }),
-      role({
-        roleId: "dlp",
-        displayName: "Deep-Lying Playmaker",
-        positionTags: ["DM", "MC"],
-        score: 82,
-      }),
-      role({
-        roleId: "cb",
-        displayName: "Centre-Back",
-        positionTags: ["DC"],
-        score: null,
-      }),
-      role({
-        roleId: "cm",
-        displayName: "Central Midfielder",
-        positionTags: ["MC"],
-        score: 72,
-      }),
-    ];
-
-    const groups = groupRolesByFamily(scores);
-    expect(groups.map((g) => g.family.title)).toEqual([
-      "Goalkeeper",
-      "Centre-back",
-      "Defensive midfield",
-      "Central midfield",
-      "Striker",
-    ]);
-    expect(groups[2].roles.map((r) => r.displayName)).toEqual([
-      "Deep-Lying Playmaker",
-    ]);
-    expect(groups[3].roles.map((r) => r.displayName)).toEqual([
-      "Central Midfielder",
-    ]);
-  });
-});
 
 describe("bestRoleScore", () => {
   it("picks the highest non-null score and keeps catalog order on ties", () => {
@@ -174,5 +114,120 @@ describe("bestPotentialRoleScore", () => {
         }),
       ]),
     ).toBeNull();
+  });
+});
+
+describe("profile position selection", () => {
+  const scores = [
+    role({
+      roleId: "gk",
+      displayName: "Goalkeeper",
+      positionTags: ["GK"],
+      score: 40,
+    }),
+    role({
+      roleId: "dlp",
+      displayName: "Deep-Lying Playmaker",
+      positionTags: ["DM", "MC"],
+      score: 82,
+      potentialScore: 75,
+    }),
+    role({
+      roleId: "cm",
+      displayName: "Central Midfielder",
+      positionTags: ["MC"],
+      score: 72,
+      potentialScore: 88,
+    }),
+  ];
+
+  it("starts from the strongest recorded familiarity", () => {
+    expect(defaultProfilePosition({ MC: 20, ST: 15 }, scores)).toBe("MC");
+  });
+
+  it("falls back to the best role position when familiarity is unavailable", () => {
+    expect(defaultProfilePosition({}, scores)).toBe("DM");
+  });
+
+  it("returns only exact-position roles ranked by the selected score basis", () => {
+    expect(
+      rolesForProfilePosition(scores, "MC").map((item) => item.roleId),
+    ).toEqual(["dlp", "cm"]);
+    expect(
+      rolesForProfilePosition(scores, "MC", {
+        basis: "potential",
+        direction: "descending",
+      }).map((item) => item.roleId),
+    ).toEqual(["cm", "dlp"]);
+    expect(
+      rolesForProfilePosition(scores, "MC", {
+        basis: "potential",
+        direction: "ascending",
+      }).map((item) => item.roleId),
+    ).toEqual(["dlp", "cm"]);
+    expect(
+      rolesForProfilePosition(scores, "GK").map((item) => item.roleId),
+    ).toEqual(["gk"]);
+  });
+
+  it("keeps only roles for positions with familiarity 15 or higher", () => {
+    expect(
+      rolesForPlayablePositions(scores, { GK: 16, MC: 15, DM: 14 }).map(
+        (item) => item.roleId,
+      ),
+    ).toEqual(["gk", "dlp", "cm"]);
+    expect(rolesForPlayablePositions(scores, { MC: 14 })).toEqual([]);
+  });
+
+  it("keeps catalog ties stable and unavailable scores last in either direction", () => {
+    const sortableScores = [
+      role({
+        roleId: "first-tie",
+        displayName: "First tie",
+        positionTags: ["MC"],
+        score: 70,
+        potentialScore: 80,
+      }),
+      role({
+        roleId: "unavailable",
+        displayName: "Unavailable",
+        positionTags: ["MC"],
+        score: null,
+        potentialScore: null,
+      }),
+      role({
+        roleId: "second-tie",
+        displayName: "Second tie",
+        positionTags: ["MC"],
+        score: 70,
+        potentialScore: 80,
+      }),
+      role({
+        roleId: "lower",
+        displayName: "Lower",
+        positionTags: ["MC"],
+        score: 60,
+        potentialScore: 70,
+      }),
+    ];
+
+    expect(
+      rolesForProfilePosition(sortableScores, "MC", {
+        basis: "current",
+        direction: "descending",
+      }).map((item) => item.roleId),
+    ).toEqual(["first-tie", "second-tie", "lower", "unavailable"]);
+    expect(
+      rolesForProfilePosition(sortableScores, "MC", {
+        basis: "current",
+        direction: "ascending",
+      }).map((item) => item.roleId),
+    ).toEqual(["lower", "first-tie", "second-tie", "unavailable"]);
+    expect(
+      rolesForProfilePosition(sortableScores, "MC", {
+        basis: "potential",
+        direction: "ascending",
+      }).map((item) => item.roleId),
+    ).toEqual(["lower", "first-tie", "second-tie", "unavailable"]);
   });
 });

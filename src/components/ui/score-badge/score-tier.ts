@@ -1,19 +1,17 @@
-export type ScoreTier = 1 | 2 | 3 | 4 | 5;
+export type ScoreTier = 1 | 2 | 3 | 4;
 
 const TIER_LABELS: Record<ScoreTier, string> = {
   1: "Weak",
-  2: "Fringe",
-  3: "Rotation",
-  4: "Starter",
-  5: "Elite",
+  2: "Average",
+  3: "Good",
+  4: "Excellent",
 };
 
 /** Map a 0–100 role score to the DESIGN.md score-ramp tier. */
 export function scoreToTier(score: number): ScoreTier {
-  if (score >= 85) return 5;
-  if (score >= 70) return 4;
-  if (score >= 55) return 3;
-  if (score >= 40) return 2;
+  if (score >= 81) return 4;
+  if (score >= 61) return 3;
+  if (score >= 41) return 2;
   return 1;
 }
 

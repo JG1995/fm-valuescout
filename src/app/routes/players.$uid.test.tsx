@@ -61,17 +61,60 @@ describe("player profile route", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Alex Scout" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Test FC")).toBeInTheDocument();
+    expect(screen.getByText("Test FC · Premier Division")).toBeInTheDocument();
     expect(screen.getByText("21/03/2001 (25)")).toBeInTheDocument();
-    expect(screen.getByText("Premier Division")).toBeInTheDocument();
     expect(screen.getByText("140")).toBeInTheDocument();
     expect(screen.getByText("160")).toBeInTheDocument();
     expect(screen.getByText("182 cm")).toBeInTheDocument();
     expect(screen.getByText("Right")).toBeInTheDocument();
     expect(screen.getByText("ENG, WAL")).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: "Overview", selected: true }),
+      screen.getByRole("tab", { name: "Technical", selected: true }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps player context beside tabbed attributes and position-filtered roles", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        positions: { MC: 20, ST: 15 },
+        attributes: { Passing: 14, Determination: 12 },
+        potentialAttributes: { Passing: 17, Determination: 14 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42?tab=technical");
+
+    expect(
+      await screen.findByRole("region", { name: "Alex Scout summary" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Technical", selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "MC, familiarity 20", pressed: true }),
+    ).toBeInTheDocument();
+
+    const roleFit = screen.getByRole("region", { name: "Role fit for MC" });
+    expect(
+      within(roleFit).getByText("Deep-Lying Playmaker"),
+    ).toBeInTheDocument();
+    expect(within(roleFit).getByText("Central Midfielder")).toBeInTheDocument();
+    expect(
+      within(roleFit).queryByText("Advanced Forward"),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "ST, familiarity 15" }),
+    );
+
+    const strikerFit = screen.getByRole("region", { name: "Role fit for ST" });
+    expect(
+      within(strikerFit).getByText("Advanced Forward"),
+    ).toBeInTheDocument();
+    expect(
+      within(strikerFit).queryByText("Deep-Lying Playmaker"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows not-found empty state for an unknown uid", async () => {
@@ -84,31 +127,27 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
-  it("selects Attributes and Roles chrome from the tab search param", async () => {
+  it("selects attribute groups from the tab search param", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
     const user = userEvent.setup();
-    const { router } = renderProfileRoute("/players/42?tab=attributes");
+    const { router } = renderProfileRoute("/players/42?tab=mental");
 
     expect(
-      await screen.findByRole("tab", { name: "Attributes", selected: true }),
+      await screen.findByRole("tab", { name: "Mental", selected: true }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Mental" })).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 2, name: "Attributes" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { level: 2, name: "Overview" }),
+      screen.queryByRole("region", { name: "Technical" }),
     ).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "Roles" }));
+    await user.click(screen.getByRole("tab", { name: "Hidden" }));
 
     expect(
-      await screen.findByRole("tab", { name: "Roles", selected: true }),
+      await screen.findByRole("tab", { name: "Hidden", selected: true }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 2, name: "Roles" }),
-    ).toBeInTheDocument();
-    expect(router.state.location.search).toMatchObject({ tab: "roles" });
+    expect(screen.getByText("Current only")).toBeInTheDocument();
+    expect(router.state.location.search).toMatchObject({ tab: "hidden" });
   });
 
   it("moves between tabs with arrow keys", async () => {
@@ -117,23 +156,23 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     const { router } = renderProfileRoute("/players/42");
 
-    const overview = await screen.findByRole("tab", {
-      name: "Overview",
+    const technical = await screen.findByRole("tab", {
+      name: "Technical",
       selected: true,
     });
-    overview.focus();
+    technical.focus();
     await user.keyboard("{ArrowRight}");
 
     expect(
-      await screen.findByRole("tab", { name: "Attributes", selected: true }),
+      await screen.findByRole("tab", { name: "Mental", selected: true }),
     ).toBeInTheDocument();
-    expect(router.state.location.search).toMatchObject({ tab: "attributes" });
+    expect(router.state.location.search).toMatchObject({ tab: "mental" });
 
     await user.keyboard("{ArrowRight}");
     expect(
-      await screen.findByRole("tab", { name: "Roles", selected: true }),
+      await screen.findByRole("tab", { name: "Physical", selected: true }),
     ).toBeInTheDocument();
-    expect(router.state.location.search).toMatchObject({ tab: "roles" });
+    expect(router.state.location.search).toMatchObject({ tab: "physical" });
   });
 
   it("shows Load Data empty state when no snapshot is loaded", async () => {
@@ -169,28 +208,10 @@ describe("player profile route", () => {
         },
       }),
     );
-    renderProfileRoute("/players/42?tab=attributes");
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42?tab=technical");
 
-    expect(
-      await screen.findByRole("heading", { level: 3, name: "Technical" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 3, name: "Mental" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 3, name: "Physical" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 3, name: "Goalkeeping" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 3, name: "Hidden" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 3, name: "Personality" }),
-    ).toBeInTheDocument();
-
-    const technical = screen.getByRole("region", { name: "Technical" });
+    const technical = await screen.findByRole("region", { name: "Technical" });
     const crossingTerm = within(technical).getByText("Crossing");
     expect(
       crossingTerm.parentElement?.querySelector('[aria-hidden="true"]'),
@@ -199,6 +220,7 @@ describe("player profile route", () => {
       crossingTerm.parentElement?.querySelector(".sr-only"),
     ).toHaveTextContent("Current —, Potential —");
 
+    await user.click(screen.getByRole("tab", { name: "Physical" }));
     const physical = screen.getByRole("region", { name: "Physical" });
     const accelerationTerm = within(physical).getByText("Acceleration");
     expect(
@@ -207,7 +229,14 @@ describe("player profile route", () => {
     expect(
       within(physical).getByText("Current 14, Potential 16").parentElement,
     ).toHaveClass("tabular-nums");
+    expect(
+      accelerationTerm.parentElement?.querySelector('[data-tier="3"]'),
+    ).toHaveAttribute("title", "Good");
+    expect(
+      accelerationTerm.parentElement?.querySelector('[data-tier="4"]'),
+    ).toHaveAttribute("title", "Excellent");
 
+    await user.click(screen.getByRole("tab", { name: "Hidden" }));
     const hidden = screen.getByRole("region", { name: "Hidden" });
     expect(
       within(hidden).getByText("Consistency").parentElement,
@@ -216,6 +245,7 @@ describe("player profile route", () => {
       within(hidden).getByText("Dirtiness").parentElement,
     ).toHaveTextContent(/^Dirtiness8$/);
 
+    await user.click(screen.getByRole("tab", { name: "Personality" }));
     const personality = screen.getByRole("region", { name: "Personality" });
     expect(
       within(personality).getByText("Ambition").parentElement,
@@ -225,10 +255,11 @@ describe("player profile route", () => {
     ).toHaveTextContent(/^Loyalty—$/);
   });
 
-  it("shows independent current and potential best-role summaries on Overview", async () => {
+  it("shows independent current and potential best-role summaries", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
+        positions: { MC: 15, AMC: 16, ST: 14 },
         roleScores: [
           {
             roleId: "current-specialist",
@@ -242,27 +273,48 @@ describe("player profile route", () => {
             roleId: "potential-specialist",
             displayName: "Potential Specialist",
             phase: "in_possession",
-            positionTags: ["ST"],
+            positionTags: ["AMC"],
             score: 70,
             potentialScore: 94,
+          },
+          {
+            roleId: "unplayable-specialist",
+            displayName: "Unplayable Specialist",
+            phase: "in_possession",
+            positionTags: ["ST"],
+            score: 99,
+            potentialScore: 100,
           },
         ],
       }),
     );
     renderProfileRoute("/players/42");
 
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+
     expect(
-      await screen.findByLabelText("Best role (Current): 82, Starter"),
+      within(summary).getByLabelText("Best role (Current): 82, Excellent"),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Best potential role (Potential): 94, Elite"),
+      within(summary).getByLabelText(
+        "Best potential role (Potential): 94, Excellent",
+      ),
     ).toBeInTheDocument();
-    expect(screen.getByText("Best role (Current)")).toBeInTheDocument();
     expect(
-      screen.getByText("Best potential role (Potential)"),
+      within(summary).getByText("Best role (Current)"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Current Specialist")).toBeInTheDocument();
-    expect(screen.getByText("Potential Specialist")).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Best potential role (Potential)"),
+    ).toBeInTheDocument();
+    expect(within(summary).getByText("Current Specialist")).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Potential Specialist"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).queryByText("Unplayable Specialist"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders unavailable potential summary values without a score badge", async () => {
@@ -287,63 +339,60 @@ describe("player profile route", () => {
       name: "Best potential role (Potential): unavailable",
     });
     expect(potential).toHaveTextContent("—");
-    expect(potential).not.toHaveClass("inline-flex");
+    expect(potential).not.toHaveAttribute("title");
   });
 
-  it("groups Roles by position family with labelled current and potential badges", async () => {
+  it("filters roles by pitch position with labelled current and potential badges", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
-    renderProfileRoute("/players/42?tab=roles");
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42?tab=technical");
+
+    const midfield = await screen.findByRole("region", {
+      name: "Role fit for MC",
+    });
 
     expect(
-      await screen.findByRole("heading", { level: 3, name: "Goalkeeper" }),
+      within(midfield).getByLabelText(
+        "Deep-Lying Playmaker (Current): 82, Excellent",
+      ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 3, name: "Centre-back" }),
+      within(midfield).getByLabelText(
+        "Deep-Lying Playmaker (Potential): 94, Excellent",
+      ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 3, name: "Defensive midfield" }),
+      within(midfield).getByLabelText("Central Midfielder (Current): 72, Good"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 3, name: "Central midfield" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 3, name: "Striker" }),
-    ).toBeInTheDocument();
-
-    const centreBack = screen.getByRole("region", { name: "Centre-back" });
-    expect(within(centreBack).getByText("Centre-Back")).toBeInTheDocument();
-    expect(
-      within(centreBack).getByLabelText("Centre-Back (Potential): unavailable"),
-    ).toHaveTextContent("—");
-
-    expect(
-      screen.getByLabelText("Deep-Lying Playmaker (Current): 82, Starter"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Deep-Lying Playmaker (Potential): 94, Elite"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Central Midfielder (Current): 72, Starter"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Central Midfielder (Potential): 84, Starter"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Goalkeeper (Current): 40, Fringe"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Goalkeeper (Potential): 47, Fringe"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Advanced Forward (Current): 55, Rotation"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Advanced Forward (Potential): 67, Rotation"),
+      within(midfield).getByLabelText(
+        "Central Midfielder (Potential): 84, Excellent",
+      ),
     ).toBeInTheDocument();
 
-    const goalkeeper = screen.getByRole("region", { name: "Goalkeeper" });
+    await user.click(
+      screen.getByRole("button", { name: "GK, no recorded familiarity" }),
+    );
+    const goalkeeper = screen.getByRole("region", { name: "Role fit for GK" });
+    expect(
+      within(goalkeeper).getByLabelText("Goalkeeper (Current): 40, Weak"),
+    ).toBeInTheDocument();
+    expect(
+      within(goalkeeper).getByLabelText("Goalkeeper (Potential): 47, Average"),
+    ).toBeInTheDocument();
     expect(within(goalkeeper).getByText("IP")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "ST, no recorded familiarity" }),
+    );
+    const striker = screen.getByRole("region", { name: "Role fit for ST" });
+    expect(
+      within(striker).getByLabelText("Advanced Forward (Current): 55, Average"),
+    ).toBeInTheDocument();
+    expect(
+      within(striker).getByLabelText("Advanced Forward (Potential): 67, Good"),
+    ).toBeInTheDocument();
   });
 
   it("shows labelled current and potential values for every supplied role", async () => {
@@ -360,13 +409,13 @@ describe("player profile route", () => {
         })),
       }),
     );
-    renderProfileRoute("/players/42?tab=roles");
+    renderProfileRoute("/players/42?tab=technical");
 
     expect(
-      await screen.findByLabelText("Catalog Role 1 (Current): 60, Rotation"),
+      await screen.findByLabelText("Catalog Role 1 (Current): 60, Average"),
     ).toBeInTheDocument();
     expect(
-      screen.getByLabelText("Catalog Role 68 (Potential): 70, Starter"),
+      screen.getByLabelText("Catalog Role 68 (Potential): 70, Good"),
     ).toBeInTheDocument();
     expect(
       screen.getAllByLabelText(/Catalog Role \d+ \(Current\):/),
@@ -374,6 +423,81 @@ describe("player profile route", () => {
     expect(
       screen.getAllByLabelText(/Catalog Role \d+ \(Potential\):/),
     ).toHaveLength(68);
+  });
+
+  it("sorts roles from the Current and Potential column headers", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        positions: { MC: 20 },
+        roleScores: [
+          {
+            roleId: "current-leader",
+            displayName: "Current Leader",
+            phase: "in_possession",
+            positionTags: ["MC"],
+            score: 90,
+            potentialScore: 72,
+          },
+          {
+            roleId: "potential-leader",
+            displayName: "Potential Leader",
+            phase: "out_of_possession",
+            positionTags: ["MC"],
+            score: 60,
+            potentialScore: 95,
+          },
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const roleFit = await screen.findByRole("region", {
+      name: "Role fit for MC",
+    });
+    const currentHeader = within(roleFit).getByRole("columnheader", {
+      name: "Current",
+    });
+    const potentialHeader = within(roleFit).getByRole("columnheader", {
+      name: "Potential",
+    });
+
+    expect(currentHeader).toHaveAttribute("aria-sort", "descending");
+    expect(potentialHeader).not.toHaveAttribute("aria-sort");
+
+    await user.click(
+      within(currentHeader).getByRole("button", { name: "Current" }),
+    );
+    expect(currentHeader).toHaveAttribute("aria-sort", "ascending");
+    expect(
+      within(roleFit)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("cell")[0].textContent),
+    ).toEqual(["Potential LeaderOOP", "Current LeaderIP"]);
+
+    await user.click(
+      within(potentialHeader).getByRole("button", { name: "Potential" }),
+    );
+    expect(potentialHeader).toHaveAttribute("aria-sort", "descending");
+    expect(
+      within(roleFit)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("cell")[0].textContent),
+    ).toEqual(["Potential LeaderOOP", "Current LeaderIP"]);
+
+    await user.click(
+      within(potentialHeader).getByRole("button", { name: "Potential" }),
+    );
+    expect(potentialHeader).toHaveAttribute("aria-sort", "ascending");
+    expect(
+      within(roleFit)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("cell")[0].textContent),
+    ).toEqual(["Current LeaderIP", "Potential LeaderOOP"]);
   });
 
   it("previews and confirms the age-21 CA boost from the current snapshot", async () => {
@@ -503,7 +627,7 @@ describe("player profile route", () => {
     await router.navigate({
       to: "/players/$uid",
       params: { uid: "99" },
-      search: { tab: "overview" },
+      search: { tab: "technical" },
     });
 
     expect(
@@ -536,7 +660,7 @@ describe("player profile route", () => {
     await router.navigate({
       to: "/players/$uid",
       params: { uid: "99" },
-      search: { tab: "overview" },
+      search: { tab: "technical" },
     });
     expect(
       await screen.findByRole("heading", { level: 1, name: "Jamie Scout" }),

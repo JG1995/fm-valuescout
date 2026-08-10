@@ -1,7 +1,8 @@
-import { useRef, useState } from "react";
+import { Sparkles, Zap } from "lucide-react";
+import type { ReactElement, ReactNode } from "react";
+import { cloneElement, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
-import { Panel } from "@/components/ui/panel/panel";
 import { TauriCommandError } from "@/lib/tauri-client";
 import type { PlayerBoostResult } from "../types/player-boost";
 import type { PlayerDetail } from "../types/player-detail";
@@ -26,7 +27,7 @@ type WonderkidMentalityPreview = {
 
 type BoostAction = "currentAbility" | "wonderkidMentality";
 
-type PlayerDevelopmentBoostsPanelProps = {
+type PlayerDevelopmentActionsProps = {
   player: PlayerDetail;
   pending: boolean;
   result: PlayerBoostResult | undefined;
@@ -164,7 +165,7 @@ function wonderkidResultSummary(result: PlayerBoostResult) {
 function BoostOutcome({
   result,
   error,
-}: Pick<PlayerDevelopmentBoostsPanelProps, "result" | "error">) {
+}: Pick<PlayerDevelopmentActionsProps, "result" | "error">) {
   if (
     result?.operation === "boost-current-ability" &&
     result.previousCurrentAbility !== null &&
@@ -201,7 +202,42 @@ function BoostOutcome({
   return null;
 }
 
-export function PlayerDevelopmentBoostsPanel({
+function ActionTooltip({
+  label,
+  disabled,
+  children,
+  content,
+}: {
+  label: string;
+  disabled: boolean;
+  children: ReactElement<{ "aria-describedby"?: string }>;
+  content: ReactNode;
+}) {
+  const tooltipId = useId();
+
+  return (
+    <fieldset
+      className="group relative inline-flex min-w-0 border-0 p-0"
+      tabIndex={disabled ? 0 : undefined}
+      aria-describedby={disabled ? tooltipId : undefined}
+    >
+      <legend className="sr-only">
+        {label}
+        {disabled ? " unavailable" : ""}
+      </legend>
+      {cloneElement(children, { "aria-describedby": tooltipId })}
+      <span
+        id={tooltipId}
+        role="tooltip"
+        className="pointer-events-none invisible absolute top-[calc(100%+0.5rem)] right-0 z-20 w-72 rounded-md border border-outline-variant bg-surface-container-highest p-3 text-left opacity-0 shadow-overlay transition-opacity duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+      >
+        {content}
+      </span>
+    </fieldset>
+  );
+}
+
+export function PlayerDevelopmentActions({
   player,
   pending,
   result,
@@ -209,7 +245,7 @@ export function PlayerDevelopmentBoostsPanel({
   onBoostCurrentAbility,
   onBoostWonderkidMentality,
   onOpenConfirmation,
-}: PlayerDevelopmentBoostsPanelProps) {
+}: PlayerDevelopmentActionsProps) {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [confirmationAction, setConfirmationAction] =
     useState<BoostAction>("currentAbility");
@@ -247,28 +283,33 @@ export function PlayerDevelopmentBoostsPanel({
 
   return (
     <>
-      <Panel title="Development boosts">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-body-md text-on-surface">
-                Apply a fixed current-ability boost from this snapshot.
-              </p>
-              {currentAbilityEligible ? (
-                <p className="mt-1 font-mono text-mono-sm text-on-surface-variant tabular-nums">
-                  CA {player.ca} → {currentAbilityPreview.target} (+
-                  {currentAbilityPreview.increase})
-                  {currentAbilityPreview.cappedByPotential
-                    ? " · capped by PA"
-                    : ""}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ActionTooltip
+            label="Boost CA"
+            disabled={!currentAbilityEligible || pending}
+            content={
+              <div className="space-y-2 text-body-sm text-on-surface-variant">
+                {currentAbilityEligible ? (
+                  <p className="font-mono text-mono-sm tabular-nums">
+                    CA {player.ca} → {currentAbilityPreview.target} (+
+                    {currentAbilityPreview.increase})
+                    {currentAbilityPreview.cappedByPotential
+                      ? " · capped by PA"
+                      : ""}
+                  </p>
+                ) : (
+                  <p>{currentAbilityPreview.reason}</p>
+                )}
+                <p>
+                  FM may redistribute attributes over the following in-game
+                  days, sometimes up to one month.
                 </p>
-              ) : (
-                <p className="mt-1 text-body-sm text-on-surface-variant">
-                  {currentAbilityPreview.reason}
-                </p>
-              )}
-            </div>
+              </div>
+            }
+          >
             <Button
+              icon={Zap}
               disabled={!currentAbilityEligible || pending}
               loading={pending && confirmationAction === "currentAbility"}
               loadingLabel="Boosting…"
@@ -276,17 +317,13 @@ export function PlayerDevelopmentBoostsPanel({
             >
               Boost CA
             </Button>
-          </div>
-          <p className="text-body-sm text-on-surface-variant">
-            FM may redistribute attributes over the following in-game days,
-            sometimes up to one month.
-          </p>
-          <div className="border-t border-outline-variant pt-4">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-body-md text-on-surface">
-                  Let FM set each eligible mentality value to a random 11–20.
-                </p>
+          </ActionTooltip>
+
+          <ActionTooltip
+            label="Wonderkid Mentality"
+            disabled={!mentalityEligible || pending}
+            content={
+              <div className="space-y-2 text-body-sm text-on-surface-variant">
                 <ul className="mt-1 space-y-1 text-body-sm text-on-surface-variant">
                   {mentalityPreview.attributes.map((attribute) => (
                     <li key={attribute.label}>
@@ -295,34 +332,34 @@ export function PlayerDevelopmentBoostsPanel({
                   ))}
                 </ul>
                 {!mentalityEligible ? (
-                  <p className="mt-1 text-body-sm text-on-surface-variant">
-                    No known mentality attribute is 10 or lower.
-                  </p>
+                  <p>No known mentality attribute is 10 or lower.</p>
                 ) : null}
               </div>
-              <Button
-                disabled={!mentalityEligible || pending}
-                loading={pending && confirmationAction === "wonderkidMentality"}
-                loadingLabel="Applying…"
-                variant="secondary"
-                onClick={() => openConfirmation("wonderkidMentality")}
-              >
-                Wonderkid Mentality
-              </Button>
-            </div>
-          </div>
-          <div
-            ref={outcomeRef}
-            tabIndex={-1}
-            className="rounded-sm focus:outline-2 focus:outline-offset-2 focus:outline-primary"
-            aria-live="polite"
+            }
           >
-            {!confirmationOpen ? (
-              <BoostOutcome result={result} error={error} />
-            ) : null}
-          </div>
+            <Button
+              icon={Sparkles}
+              disabled={!mentalityEligible || pending}
+              loading={pending && confirmationAction === "wonderkidMentality"}
+              loadingLabel="Applying…"
+              variant="secondary"
+              onClick={() => openConfirmation("wonderkidMentality")}
+            >
+              Wonderkid Mentality
+            </Button>
+          </ActionTooltip>
         </div>
-      </Panel>
+        <div
+          ref={outcomeRef}
+          tabIndex={-1}
+          className="rounded-sm focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+          aria-live="polite"
+        >
+          {!confirmationOpen ? (
+            <BoostOutcome result={result} error={error} />
+          ) : null}
+        </div>
+      </div>
       <Modal
         open={confirmationOpen}
         title={
