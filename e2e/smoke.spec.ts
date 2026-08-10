@@ -535,17 +535,29 @@ test.describe("walking skeleton smoke", () => {
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
   });
 
-  test("player profile Overview keeps independent best-role summaries visible", async ({
+  test("player profile keeps its scouting workspace inside desktop viewports", async ({
     page,
   }) => {
     await stubTauriIpc(page, { playerProfile: true });
-    await page.goto("/players/42");
+    await page.goto("/players/42?tab=technical");
 
     const main = page.getByRole("main");
-    const current = main.getByRole("img", {
+    const summary = main.getByRole("region", {
+      name: "Potential Scout summary",
+    });
+    const attributes = main
+      .getByRole("heading", { name: "Attributes" })
+      .locator("..")
+      .locator("..");
+    const roleFitPanel = main
+      .getByRole("heading", { name: "Role fit" })
+      .locator("..")
+      .locator("..");
+    const roleFit = main.getByRole("region", { name: "Role fit for MC" });
+    const current = summary.getByRole("img", {
       name: "Best role (Current): 82, Starter",
     });
-    const potential = main.getByRole("img", {
+    const potential = summary.getByRole("img", {
       name: "Best potential role (Potential): 94, Elite",
     });
 
@@ -554,8 +566,29 @@ test.describe("walking skeleton smoke", () => {
       [1600, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
+      await expect(summary).toBeVisible();
+      await expect(attributes).toBeVisible();
+      await expect(roleFit).toBeVisible();
       await expect(current).toBeVisible();
       await expect(potential).toBeVisible();
+
+      const [mainBox, attributesBox, roleFitBox] = await Promise.all([
+        main.boundingBox(),
+        attributes.boundingBox(),
+        roleFitPanel.boundingBox(),
+      ]);
+      expect(mainBox).not.toBeNull();
+      expect(attributesBox).not.toBeNull();
+      expect(roleFitBox).not.toBeNull();
+      if (!mainBox || !attributesBox || !roleFitBox) {
+        throw new Error(
+          "Expected the complete player workspace to be visible.",
+        );
+      }
+      expect(attributesBox.y).toBe(roleFitBox.y);
+      expect(roleFitBox.y + roleFitBox.height).toBeLessThanOrEqual(
+        mainBox.y + mainBox.height,
+      );
 
       const [currentBox, potentialBox] = await Promise.all([
         current.boundingBox(),
@@ -570,6 +603,13 @@ test.describe("walking skeleton smoke", () => {
         potentialBox.x,
       );
     }
+
+    await main.getByRole("button", { name: "ST, familiarity 15" }).click();
+    await expect(
+      main
+        .getByRole("region", { name: "Role fit for ST" })
+        .getByText("Potential Specialist"),
+    ).toBeVisible();
   });
 
   test("player profile confirms Wonderkid Mentality at desktop size", async ({
@@ -582,6 +622,12 @@ test.describe("walking skeleton smoke", () => {
     const main = page.getByRole("main");
     const action = main.getByRole("button", { name: "Wonderkid Mentality" });
     await expect(action).toBeVisible();
+    await action.focus();
+    await expect(
+      main
+        .getByRole("tooltip")
+        .filter({ hasText: "Ambition 10 → random 11–20" }),
+    ).toBeVisible();
     await action.click();
 
     const dialog = page.getByRole("dialog");
@@ -607,7 +653,7 @@ test.describe("walking skeleton smoke", () => {
     page,
   }) => {
     await stubTauriIpc(page, { playerProfile: true });
-    await page.goto("/players/42?tab=attributes");
+    await page.goto("/players/42?tab=technical");
 
     const technical = page.getByRole("region", { name: "Technical" });
     const passing = technical.locator("dd", {
@@ -620,6 +666,7 @@ test.describe("walking skeleton smoke", () => {
     ] as const) {
       await page.setViewportSize({ width, height });
       await expect(passing).toContainText("14→16");
+      await expect(passing.locator('[data-tier="4"]')).toHaveCount(2);
 
       const [technicalBox, passingBox] = await Promise.all([
         technical.boundingBox(),

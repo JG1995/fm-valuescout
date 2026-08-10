@@ -112,6 +112,29 @@ export type AttributeRow = {
   potentialValue?: number | null;
 };
 
+export type AttributeTier = 1 | 2 | 3 | 4 | 5;
+
+const ATTRIBUTE_TIER_LABELS: Record<AttributeTier, string> = {
+  1: "Weak",
+  2: "Limited",
+  3: "Average",
+  4: "Strong",
+  5: "Elite",
+};
+
+/** Map FM's 1–20 attribute scale to five scan-friendly display bands. */
+export function attributeValueTier(value: number): AttributeTier {
+  if (value >= 17) return 5;
+  if (value >= 14) return 4;
+  if (value >= 10) return 3;
+  if (value >= 6) return 2;
+  return 1;
+}
+
+export function attributeTierLabel(tier: AttributeTier): string {
+  return ATTRIBUTE_TIER_LABELS[tier];
+}
+
 export function labelFromPascal(key: string): string {
   return key.replaceAll(/([a-z])([A-Z])/g, "$1 $2");
 }

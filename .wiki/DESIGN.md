@@ -47,11 +47,11 @@ colors:
     info-container: "oklch(0.34 0.08 245)"
     on-info-container: "oklch(0.92 0.035 245)"
     # Score ramp — role and position fit, tier 1 (weak) to tier 5 (elite)
-    score-1: "oklch(0.65 0.015 80)"
-    score-2: "oklch(0.72 0.06 82)"
-    score-3: "oklch(0.78 0.1 85)"
-    score-4: "oklch(0.84 0.14 88)"
-    score-5: "oklch(0.9 0.155 96)"
+    score-1: "oklch(0.66 0.08 25)"
+    score-2: "oklch(0.72 0.105 55)"
+    score-3: "oklch(0.78 0.105 90)"
+    score-4: "oklch(0.82 0.13 145)"
+    score-5: "oklch(0.86 0.115 210)"
     # Chart series — subject, two comparisons, one reference line
     chart-1: "oklch(0.8 0.145 82)"
     chart-2: "oklch(0.72 0.11 245)"
@@ -180,7 +180,7 @@ spacing:
 
 > **Authority:** This document owns the visual language, design tokens, and UI decisions. It does not own product purpose ([CONCEPT.md](./CONCEPT.md)) or implemented system shape ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Search** surface (compact filter strip, editor modal, virtualized results table), the **Player profile layout** (`/players/$uid` with Overview / Attributes / Roles tabs), and the **Squad Planner** club-family setup, dual-phase tactic editor, compact three-team depth matrix, Current/Potential score treatment, two Optimize actions, and one confirmed Clear all action (`/planner`) are implemented. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
+> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Search** surface (compact filter strip, editor modal, virtualized results table), the **Player profile workspace** (`/players/$uid` with a compact summary, attribute tabs, and pitch-filtered role fit), and the **Squad Planner** club-family setup, dual-phase tactic editor, compact three-team depth matrix, Current/Potential score treatment, two Optimize actions, and one confirmed Clear all action (`/planner`) are implemented. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 ## Brand & Style
 
@@ -200,7 +200,7 @@ Hard stances:
 
 ## Colors
 
-The palette is one warm accent on a cool near-neutral base, plus four semantic status colours and one data ramp. Total hue count is six: gold, steel, green, orange, red, and a magenta used only as a third chart series. Elevation is carried by **tonal layering plus hairline borders**, not by shadows. Dark surfaces swallow shadows, and the app stacks a lot of panels; a tonal step reads reliably at any brightness setting where a drop shadow does not. Shadows appear at one level only — floating overlays.
+The palette is one warm chrome accent on a cool near-neutral base, plus four semantic status colours and one multi-hue data ramp. Elevation is carried by **tonal layering plus hairline borders**, not by shadows. Dark surfaces swallow shadows, and the app stacks a lot of panels; a tonal step reads reliably at any brightness setting where a drop shadow does not. Shadows appear at one level only — floating overlays.
 
 The neutrals carry a whisper of blue (hue 264, chroma 0.008–0.010). That is barely perceptible on its own, but it keeps the greys from looking dead and it sets up the complementary tension with the gold accent.
 
@@ -208,17 +208,17 @@ The neutrals carry a whisper of blue (hue 264, chroma 0.008–0.010). That is ba
 
 **Steel (hue 245):** `info` is the single cool counterpoint. It carries neutral factual annotation that is neither good nor bad: transfer-status tags, "U-21" style qualifiers, informational banners, and the first comparison series in a chart. There is no separate `secondary` token; steel does that work.
 
-**Score ramp (hue 80 → 96):** `score-1` through `score-5` colour role and position fit. This is the only colour system that appears **inside data**, and it is the one the eye scans. The ramp climbs in lightness and chroma together, from a near-grey `score-1` to a vivid `score-5`. A weak fit recedes into the surface; an elite fit glows. Because both lightness and chroma rise monotonically, the ramp survives greyscale and every form of colour blindness — the ordering is carried by brightness, not hue.
+**Score ramp:** `score-1` through `score-5` colour role fit and player-profile attributes. The ramp moves from muted coral through orange and amber to green and cyan, while lightness rises at every step. Hue makes adjacent tiers faster to distinguish; the number and monotonic brightness keep the ordering readable without colour.
 
 | Tier      | Score  | Label     | oklch                     | Meaning                          |
 | --------- | ------ | --------- | ------------------------- | -------------------------------- |
-| `score-1` | 0–39   | Weak      | `oklch(0.65 0.015 80)`    | Does not play this role          |
-| `score-2` | 40–54  | Fringe    | `oklch(0.72 0.06 82)`     | Emergency cover only             |
-| `score-3` | 55–69  | Rotation  | `oklch(0.78 0.1 85)`      | Squad depth                      |
-| `score-4` | 70–84  | Starter   | `oklch(0.84 0.14 88)`     | First-choice standard            |
-| `score-5` | 85–100 | Elite     | `oklch(0.9 0.155 96)`     | Best available for this role     |
+| `score-1` | 0–39   | Weak      | `oklch(0.66 0.08 25)`     | Does not play this role          |
+| `score-2` | 40–54  | Fringe    | `oklch(0.72 0.105 55)`    | Emergency cover only             |
+| `score-3` | 55–69  | Rotation  | `oklch(0.78 0.105 90)`    | Squad depth                      |
+| `score-4` | 70–84  | Starter   | `oklch(0.82 0.13 145)`    | First-choice standard            |
+| `score-5` | 85–100 | Elite     | `oklch(0.86 0.115 210)`   | Best available for this role     |
 
-Score tier 5 and `primary` both sit in the gold band. That is intentional, and the rule that keeps it readable is a usage boundary: **`primary` never appears inside a data cell, and the score ramp never appears on chrome.** Gold on the frame means "interactive"; gold in the grid means "good".
+Player-profile attributes reuse the five colours with FM-scale bands: 1–5 Weak, 6–9 Limited, 10–13 Average, 14–16 Strong, and 17–20 Elite. The raw value remains visible, and the colour never replaces it. **`primary` never appears inside a data cell, and the score ramp never appears on chrome.**
 
 **Semantic Colours:** Four fixed roles for status indicators.
 
@@ -263,9 +263,9 @@ Borders come in two roles with different rules:
 | Accent text and icons     | `primary` (`#ecb33c`)                       | `surface-container` (`#181b1f`)                  | 9.2:1 (AAA) |
 | Primary button label      | `on-primary` (`#161107`)                    | `primary` (`#ecb33c`)                            | 10.0:1 (AAA) |
 | Destructive button label  | `on-error` (`#180808`)                      | `error` (`#f44f62`)                              | 5.7:1 (AA) |
-| Score tier 1 (weakest)    | `score-1` (`#948e85`)                       | `surface-container` (`#181b1f`)                  | 5.4:1 (AA) |
-| Score tier 1 on hover     | `score-1` (`#948e85`)                       | `surface-container-high` (`#222429`)             | 4.8:1 (AA) |
-| Score tier 5 (strongest)  | `score-5` (`#fddd54`)                       | `surface-container` (`#181b1f`)                  | 12.9:1 (AAA) |
+| Score tier 1 (weakest)    | `score-1` (`#be7f79`)                       | `surface-container` (`#181b1f`)                  | 5.4:1 (AA) |
+| Score tier 1 on hover     | `score-1` (`#be7f79`)                       | `surface-container-high` (`#222429`)             | 4.8:1 (AA) |
+| Score tier 5 (strongest)  | `score-5` (`#67e6fb`)                       | `surface-container` (`#181b1f`)                  | 11.7:1 (AAA) |
 | Error text                | `error` (`#f44f62`)                         | `surface-container` (`#181b1f`)                  | 5.1:1 (AA) |
 | Warning text              | `warning` (`#ff9138`)                       | `surface-container` (`#181b1f`)                  | 7.7:1 (AAA) |
 | Success text              | `success` (`#58cd78`)                       | `surface-container` (`#181b1f`)                  | 8.6:1 (AAA) |
@@ -544,14 +544,14 @@ Cross-cutting rules rather than components.
 
 Dedicated route `/players/$uid` (not an inspector overlay). Comparison inspector remains unused until a later compare feature.
 
-- **Page header:** player name as `headline-lg` title; no secondary nav-rail item — profiles are reached from Search and global suggest. Back uses normal history (Search URL state already holds filters).
-- **Tabs:** segmented control under the header — **Overview** | **Attributes** | **Roles**. Active tab lives in the URL search param `tab` (`overview` | `attributes` | `roles`). One content panel below; do not stack all three sections on one scroll for MVP.
-- **Overview:** identity block in a Panel — the same basics the Search default columns show (name, age/DOB, nationality, club, division, CA, PA, market value) plus height, preferred foot, and contract/transfer fields when present. Two equivalent **hero** Score Badge summaries show **Best Role (Current)** and **Best Potential Role (Potential)**; each selects its own highest non-null catalog-ordered score and names its basis in visible and accessible text. Initials monogram optional; no crest or portrait (data constraint).
-- **Development boosts:** a sibling Panel below Overview. **Boost CA** is the primary action and shows a snapshot-derived CA preview with clear disabled reasons. **Wonderkid Mentality** is secondary; it lists eligible values at or below 10 and marks unknown or higher values unchanged. One Modal confirms each action and restores focus to its trigger. The panel reports verified results inline and explains that FM may redistribute attributes over the following in-game days, sometimes up to one month. It has no numeric input, arbitrary value control, or random-value selection.
-- **Attributes:** three (or four) sections inside one scrollable Panel, separated by hairlines or `stack-lg` — Visible attributes in FM-style groups (**Technical** / **Mental** / **Physical** / **Goalkeeping**), then **Hidden**, then **Personality**. Visible rows show text-accessible `Current → Potential` pairs of raw FM integers (1–20); Hidden and Personality rows remain current-only. Null → `—`. No radar chart in this feature.
-- **Roles:** sections headed by **position family** (Goalkeeper → … → Striker). Every catalog role appears; do not mute or hide by positional familiarity. Each row: role display name, IP/OOP phase as secondary text or chip, paired **card** Score Badges labelled **Current** and **Potential**. An unavailable score renders `—` without a fake badge number.
-- **States:** no snapshot → EmptyState pointing at Load Data; unknown uid → “Player not in this snapshot”; loading skeletons match the active tab’s layout.
-- **Out of this layout for now:** position suitability map, radar charts, history/trend blocks, compare inspector, combined IP/OOP weight controls.
+- **Single-workspace frame:** at the 1280×800 minimum, one compact summary sits above side-by-side **Attributes** and **Role fit** panels. The two panels consume the remaining content height and own bounded internal overflow. Narrower unsupported widths may stack the panels. There is no page-level Overview / Attributes / Roles switch.
+- **Summary:** player name, club and division, age/DOB, nationality, height, preferred foot, CA, PA, and market value stay visible above the analysis workspace. Two equivalent **hero** Score Badges show **Best Role (Current)** and **Best Potential Role (Potential)**; each selects its own highest non-null catalog-ordered score and names its basis in visible and accessible text. Transfer flags appear only when true. There is no crest or portrait because the source has none.
+- **Development actions:** **Boost CA** and **Wonderkid Mentality** are compact summary actions, not a separate panel. Hover or keyboard focus reveals each snapshot preview or disabled reason in a tooltip. One Modal confirms each action, preserves the existing guarded command contract, and restores focus to its trigger or the verified outcome. Results stay inline below the actions. There is no numeric input, arbitrary value control, or random-value selection.
+- **Attribute tabs:** the Attributes panel uses **Technical** | **Mental** | **Physical** | **GK** | **Hidden** | **Personality** tabs. The active group lives in the `tab` URL search param (`technical` | `mental` | `physical` | `goalkeeping` | `hidden` | `personality`). Arrow keys, Home, and End move between groups. One compact two-column list renders at a time.
+- **Attribute values:** visible groups show text-accessible `Current → Potential` pairs of raw FM integers. Hidden and Personality remain current-only. Each known value uses the shared five-tier data ramp with the documented 1–20 bands; the number remains the primary fact. Null renders `—`.
+- **Role fit:** a compact pitch offers every supported position as a 44px button. The strongest recorded positional familiarity is selected first; if none exists, the highest current role supplies the fallback position. Known familiarity shows its raw 1–20 value and the same attribute tier colour. Selecting a position shows only roles whose catalog `positionTags` contain that exact position, ranked by current score with catalog order as the tie-break. One header labels the paired **Current** and **Potential** Score Badge columns; rows retain the role name and IP/OOP phase. Missing scores render `—`.
+- **States:** no snapshot → EmptyState pointing at Load Data; unknown UID → “Player not in this snapshot”; one loading skeleton mirrors the summary and two-panel workspace.
+- **Out of this layout for now:** radar charts, history/trend blocks, compare inspector, and combined IP/OOP weight controls. The pitch is a role filter and familiarity display, not a new suitability calculation.
 
 ### Squad planner layout
 

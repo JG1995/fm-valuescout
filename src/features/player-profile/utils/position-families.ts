@@ -1,95 +1,78 @@
 import type { PlayerRoleScore } from "../types/player-detail";
 
-export type PositionFamilyId =
-  | "goalkeeper"
-  | "centre-back"
-  | "full-back"
-  | "defensive-midfield"
-  | "central-midfield"
-  | "wide-midfield"
-  | "attacking-midfield"
-  | "striker";
-
-export type PositionFamily = {
-  id: PositionFamilyId;
-  title: string;
-  tags: readonly string[];
-};
-
-/** Ordered pitch groups — primary family is the first matching tag in this order. */
-export const POSITION_FAMILIES: readonly PositionFamily[] = [
-  { id: "goalkeeper", title: "Goalkeeper", tags: ["GK"] },
-  { id: "centre-back", title: "Centre-back", tags: ["DC"] },
-  {
-    id: "full-back",
-    title: "Full-back / Wing-back",
-    tags: ["DL", "DR", "WBL", "WBR"],
-  },
-  { id: "defensive-midfield", title: "Defensive midfield", tags: ["DM"] },
-  { id: "central-midfield", title: "Central midfield", tags: ["MC"] },
-  {
-    id: "wide-midfield",
-    title: "Wide midfield / Winger",
-    tags: ["ML", "MR", "AML", "AMR"],
-  },
-  { id: "attacking-midfield", title: "Attacking midfield", tags: ["AMC"] },
-  { id: "striker", title: "Striker", tags: ["ST"] },
+export const PROFILE_POSITION_ROWS: readonly (readonly (string | null)[])[] = [
+  [null, "ST", null],
+  ["AML", "AMC", "AMR"],
+  ["ML", "MC", "MR"],
+  ["WBL", "DM", "WBR"],
+  ["DL", "DC", "DR"],
+  [null, "GK", null],
 ] as const;
 
-const TAG_TO_FAMILY = new Map<string, PositionFamily>();
-for (const family of POSITION_FAMILIES) {
-  for (const tag of family.tags) {
-    TAG_TO_FAMILY.set(tag, family);
-  }
-}
+export const PROFILE_POSITION_TAGS = PROFILE_POSITION_ROWS.flatMap((row) =>
+  row.filter((position): position is string => position !== null),
+);
 
-export type RoleFamilyGroup = {
-  family: PositionFamily;
-  roles: PlayerRoleScore[];
-};
+const PROFILE_POSITION_TAG_SET = new Set(PROFILE_POSITION_TAGS);
 
 export type ScoredRole = PlayerRoleScore & { score: number };
 export type PotentialScoredRole = PlayerRoleScore & { potentialScore: number };
 
-/** Resolve primary family from the first position tag that maps to a family. */
-export function primaryFamily(
-  positionTags: readonly string[],
-): PositionFamily | null {
-  for (const tag of positionTags) {
-    const family = TAG_TO_FAMILY.get(tag);
-    if (family) {
-      return family;
+/** Pick the player's strongest recorded position, then fall back to best-role fit. */
+export function defaultProfilePosition(
+  positions: Readonly<Record<string, number>>,
+  roleScores: readonly PlayerRoleScore[],
+): string {
+  let selected: string | null = null;
+  let familiarity = 0;
+
+  for (const position of PROFILE_POSITION_TAGS) {
+    const value = positions[position];
+    if (Number.isFinite(value) && value > familiarity) {
+      selected = position;
+      familiarity = value;
     }
   }
-  return null;
-}
 
-/**
- * Group role scores by position family. Preserves input (catalog) order within
- * each family. Roles with no known tags are omitted.
- */
-export function groupRolesByFamily(
-  roleScores: readonly PlayerRoleScore[],
-): RoleFamilyGroup[] {
-  const buckets = new Map<PositionFamilyId, PlayerRoleScore[]>();
+  if (selected) {
+    return selected;
+  }
+
+  const bestRole = bestRoleScore(roleScores);
+  const bestRolePosition = bestRole?.positionTags.find((position) =>
+    PROFILE_POSITION_TAG_SET.has(position),
+  );
+  if (bestRolePosition) {
+    return bestRolePosition;
+  }
 
   for (const role of roleScores) {
-    const family = primaryFamily(role.positionTags);
-    if (!family) {
-      continue;
-    }
-    const list = buckets.get(family.id);
-    if (list) {
-      list.push(role);
-    } else {
-      buckets.set(family.id, [role]);
+    const rolePosition = role.positionTags.find((position) =>
+      PROFILE_POSITION_TAG_SET.has(position),
+    );
+    if (rolePosition) {
+      return rolePosition;
     }
   }
 
-  return POSITION_FAMILIES.flatMap((family) => {
-    const roles = buckets.get(family.id);
-    return roles && roles.length > 0 ? [{ family, roles }] : [];
-  });
+  return "MC";
+}
+
+/** Filter to an exact pitch position and rank known current scores first. */
+export function rolesForProfilePosition(
+  roleScores: readonly PlayerRoleScore[],
+  position: string,
+): PlayerRoleScore[] {
+  return roleScores
+    .filter((role) => role.positionTags.includes(position))
+    .map((role, index) => ({ role, index }))
+    .sort((left, right) => {
+      const scoreDifference =
+        (right.role.score ?? Number.NEGATIVE_INFINITY) -
+        (left.role.score ?? Number.NEGATIVE_INFINITY);
+      return scoreDifference || left.index - right.index;
+    })
+    .map(({ role }) => role);
 }
 
 /** Highest non-null score; ties keep the earlier catalog entry. */

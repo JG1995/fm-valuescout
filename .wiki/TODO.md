@@ -66,7 +66,7 @@ No next feature selected.
 - [Planner workspace redesign](./features/completed/planner-workspace-redesign.md) — URL-backed Planner workspaces, adaptive dual-phase tactic pitches, responsive three-team depth matrix, and transactional Clear all
 - [Youth Academy](./features/completed/youth-academy.md) — save-scoped `Class of YYYY` cohorts, club-family player tracking, manual sale/release outcomes, and honest placeholders for career statistics pending memory-reader support
 - [Codex workflow migration](./features/completed/codex-workflow-migration.md) — Codex-only repository guidance, specialist agents, and product-focused validation
-- [Player profiles](./features/completed/player-profiles.md) — `/players/$uid` with Overview / Attributes / Roles tabs; entry from Search row and Ctrl+K; ScoreBadge; position-family role grouping
+- [Player profiles](./features/completed/player-profiles.md) — `/players/$uid` with a compact player summary, tabbed attribute groups, pitch-selected position roles, and entry from Search row and Ctrl+K
 - [Squad planner](./features/completed/squad-planner.md) — save-scoped club family, one dual-phase tactic, and Senior / Reserves / Youth depth strings with manual player assignment
 - [Squad optimizer](./features/completed/squad-optimizer.md) — exact team/string allocation by combined score, persisted assignment provenance, and selected-team Clear Squad
 - [Planner optimizer preferences](./features/completed/planner-optimizer-preferences.md) — per-lane IP/OOP weights, ranked-lane allocation, and preferred-foot optimizer rules

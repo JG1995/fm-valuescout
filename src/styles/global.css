@@ -70,11 +70,11 @@
   --color-on-info-container: oklch(0.92 0.035 245);
 
   /* Score ramp — role and position fit, weak to elite. Data only. */
-  --color-score-1: oklch(0.65 0.015 80);
-  --color-score-2: oklch(0.72 0.06 82);
-  --color-score-3: oklch(0.78 0.1 85);
-  --color-score-4: oklch(0.84 0.14 88);
-  --color-score-5: oklch(0.9 0.155 96);
+  --color-score-1: oklch(0.66 0.08 25);
+  --color-score-2: oklch(0.72 0.105 55);
+  --color-score-3: oklch(0.78 0.105 90);
+  --color-score-4: oklch(0.82 0.13 145);
+  --color-score-5: oklch(0.86 0.115 210);
 
   /* Chart series — subject, two comparisons, one reference line */
   --color-chart-1: oklch(0.8 0.145 82);

@@ -15,12 +15,8 @@ import { boostWonderkidMentality } from "@/features/player-profile/api/boost-won
 import { getPlayerQueryOptions } from "@/features/player-profile/api/get-player-query-options";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { PlayerAttributesPanel } from "@/features/player-profile/components/player-attributes-panel";
-import { PlayerDevelopmentBoostsPanel } from "@/features/player-profile/components/player-development-boosts-panel";
+import { PlayerDevelopmentActions } from "@/features/player-profile/components/player-development-boosts-panel";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
-import {
-  PlayerProfileTabs,
-  profileTabPanelProps,
-} from "@/features/player-profile/components/player-profile-tabs";
 import { PlayerRolesPanel } from "@/features/player-profile/components/player-roles-panel";
 import {
   type ProfileTab,
@@ -76,114 +72,57 @@ function SkeletonBar({ className }: { className?: string }) {
   );
 }
 
-const OVERVIEW_FIELD_SLOTS = [
-  "f1",
-  "f2",
-  "f3",
-  "f4",
-  "f5",
-  "f6",
-  "f7",
-  "f8",
-] as const;
-const ATTRIBUTE_SECTION_SLOTS = ["s1", "s2", "s3"] as const;
-const ATTRIBUTE_ROW_SLOTS = ["r1", "r2", "r3", "r4", "r5", "r6"] as const;
-const ROLE_SECTION_SLOTS = ["s1", "s2", "s3"] as const;
-const ROLE_ROW_SLOTS = ["r1", "r2", "r3"] as const;
+const SKELETON_SLOTS = ["s1", "s2", "s3", "s4", "s5", "s6"] as const;
 
-function OverviewSkeleton() {
-  return (
-    <Panel title="Overview">
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <SkeletonBar className="size-12 shrink-0 rounded-full" />
-          <div className="min-w-0 flex-1 space-y-2">
-            <SkeletonBar className="h-3 w-20" />
-            <SkeletonBar className="h-4 w-40" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3 lg:grid-cols-4">
-          {OVERVIEW_FIELD_SLOTS.map((slot) => (
-            <div key={slot} className="space-y-2">
-              <SkeletonBar className="h-3 w-16" />
-              <SkeletonBar className="h-4 w-full" />
-            </div>
-          ))}
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-function AttributesSkeleton() {
-  return (
-    <Panel title="Attributes">
-      <div className="space-y-6">
-        {ATTRIBUTE_SECTION_SLOTS.map((section) => (
-          <div key={section} className="space-y-3">
-            <SkeletonBar className="h-4 w-28" />
-            <div className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
-              {ATTRIBUTE_ROW_SLOTS.map((row) => (
-                <div
-                  key={`${section}-${row}`}
-                  className="flex items-baseline justify-between gap-3"
-                >
-                  <SkeletonBar className="h-4 w-24" />
-                  <SkeletonBar className="h-4 w-8" />
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-function RolesSkeleton() {
-  return (
-    <Panel title="Roles">
-      <div className="space-y-6">
-        {ROLE_SECTION_SLOTS.map((section) => (
-          <div key={section} className="space-y-3">
-            <SkeletonBar className="h-4 w-36" />
-            <ul className="space-y-2">
-              {ROLE_ROW_SLOTS.map((row) => (
-                <li
-                  key={`${section}-${row}`}
-                  className="flex min-w-0 items-center justify-between gap-3"
-                >
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <SkeletonBar className="h-4 w-40" />
-                    <SkeletonBar className="h-3 w-10" />
-                  </div>
-                  <SkeletonBar className="size-7 shrink-0 rounded-full" />
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-function ProfileFallback({ tab }: { tab: ProfileTab }) {
+function ProfileFallback() {
   return (
     <div
-      className="space-y-gutter"
+      className="flex min-h-[calc(100dvh-var(--spacing-header-height)-2rem)] flex-col gap-gutter"
       aria-busy="true"
       aria-live="polite"
       data-testid="profile-loading"
     >
-      <SkeletonBar className="h-8 w-48" />
-      <div
-        className="inline-flex h-9 w-72 rounded-full bg-surface-container-high"
-        aria-hidden
-      />
-      {tab === "overview" ? <OverviewSkeleton /> : null}
-      {tab === "attributes" ? <AttributesSkeleton /> : null}
-      {tab === "roles" ? <RolesSkeleton /> : null}
+      <section className="grid gap-4 rounded-lg border border-outline-variant bg-surface-container p-4 lg:grid-cols-3">
+        {SKELETON_SLOTS.slice(0, 3).map((slot) => (
+          <div key={slot} className="space-y-3">
+            <SkeletonBar className="h-6 w-36" />
+            <SkeletonBar className="h-4 w-full" />
+            <SkeletonBar className="h-4 w-4/5" />
+          </div>
+        ))}
+      </section>
+      <div className="grid min-h-[32rem] flex-1 gap-gutter lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+        <Panel title="Attributes">
+          <SkeletonBar className="mb-4 h-8 w-full rounded-full" />
+          <div className="grid grid-cols-2 gap-x-5">
+            {SKELETON_SLOTS.map((slot) => (
+              <div
+                key={slot}
+                className="flex min-h-9 items-center justify-between"
+              >
+                <SkeletonBar className="h-4 w-24" />
+                <SkeletonBar className="h-6 w-16" />
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <Panel title="Role fit">
+          <div className="grid gap-4 sm:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]">
+            <SkeletonBar className="min-h-80 w-full rounded-lg" />
+            <div className="space-y-3">
+              {SKELETON_SLOTS.map((slot) => (
+                <div
+                  key={slot}
+                  className="flex min-h-12 items-center justify-between gap-3"
+                >
+                  <SkeletonBar className="h-4 w-36" />
+                  <SkeletonBar className="h-7 w-20 rounded-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+      </div>
       <p className="sr-only">Loading player…</p>
       <p className="hidden text-body-md text-on-surface-variant motion-reduce:block">
         Loading…
@@ -251,45 +190,41 @@ function PlayerProfileContent({
   }
 
   return (
-    <div className="space-y-gutter">
-      <h1 className="text-headline-lg text-on-surface">{player.name}</h1>
-      <PlayerProfileTabs tab={tab} onTabChange={onTabChange} />
-      <div {...profileTabPanelProps("overview", tab)}>
-        {tab === "overview" ? (
-          <div className="space-y-gutter">
-            <PlayerOverviewPanel player={player} />
-            <PlayerDevelopmentBoostsPanel
-              key={`${snapshot.id}:${uid}`}
-              player={player}
-              pending={boostContextIsCurrent && boost.isPending}
-              result={boostContextIsCurrent ? boost.data : undefined}
-              error={boostContextIsCurrent ? boost.error : null}
-              onBoostCurrentAbility={() =>
-                boost.mutateAsync({
-                  action: "currentAbility",
-                  uid,
-                  snapshotId: snapshot.id,
-                })
-              }
-              onBoostWonderkidMentality={() =>
-                boost.mutateAsync({
-                  action: "wonderkidMentality",
-                  uid,
-                  snapshotId: snapshot.id,
-                })
-              }
-              onOpenConfirmation={boost.reset}
-            />
-          </div>
-        ) : null}
-      </div>
-      <div {...profileTabPanelProps("attributes", tab)}>
-        {tab === "attributes" ? (
-          <PlayerAttributesPanel player={player} />
-        ) : null}
-      </div>
-      <div {...profileTabPanelProps("roles", tab)}>
-        {tab === "roles" ? <PlayerRolesPanel player={player} /> : null}
+    <div className="flex min-h-[calc(100dvh-var(--spacing-header-height)-2rem)] flex-col gap-gutter">
+      <PlayerOverviewPanel
+        player={player}
+        actions={
+          <PlayerDevelopmentActions
+            key={`${snapshot.id}:${uid}`}
+            player={player}
+            pending={boostContextIsCurrent && boost.isPending}
+            result={boostContextIsCurrent ? boost.data : undefined}
+            error={boostContextIsCurrent ? boost.error : null}
+            onBoostCurrentAbility={() =>
+              boost.mutateAsync({
+                action: "currentAbility",
+                uid,
+                snapshotId: snapshot.id,
+              })
+            }
+            onBoostWonderkidMentality={() =>
+              boost.mutateAsync({
+                action: "wonderkidMentality",
+                uid,
+                snapshotId: snapshot.id,
+              })
+            }
+            onOpenConfirmation={boost.reset}
+          />
+        }
+      />
+      <div className="grid min-h-[32rem] flex-1 gap-gutter lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+        <PlayerAttributesPanel
+          player={player}
+          tab={tab}
+          onTabChange={onTabChange}
+        />
+        <PlayerRolesPanel key={player.uid} player={player} />
       </div>
     </div>
   );
@@ -313,7 +248,7 @@ function PlayerProfileRoute() {
   }
 
   return (
-    <Suspense fallback={<ProfileFallback tab={tab} />}>
+    <Suspense fallback={<ProfileFallback />}>
       <PlayerProfileContent uid={uid} tab={tab} onTabChange={onTabChange} />
     </Suspense>
   );
