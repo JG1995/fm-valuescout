@@ -3,8 +3,151 @@ use std::collections::{BTreeMap, HashMap};
 use csv::{ReaderBuilder, StringRecord, Trim};
 
 use super::{
-    CsvImportError, YouthTrackerAttribute, YouthTrackerHiddenAttribute, YouthTrackerPlayer,
+    CsvImportError, MoneyballAppearances, MoneyballMetricValue, MoneyballPlayer,
+    MoneyballTransferValue, MoneyballWage, YouthTrackerAttribute, YouthTrackerHiddenAttribute,
+    YouthTrackerPlayer,
 };
+
+const MONEYBALL_REQUIRED_HEADERS: &[&[&str]] = &[
+    &["Unique ID"],
+    &["Player"],
+    &["Nation"],
+    &["2nd Nat"],
+    &["Club"],
+    &["Position"],
+    &["Age"],
+    &["Height"],
+    &["Left Foot"],
+    &["Right Foot"],
+    &["Transfer Value"],
+    &["Wage"],
+    &["Expires"],
+    &["Appearances"],
+    &["Minutes"],
+    &["Goals"],
+    &["Goals From Outside The Box"],
+    &["xG"],
+    &["NP-xG"],
+    &["xG-OP"],
+    &["xG/shot"],
+    &["Shots"],
+    &["Shots From Outside The Box Per 90 minutes"],
+    &["Shots on Target", "ShT"],
+    &["Penalties Taken", "Pens"],
+    &["Penalties Scored", "Pens S"],
+    &["Free Kick Shots"],
+    &["Assists"],
+    &["xA"],
+    &["Chances Created per 90", "Ch C/90"],
+    &["Clear Cut Chances Created", "CCC"],
+    &["Key Passes", "Key"],
+    &["Open Play Key Passes per 90", "OP-KP/90"],
+    &["Crosses Attempted", "Cr A"],
+    &["Crosses Completed", "Cr C"],
+    &["Open Play Crosses Attempted", "OP-Crs A"],
+    &["Open Play Crosses Completed", "OP-Crs C"],
+    &["Passes Attempted", "Pas A"],
+    &["Passes Completed", "Ps C", "Pas C"],
+    &["PsP"],
+    &["Dribbles", "Drb"],
+    &["Distance"],
+    &["Sprints/90"],
+    &["Possession Lost per 90", "Poss Lost/90"],
+    &["Tackles Attempted", "Tck A"],
+    &["Tackled Completed", "Tackles Completed", "Tck C"],
+    &["Key Tackles", "K Tck"],
+    &["Interceptions", "Itc"],
+    &["Possession Won per 90", "Poss Won/90"],
+    &["Pres A"],
+    &["Pres C"],
+    &["Blk"],
+    &["Shts Blckd"],
+    &["Clearances"],
+    &["Headers Attempted", "Hdrs A"],
+    &["Headers Won", "Hdrs"],
+    &["Headers Lost per 90", "Hdrs L/90"],
+    &["Key Headers per 90", "K Hdrs/90"],
+    &["Clean Sheets"],
+    &["Goals Conceded"],
+    &["Saves per 90", "Saves/90"],
+    &["Expected Save Percentage", "xSv %"],
+    &["xGP"],
+    &["Saves Held", "Svh"],
+    &["Saves Parried", "Svp"],
+    &["Saves Tipped", "Svt"],
+    &["Penalties Faced", "Pens Faced"],
+    &["Penalties Saved", "Pens Saved"],
+    &["Fouls Made"],
+    &["Fouls Against"],
+    &["Yellow Cards", "Yel"],
+    &["Red cards"],
+    &["Off"],
+    &["Mistakes Leading to Goals", "MLG"],
+    &["Rating"],
+    &["Player of the Match", "PoM"],
+    &["Games Won"],
+    &["Games Drawn"],
+    &["Games Lost"],
+    &["Team Goals"],
+];
+
+const MONEYBALL_OPTIONAL_HEADERS: &[&[&str]] = &[
+    &["Division"],
+    &["CA"],
+    &["PA"],
+    &["Asking Price"],
+    &["Save Percentage", "Sv %"],
+];
+
+const MONEYBALL_COUNT_METRICS: &[&str] = &[
+    "Goals",
+    "Goals From Outside The Box",
+    "Shots",
+    "Shots on Target",
+    "Penalties Taken",
+    "Penalties Scored",
+    "Free Kick Shots",
+    "Assists",
+    "Clear Cut Chances Created",
+    "Key Passes",
+    "Crosses Attempted",
+    "Crosses Completed",
+    "Open Play Crosses Attempted",
+    "Open Play Crosses Completed",
+    "Passes Attempted",
+    "Passes Completed",
+    "PsP",
+    "Dribbles",
+    "Tackles Attempted",
+    "Tackled Completed",
+    "Key Tackles",
+    "Interceptions",
+    "Pres A",
+    "Pres C",
+    "Blk",
+    "Shts Blckd",
+    "Clearances",
+    "Headers Attempted",
+    "Headers Won",
+    "Clean Sheets",
+    "Goals Conceded",
+    "Saves Held",
+    "Saves Parried",
+    "Saves Tipped",
+    "Penalties Faced",
+    "Penalties Saved",
+    "Fouls Made",
+    "Fouls Against",
+    "Yellow Cards",
+    "Red cards",
+    "Off",
+    "Mistakes Leading to Goals",
+    "Player of the Match",
+    "Games Won",
+    "Games Drawn",
+    "Games Lost",
+    "Team Goals",
+];
 
 const HIDDEN_ATTRIBUTE_HEADERS: &[(YouthTrackerHiddenAttribute, &str)] = &[
     (YouthTrackerHiddenAttribute::Ambition, "Ambition"),
@@ -193,6 +336,189 @@ pub(crate) fn parse_youth_tracker(input: &str) -> Result<Vec<YouthTrackerPlayer>
     }
 
     Ok(players)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ParsedCsv {
+    YouthTracker(Vec<YouthTrackerPlayer>),
+    Moneyball(Vec<MoneyballPlayer>),
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn parse_csv(input: &str) -> Result<ParsedCsv, CsvImportError> {
+    let input = input.strip_prefix('\u{feff}').unwrap_or(input);
+    if input.trim().is_empty() {
+        return Err(CsvImportError::EmptyInput);
+    }
+
+    let delimiter = detect_delimiter(input)?;
+    let headers = csv_reader(input, delimiter)
+        .headers()
+        .map_err(|_| CsvImportError::MalformedCsv { row: 1 })?
+        .clone();
+    if is_moneyball_candidate(&headers) {
+        if delimiter != b';' {
+            return Err(CsvImportError::UnsupportedDialect);
+        }
+        return parse_moneyball(input).map(ParsedCsv::Moneyball);
+    }
+
+    parse_youth_tracker(input).map(ParsedCsv::YouthTracker)
+}
+
+#[derive(Debug)]
+struct MoneyballHeaderMap {
+    columns: BTreeMap<&'static str, usize>,
+}
+
+impl MoneyballHeaderMap {
+    fn from_headers(headers: &StringRecord) -> Result<Self, CsvImportError> {
+        let mut columns = BTreeMap::new();
+        for aliases in MONEYBALL_REQUIRED_HEADERS {
+            let label = aliases[0];
+            let column = find_moneyball_header(headers, aliases, label)?
+                .ok_or(CsvImportError::MissingRequiredHeader(label))?;
+            columns.insert(label, column);
+        }
+        for aliases in MONEYBALL_OPTIONAL_HEADERS {
+            let label = aliases[0];
+            if let Some(column) = find_moneyball_header(headers, aliases, label)? {
+                columns.insert(label, column);
+            }
+        }
+        Ok(Self { columns })
+    }
+
+    fn value<'a>(&self, record: &'a StringRecord, label: &'static str) -> &'a str {
+        value(record, self.columns.get(label).copied())
+    }
+}
+
+fn find_moneyball_header(
+    headers: &StringRecord,
+    aliases: &[&str],
+    label: &'static str,
+) -> Result<Option<usize>, CsvImportError> {
+    let matches = headers
+        .iter()
+        .enumerate()
+        .filter_map(|(index, header)| aliases.contains(&header).then_some(index))
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [] => Ok(None),
+        [index] => Ok(Some(*index)),
+        _ => Err(CsvImportError::DuplicateHeader(label)),
+    }
+}
+
+fn is_moneyball_candidate(headers: &StringRecord) -> bool {
+    ["Unique ID", "Player", "Transfer Value", "Wage", "xG"]
+        .iter()
+        .filter(|header| headers.iter().any(|value| value == **header))
+        .count()
+        >= 4
+}
+
+fn parse_moneyball(input: &str) -> Result<Vec<MoneyballPlayer>, CsvImportError> {
+    let mut reader = csv_reader(input, b';');
+    let headers = reader
+        .headers()
+        .map_err(|_| CsvImportError::MalformedCsv { row: 1 })?
+        .clone();
+    let columns = MoneyballHeaderMap::from_headers(&headers)?;
+    let mut seen_uids = HashMap::new();
+    let mut players = Vec::new();
+
+    for (record_index, record) in reader.records().enumerate() {
+        let row = record_index + 2;
+        let record = record.map_err(|_| CsvImportError::MalformedCsv { row })?;
+        let player = parse_moneyball_player(&record, &columns, row)?;
+        if let Some(first_row) = seen_uids.insert(player.uid, row) {
+            return Err(CsvImportError::DuplicateUid { first_row, row });
+        }
+        players.push(player);
+    }
+    Ok(players)
+}
+
+fn parse_moneyball_player(
+    record: &StringRecord,
+    columns: &MoneyballHeaderMap,
+    row: usize,
+) -> Result<MoneyballPlayer, CsvImportError> {
+    let mut metrics = BTreeMap::new();
+    for header in MONEYBALL_COUNT_METRICS {
+        metrics.insert(
+            (*header).to_string(),
+            parse_optional_u32(columns.value(record, header), row, header)?
+                .map(MoneyballMetricValue::Count),
+        );
+    }
+    for header in moneyball_decimal_metrics() {
+        metrics.insert(
+            (*header).to_string(),
+            parse_optional_decimal(columns.value(record, header), row, header)?
+                .map(MoneyballMetricValue::Decimal),
+        );
+    }
+
+    Ok(MoneyballPlayer {
+        uid: parse_uid(columns.value(record, "Unique ID"), row)?,
+        name: optional_text(columns.value(record, "Player")),
+        nation: optional_text(columns.value(record, "Nation")),
+        second_nation: optional_text(columns.value(record, "2nd Nat")),
+        club: optional_text(columns.value(record, "Club")),
+        division: optional_text(columns.value(record, "Division")),
+        position: optional_text(columns.value(record, "Position")),
+        age: parse_optional_u8(columns.value(record, "Age"), row, "Age")?,
+        height_centimeters: parse_optional_height(columns.value(record, "Height"), row)?,
+        left_foot: optional_text(columns.value(record, "Left Foot")),
+        right_foot: optional_text(columns.value(record, "Right Foot")),
+        ca: parse_optional_ability(columns.value(record, "CA"), row, "CA")?,
+        pa: parse_optional_ability(columns.value(record, "PA"), row, "PA")?,
+        transfer_value: parse_optional_transfer_value(
+            columns.value(record, "Transfer Value"),
+            row,
+            "Transfer Value",
+        )?,
+        asking_price: parse_optional_transfer_value(
+            columns.value(record, "Asking Price"),
+            row,
+            "Asking Price",
+        )?,
+        wage: parse_optional_wage(columns.value(record, "Wage"), row)?,
+        expires: optional_text(columns.value(record, "Expires")),
+        appearances: parse_optional_moneyball_appearances(
+            columns.value(record, "Appearances"),
+            row,
+        )?,
+        minutes: parse_optional_u32(columns.value(record, "Minutes"), row, "Minutes")?,
+        distance_kilometers: parse_optional_distance(columns.value(record, "Distance"), row)?,
+        metrics,
+    })
+}
+
+fn moneyball_decimal_metrics() -> &'static [&'static str] {
+    &[
+        "xG",
+        "NP-xG",
+        "xG-OP",
+        "xG/shot",
+        "Shots From Outside The Box Per 90 minutes",
+        "xA",
+        "Chances Created per 90",
+        "Open Play Key Passes per 90",
+        "Sprints/90",
+        "Possession Lost per 90",
+        "Possession Won per 90",
+        "Headers Lost per 90",
+        "Key Headers per 90",
+        "Saves per 90",
+        "Save Percentage",
+        "Expected Save Percentage",
+        "xGP",
+        "Rating",
+    ]
 }
 
 fn csv_reader(input: &str, delimiter: u8) -> csv::Reader<&[u8]> {
@@ -446,6 +772,170 @@ fn parse_required_u32(value: &str, row: usize, field: &'static str) -> Result<u3
         })
 }
 
+fn parse_optional_decimal(
+    value: &str,
+    row: usize,
+    field: &'static str,
+) -> Result<Option<f64>, CsvImportError> {
+    if is_unavailable(value) {
+        return Ok(None);
+    }
+    value
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+        .map(Some)
+        .ok_or(CsvImportError::InvalidValue {
+            row,
+            field,
+            expected: "a dot-decimal number",
+        })
+}
+
+fn parse_optional_height(value: &str, row: usize) -> Result<Option<u16>, CsvImportError> {
+    if is_unavailable(value) {
+        return Ok(None);
+    }
+    value
+        .strip_suffix(" cm")
+        .and_then(|value| value.parse::<u16>().ok())
+        .map(Some)
+        .ok_or(CsvImportError::InvalidValue {
+            row,
+            field: "Height",
+            expected: "a centimeter value",
+        })
+}
+
+fn parse_optional_distance(value: &str, row: usize) -> Result<Option<f64>, CsvImportError> {
+    if is_unavailable(value) {
+        return Ok(None);
+    }
+    value
+        .strip_suffix("km")
+        .and_then(|value| value.trim().parse::<f64>().ok())
+        .filter(|value| value.is_finite())
+        .map(Some)
+        .ok_or(CsvImportError::InvalidValue {
+            row,
+            field: "Distance",
+            expected: "a kilometer value",
+        })
+}
+
+fn parse_optional_moneyball_appearances(
+    value: &str,
+    row: usize,
+) -> Result<Option<MoneyballAppearances>, CsvImportError> {
+    if is_unavailable(value) {
+        return Ok(None);
+    }
+    let (starts, substitutes) = match value.split_once('(') {
+        Some((starts, substitutes)) => (
+            parse_required_u32(starts.trim(), row, "Appearances")?,
+            parse_required_u32(
+                substitutes
+                    .trim()
+                    .strip_suffix(')')
+                    .ok_or(CsvImportError::InvalidValue {
+                        row,
+                        field: "Appearances",
+                        expected: "a whole number or N (M)",
+                    })?,
+                row,
+                "Appearances",
+            )?,
+        ),
+        None => (parse_required_u32(value, row, "Appearances")?, 0),
+    };
+    Ok(Some(MoneyballAppearances {
+        starts,
+        substitutes,
+    }))
+}
+
+fn parse_optional_transfer_value(
+    value: &str,
+    row: usize,
+    field: &'static str,
+) -> Result<Option<MoneyballTransferValue>, CsvImportError> {
+    if is_unavailable(value) {
+        return Ok(None);
+    }
+    if value == "Not for Sale" {
+        return Ok(Some(MoneyballTransferValue::NotForSale));
+    }
+    let transfer_value = match value.split_once(" - ") {
+        Some((lower, upper)) => MoneyballTransferValue::Range {
+            lower_euros: parse_euro_amount(lower, row, field)?,
+            upper_euros: parse_euro_amount(upper, row, field)?,
+        },
+        None => MoneyballTransferValue::Single {
+            euros: parse_euro_amount(value, row, field)?,
+        },
+    };
+    Ok(Some(transfer_value))
+}
+
+fn parse_optional_wage(value: &str, row: usize) -> Result<Option<MoneyballWage>, CsvImportError> {
+    if is_unavailable(value) {
+        return Ok(None);
+    }
+    let euros = value
+        .strip_suffix(" p/w")
+        .ok_or(CsvImportError::InvalidValue {
+            row,
+            field: "Wage",
+            expected: "a euro weekly wage",
+        })
+        .and_then(|value| parse_euro_amount(value, row, "Wage"))?;
+    Ok(Some(MoneyballWage {
+        euros_per_week: euros,
+    }))
+}
+
+fn parse_euro_amount(value: &str, row: usize, field: &'static str) -> Result<u64, CsvImportError> {
+    let value = value
+        .strip_prefix('€')
+        .ok_or(CsvImportError::InvalidValue {
+            row,
+            field,
+            expected: "a euro amount or range",
+        })?;
+    let (number, multiplier) = match value.chars().last() {
+        Some('K') => (&value[..value.len() - 1], 1_000_u64),
+        Some('M') => (&value[..value.len() - 1], 1_000_000_u64),
+        _ => (value, 1_u64),
+    };
+    let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
+    let whole = whole.parse::<u64>().ok();
+    let fraction_euros = if fraction.is_empty() {
+        Some(0)
+    } else {
+        fraction
+            .len()
+            .try_into()
+            .ok()
+            .and_then(|digits: u32| 10_u64.checked_pow(digits))
+            .zip(fraction.parse::<u64>().ok())
+            .and_then(|(scale, fraction)| {
+                fraction
+                    .checked_mul(multiplier)
+                    .map(|scaled| (scale, scaled))
+            })
+            .and_then(|(scale, scaled)| (scaled % scale == 0).then_some(scaled / scale))
+    };
+    whole
+        .and_then(|whole| whole.checked_mul(multiplier))
+        .zip(fraction_euros)
+        .and_then(|(whole, fraction)| whole.checked_add(fraction))
+        .ok_or(CsvImportError::InvalidValue {
+            row,
+            field,
+            expected: "a euro amount or range",
+        })
+}
+
 fn optional_text(value: &str) -> Option<String> {
     (!is_unavailable(value)).then(|| value.to_string())
 }
@@ -519,6 +1009,227 @@ mod tests {
     use super::*;
 
     const MONZA_EXPORT: &str = include_str!("fixtures/2030_07_01_Full_Squad_CA_PA_Monza.csv");
+    const MONEYBALL_EXPORT: &str = include_str!("fixtures/moneyball_stats.csv");
+
+    #[test]
+    fn parses_the_pinned_moneyball_export_before_youth_tracker() {
+        let ParsedCsv::Moneyball(players) = parse_csv(MONEYBALL_EXPORT).expect("parse Moneyball")
+        else {
+            panic!("detect Moneyball export");
+        };
+
+        assert_eq!(
+            MONEYBALL_EXPORT
+                .lines()
+                .next()
+                .expect("fixture header")
+                .split(';')
+                .count(),
+            84
+        );
+        assert_eq!(players.len(), 75);
+        assert!(players.iter().all(|player| player.uid > 0));
+
+        let player = players
+            .iter()
+            .find(|player| player.uid == 2_002_188_319)
+            .expect("Alessandro Willeit");
+        assert_eq!(player.name.as_deref(), Some("Alessandro Willeit"));
+        assert_eq!(player.height_centimeters, Some(181));
+        assert_eq!(
+            player.transfer_value,
+            Some(MoneyballTransferValue::Range {
+                lower_euros: 30_000_000,
+                upper_euros: 35_000_000,
+            })
+        );
+        assert_eq!(
+            player.appearances,
+            Some(MoneyballAppearances {
+                starts: 38,
+                substitutes: 0,
+            })
+        );
+        assert_eq!(player.distance_kilometers, Some(205.1));
+        assert_eq!(
+            player.metric("Save Percentage"),
+            Some(MoneyballMetricValue::Decimal(84.0))
+        );
+        assert_eq!(
+            player.metric("Passes Completed"),
+            Some(MoneyballMetricValue::Count(1_118))
+        );
+    }
+
+    #[test]
+    fn rejects_moneyball_near_match_missing_a_required_group() {
+        let input = remove_column(MONEYBALL_EXPORT, "xG/shot");
+
+        assert_eq!(
+            parse_csv(&input).expect_err("missing required Moneyball header must fail"),
+            CsvImportError::MissingRequiredHeader("xG/shot")
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_moneyball_values_and_duplicate_uids() {
+        let malformed = MONEYBALL_EXPORT.replacen("€19.5M - €25M", "not money", 1);
+        assert_eq!(
+            parse_csv(&malformed).expect_err("malformed transfer value must fail"),
+            CsvImportError::InvalidValue {
+                row: 2,
+                field: "Transfer Value",
+                expected: "a euro amount or range",
+            }
+        );
+
+        let duplicate = format!(
+            "{MONEYBALL_EXPORT}{}\n",
+            MONEYBALL_EXPORT.lines().nth(1).expect("first player")
+        );
+        assert_eq!(
+            parse_csv(&duplicate).expect_err("duplicate UID must fail"),
+            CsvImportError::DuplicateUid {
+                first_row: 2,
+                row: 77,
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_fractional_euros_and_labels_optional_asking_price_errors() {
+        let fractional_euros = MONEYBALL_EXPORT.replacen("€19.5M - €25M", "€1.2345K - €2M", 1);
+        assert_eq!(
+            parse_csv(&fractional_euros).expect_err("fractional euros must fail"),
+            CsvImportError::InvalidValue {
+                row: 2,
+                field: "Transfer Value",
+                expected: "a euro amount or range",
+            }
+        );
+
+        let asking_price = append_column(MONEYBALL_EXPORT, "Asking Price", "not money");
+        assert_eq!(
+            parse_csv(&asking_price).expect_err("malformed asking price must fail"),
+            CsvImportError::InvalidValue {
+                row: 2,
+                field: "Asking Price",
+                expected: "a euro amount or range",
+            }
+        );
+    }
+
+    #[test]
+    fn supports_bom_aliases_optional_groups_and_nulls() {
+        let aliased = format!(
+            "\u{feff}{}",
+            MONEYBALL_EXPORT
+                .replacen("Shots on Target", "ShT", 1)
+                .replacen("Passes Completed", "Ps C", 1)
+        );
+        let ParsedCsv::Moneyball(players) = parse_csv(&aliased).expect("parse aliased Moneyball")
+        else {
+            panic!("detect Moneyball export");
+        };
+        assert_eq!(
+            players[3].metric("Shots on Target"),
+            Some(MoneyballMetricValue::Count(0))
+        );
+
+        let optional_groups_removed = ["Division", "CA", "PA", "Save Percentage"]
+            .into_iter()
+            .fold(MONEYBALL_EXPORT.to_string(), |input, header| {
+                remove_column(&input, header)
+            });
+        let ParsedCsv::Moneyball(players) =
+            parse_csv(&optional_groups_removed).expect("optional Moneyball groups may be absent")
+        else {
+            panic!("detect Moneyball export");
+        };
+        assert_eq!(players[0].division, None);
+        assert_eq!(players[0].ca, None);
+        assert_eq!(players[0].pa, None);
+        assert_eq!(players[0].metric("Save Percentage"), None);
+
+        let null_transfer = MONEYBALL_EXPORT.replacen("€19.5M - €25M", "-", 1);
+        let ParsedCsv::Moneyball(players) = parse_csv(&null_transfer).expect("preserve nulls")
+        else {
+            panic!("detect Moneyball export");
+        };
+        assert_eq!(players[0].transfer_value, None);
+    }
+
+    #[test]
+    fn rejects_a_comma_delimited_moneyball_signature_and_non_finite_metrics() {
+        assert_eq!(
+            parse_csv(&MONEYBALL_EXPORT.replacen(';', ",", 84))
+                .expect_err("Moneyball is semicolon-delimited"),
+            CsvImportError::UnsupportedDialect
+        );
+
+        let non_finite = MONEYBALL_EXPORT.replacen("0.0", "NaN", 1);
+        assert_eq!(
+            parse_csv(&non_finite).expect_err("non-finite metric must fail"),
+            CsvImportError::InvalidValue {
+                row: 2,
+                field: "Shots From Outside The Box Per 90 minutes",
+                expected: "a dot-decimal number",
+            }
+        );
+
+        let non_finite_distance = MONEYBALL_EXPORT.replacen("0.0km", "NaNkm", 1);
+        assert_eq!(
+            parse_csv(&non_finite_distance).expect_err("non-finite distance must fail"),
+            CsvImportError::InvalidValue {
+                row: 2,
+                field: "Distance",
+                expected: "a kilometer value",
+            }
+        );
+    }
+
+    #[test]
+    fn detects_youth_tracker_after_the_moneyball_signature_check() {
+        assert!(matches!(
+            parse_csv(MONZA_EXPORT).expect("parse Youth Tracker"),
+            ParsedCsv::YouthTracker(_)
+        ));
+    }
+
+    fn remove_column(input: &str, header: &str) -> String {
+        let column = input
+            .lines()
+            .next()
+            .expect("CSV header")
+            .split(';')
+            .position(|value| value == header)
+            .expect("header exists");
+        input
+            .lines()
+            .map(|line| {
+                line.split(';')
+                    .enumerate()
+                    .filter(|(index, _)| *index != column)
+                    .map(|(_, value)| value)
+                    .collect::<Vec<_>>()
+                    .join(";")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn append_column(input: &str, header: &str, first_row_value: &str) -> String {
+        input
+            .lines()
+            .enumerate()
+            .map(|(index, line)| match index {
+                0 => format!("{line};{header}"),
+                1 => format!("{line};{first_row_value}"),
+                _ => format!("{line};-"),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     #[test]
     fn parses_the_pinned_monza_youth_export() {

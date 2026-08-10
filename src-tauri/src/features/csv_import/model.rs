@@ -81,6 +81,62 @@ pub struct YouthTrackerPlayer {
     pub attributes: BTreeMap<YouthTrackerAttribute, Option<u8>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MoneyballTransferValue {
+    Single { euros: u64 },
+    Range { lower_euros: u64, upper_euros: u64 },
+    NotForSale,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoneyballWage {
+    pub euros_per_week: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoneyballAppearances {
+    pub starts: u32,
+    pub substitutes: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MoneyballMetricValue {
+    Count(u32),
+    Decimal(f64),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MoneyballPlayer {
+    pub uid: u32,
+    pub name: Option<String>,
+    pub nation: Option<String>,
+    pub second_nation: Option<String>,
+    pub club: Option<String>,
+    pub division: Option<String>,
+    pub position: Option<String>,
+    pub age: Option<u8>,
+    pub height_centimeters: Option<u16>,
+    pub left_foot: Option<String>,
+    pub right_foot: Option<String>,
+    pub ca: Option<u8>,
+    pub pa: Option<u8>,
+    pub transfer_value: Option<MoneyballTransferValue>,
+    pub asking_price: Option<MoneyballTransferValue>,
+    pub wage: Option<MoneyballWage>,
+    pub expires: Option<String>,
+    pub appearances: Option<MoneyballAppearances>,
+    pub minutes: Option<u32>,
+    pub distance_kilometers: Option<f64>,
+    pub metrics: BTreeMap<String, Option<MoneyballMetricValue>>,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+impl MoneyballPlayer {
+    pub fn metric(&self, header: &str) -> Option<MoneyballMetricValue> {
+        self.metrics.get(header).copied().flatten()
+    }
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 impl YouthTrackerPlayer {
     pub fn attribute(&self, attribute: YouthTrackerAttribute) -> Option<u8> {

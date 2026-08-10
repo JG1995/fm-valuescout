@@ -204,7 +204,7 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 #### Commit 2 — Parse Moneyball CSV exports
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): parse Moneyball CSV exports`
 
@@ -242,7 +242,7 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 #### Commit 3 — Preview CSV matches by player UID
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(import): preview CSV matches by player UID`
 
@@ -320,22 +320,22 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 **PR:** PR 1 — Preview supported FM CSV exports
 
-**Commit:** Parse Moneyball CSV exports
+**Commit:** Preview CSV matches by player UID
 
 ### RED proof
 
-Add a Rust integration test that loads the accepted 84-column Moneyball fixture and expects 75 unique numeric UIDs plus representative transfer, height, distance, appearance, percentage, and statistic output. The test must fail because Moneyball detection and parsing do not exist. Add focused negative tests for a near-match missing a required Moneyball group, malformed populated data, and duplicate UIDs so a permissive parser cannot pass.
+Add Rust service and command tests that load both pinned formats from a bounded local CSV path, reconcile only numeric UIDs against a captured current snapshot, and report safe bounded summaries. The tests must fail because no preview service or command exists. Add negative coverage for no snapshot, stale context, invalid files, duplicate input, and proof that success and failure make no SQLite writes.
 
 ### Expected outcome
 
-The shared Rust parser recognizes Moneyball before the broader Youth aliases and produces typed raw exported values with exact pinned normalization and failure contracts. `./scripts/dev check` passes. No command, UI, SQL, persistence, or derived-stat behavior exists yet.
+The read-only Rust command parses outside the database lock, returns only a bounded format/match summary for the current snapshot, and revalidates its captured context before responding. `./scripts/dev check` passes. No dialog/UI, SQLite write, overlay, persistence, or derived-stat behavior exists yet.
 
 ### Explicit exclusions
 
-- Snapshot reconciliation, Tauri commands, React, dialog integration, or Dashboard changes.
-- Persistence, source-replacement rules, or any downstream consumer.
+- Native file-picker, React, dialog integration, or Dashboard changes.
+- SQLite writes, persistence, source-replacement rules, or any downstream read model.
 - Calculations for values not physically exported, including percentiles, ratios, composites, and role scores.
-- Currency or locale behavior not demonstrated by the accepted pinned fixture.
+- Returning raw CSV rows, local paths, or an unbounded parsed dataset over IPC.
 
 ## Discoveries and replanning
 
@@ -344,12 +344,14 @@ The shared Rust parser recognizes Moneyball before the broader Youth aliases and
 - 2026-08-10: The earlier repos provide useful parser/header/fixture contracts but not suitable current-app merge semantics. This plan reuses their evidence and converters selectively while retaining current snapshot, null, UID, and trust-boundary rules.
 - 2026-08-10: The developer rejected `.work/youth_academy_stats.csv` as inaccurate and selected the pinned upstream `2030_07_01_Full_Squad_CA_PA_Monza.csv` fixture as the Youth contract. The local file has the same 66-column header but one additional row, so no implementation or test may use it as Youth evidence.
 - 2026-08-10: The selected Youth fixture has 74 unique UID/name pairs; all 74 occur unchanged in the accepted 75-row Moneyball example, which has one additional player. This closes cross-export identity for the two fixture sources but does not prove CSV-to-bridge UID equality.
+- 2026-08-10: The accepted Moneyball source fixture uses CRLF line endings. Commit 2 checks in the same UTF-8 rows with LF line endings, records both SHA-256 values beside the fixture, and keeps the source fingerprint in this ledger.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Parse Youth Tracker CSV exports | Pending record | Rust-only standards-compliant parser, typed model/error boundary, exact upstream Monza fixture with provenance, and focused contract tests | Sol High: clean after one correction pass | Exact aliases replaced a permissive substring fallback before acceptance |
+| PR 1 | Parse Moneyball CSV exports | Pending record | Strict semicolon Moneyball parser, typed exported values, pinned 75-row fixture with provenance, and focused contract tests | Sol High: clean after one correction pass | Fixture CRLF normalized to LF; source and checked-in hashes recorded |
 
 ## Final validation
 
