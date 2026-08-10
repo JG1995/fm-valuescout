@@ -130,7 +130,7 @@ export function PlayerOverviewPanel({ player }: PlayerOverviewPanelProps) {
           <Field label="Club" value={formatMissable(player.club)} />
           <Field label="Division" value={formatMissable(player.division)} />
           <Field label="CA" value={player.ca} numeric />
-          <Field label="PA" value={player.pa} numeric />
+          <Field label="PA" value={formatMissable(player.pa)} numeric />
           <Field
             label="Value"
             value={

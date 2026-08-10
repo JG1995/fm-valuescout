@@ -55,8 +55,32 @@ pub fn ingest_dump_file_for_save(
     save_id: i64,
     dump_path: &Path,
 ) -> Result<SnapshotSummary, String> {
+    ingest_dump_file_for_save_with_optional_bridge_source_request_id(conn, save_id, dump_path, None)
+}
+
+pub(super) fn ingest_dump_file_for_save_with_bridge_source_request_id(
+    conn: &mut Connection,
+    save_id: i64,
+    dump_path: &Path,
+    bridge_source_request_id: &str,
+) -> Result<SnapshotSummary, String> {
+    ingest_dump_file_for_save_with_optional_bridge_source_request_id(
+        conn,
+        save_id,
+        dump_path,
+        Some(bridge_source_request_id),
+    )
+}
+
+fn ingest_dump_file_for_save_with_optional_bridge_source_request_id(
+    conn: &mut Connection,
+    save_id: i64,
+    dump_path: &Path,
+    bridge_source_request_id: Option<&str>,
+) -> Result<SnapshotSummary, String> {
     let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
-    ingest_dump_json_for_save(conn, save_id, &json).map(|(summary, _)| summary)
+    ingest_dump_json_for_save(conn, save_id, &json, bridge_source_request_id)
+        .map(|(summary, _)| summary)
 }
 
 /// Ingests a dump file and returns phase timings for measurement harnesses.
@@ -67,13 +91,14 @@ pub fn ingest_dump_file_for_save_timed(
     dump_path: &Path,
 ) -> Result<(SnapshotSummary, IngestTimings), String> {
     let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
-    ingest_dump_json_for_save(conn, save_id, &json)
+    ingest_dump_json_for_save(conn, save_id, &json, None)
 }
 
 fn ingest_dump_json_for_save(
     conn: &mut Connection,
     save_id: i64,
     json: &str,
+    bridge_source_request_id: Option<&str>,
 ) -> Result<(SnapshotSummary, IngestTimings), String> {
     let total_started = Instant::now();
 
@@ -87,7 +112,7 @@ fn ingest_dump_json_for_save(
 
     let insert_started = Instant::now();
     let tx = conn.transaction().map_err(|error| error.to_string())?;
-    let snapshot_id = insert_snapshot(&tx, save_id, object)?;
+    let snapshot_id = insert_snapshot(&tx, save_id, object, bridge_source_request_id)?;
     insert_players(&tx, snapshot_id, object)?;
     insert_staff(&tx, snapshot_id, object)?;
     // ponytail: score every catalog role synchronously during ingest (one INSERT per role × player)
@@ -100,10 +125,10 @@ fn ingest_dump_json_for_save(
         optional_string(object.get("gameDate"))?.as_deref(),
         &require_string(object, "gameDateSource")?,
     )?;
+    let summary = get_snapshot_by_id(&tx, snapshot_id)?;
     tx.commit().map_err(|error| error.to_string())?;
     let insert_ms = insert_started.elapsed().as_millis();
 
-    let summary = get_snapshot_by_id(conn, snapshot_id)?;
     let total_ms = total_started.elapsed().as_millis();
 
     Ok((
@@ -120,6 +145,7 @@ fn insert_snapshot(
     tx: &Transaction<'_>,
     save_id: i64,
     object: &serde_json::Map<String, Value>,
+    bridge_source_request_id: Option<&str>,
 ) -> Result<i64, String> {
     tx.execute(
         "INSERT INTO snapshots (
@@ -142,10 +168,11 @@ fn insert_snapshot(
             manager_uid,
             manager_name,
             manager_club,
-            manager_club_reputation
+            manager_club_reputation,
+            bridge_source_request_id
         ) VALUES (
             ?1, 0, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-            ?16, ?17, ?18, ?19
+            ?16, ?17, ?18, ?19, ?20
         )",
         params![
             save_id,
@@ -167,6 +194,7 @@ fn insert_snapshot(
             optional_string(manager_field(object, "name")?)?,
             optional_string(manager_field(object, "club")?)?,
             optional_i64(manager_field(object, "clubReputation")?)?,
+            bridge_source_request_id,
         ],
     )
     .map_err(|error| error.to_string())?;
@@ -451,8 +479,8 @@ fn replace_current_snapshot(
     Ok(())
 }
 
-fn get_snapshot_by_id(conn: &Connection, snapshot_id: i64) -> Result<SnapshotSummary, String> {
-    conn.query_row(
+fn get_snapshot_by_id(tx: &Transaction<'_>, snapshot_id: i64) -> Result<SnapshotSummary, String> {
+    tx.query_row(
         "SELECT
             id,
             save_id,
@@ -611,6 +639,18 @@ mod tests {
         )
         .optional()
         .expect("query current snapshot")
+    }
+
+    fn bridge_source_request_id_for_snapshot(
+        conn: &Connection,
+        snapshot_id: i64,
+    ) -> Option<String> {
+        conn.query_row(
+            "SELECT bridge_source_request_id FROM snapshots WHERE id = ?1",
+            params![snapshot_id],
+            |row| row.get(0),
+        )
+        .expect("query bridge source request id")
     }
 
     fn player_count_for_snapshot(conn: &Connection, snapshot_id: i64) -> i64 {
@@ -809,6 +849,10 @@ mod tests {
         assert!(!snapshot.scan_truncated);
         assert_eq!(snapshot.max_accepted, None);
         assert_eq!(snapshot.player_count, 1);
+        assert_eq!(
+            bridge_source_request_id_for_snapshot(&conn, snapshot.id),
+            None
+        );
 
         assert_eq!(
             current_snapshot_id(&conn, active_save.id),
@@ -1057,7 +1101,13 @@ mod tests {
             .expect("active save");
 
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
-        let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
+        let first = ingest_dump_file_for_save_with_bridge_source_request_id(
+            &mut conn,
+            active_save.id,
+            &good_path,
+            "req-first",
+        )
+        .expect("first ingest");
         let prior_role_score_count = role_score_count_for_snapshot(&conn, first.id);
         conn.execute_batch(
             "CREATE TRIGGER reject_staff_insert
@@ -1069,10 +1119,20 @@ mod tests {
         .expect("create staff failure trigger");
 
         let rejected_path = write_dump(&temp_dir, "rejected.json", GOLDEN_FIXTURE);
-        let error = ingest_dump_file(&mut conn, &rejected_path).expect_err("reject staff insert");
+        let error = ingest_dump_file_for_save_with_bridge_source_request_id(
+            &mut conn,
+            active_save.id,
+            &rejected_path,
+            "req-rejected",
+        )
+        .expect_err("reject staff insert");
 
         assert!(error.contains("staff insert failure"));
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
+        assert_eq!(
+            bridge_source_request_id_for_snapshot(&conn, first.id).as_deref(),
+            Some("req-first")
+        );
         assert!(snapshot_row_exists(&conn, first.id));
         assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
         assert_eq!(staff_count_for_snapshot(&conn, first.id), 1);

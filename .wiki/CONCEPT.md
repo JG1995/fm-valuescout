@@ -97,7 +97,7 @@ A week later in-game, the signing completes. You click **Load Data** again. The 
 - Save-file import or parsing as an alternative data source
 - Automatic or background sync while FM runs (refresh is manual)
 - Accounts, cloud sync, or multi-user collaboration
-- Executing transfers or general edits inside FM from the app. The only accepted exception is the two action-specific player boosts in [ADR-0017](./decisions/0017-action-specific-fm26-player-boosts.md); their app integration remains pending.
+- Executing transfers or general edits inside FM from the app. The only accepted exception is the two action-specific player boosts in [ADR-0017](./decisions/0017-action-specific-fm26-player-boosts.md). Those two fixed actions are implemented; transfers and general editing remain out of scope.
 - Mobile or web clients
 - Community databases, facepacks, or mod management
 - Advanced moneyball analytics beyond defined position/role scores (e.g. xG models, custom ML pipelines)

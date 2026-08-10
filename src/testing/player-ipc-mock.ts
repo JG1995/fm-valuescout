@@ -1,6 +1,33 @@
+import type { PlayerBoostResult } from "@/features/player-profile/types/player-boost";
 import type { PlayerDetail } from "@/features/player-profile/types/player-detail";
 
 let getPlayerOverride: PlayerDetail | null | undefined;
+let currentAbilityBoostMode: CurrentAbilityBoostIpcMockMode = "success";
+let currentAbilityBoostCalls: unknown[] = [];
+let pendingCurrentAbilityBoost: {
+  promise: Promise<PlayerBoostResult>;
+  resolve: (result: PlayerBoostResult) => void;
+} | null = null;
+let wonderkidMentalityBoostMode: WonderkidMentalityBoostIpcMockMode = "success";
+let wonderkidMentalityBoostCalls: unknown[] = [];
+let pendingWonderkidMentalityBoost: {
+  promise: Promise<PlayerBoostResult>;
+  resolve: (result: PlayerBoostResult) => void;
+} | null = null;
+
+export type CurrentAbilityBoostIpcMockMode =
+  | "success"
+  | "pending"
+  | "eligibilityError"
+  | "liveValueError"
+  | "snapshotSyncError";
+
+export type WonderkidMentalityBoostIpcMockMode =
+  | "success"
+  | "pending"
+  | "eligibilityError"
+  | "liveValueError"
+  | "snapshotSyncError";
 
 export function setGetPlayerOverride(player: PlayerDetail | null | undefined) {
   getPlayerOverride = player;
@@ -8,6 +35,51 @@ export function setGetPlayerOverride(player: PlayerDetail | null | undefined) {
 
 export function resetGetPlayerOverride() {
   getPlayerOverride = undefined;
+  currentAbilityBoostMode = "success";
+  currentAbilityBoostCalls = [];
+  pendingCurrentAbilityBoost = null;
+  wonderkidMentalityBoostMode = "success";
+  wonderkidMentalityBoostCalls = [];
+  pendingWonderkidMentalityBoost = null;
+}
+
+export function setCurrentAbilityBoostIpcMockMode(
+  mode: CurrentAbilityBoostIpcMockMode,
+) {
+  currentAbilityBoostMode = mode;
+  if (mode !== "pending") {
+    pendingCurrentAbilityBoost = null;
+  }
+}
+
+export function getCurrentAbilityBoostIpcMockCalls() {
+  return currentAbilityBoostCalls;
+}
+
+export function resolvePendingCurrentAbilityBoostIpcMock(
+  result = currentAbilityBoostResult(),
+) {
+  pendingCurrentAbilityBoost?.resolve(result);
+  pendingCurrentAbilityBoost = null;
+}
+
+export function setWonderkidMentalityBoostIpcMockMode(
+  mode: WonderkidMentalityBoostIpcMockMode,
+) {
+  wonderkidMentalityBoostMode = mode;
+  if (mode !== "pending") {
+    pendingWonderkidMentalityBoost = null;
+  }
+}
+
+export function getWonderkidMentalityBoostIpcMockCalls() {
+  return wonderkidMentalityBoostCalls;
+}
+
+export function resolvePendingWonderkidMentalityBoostIpcMock() {
+  const result = wonderkidMentalityBoostResult();
+  pendingWonderkidMentalityBoost?.resolve(result);
+  pendingWonderkidMentalityBoost = null;
 }
 
 export function fixturePlayerDetail(
@@ -108,4 +180,157 @@ export function resolveGetPlayerIpcMock(args: unknown): PlayerDetail | null {
   }
 
   return null;
+}
+
+function currentAbilityBoostResult(): PlayerBoostResult {
+  const player =
+    getPlayerOverride === undefined ? fixturePlayerDetail() : getPlayerOverride;
+  if (player === null) {
+    throw new Error("Player not found");
+  }
+  if (player.pa === null) {
+    throw new Error("Potential ability is unavailable");
+  }
+  const increment = player.age !== null && player.age <= 21 ? 5 : 10;
+  const currentAbility = Math.min(player.ca + increment, player.pa, 200);
+  const result: PlayerBoostResult = {
+    snapshotId: 1,
+    operation: "boost-current-ability",
+    previousCurrentAbility: player.ca,
+    currentAbility,
+    potentialAbility: player.pa,
+    previousAmbition: null,
+    ambition: null,
+    previousProfessionalism: null,
+    professionalism: null,
+    previousDetermination: null,
+    determination: null,
+  };
+  getPlayerOverride = { ...player, ca: currentAbility };
+  return result;
+}
+
+export function resolveBoostCurrentAbilityIpcMock(
+  args: unknown,
+): Promise<PlayerBoostResult> {
+  currentAbilityBoostCalls = [...currentAbilityBoostCalls, args];
+
+  if (currentAbilityBoostMode === "pending") {
+    if (!pendingCurrentAbilityBoost) {
+      let resolve!: (result: PlayerBoostResult) => void;
+      const promise = new Promise<PlayerBoostResult>((next) => {
+        resolve = next;
+      });
+      pendingCurrentAbilityBoost = { promise, resolve };
+    }
+    return pendingCurrentAbilityBoost.promise;
+  }
+
+  if (currentAbilityBoostMode === "eligibilityError") {
+    return Promise.reject({
+      phase: "eligibility",
+      kind: "unknownAge",
+      message: "player age is unknown",
+    });
+  }
+  if (currentAbilityBoostMode === "liveValueError") {
+    return Promise.reject({
+      phase: "liveValue",
+      message: "player values changed in FM; Load Data again",
+    });
+  }
+  if (currentAbilityBoostMode === "snapshotSyncError") {
+    return Promise.reject({
+      phase: "snapshotSync",
+      message: "FM may have changed. Load Data again.",
+    });
+  }
+
+  return Promise.resolve(currentAbilityBoostResult());
+}
+
+function wonderkidMentalityTarget(value: number | null | undefined) {
+  return typeof value === "number" && value >= 1 && value <= 10
+    ? value + 10
+    : (value ?? null);
+}
+
+function wonderkidMentalityBoostResult(): PlayerBoostResult {
+  const player =
+    getPlayerOverride === undefined ? fixturePlayerDetail() : getPlayerOverride;
+  if (player === null) {
+    throw new Error("Player not found");
+  }
+
+  const previousAmbition = player.personality.Ambition ?? null;
+  const previousProfessionalism = player.personality.Professionalism ?? null;
+  const previousDetermination = player.attributes.Determination ?? null;
+  const ambition = wonderkidMentalityTarget(previousAmbition);
+  const professionalism = wonderkidMentalityTarget(previousProfessionalism);
+  const determination = wonderkidMentalityTarget(previousDetermination);
+  const result: PlayerBoostResult = {
+    snapshotId: 1,
+    operation: "wonderkid-mentality",
+    previousCurrentAbility: null,
+    currentAbility: null,
+    potentialAbility: null,
+    previousAmbition,
+    ambition,
+    previousProfessionalism,
+    professionalism,
+    previousDetermination,
+    determination,
+  };
+  getPlayerOverride = {
+    ...player,
+    attributes: {
+      ...player.attributes,
+      Determination: determination,
+    },
+    personality: {
+      ...player.personality,
+      Ambition: ambition,
+      Professionalism: professionalism,
+    },
+  };
+  return result;
+}
+
+export function resolveBoostWonderkidMentalityIpcMock(
+  args: unknown,
+): Promise<PlayerBoostResult> {
+  wonderkidMentalityBoostCalls = [...wonderkidMentalityBoostCalls, args];
+
+  if (wonderkidMentalityBoostMode === "pending") {
+    if (!pendingWonderkidMentalityBoost) {
+      let resolve!: (result: PlayerBoostResult) => void;
+      const promise = new Promise<PlayerBoostResult>((next) => {
+        resolve = next;
+      });
+      pendingWonderkidMentalityBoost = { promise, resolve };
+    }
+    return pendingWonderkidMentalityBoost.promise;
+  }
+
+  if (wonderkidMentalityBoostMode === "eligibilityError") {
+    return Promise.reject({
+      phase: "eligibility",
+      kind: "noEligibleMentality",
+      message: "no known mentality attribute is 10 or lower",
+    });
+  }
+  if (wonderkidMentalityBoostMode === "liveValueError") {
+    return Promise.reject({
+      phase: "liveValue",
+      message: "player values changed in FM; Load Data again",
+    });
+  }
+  if (wonderkidMentalityBoostMode === "snapshotSyncError") {
+    return Promise.reject({
+      phase: "snapshotSync",
+      message: "FM may have changed. Load Data again.",
+    });
+  }
+
+  return Promise.resolve(wonderkidMentalityBoostResult());
 }

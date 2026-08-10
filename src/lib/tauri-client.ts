@@ -1,6 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type TauriCommandPhase = "scan" | "ingest";
+export type TauriCommandPhase =
+  | "scan"
+  | "ingest"
+  | "eligibility"
+  | "bridge"
+  | "liveValue"
+  | "snapshotSync";
+
+const commandPhases = new Set<TauriCommandPhase>([
+  "scan",
+  "ingest",
+  "eligibility",
+  "bridge",
+  "liveValue",
+  "snapshotSync",
+]);
 
 export class TauriCommandError extends Error {
   readonly kind?: string;
@@ -25,10 +40,13 @@ function parseInvokeError(error: unknown): TauriCommandError {
       message?: string;
     };
 
-    if (structured.phase === "scan" || structured.phase === "ingest") {
-      return new TauriCommandError(structured.message ?? "Load data failed", {
+    if (
+      typeof structured.phase === "string" &&
+      commandPhases.has(structured.phase as TauriCommandPhase)
+    ) {
+      return new TauriCommandError(structured.message ?? "Command failed", {
         kind: structured.kind,
-        phase: structured.phase,
+        phase: structured.phase as TauriCommandPhase,
       });
     }
 

@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Player Development Boosts](./features/active/player-development-boosts.md) — two guarded player-profile actions for snapshot-derived CA and mentality boosts through a live-validated FM26 write bridge
+No active feature selected.
 
 ## Next
 
@@ -60,6 +60,7 @@ No next feature selected.
 
 ## Completed
 
+- [Player Development Boosts](./features/completed/player-development-boosts.md) — two guarded player-profile actions for snapshot-derived CA and mentality boosts through a live-validated FM26 write bridge
 - [Potential role scores](./features/completed/potential-role-scores.md) — CA-to-PA visible-attribute projection, Current/Potential profile and assigned-role scores, and explicit current or potential Planner optimization
 - [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md) — schema-v6 direct player, staff, manager, scope, and club parity plus deterministic scan hardening and prior-output safety; PR 2 remains unpublished and unmerged
 - [Planner workspace redesign](./features/completed/planner-workspace-redesign.md) — URL-backed Planner workspaces, adaptive dual-phase tactic pitches, responsive three-team depth matrix, and transactional Clear all

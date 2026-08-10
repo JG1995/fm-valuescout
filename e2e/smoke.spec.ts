@@ -572,6 +572,37 @@ test.describe("walking skeleton smoke", () => {
     }
   });
 
+  test("player profile confirms Wonderkid Mentality at desktop size", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { playerProfile: true });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/players/42");
+
+    const main = page.getByRole("main");
+    const action = main.getByRole("button", { name: "Wonderkid Mentality" });
+    await expect(action).toBeVisible();
+    await action.click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(
+      dialog.getByRole("heading", { name: "Apply Wonderkid Mentality?" }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByText(
+        "FM assigns each eligible value a random number from 11 to 20.",
+      ),
+    ).toBeVisible();
+    await dialog
+      .getByRole("button", { name: "Apply Wonderkid Mentality" })
+      .click();
+
+    await expect(main.getByRole("status")).toContainText(
+      "Wonderkid Mentality updated Ambition from 10 to 20, Determination from 8 to 18.",
+    );
+    await expect(action).toBeDisabled();
+  });
+
   test("player profile Attributes keeps visible potential pairs within desktop widths", async ({
     page,
   }) => {

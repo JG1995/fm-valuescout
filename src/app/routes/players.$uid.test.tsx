@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
@@ -12,7 +12,13 @@ import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import {
   fixturePlayerDetail,
+  getCurrentAbilityBoostIpcMockCalls,
+  getWonderkidMentalityBoostIpcMockCalls,
+  resolvePendingCurrentAbilityBoostIpcMock,
+  resolvePendingWonderkidMentalityBoostIpcMock,
+  setCurrentAbilityBoostIpcMockMode,
   setGetPlayerOverride,
+  setWonderkidMentalityBoostIpcMockMode,
 } from "@/testing/player-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 
@@ -368,5 +374,534 @@ describe("player profile route", () => {
     expect(
       screen.getAllByLabelText(/Catalog Role \d+ \(Potential\):/),
     ).toHaveLength(68);
+  });
+
+  it("previews and confirms the age-21 CA boost from the current snapshot", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const action = await screen.findByRole("button", { name: "Boost CA" });
+    expect(screen.getByText("CA 140 → 145 (+5)")).toBeInTheDocument();
+
+    await user.click(action);
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Boost CA?" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("This raises current ability from 140 to 145."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(
+        "FM may redistribute attributes over the following in-game days, sometimes up to one month.",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("uses the age-22 increment while capping the preview at PA", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: 22, ca: 192, pa: 195 }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText("CA 192 → 195 (+3) · capped by PA"),
+    ).toBeInTheDocument();
+  });
+
+  it("disables CA boost when age is unknown", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: null }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText(
+        "Age is unavailable. Load Data again to refresh this player.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+  });
+
+  it("disables CA boost when PA is unavailable", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ pa: null }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText(
+        "Potential ability is unavailable. Load Data again to refresh this player.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+  });
+
+  it("disables CA boost when CA already equals PA", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ ca: 160, pa: 160 }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText(
+        "Current ability is already at this player’s potential ability.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+  });
+
+  it("disables CA boost at the 200 ceiling", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ ca: 200, pa: 200 }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText(
+        "Current ability is already at the maximum of 200.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+  });
+
+  it("reports the verified CA result and refreshes the profile", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+
+    expect(
+      await screen.findByText("CA boosted from 140 to 145."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("CA 145 → 150 (+5)")).toBeInTheDocument();
+    expect(getCurrentAbilityBoostIpcMockCalls()).toEqual([{ uid: 42 }]);
+  });
+
+  it("does not carry a settled boost outcome to another player", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({ uid: 42, name: "Alex Scout", age: 21 }),
+    );
+    const user = userEvent.setup();
+    const { router } = renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Boost CA",
+      }),
+    );
+    expect(
+      await screen.findByText("CA boosted from 140 to 145."),
+    ).toBeInTheDocument();
+
+    setGetPlayerOverride(
+      fixturePlayerDetail({ uid: 99, name: "Jamie Scout", age: 22 }),
+    );
+    await router.navigate({
+      to: "/players/$uid",
+      params: { uid: "99" },
+      search: { tab: "overview" },
+    });
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Jamie Scout" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("CA boosted from 140 to 145."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not carry an in-flight boost outcome to another player", async () => {
+    await resolveLoadDataIpcMock();
+    setCurrentAbilityBoostIpcMockMode("pending");
+    setGetPlayerOverride(
+      fixturePlayerDetail({ uid: 42, name: "Alex Scout", age: 21 }),
+    );
+    const user = userEvent.setup();
+    const { router } = renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Boost CA",
+      }),
+    );
+
+    setGetPlayerOverride(
+      fixturePlayerDetail({ uid: 99, name: "Jamie Scout", age: 22 }),
+    );
+    await router.navigate({
+      to: "/players/$uid",
+      params: { uid: "99" },
+      search: { tab: "overview" },
+    });
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Jamie Scout" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    resolvePendingCurrentAbilityBoostIpcMock({
+      snapshotId: 1,
+      operation: "boost-current-ability",
+      previousCurrentAbility: 140,
+      currentAbility: 145,
+      potentialAbility: 160,
+      previousAmbition: null,
+      ambition: null,
+      previousProfessionalism: null,
+      professionalism: null,
+      previousDetermination: null,
+      determination: null,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("CA boosted from 140 to 145."),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("prevents a duplicate CA boost while the first request is pending", async () => {
+    await resolveLoadDataIpcMock();
+    setCurrentAbilityBoostIpcMockMode("pending");
+    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Boost CA",
+    });
+    await user.click(confirm);
+    await user.click(confirm);
+
+    expect(getCurrentAbilityBoostIpcMockCalls()).toHaveLength(1);
+    expect(confirm).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Wonderkid Mentality" }),
+    ).toBeDisabled();
+
+    resolvePendingCurrentAbilityBoostIpcMock();
+    expect(
+      await screen.findByText("CA boosted from 140 to 145."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps phase-specific bridge errors in the confirmation", async () => {
+    await resolveLoadDataIpcMock();
+    setCurrentAbilityBoostIpcMockMode("snapshotSyncError");
+    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+
+    expect(
+      await within(dialog).findByRole("alert", { name: "" }),
+    ).toHaveTextContent(
+      "Load Data required. FM may have changed. Load Data again.",
+    );
+  });
+
+  it("restores focus to the CA action after cancelling confirmation", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const action = await screen.findByRole("button", { name: "Boost CA" });
+    action.focus();
+    await user.click(action);
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
+
+    await waitFor(() => expect(action).toHaveFocus());
+  });
+
+  it("keeps CA confirmation content during its exit transition", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: { Determination: 8 },
+        personality: { Ambition: 10, Professionalism: 15 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
+
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Boost CA?" }),
+    ).toBeInTheDocument();
+  });
+
+  it("previews only eligible Wonderkid Mentality values", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: { Determination: null },
+        personality: { Ambition: 10, Professionalism: 11 },
+      }),
+    );
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByRole("button", { name: "Wonderkid Mentality" }),
+    ).toBeEnabled();
+    expect(screen.getByText("Ambition 10 → random 11–20")).toBeInTheDocument();
+    expect(
+      screen.getByText("Professionalism 11 → unchanged"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Determination unavailable → unchanged"),
+    ).toBeInTheDocument();
+  });
+
+  it("disables Wonderkid Mentality when no known value is 10 or lower", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: { Determination: 15 },
+        personality: { Ambition: 11, Professionalism: null },
+      }),
+    );
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText("No known mentality attribute is 10 or lower."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Wonderkid Mentality" }),
+    ).toBeDisabled();
+  });
+
+  it("confirms Wonderkid Mentality without previewing a random result", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: { Determination: 8 },
+        personality: { Ambition: 10, Professionalism: 15 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Wonderkid Mentality" }),
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByRole("heading", {
+        level: 2,
+        name: "Apply Wonderkid Mentality?",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "FM assigns each eligible value a random number from 11 to 20.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Ambition 10 → random 11–20"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Professionalism 15 → unchanged"),
+    ).toBeInTheDocument();
+  });
+
+  it("reports exact verified Wonderkid Mentality values and refreshes the profile", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: { Determination: 8 },
+        personality: { Ambition: 10, Professionalism: 15 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Wonderkid Mentality" }),
+    );
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Apply Wonderkid Mentality",
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        "Wonderkid Mentality updated Ambition from 10 to 20, Determination from 8 to 18.",
+      ),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("Ambition 20 → unchanged")).toBeInTheDocument();
+    expect(
+      screen.getByText("Determination 18 → unchanged"),
+    ).toBeInTheDocument();
+    expect(getWonderkidMentalityBoostIpcMockCalls()).toEqual([{ uid: 42 }]);
+  });
+
+  it("shares the pending lock across both development actions", async () => {
+    await resolveLoadDataIpcMock();
+    setWonderkidMentalityBoostIpcMockMode("pending");
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: { Determination: 8 },
+        personality: { Ambition: 10, Professionalism: 15 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Wonderkid Mentality" }),
+    );
+    const confirm = within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Apply Wonderkid Mentality",
+    });
+    await user.click(confirm);
+    await user.click(confirm);
+
+    expect(getWonderkidMentalityBoostIpcMockCalls()).toHaveLength(1);
+    expect(confirm).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+
+    resolvePendingWonderkidMentalityBoostIpcMock();
+    expect(
+      await screen.findByText(
+        "Wonderkid Mentality updated Ambition from 10 to 20, Determination from 8 to 18.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps Wonderkid Mentality bridge errors in the confirmation", async () => {
+    await resolveLoadDataIpcMock();
+    setWonderkidMentalityBoostIpcMockMode("liveValueError");
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: { Determination: 8 },
+        personality: { Ambition: 10, Professionalism: 15 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Wonderkid Mentality" }),
+    );
+    const dialog = screen.getByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Apply Wonderkid Mentality" }),
+    );
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "FM values changed. player values changed in FM; Load Data again",
+    );
+  });
+
+  it("does not carry a CA error into a Wonderkid confirmation", async () => {
+    await resolveLoadDataIpcMock();
+    setCurrentAbilityBoostIpcMockMode("snapshotSyncError");
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: { Determination: 8 },
+        personality: { Ambition: 10, Professionalism: 15 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    const caDialog = screen.getByRole("dialog");
+    await user.click(
+      within(caDialog).getByRole("button", { name: "Boost CA" }),
+    );
+    await within(caDialog).findByRole("alert");
+    await user.click(within(caDialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Wonderkid Mentality" }),
+    );
+
+    expect(
+      within(screen.getByRole("dialog")).queryByRole("alert"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("restores focus to Wonderkid Mentality after cancelling confirmation", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: { Determination: 8 },
+        personality: { Ambition: 10, Professionalism: 15 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const action = await screen.findByRole("button", {
+      name: "Wonderkid Mentality",
+    });
+    action.focus();
+    await user.click(action);
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Cancel",
+      }),
+    );
+
+    await waitFor(() => expect(action).toHaveFocus());
+  });
+
+  it("moves focus to the verified outcome when Wonderkid becomes unavailable", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        ca: 160,
+        pa: 160,
+        attributes: { Determination: 8 },
+        personality: { Ambition: 10, Professionalism: 15 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("button", { name: "Wonderkid Mentality" }),
+    );
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Apply Wonderkid Mentality",
+      }),
+    );
+
+    const outcome = await screen.findByText(
+      "Wonderkid Mentality updated Ambition from 10 to 20, Determination from 8 to 18.",
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(outcome.parentElement).toHaveFocus();
   });
 });

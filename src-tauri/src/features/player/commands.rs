@@ -1,9 +1,17 @@
+use std::sync::Mutex;
+
 use serde::Serialize;
 use tauri::State;
 
 use crate::db::Db;
+use crate::features::memory_read::service::{
+    request_player_boost_from_local_app_data, DumpWaitConfig, PlayerBoostResult,
+};
 
 use super::query::{self, PlayerDetail, PlayerRoleScore};
+use super::service::{self, PlayerBoostError, PreparedPlayerBoost, VerifiedPlayerBoost};
+
+static PLAYER_BOOST_GATE: Mutex<()> = Mutex::new(());
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -107,6 +115,40 @@ impl From<PlayerDetail> for PlayerDetailDto {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerBoostResultDto {
+    pub snapshot_id: i64,
+    pub operation: String,
+    pub previous_current_ability: Option<i64>,
+    pub current_ability: Option<i64>,
+    pub potential_ability: Option<i64>,
+    pub previous_ambition: Option<i64>,
+    pub ambition: Option<i64>,
+    pub previous_professionalism: Option<i64>,
+    pub professionalism: Option<i64>,
+    pub previous_determination: Option<i64>,
+    pub determination: Option<i64>,
+}
+
+impl From<VerifiedPlayerBoost> for PlayerBoostResultDto {
+    fn from(result: VerifiedPlayerBoost) -> Self {
+        Self {
+            snapshot_id: result.snapshot_id,
+            operation: result.operation,
+            previous_current_ability: result.previous_current_ability,
+            current_ability: result.current_ability,
+            potential_ability: result.potential_ability,
+            previous_ambition: result.previous_ambition,
+            ambition: result.ambition,
+            previous_professionalism: result.previous_professionalism,
+            professionalism: result.professionalism,
+            previous_determination: result.previous_determination,
+            determination: result.determination,
+        }
+    }
+}
+
 /// Query key for frontend cache: `["player", uid]` — invalidate with snapshot/save keys
 /// when Load Data or set_active_save runs (wired in a later commit).
 #[tauri::command]
@@ -116,4 +158,157 @@ pub fn get_player(uid: i64, db: State<'_, Db>) -> Result<Option<PlayerDetailDto>
             .map_err(|_| "database lock poisoned".to_string())?;
     let player = query::get_player(&conn, uid)?;
     Ok(player.map(PlayerDetailDto::from))
+}
+
+#[tauri::command]
+pub fn boost_current_ability(
+    uid: i64,
+    db: State<'_, Db>,
+) -> Result<PlayerBoostResultDto, PlayerBoostError> {
+    execute_player_boost(uid, db.inner(), service::prepare_current_ability_boost)
+}
+
+#[tauri::command]
+pub fn boost_wonderkid_mentality(
+    uid: i64,
+    db: State<'_, Db>,
+) -> Result<PlayerBoostResultDto, PlayerBoostError> {
+    execute_player_boost(uid, db.inner(), service::prepare_wonderkid_mentality_boost)
+}
+
+fn execute_player_boost(
+    uid: i64,
+    db: &Db,
+    prepare: fn(&rusqlite::Connection, i64) -> Result<PreparedPlayerBoost, PlayerBoostError>,
+) -> Result<PlayerBoostResultDto, PlayerBoostError> {
+    execute_player_boost_with(uid, db, prepare, |prepared| {
+        request_player_boost_from_local_app_data(
+            &prepared.source_request_id,
+            prepared.player_uid,
+            prepared.expected_current_ability as i32,
+            prepared.expected_potential_ability as i32,
+            prepared.bridge_operation(),
+            DumpWaitConfig::default(),
+        )
+        .map_err(service::map_bridge_error)
+    })
+}
+
+fn execute_player_boost_with<F>(
+    uid: i64,
+    db: &Db,
+    prepare: fn(&rusqlite::Connection, i64) -> Result<PreparedPlayerBoost, PlayerBoostError>,
+    request_bridge_boost: F,
+) -> Result<PlayerBoostResultDto, PlayerBoostError>
+where
+    F: FnOnce(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
+{
+    let prepared = {
+        let conn = db.0.lock().map_err(|_| PlayerBoostError::Eligibility {
+            kind: "databaseUnavailable".to_string(),
+            message: "could not read the current snapshot for this player boost".to_string(),
+        })?;
+        prepare(&conn, uid)?
+    };
+
+    let _boost_guard = PLAYER_BOOST_GATE
+        .try_lock()
+        .map_err(|_| PlayerBoostError::Bridge {
+            kind: "inProgress".to_string(),
+            message: "a player boost is already in progress; wait for it to finish".to_string(),
+        })?;
+    let bridge_result = request_bridge_boost(&prepared)?;
+
+    let mut conn = db.0.lock().map_err(|_| PlayerBoostError::SnapshotSync {
+        message:
+            "FM may have changed, but FM ValueScout could not update its snapshot. Load Data again."
+                .to_string(),
+    })?;
+    service::reconcile_verified_boost(&mut conn, &prepared, bridge_result)
+        .map(PlayerBoostResultDto::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use rusqlite::{params, Connection};
+
+    use super::*;
+    use crate::db::migrations;
+    use crate::features::memory_read::service::{
+        PlayerBoostResult, OPERATION_BOOST_CURRENT_ABILITY,
+    };
+    use crate::features::snapshot::ingest::ingest_dump_file;
+
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v6.json");
+
+    fn seeded_db() -> (tempfile::TempDir, Db) {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("player-boost-command.db");
+        let mut conn = Connection::open(&db_path).expect("open db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        migrations::apply(&conn).expect("apply migrations");
+        let dump_path = temp_dir.path().join("player.json");
+        std::fs::write(&dump_path, GOLDEN_FIXTURE).expect("write dump");
+        let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest player");
+        conn.execute(
+            "UPDATE snapshots SET bridge_source_request_id = ?1 WHERE id = ?2",
+            params!["scan-player-1", snapshot.id],
+        )
+        .expect("bind source request");
+
+        (temp_dir, Db(Mutex::new(conn)))
+    }
+
+    fn verified_ca_result() -> PlayerBoostResult {
+        PlayerBoostResult {
+            operation: OPERATION_BOOST_CURRENT_ABILITY.to_string(),
+            outcome: "verified".to_string(),
+            rollback: "not-needed".to_string(),
+            previous_current_ability: Some(150),
+            current_ability: Some(160),
+            potential_ability: Some(170),
+            previous_ambition: None,
+            ambition: None,
+            previous_professionalism: None,
+            professionalism: None,
+            previous_determination: None,
+            determination: None,
+        }
+    }
+
+    #[test]
+    fn bridge_polling_runs_after_the_snapshot_lock_is_released() {
+        let (_temp_dir, db) = seeded_db();
+
+        let result = execute_player_boost_with(
+            77,
+            &db,
+            service::prepare_current_ability_boost,
+            |prepared| {
+                assert_eq!(prepared.current_ability_increment, Some(10));
+                assert!(
+                    db.0.try_lock().is_ok(),
+                    "the database lock must not cover the bridge request"
+                );
+                assert!(
+                    super::PLAYER_BOOST_GATE.try_lock().is_err(),
+                    "a second player boost must not overwrite the in-flight bridge request"
+                );
+                Ok(verified_ca_result())
+            },
+        )
+        .expect("reconcile verified bridge result");
+
+        assert_eq!(result.current_ability, Some(160));
+        let conn = db.0.lock().expect("lock db");
+        let ca: i64 = conn
+            .query_row("SELECT ca FROM players WHERE uid = 77", [], |row| {
+                row.get(0)
+            })
+            .expect("read reconciled CA");
+        assert_eq!(ca, 160);
+    }
 }

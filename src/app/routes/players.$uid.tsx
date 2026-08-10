@@ -1,11 +1,21 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DatabaseZap, UserX } from "lucide-react";
 import { Suspense } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { academyKeys } from "@/features/academy/api/academy-keys";
+import { plannerKeys } from "@/features/planner/api/planner-keys";
+import { boostCurrentAbility } from "@/features/player-profile/api/boost-current-ability";
+import { boostWonderkidMentality } from "@/features/player-profile/api/boost-wonderkid-mentality";
 import { getPlayerQueryOptions } from "@/features/player-profile/api/get-player-query-options";
+import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { PlayerAttributesPanel } from "@/features/player-profile/components/player-attributes-panel";
+import { PlayerDevelopmentBoostsPanel } from "@/features/player-profile/components/player-development-boosts-panel";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
 import {
   PlayerProfileTabs,
@@ -16,11 +26,21 @@ import {
   type ProfileTab,
   parseProfileTab,
 } from "@/features/player-profile/utils/profile-tab";
+import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { cn } from "@/utils/cn";
 
 export type PlayerProfileSearch = {
   tab: ProfileTab;
+};
+
+type PlayerBoostAction = "currentAbility" | "wonderkidMentality";
+
+type PlayerBoostMutation = {
+  action: PlayerBoostAction;
+  uid: number;
+  snapshotId: number;
 };
 
 function parseUid(raw: string): number | null {
@@ -192,8 +212,28 @@ function PlayerProfileContent({
   tab: ProfileTab;
   onTabChange: (tab: ProfileTab) => void;
 }) {
+  const queryClient = useQueryClient();
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
+  const boost = useMutation({
+    mutationFn: ({ action, uid }: PlayerBoostMutation) =>
+      action === "currentAbility"
+        ? boostCurrentAbility(uid)
+        : boostWonderkidMentality(uid),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
+        queryClient.invalidateQueries({ queryKey: searchKeys.all }),
+        queryClient.invalidateQueries({ queryKey: playerKeys.all }),
+        queryClient.invalidateQueries({ queryKey: plannerKeys.all }),
+        queryClient.invalidateQueries({ queryKey: academyKeys.all }),
+      ]);
+    },
+  });
+  const boostContextIsCurrent =
+    boost.variables?.uid === uid &&
+    boost.variables.snapshotId === snapshot?.id &&
+    (boost.data === undefined || boost.data.snapshotId === snapshot?.id);
 
   if (!snapshot) {
     return (
@@ -215,7 +255,33 @@ function PlayerProfileContent({
       <h1 className="text-headline-lg text-on-surface">{player.name}</h1>
       <PlayerProfileTabs tab={tab} onTabChange={onTabChange} />
       <div {...profileTabPanelProps("overview", tab)}>
-        {tab === "overview" ? <PlayerOverviewPanel player={player} /> : null}
+        {tab === "overview" ? (
+          <div className="space-y-gutter">
+            <PlayerOverviewPanel player={player} />
+            <PlayerDevelopmentBoostsPanel
+              key={`${snapshot.id}:${uid}`}
+              player={player}
+              pending={boostContextIsCurrent && boost.isPending}
+              result={boostContextIsCurrent ? boost.data : undefined}
+              error={boostContextIsCurrent ? boost.error : null}
+              onBoostCurrentAbility={() =>
+                boost.mutateAsync({
+                  action: "currentAbility",
+                  uid,
+                  snapshotId: snapshot.id,
+                })
+              }
+              onBoostWonderkidMentality={() =>
+                boost.mutateAsync({
+                  action: "wonderkidMentality",
+                  uid,
+                  snapshotId: snapshot.id,
+                })
+              }
+              onOpenConfirmation={boost.reset}
+            />
+          </div>
+        ) : null}
       </div>
       <div {...profileTabPanelProps("attributes", tab)}>
         {tab === "attributes" ? (

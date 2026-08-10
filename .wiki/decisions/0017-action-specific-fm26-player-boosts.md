@@ -64,13 +64,15 @@ Patch the open profile while leaving SQLite, Search, Planner, and Academy data u
 
 ### Follow-up
 
-- Deliver and validate the two-PR plan in [Player Development Boosts](../features/active/player-development-boosts.md).
+- Delivered and feature-reviewed in [Player Development Boosts](../features/completed/player-development-boosts.md). Final deterministic suites passed; fresh integrated live-FM validation was explicitly skipped and accepted, and the final PR remains unpublished and unmerged.
 - Update ADR-0016 and current-state documents only where final implementation changes their stated boundaries.
 - Keep any additional edit action behind a new product decision and review; do not treat this ADR as authorization for a general editor.
 
 ## Related work
 
-- Feature plan: [Player Development Boosts](../features/active/player-development-boosts.md)
+- Feature record: [Player Development Boosts](../features/completed/player-development-boosts.md)
 - Existing bridge decision: [0016 — C# BepInEx bridge for FM26 memory read](./0016-csharp-bepinex-fm26-bridge.md)
-- Commits: Pending
+- Prior bridge PR: [PR 37](https://github.com/JG1995/fm-valuescout/pull/37), merge ref `1f4c57754de3585fe71cfc1830963601a8da296c`
+- Final PR content commits: `9f0b5983d9c2b2abc960f066f264d248148f4c96`, `bc5678c906f4f7d429ae38114911450a3cd0c40c`, `77998deeae6f44ace64c425ba6e88bf68211eaa8`, `62a23afd85a22b2592ad953ffbfb775d36ffce1c`
+- Reviewed correction: `8052c90880ab4bd3354e5294d370591905e6f26d`
 - Supersedes: none; narrows and extends ADR-0016 for these two actions only
