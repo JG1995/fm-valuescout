@@ -393,6 +393,11 @@ describe("player profile route", () => {
     expect(
       screen.getByText("This raises current ability from 140 to 145."),
     ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(
+        "FM may redistribute attributes over the following in-game days, sometimes up to one month.",
+      ),
+    ).toHaveLength(2);
   });
 
   it("uses the age-22 increment while capping the preview at PA", async () => {
@@ -472,6 +477,91 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("CA 145 → 150 (+5)")).toBeInTheDocument();
     expect(getCurrentAbilityBoostIpcMockCalls()).toEqual([{ uid: 42 }]);
+  });
+
+  it("does not carry a settled boost outcome to another player", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({ uid: 42, name: "Alex Scout", age: 21 }),
+    );
+    const user = userEvent.setup();
+    const { router } = renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Boost CA",
+      }),
+    );
+    expect(
+      await screen.findByText("CA boosted from 140 to 145."),
+    ).toBeInTheDocument();
+
+    setGetPlayerOverride(
+      fixturePlayerDetail({ uid: 99, name: "Jamie Scout", age: 22 }),
+    );
+    await router.navigate({
+      to: "/players/$uid",
+      params: { uid: "99" },
+      search: { tab: "overview" },
+    });
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Jamie Scout" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("CA boosted from 140 to 145."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not carry an in-flight boost outcome to another player", async () => {
+    await resolveLoadDataIpcMock();
+    setCurrentAbilityBoostIpcMockMode("pending");
+    setGetPlayerOverride(
+      fixturePlayerDetail({ uid: 42, name: "Alex Scout", age: 21 }),
+    );
+    const user = userEvent.setup();
+    const { router } = renderProfileRoute("/players/42");
+
+    await user.click(await screen.findByRole("button", { name: "Boost CA" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Boost CA",
+      }),
+    );
+
+    setGetPlayerOverride(
+      fixturePlayerDetail({ uid: 99, name: "Jamie Scout", age: 22 }),
+    );
+    await router.navigate({
+      to: "/players/$uid",
+      params: { uid: "99" },
+      search: { tab: "overview" },
+    });
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Jamie Scout" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    resolvePendingCurrentAbilityBoostIpcMock({
+      snapshotId: 1,
+      operation: "boost-current-ability",
+      previousCurrentAbility: 140,
+      currentAbility: 145,
+      potentialAbility: 160,
+      previousAmbition: null,
+      ambition: null,
+      previousProfessionalism: null,
+      professionalism: null,
+      previousDetermination: null,
+      determination: null,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("CA boosted from 140 to 145."),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("prevents a duplicate CA boost while the first request is pending", async () => {

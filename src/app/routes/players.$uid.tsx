@@ -37,6 +37,12 @@ export type PlayerProfileSearch = {
 
 type PlayerBoostAction = "currentAbility" | "wonderkidMentality";
 
+type PlayerBoostMutation = {
+  action: PlayerBoostAction;
+  uid: number;
+  snapshotId: number;
+};
+
 function parseUid(raw: string): number | null {
   const uid = Number(raw);
   return Number.isInteger(uid) ? uid : null;
@@ -210,7 +216,7 @@ function PlayerProfileContent({
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
   const boost = useMutation({
-    mutationFn: (action: PlayerBoostAction) =>
+    mutationFn: ({ action, uid }: PlayerBoostMutation) =>
       action === "currentAbility"
         ? boostCurrentAbility(uid)
         : boostWonderkidMentality(uid),
@@ -224,6 +230,10 @@ function PlayerProfileContent({
       ]);
     },
   });
+  const boostContextIsCurrent =
+    boost.variables?.uid === uid &&
+    boost.variables.snapshotId === snapshot?.id &&
+    (boost.data === undefined || boost.data.snapshotId === snapshot?.id);
 
   if (!snapshot) {
     return (
@@ -249,13 +259,24 @@ function PlayerProfileContent({
           <div className="space-y-gutter">
             <PlayerOverviewPanel player={player} />
             <PlayerDevelopmentBoostsPanel
+              key={`${snapshot.id}:${uid}`}
               player={player}
-              pending={boost.isPending}
-              result={boost.data}
-              error={boost.error}
-              onBoostCurrentAbility={() => boost.mutateAsync("currentAbility")}
+              pending={boostContextIsCurrent && boost.isPending}
+              result={boostContextIsCurrent ? boost.data : undefined}
+              error={boostContextIsCurrent ? boost.error : null}
+              onBoostCurrentAbility={() =>
+                boost.mutateAsync({
+                  action: "currentAbility",
+                  uid,
+                  snapshotId: snapshot.id,
+                })
+              }
               onBoostWonderkidMentality={() =>
-                boost.mutateAsync("wonderkidMentality")
+                boost.mutateAsync({
+                  action: "wonderkidMentality",
+                  uid,
+                  snapshotId: snapshot.id,
+                })
               }
               onOpenConfirmation={boost.reset}
             />

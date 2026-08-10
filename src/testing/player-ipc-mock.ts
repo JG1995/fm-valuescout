@@ -56,8 +56,9 @@ export function getCurrentAbilityBoostIpcMockCalls() {
   return currentAbilityBoostCalls;
 }
 
-export function resolvePendingCurrentAbilityBoostIpcMock() {
-  const result = currentAbilityBoostResult();
+export function resolvePendingCurrentAbilityBoostIpcMock(
+  result = currentAbilityBoostResult(),
+) {
   pendingCurrentAbilityBoost?.resolve(result);
   pendingCurrentAbilityBoost = null;
 }

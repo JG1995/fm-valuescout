@@ -637,7 +637,7 @@ fn ensure_player_boost_is_available(
     bridge_directory: &Path,
 ) -> Result<(), PlayerBoostRequestError> {
     let status = read_bridge_status(bridge_directory).map_err(PlayerBoostRequestError::from)?;
-    if status.state != "ready" || status.player_boosts_supported != Some(true) {
+    if status.player_boosts_supported != Some(true) {
         return Err(PlayerBoostRequestError::Unavailable(
             "Load Data again before using player boosts".to_string(),
         ));
@@ -1294,7 +1294,7 @@ mod tests {
     }
 
     #[test]
-    fn player_boost_requires_an_advertised_ready_bridge_before_writing_a_request() {
+    fn player_boost_requires_advertised_support_before_writing_a_request() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         write_player_boost_status_fixture(
             temp_dir.path(),
@@ -1411,6 +1411,63 @@ mod tests {
         responder.join().expect("join boost responder");
 
         assert_eq!(result.current_ability, Some(109));
+        assert_eq!(result.potential_ability, Some(172));
+    }
+
+    #[test]
+    fn player_boost_accepts_a_preserved_live_index_after_a_failed_scan() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let bridge_dir = temp_dir.path().to_path_buf();
+        write_player_boost_status_fixture(
+            &bridge_dir,
+            "failed",
+            Some("scan-failed"),
+            Some("scan failed without replacing the prior dump"),
+            true,
+            None,
+        );
+
+        let responder_dir = bridge_dir.clone();
+        let responder = thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(1);
+            while !request_path(&responder_dir).is_file() {
+                if Instant::now() >= deadline {
+                    return false;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            let request: serde_json::Value = serde_json::from_str(
+                &fs::read_to_string(request_path(&responder_dir)).expect("read boost request"),
+            )
+            .expect("parse boost request");
+            assert_eq!(request["sourceRequestId"], "scan-1");
+            write_player_boost_status_fixture(
+                &responder_dir,
+                "ready",
+                request["requestId"].as_str(),
+                None,
+                true,
+                Some(verified_ca_status_result(99, 104, 172)),
+            );
+            true
+        });
+
+        let result = request_player_boost(
+            &bridge_dir,
+            "scan-1",
+            77,
+            99,
+            172,
+            PlayerBoostOperation::CurrentAbility { increment: 5 },
+            DumpWaitConfig {
+                timeout: Duration::from_secs(2),
+                poll_interval: Duration::from_millis(20),
+            },
+        );
+        assert!(responder.join().expect("join boost responder"));
+
+        let result = result.expect("preserved live index boost request");
+        assert_eq!(result.current_ability, Some(104));
         assert_eq!(result.potential_ability, Some(172));
     }
 

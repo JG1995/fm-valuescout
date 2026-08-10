@@ -278,7 +278,8 @@ export function PlayerDevelopmentBoostsPanel({
             </Button>
           </div>
           <p className="text-body-sm text-on-surface-variant">
-            FM may redistribute attributes over the next few in-game days.
+            FM may redistribute attributes over the following in-game days,
+            sometimes up to one month.
           </p>
           <div className="border-t border-outline-variant pt-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
@@ -368,7 +369,8 @@ export function PlayerDevelopmentBoostsPanel({
               .
             </p>
             <p className="text-body-sm text-on-surface-variant">
-              FM may redistribute attributes over the next few in-game days.
+              FM may redistribute attributes over the following in-game days,
+              sometimes up to one month.
             </p>
             <div aria-live="polite">
               <BoostOutcome result={undefined} error={error} />
