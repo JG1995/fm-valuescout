@@ -73,11 +73,11 @@ The planning commit `81ea4f70a88d202e9411ca69c081dd32494f7f27` is intentionally 
 ## Final publication
 
 ```yaml
-status: ready_for_publication
-pr_status: not_published
-pr_created: false
+status: published
+pr_status: draft
+pr_created: true
 merge_status: not_merged
-pr_ref: "Not published"
+pr_ref: "https://github.com/JG1995/fm-valuescout/pull/40"
 merge_ref: "Not merged"
 branch: feature/csv-player-reconciliation
 base_branch: main
@@ -106,16 +106,16 @@ implementation_refs:
   - d9d53de6546e8a98b6dc188103ed4f2cf30ca3ef
   - 60d069f7a87f70e4b5f152abafad1881482a9fa
   - 6f88ae29e80a5561dc28d54125bef807fa5211ec
-close_out_documentation_ref: Pending record
+close_out_documentation_ref: 4fc7dbbdb98ff0f3473f2793a18793624e43ee60
 publication_correction_evidence: 6f88ae29e80a5561dc28d54125bef807fa5211ec
 ```
 
 ## Feature close-out
 
-**State:** Current. The exact implementation set above passed final validation and the Sol High feature review. The final PR was not created and remains unmerged by design. The native desktop workflow is now confirmed; Repowise freshness remains an advisory gap only.
+**State:** Current. The exact implementation set above passed final validation and the Sol High feature review. Draft [PR #40](https://github.com/JG1995/fm-valuescout/pull/40) is open and remains unmerged. The native desktop workflow is now confirmed; Repowise freshness remains an advisory gap only.
 
 ## Follow-up
 
-- Publish the final PR only when the branch is intentionally handed to the GitHub publication workflow. Do not publish or merge it during documentation reconciliation.
+- Keep draft [PR #40](https://github.com/JG1995/fm-valuescout/pull/40) unmerged until it is ready for review and the required checks pass.
 - Plan **CSV enrichment persistence and derived statistics** separately. Define save-scoped storage, provenance, retention, source replacement, memory-over-CSV precedence, and user-visible consumers before implementation.
 - Add calculations for Moneyball statistics that are absent from the exports only in that follow-up; this feature remains parsing and non-mutating reconciliation only.
