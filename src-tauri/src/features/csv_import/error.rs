@@ -16,6 +16,9 @@ pub enum CsvImportError {
         first_row: usize,
         row: usize,
     },
+    TooManyRows {
+        limit: usize,
+    },
 }
 
 impl std::fmt::Display for CsvImportError {
@@ -42,6 +45,7 @@ impl std::fmt::Display for CsvImportError {
                     "CSV record {row} repeats the Unique ID from record {first_row}"
                 )
             }
+            Self::TooManyRows { limit } => write!(f, "CSV contains more than {limit} player rows"),
         }
     }
 }

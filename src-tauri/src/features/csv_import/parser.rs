@@ -307,6 +307,13 @@ impl HeaderMap {
 
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn parse_youth_tracker(input: &str) -> Result<Vec<YouthTrackerPlayer>, CsvImportError> {
+    parse_youth_tracker_with_row_limit(input, None)
+}
+
+fn parse_youth_tracker_with_row_limit(
+    input: &str,
+    max_rows: Option<usize>,
+) -> Result<Vec<YouthTrackerPlayer>, CsvImportError> {
     let input = input.strip_prefix('﻿').unwrap_or(input);
     if input.trim().is_empty() {
         return Err(CsvImportError::EmptyInput);
@@ -324,6 +331,9 @@ pub(crate) fn parse_youth_tracker(input: &str) -> Result<Vec<YouthTrackerPlayer>
     let mut players = Vec::new();
 
     for (record_index, record) in reader.records().enumerate() {
+        if let Some(limit) = max_rows.filter(|limit| players.len() >= *limit) {
+            return Err(CsvImportError::TooManyRows { limit });
+        }
         let row = record_index + 2;
         let record = record.map_err(|_| CsvImportError::MalformedCsv { row })?;
         let player = parse_player(&record, &columns, row)?;
@@ -346,6 +356,13 @@ pub(crate) enum ParsedCsv {
 
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn parse_csv(input: &str) -> Result<ParsedCsv, CsvImportError> {
+    parse_csv_with_row_limit(input, None)
+}
+
+pub(crate) fn parse_csv_with_row_limit(
+    input: &str,
+    max_rows: Option<usize>,
+) -> Result<ParsedCsv, CsvImportError> {
     let input = input.strip_prefix('\u{feff}').unwrap_or(input);
     if input.trim().is_empty() {
         return Err(CsvImportError::EmptyInput);
@@ -360,10 +377,10 @@ pub(crate) fn parse_csv(input: &str) -> Result<ParsedCsv, CsvImportError> {
         if delimiter != b';' {
             return Err(CsvImportError::UnsupportedDialect);
         }
-        return parse_moneyball(input).map(ParsedCsv::Moneyball);
+        return parse_moneyball_with_row_limit(input, max_rows).map(ParsedCsv::Moneyball);
     }
 
-    parse_youth_tracker(input).map(ParsedCsv::YouthTracker)
+    parse_youth_tracker_with_row_limit(input, max_rows).map(ParsedCsv::YouthTracker)
 }
 
 #[derive(Debug)]
@@ -419,7 +436,10 @@ fn is_moneyball_candidate(headers: &StringRecord) -> bool {
         >= 4
 }
 
-fn parse_moneyball(input: &str) -> Result<Vec<MoneyballPlayer>, CsvImportError> {
+fn parse_moneyball_with_row_limit(
+    input: &str,
+    max_rows: Option<usize>,
+) -> Result<Vec<MoneyballPlayer>, CsvImportError> {
     let mut reader = csv_reader(input, b';');
     let headers = reader
         .headers()
@@ -430,6 +450,9 @@ fn parse_moneyball(input: &str) -> Result<Vec<MoneyballPlayer>, CsvImportError> 
     let mut players = Vec::new();
 
     for (record_index, record) in reader.records().enumerate() {
+        if let Some(limit) = max_rows.filter(|limit| players.len() >= *limit) {
+            return Err(CsvImportError::TooManyRows { limit });
+        }
         let row = record_index + 2;
         let record = record.map_err(|_| CsvImportError::MalformedCsv { row })?;
         let player = parse_moneyball_player(&record, &columns, row)?;

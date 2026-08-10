@@ -112,7 +112,6 @@ No ADR is planned. Rust-owned file/validation work, the IPC boundary, and the la
 
 - Real FM export behavior for Windows-1252, localized headers, currencies other than the pinned Moneyball euro format, or decimal commas.
 - Whether the first representative same-save CSV and bridge snapshot will prove exact UID equality.
-- The exact production file-size limit. Commit 3 must choose and test a bounded limit from the largest known fixture plus practical desktop headroom.
 - Whether future persistence needs Moneyball scouting/squad source labels, season/game-date provenance, or replacement history. The follow-up feature owns those decisions.
 
 ### Risks
@@ -242,7 +241,7 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 #### Commit 3 — Preview CSV matches by player UID
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): preview CSV matches by player UID`
 
@@ -280,7 +279,7 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 #### Commit 4 — Add the CSV reconciliation preview
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(import): add CSV reconciliation preview`
 
@@ -320,22 +319,21 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 **PR:** PR 1 — Preview supported FM CSV exports
 
-**Commit:** Preview CSV matches by player UID
+**Commit:** Add the CSV reconciliation preview
 
 ### RED proof
 
-Add Rust service and command tests that load both pinned formats from a bounded local CSV path, reconcile only numeric UIDs against a captured current snapshot, and report safe bounded summaries. The tests must fail because no preview service or command exists. Add negative coverage for no snapshot, stale context, invalid files, duplicate input, and proof that success and failure make no SQLite writes.
+Add focused Dashboard tests for the single-file preview flow, including no-snapshot guidance, pending state, both format summaries, unmatched warnings, safe errors, and stale-result resets. Tests must fail because the preview UI does not exist.
 
 ### Expected outcome
 
-The read-only Rust command parses outside the database lock, returns only a bounded format/match summary for the current snapshot, and revalidates its captured context before responding. `./scripts/dev check` passes. No dialog/UI, SQLite write, overlay, persistence, or derived-stat behavior exists yet.
+The Dashboard selects one CSV through the least-privilege native dialog and shows the bounded preview-command result. It clears obsolete results when the save or snapshot changes. `./scripts/dev test src/features/csv-import src/app/routes/index.test.tsx`, `./scripts/dev check`, and `./scripts/dev smoke` pass. No SQLite write, overlay, persistence, or derived-stat behavior exists.
 
 ### Explicit exclusions
 
-- Native file-picker, React, dialog integration, or Dashboard changes.
 - SQLite writes, persistence, source-replacement rules, or any downstream read model.
 - Calculations for values not physically exported, including percentiles, ratios, composites, and role scores.
-- Returning raw CSV rows, local paths, or an unbounded parsed dataset over IPC.
+- New routes, top-bar changes, drag-and-drop, batch selection, or editable reconciliation.
 
 ## Discoveries and replanning
 
@@ -345,6 +343,7 @@ The read-only Rust command parses outside the database lock, returns only a boun
 - 2026-08-10: The developer rejected `.work/youth_academy_stats.csv` as inaccurate and selected the pinned upstream `2030_07_01_Full_Squad_CA_PA_Monza.csv` fixture as the Youth contract. The local file has the same 66-column header but one additional row, so no implementation or test may use it as Youth evidence.
 - 2026-08-10: The selected Youth fixture has 74 unique UID/name pairs; all 74 occur unchanged in the accepted 75-row Moneyball example, which has one additional player. This closes cross-export identity for the two fixture sources but does not prove CSV-to-bridge UID equality.
 - 2026-08-10: The accepted Moneyball source fixture uses CRLF line endings. Commit 2 checks in the same UTF-8 rows with LF line endings, records both SHA-256 values beside the fixture, and keeps the source fingerprint in this ledger.
+- 2026-08-10: Commit 3 sets the preview boundary at 1 MiB and 1,000 player rows. It opens and validates one regular file handle, caps reads at one extra detection byte, parses outside the Db mutex, and returns only format plus match counts. This resolves the former file-growth review finding without changing scope.
 
 ## Completed work
 
@@ -352,6 +351,7 @@ The read-only Rust command parses outside the database lock, returns only a boun
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Parse Youth Tracker CSV exports | Pending record | Rust-only standards-compliant parser, typed model/error boundary, exact upstream Monza fixture with provenance, and focused contract tests | Sol High: clean after one correction pass | Exact aliases replaced a permissive substring fallback before acceptance |
 | PR 1 | Parse Moneyball CSV exports | Pending record | Strict semicolon Moneyball parser, typed exported values, pinned 75-row fixture with provenance, and focused contract tests | Sol High: clean after one correction pass | Fixture CRLF normalized to LF; source and checked-in hashes recorded |
+| PR 1 | Preview CSV matches by player UID | Pending record | Read-only Tauri command and service with exact UID reconciliation, stale-context revalidation, bounded regular-file reads, and safe summary DTOs | Sol High: clean after one correction round | Row limit entered the parser to prevent pre-rejection allocation; capped opened-handle read followed review |
 
 ## Final validation
 
