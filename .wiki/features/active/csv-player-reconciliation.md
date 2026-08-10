@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -131,7 +131,7 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 ### PR 1 — Preview supported FM CSV exports
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -279,7 +279,7 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 #### Commit 4 — Add the CSV reconciliation preview
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): add CSV reconciliation preview`
 
@@ -344,6 +344,7 @@ The Dashboard selects one CSV through the least-privilege native dialog and show
 - 2026-08-10: The selected Youth fixture has 74 unique UID/name pairs; all 74 occur unchanged in the accepted 75-row Moneyball example, which has one additional player. This closes cross-export identity for the two fixture sources but does not prove CSV-to-bridge UID equality.
 - 2026-08-10: The accepted Moneyball source fixture uses CRLF line endings. Commit 2 checks in the same UTF-8 rows with LF line endings, records both SHA-256 values beside the fixture, and keeps the source fingerprint in this ledger.
 - 2026-08-10: Commit 3 sets the preview boundary at 1 MiB and 1,000 player rows. It opens and validates one regular file handle, caps reads at one extra detection byte, parses outside the Db mutex, and returns only format plus match counts. This resolves the former file-growth review finding without changing scope.
+- 2026-08-10: Commit 4 stubs `plugin:dialog|open` for browser and frontend tests. Those tests prove cancellation and path-free WebView behavior, but not the native OS dialog; the real `pnpm tauri dev` check remains a feature-level validation requirement.
 
 ## Completed work
 
@@ -352,6 +353,7 @@ The Dashboard selects one CSV through the least-privilege native dialog and show
 | PR 1 | Parse Youth Tracker CSV exports | Pending record | Rust-only standards-compliant parser, typed model/error boundary, exact upstream Monza fixture with provenance, and focused contract tests | Sol High: clean after one correction pass | Exact aliases replaced a permissive substring fallback before acceptance |
 | PR 1 | Parse Moneyball CSV exports | Pending record | Strict semicolon Moneyball parser, typed exported values, pinned 75-row fixture with provenance, and focused contract tests | Sol High: clean after one correction pass | Fixture CRLF normalized to LF; source and checked-in hashes recorded |
 | PR 1 | Preview CSV matches by player UID | Pending record | Read-only Tauri command and service with exact UID reconciliation, stale-context revalidation, bounded regular-file reads, and safe summary DTOs | Sol High: clean after one correction round | Row limit entered the parser to prevent pre-rejection allocation; capped opened-handle read followed review |
+| PR 1 | Add the CSV reconciliation preview | Pending record | Least-privilege native CSV picker, Dashboard preview states, context-bound stale-result reset, and browser-stub coverage | Sol High: clean after one correction round | Native dialog remains a feature-level validation gap; browser tests stub it honestly |
 
 ## Final validation
 

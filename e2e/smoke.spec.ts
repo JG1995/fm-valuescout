@@ -41,6 +41,20 @@ test.describe("walking skeleton smoke", () => {
     ).toContainText("smoke-value");
   });
 
+  test("Dashboard keeps the CSV preview idle when the browser dialog stub cancels", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/");
+
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Choose CSV" }).click();
+
+    await expect(
+      main.getByText(/Choose one Youth Tracker or Moneyball export/i),
+    ).toBeVisible();
+  });
+
   test("nav rail expands from its own toggle", async ({ page }) => {
     await page.goto("/");
 
