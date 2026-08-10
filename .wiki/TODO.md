@@ -52,11 +52,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No active feature selected.
+- [CSV parsing and player reconciliation](./features/active/csv-player-reconciliation.md) — preview Youth Tracker and Moneyball CSV exports and reconcile their numeric FM UIDs with the active memory-backed snapshot without changing application data
 
 ## Next
 
-No next feature selected.
+- **CSV enrichment persistence and derived statistics** — after the active parser/reconciliation feature, design save-scoped CSV storage and provenance, persist CSV enrichment only for fields the memory pipeline does not supply, keep memory-backed values authoritative wherever the sources overlap, and calculate required Moneyball statistics that are not exported. Decide retention, source replacement, and user-visible consumers when this feature is planned.
 
 ## Completed
 
