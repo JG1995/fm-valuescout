@@ -22,6 +22,8 @@ function formatName(format: CsvMatchPreview["format"]) {
   return format === "youthTracker" ? "Youth Tracker" : "Moneyball";
 }
 
+const invalidCsvErrorPrefix = "CSV file is invalid: ";
+
 function errorCopy(error: Error) {
   if (error.message === "The current save changed while the CSV was read") {
     return {
@@ -41,6 +43,13 @@ function errorCopy(error: Error) {
     return {
       title: "CSV format not supported",
       body: "Choose a Youth Tracker or Moneyball CSV export.",
+    };
+  }
+
+  if (error.message.startsWith(invalidCsvErrorPrefix)) {
+    return {
+      title: "CSV is invalid",
+      body: error.message.slice(invalidCsvErrorPrefix.length),
     };
   }
 

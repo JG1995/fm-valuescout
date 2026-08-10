@@ -99,6 +99,20 @@ const MONEYBALL_OPTIONAL_HEADERS: &[&[&str]] = &[
     &["Save Percentage", "Sv %"],
 ];
 
+const MONEYBALL_SIGNATURE_HEADERS: &[&str] = &[
+    "Transfer Value",
+    "Wage",
+    "Expires",
+    "Goals From Outside The Box",
+    "xG",
+    "NP-xG",
+    "xG-OP",
+    "xG/shot",
+    "Shots From Outside The Box Per 90 minutes",
+    "Expected Save Percentage",
+    "Team Goals",
+];
+
 const MONEYBALL_COUNT_METRICS: &[&str] = &[
     "Goals",
     "Goals From Outside The Box",
@@ -429,11 +443,11 @@ fn find_moneyball_header(
 }
 
 fn is_moneyball_candidate(headers: &StringRecord) -> bool {
-    ["Unique ID", "Player", "Transfer Value", "Wage", "xG"]
+    MONEYBALL_SIGNATURE_HEADERS
         .iter()
         .filter(|header| headers.iter().any(|value| value == **header))
         .count()
-        >= 4
+        >= 2
 }
 
 fn parse_moneyball_with_row_limit(
@@ -1091,6 +1105,16 @@ mod tests {
         assert_eq!(
             parse_csv(&input).expect_err("missing required Moneyball header must fail"),
             CsvImportError::MissingRequiredHeader("xG/shot")
+        );
+    }
+
+    #[test]
+    fn rejects_an_incomplete_moneyball_export_instead_of_parsing_it_as_youth() {
+        let input = remove_column(&remove_column(MONEYBALL_EXPORT, "Wage"), "xG");
+
+        assert_eq!(
+            parse_csv(&input).expect_err("incomplete Moneyball export must fail"),
+            CsvImportError::MissingRequiredHeader("Wage")
         );
     }
 

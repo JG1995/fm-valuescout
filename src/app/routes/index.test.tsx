@@ -152,6 +152,26 @@ describe("Dashboard CSV reconciliation preview", () => {
     expect(screen.queryByText(privatePath)).not.toBeInTheDocument();
   });
 
+  it("shows safe record context for invalid CSV data", async () => {
+    const user = userEvent.setup();
+    const privatePath = "C:\\Users\\Jonas\\duplicate.csv";
+    setCsvPreviewIpcMockError(
+      new Error(
+        "CSV file is invalid: CSV record 3 repeats the Unique ID from record 2",
+      ),
+    );
+    open.mockResolvedValue(privatePath);
+    renderWithProviders();
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "CSV record 3 repeats the Unique ID from record 2",
+    );
+    expect(screen.queryByText(privatePath)).not.toBeInTheDocument();
+  });
+
   it("explains when the snapshot changes while a CSV is being checked", async () => {
     const user = userEvent.setup();
     setCsvPreviewIpcMockError(
