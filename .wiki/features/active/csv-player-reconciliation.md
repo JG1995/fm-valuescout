@@ -166,7 +166,7 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 #### Commit 1 — Parse Youth Tracker CSV exports
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): parse Youth Tracker CSV exports`
 
@@ -204,7 +204,7 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 #### Commit 2 — Parse Moneyball CSV exports
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(import): parse Moneyball CSV exports`
 
@@ -320,22 +320,22 @@ The thinnest proving path is commits 1–3: Rust parses one representative fixtu
 
 **PR:** PR 1 — Preview supported FM CSV exports
 
-**Commit:** Parse Youth Tracker CSV exports
+**Commit:** Parse Moneyball CSV exports
 
 ### RED proof
 
-Add a Rust integration test that loads the exact pinned `2030_07_01_Full_Squad_CA_PA_Monza.csv` fixture and expects Youth detection, 74 unique numeric UIDs, CA/PA and representative attribute output, and `Int Apps` mapped to international appearances/caps. The test must fail because no `csv_import` parser exists. Add the smallest synthetic negative tests before implementation for duplicate UID and malformed populated numeric data so a parser that silently coerces either case cannot pass.
+Add a Rust integration test that loads the accepted 84-column Moneyball fixture and expects 75 unique numeric UIDs plus representative transfer, height, distance, appearance, percentage, and statistic output. The test must fail because Moneyball detection and parsing do not exist. Add focused negative tests for a near-match missing a required Moneyball group, malformed populated data, and duplicate UIDs so a permissive parser cannot pass.
 
 ### Expected outcome
 
-The repository has a Rust-only Youth Tracker CSV parser with representative fixtures and explicit identity, dialect, null, quoting, alias, and failure contracts. `./scripts/dev check` passes. No command, UI, SQL, or persistence behavior exists yet.
+The shared Rust parser recognizes Moneyball before the broader Youth aliases and produces typed raw exported values with exact pinned normalization and failure contracts. `./scripts/dev check` passes. No command, UI, SQL, persistence, or derived-stat behavior exists yet.
 
 ### Explicit exclusions
 
-- Moneyball format work.
-- Snapshot reconciliation or Tauri commands.
-- React, dialog integration, or Dashboard changes.
-- Persistence, derived statistics, and any downstream consumer.
+- Snapshot reconciliation, Tauri commands, React, dialog integration, or Dashboard changes.
+- Persistence, source-replacement rules, or any downstream consumer.
+- Calculations for values not physically exported, including percentiles, ratios, composites, and role scores.
+- Currency or locale behavior not demonstrated by the accepted pinned fixture.
 
 ## Discoveries and replanning
 
@@ -349,7 +349,7 @@ The repository has a Rust-only Youth Tracker CSV parser with representative fixt
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| — | — | — | None | None | None |
+| PR 1 | Parse Youth Tracker CSV exports | Pending record | Rust-only standards-compliant parser, typed model/error boundary, exact upstream Monza fixture with provenance, and focused contract tests | Sol High: clean after one correction pass | Exact aliases replaced a permissive substring fallback before acceptance |
 
 ## Final validation
 
