@@ -634,7 +634,7 @@ Roles tab
   → position-families.ts groups all 68 roles by pitch family; every role shown
   → card ScoreBadge pairs for Current and Potential per role; rolePhaseLabel maps in_possession/out_of_possession → IP/OOP
 
-Cache invalidation: Load Data and set_active_save invalidate snapshot + search + player query keys. A verified CA boost also invalidates snapshot, search, player, Planner, and Academy query roots.
+Cache invalidation: Load Data and set_active_save invalidate snapshot + search + player query keys. A verified player boost also invalidates snapshot, search, player, Planner, and Academy query roots.
 ```
 
 **Invariants:** `null` dump/DB values never display as `0`. One scoring model shared with Search. No cross-feature component imports — routes compose; Search/GlobalPlayerSearch navigate by route path only.
