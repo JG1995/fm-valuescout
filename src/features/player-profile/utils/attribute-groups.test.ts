@@ -67,11 +67,11 @@ describe("attribute-groups", () => {
     expect(labelFromPascal("JumpingReach")).toBe("Jumping Reach");
   });
 
-  it("maps the FM attribute scale to labelled display tiers", () => {
-    expect(
-      [1, 5, 6, 9, 10, 13, 14, 16, 17, 20].map(attributeValueTier),
-    ).toEqual([1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
-    expect(attributeTierLabel(4)).toBe("Strong");
+  it("maps the FM attribute scale to its four familiar display tiers", () => {
+    expect([1, 5, 6, 10, 11, 15, 16, 20].map(attributeValueTier)).toEqual([
+      1, 1, 2, 2, 3, 3, 4, 4,
+    ]);
+    expect(attributeTierLabel(4)).toBe("Excellent");
   });
 });
 

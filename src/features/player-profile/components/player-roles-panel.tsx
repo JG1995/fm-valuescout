@@ -1,3 +1,4 @@
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { useState } from "react";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
@@ -7,6 +8,7 @@ import { attributeValueTier } from "../utils/attribute-groups";
 import {
   defaultProfilePosition,
   PROFILE_POSITION_ROWS,
+  type RoleSort,
   rolesForProfilePosition,
 } from "../utils/position-families";
 import { rolePhaseLabel } from "../utils/role-phase";
@@ -40,6 +42,46 @@ function RoleScore({ roleName, basis, score }: RoleScoreProps) {
       roleName={`${roleName} (${basis})`}
       variant="card"
     />
+  );
+}
+
+function RoleSortHeader({
+  label,
+  basis,
+  sort,
+  onSort,
+  className,
+}: {
+  label: "Current" | "Potential";
+  basis: RoleSort["basis"];
+  sort: RoleSort;
+  onSort: (basis: RoleSort["basis"]) => void;
+  className: string;
+}) {
+  const active = sort.basis === basis;
+  const SortIcon = sort.direction === "ascending" ? ArrowUp : ArrowDown;
+
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? sort.direction : undefined}
+      className={className}
+    >
+      <button
+        type="button"
+        className={`inline-flex min-h-8 w-full items-center justify-center gap-1 rounded-md px-1 text-label-sm transition-colors duration-150 ease-out ${
+          active
+            ? "text-primary"
+            : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+        }`}
+        onClick={() => onSort(basis)}
+      >
+        <span>{label}</span>
+        <span aria-hidden="true" className="inline-flex size-3 items-center">
+          {active ? <SortIcon size={12} strokeWidth={1.5} /> : null}
+        </span>
+      </button>
+    </th>
   );
 }
 
@@ -93,7 +135,7 @@ function PositionPitch({
                   selected
                     ? "border-primary bg-primary-container text-on-primary-container ring-2 ring-primary/50"
                     : knownFamiliarity
-                      ? "border-outline bg-surface-container-high hover:bg-surface-container-highest data-[tier=1]:text-score-1 data-[tier=2]:text-score-2 data-[tier=3]:text-score-3 data-[tier=4]:text-score-4 data-[tier=5]:text-score-5"
+                      ? "border-outline bg-surface-container-high hover:bg-surface-container-highest data-[tier=1]:text-score-1 data-[tier=2]:text-score-2 data-[tier=3]:text-score-3 data-[tier=4]:text-score-4"
                       : "border-outline-variant bg-surface-container/85 text-on-surface-variant hover:bg-surface-container-high"
                 }`}
                 onClick={() => onSelectPosition(position)}
@@ -115,8 +157,25 @@ export function PlayerRolesPanel({ player }: PlayerRolesPanelProps) {
   const [selectedPosition, setSelectedPosition] = useState(() =>
     defaultProfilePosition(player.positions, player.roleScores),
   );
-  const roles = rolesForProfilePosition(player.roleScores, selectedPosition);
+  const [sort, setSort] = useState<RoleSort>({
+    basis: "current",
+    direction: "descending",
+  });
+  const roles = rolesForProfilePosition(
+    player.roleScores,
+    selectedPosition,
+    sort,
+  );
   const familiarity = player.positions[selectedPosition];
+  const onSort = (basis: RoleSort["basis"]) => {
+    setSort((current) => ({
+      basis,
+      direction:
+        current.basis === basis && current.direction === "descending"
+          ? "ascending"
+          : "descending",
+    }));
+  };
 
   return (
     <Panel
@@ -138,59 +197,89 @@ export function PlayerRolesPanel({ player }: PlayerRolesPanelProps) {
           onSelectPosition={setSelectedPosition}
         />
         <div className="flex min-h-0 min-w-0 flex-col">
-          <div className="flex items-end justify-between gap-3 border-b border-outline-variant pb-2">
-            <div>
-              <h3 className="text-headline-sm text-on-surface">
-                {selectedPosition}
-              </h3>
-              <p className="text-body-sm text-on-surface-variant">
-                {roles.length} {roles.length === 1 ? "role" : "roles"}
-                {typeof familiarity === "number" && familiarity > 0
-                  ? ` · familiarity ${familiarity}`
-                  : ""}
-              </p>
-            </div>
-            <div className="grid shrink-0 grid-cols-[52px_62px] text-center text-label-sm text-on-surface-variant">
-              <span>Current</span>
-              <span>Potential</span>
-            </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            <table className="w-full table-fixed border-collapse">
+              <caption className="sr-only">
+                Role scores for {selectedPosition}
+              </caption>
+              <colgroup>
+                <col />
+                <col className="w-[72px]" />
+                <col className="w-[80px]" />
+              </colgroup>
+              <thead className="sticky top-0 z-10 bg-surface-container">
+                <tr className="border-b border-outline-variant">
+                  <th scope="col" className="pb-2 text-left font-normal">
+                    <h3 className="text-headline-sm text-on-surface">
+                      {selectedPosition}
+                    </h3>
+                    <p className="text-body-sm text-on-surface-variant">
+                      {roles.length} {roles.length === 1 ? "role" : "roles"}
+                      {typeof familiarity === "number" && familiarity > 0
+                        ? ` · familiarity ${familiarity}`
+                        : ""}
+                    </p>
+                    <span className="sr-only">Role</span>
+                  </th>
+                  <RoleSortHeader
+                    label="Current"
+                    basis="current"
+                    sort={sort}
+                    onSort={onSort}
+                    className="w-[72px] pb-1 text-center align-bottom"
+                  />
+                  <RoleSortHeader
+                    label="Potential"
+                    basis="potential"
+                    sort={sort}
+                    onSort={onSort}
+                    className="w-[80px] pb-1 text-center align-bottom"
+                  />
+                </tr>
+              </thead>
+              <tbody>
+                {roles.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="h-24 text-center text-body-sm text-on-surface-variant"
+                    >
+                      No catalog roles use this position.
+                    </td>
+                  </tr>
+                ) : null}
+                {roles.map((role) => (
+                  <tr
+                    key={role.roleId}
+                    className="h-12 border-b border-outline-variant/70"
+                  >
+                    <td className="min-w-0 pr-2">
+                      <p className="truncate text-body-md text-on-surface">
+                        {role.displayName}
+                      </p>
+                      <p className="text-[11px] text-on-surface-variant">
+                        {rolePhaseLabel(role.phase)}
+                      </p>
+                    </td>
+                    <td className="text-center">
+                      <RoleScore
+                        roleName={role.displayName}
+                        basis="Current"
+                        score={role.score}
+                      />
+                    </td>
+                    <td className="text-center">
+                      <RoleScore
+                        roleName={role.displayName}
+                        basis="Potential"
+                        score={role.potentialScore}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <ul className="min-h-0 flex-1 overflow-y-auto pr-1">
-            {roles.length === 0 ? (
-              <li className="flex min-h-24 items-center justify-center text-center text-body-sm text-on-surface-variant">
-                No catalog roles use this position.
-              </li>
-            ) : null}
-            {roles.map((role) => (
-              <li
-                key={role.roleId}
-                className="grid min-h-12 grid-cols-[minmax(0,1fr)_52px_62px] items-center gap-1 border-b border-outline-variant/70"
-              >
-                <div className="min-w-0 pr-2">
-                  <p className="truncate text-body-md text-on-surface">
-                    {role.displayName}
-                  </p>
-                  <p className="text-[11px] text-on-surface-variant">
-                    {rolePhaseLabel(role.phase)}
-                  </p>
-                </div>
-                <span className="flex justify-center">
-                  <RoleScore
-                    roleName={role.displayName}
-                    basis="Current"
-                    score={role.score}
-                  />
-                </span>
-                <span className="flex justify-center">
-                  <RoleScore
-                    roleName={role.displayName}
-                    basis="Potential"
-                    score={role.potentialScore}
-                  />
-                </span>
-              </li>
-            ))}
-          </ul>
         </div>
       </section>
     </Panel>

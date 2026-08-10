@@ -20,7 +20,6 @@ const tierTextClass: Record<ScoreTier, string> = {
   2: "text-score-2",
   3: "text-score-3",
   4: "text-score-4",
-  5: "text-score-5",
 };
 
 const tierBorderClass: Record<ScoreTier, string> = {
@@ -28,7 +27,6 @@ const tierBorderClass: Record<ScoreTier, string> = {
   2: "border-score-2/40",
   3: "border-score-3/40",
   4: "border-score-4/40",
-  5: "border-score-5/40",
 };
 
 const variantClasses: Record<ScoreBadgeVariant, string> = {

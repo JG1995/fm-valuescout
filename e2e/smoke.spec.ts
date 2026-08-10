@@ -555,10 +555,10 @@ test.describe("walking skeleton smoke", () => {
       .locator("..");
     const roleFit = main.getByRole("region", { name: "Role fit for MC" });
     const current = summary.getByRole("img", {
-      name: "Best role (Current): 82, Starter",
+      name: "Best role (Current): 82, Excellent",
     });
     const potential = summary.getByRole("img", {
-      name: "Best potential role (Potential): 94, Elite",
+      name: "Best potential role (Potential): 94, Excellent",
     });
 
     for (const [width, height] of [
@@ -602,7 +602,39 @@ test.describe("walking skeleton smoke", () => {
       expect(currentBox.x + currentBox.width).toBeLessThanOrEqual(
         potentialBox.x,
       );
+
+      const [identityBox, bestRoleBox, abilityBox] = await Promise.all([
+        summary.getByRole("heading", { level: 1 }).locator("..").boundingBox(),
+        summary
+          .getByText("Best role (Current)", { exact: true })
+          .locator("..")
+          .locator("..")
+          .boundingBox(),
+        summary.getByText("CA", { exact: true }).locator("..").boundingBox(),
+      ]);
+      expect(identityBox).not.toBeNull();
+      expect(bestRoleBox).not.toBeNull();
+      expect(abilityBox).not.toBeNull();
+      if (!identityBox || !bestRoleBox || !abilityBox) {
+        throw new Error("Expected aligned player-summary columns.");
+      }
+      expect(Math.abs(identityBox.y - bestRoleBox.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(identityBox.y - abilityBox.y)).toBeLessThanOrEqual(1);
     }
+
+    const currentHeader = roleFit.getByRole("columnheader", {
+      name: "Current",
+    });
+    const potentialHeader = roleFit.getByRole("columnheader", {
+      name: "Potential",
+    });
+    await potentialHeader.getByRole("button").click();
+    await expect(potentialHeader).toHaveAttribute("aria-sort", "descending");
+    await expect(
+      roleFit.getByRole("row").nth(1).getByText("Advanced Playmaker"),
+    ).toBeVisible();
+    await currentHeader.getByRole("button").click();
+    await expect(currentHeader).toHaveAttribute("aria-sort", "descending");
 
     await main.getByRole("button", { name: "ST, familiarity 15" }).click();
     await expect(
@@ -666,7 +698,8 @@ test.describe("walking skeleton smoke", () => {
     ] as const) {
       await page.setViewportSize({ width, height });
       await expect(passing).toContainText("14→16");
-      await expect(passing.locator('[data-tier="4"]')).toHaveCount(2);
+      await expect(passing.locator('[data-tier="3"]')).toHaveCount(1);
+      await expect(passing.locator('[data-tier="4"]')).toHaveCount(1);
 
       const [technicalBox, passingBox] = await Promise.all([
         technical.boundingBox(),

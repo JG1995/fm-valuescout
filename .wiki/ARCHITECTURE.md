@@ -46,7 +46,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 **Player search:** Rust `features/search` owns `search_players` and `suggest_players` — parameterized SQLite queries against the active save's current snapshot (`players`, `player_role_scores`, JSON attribute columns). React `features/search` owns the `/search` route, virtualized results table, compact filter strip + editor modal, and top-bar global name search. Filter rules compile to a flat AND|OR AST in Rust; filters, combine mode, and sort live in TanStack Router search params. See [player-search](./features/completed/player-search.md).
 
-**Player profiles:** Rust `features/player` owns `get_player` plus the UID-only `boost_current_ability` and `boost_wonderkid_mentality` commands. The boost service derives eligibility from the active snapshot, submits the closed bridge operation, and updates only the same still-current snapshot after verified FM readback. A Determination result rewrites that player's persisted role scores in the same transaction. React `features/player-profile` owns one compact summary above side-by-side Attributes and Role fit panels. The summary derives Best Role and Best Potential Role and holds both guarded boost actions. Attribute-group tabs show visible Current → Potential values while Hidden and Personality stay current-only. The pitch filters the bounded role rows by exact catalog position tag and shows both score bases. The route is `/players/$uid`; its validated `tab` search param selects the attribute group. Shared **ScoreBadge** (`table` / `card` / `hero` / `muted`) remains in `src/components/ui/score-badge/`. Search row activation and GlobalPlayerSearch navigate by route path only (no cross-feature imports). See [player-profiles](./features/completed/player-profiles.md) and [potential-role-scores](./features/completed/potential-role-scores.md).
+**Player profiles:** Rust `features/player` owns `get_player` plus the UID-only `boost_current_ability` and `boost_wonderkid_mentality` commands. The boost service derives eligibility from the active snapshot, submits the closed bridge operation, and updates only the same still-current snapshot after verified FM readback. A Determination result rewrites that player's persisted role scores in the same transaction. React `features/player-profile` owns one compact summary above side-by-side Attributes and Role fit panels. The summary derives Best Role and Best Potential Role only from catalog roles attached to positions with familiarity 15 or higher, and it holds both guarded boost actions. Attribute-group tabs show visible Current → Potential values while Hidden and Personality stay current-only. The pitch filters the bounded role rows by exact catalog position tag and shows both sortable score bases. The route is `/players/$uid`; its validated `tab` search param selects the attribute group. Shared **ScoreBadge** (`table` / `card` / `hero` / `muted`) remains in `src/components/ui/score-badge/`. Search row activation and GlobalPlayerSearch navigate by route path only (no cross-feature imports). See [player-profiles](./features/completed/player-profiles.md) and [potential-role-scores](./features/completed/potential-role-scores.md).
 
 **Youth Academy:** Rust `features/academy` owns save-scoped `academy_classes`, `academy_memberships`, and one-to-one `academy_member_outcomes`, plus typed commands for class, membership, and outcome mutations, candidate eligibility, and current-snapshot member resolution. Every save gets one protected automatic Class of 2025. Successful snapshots add a protected class for each valid known in-game year without replacing a matching class or its memberships; only trusted `memory` or `derived` dates can create an observed-year class. New memberships use exact current-club names from the configured Planner club family; existing memberships retain UID and last-known name across snapshot changes. An optional manual outcome records a sale (buying club plus non-negative whole-euro fee) or release; it never derives from snapshot data, can be cleared by restoring the player to Still at club, and cascades when its membership is removed. Unsupported career-stat fields return `null`. React `features/academy` owns the `/academy` route's typed Academy IPC/query layer, URL-backed Overview / Class / Graduates workspace shell, class creation and destructive deletion flow, first-use states, a searchable club-family picker, the current/departed/unresolved class roster with assignment, outcome correction, and removal, nullable statistic cards, reported-senior limitations, and the exact senior-appearance graduate presentation. A class view with existing classes but no or invalid `classId` returns to Overview. Summary presentation operates only on the bounded, typed member DTOs; it does not access SQLite or recreate persistence and candidate-eligibility rules.
 
@@ -622,7 +622,8 @@ get_player IPC (features/player/commands.rs)
 
 Summary
   → identity block + independent hero ScoreBadges for Best Role (current) and
-      Best Potential Role (potential), each using catalog-order ties
+      Best Potential Role (potential), each limited to role position tags with
+      familiarity ≥ 15 and using catalog-order ties
   → preferredFoot title-cased for display
   → Boost CA and Wonderkid Mentality keep their closed confirmation and mutation flow;
       snapshot previews and disabled reasons move to focusable action tooltips
@@ -630,12 +631,14 @@ Summary
 Attributes panel
   → static attribute-groups.ts membership (Technical / Mental / Physical / Goalkeeping, Hidden, Personality)
   → visible rows show Current → Potential from the DTO; Hidden and Personality stay current-only
-  → known 1–20 values map to five presentation tiers; raw values remain unchanged
+  → known 1–20 values map to four FM-style presentation bands; raw values remain unchanged
   → null → —
 
 Role fit panel
   → pitch defaults to the strongest recorded position, then the best current role position
-  → selected exact positionTags filter the bounded 68-role DTO in React and rank current scores first
+  → selected exact positionTags filter the bounded 68-role DTO in React
+  → sortable Current and Potential headers default to current descending, toggle direction,
+      keep unavailable scores last, and use catalog order for ties
   → card ScoreBadge pairs for Current and Potential per visible role; rolePhaseLabel maps in_possession/out_of_possession → IP/OOP
 
 Cache invalidation: Load Data and set_active_save invalidate snapshot + search + player query keys. A verified player boost also invalidates snapshot, search, player, Planner, and Academy query roots.

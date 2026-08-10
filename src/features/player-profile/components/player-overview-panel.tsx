@@ -10,6 +10,7 @@ import type { PlayerDetail } from "../types/player-detail";
 import {
   bestPotentialRoleScore,
   bestRoleScore,
+  rolesForPlayablePositions,
 } from "../utils/position-families";
 
 type SummaryFactProps = {
@@ -103,15 +104,19 @@ export function PlayerOverviewPanel({
     flagLabel(player.setForRelease, "Set for release"),
     flagLabel(player.onLoan, "On loan"),
   ].filter((label): label is string => label !== null);
-  const bestRole = bestRoleScore(player.roleScores);
-  const bestPotentialRole = bestPotentialRoleScore(player.roleScores);
+  const playableRoles = rolesForPlayablePositions(
+    player.roleScores,
+    player.positions,
+  );
+  const bestRole = bestRoleScore(playableRoles);
+  const bestPotentialRole = bestPotentialRoleScore(playableRoles);
 
   return (
     <section
       aria-label={`${player.name} summary`}
       className="rounded-lg border border-outline-variant bg-surface-container p-4"
     >
-      <div className="grid gap-4 lg:grid-cols-[minmax(260px,1.15fr)_minmax(300px,1fr)_minmax(260px,0.9fr)] lg:items-center">
+      <div className="grid gap-4 lg:grid-cols-[minmax(260px,1.15fr)_minmax(300px,1fr)_minmax(260px,0.9fr)] lg:items-start">
         <div className="min-w-0">
           <h1
             className="truncate text-headline-lg text-on-surface"

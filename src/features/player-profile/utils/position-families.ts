@@ -17,6 +17,17 @@ const PROFILE_POSITION_TAG_SET = new Set(PROFILE_POSITION_TAGS);
 
 export type ScoredRole = PlayerRoleScore & { score: number };
 export type PotentialScoredRole = PlayerRoleScore & { potentialScore: number };
+export type RoleSort = {
+  basis: "current" | "potential";
+  direction: "ascending" | "descending";
+};
+
+const DEFAULT_ROLE_SORT: RoleSort = {
+  basis: "current",
+  direction: "descending",
+};
+
+export const PLAYABLE_POSITION_FAMILIARITY = 15;
 
 /** Pick the player's strongest recorded position, then fall back to best-role fit. */
 export function defaultProfilePosition(
@@ -58,21 +69,42 @@ export function defaultProfilePosition(
   return "MC";
 }
 
-/** Filter to an exact pitch position and rank known current scores first. */
+/** Filter to an exact pitch position and rank known scores before unavailable ones. */
 export function rolesForProfilePosition(
   roleScores: readonly PlayerRoleScore[],
   position: string,
+  sort: RoleSort = DEFAULT_ROLE_SORT,
 ): PlayerRoleScore[] {
   return roleScores
     .filter((role) => role.positionTags.includes(position))
     .map((role, index) => ({ role, index }))
     .sort((left, right) => {
+      const leftScore =
+        sort.basis === "current" ? left.role.score : left.role.potentialScore;
+      const rightScore =
+        sort.basis === "current" ? right.role.score : right.role.potentialScore;
+      if (leftScore === null)
+        return rightScore === null ? left.index - right.index : 1;
+      if (rightScore === null) return -1;
       const scoreDifference =
-        (right.role.score ?? Number.NEGATIVE_INFINITY) -
-        (left.role.score ?? Number.NEGATIVE_INFINITY);
+        sort.direction === "descending"
+          ? rightScore - leftScore
+          : leftScore - rightScore;
       return scoreDifference || left.index - right.index;
     })
     .map(({ role }) => role);
+}
+
+/** Keep roles attached to at least one position the player can play. */
+export function rolesForPlayablePositions(
+  roleScores: readonly PlayerRoleScore[],
+  positions: Readonly<Record<string, number>>,
+): PlayerRoleScore[] {
+  return roleScores.filter((role) =>
+    role.positionTags.some(
+      (position) => positions[position] >= PLAYABLE_POSITION_FAMILIARITY,
+    ),
+  );
 }
 
 /** Highest non-null score; ties keep the earlier catalog entry. */

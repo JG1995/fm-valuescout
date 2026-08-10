@@ -46,12 +46,11 @@ colors:
     on-info: "oklch(0.16 0.02 245)"
     info-container: "oklch(0.34 0.08 245)"
     on-info-container: "oklch(0.92 0.035 245)"
-    # Score ramp — role and position fit, tier 1 (weak) to tier 5 (elite)
-    score-1: "oklch(0.66 0.08 25)"
-    score-2: "oklch(0.72 0.105 55)"
-    score-3: "oklch(0.78 0.105 90)"
-    score-4: "oklch(0.82 0.13 145)"
-    score-5: "oklch(0.86 0.115 210)"
+    # FM-style data ramp — red, grey, amber, and green
+    score-1: "oklch(0.66 0.2 18)"
+    score-2: "oklch(0.74 0.008 264)"
+    score-3: "oklch(0.8 0.145 75)"
+    score-4: "oklch(0.76 0.16 150)"
     # Chart series — subject, two comparisons, one reference line
     chart-1: "oklch(0.8 0.145 82)"
     chart-2: "oklch(0.72 0.11 245)"
@@ -208,17 +207,16 @@ The neutrals carry a whisper of blue (hue 264, chroma 0.008–0.010). That is ba
 
 **Steel (hue 245):** `info` is the single cool counterpoint. It carries neutral factual annotation that is neither good nor bad: transfer-status tags, "U-21" style qualifiers, informational banners, and the first comparison series in a chart. There is no separate `secondary` token; steel does that work.
 
-**Score ramp:** `score-1` through `score-5` colour role fit and player-profile attributes. The ramp moves from muted coral through orange and amber to green and cyan, while lightness rises at every step. Hue makes adjacent tiers faster to distinguish; the number and monotonic brightness keep the ordering readable without colour.
+**Score ramp:** `score-1` through `score-4` colour role fit and player-profile attributes with Football Manager's familiar red, grey, amber, and green progression. The number and tier label remain the facts; colour makes the four broad bands faster to scan.
 
-| Tier      | Score  | Label     | oklch                     | Meaning                          |
-| --------- | ------ | --------- | ------------------------- | -------------------------------- |
-| `score-1` | 0–39   | Weak      | `oklch(0.66 0.08 25)`     | Does not play this role          |
-| `score-2` | 40–54  | Fringe    | `oklch(0.72 0.105 55)`    | Emergency cover only             |
-| `score-3` | 55–69  | Rotation  | `oklch(0.78 0.105 90)`    | Squad depth                      |
-| `score-4` | 70–84  | Starter   | `oklch(0.82 0.13 145)`    | First-choice standard            |
-| `score-5` | 85–100 | Elite     | `oklch(0.86 0.115 210)`   | Best available for this role     |
+| Tier      | Score  | Label     | oklch                    | Meaning                         |
+| --------- | ------ | --------- | ------------------------ | ------------------------------- |
+| `score-1` | 0–40   | Weak      | `oklch(0.66 0.2 18)`     | Does not suit this role         |
+| `score-2` | 41–60  | Average   | `oklch(0.74 0.008 264)`  | Emergency or fringe cover       |
+| `score-3` | 61–80  | Good      | `oklch(0.8 0.145 75)`    | Viable squad or starting option |
+| `score-4` | 81–100 | Excellent | `oklch(0.76 0.16 150)`   | High-confidence role fit        |
 
-Player-profile attributes reuse the five colours with FM-scale bands: 1–5 Weak, 6–9 Limited, 10–13 Average, 14–16 Strong, and 17–20 Elite. The raw value remains visible, and the colour never replaces it. **`primary` never appears inside a data cell, and the score ramp never appears on chrome.**
+Player-profile attributes use the same colours with FM-scale bands: 1–5 Weak, 6–10 Average, 11–15 Good, and 16–20 Excellent. The raw value remains visible, and the colour never replaces it. **`primary` never appears inside a data cell, and the score ramp never appears on chrome.**
 
 **Semantic Colours:** Four fixed roles for status indicators.
 
@@ -229,7 +227,7 @@ Player-profile attributes reuse the five colours with FM-scale bands: 1–5 Weak
 | `error`   | `oklch(0.66 0.2 18)`     | Scan failed, ingest failed, FM not running, destructive confirmation         |
 | `info`    | `oklch(0.72 0.11 245)`   | Neutral annotation and explanatory banners                                   |
 
-Warning sits at hue 55 (orange) rather than amber so it never reads as the gold accent. Success green appears only on status chrome, never as a score colour — the ramp owns "good" inside data.
+Warning sits at hue 55 (orange) rather than amber so it never reads as the gold accent. The data ramp uses separate token names even where its red, grey, and green reuse established system colours; component code still states whether colour carries status or a score band.
 
 `primary-hover` and `primary-active` are the Button spec's hover and active mixes resolved once, in oklab, rather than recomputed per component. Both stay in sRGB gamut and hold an `on-primary` label above 8:1. Unfilled variants have no mix — they press to `surface-container-highest`, one tonal step above their hover fill.
 
@@ -263,9 +261,11 @@ Borders come in two roles with different rules:
 | Accent text and icons     | `primary` (`#ecb33c`)                       | `surface-container` (`#181b1f`)                  | 9.2:1 (AAA) |
 | Primary button label      | `on-primary` (`#161107`)                    | `primary` (`#ecb33c`)                            | 10.0:1 (AAA) |
 | Destructive button label  | `on-error` (`#180808`)                      | `error` (`#f44f62`)                              | 5.7:1 (AA) |
-| Score tier 1 (weakest)    | `score-1` (`#be7f79`)                       | `surface-container` (`#181b1f`)                  | 5.4:1 (AA) |
-| Score tier 1 on hover     | `score-1` (`#be7f79`)                       | `surface-container-high` (`#222429`)             | 4.8:1 (AA) |
-| Score tier 5 (strongest)  | `score-5` (`#67e6fb`)                       | `surface-container` (`#181b1f`)                  | 11.7:1 (AAA) |
+| Score tier 1 (weakest)    | `score-1` (`#f44f62`)                       | `surface-container` (`#181b1f`)                  | 5.1:1 (AA) |
+| Score tier 1 on hover     | `score-1` (`#f44f62`)                       | `surface-container-high` (`#222429`)             | 4.5:1 (AA) |
+| Score tier 2              | `score-2` (`#a8abb0`)                       | `surface-container` (`#181b1f`)                  | 7.5:1 (AAA) |
+| Score tier 3              | `score-3` (`#f4af41`)                       | `surface-container` (`#181b1f`)                  | 9.1:1 (AAA) |
+| Score tier 4 (strongest)  | `score-4` (`#58cd78`)                       | `surface-container` (`#181b1f`)                  | 8.6:1 (AAA) |
 | Error text                | `error` (`#f44f62`)                         | `surface-container` (`#181b1f`)                  | 5.1:1 (AA) |
 | Warning text              | `warning` (`#ff9138`)                       | `surface-container` (`#181b1f`)                  | 7.7:1 (AAA) |
 | Success text              | `success` (`#58cd78`)                       | `surface-container` (`#181b1f`)                  | 8.6:1 (AAA) |
@@ -448,9 +448,9 @@ A role or position fit score. The most repeated element in the app.
 
 - **Container:** in a table, no fill and no border — the number sits directly on the row in its tier colour. Elsewhere, a 28px circle with `full` radius, `surface-container-high` fill, and a 1px border in the tier colour at 40% alpha. The table variant is unfilled on purpose: a filled badge would match the hovered row background and vanish, and 500 filled chips in a column is exactly the boxing that principle 2 forbids.
 - **States:** static inside a row; the tier colour is verified against both the default and the hovered row background. In an interactive context — a clickable role chip — hover raises the surrounding fill, never the number's colour.
-- **Variants:** `table` (`mono-sm`, unfilled, right-aligned), `card` (28px filled circle, `mono-md`), `hero` (48px, `mono-lg`, unfilled, used once on a player profile for the best-role score). A `muted` variant renders the number in `on-surface-variant` instead of a tier colour, for roles outside the player's positional familiarity — the score is still shown, but it does not compete for attention.
-- **Content / Anatomy:** the integer score, nothing else. No unit, no percent sign, no trailing zero. Colour comes from the `score-1` to `score-5` ramp by the tier table in Colors.
-- **Behaviour:** the accessible name is the full statement — `"Deep-lying playmaker: 82, Starter"` — not just the digits. The tier label also appears in `title`. Never render a badge without its number.
+- **Variants:** `table` (`mono-sm`, unfilled, right-aligned), `card` (28px filled circle, `mono-md`), `hero` (48px, `mono-lg`, unfilled, used for the current and potential best-role summaries on a player profile). A `muted` variant renders the number in `on-surface-variant` instead of a tier colour, for roles outside the player's positional familiarity — the score is still shown, but it does not compete for attention.
+- **Content / Anatomy:** the integer score, nothing else. No unit, no percent sign, no trailing zero. Colour comes from the `score-1` to `score-4` ramp by the tier table in Colors.
+- **Behaviour:** the accessible name is the full statement — `"Deep-lying playmaker: 82, Excellent"` — not just the digits. The tier label also appears in `title`. Never render a badge without its number.
 
 ### Status Chip
 
@@ -545,11 +545,11 @@ Cross-cutting rules rather than components.
 Dedicated route `/players/$uid` (not an inspector overlay). Comparison inspector remains unused until a later compare feature.
 
 - **Single-workspace frame:** at the 1280×800 minimum, one compact summary sits above side-by-side **Attributes** and **Role fit** panels. The two panels consume the remaining content height and own bounded internal overflow. Narrower unsupported widths may stack the panels. There is no page-level Overview / Attributes / Roles switch.
-- **Summary:** player name, club and division, age/DOB, nationality, height, preferred foot, CA, PA, and market value stay visible above the analysis workspace. Two equivalent **hero** Score Badges show **Best Role (Current)** and **Best Potential Role (Potential)**; each selects its own highest non-null catalog-ordered score and names its basis in visible and accessible text. Transfer flags appear only when true. There is no crest or portrait because the source has none.
+- **Summary:** player name, club and division, age/DOB, nationality, height, preferred foot, CA, PA, and market value stay visible above the analysis workspace. The three summary columns share a top edge rather than vertically centring unequal content blocks. Two equivalent **hero** Score Badges show **Best Role (Current)** and **Best Potential Role (Potential)**; each selects its own highest non-null catalog-ordered score only from roles attached to a position with familiarity 15 or higher. Each badge names its basis in visible and accessible text. Transfer flags appear only when true. There is no crest or portrait because the source has none.
 - **Development actions:** **Boost CA** and **Wonderkid Mentality** are compact summary actions, not a separate panel. Hover or keyboard focus reveals each snapshot preview or disabled reason in a tooltip. One Modal confirms each action, preserves the existing guarded command contract, and restores focus to its trigger or the verified outcome. Results stay inline below the actions. There is no numeric input, arbitrary value control, or random-value selection.
 - **Attribute tabs:** the Attributes panel uses **Technical** | **Mental** | **Physical** | **GK** | **Hidden** | **Personality** tabs. The active group lives in the `tab` URL search param (`technical` | `mental` | `physical` | `goalkeeping` | `hidden` | `personality`). Arrow keys, Home, and End move between groups. One compact two-column list renders at a time.
-- **Attribute values:** visible groups show text-accessible `Current → Potential` pairs of raw FM integers. Hidden and Personality remain current-only. Each known value uses the shared five-tier data ramp with the documented 1–20 bands; the number remains the primary fact. Null renders `—`.
-- **Role fit:** a compact pitch offers every supported position as a 44px button. The strongest recorded positional familiarity is selected first; if none exists, the highest current role supplies the fallback position. Known familiarity shows its raw 1–20 value and the same attribute tier colour. Selecting a position shows only roles whose catalog `positionTags` contain that exact position, ranked by current score with catalog order as the tie-break. One header labels the paired **Current** and **Potential** Score Badge columns; rows retain the role name and IP/OOP phase. Missing scores render `—`.
+- **Attribute values:** visible groups show text-accessible `Current → Potential` pairs of raw FM integers. Hidden and Personality remain current-only. Each known value uses the shared four-band data ramp with the documented 1–20 bands; the number remains the primary fact. Null renders `—`.
+- **Role fit:** a compact pitch offers every supported position as a 44px button. The strongest recorded positional familiarity is selected first; if none exists, the highest current role supplies the fallback position. Known familiarity shows its raw 1–20 value and the same attribute tier colour. Selecting a position shows only roles whose catalog `positionTags` contain that exact position. **Current** descending is the default sort. The **Current** and **Potential** column headers switch the score basis and toggle ascending or descending order; unavailable scores stay last and catalog order breaks ties. Rows retain the role name and IP/OOP phase. Missing scores render `—`.
 - **States:** no snapshot → EmptyState pointing at Load Data; unknown UID → “Player not in this snapshot”; one loading skeleton mirrors the summary and two-panel workspace.
 - **Out of this layout for now:** radar charts, history/trend blocks, compare inspector, and combined IP/OOP weight controls. The pitch is a role filter and familiarity display, not a new suitability calculation.
 

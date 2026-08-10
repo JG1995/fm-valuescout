@@ -112,21 +112,19 @@ export type AttributeRow = {
   potentialValue?: number | null;
 };
 
-export type AttributeTier = 1 | 2 | 3 | 4 | 5;
+export type AttributeTier = 1 | 2 | 3 | 4;
 
 const ATTRIBUTE_TIER_LABELS: Record<AttributeTier, string> = {
   1: "Weak",
-  2: "Limited",
-  3: "Average",
-  4: "Strong",
-  5: "Elite",
+  2: "Average",
+  3: "Good",
+  4: "Excellent",
 };
 
-/** Map FM's 1–20 attribute scale to five scan-friendly display bands. */
+/** Map FM's 1–20 attribute scale to its four familiar display bands. */
 export function attributeValueTier(value: number): AttributeTier {
-  if (value >= 17) return 5;
-  if (value >= 14) return 4;
-  if (value >= 10) return 3;
+  if (value >= 16) return 4;
+  if (value >= 11) return 3;
   if (value >= 6) return 2;
   return 1;
 }

@@ -30,7 +30,7 @@ function AttributeValue({ value }: { value: number | null | undefined }) {
     <span
       data-tier={tier}
       title={attributeTierLabel(tier)}
-      className="inline-flex min-w-7 justify-center rounded-sm bg-surface-container-high px-1.5 py-0.5 data-[tier=1]:bg-score-1/10 data-[tier=1]:text-score-1 data-[tier=2]:bg-score-2/10 data-[tier=2]:text-score-2 data-[tier=3]:bg-score-3/10 data-[tier=3]:text-score-3 data-[tier=4]:bg-score-4/10 data-[tier=4]:text-score-4 data-[tier=5]:bg-score-5/10 data-[tier=5]:text-score-5"
+      className="inline-flex min-w-7 justify-center rounded-sm bg-surface-container-high px-1.5 py-0.5 data-[tier=1]:bg-score-1/10 data-[tier=1]:text-score-1 data-[tier=2]:bg-score-2/10 data-[tier=2]:text-score-2 data-[tier=3]:bg-score-3/10 data-[tier=3]:text-score-3 data-[tier=4]:bg-score-4/10 data-[tier=4]:text-score-4"
     >
       {value}
     </span>
