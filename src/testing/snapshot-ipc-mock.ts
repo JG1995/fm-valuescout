@@ -78,11 +78,12 @@ let busyDeferred: {
   resolve: (value: LoadDataResult) => void;
 } | null = null;
 let nextSaveId = 2;
+let nextSnapshotId = 1;
 
 function buildSnapshot(overrides?: Partial<SnapshotSummary>): SnapshotSummary {
   const activeSave = saves.find((save) => save.isActive) ?? saves[0];
   return {
-    id: 1,
+    id: nextSnapshotId,
     saveId: activeSave.id,
     schemaVersion: 6,
     generatedAtUtc: "2026-07-28T15:00:00.000Z",
@@ -130,6 +131,7 @@ export function resetSnapshotIpcMock() {
   lastLoadDataArgs = undefined;
   busyDeferred = null;
   nextSaveId = 2;
+  nextSnapshotId = 1;
 }
 
 export function getLastLoadDataIpcArgs() {
@@ -295,6 +297,7 @@ export function resolveLoadDataIpcMock(
     snapshot: result.snapshot,
     players,
   });
+  nextSnapshotId += 1;
 
   return Promise.resolve(result);
 }

@@ -51,7 +51,7 @@ describe("snapshot panels", () => {
     const user = userEvent.setup();
     renderWithProviders();
 
-    await screen.findByText(/No snapshot loaded/i);
+    await screen.findByText(/No snapshot loaded for the active save/i);
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
 
     expect(

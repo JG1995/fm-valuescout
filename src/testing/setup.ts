@@ -27,6 +27,11 @@ import {
   resolveSetAcademyMemberOutcomeIpcMock,
 } from "@/testing/academy-ipc-mock";
 import {
+  resetCsvPreviewIpcMock,
+  resolveBusyCsvPreviewRequest,
+  resolveCsvPreviewIpcMock,
+} from "@/testing/csv-import-ipc-mock";
+import {
   resetPlannerIpcMock,
   resolveAddPlannerStringIpcMock,
   resolveAssignPlannerPlayerIpcMock,
@@ -122,6 +127,10 @@ function registerIpcMocks() {
 
     if (cmd === "list_sanity_players") {
       return resolveListSanityPlayersIpcMock();
+    }
+
+    if (cmd === "preview_csv_matches") {
+      return resolveCsvPreviewIpcMock(args);
     }
 
     if (cmd === "search_players") {
@@ -261,6 +270,7 @@ registerIpcMocks();
 afterEach(() => {
   resolveBusyDumpRequest();
   resolveBusyLoadDataRequest();
+  resolveBusyCsvPreviewRequest();
   cleanup();
   clearMocks();
   demoValue = "";
@@ -269,6 +279,7 @@ afterEach(() => {
   setLoadDataIpcMockMode("success");
   resetBridgeInstallIpcMock();
   resetSnapshotIpcMock();
+  resetCsvPreviewIpcMock();
   resetSearchPlayersOverride();
   resetGetPlayerOverride();
   resetPlannerIpcMock();

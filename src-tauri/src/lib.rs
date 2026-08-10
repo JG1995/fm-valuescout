@@ -6,6 +6,7 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -37,6 +38,7 @@ pub fn run() {
             features::snapshot::commands::get_current_snapshot,
             features::snapshot::commands::list_sanity_players,
             features::snapshot::commands::load_data,
+            features::csv_import::commands::preview_csv_matches,
             features::search::commands::search_players,
             features::search::commands::suggest_players,
             features::player::commands::get_player,

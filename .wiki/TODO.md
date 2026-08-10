@@ -52,14 +52,15 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No active feature selected.
+No feature is currently active.
 
 ## Next
 
-No next feature selected.
+- **CSV enrichment persistence and derived statistics** — after the completed parser/reconciliation preview, design save-scoped CSV storage and provenance, persist CSV enrichment only for fields the memory pipeline does not supply, keep memory-backed values authoritative wherever the sources overlap, and calculate required Moneyball statistics that are not exported. Decide retention, source replacement, and user-visible consumers when this feature is planned.
 
 ## Completed
 
+- [CSV parsing and player reconciliation](./features/completed/csv-player-reconciliation.md) — transient Youth Tracker and Moneyball CSV parsing plus exact UID reconciliation against the active memory-backed snapshot; no persistence or derived statistics
 - [Player Development Boosts](./features/completed/player-development-boosts.md) — two guarded player-profile actions for snapshot-derived CA and mentality boosts through a live-validated FM26 write bridge
 - [Potential role scores](./features/completed/potential-role-scores.md) — CA-to-PA visible-attribute projection, Current/Potential profile and assigned-role scores, and explicit current or potential Planner optimization
 - [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md) — schema-v6 direct player, staff, manager, scope, and club parity plus deterministic scan hardening and prior-output safety; PR 2 remains unpublished and unmerged

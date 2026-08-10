@@ -1,5 +1,7 @@
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense } from "react";
+import { CsvReconciliationPreview } from "@/features/csv-import/components/csv-reconciliation-preview";
 import { demoValueQueryOptions } from "@/features/health/api/demo-value-query-options";
 import { healthQueryOptions } from "@/features/health/api/health-query-options";
 import { HealthStatusPanelWithErrorBoundary } from "@/features/health/components/health-status-panel-with-error-boundary";
@@ -31,11 +33,21 @@ function PanelFallback({ label }: { label: string }) {
 }
 
 function IndexPage() {
+  const { data: saves } = useSuspenseQuery(savesQueryOptions);
+  const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
+  const activeSaveId = saves.find((save) => save.isActive)?.id;
+
   return (
     <div className="space-y-gutter">
       <h1 className="text-headline-lg text-on-surface">Dashboard</h1>
       <Suspense fallback={<PanelFallback label="Loading snapshot data…" />}>
         <SnapshotPanelsWithErrorBoundary />
+      </Suspense>
+      <Suspense fallback={<PanelFallback label="Loading CSV preview…" />}>
+        <CsvReconciliationPreview
+          activeSaveId={activeSaveId}
+          snapshotId={snapshot?.id}
+        />
       </Suspense>
       <Suspense fallback={<PanelFallback label="Loading bridge status…" />}>
         <BridgeStatusPanelWithErrorBoundary />

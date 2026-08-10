@@ -179,7 +179,7 @@ spacing:
 
 > **Authority:** This document owns the visual language, design tokens, and UI decisions. It does not own product purpose ([CONCEPT.md](./CONCEPT.md)) or implemented system shape ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Search** surface (compact filter strip, editor modal, virtualized results table), the **Player profile workspace** (`/players/$uid` with a compact summary, attribute tabs, and pitch-filtered role fit), and the **Squad Planner** club-family setup, dual-phase tactic editor, compact three-team depth matrix, Current/Potential score treatment, two Optimize actions, and one confirmed Clear all action (`/planner`) are implemented. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
+> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Dashboard CSV reconciliation preview**, the **Search** surface (compact filter strip, editor modal, virtualized results table), the **Player profile workspace** (`/players/$uid` with a compact summary, attribute tabs, and pitch-filtered role fit), and the **Squad Planner** club-family setup, dual-phase tactic editor, compact three-team depth matrix, Current/Potential score treatment, two Optimize actions, and one confirmed Clear all action (`/planner`) are implemented. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 ## Brand & Style
 
@@ -431,6 +431,19 @@ Global search, save context, snapshot freshness, and the Load Data action.
 - **Variants:** none.
 - **Content / Anatomy:** global search field (pill, grows), save selector (`secondary` menu button showing the active save name), snapshot freshness chip (`label-md` relative age; `success` under 30 minutes, `on-surface-variant` under 6 hours, `warning` beyond that or when the scan was truncated), **Cap players** checkbox with numeric limit field (visible when on; default 500 when enabling), Load Data (`primary` button).
 - **Behaviour:** the search field takes focus on `Ctrl+K` from anywhere. Switching saves swaps all snapshot-scoped views and clears any stale result banner from a previous load. Load Data reports scan and ingest phases separately, both in its own pending label and in the resulting error message. On success, the result banner appends scan, ingest, and total durations from `load_data` timings.
+
+### Dashboard CSV reconciliation panel
+
+The Dashboard places **CSV reconciliation** below the snapshot panels as a secondary diagnostic action. It checks one supported Youth Tracker or Moneyball export against the active snapshot without importing or saving the file.
+
+- **Header:** the panel title is `CSV reconciliation`; the right-aligned **Choose CSV** action uses the `secondary` Button variant so **Load Data** remains the Dashboard's primary data action.
+- **No snapshot:** disable **Choose CSV** and show the standard no-snapshot EmptyState with `No snapshot loaded` and `Load Data before previewing a CSV export.`
+- **Idle:** explain that the user can compare player IDs with the current snapshot and that the CSV is not imported or saved.
+- **Pending:** disable the action, show `Checking CSV…` on the button, and expose an `aria-live="polite"` status with the `Checking CSV` info chip.
+- **Success:** show the detected format, matched player IDs out of the total, and either a success message for a complete match or a warning for unmatched exported IDs. Keep values bounded and do not show the selected path or raw player rows.
+- **Error:** use an `aria-live` alert with safe copy for no snapshot, stale save or snapshot context, unsupported format, invalid CSV data, and general picker or read failures. Do not expose native file paths or raw errors.
+- **Context:** clear a completed or pending result when the active save or current snapshot changes. A late result from the old context must not restore the panel.
+- **Accessibility:** keep the panel action keyboard reachable, use visible labels and semantic status/alert roles, pair status colour with Lucide icons and text, and preserve the 1280×800 minimum window without adding a route or top-bar control.
 
 ### Data Table
 

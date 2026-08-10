@@ -65,6 +65,10 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
 
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
+          if (cmd === "plugin:dialog|open") {
+            return null;
+          }
+
           if (cmd === "get_status") {
             return { status: "ok" };
           }
@@ -164,6 +168,15 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
 
           if (cmd === "list_sanity_players") {
             return [];
+          }
+
+          if (cmd === "preview_csv_matches") {
+            return {
+              format: "youthTracker",
+              totalPlayers: 3,
+              matchedPlayers: 3,
+              unmatchedPlayers: 0,
+            };
           }
 
           if (cmd === "search_players") {
