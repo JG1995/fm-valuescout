@@ -1,41 +1,39 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import {
-  CircleAlert,
-  CircleCheck,
-  FileSearch,
-  TriangleAlert,
-} from "lucide-react";
+import { CircleAlert, CircleCheck, FileUp, TriangleAlert } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { StatusChip } from "@/components/ui/status-chip/status-chip";
 import { formatCount } from "@/utils/format";
-import { previewCsvMatches } from "../api/preview-csv-matches";
-import type { CsvMatchPreview } from "../types/csv-match-preview";
+import { importCsv } from "../api/import-csv";
+import type { CsvImportSummary } from "../types/csv-import-summary";
 import {
-  type CsvPreviewState,
-  previewStateForContext,
-} from "../utils/preview-state";
+  type CsvImportState,
+  importStateForContext,
+} from "../utils/import-state";
 
-function formatName(format: CsvMatchPreview["format"]) {
+function formatName(format: CsvImportSummary["format"]) {
   return format === "youthTracker" ? "Youth Tracker" : "Moneyball";
 }
 
 const invalidCsvErrorPrefix = "CSV file is invalid: ";
 
 function errorCopy(error: Error) {
-  if (error.message === "The current save changed while the CSV was read") {
+  if (
+    error.message ===
+    "The current save or snapshot changed while the CSV was imported"
+  ) {
     return {
       title: "Snapshot changed",
-      body: "The active save or snapshot changed while the CSV was checked. Select the CSV again.",
+      body: "The active save or snapshot changed while the CSV was imported. Select the CSV again.",
     };
   }
 
-  if (error.message === "Load data before previewing a CSV export") {
+  if (error.message === "Load data before importing a CSV export") {
     return {
       title: "No snapshot loaded",
-      body: "Load Data before previewing a CSV export.",
+      body: "Load Data before importing a CSV export.",
     };
   }
 
@@ -54,17 +52,18 @@ function errorCopy(error: Error) {
   }
 
   return {
-    title: "Could not preview CSV",
+    title: "Could not import CSV",
     body: "Choose a supported UTF-8 CSV export and try again.",
   };
 }
 
-function PreviewOutcome({ state }: { state: CsvPreviewState }) {
+function ImportOutcome({ state }: { state: CsvImportState }) {
   if (state.status === "idle") {
     return (
       <p className="text-body-md text-on-surface-variant">
-        Choose one Youth Tracker or Moneyball export to compare its player IDs
-        with the current snapshot. The CSV is not imported or saved.
+        Choose a Youth Tracker or Moneyball export to import. Matching player
+        rows replace earlier CSV enrichment; player IDs outside the current
+        snapshot are skipped.
       </p>
     );
   }
@@ -72,11 +71,11 @@ function PreviewOutcome({ state }: { state: CsvPreviewState }) {
   if (state.status === "pending") {
     return (
       <div aria-live="polite" role="status" className="flex items-center gap-2">
-        <StatusChip icon={FileSearch} tone="info">
-          Checking CSV
+        <StatusChip icon={FileUp} tone="info">
+          Importing CSV
         </StatusChip>
         <span className="text-body-md text-on-surface-variant">
-          Checking the selected CSV against the current snapshot.
+          Importing the selected CSV for the current snapshot.
         </span>
       </div>
     );
@@ -104,22 +103,21 @@ function PreviewOutcome({ state }: { state: CsvPreviewState }) {
     );
   }
 
-  const { preview } = state;
-  const hasUnmatchedPlayers = preview.unmatchedPlayers > 0;
+  const { summary } = state;
+  const hasSkippedPlayers = summary.skippedPlayers > 0;
 
   return (
     <div aria-live="polite" role="status" className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <StatusChip icon={FileSearch} tone="info">
-          {`${formatName(preview.format)} detected`}
+        <StatusChip icon={CircleCheck} tone="success">
+          {`${formatName(summary.format)} imported`}
         </StatusChip>
         <span className="text-body-md text-on-surface">
-          {formatCount(preview.matchedPlayers)} of{" "}
-          {formatCount(preview.totalPlayers)} player IDs match the current
-          snapshot.
+          {formatCount(summary.storedPlayers)} of{" "}
+          {formatCount(summary.totalPlayers)} player IDs were stored.
         </span>
       </div>
-      {hasUnmatchedPlayers ? (
+      {hasSkippedPlayers ? (
         <p className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning-container px-3 py-2 text-body-sm text-on-warning-container">
           <TriangleAlert
             aria-hidden="true"
@@ -127,58 +125,76 @@ function PreviewOutcome({ state }: { state: CsvPreviewState }) {
             strokeWidth={1.5}
             className="mt-0.5 shrink-0"
           />
-          {formatCount(preview.unmatchedPlayers)} exported player ID
-          {preview.unmatchedPlayers === 1 ? " does" : "s do"} not match the
-          current snapshot.
+          {summary.skippedPlayers === 1
+            ? `${formatCount(summary.skippedPlayers)} player ID was skipped because it does not match the current snapshot.`
+            : `${formatCount(summary.skippedPlayers)} player IDs were skipped because they do not match the current snapshot.`}
         </p>
       ) : (
         <p className="flex items-center gap-2 text-body-sm text-success">
           <CircleCheck aria-hidden="true" size={16} strokeWidth={1.5} />
-          Every exported player ID matches the current snapshot.
+          Every exported player ID was stored.
         </p>
       )}
     </div>
   );
 }
 
-type CsvReconciliationPreviewProps = {
+type CsvImportPanelProps = {
   activeSaveId: number | undefined;
   snapshotId: number | undefined;
+  onYouthImported: () => void;
 };
 
-export function CsvReconciliationPreview({
+export function CsvImportPanel({
   activeSaveId,
   snapshotId,
-}: CsvReconciliationPreviewProps) {
+  onYouthImported,
+}: CsvImportPanelProps) {
   const contextKey = `${activeSaveId ?? "none"}:${snapshotId ?? "none"}`;
   const currentContext = useRef(contextKey);
-  const [state, setState] = useState<CsvPreviewState>({ status: "idle" });
-  const visibleState = previewStateForContext(state, contextKey);
+  const contextGeneration = useRef(0);
+  const [state, setState] = useState<CsvImportState>({ status: "idle" });
+  const visibleState = importStateForContext(state, contextKey);
 
   useLayoutEffect(() => {
     currentContext.current = contextKey;
+    contextGeneration.current += 1;
     setState({ status: "idle" });
   }, [contextKey]);
 
   const chooseCsv = async () => {
     const selectionContext = contextKey;
+    const selectionGeneration = contextGeneration.current;
     try {
       const path = await open({
         multiple: false,
         directory: false,
         filters: [{ name: "CSV", extensions: ["csv"] }],
       });
-      if (currentContext.current !== selectionContext || !path) {
+      if (
+        currentContext.current !== selectionContext ||
+        contextGeneration.current !== selectionGeneration ||
+        !path
+      ) {
         return;
       }
 
       setState({ status: "pending", contextKey: selectionContext });
-      const preview = await previewCsvMatches(path);
-      if (currentContext.current === selectionContext) {
-        setState({ status: "success", contextKey: selectionContext, preview });
+      const summary = await importCsv(path);
+      if (
+        currentContext.current === selectionContext &&
+        contextGeneration.current === selectionGeneration
+      ) {
+        setState({ status: "success", contextKey: selectionContext, summary });
+        if (summary.format === "youthTracker") {
+          onYouthImported();
+        }
       }
     } catch (error) {
-      if (currentContext.current === selectionContext) {
+      if (
+        currentContext.current === selectionContext &&
+        contextGeneration.current === selectionGeneration
+      ) {
         setState({
           status: "error",
           contextKey: selectionContext,
@@ -190,27 +206,27 @@ export function CsvReconciliationPreview({
 
   return (
     <Panel
-      title="CSV reconciliation"
+      title="CSV enrichment"
       actions={
         <Button
           variant="secondary"
-          icon={FileSearch}
+          icon={FileUp}
           loading={visibleState.status === "pending"}
-          loadingLabel="Checking CSV…"
+          loadingLabel="Importing CSV…"
           disabled={snapshotId === undefined}
           onClick={() => {
             void chooseCsv();
           }}
         >
-          Choose CSV
+          Import CSV
         </Button>
       }
     >
       {snapshotId !== undefined ? (
-        <PreviewOutcome state={visibleState} />
+        <ImportOutcome state={visibleState} />
       ) : (
-        <EmptyState icon={FileSearch} title="No snapshot loaded">
-          Load Data before previewing a CSV export.
+        <EmptyState icon={FileUp} title="No snapshot loaded">
+          Load Data before importing a CSV export.
         </EmptyState>
       )}
     </Panel>

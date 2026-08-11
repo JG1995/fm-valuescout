@@ -1,7 +1,8 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense } from "react";
-import { CsvReconciliationPreview } from "@/features/csv-import/components/csv-reconciliation-preview";
+import { academyKeys } from "@/features/academy/api/academy-keys";
+import { CsvImportPanel } from "@/features/csv-import/components/csv-import-panel";
 import { demoValueQueryOptions } from "@/features/health/api/demo-value-query-options";
 import { healthQueryOptions } from "@/features/health/api/health-query-options";
 import { HealthStatusPanelWithErrorBoundary } from "@/features/health/components/health-status-panel-with-error-boundary";
@@ -33,6 +34,7 @@ function PanelFallback({ label }: { label: string }) {
 }
 
 function IndexPage() {
+  const queryClient = useQueryClient();
   const { data: saves } = useSuspenseQuery(savesQueryOptions);
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const activeSaveId = saves.find((save) => save.isActive)?.id;
@@ -43,10 +45,13 @@ function IndexPage() {
       <Suspense fallback={<PanelFallback label="Loading snapshot data…" />}>
         <SnapshotPanelsWithErrorBoundary />
       </Suspense>
-      <Suspense fallback={<PanelFallback label="Loading CSV preview…" />}>
-        <CsvReconciliationPreview
+      <Suspense fallback={<PanelFallback label="Loading CSV import…" />}>
+        <CsvImportPanel
           activeSaveId={activeSaveId}
           snapshotId={snapshot?.id}
+          onYouthImported={() => {
+            void queryClient.invalidateQueries({ queryKey: academyKeys.all });
+          }}
         />
       </Suspense>
       <Suspense fallback={<PanelFallback label="Loading bridge status…" />}>

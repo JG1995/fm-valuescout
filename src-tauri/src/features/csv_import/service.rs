@@ -8,44 +8,37 @@ use serde::Serialize;
 use serde_json::{Map, Number, Value};
 
 use super::parser::{parse_csv_with_row_limit, ParsedCsv};
-use super::{CsvImportError, MoneyballMetricValue, MoneyballPlayer, MoneyballTransferValue};
+use super::{
+    CsvImportError as ParsedCsvError, MoneyballMetricValue, MoneyballPlayer, MoneyballTransferValue,
+};
 pub(crate) const MAX_CSV_BYTES: u64 = 1024 * 1024;
 pub(crate) const MAX_CSV_ROWS: usize = 1_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum CsvPreviewFormat {
+pub(crate) enum CsvImportFormat {
     YouthTracker,
     Moneyball,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct CsvMatchPreview {
-    pub format: CsvPreviewFormat,
-    pub total_players: usize,
-    pub matched_players: usize,
-    pub unmatched_players: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct CsvImportSummary {
-    pub format: CsvPreviewFormat,
+    pub format: CsvImportFormat,
     pub total_players: usize,
     pub stored_players: usize,
     pub skipped_players: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PreviewContext {
+pub(crate) struct ImportContext {
     save_id: i64,
     snapshot_id: i64,
     player_uids: HashSet<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CsvPreviewError {
+pub(crate) enum CsvImportServiceError {
     NoCurrentSnapshot,
     StaleContext,
     InvalidFile,
@@ -53,31 +46,34 @@ pub(crate) enum CsvPreviewError {
     InvalidUtf8,
     UnsupportedFormat,
     TooManyRows,
-    InvalidCsv(CsvImportError),
+    InvalidCsv(ParsedCsvError),
     Database,
 }
 
-impl std::fmt::Display for CsvPreviewError {
+impl std::fmt::Display for CsvImportServiceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NoCurrentSnapshot => write!(f, "Load data before previewing a CSV export"),
-            Self::StaleContext => write!(f, "The current save changed while the CSV was read"),
+            Self::NoCurrentSnapshot => write!(f, "Load data before importing a CSV export"),
+            Self::StaleContext => write!(
+                f,
+                "The current save or snapshot changed while the CSV was imported"
+            ),
             Self::InvalidFile => write!(f, "Select a regular .csv file"),
             Self::FileTooLarge => write!(f, "CSV file exceeds the 1 MiB limit"),
             Self::InvalidUtf8 => write!(f, "CSV file must use UTF-8 encoding"),
             Self::UnsupportedFormat => write!(f, "CSV format is not supported"),
             Self::TooManyRows => write!(f, "CSV contains more than 1000 player rows"),
             Self::InvalidCsv(error) => write!(f, "CSV file is invalid: {error}"),
-            Self::Database => write!(f, "CSV preview is unavailable"),
+            Self::Database => write!(f, "CSV import is unavailable"),
         }
     }
 }
 
-impl std::error::Error for CsvPreviewError {}
+impl std::error::Error for CsvImportServiceError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CsvPersistenceError {
-    Preview(CsvPreviewError),
+    Import(CsvImportServiceError),
     NumericValueOutOfRange,
     InvalidStatistics,
     Database,
@@ -86,7 +82,7 @@ pub(crate) enum CsvPersistenceError {
 impl std::fmt::Display for CsvPersistenceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Preview(error) => error.fmt(f),
+            Self::Import(error) => error.fmt(f),
             Self::NumericValueOutOfRange => {
                 write!(f, "CSV contains a value that is too large to store")
             }
@@ -98,9 +94,9 @@ impl std::fmt::Display for CsvPersistenceError {
 
 impl std::error::Error for CsvPersistenceError {}
 
-impl From<CsvPreviewError> for CsvPersistenceError {
-    fn from(error: CsvPreviewError) -> Self {
-        Self::Preview(error)
+impl From<CsvImportServiceError> for CsvPersistenceError {
+    fn from(error: CsvImportServiceError) -> Self {
+        Self::Import(error)
     }
 }
 
@@ -128,9 +124,9 @@ pub(crate) struct PreparedMoneyballStats {
     statistics_json: String,
 }
 
-pub(crate) fn capture_preview_context(
+pub(crate) fn capture_import_context(
     conn: &Connection,
-) -> Result<PreviewContext, CsvPreviewError> {
+) -> Result<ImportContext, CsvImportServiceError> {
     let context = conn
         .query_row(
             "SELECT sv.id, s.id
@@ -142,57 +138,22 @@ pub(crate) fn capture_preview_context(
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
-        .map_err(|_| CsvPreviewError::Database)?
-        .ok_or(CsvPreviewError::NoCurrentSnapshot)?;
+        .map_err(|_| CsvImportServiceError::Database)?
+        .ok_or(CsvImportServiceError::NoCurrentSnapshot)?;
 
     let mut statement = conn
         .prepare("SELECT uid FROM players WHERE snapshot_id = ?1")
-        .map_err(|_| CsvPreviewError::Database)?;
+        .map_err(|_| CsvImportServiceError::Database)?;
     let player_uids = statement
         .query_map([context.1], |row| row.get(0))
-        .map_err(|_| CsvPreviewError::Database)?
+        .map_err(|_| CsvImportServiceError::Database)?
         .collect::<Result<HashSet<_>, _>>()
-        .map_err(|_| CsvPreviewError::Database)?;
+        .map_err(|_| CsvImportServiceError::Database)?;
 
-    Ok(PreviewContext {
+    Ok(ImportContext {
         save_id: context.0,
         snapshot_id: context.1,
         player_uids,
-    })
-}
-
-pub(crate) fn preview_csv_file(
-    path: &Path,
-    context: &PreviewContext,
-) -> Result<CsvMatchPreview, CsvPreviewError> {
-    let parsed = parse_csv_file(path)?;
-    let (format, uids) = match parsed {
-        ParsedCsv::YouthTracker(players) => (
-            CsvPreviewFormat::YouthTracker,
-            players
-                .into_iter()
-                .map(|player| i64::from(player.uid))
-                .collect::<Vec<_>>(),
-        ),
-        ParsedCsv::Moneyball(players) => (
-            CsvPreviewFormat::Moneyball,
-            players
-                .into_iter()
-                .map(|player| i64::from(player.uid))
-                .collect::<Vec<_>>(),
-        ),
-    };
-    let matched_players = uids
-        .iter()
-        .filter(|uid| context.player_uids.contains(uid))
-        .count();
-    let total_players = uids.len();
-
-    Ok(CsvMatchPreview {
-        format,
-        total_players,
-        matched_players,
-        unmatched_players: total_players - matched_players,
     })
 }
 
@@ -220,13 +181,13 @@ pub(crate) fn prepare_csv_import(path: &Path) -> Result<PreparedCsvImport, CsvPe
 
 pub(crate) fn persist_csv_import(
     conn: &mut Connection,
-    context: &PreviewContext,
+    context: &ImportContext,
     import: PreparedCsvImport,
 ) -> Result<CsvImportSummary, CsvPersistenceError> {
     let tx = conn
         .transaction()
         .map_err(|_| CsvPersistenceError::Database)?;
-    revalidate_preview_context(&tx, context)?;
+    revalidate_import_context(&tx, context)?;
 
     let summary = match import {
         PreparedCsvImport::YouthTracker(players) => {
@@ -240,7 +201,7 @@ pub(crate) fn persist_csv_import(
                 stored_players += 1;
             }
             CsvImportSummary {
-                format: CsvPreviewFormat::YouthTracker,
+                format: CsvImportFormat::YouthTracker,
                 total_players,
                 stored_players,
                 skipped_players: total_players - stored_players,
@@ -257,7 +218,7 @@ pub(crate) fn persist_csv_import(
                 stored_players += 1;
             }
             CsvImportSummary {
-                format: CsvPreviewFormat::Moneyball,
+                format: CsvImportFormat::Moneyball,
                 total_players,
                 stored_players,
                 skipped_players: total_players - stored_players,
@@ -269,28 +230,30 @@ pub(crate) fn persist_csv_import(
     Ok(summary)
 }
 
-fn parse_csv_file(path: &Path) -> Result<ParsedCsv, CsvPreviewError> {
-    let metadata = fs::symlink_metadata(path).map_err(|_| CsvPreviewError::InvalidFile)?;
+fn parse_csv_file(path: &Path) -> Result<ParsedCsv, CsvImportServiceError> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| CsvImportServiceError::InvalidFile)?;
     if !metadata.file_type().is_file() || !has_csv_extension(path) {
-        return Err(CsvPreviewError::InvalidFile);
+        return Err(CsvImportServiceError::InvalidFile);
     }
     if metadata.len() > MAX_CSV_BYTES {
-        return Err(CsvPreviewError::FileTooLarge);
+        return Err(CsvImportServiceError::FileTooLarge);
     }
 
-    let mut file = File::open(path).map_err(|_| CsvPreviewError::InvalidFile)?;
-    let metadata = file.metadata().map_err(|_| CsvPreviewError::InvalidFile)?;
+    let mut file = File::open(path).map_err(|_| CsvImportServiceError::InvalidFile)?;
+    let metadata = file
+        .metadata()
+        .map_err(|_| CsvImportServiceError::InvalidFile)?;
     if !metadata.file_type().is_file() {
-        return Err(CsvPreviewError::InvalidFile);
+        return Err(CsvImportServiceError::InvalidFile);
     }
     let input = read_bounded_file(&mut file)?;
     parse_csv_with_row_limit(&input, Some(MAX_CSV_ROWS)).map_err(map_csv_error)
 }
 
-pub(crate) fn revalidate_preview_context(
+pub(crate) fn revalidate_import_context(
     conn: &Connection,
-    context: &PreviewContext,
-) -> Result<(), CsvPreviewError> {
+    context: &ImportContext,
+) -> Result<(), CsvImportServiceError> {
     let is_current: bool = conn
         .query_row(
             "SELECT EXISTS(
@@ -302,11 +265,11 @@ pub(crate) fn revalidate_preview_context(
             [context.snapshot_id, context.save_id],
             |row| row.get(0),
         )
-        .map_err(|_| CsvPreviewError::Database)?;
+        .map_err(|_| CsvImportServiceError::Database)?;
 
     is_current
         .then_some(())
-        .ok_or(CsvPreviewError::StaleContext)
+        .ok_or(CsvImportServiceError::StaleContext)
 }
 
 fn prepare_moneyball_stats(
@@ -438,31 +401,33 @@ fn has_csv_extension(path: &Path) -> bool {
         .is_some_and(|extension| extension.eq_ignore_ascii_case("csv"))
 }
 
-fn read_bounded_file(file: &mut File) -> Result<String, CsvPreviewError> {
-    let metadata = file.metadata().map_err(|_| CsvPreviewError::InvalidFile)?;
+fn read_bounded_file(file: &mut File) -> Result<String, CsvImportServiceError> {
+    let metadata = file
+        .metadata()
+        .map_err(|_| CsvImportServiceError::InvalidFile)?;
     if metadata.len() > MAX_CSV_BYTES {
-        return Err(CsvPreviewError::FileTooLarge);
+        return Err(CsvImportServiceError::FileTooLarge);
     }
 
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
     file.by_ref()
         .take(MAX_CSV_BYTES + 1)
         .read_to_end(&mut bytes)
-        .map_err(|_| CsvPreviewError::InvalidFile)?;
+        .map_err(|_| CsvImportServiceError::InvalidFile)?;
     if bytes.len() as u64 > MAX_CSV_BYTES {
-        return Err(CsvPreviewError::FileTooLarge);
+        return Err(CsvImportServiceError::FileTooLarge);
     }
 
-    String::from_utf8(bytes).map_err(|_| CsvPreviewError::InvalidUtf8)
+    String::from_utf8(bytes).map_err(|_| CsvImportServiceError::InvalidUtf8)
 }
 
-fn map_csv_error(error: CsvImportError) -> CsvPreviewError {
+fn map_csv_error(error: ParsedCsvError) -> CsvImportServiceError {
     match error {
-        CsvImportError::UnsupportedDialect | CsvImportError::MissingRequiredHeader(_) => {
-            CsvPreviewError::UnsupportedFormat
+        ParsedCsvError::UnsupportedDialect | ParsedCsvError::MissingRequiredHeader(_) => {
+            CsvImportServiceError::UnsupportedFormat
         }
-        CsvImportError::TooManyRows { .. } => CsvPreviewError::TooManyRows,
-        error => CsvPreviewError::InvalidCsv(error),
+        ParsedCsvError::TooManyRows { .. } => CsvImportServiceError::TooManyRows,
+        error => CsvImportServiceError::InvalidCsv(error),
     }
 }
 
@@ -475,11 +440,9 @@ mod tests {
 
     use super::*;
     use crate::db::migrations;
-    use crate::features::csv_import::parser::{parse_csv, ParsedCsv};
     use crate::features::snapshot::ingest::{ingest_dump_file, ingest_dump_file_for_save};
     use crate::features::snapshot::service as snapshot_service;
 
-    const YOUTH_EXPORT: &str = include_str!("fixtures/2030_07_01_Full_Squad_CA_PA_Monza.csv");
     const MONEYBALL_EXPORT: &str = include_str!("fixtures/moneyball_stats.csv");
     type CareerValues = (Option<i64>, Option<i64>, Option<i64>, Option<i64>);
     type MoneyballStoredValues = (
@@ -491,53 +454,6 @@ mod tests {
         Option<i64>,
         String,
     );
-
-    #[test]
-    fn previews_moneyball_uids_against_the_pinned_youth_snapshot() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("preview.db"));
-        let youth_uids = parsed_uids(YOUTH_EXPORT);
-        seed_current_snapshot(&mut conn, &youth_uids);
-        let path = write_csv(&temp_dir, "moneyball.csv", MONEYBALL_EXPORT);
-        let before = database_fingerprint(&conn);
-
-        let context = capture_preview_context(&conn).expect("capture current snapshot");
-        let preview = preview_csv_file(&path, &context).expect("preview Moneyball export");
-
-        assert_eq!(
-            preview,
-            CsvMatchPreview {
-                format: CsvPreviewFormat::Moneyball,
-                total_players: 75,
-                matched_players: 74,
-                unmatched_players: 1,
-            }
-        );
-        revalidate_preview_context(&conn, &context).expect("context remains current");
-        assert_eq!(database_fingerprint(&conn), before);
-    }
-
-    #[test]
-    fn previews_youth_uids_with_exact_matches_and_unmatched_rows() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("preview-youth.db"));
-        let youth_uids = parsed_uids(YOUTH_EXPORT);
-        seed_current_snapshot(&mut conn, &youth_uids[..73]);
-        let path = write_csv(&temp_dir, "youth.csv", YOUTH_EXPORT);
-
-        let context = capture_preview_context(&conn).expect("capture current snapshot");
-        let preview = preview_csv_file(&path, &context).expect("preview Youth export");
-
-        assert_eq!(
-            preview,
-            CsvMatchPreview {
-                format: CsvPreviewFormat::YouthTracker,
-                total_players: 74,
-                matched_players: 73,
-                unmatched_players: 1,
-            }
-        );
-    }
 
     #[test]
     fn imports_only_matched_youth_rows_replaces_included_rows_and_preserves_omitted_rows() {
@@ -553,7 +469,7 @@ mod tests {
         assert_eq!(
             import_csv_file(&mut conn, &first_path).expect("import matching players"),
             CsvImportSummary {
-                format: CsvPreviewFormat::YouthTracker,
+                format: CsvImportFormat::YouthTracker,
                 total_players: 2,
                 stored_players: 2,
                 skipped_players: 0,
@@ -576,7 +492,7 @@ mod tests {
         assert_eq!(
             import_csv_file(&mut conn, &replacement_path).expect("replace matching player"),
             CsvImportSummary {
-                format: CsvPreviewFormat::YouthTracker,
+                format: CsvImportFormat::YouthTracker,
                 total_players: 2,
                 stored_players: 1,
                 skipped_players: 1,
@@ -618,7 +534,7 @@ mod tests {
         assert_eq!(
             import_csv_file(&mut conn, &moneyball_path).expect("import Moneyball enrichment"),
             CsvImportSummary {
-                format: CsvPreviewFormat::Moneyball,
+                format: CsvImportFormat::Moneyball,
                 total_players: 75,
                 stored_players: 1,
                 skipped_players: 74,
@@ -694,7 +610,7 @@ mod tests {
             "player.csv",
             "Unique ID;Player;AT Apps\n1;One;12\n",
         );
-        let context = capture_preview_context(&conn).expect("capture context");
+        let context = capture_import_context(&conn).expect("capture context");
         let import = prepare_csv_import(&path).expect("prepare import outside transaction");
 
         conn.execute(
@@ -705,7 +621,7 @@ mod tests {
 
         assert_eq!(
             persist_csv_import(&mut conn, &context, import).expect_err("reject stale context"),
-            CsvPersistenceError::Preview(CsvPreviewError::StaleContext)
+            CsvPersistenceError::Import(CsvImportServiceError::StaleContext)
         );
         assert_eq!(
             conn.query_row(
@@ -728,7 +644,7 @@ mod tests {
             "player.csv",
             "Unique ID;Player;AT Apps\n1;One;12\n",
         );
-        let context = capture_preview_context(&conn).expect("capture context");
+        let context = capture_import_context(&conn).expect("capture context");
         let import = prepare_csv_import(&path).expect("prepare import outside transaction");
         conn.execute(
             "UPDATE saves SET is_active = 0 WHERE id = ?1",
@@ -743,7 +659,7 @@ mod tests {
 
         assert_eq!(
             persist_csv_import(&mut conn, &context, import).expect_err("reject stale save"),
-            CsvPersistenceError::Preview(CsvPreviewError::StaleContext)
+            CsvPersistenceError::Import(CsvImportServiceError::StaleContext)
         );
         assert_eq!(
             conn.query_row(
@@ -766,7 +682,7 @@ mod tests {
             "players.csv",
             "Unique ID;Player;AT Apps\n1;One;12\n2;Two;13\n",
         );
-        let context = capture_preview_context(&conn).expect("capture context");
+        let context = capture_import_context(&conn).expect("capture context");
         let import = prepare_csv_import(&path).expect("prepare import");
         conn.execute_batch(
             "CREATE TRIGGER reject_second_youth_import
@@ -819,8 +735,8 @@ mod tests {
             import_csv_file(&mut conn, &malformed_path).expect_err("reject duplicate UID");
         assert_eq!(
             malformed,
-            CsvPersistenceError::Preview(CsvPreviewError::InvalidCsv(
-                CsvImportError::DuplicateUid {
+            CsvPersistenceError::Import(CsvImportServiceError::InvalidCsv(
+                ParsedCsvError::DuplicateUid {
                     first_row: 2,
                     row: 3,
                 }
@@ -904,13 +820,10 @@ mod tests {
     #[test]
     fn rejects_invalid_files_and_bounds_without_leaking_the_local_path() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("bounds.db"));
-        seed_current_snapshot(&mut conn, &[1]);
-        let context = capture_preview_context(&conn).expect("capture current snapshot");
 
         let text_path = write_csv(&temp_dir, "players.txt", "Unique ID;Player\n1;Player\n");
-        let text_error = preview_csv_file(&text_path, &context).expect_err("reject text file");
-        assert_eq!(text_error, CsvPreviewError::InvalidFile);
+        let text_error = parse_csv_file(&text_path).expect_err("reject text file");
+        assert_eq!(text_error, CsvImportServiceError::InvalidFile);
         assert!(!text_error
             .to_string()
             .contains(temp_dir.path().to_str().expect("temp path")));
@@ -918,16 +831,16 @@ mod tests {
         let utf8_path = temp_dir.path().join("invalid.csv");
         fs::write(&utf8_path, [0xff, 0xfe]).expect("write invalid UTF-8");
         assert_eq!(
-            preview_csv_file(&utf8_path, &context).expect_err("reject invalid UTF-8"),
-            CsvPreviewError::InvalidUtf8
+            parse_csv_file(&utf8_path).expect_err("reject invalid UTF-8"),
+            CsvImportServiceError::InvalidUtf8
         );
 
         let oversized_path = temp_dir.path().join("oversized.csv");
         fs::write(&oversized_path, vec![b'x'; MAX_CSV_BYTES as usize + 1])
             .expect("write oversized CSV");
         assert_eq!(
-            preview_csv_file(&oversized_path, &context).expect_err("reject oversized CSV"),
-            CsvPreviewError::FileTooLarge
+            parse_csv_file(&oversized_path).expect_err("reject oversized CSV"),
+            CsvImportServiceError::FileTooLarge
         );
 
         let too_many_rows = std::iter::once("Unique ID;Player".to_string())
@@ -936,8 +849,8 @@ mod tests {
             .join("\n");
         let rows_path = write_csv(&temp_dir, "too-many.csv", &too_many_rows);
         assert_eq!(
-            preview_csv_file(&rows_path, &context).expect_err("reject too many rows"),
-            CsvPreviewError::TooManyRows
+            parse_csv_file(&rows_path).expect_err("reject too many rows"),
+            CsvImportServiceError::TooManyRows
         );
     }
 
@@ -950,27 +863,24 @@ mod tests {
 
         assert_eq!(
             read_bounded_file(&mut file).expect_err("reject grown CSV"),
-            CsvPreviewError::FileTooLarge
+            CsvImportServiceError::FileTooLarge
         );
     }
 
     #[test]
     fn propagates_invalid_csv_data_without_returning_raw_rows() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("invalid-data.db"));
-        seed_current_snapshot(&mut conn, &[1]);
-        let context = capture_preview_context(&conn).expect("capture current snapshot");
         let path = write_csv(
             &temp_dir,
             "duplicate.csv",
             "Unique ID;Player\n1;First player\n1;Raw row that must not cross IPC\n",
         );
 
-        let error = preview_csv_file(&path, &context).expect_err("duplicate UID propagates");
+        let error = parse_csv_file(&path).expect_err("duplicate UID propagates");
 
         assert_eq!(
             error,
-            CsvPreviewError::InvalidCsv(CsvImportError::DuplicateUid {
+            CsvImportServiceError::InvalidCsv(ParsedCsvError::DuplicateUid {
                 first_row: 2,
                 row: 3,
             })
@@ -981,11 +891,11 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_preview_when_the_current_save_changes() {
+    fn rejects_an_import_when_the_current_save_changes() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("stale.db"));
         seed_current_snapshot(&mut conn, &[1]);
-        let context = capture_preview_context(&conn).expect("capture current snapshot");
+        let context = capture_import_context(&conn).expect("capture current snapshot");
 
         conn.execute("UPDATE saves SET is_active = 0 WHERE is_active = 1", [])
             .expect("deactivate prior save");
@@ -996,17 +906,17 @@ mod tests {
         .expect("switch active save");
 
         assert_eq!(
-            revalidate_preview_context(&conn, &context).expect_err("reject stale context"),
-            CsvPreviewError::StaleContext
+            revalidate_import_context(&conn, &context).expect_err("reject stale context"),
+            CsvImportServiceError::StaleContext
         );
     }
 
     #[test]
-    fn rejects_a_preview_when_the_current_snapshot_changes() {
+    fn rejects_an_import_when_the_current_snapshot_changes() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("stale-snapshot.db"));
         seed_current_snapshot(&mut conn, &[1]);
-        let context = capture_preview_context(&conn).expect("capture current snapshot");
+        let context = capture_import_context(&conn).expect("capture current snapshot");
 
         conn.execute(
             "UPDATE snapshots SET is_current = 0 WHERE is_current = 1",
@@ -1015,8 +925,8 @@ mod tests {
         .expect("replace current snapshot");
 
         assert_eq!(
-            revalidate_preview_context(&conn, &context).expect_err("reject stale context"),
-            CsvPreviewError::StaleContext
+            revalidate_import_context(&conn, &context).expect_err("reject stale context"),
+            CsvImportServiceError::StaleContext
         );
     }
 
@@ -1027,8 +937,8 @@ mod tests {
         let before = database_fingerprint(&conn);
 
         assert_eq!(
-            capture_preview_context(&conn).expect_err("no current snapshot"),
-            CsvPreviewError::NoCurrentSnapshot
+            capture_import_context(&conn).expect_err("no current snapshot"),
+            CsvImportServiceError::NoCurrentSnapshot
         );
 
         assert_eq!(database_fingerprint(&conn), before);
@@ -1038,7 +948,7 @@ mod tests {
         conn: &mut Connection,
         path: &Path,
     ) -> Result<CsvImportSummary, CsvPersistenceError> {
-        let context = capture_preview_context(conn)?;
+        let context = capture_import_context(conn)?;
         let import = prepare_csv_import(path)?;
         persist_csv_import(conn, &context, import)
     }
@@ -1083,19 +993,10 @@ mod tests {
         conn
     }
 
-    fn parsed_uids(input: &str) -> Vec<u32> {
-        match parse_csv(input).expect("parse pinned Youth export") {
-            ParsedCsv::YouthTracker(players) => {
-                players.into_iter().map(|player| player.uid).collect()
-            }
-            ParsedCsv::Moneyball(_) => panic!("expected Youth export"),
-        }
-    }
-
     fn seed_current_snapshot(conn: &mut Connection, uids: &[u32]) {
         conn.execute(
             "INSERT INTO saves (name, is_active) VALUES (?1, 1)",
-            ["Preview save"],
+            ["Import save"],
         )
         .expect("create active save");
         let save_id = conn.last_insert_rowid();
@@ -1118,7 +1019,7 @@ mod tests {
                     snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
                     nationalities_json, preferred_foot, positions_json, attributes_json,
                     hidden_attributes_json, personality_json
-                ) VALUES (?1, ?2, 100, 100, 'Preview player', 2000, 1, '[]', 'Right',
+                ) VALUES (?1, ?2, 100, 100, 'Import player', 2000, 1, '[]', 'Right',
                     '{}', '{}', '{}', '{}')",
             )
             .expect("prepare player insert");

@@ -1,12 +1,14 @@
 import type { Page } from "@playwright/test";
 
 type SmokeStubOptions = {
+  csvImportFormat?: "youthTracker" | "moneyball";
   plannerSnapshot?: boolean;
   plannerPotentialScores?: boolean;
   playerProfile?: boolean;
 };
 
 export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
+  const csvImportFormat = options.csvImportFormat ?? null;
   const plannerSnapshot = options.plannerSnapshot ?? false;
   const plannerPotentialScores = options.plannerPotentialScores ?? false;
   const playerProfile = options.playerProfile ?? false;
@@ -14,6 +16,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
     content: `
       let demoValue = "";
       let playerProfileMentalityUpdated = false;
+      const csvImportFormat = ${JSON.stringify(csvImportFormat)};
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
       const plannerPotentialScores = ${plannerPotentialScores ? "true" : "false"};
       const playerProfile = ${playerProfile ? "true" : "false"};
@@ -66,7 +69,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
           if (cmd === "plugin:dialog|open") {
-            return null;
+            return csvImportFormat ? "/tmp/smoke-import.csv" : null;
           }
 
           if (cmd === "get_status") {
@@ -170,12 +173,12 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             return [];
           }
 
-          if (cmd === "preview_csv_matches") {
+          if (cmd === "import_csv") {
             return {
-              format: "youthTracker",
-              totalPlayers: 3,
-              matchedPlayers: 3,
-              unmatchedPlayers: 0,
+              format: csvImportFormat,
+              totalPlayers: csvImportFormat === "moneyball" ? 75 : 3,
+              storedPlayers: csvImportFormat === "moneyball" ? 74 : 3,
+              skippedPlayers: csvImportFormat === "moneyball" ? 1 : 0,
             };
           }
 
