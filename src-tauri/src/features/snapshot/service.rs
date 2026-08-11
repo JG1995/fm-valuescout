@@ -1,17 +1,56 @@
-use rusqlite::{params, Connection, Row, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 
 use crate::features::academy::service as academy_service;
 
+use super::query::get_snapshot_metadata;
+
 pub const DEFAULT_SAVE_NAME: &str = "Default save";
 pub const MAX_SAVE_NAME_LEN: usize = 100;
+pub const MAX_SNAPSHOT_NAME_LEN: usize = MAX_SAVE_NAME_LEN;
+pub(crate) const SNAPSHOT_ORDER_BY: &str =
+    "game_date IS NULL, game_date DESC, loaded_at_utc DESC, id DESC";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveSummary {
     pub id: i64,
+    pub context_token: String,
     pub name: String,
     pub is_active: bool,
     pub created_at_utc: String,
     pub updated_at_utc: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotMetadata {
+    pub id: i64,
+    pub context_token: String,
+    pub save_id: i64,
+    pub custom_name: Option<String>,
+    pub game_date: Option<String>,
+    pub game_date_source: String,
+    pub player_count: i64,
+    pub loaded_at_utc: String,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SaveContext {
+    pub(crate) id: i64,
+    pub(crate) context_token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SnapshotDeleteResult {
+    pub deleted_snapshot_id: i64,
+    pub save_id: i64,
+    pub current_snapshot_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveDeleteResult {
+    pub deleted_save_id: i64,
+    pub deleted_was_active: bool,
+    pub active_save: SaveSummary,
 }
 
 pub fn validate_save_name(name: &str) -> Result<String, String> {
@@ -27,6 +66,32 @@ pub fn validate_save_name(name: &str) -> Result<String, String> {
     }
 
     Ok(trimmed.to_string())
+}
+
+pub fn validate_snapshot_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Snapshot name must not be empty".to_string());
+    }
+    if trimmed.chars().count() > MAX_SNAPSHOT_NAME_LEN {
+        return Err(format!(
+            "Snapshot name must be at most {} characters",
+            MAX_SNAPSHOT_NAME_LEN
+        ));
+    }
+
+    Ok(trimmed.to_string())
+}
+
+fn create_default_save_in_transaction(tx: &Transaction<'_>) -> Result<i64, String> {
+    tx.execute(
+        "INSERT INTO saves (name, is_active) VALUES (?1, 1)",
+        [DEFAULT_SAVE_NAME],
+    )
+    .map_err(|error| error.to_string())?;
+    let save_id = tx.last_insert_rowid();
+    academy_service::ensure_baseline_class(tx, save_id)?;
+    Ok(save_id)
 }
 
 pub fn ensure_default_save(conn: &Connection) -> Result<(), String> {
@@ -55,13 +120,58 @@ pub fn ensure_default_save(conn: &Connection) -> Result<(), String> {
 }
 
 pub fn active_save_id(conn: &Connection) -> Result<i64, String> {
+    capture_active_save_context(conn).map(|context| context.id)
+}
+
+pub(crate) fn capture_active_save_context(conn: &Connection) -> Result<SaveContext, String> {
     ensure_default_save(conn)?;
     conn.query_row(
-        "SELECT id FROM saves WHERE is_active = 1 LIMIT 1",
+        "SELECT id, context_token FROM saves WHERE is_active = 1 LIMIT 1",
         [],
-        |row| row.get(0),
+        |row| {
+            Ok(SaveContext {
+                id: row.get(0)?,
+                context_token: row.get(1)?,
+            })
+        },
     )
     .map_err(|error| error.to_string())
+}
+
+pub(crate) fn save_context_for_id(conn: &Connection, save_id: i64) -> Result<SaveContext, String> {
+    conn.query_row(
+        "SELECT id, context_token FROM saves WHERE id = ?1",
+        [save_id],
+        |row| {
+            Ok(SaveContext {
+                id: row.get(0)?,
+                context_token: row.get(1)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|error| error.to_string())?
+    .ok_or_else(|| format!("Save {save_id} not found"))
+}
+
+pub(crate) fn ensure_save_context(
+    tx: &Transaction<'_>,
+    context: &SaveContext,
+) -> Result<(), String> {
+    let matches: bool = tx
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM saves
+                WHERE id = ?1 AND context_token = ?2
+            )",
+            params![context.id, context.context_token],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+
+    matches
+        .then_some(())
+        .ok_or_else(|| "Save changed or no longer exists".to_string())
 }
 
 pub fn list_saves(conn: &Connection) -> Result<Vec<SaveSummary>, String> {
@@ -69,7 +179,7 @@ pub fn list_saves(conn: &Connection) -> Result<Vec<SaveSummary>, String> {
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, is_active, created_at_utc, updated_at_utc
+            "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc
              FROM saves
              ORDER BY id",
         )
@@ -82,6 +192,13 @@ pub fn list_saves(conn: &Connection) -> Result<Vec<SaveSummary>, String> {
         .map_err(|error| error.to_string())?;
 
     Ok(saves)
+}
+
+pub fn list_snapshot_metadata(
+    conn: &Connection,
+    requested_save_id: Option<i64>,
+) -> Result<Vec<SnapshotMetadata>, String> {
+    super::query::list_snapshot_metadata(conn, requested_save_id)
 }
 
 pub fn create_save(conn: &Connection, name: &str) -> Result<SaveSummary, String> {
@@ -123,6 +240,145 @@ pub fn rename_save(conn: &Connection, save_id: i64, name: &str) -> Result<SaveSu
     get_save_by_id(conn, save_id)
 }
 
+pub fn rename_snapshot(
+    conn: &Connection,
+    snapshot_id: i64,
+    context_token: &str,
+    custom_name: Option<&str>,
+) -> Result<SnapshotMetadata, String> {
+    let custom_name = custom_name.map(validate_snapshot_name).transpose()?;
+    let rows = conn
+        .execute(
+            "UPDATE snapshots
+             SET custom_name = ?1
+             WHERE id = ?2 AND context_token = ?3",
+            params![custom_name, snapshot_id, context_token],
+        )
+        .map_err(|error| error.to_string())?;
+    if rows == 0 {
+        return Err("Snapshot changed or no longer exists".to_string());
+    }
+
+    get_snapshot_metadata(conn, snapshot_id)
+}
+
+pub fn delete_snapshot(
+    conn: &mut Connection,
+    snapshot_id: i64,
+    context_token: &str,
+) -> Result<SnapshotDeleteResult, String> {
+    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    let snapshot: Option<(i64, bool)> = tx
+        .query_row(
+            "SELECT save_id, is_current
+             FROM snapshots
+             WHERE id = ?1 AND context_token = ?2",
+            params![snapshot_id, context_token],
+            |row| Ok((row.get(0)?, row.get::<_, i32>(1)? == 1)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some((save_id, was_current)) = snapshot else {
+        return Err("Snapshot changed or no longer exists".to_string());
+    };
+
+    tx.execute(
+        "DELETE FROM snapshots WHERE id = ?1 AND context_token = ?2",
+        params![snapshot_id, context_token],
+    )
+    .map_err(|error| error.to_string())?;
+
+    let current_snapshot_id = if was_current {
+        let next_snapshot_id = select_current_snapshot(&tx, save_id)?;
+        if let Some(next_snapshot_id) = next_snapshot_id {
+            let (game_date, game_date_source): (Option<String>, String) = tx
+                .query_row(
+                    "SELECT game_date, game_date_source FROM snapshots WHERE id = ?1",
+                    [next_snapshot_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(|error| error.to_string())?;
+            academy_service::ensure_class_for_game_date(
+                &tx,
+                save_id,
+                game_date.as_deref(),
+                &game_date_source,
+            )?;
+        }
+        next_snapshot_id
+    } else {
+        tx.query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            [save_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+    };
+
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(SnapshotDeleteResult {
+        deleted_snapshot_id: snapshot_id,
+        save_id,
+        current_snapshot_id,
+    })
+}
+
+pub fn delete_save(
+    conn: &mut Connection,
+    save_id: i64,
+    context_token: &str,
+) -> Result<SaveDeleteResult, String> {
+    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    let is_active: Option<bool> = tx
+        .query_row(
+            "SELECT is_active FROM saves WHERE id = ?1 AND context_token = ?2",
+            params![save_id, context_token],
+            |row| Ok(row.get::<_, i32>(0)? == 1),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some(is_active) = is_active else {
+        return Err("Save changed or no longer exists".to_string());
+    };
+
+    tx.execute(
+        "DELETE FROM saves WHERE id = ?1 AND context_token = ?2",
+        params![save_id, context_token],
+    )
+    .map_err(|error| error.to_string())?;
+
+    let active_save_id = if is_active {
+        let fallback_save_id: Option<i64> = tx
+            .query_row("SELECT id FROM saves ORDER BY id LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(|error| error.to_string())?;
+        match fallback_save_id {
+            Some(fallback_save_id) => {
+                set_active_save_in_transaction(&tx, fallback_save_id)?;
+                fallback_save_id
+            }
+            None => create_default_save_in_transaction(&tx)?,
+        }
+    } else {
+        tx.query_row(
+            "SELECT id FROM saves WHERE is_active = 1 LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?
+    };
+
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(SaveDeleteResult {
+        deleted_save_id: save_id,
+        deleted_was_active: is_active,
+        active_save: get_save_by_id(conn, active_save_id)?,
+    })
+}
+
 pub fn set_active_save(conn: &mut Connection, save_id: i64) -> Result<SaveSummary, String> {
     let tx = conn.transaction().map_err(|error| error.to_string())?;
 
@@ -130,6 +386,39 @@ pub fn set_active_save(conn: &mut Connection, save_id: i64) -> Result<SaveSummar
     tx.commit().map_err(|error| error.to_string())?;
 
     get_save_by_id(conn, save_id)
+}
+
+pub(crate) fn select_current_snapshot(
+    tx: &Transaction<'_>,
+    save_id: i64,
+) -> Result<Option<i64>, String> {
+    let select_current_sql = format!(
+        "SELECT id
+         FROM snapshots
+         WHERE save_id = ?1
+         ORDER BY {SNAPSHOT_ORDER_BY}
+         LIMIT 1"
+    );
+    let current_snapshot_id = tx
+        .query_row(&select_current_sql, params![save_id], |row| row.get(0))
+        .optional()
+        .map_err(|error| error.to_string())?;
+
+    tx.execute(
+        "UPDATE snapshots SET is_current = 0 WHERE save_id = ?1 AND is_current = 1",
+        params![save_id],
+    )
+    .map_err(|error| error.to_string())?;
+
+    if let Some(snapshot_id) = current_snapshot_id {
+        tx.execute(
+            "UPDATE snapshots SET is_current = 1 WHERE id = ?1",
+            params![snapshot_id],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+
+    Ok(current_snapshot_id)
 }
 
 fn set_active_save_in_transaction(tx: &Transaction<'_>, save_id: i64) -> Result<(), String> {
@@ -168,7 +457,7 @@ fn set_active_save_in_transaction(tx: &Transaction<'_>, save_id: i64) -> Result<
 
 fn get_save_by_id(conn: &Connection, save_id: i64) -> Result<SaveSummary, String> {
     conn.query_row(
-        "SELECT id, name, is_active, created_at_utc, updated_at_utc
+        "SELECT id, context_token, name, is_active, created_at_utc, updated_at_utc
          FROM saves
          WHERE id = ?1",
         params![save_id],
@@ -180,10 +469,11 @@ fn get_save_by_id(conn: &Connection, save_id: i64) -> Result<SaveSummary, String
 fn map_save_row(row: &Row<'_>) -> rusqlite::Result<SaveSummary> {
     Ok(SaveSummary {
         id: row.get(0)?,
-        name: row.get(1)?,
-        is_active: row.get::<_, i32>(2)? == 1,
-        created_at_utc: row.get(3)?,
-        updated_at_utc: row.get(4)?,
+        context_token: row.get(1)?,
+        name: row.get(2)?,
+        is_active: row.get::<_, i32>(3)? == 1,
+        created_at_utc: row.get(4)?,
+        updated_at_utc: row.get(5)?,
     })
 }
 
@@ -191,6 +481,7 @@ fn map_save_row(row: &Row<'_>) -> rusqlite::Result<SaveSummary> {
 mod tests {
     use super::*;
     use crate::db::migrations;
+    use rusqlite::params;
     use std::path::Path;
 
     fn active_save_count(conn: &Connection) -> Result<i64, String> {
@@ -205,6 +496,74 @@ mod tests {
     fn save_count(conn: &Connection) -> Result<i64, String> {
         conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get(0))
             .map_err(|error| error.to_string())
+    }
+
+    fn insert_snapshot(
+        conn: &Connection,
+        save_id: i64,
+        game_date: Option<&str>,
+        loaded_at_utc: &str,
+    ) -> i64 {
+        conn.execute(
+            "INSERT INTO snapshots (
+                save_id, is_current, schema_version, generated_at_utc, game_version,
+                supported_game_version, bridge_version, protocol_version, game_date,
+                game_date_source, scan_truncated, max_accepted, player_count, loaded_at_utc
+             ) VALUES (
+                ?1, 0, 6, '2026-08-11T10:00:00.000Z', '26.3.2', '26.3', '0.1.0', 1, ?2,
+                'memory', 0, NULL, 1, ?3
+             )",
+            params![save_id, game_date, loaded_at_utc],
+        )
+        .expect("insert snapshot");
+        conn.last_insert_rowid()
+    }
+
+    fn insert_player(conn: &Connection, snapshot_id: i64, uid: i64) {
+        conn.execute(
+            "INSERT INTO players (
+                snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
+                nationalities_json, preferred_foot, positions_json, attributes_json,
+                hidden_attributes_json, personality_json
+             ) VALUES (?1, ?2, 100, 150, 'History player', 2000, 1, '[]', 'Right', '{}', '{}', '{}', '{}')",
+            params![snapshot_id, uid],
+        )
+        .expect("insert player");
+    }
+
+    fn snapshot_token(conn: &Connection, snapshot_id: i64) -> String {
+        conn.query_row(
+            "SELECT context_token FROM snapshots WHERE id = ?1",
+            [snapshot_id],
+            |row| row.get(0),
+        )
+        .expect("read snapshot token")
+    }
+
+    fn save_token(conn: &Connection, save_id: i64) -> String {
+        conn.query_row(
+            "SELECT context_token FROM saves WHERE id = ?1",
+            [save_id],
+            |row| row.get(0),
+        )
+        .expect("read save token")
+    }
+
+    fn current_snapshot_id(conn: &Connection, save_id: i64) -> Option<i64> {
+        conn.query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            [save_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .expect("read current snapshot")
+    }
+
+    fn select_current_snapshot_for_test(conn: &mut Connection, save_id: i64) -> Option<i64> {
+        let tx = conn.transaction().expect("start selector transaction");
+        let selected = select_current_snapshot(&tx, save_id).expect("select current snapshot");
+        tx.commit().expect("commit selector transaction");
+        selected
     }
 
     fn open_migrated(db_path: &Path) -> Connection {
@@ -309,5 +668,463 @@ mod tests {
 
         assert!(error.contains("not found"));
         assert_eq!(active_save_count(&conn).expect("count active"), 1);
+    }
+
+    #[test]
+    fn snapshot_metadata_uses_the_shared_date_order_for_one_requested_save() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("snapshot-metadata.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let older = insert_snapshot(
+            &conn,
+            active_save.id,
+            Some("2026-06-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        let equal_date = insert_snapshot(
+            &conn,
+            active_save.id,
+            Some("2026-06-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        let latest = insert_snapshot(
+            &conn,
+            active_save.id,
+            Some("2027-01-01"),
+            "2026-08-11T09:00:00.000Z",
+        );
+        let undated = insert_snapshot(&conn, active_save.id, None, "2026-08-11T12:00:00.000Z");
+        assert_eq!(
+            select_current_snapshot_for_test(&mut conn, active_save.id),
+            Some(latest)
+        );
+
+        let other_save = create_save(&conn, "Other save").expect("create other save");
+        let other_snapshot = insert_snapshot(
+            &conn,
+            other_save.id,
+            Some("2030-01-01"),
+            "2026-08-11T13:00:00.000Z",
+        );
+
+        let snapshots = list_snapshot_metadata(&conn, Some(active_save.id))
+            .expect("list requested save snapshots");
+
+        assert_eq!(
+            snapshots
+                .iter()
+                .map(|snapshot| snapshot.id)
+                .collect::<Vec<_>>(),
+            vec![latest, equal_date, older, undated]
+        );
+        assert!(snapshots[0].is_current);
+        assert!(snapshots
+            .iter()
+            .all(|snapshot| snapshot.save_id == active_save.id));
+        assert_ne!(
+            snapshots[0].context_token,
+            snapshot_token(&conn, other_snapshot)
+        );
+    }
+
+    #[test]
+    fn renaming_a_snapshot_is_token_bound_and_does_not_change_its_order_or_owner() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("rename-snapshot.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let older = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-01-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        let target = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-02-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        select_current_snapshot_for_test(&mut conn, save.id);
+        let target_token = snapshot_token(&conn, target);
+
+        let renamed = rename_snapshot(&conn, target, &target_token, Some("  First window  "))
+            .expect("rename snapshot");
+
+        assert_eq!(renamed.custom_name.as_deref(), Some("First window"));
+        assert_eq!(renamed.save_id, save.id);
+        assert_eq!(
+            list_snapshot_metadata(&conn, Some(save.id))
+                .expect("list renamed snapshots")
+                .iter()
+                .map(|snapshot| snapshot.id)
+                .collect::<Vec<_>>(),
+            vec![target, older]
+        );
+        assert!(
+            rename_snapshot(&conn, target, "stale-token", Some("Wrong target"))
+                .expect_err("reject stale token")
+                .contains("changed")
+        );
+        assert!(rename_snapshot(&conn, target, &target_token, Some("   "))
+            .expect_err("reject empty custom name")
+            .contains("must not be empty"));
+        let too_long_name = "x".repeat(MAX_SNAPSHOT_NAME_LEN + 1);
+        assert!(
+            rename_snapshot(&conn, target, &target_token, Some(&too_long_name))
+                .expect_err("reject long custom name")
+                .contains("at most")
+        );
+    }
+
+    #[test]
+    fn deleting_a_noncurrent_snapshot_cascades_its_snapshot_data_and_preserves_save_data() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("delete-historical-snapshot.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let historical = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-01-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        let current = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-02-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        insert_player(&conn, historical, 77);
+        conn.execute(
+            "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
+             VALUES (?1, 77, '{}')",
+            [historical],
+        )
+        .expect("insert historical Moneyball row");
+        conn.execute(
+            "INSERT INTO planner_club_settings (save_id, primary_club) VALUES (?1, 'History FC')",
+            [save.id],
+        )
+        .expect("insert planner setting");
+        conn.execute(
+            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
+             VALUES (?1, 77, 3)",
+            [save.id],
+        )
+        .expect("insert youth enrichment");
+        let academy_class_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1",
+                [save.id],
+                |row| row.get(0),
+            )
+            .expect("count academy classes before deletion");
+        select_current_snapshot_for_test(&mut conn, save.id);
+
+        let historical_token = snapshot_token(&conn, historical);
+        let result = delete_snapshot(&mut conn, historical, &historical_token)
+            .expect("delete historical snapshot");
+
+        assert_eq!(result.current_snapshot_id, Some(current));
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM players WHERE snapshot_id = ?1",
+                [historical],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("count cascaded players"),
+            0
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM player_moneyball_stats WHERE snapshot_id = ?1",
+                [historical],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("count cascaded Moneyball rows"),
+            0
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM planner_club_settings", [], |row| row
+                .get::<_, i64>(
+                0
+            ))
+            .expect("count retained planner settings"),
+            1
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM player_youth_career_stats",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .expect("count retained youth enrichment"),
+            1
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1",
+                [save.id],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("count retained academy classes"),
+            academy_class_count
+        );
+    }
+
+    #[test]
+    fn deleting_the_current_snapshot_promotes_the_next_date_and_leaves_no_final_current_row() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("promote-snapshot.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let promoted = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-05-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        let current = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2027-05-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        select_current_snapshot_for_test(&mut conn, save.id);
+
+        let current_token = snapshot_token(&conn, current);
+        let promoted_result =
+            delete_snapshot(&mut conn, current, &current_token).expect("delete current snapshot");
+        assert_eq!(promoted_result.current_snapshot_id, Some(promoted));
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(promoted));
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2026 AND is_automatic = 1",
+                [save.id],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("read promoted automatic class"),
+            1
+        );
+
+        let promoted_token = snapshot_token(&conn, promoted);
+        let final_result =
+            delete_snapshot(&mut conn, promoted, &promoted_token).expect("delete final snapshot");
+        assert_eq!(final_result.current_snapshot_id, None);
+        assert_eq!(current_snapshot_id(&conn, save.id), None);
+    }
+
+    #[test]
+    fn deleting_saves_preserves_or_rebuilds_the_active_context_and_rejects_reused_ids() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("delete-save.db"));
+        let default_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("default save");
+        let inactive = create_save(&conn, "Inactive save").expect("create inactive save");
+        let inactive_snapshot = insert_snapshot(
+            &conn,
+            inactive.id,
+            Some("2026-03-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        insert_player(&conn, inactive_snapshot, 77);
+        conn.execute(
+            "INSERT INTO planner_club_settings (save_id, primary_club) VALUES (?1, 'Inactive FC')",
+            [inactive.id],
+        )
+        .expect("insert inactive planner setting");
+        conn.execute(
+            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
+             VALUES (?1, 77, 3)",
+            [inactive.id],
+        )
+        .expect("insert inactive youth enrichment");
+        let inactive_token = save_token(&conn, inactive.id);
+
+        let inactive_result =
+            delete_save(&mut conn, inactive.id, &inactive_token).expect("delete inactive save");
+        assert_eq!(inactive_result.active_save.id, default_save.id);
+        assert!(!inactive_result.deleted_was_active);
+        assert_eq!(current_snapshot_id(&conn, default_save.id), None);
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM snapshots WHERE id = ?1",
+                [inactive_snapshot],
+                |row| row.get::<_, i64>(0)
+            )
+            .expect("check inactive snapshot cascade"),
+            0
+        );
+        for table in [
+            "planner_club_settings",
+            "player_youth_career_stats",
+            "academy_classes",
+        ] {
+            let remaining: i64 = conn
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM {table} WHERE save_id = ?1"),
+                    [inactive.id],
+                    |row| row.get(0),
+                )
+                .expect("check full save cascade");
+            assert_eq!(remaining, 0, "{table} must cascade with its save");
+        }
+
+        let replacement = create_save(&conn, "Replacement save").expect("create replacement");
+        set_active_save(&mut conn, replacement.id).expect("activate replacement");
+        let replacement_token = save_token(&conn, replacement.id);
+        let fallback_result = delete_save(&mut conn, replacement.id, &replacement_token)
+            .expect("delete active save with fallback");
+        assert_eq!(fallback_result.active_save.id, default_save.id);
+        assert!(fallback_result.deleted_was_active);
+        assert!(fallback_result.active_save.is_active);
+
+        let final_token = save_token(&conn, default_save.id);
+        let final_result =
+            delete_save(&mut conn, default_save.id, &final_token).expect("delete final save");
+        assert_eq!(final_result.active_save.name, DEFAULT_SAVE_NAME);
+        assert!(final_result.deleted_was_active);
+        assert!(final_result.active_save.is_active);
+        assert_eq!(save_count(&conn).expect("count recreated saves"), 1);
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2025",
+                [final_result.active_save.id],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("read recreated baseline class"),
+            1
+        );
+        assert!(
+            delete_save(&mut conn, final_result.active_save.id, &final_token)
+                .expect_err("reject reused save id with old token")
+                .contains("changed")
+        );
+        assert!(delete_save(&mut conn, 999, "missing-token")
+            .expect_err("reject unknown save")
+            .contains("changed"));
+    }
+
+    #[test]
+    fn deleting_the_final_save_rolls_back_after_replacement_baseline_failure() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("delete-final-save-rollback.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let snapshot = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-05-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        insert_player(&conn, snapshot, 77);
+        conn.execute(
+            "INSERT INTO planner_club_settings (save_id, primary_club) VALUES (?1, 'Rollback FC')",
+            [save.id],
+        )
+        .expect("insert planner setting");
+        conn.execute(
+            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
+             VALUES (?1, 77, 3)",
+            [save.id],
+        )
+        .expect("insert youth enrichment");
+        select_current_snapshot_for_test(&mut conn, save.id);
+        conn.execute_batch(
+            "CREATE TRIGGER reject_recreated_baseline
+             BEFORE INSERT ON academy_classes
+             WHEN NEW.class_year = 2025
+             BEGIN
+                 SELECT RAISE(ABORT, 'test replacement baseline failure');
+             END;",
+        )
+        .expect("create replacement failure trigger");
+
+        assert!(delete_save(&mut conn, save.id, &save.context_token)
+            .expect_err("reject final save replacement")
+            .contains("test replacement baseline failure"));
+
+        assert_eq!(save_count(&conn).expect("count rolled-back saves"), 1);
+        assert_eq!(
+            active_save_count(&conn).expect("count rolled-back active saves"),
+            1
+        );
+        assert_eq!(
+            get_save_by_id(&conn, save.id).expect("read rolled-back save"),
+            save
+        );
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(snapshot));
+        let retained_player_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM players", [], |row| row.get(0))
+            .expect("count retained players");
+        assert_eq!(retained_player_count, 1);
+        for table in [
+            "planner_club_settings",
+            "player_youth_career_stats",
+            "academy_classes",
+        ] {
+            let remaining: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .expect("count rolled-back save children");
+            assert_eq!(remaining, 1, "{table} must roll back with its save");
+        }
+    }
+
+    #[test]
+    fn deleting_a_snapshot_rolls_back_when_the_database_rejects_the_delete() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("delete-snapshot-rollback.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let snapshot = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-05-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        select_current_snapshot_for_test(&mut conn, save.id);
+        conn.execute_batch(
+            "CREATE TRIGGER reject_snapshot_delete
+             BEFORE DELETE ON snapshots
+             BEGIN
+                 SELECT RAISE(ABORT, 'test delete failure');
+             END;",
+        )
+        .expect("create rollback trigger");
+
+        let snapshot_token = snapshot_token(&conn, snapshot);
+        assert!(delete_snapshot(&mut conn, 999, "missing-token")
+            .expect_err("reject unknown snapshot")
+            .contains("changed"));
+        assert!(delete_snapshot(&mut conn, snapshot, &snapshot_token)
+            .expect_err("reject snapshot delete")
+            .contains("test delete failure"));
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(snapshot));
     }
 }

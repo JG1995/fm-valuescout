@@ -36,7 +36,7 @@ Add a safe, reusable parser for the established Youth Tracker and Moneyball Foot
 
 - No database migration, table, write path, cache overlay, or retained import state was added. Existing snapshots, Planner rows, Academy rows, and schema version remain unchanged after success or failure.
 - The selected file stays local and is read only for the preview command. The command enforces the regular-file, extension, UTF-8, byte, and row limits before returning a result.
-- The delivered [CSV enrichment persistence and derived statistics](./csv-enrichment-persistence.md) adds save-scoped persistence and canonical Moneyball calculations while preserving the parser's bounded, non-mutating contract. Historical season identity and retention remain a separate backlog item.
+- The delivered [CSV enrichment persistence and derived statistics](./csv-enrichment-persistence.md) adds the bounded persistence foundation and canonical Moneyball calculations while preserving the parser's non-mutating contract. [Snapshot History and Management](./snapshot-history.md) later moved new Moneyball rows to snapshot ownership; historical season identity and retention remain separate backlog items.
 
 ## Validation
 
@@ -117,5 +117,5 @@ publication_correction_evidence: 6f88ae29e80a5561dc28d54125bef807fa5211ec
 ## Follow-up
 
 - Keep draft [PR #40](https://github.com/JG1995/fm-valuescout/pull/40) unmerged until it is ready for review and the required checks pass.
-- **Delivered downstream:** [CSV enrichment persistence and derived statistics](./csv-enrichment-persistence.md) adds save-scoped storage, memory-over-CSV precedence, per-player replacement, and the implemented Moneyball calculations. This feature remains parsing and non-mutating reconciliation only.
+- **Delivered downstream:** [CSV enrichment persistence and derived statistics](./csv-enrichment-persistence.md) adds memory-over-CSV precedence, per-player replacement, and the implemented Moneyball calculations. Its original save-scoped Moneyball storage is superseded for new imports by [Snapshot History and Management](./snapshot-history.md); this feature remains parsing and non-mutating reconciliation only.
 - Keep historical Moneyball seasons and import history in the [backlog](../../BACKLOG.md) until season identity and retention rules are defined.

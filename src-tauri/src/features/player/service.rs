@@ -19,7 +19,9 @@ const MENTALITY_TARGET_MAXIMUM: i64 = 20;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct PreparedPlayerBoost {
     pub(super) snapshot_id: i64,
+    pub(super) snapshot_context_token: String,
     pub(super) save_id: i64,
+    pub(super) save_context_token: String,
     pub(super) source_request_id: String,
     pub(super) player_uid: u32,
     pub(super) expected_current_ability: i64,
@@ -118,7 +120,9 @@ pub(super) fn prepare_current_ability_boost(
 
     Ok(PreparedPlayerBoost {
         snapshot_id: player.snapshot_id,
+        snapshot_context_token: player.snapshot_context_token,
         save_id: player.save_id,
+        save_context_token: player.save_context_token,
         source_request_id: player.source_request_id,
         player_uid: player.uid,
         expected_current_ability: player.current_ability,
@@ -149,7 +153,9 @@ pub(super) fn prepare_wonderkid_mentality_boost(
 
     Ok(PreparedPlayerBoost {
         snapshot_id: player.snapshot_id,
+        snapshot_context_token: player.snapshot_context_token,
         save_id: player.save_id,
+        save_context_token: player.save_context_token,
         source_request_id: player.source_request_id,
         player_uid: player.uid,
         expected_current_ability: player.current_ability,
@@ -248,19 +254,29 @@ fn capture_player(conn: &Connection, uid: i64) -> Result<CapturedPlayer, PlayerB
         ));
     }
 
-    let snapshot: Option<(i64, i64, Option<String>)> = conn
+    let snapshot: Option<(i64, i64, String, String, Option<String>)> = conn
         .query_row(
-            "SELECT s.id, s.save_id, s.bridge_source_request_id
+            "SELECT s.id, s.save_id, s.context_token, sv.context_token, s.bridge_source_request_id
              FROM snapshots s
              INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
              WHERE s.is_current = 1
              LIMIT 1",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .optional()
         .map_err(|error| eligibility_error("database", error.to_string()))?;
-    let Some((snapshot_id, save_id, source_request_id)) = snapshot else {
+    let Some((snapshot_id, save_id, snapshot_context_token, save_context_token, source_request_id)) =
+        snapshot
+    else {
         return Err(eligibility_error(
             "noSnapshot",
             "Load Data before using player boosts",
@@ -282,7 +298,9 @@ fn capture_player(conn: &Connection, uid: i64) -> Result<CapturedPlayer, PlayerB
             |row| {
                 Ok(CapturedPlayer {
                     snapshot_id,
+                    snapshot_context_token: snapshot_context_token.clone(),
                     save_id,
+                    save_context_token: save_context_token.clone(),
                     source_request_id: source_request_id.clone(),
                     uid: player_uid,
                     current_ability: row.get(0)?,
@@ -449,11 +467,17 @@ fn load_current_player_state(
         "SELECT s.bridge_source_request_id, p.ca, p.pa, p.attributes_json, p.personality_json
          FROM snapshots s
          INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
-         INNER JOIN players p ON p.snapshot_id = s.id AND p.uid = ?3
-         WHERE s.id = ?1 AND s.save_id = ?2 AND s.is_current = 1",
+         INNER JOIN players p ON p.snapshot_id = s.id AND p.uid = ?5
+         WHERE s.id = ?1
+           AND s.save_id = ?2
+           AND s.context_token = ?3
+           AND sv.context_token = ?4
+           AND s.is_current = 1",
         params![
             prepared.snapshot_id,
             prepared.save_id,
+            prepared.snapshot_context_token,
+            prepared.save_context_token,
             i64::from(prepared.player_uid)
         ],
         |row| {
@@ -665,7 +689,9 @@ fn is_mentality(value: i64) -> bool {
 #[derive(Debug, Clone)]
 struct CapturedPlayer {
     snapshot_id: i64,
+    snapshot_context_token: String,
     save_id: i64,
+    save_context_token: String,
     source_request_id: String,
     uid: u32,
     current_ability: i64,
@@ -1309,6 +1335,47 @@ mod tests {
             verified_ca_result(150, 155, 170),
         )
         .expect_err("replaced snapshot must reject reconciliation");
+
+        assert_snapshot_sync(error);
+        assert_eq!(player_ca(&fixture.conn, replacement.id), 150);
+    }
+
+    #[test]
+    fn reconciliation_rejects_a_deleted_and_reused_snapshot_id() {
+        let mut fixture = seeded_player(
+            Some(21),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare CA boost");
+
+        fixture
+            .conn
+            .execute("DELETE FROM snapshots WHERE id = ?1", [fixture.snapshot_id])
+            .expect("delete captured snapshot");
+        let replacement =
+            ingest_dump_file(&mut fixture.conn, &fixture.dump_path).expect("reuse snapshot id");
+        assert_eq!(replacement.id, fixture.snapshot_id);
+        fixture
+            .conn
+            .execute(
+                "UPDATE snapshots SET bridge_source_request_id = 'scan-player-1' WHERE id = ?1",
+                [replacement.id],
+            )
+            .expect("restore matching bridge source");
+
+        let error = super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_ca_result(150, 155, 170),
+        )
+        .expect_err("reused snapshot id must reject reconciliation");
 
         assert_snapshot_sync(error);
         assert_eq!(player_ca(&fixture.conn, replacement.id), 150);

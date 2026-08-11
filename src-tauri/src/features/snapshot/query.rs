@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection, OptionalExtension, Row};
 
 use super::ingest::SnapshotSummary;
-use super::service::ensure_default_save;
+use super::service::{ensure_default_save, SnapshotMetadata, SNAPSHOT_ORDER_BY};
 
 pub const DEFAULT_SANITY_LIMIT: usize = 20;
 pub const MAX_SANITY_LIMIT: usize = 20;
@@ -44,6 +44,84 @@ pub fn get_current_snapshot(conn: &Connection) -> Result<Option<SnapshotSummary>
         map_snapshot_row,
     )
     .optional()
+    .map_err(|error| error.to_string())
+}
+
+pub fn list_snapshot_metadata(
+    conn: &Connection,
+    requested_save_id: Option<i64>,
+) -> Result<Vec<SnapshotMetadata>, String> {
+    let save_id = match requested_save_id {
+        Some(save_id) => {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM saves WHERE id = ?1)",
+                    [save_id],
+                    |row| row.get(0),
+                )
+                .map_err(|error| error.to_string())?;
+            if !exists {
+                return Err(format!("Save {save_id} not found"));
+            }
+            save_id
+        }
+        None => {
+            ensure_default_save(conn)?;
+            conn.query_row(
+                "SELECT id FROM saves WHERE is_active = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?
+        }
+    };
+
+    let list_snapshots_sql = format!(
+        "SELECT
+                id,
+                context_token,
+                save_id,
+                custom_name,
+                game_date,
+                game_date_source,
+                player_count,
+                loaded_at_utc,
+                is_current
+             FROM snapshots
+             WHERE save_id = ?1
+             ORDER BY {SNAPSHOT_ORDER_BY}"
+    );
+    let mut statement = conn
+        .prepare(&list_snapshots_sql)
+        .map_err(|error| error.to_string())?;
+    let snapshots = statement
+        .query_map([save_id], map_snapshot_metadata_row)
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(snapshots)
+}
+
+pub(crate) fn get_snapshot_metadata(
+    conn: &Connection,
+    snapshot_id: i64,
+) -> Result<SnapshotMetadata, String> {
+    conn.query_row(
+        "SELECT
+            id,
+            context_token,
+            save_id,
+            custom_name,
+            game_date,
+            game_date_source,
+            player_count,
+            loaded_at_utc,
+            is_current
+         FROM snapshots
+         WHERE id = ?1",
+        [snapshot_id],
+        map_snapshot_metadata_row,
+    )
     .map_err(|error| error.to_string())
 }
 
@@ -114,6 +192,20 @@ fn map_snapshot_row(row: &Row<'_>) -> rusqlite::Result<SnapshotSummary> {
         max_accepted: row.get(11)?,
         player_count: row.get(12)?,
         loaded_at_utc: row.get(13)?,
+    })
+}
+
+fn map_snapshot_metadata_row(row: &Row<'_>) -> rusqlite::Result<SnapshotMetadata> {
+    Ok(SnapshotMetadata {
+        id: row.get(0)?,
+        context_token: row.get(1)?,
+        save_id: row.get(2)?,
+        custom_name: row.get(3)?,
+        game_date: row.get(4)?,
+        game_date_source: row.get(5)?,
+        player_count: row.get(6)?,
+        loaded_at_utc: row.get(7)?,
+        is_current: row.get::<_, i32>(8)? == 1,
     })
 }
 

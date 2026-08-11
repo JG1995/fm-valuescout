@@ -1,10 +1,10 @@
-//! Validates and ingests `dump.json` into the active save's current snapshot.
+//! Validates and ingests `dump.json` into the active save, then selects its effective current snapshot.
 
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, Connection, Transaction};
 use serde_json::Value;
 
 use crate::features::academy::service as academy_service;
@@ -12,7 +12,7 @@ use crate::features::memory_read::dump_validation::parse_and_validate_dump;
 use crate::features::scoring::catalog::all_roles;
 use crate::features::scoring::score::score_role;
 
-use super::service;
+use super::service::{self, SaveContext};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotSummary {
@@ -32,6 +32,12 @@ pub struct SnapshotSummary {
     pub loaded_at_utc: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct IngestResult {
+    pub stored_snapshot: SnapshotSummary,
+    pub effective_snapshot: SnapshotSummary,
+}
+
 /// Phase timings for large-dump ingest measurement (milliseconds).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(not(test), allow(dead_code))]
@@ -46,27 +52,41 @@ pub fn ingest_dump_file(
     conn: &mut Connection,
     dump_path: &Path,
 ) -> Result<SnapshotSummary, String> {
-    let save_id = service::active_save_id(conn)?;
-    ingest_dump_file_for_save(conn, save_id, dump_path)
+    let save_context = service::capture_active_save_context(conn)?;
+    ingest_dump_file_for_save_with_optional_bridge_source_request_id(
+        conn,
+        &save_context,
+        dump_path,
+        None,
+    )
+    .map(|result| result.stored_snapshot)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn ingest_dump_file_for_save(
     conn: &mut Connection,
     save_id: i64,
     dump_path: &Path,
 ) -> Result<SnapshotSummary, String> {
-    ingest_dump_file_for_save_with_optional_bridge_source_request_id(conn, save_id, dump_path, None)
+    let save_context = service::save_context_for_id(conn, save_id)?;
+    ingest_dump_file_for_save_with_optional_bridge_source_request_id(
+        conn,
+        &save_context,
+        dump_path,
+        None,
+    )
+    .map(|result| result.stored_snapshot)
 }
 
 pub(super) fn ingest_dump_file_for_save_with_bridge_source_request_id(
     conn: &mut Connection,
-    save_id: i64,
+    save_context: &SaveContext,
     dump_path: &Path,
     bridge_source_request_id: &str,
-) -> Result<SnapshotSummary, String> {
+) -> Result<IngestResult, String> {
     ingest_dump_file_for_save_with_optional_bridge_source_request_id(
         conn,
-        save_id,
+        save_context,
         dump_path,
         Some(bridge_source_request_id),
     )
@@ -74,13 +94,13 @@ pub(super) fn ingest_dump_file_for_save_with_bridge_source_request_id(
 
 fn ingest_dump_file_for_save_with_optional_bridge_source_request_id(
     conn: &mut Connection,
-    save_id: i64,
+    save_context: &SaveContext,
     dump_path: &Path,
     bridge_source_request_id: Option<&str>,
-) -> Result<SnapshotSummary, String> {
+) -> Result<IngestResult, String> {
     let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
-    ingest_dump_json_for_save(conn, save_id, &json, bridge_source_request_id)
-        .map(|(summary, _)| summary)
+    ingest_dump_json_for_save(conn, save_context, &json, bridge_source_request_id)
+        .map(|(result, _)| result)
 }
 
 /// Ingests a dump file and returns phase timings for measurement harnesses.
@@ -90,16 +110,18 @@ pub fn ingest_dump_file_for_save_timed(
     save_id: i64,
     dump_path: &Path,
 ) -> Result<(SnapshotSummary, IngestTimings), String> {
+    let save_context = service::save_context_for_id(conn, save_id)?;
     let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
-    ingest_dump_json_for_save(conn, save_id, &json, None)
+    ingest_dump_json_for_save(conn, &save_context, &json, None)
+        .map(|(result, timings)| (result.stored_snapshot, timings))
 }
 
 fn ingest_dump_json_for_save(
     conn: &mut Connection,
-    save_id: i64,
+    save_context: &SaveContext,
     json: &str,
     bridge_source_request_id: Option<&str>,
-) -> Result<(SnapshotSummary, IngestTimings), String> {
+) -> Result<(IngestResult, IngestTimings), String> {
     let total_started = Instant::now();
 
     let validation_started = Instant::now();
@@ -112,27 +134,40 @@ fn ingest_dump_json_for_save(
 
     let insert_started = Instant::now();
     let tx = conn.transaction().map_err(|error| error.to_string())?;
+    service::ensure_save_context(&tx, save_context)?;
+    let save_id = save_context.id;
     let snapshot_id = insert_snapshot(&tx, save_id, object, bridge_source_request_id)?;
     insert_players(&tx, snapshot_id, object)?;
     insert_staff(&tx, snapshot_id, object)?;
     // ponytail: score every catalog role synchronously during ingest (one INSERT per role × player)
     // Upgrade to lazy/on-demand or batched scoring if ingest scoring time dominates Load Data
     insert_role_scores(&tx, snapshot_id, object)?;
-    replace_current_snapshot(&tx, save_id, snapshot_id)?;
-    academy_service::ensure_class_for_game_date(
-        &tx,
-        save_id,
-        optional_string(object.get("gameDate"))?.as_deref(),
-        &require_string(object, "gameDateSource")?,
-    )?;
-    let summary = get_snapshot_by_id(&tx, snapshot_id)?;
+    let effective_snapshot_id = service::select_current_snapshot(&tx, save_id)?
+        .ok_or_else(|| "ingest did not select a current snapshot".to_string())?;
+    if effective_snapshot_id == snapshot_id {
+        academy_service::ensure_class_for_game_date(
+            &tx,
+            save_id,
+            optional_string(object.get("gameDate"))?.as_deref(),
+            &require_string(object, "gameDateSource")?,
+        )?;
+    }
+    let stored_snapshot = get_snapshot_by_id(&tx, snapshot_id)?;
+    let effective_snapshot = if effective_snapshot_id == snapshot_id {
+        stored_snapshot.clone()
+    } else {
+        get_snapshot_by_id(&tx, effective_snapshot_id)?
+    };
     tx.commit().map_err(|error| error.to_string())?;
     let insert_ms = insert_started.elapsed().as_millis();
 
     let total_ms = total_started.elapsed().as_millis();
 
     Ok((
-        summary,
+        IngestResult {
+            stored_snapshot,
+            effective_snapshot,
+        },
         IngestTimings {
             validation_ms,
             insert_ms,
@@ -440,45 +475,6 @@ fn attributes_map(value: &Value) -> Result<std::collections::HashMap<String, Opt
     Ok(attributes)
 }
 
-fn replace_current_snapshot(
-    tx: &Transaction<'_>,
-    save_id: i64,
-    new_snapshot_id: i64,
-) -> Result<(), String> {
-    let old_snapshot_id: Option<i64> = tx
-        .query_row(
-            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
-            params![save_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-
-    tx.execute(
-        "UPDATE snapshots SET is_current = 0 WHERE save_id = ?1 AND is_current = 1",
-        params![save_id],
-    )
-    .map_err(|error| error.to_string())?;
-
-    tx.execute(
-        "UPDATE snapshots SET is_current = 1 WHERE id = ?1",
-        params![new_snapshot_id],
-    )
-    .map_err(|error| error.to_string())?;
-
-    if let Some(old_snapshot_id) = old_snapshot_id {
-        if old_snapshot_id != new_snapshot_id {
-            tx.execute(
-                "DELETE FROM snapshots WHERE id = ?1",
-                params![old_snapshot_id],
-            )
-            .map_err(|error| error.to_string())?;
-        }
-    }
-
-    Ok(())
-}
-
 fn get_snapshot_by_id(tx: &Transaction<'_>, snapshot_id: i64) -> Result<SnapshotSummary, String> {
     tx.query_row(
         "SELECT
@@ -612,7 +608,8 @@ fn reputation_field(
 mod tests {
     use super::*;
     use crate::db::migrations;
-    use crate::features::snapshot::service::list_saves;
+    use crate::features::snapshot::service::{list_saves, save_context_for_id};
+    use rusqlite::OptionalExtension;
     use std::path::Path;
 
     const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v6.json");
@@ -724,6 +721,38 @@ mod tests {
             > 0
     }
 
+    fn snapshot_count(conn: &Connection, save_id: i64) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM snapshots WHERE save_id = ?1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .expect("count snapshots")
+    }
+
+    fn automatic_class_years(conn: &Connection, save_id: i64) -> Vec<i64> {
+        let mut statement = conn
+            .prepare(
+                "SELECT class_year
+                 FROM academy_classes
+                 WHERE save_id = ?1 AND is_automatic = 1
+                 ORDER BY class_year",
+            )
+            .expect("prepare class query");
+        statement
+            .query_map(params![save_id], |row| row.get(0))
+            .expect("query classes")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read classes")
+    }
+
+    fn dump_with_game_date(game_date: Option<&str>, player_name: &str) -> String {
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse golden fixture");
+        root["gameDate"] = game_date.map(Value::from).unwrap_or(Value::Null);
+        root["players"][0]["name"] = Value::from(player_name);
+        root.to_string()
+    }
+
     #[test]
     fn ingest_writes_null_role_scores_when_required_attributes_are_missing() {
         use crate::features::scoring::catalog::all_roles;
@@ -776,7 +805,7 @@ mod tests {
     }
 
     #[test]
-    fn second_ingest_replaces_prior_role_scores_with_snapshot() {
+    fn second_ingest_retains_prior_role_scores_with_its_snapshot() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("ingest-role-scores-replace.db"));
         list_saves(&conn).expect("seed default save");
@@ -788,7 +817,9 @@ mod tests {
         let second_path = write_dump(&temp_dir, "second.json", &dump_with_uniform_attributes(20));
         let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
 
-        assert_eq!(role_score_count_for_snapshot(&conn, first.id), 0);
+        let first_scores = role_scores_for_player(&conn, first.id, 77);
+        assert!(!first_scores.is_empty());
+        assert!(first_scores.iter().all(|(_, _, score)| *score == Some(50)));
         let scores = role_scores_for_player(&conn, second.id, 77);
         assert!(!scores.is_empty());
         assert!(scores.iter().all(|(_, _, score)| *score == Some(100)));
@@ -988,7 +1019,7 @@ mod tests {
     }
 
     #[test]
-    fn second_successful_ingest_replaces_current_snapshot_and_deletes_prior() {
+    fn later_snapshot_stays_current_when_an_earlier_snapshot_is_retained() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("ingest-replace.db"));
         let active_save = list_saves(&conn)
@@ -997,29 +1028,243 @@ mod tests {
             .find(|save| save.is_active)
             .expect("active save");
 
-        let first_path = write_dump(&temp_dir, "first.json", GOLDEN_FIXTURE);
+        let later_json = dump_with_game_date(Some("2027-08-16"), "Later player");
+        let first_path = write_dump(&temp_dir, "later.json", &later_json);
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
 
-        let updated_json = GOLDEN_FIXTURE.replace("\"ca\": 150", "\"ca\": 155");
-        let second_path = write_dump(&temp_dir, "second.json", &updated_json);
+        let earlier_json = dump_with_game_date(Some("2026-08-14"), "Earlier player");
+        let second_path = write_dump(&temp_dir, "earlier.json", &earlier_json);
         let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
 
         assert_ne!(second.id, first.id);
-        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(second.id));
-        assert!(!snapshot_row_exists(&conn, first.id));
-        assert_eq!(player_count_for_snapshot(&conn, first.id), 0);
-        assert_eq!(staff_count_for_snapshot(&conn, first.id), 0);
+        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
+        assert!(snapshot_row_exists(&conn, first.id));
+        assert_eq!(snapshot_count(&conn, active_save.id), 2);
+        assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
+        assert_eq!(staff_count_for_snapshot(&conn, first.id), 1);
         assert_eq!(player_count_for_snapshot(&conn, second.id), 1);
         assert_eq!(staff_count_for_snapshot(&conn, second.id), 1);
+        assert_eq!(
+            automatic_class_years(&conn, active_save.id),
+            vec![2025, 2027]
+        );
 
-        let ca: i64 = conn
-            .query_row(
-                "SELECT ca FROM players WHERE snapshot_id = ?1",
-                params![second.id],
-                |row| row.get(0),
-            )
-            .expect("updated player ca");
-        assert_eq!(ca, 155);
+        let visible_names: Vec<String> =
+            crate::features::snapshot::query::list_sanity_players(&conn, 20)
+                .expect("list current players")
+                .into_iter()
+                .map(|player| player.name)
+                .collect();
+        assert_eq!(visible_names, vec!["Later player"]);
+    }
+
+    #[test]
+    fn later_ingest_becomes_current_when_it_has_a_greater_game_date() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-date-forward.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+
+        let earlier_path = write_dump(
+            &temp_dir,
+            "earlier.json",
+            &dump_with_game_date(Some("2026-08-14"), "Earlier player"),
+        );
+        let earlier = ingest_dump_file(&mut conn, &earlier_path).expect("earlier ingest");
+        let later_path = write_dump(
+            &temp_dir,
+            "later.json",
+            &dump_with_game_date(Some("2027-08-16"), "Later player"),
+        );
+        let later = ingest_dump_file(&mut conn, &later_path).expect("later ingest");
+
+        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(later.id));
+        assert_eq!(snapshot_count(&conn, active_save.id), 2);
+        assert!(snapshot_row_exists(&conn, earlier.id));
+        assert_eq!(
+            automatic_class_years(&conn, active_save.id),
+            vec![2025, 2026, 2027]
+        );
+    }
+
+    #[test]
+    fn same_date_snapshots_use_the_newest_load_as_the_current_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-same-date.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+
+        let first_path = write_dump(
+            &temp_dir,
+            "first.json",
+            &dump_with_game_date(Some("2026-08-14"), "First player"),
+        );
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let second_path = write_dump(
+            &temp_dir,
+            "second.json",
+            &dump_with_game_date(Some("2026-08-14"), "Second player"),
+        );
+        let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
+
+        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(second.id));
+        assert!(snapshot_row_exists(&conn, first.id));
+        assert_eq!(snapshot_count(&conn, active_save.id), 2);
+    }
+
+    #[test]
+    fn newer_load_timestamp_beats_a_higher_snapshot_id_for_the_same_game_date() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-load-order.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+
+        let first_path = write_dump(
+            &temp_dir,
+            "first.json",
+            &dump_with_game_date(Some("2026-08-14"), "First player"),
+        );
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let second_path = write_dump(
+            &temp_dir,
+            "second.json",
+            &dump_with_game_date(Some("2026-08-14"), "Second player"),
+        );
+        let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
+        conn.execute(
+            "UPDATE snapshots
+             SET loaded_at_utc = CASE id
+                 WHEN ?1 THEN '2026-08-14T00:00:02.000Z'
+                 WHEN ?2 THEN '2026-08-14T00:00:01.000Z'
+             END
+             WHERE id IN (?1, ?2)",
+            params![first.id, second.id],
+        )
+        .expect("set distinct timestamps");
+
+        let transaction = conn.transaction().expect("start selection transaction");
+        let selected = service::select_current_snapshot(&transaction, active_save.id)
+            .expect("select current snapshot");
+        transaction.commit().expect("commit selection");
+
+        assert_eq!(selected, Some(first.id));
+        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
+    }
+
+    #[test]
+    fn snapshot_id_breaks_same_date_timestamp_ties_deterministically() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-date-tie.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        conn.execute_batch(
+            "CREATE TRIGGER force_snapshot_load_timestamp
+             AFTER INSERT ON snapshots
+             BEGIN
+                 UPDATE snapshots
+                 SET loaded_at_utc = '2026-08-14T00:00:00.000Z'
+                 WHERE id = NEW.id;
+             END;",
+        )
+        .expect("force matching timestamps");
+
+        let first_path = write_dump(
+            &temp_dir,
+            "first.json",
+            &dump_with_game_date(Some("2026-08-14"), "First player"),
+        );
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let second_path = write_dump(
+            &temp_dir,
+            "second.json",
+            &dump_with_game_date(Some("2026-08-14"), "Second player"),
+        );
+        let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
+
+        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(second.id));
+        let loaded_at: Vec<String> = [first.id, second.id]
+            .into_iter()
+            .map(|snapshot_id| {
+                conn.query_row(
+                    "SELECT loaded_at_utc FROM snapshots WHERE id = ?1",
+                    params![snapshot_id],
+                    |row| row.get(0),
+                )
+                .expect("read timestamp")
+            })
+            .collect();
+        assert_eq!(loaded_at, vec!["2026-08-14T00:00:00.000Z"; 2]);
+    }
+
+    #[test]
+    fn undated_snapshot_does_not_supersede_a_dated_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-undated-after-dated.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+
+        let dated_path = write_dump(
+            &temp_dir,
+            "dated.json",
+            &dump_with_game_date(Some("2026-08-14"), "Dated player"),
+        );
+        let dated = ingest_dump_file(&mut conn, &dated_path).expect("dated ingest");
+        let undated_path = write_dump(
+            &temp_dir,
+            "undated.json",
+            &dump_with_game_date(None, "Undated player"),
+        );
+        let undated = ingest_dump_file(&mut conn, &undated_path).expect("undated ingest");
+
+        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(dated.id));
+        assert!(snapshot_row_exists(&conn, undated.id));
+        assert_eq!(
+            automatic_class_years(&conn, active_save.id),
+            vec![2025, 2026]
+        );
+    }
+
+    #[test]
+    fn all_undated_snapshots_use_the_newest_load_as_the_current_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-all-undated.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+
+        let first_path = write_dump(
+            &temp_dir,
+            "first.json",
+            &dump_with_game_date(None, "First player"),
+        );
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let second_path = write_dump(
+            &temp_dir,
+            "second.json",
+            &dump_with_game_date(None, "Second player"),
+        );
+        let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
+
+        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(second.id));
+        assert!(snapshot_row_exists(&conn, first.id));
+        assert_eq!(automatic_class_years(&conn, active_save.id), vec![2025]);
     }
 
     #[test]
@@ -1101,14 +1346,16 @@ mod tests {
             .expect("active save");
 
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
+        let active_save_context =
+            save_context_for_id(&conn, active_save.id).expect("capture active save context");
         let first = ingest_dump_file_for_save_with_bridge_source_request_id(
             &mut conn,
-            active_save.id,
+            &active_save_context,
             &good_path,
             "req-first",
         )
         .expect("first ingest");
-        let prior_role_score_count = role_score_count_for_snapshot(&conn, first.id);
+        let prior_role_score_count = role_score_count_for_snapshot(&conn, first.stored_snapshot.id);
         conn.execute_batch(
             "CREATE TRIGGER reject_staff_insert
              BEFORE INSERT ON staff
@@ -1121,23 +1368,29 @@ mod tests {
         let rejected_path = write_dump(&temp_dir, "rejected.json", GOLDEN_FIXTURE);
         let error = ingest_dump_file_for_save_with_bridge_source_request_id(
             &mut conn,
-            active_save.id,
+            &active_save_context,
             &rejected_path,
             "req-rejected",
         )
         .expect_err("reject staff insert");
 
         assert!(error.contains("staff insert failure"));
-        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
         assert_eq!(
-            bridge_source_request_id_for_snapshot(&conn, first.id).as_deref(),
+            current_snapshot_id(&conn, active_save.id),
+            Some(first.effective_snapshot.id)
+        );
+        assert_eq!(
+            bridge_source_request_id_for_snapshot(&conn, first.stored_snapshot.id).as_deref(),
             Some("req-first")
         );
-        assert!(snapshot_row_exists(&conn, first.id));
-        assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
-        assert_eq!(staff_count_for_snapshot(&conn, first.id), 1);
+        assert!(snapshot_row_exists(&conn, first.stored_snapshot.id));
         assert_eq!(
-            role_score_count_for_snapshot(&conn, first.id),
+            player_count_for_snapshot(&conn, first.stored_snapshot.id),
+            1
+        );
+        assert_eq!(staff_count_for_snapshot(&conn, first.stored_snapshot.id), 1);
+        assert_eq!(
+            role_score_count_for_snapshot(&conn, first.stored_snapshot.id),
             prior_role_score_count
         );
         let snapshot_count: i64 = conn

@@ -21,7 +21,9 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       header.getByRole("combobox", { name: "Active save" }),
     ).toBeVisible();
-    await expect(main.getByRole("heading", { name: "Snapshot" })).toBeVisible();
+    await expect(
+      main.getByRole("heading", { name: "Snapshot", exact: true }),
+    ).toBeVisible();
     await expect(
       header.getByRole("button", { name: "Load Data" }),
     ).toBeVisible();
@@ -39,6 +41,132 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       page.getByRole("main").getByText("Stored value:"),
     ).toContainText("smoke-value");
+  });
+
+  test("Dashboard renames and removes a historical snapshot", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { snapshotHistory: true });
+    await page.goto("/");
+
+    const main = page.getByRole("main");
+    const history = main.getByRole("table", { name: "Snapshot history" });
+    await expect(history.getByRole("row").nth(1)).toContainText("2026-08-01");
+    await expect(history.getByRole("row").nth(2)).toContainText("2026-06-01");
+
+    await history
+      .getByRole("button", { name: "Rename snapshot 2026-08-01" })
+      .click();
+    const rename = page.getByRole("dialog", { name: /Rename snapshot/ });
+    await rename.getByLabel("Snapshot name").fill("Transfer window");
+    await rename.getByRole("button", { name: "Save name" }).click();
+    await expect(history.getByRole("row").nth(1)).toContainText(
+      "Transfer window",
+    );
+    await expect(history.getByRole("row").nth(1)).toContainText("2026-08-01");
+
+    await history
+      .getByRole("button", { name: /^Delete snapshot 2026-06-01/ })
+      .click();
+    const deletion = page.getByRole("dialog", { name: /Delete snapshot/ });
+    await expect(deletion).toContainText("Moneyball import data");
+    await deletion
+      .getByRole("button", { name: "Delete snapshot", exact: true })
+      .click();
+    await expect(history.getByRole("row")).toHaveCount(2);
+    await expect(
+      history.getByRole("button", { name: /^Delete snapshot 2026-06-01/ }),
+    ).toHaveCount(0);
+  });
+
+  test("Dashboard promotes the next dated snapshot after deleting current", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      snapshotHistory: true,
+      csvImportFormat: "moneyball",
+    });
+    await page.goto("/");
+
+    const main = page.getByRole("main");
+    const history = main.getByRole("table", { name: "Snapshot history" });
+    const snapshotSummary = main.getByText(/In database:/).locator("..");
+    await expect(snapshotSummary).toContainText("24 players");
+    await expect(main.getByText("Snapshot 2 player")).toBeVisible();
+    await main.getByRole("button", { name: "Import CSV" }).click();
+    await expect(main.getByText(/Moneyball imported/i)).toBeVisible();
+
+    await history
+      .getByRole("button", { name: /^Delete snapshot 2026-08-01/ })
+      .click();
+    await page
+      .getByRole("dialog", { name: /Delete snapshot/ })
+      .getByRole("button", { name: "Delete snapshot", exact: true })
+      .click();
+
+    await expect(history.getByRole("row")).toHaveCount(2);
+    await expect(history.getByRole("row").nth(1)).toContainText("2026-06-01");
+    await expect(history.getByRole("row").nth(1)).toContainText("Current");
+    await expect(snapshotSummary).toContainText("21 players");
+    await expect(main.getByText("Snapshot 1 player")).toBeVisible();
+    await expect(main.getByText("Snapshot 2 player")).toHaveCount(0);
+    await expect(
+      main.getByText(/Choose a Youth Tracker or Moneyball export to import/i),
+    ).toBeVisible();
+  });
+
+  test("Dashboard deletes inactive and active saves with the right fallback", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    const main = page.getByRole("main");
+    const activeSave = page.getByRole("combobox", { name: "Active save" });
+    await main.getByLabel("New save").fill("Archive");
+    await main.getByRole("button", { name: "Create save" }).click();
+    await main.getByRole("button", { name: /^Delete save Archive/ }).click();
+    const inactiveDeletion = page.getByRole("dialog", { name: /Delete save/ });
+    await expect(inactiveDeletion).toContainText(
+      "The active save stays unchanged",
+    );
+    await inactiveDeletion
+      .getByRole("button", { name: "Delete save", exact: true })
+      .click();
+    await expect(activeSave).toHaveValue("1");
+
+    await main.getByLabel("New save").fill("Archive");
+    await main.getByRole("button", { name: "Create save" }).click();
+    await main
+      .getByRole("button", { name: /^Delete save Default save/ })
+      .click();
+    await page
+      .getByRole("dialog", { name: /Delete save/ })
+      .getByRole("button", { name: "Delete save", exact: true })
+      .click();
+    await expect(activeSave.locator("option:checked")).toHaveText("Archive");
+  });
+
+  test("Dashboard replaces the final deleted save with Default save", async ({
+    page,
+  }) => {
+    await page.goto("/");
+
+    const main = page.getByRole("main");
+    await main
+      .getByRole("button", { name: /^Delete save Default save/ })
+      .click();
+    const deletion = page.getByRole("dialog", { name: /Delete save/ });
+    await expect(deletion).toContainText(
+      "A blank Default save will replace it",
+    );
+    await deletion
+      .getByRole("button", { name: "Delete save", exact: true })
+      .click();
+    await expect(
+      page
+        .getByRole("combobox", { name: "Active save" })
+        .locator("option:checked"),
+    ).toHaveText("Default save");
   });
 
   test("Dashboard keeps the CSV import idle when the browser dialog stub cancels", async ({

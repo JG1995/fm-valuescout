@@ -24,11 +24,11 @@ ValueScout solves this with four pillars tied to how FM players actually work:
 
 ### 1. Live data snapshots
 
-Load the current game world from a running FM26 session. One action refreshes clubs, squads, contracts, and attributes to match what is in memory. The primary workflow needs no manual export step. Snapshots are explicit (you click **Load Data** when you want fresh data), which keeps the model simple and predictable.
+Load the current game world from a running FM26 session. One action captures clubs, squads, contracts, and attributes to match what is in memory. The primary workflow needs no manual export step. Successful snapshots stay in the active app save, and the snapshot with the greatest valid in-game date is current for normal product reads. Snapshots are explicit (you click **Load Data** when you want fresh data), which keeps the model simple and predictable.
 
 An optional Dashboard import supplements the current snapshot with supported Youth Tracker and Moneyball CSV values that the memory pipeline does not supply. Imports use exact numeric player IDs, stay scoped to the active app save, and never create players or replace live memory data.
 
-The app supports multiple **save slots** (separate scouting databases—for example, different FM careers). Exactly one slot is active; **Load Data** refreshes that slot's current snapshot only. Slots are app-side labels, not FM save files.
+The app supports multiple **save slots** (separate scouting databases—for example, different FM careers). Exactly one slot is active; **Load Data** stores a new snapshot in that slot, while Search, profiles, Planner, Academy, and CSV matching use the slot's current snapshot. Slots are app-side labels, not FM save files.
 
 ### 2. Searchable database with role scores
 
@@ -98,7 +98,7 @@ A week later in-game, the signing completes. You click **Load Data** again. The 
 
 - FM editions other than FM26
 - Save-file import or parsing as an alternative data source
-- Historical Moneyball seasons, import snapshots, season selection, trends, comparisons, and analytics beyond the supported latest-row contract
+- Historical Moneyball seasons, season selection, trends, comparisons, historical player views, and analytics beyond the supported current-snapshot contract
 - Automatic or background sync while FM runs (refresh is manual)
 - Accounts, cloud sync, or multi-user collaboration
 - Executing transfers or general edits inside FM from the app. The only accepted exception is the two action-specific player boosts in [ADR-0017](./decisions/0017-action-specific-fm26-player-boosts.md). Those two fixed actions are implemented; transfers and general editing remain out of scope.

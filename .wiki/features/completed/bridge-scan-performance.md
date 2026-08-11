@@ -63,5 +63,5 @@ IPC load_data(maxAccepted?)
 ## Follow-up
 
 - **Delivered downstream:** [Role scoring engine](./role-scoring-engine.md) (order 3).
-- **BACKLOG:** snapshot history per save; in-app bridge DLL build-before-copy.
+- **Delivered downstream:** [Snapshot History and Management](./snapshot-history.md) retains snapshots per save. The in-app bridge DLL build-before-copy item remains in the backlog.
 - **Repin:** FM patches may require layout updates; scan performance does not remove fail-closed version checks.

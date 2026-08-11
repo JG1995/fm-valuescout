@@ -8,7 +8,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 > **Lifecycle:** Approved 2026-07-28 from [CONCEPT.md](./CONCEPT.md) MVP scope. Ordering is **provisional — revisit after speccing** individual features.
 >
-> **Gating context:** FM26 memory read is complete — C# BepInEx IL2CPP bridge + Rust file protocol ([completed record](./features/completed/fm26-memory-read.md), dump schema v6 in `bridge/DUMP_SCHEMA.md`). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm. Multi-save (thin) shipped with snapshot ingest; snapshot **history** is backlog.
+> **Gating context:** FM26 memory read is complete — C# BepInEx IL2CPP bridge + Rust file protocol ([completed record](./features/completed/fm26-memory-read.md), dump schema v6 in `bridge/DUMP_SCHEMA.md`). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm. Multi-save (thin) shipped with snapshot ingest; [snapshot history and management](./features/completed/snapshot-history.md) is complete.
 
 | Order | Feature | Spec | Confidence | Why this position |
 | --- | --- | --- | --- | --- |
@@ -56,11 +56,12 @@ No feature is currently active.
 
 ## Next
 
-No feature is currently queued. Reassess the backlog after CSV enrichment persistence is complete.
+No feature is currently queued. Reassess the backlog when the next initiative is selected.
 
 ## Completed
 
-- [CSV enrichment persistence and derived statistics](./features/completed/csv-enrichment-persistence.md) — save-scoped Youth career and latest Moneyball enrichment for current memory-backed player UIDs, canonical 138-key statistics, and Academy career projections while keeping memory authoritative
+- [Snapshot history and management](./features/completed/snapshot-history.md) — retained snapshots selected by greatest valid in-game date, snapshot-owned Moneyball enrichment, immutable management context, and Dashboard save/snapshot controls while product reads remain current-only
+- [CSV enrichment persistence and derived statistics](./features/completed/csv-enrichment-persistence.md) — save-scoped Youth career and snapshot-versioned Moneyball enrichment for current memory-backed player UIDs, canonical 138-key statistics, and Academy career projections while keeping memory authoritative
 - [CSV parsing and player reconciliation](./features/completed/csv-player-reconciliation.md) — bounded Youth Tracker and Moneyball parsing plus exact UID reconciliation foundation; the parser remains non-mutating while persistence lives in the downstream enrichment feature
 - [Player Development Boosts](./features/completed/player-development-boosts.md) — two guarded player-profile actions for snapshot-derived CA and mentality boosts through a live-validated FM26 write bridge
 - [Potential role scores](./features/completed/potential-role-scores.md) — CA-to-PA visible-attribute projection, Current/Potential profile and assigned-role scores, and explicit current or potential Planner optimization

@@ -258,6 +258,7 @@ pub fn validate_dump_value(root: &Value) -> Result<(), DumpValidationError> {
     require_string(object, "gameVersion")?;
     require_string(object, "supportedGameVersion")?;
     require_string(object, "bridgeVersion")?;
+    require_optional_game_date(object, "gameDate")?;
     require_game_date_source(object, "gameDateSource")?;
     require_game_date_basis(object, "gameDateBasis")?;
     require_player_database_scope(object, "playerDatabaseScope")?;
@@ -741,6 +742,65 @@ fn require_game_date_source(
     }
 }
 
+fn require_optional_game_date(
+    object: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<(), DumpValidationError> {
+    let Some(value) = object.get(field) else {
+        return Ok(());
+    };
+    let Value::String(date) = value else {
+        if value.is_null() {
+            return Ok(());
+        }
+        return Err(DumpValidationError::WrongType {
+            field: field.to_string(),
+            detail: "expected YYYY-MM-DD or null".to_string(),
+        });
+    };
+    if canonical_game_date(date) {
+        Ok(())
+    } else {
+        Err(DumpValidationError::WrongType {
+            field: field.to_string(),
+            detail: "expected YYYY-MM-DD".to_string(),
+        })
+    }
+}
+
+fn canonical_game_date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 10 || bytes[4] != b'-' || bytes[7] != b'-' {
+        return false;
+    }
+    if bytes
+        .iter()
+        .enumerate()
+        .any(|(index, byte)| !matches!(index, 4 | 7) && !byte.is_ascii_digit())
+    {
+        return false;
+    }
+
+    let year = decimal(&bytes[0..4]);
+    let month = decimal(&bytes[5..7]);
+    let day = decimal(&bytes[8..10]);
+    let days_in_month = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        _ => return false,
+    };
+
+    year > 0 && (1..=days_in_month).contains(&day)
+}
+
+fn decimal(bytes: &[u8]) -> u16 {
+    bytes
+        .iter()
+        .fold(0, |value, byte| value * 10 + u16::from(byte - b'0'))
+}
+
 fn require_game_date_basis(
     object: &serde_json::Map<String, Value>,
     field: &str,
@@ -1189,6 +1249,21 @@ mod tests {
         assert!(matches!(
             error,
             DumpValidationError::WrongType { field, .. } if field == "gameDateSource"
+        ));
+    }
+
+    #[test]
+    fn rejects_a_noncanonical_game_date() {
+        let json = GOLDEN_FIXTURE.replace(
+            "\"gameDate\": \"2026-08-14\"",
+            "\"gameDate\": \"2026-02-30\"",
+        );
+
+        let error = validate_dump_json(&json).expect_err("invalid game date");
+
+        assert!(matches!(
+            error,
+            DumpValidationError::WrongType { field, .. } if field == "gameDate"
         ));
     }
 

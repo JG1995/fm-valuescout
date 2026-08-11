@@ -13,7 +13,7 @@ public sealed class PlayerBoostOperationServiceTests
     private const ulong PersonAddress = 0x20000;
     private const ulong PlayerBlockAddress = 0x40000;
     private const uint PlayerUid = 1234;
-    private const string SourceRequestId = "scan-1";
+    private const string SourceRequestId = "R1";
     private const string SupportedGameVersion = "26.3.2";
 
     private static readonly IFmMemoryLayout Layout = Fm263Layout.Instance;
@@ -49,7 +49,7 @@ public sealed class PlayerBoostOperationServiceTests
             expectedCa: 120,
             expectedPa: 150,
             increment: 5,
-            sourceRequestId: "other-scan");
+            sourceRequestId: "R2");
 
         var result = service.Execute(request, SupportedGameVersion, reader, reader);
 

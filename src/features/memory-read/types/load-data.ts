@@ -26,6 +26,7 @@ export type LoadDataResult = {
   playersFound: number | null;
   scanTruncated: boolean | null;
   maxAccepted: number | null;
-  snapshot: LoadDataSnapshotSummary;
+  storedSnapshot: LoadDataSnapshotSummary;
+  effectiveSnapshot: LoadDataSnapshotSummary;
   timings: LoadDataTimings;
 };

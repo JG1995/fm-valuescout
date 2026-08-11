@@ -44,7 +44,7 @@ SQLite (migration v2)
 - **Load Data:** one user action — scan then ingest; prior snapshot retained on any failure.
 - **Captured save on Load Data:** `active_save_id` is read under a brief Db lock **before** the bridge scan; ingest uses `ingest_dump_file_for_save` with that id so a mid-scan save switch cannot target the wrong slot.
 - **Multi-save (M1):** thin app save slots + active save; not a singleton database.
-- **Snapshot history:** out of scope; schema uses `snapshots` + `snapshot_id` on players so history can be additive later ([BACKLOG.md](../../BACKLOG.md)).
+- **Snapshot history:** out of scope for this initial ingest contract; the additive `snapshots` + `snapshot_id` seam was later completed by [Snapshot History and Management](./snapshot-history.md).
 - **Attributes:** JSON text columns for maps/arrays; scalars for list/search foundations; `null` in dump JSON means unknown — never coerced to 0 on ingest.
 
 ## Migration and operational implications
@@ -65,5 +65,5 @@ SQLite (migration v2)
 
 - **Delivered downstream:** [Role scoring engine](./role-scoring-engine.md) — scores on ingest using FM role-relevant attributes.
 - **Delivered downstream:** [bridge scan performance](./bridge-scan-performance.md) — block scanning, unlimited default, UI cap controls, `load_data` timings in the success banner.
-- **BACKLOG:** snapshot history per save.
+- **Delivered downstream:** [Snapshot History and Management](./snapshot-history.md) retains snapshots per save, selects current by in-game date, and adds Dashboard metadata management while preserving this record's scan → ingest boundary.
 - **Roadmap:** [Player search](./player-search.md) (order 4, done), profiles, squad planner, optimizer — see [TODO.md](../../TODO.md).

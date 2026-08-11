@@ -1193,7 +1193,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_malformed_early_and_failed_snapshots_do_not_create_observed_classes() {
+    fn unknown_early_invalid_and_failed_snapshots_do_not_create_observed_classes() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("academy-unavailable-date.db"));
         let save = snapshot_service::create_save(&conn, "Academy save").expect("create save");
@@ -1207,15 +1207,15 @@ mod tests {
             "unknown",
         )
         .expect("ingest unknown date");
-        ingest_with_game_date(
+        let malformed = ingest_with_game_date(
             &temp_dir,
             &mut conn,
             save.id,
             "malformed-date.json",
             json!("not-a-date"),
             "memory",
-        )
-        .expect("ingest malformed date");
+        );
+        assert!(malformed.is_err());
         ingest_with_game_date(
             &temp_dir,
             &mut conn,

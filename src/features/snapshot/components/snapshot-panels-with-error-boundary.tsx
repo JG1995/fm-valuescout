@@ -1,11 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { CircleAlert } from "lucide-react";
+import { Suspense } from "react";
 import { ErrorBoundary } from "@/components/error-boundary/error-boundary";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { snapshotKeys } from "../api/snapshot-keys";
 import { SaveSwitcher } from "./save-switcher";
+import { SnapshotHistoryPanel } from "./snapshot-history-panel";
 import { SnapshotOverviewPanel } from "./snapshot-overview-panel";
 
 function SnapshotSectionError({
@@ -32,7 +34,13 @@ function SnapshotSectionError({
   );
 }
 
-export function SnapshotPanelsWithErrorBoundary() {
+type SnapshotPanelsWithErrorBoundaryProps = {
+  onCurrentContextChanged?: () => void;
+};
+
+export function SnapshotPanelsWithErrorBoundary({
+  onCurrentContextChanged,
+}: SnapshotPanelsWithErrorBoundaryProps) {
   const queryClient = useQueryClient();
 
   return (
@@ -48,7 +56,32 @@ export function SnapshotPanelsWithErrorBoundary() {
           />
         )}
       >
-        <SaveSwitcher />
+        <SaveSwitcher onCurrentContextChanged={onCurrentContextChanged} />
+      </ErrorBoundary>
+      <ErrorBoundary
+        fallback={({ error, reset }) => (
+          <SnapshotSectionError
+            error={error}
+            onRetry={() => {
+              queryClient.resetQueries({ queryKey: snapshotKeys.all });
+              reset();
+            }}
+          />
+        )}
+      >
+        <Suspense
+          fallback={
+            <Panel title="Snapshot history">
+              <p className="text-body-md text-on-surface-variant">
+                Loading snapshot history…
+              </p>
+            </Panel>
+          }
+        >
+          <SnapshotHistoryPanel
+            onCurrentContextChanged={onCurrentContextChanged}
+          />
+        </Suspense>
       </ErrorBoundary>
       <ErrorBoundary
         fallback={({ error, reset }) => (

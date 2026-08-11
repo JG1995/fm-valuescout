@@ -28,7 +28,8 @@ pub struct LoadDataResult {
     pub players_found: Option<i32>,
     pub scan_truncated: Option<bool>,
     pub max_accepted: Option<i32>,
-    pub snapshot: SnapshotSummary,
+    pub stored_snapshot: SnapshotSummary,
+    pub effective_snapshot: SnapshotSummary,
     pub timings: LoadDataTimings,
 }
 
@@ -75,27 +76,45 @@ pub fn load_data_from_bridge(
     bridge_directory: &Path,
     wait: DumpWaitConfig,
 ) -> Result<LoadDataResult, LoadDataError> {
-    let save_id = service::active_save_id(conn).map_err(|message| LoadDataError::Scan {
-        kind: "internal".to_string(),
-        message,
-    })?;
+    let save_context =
+        service::capture_active_save_context(conn).map_err(|message| LoadDataError::Scan {
+            kind: "internal".to_string(),
+            message,
+        })?;
     let dump_result =
         request_player_dump(bridge_directory, wait).map_err(map_dump_request_error)?;
     let captured_dump_path = capture_completed_dump(bridge_directory, &dump_result)?;
-    load_data_after_scan(conn, captured_dump_path.as_ref(), dump_result, save_id)
+    load_data_after_scan_with_context(
+        conn,
+        captured_dump_path.as_ref(),
+        dump_result,
+        &save_context,
+    )
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn load_data_after_scan(
     conn: &mut Connection,
     captured_dump_path: &Path,
     dump_result: DumpRequestResult,
     save_id: i64,
 ) -> Result<LoadDataResult, LoadDataError> {
+    let save_context = service::save_context_for_id(conn, save_id)
+        .map_err(|message| LoadDataError::Ingest { message })?;
+    load_data_after_scan_with_context(conn, captured_dump_path, dump_result, &save_context)
+}
+
+pub(crate) fn load_data_after_scan_with_context(
+    conn: &mut Connection,
+    captured_dump_path: &Path,
+    dump_result: DumpRequestResult,
+    save_context: &service::SaveContext,
+) -> Result<LoadDataResult, LoadDataError> {
     ensure_scan_succeeded(&dump_result)?;
 
-    let snapshot = ingest::ingest_dump_file_for_save_with_bridge_source_request_id(
+    let ingest_result = ingest::ingest_dump_file_for_save_with_bridge_source_request_id(
         conn,
-        save_id,
+        save_context,
         captured_dump_path,
         &dump_result.request_id,
     )
@@ -106,7 +125,8 @@ pub fn load_data_after_scan(
         players_found: dump_result.players_found,
         scan_truncated: dump_result.scan_truncated,
         max_accepted: dump_result.max_accepted,
-        snapshot,
+        stored_snapshot: ingest_result.stored_snapshot,
+        effective_snapshot: ingest_result.effective_snapshot,
         timings: LoadDataTimings::default(),
     })
 }
@@ -188,7 +208,9 @@ mod tests {
     use crate::features::memory_read::service::{
         request_path, status_path, BridgeRequest, BridgeStatus, PROTOCOL_VERSION,
     };
-    use crate::features::snapshot::service::{create_save, list_saves, set_active_save};
+    use crate::features::snapshot::service::{
+        capture_active_save_context, create_save, list_saves, set_active_save,
+    };
     use rusqlite::OptionalExtension;
     use std::fs;
     use std::path::Path;
@@ -343,6 +365,14 @@ mod tests {
         dump.to_string()
     }
 
+    fn dump_with_game_date(game_date: &str, player_name: &str) -> String {
+        let mut dump: serde_json::Value =
+            serde_json::from_str(GOLDEN_FIXTURE).expect("parse golden dump");
+        dump["gameDate"] = serde_json::Value::from(game_date);
+        dump["players"][0]["name"] = serde_json::Value::from(player_name);
+        dump.to_string()
+    }
+
     #[test]
     fn load_data_ingests_snapshot_after_successful_scan() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -368,15 +398,15 @@ mod tests {
         assert!(result.request_id.starts_with("req-"));
         assert_eq!(result.players_found, Some(42));
         assert_eq!(result.max_accepted, None);
-        assert_eq!(result.snapshot.save_id, active_save.id);
-        assert_eq!(result.snapshot.player_count, 1);
+        assert_eq!(result.stored_snapshot.save_id, active_save.id);
+        assert_eq!(result.stored_snapshot.player_count, 1);
         assert_eq!(
-            bridge_source_request_id_for_snapshot(&conn, result.snapshot.id).as_deref(),
+            bridge_source_request_id_for_snapshot(&conn, result.stored_snapshot.id).as_deref(),
             Some(result.request_id.as_str())
         );
         assert_eq!(
             current_snapshot_id(&conn, active_save.id),
-            Some(result.snapshot.id)
+            Some(result.effective_snapshot.id)
         );
     }
 
@@ -453,7 +483,7 @@ mod tests {
         );
         let first =
             load_data_from_bridge(&mut conn, &bridge_dir, short_wait()).expect("first load");
-        let prior_snapshot_id = first.snapshot.id;
+        let prior_snapshot_id = first.stored_snapshot.id;
 
         fs::write(dump_path(&bridge_dir), "{\"schemaVersion\":99}").expect("bad dump");
         let dump_result = DumpRequestResult {
@@ -511,20 +541,62 @@ mod tests {
             load_data_after_scan(&mut conn, &captured_dump_path, dump_result, default_save.id)
                 .expect("ingest into captured save");
 
-        assert_eq!(result.snapshot.save_id, default_save.id);
+        assert_eq!(result.stored_snapshot.save_id, default_save.id);
         assert_eq!(
             current_snapshot_id(&conn, default_save.id),
-            Some(result.snapshot.id)
+            Some(result.effective_snapshot.id)
         );
         assert_eq!(
-            bridge_source_request_id_for_snapshot(&conn, result.snapshot.id).as_deref(),
+            bridge_source_request_id_for_snapshot(&conn, result.stored_snapshot.id).as_deref(),
             Some("req-captured-save")
         );
         assert_eq!(current_snapshot_id(&conn, second_save.id), None);
     }
 
     #[test]
-    fn load_data_replaces_snapshot_with_its_new_bridge_request_id() {
+    fn load_data_rejects_a_deleted_and_reused_captured_save_context() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("reused-captured-save.db"));
+        let captured_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let context = capture_active_save_context(&conn).expect("capture save context");
+        let dump_path = temp_dir.path().join("captured.json");
+        fs::write(&dump_path, GOLDEN_FIXTURE).expect("write captured dump");
+
+        conn.execute("DELETE FROM saves WHERE id = ?1", [captured_save.id])
+            .expect("delete captured save");
+        conn.execute(
+            "INSERT INTO saves (id, name, is_active) VALUES (?1, 'Reused save', 1)",
+            [captured_save.id],
+        )
+        .expect("recreate numeric save id");
+
+        let error = load_data_after_scan_with_context(
+            &mut conn,
+            &dump_path,
+            DumpRequestResult {
+                request_id: "reused-save-request".to_string(),
+                state: "ready".to_string(),
+                players_found: Some(1),
+                dump_present: true,
+                error: None,
+                scan_truncated: Some(false),
+                max_accepted: None,
+            },
+            &context,
+        )
+        .expect_err("reject reused save context");
+
+        assert!(matches!(error, LoadDataError::Ingest { .. }));
+        assert!(error.to_string().contains("Save changed"));
+        assert_eq!(current_snapshot_id(&conn, captured_save.id), None);
+    }
+
+    #[test]
+    fn load_data_retains_prior_snapshot_with_its_bridge_request_id() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let bridge_dir = temp_dir.path().join("bridge");
         fs::create_dir_all(&bridge_dir).expect("bridge dir");
@@ -568,23 +640,96 @@ mod tests {
         )
         .expect("second load");
 
-        assert_ne!(first.snapshot.id, second.snapshot.id);
+        assert_ne!(first.stored_snapshot.id, second.stored_snapshot.id);
+        assert_eq!(first.stored_snapshot.id, first.effective_snapshot.id);
+        assert_eq!(second.stored_snapshot.id, second.effective_snapshot.id);
         assert_eq!(
             current_snapshot_id(&conn, active_save.id),
-            Some(second.snapshot.id)
+            Some(second.effective_snapshot.id)
         );
         assert_eq!(
-            bridge_source_request_id_for_snapshot(&conn, second.snapshot.id).as_deref(),
+            bridge_source_request_id_for_snapshot(&conn, second.stored_snapshot.id).as_deref(),
             Some("req-second")
         );
         let prior_snapshot_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM snapshots WHERE id = ?1)",
-                rusqlite::params![first.snapshot.id],
+                rusqlite::params![first.stored_snapshot.id],
                 |row| row.get(0),
             )
             .expect("query prior snapshot");
-        assert!(!prior_snapshot_exists);
+        assert!(prior_snapshot_exists);
+    }
+
+    #[test]
+    fn load_data_reports_an_earlier_stored_snapshot_and_the_later_effective_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("load-data-history-outcome.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+
+        let later_path = temp_dir.path().join("later.json");
+        fs::write(
+            &later_path,
+            dump_with_game_date("2027-08-16", "Later player"),
+        )
+        .expect("write later dump");
+        let later = load_data_after_scan(
+            &mut conn,
+            &later_path,
+            DumpRequestResult {
+                request_id: "R2".to_string(),
+                state: "ready".to_string(),
+                players_found: Some(1),
+                dump_present: true,
+                error: None,
+                scan_truncated: Some(false),
+                max_accepted: None,
+            },
+            active_save.id,
+        )
+        .expect("load later dump");
+
+        let earlier_path = temp_dir.path().join("earlier.json");
+        fs::write(
+            &earlier_path,
+            dump_with_game_date("2026-08-14", "Earlier player"),
+        )
+        .expect("write earlier dump");
+        let earlier = load_data_after_scan(
+            &mut conn,
+            &earlier_path,
+            DumpRequestResult {
+                request_id: "R1".to_string(),
+                state: "ready".to_string(),
+                players_found: Some(1),
+                dump_present: true,
+                error: None,
+                scan_truncated: Some(false),
+                max_accepted: None,
+            },
+            active_save.id,
+        )
+        .expect("retain earlier dump");
+
+        assert_eq!(later.stored_snapshot.id, later.effective_snapshot.id);
+        assert_ne!(earlier.stored_snapshot.id, earlier.effective_snapshot.id);
+        assert_eq!(earlier.effective_snapshot.id, later.stored_snapshot.id);
+        assert_eq!(
+            current_snapshot_id(&conn, active_save.id),
+            Some(later.stored_snapshot.id)
+        );
+        assert_eq!(
+            bridge_source_request_id_for_snapshot(&conn, earlier.stored_snapshot.id).as_deref(),
+            Some("R1")
+        );
+        assert_eq!(
+            bridge_source_request_id_for_snapshot(&conn, earlier.effective_snapshot.id).as_deref(),
+            Some("R2")
+        );
     }
 
     #[test]
@@ -627,9 +772,12 @@ mod tests {
         )
         .expect("ingest captured dump");
 
-        assert_eq!(player_ca_for_snapshot(&conn, result.snapshot.id), 150);
         assert_eq!(
-            bridge_source_request_id_for_snapshot(&conn, result.snapshot.id).as_deref(),
+            player_ca_for_snapshot(&conn, result.stored_snapshot.id),
+            150
+        );
+        assert_eq!(
+            bridge_source_request_id_for_snapshot(&conn, result.stored_snapshot.id).as_deref(),
             Some(dump_result.request_id.as_str())
         );
     }
