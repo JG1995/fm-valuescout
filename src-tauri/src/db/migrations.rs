@@ -537,6 +537,65 @@ CREATE TABLE player_moneyball_stats (
 );
 ";
 
+pub const SNAPSHOT_MANAGEMENT_CONTEXT_SQL: &str = "
+ALTER TABLE saves
+    ADD COLUMN context_token TEXT;
+
+ALTER TABLE snapshots
+    ADD COLUMN context_token TEXT;
+
+ALTER TABLE snapshots
+    ADD COLUMN custom_name TEXT;
+
+UPDATE saves
+SET context_token = lower(hex(randomblob(16)))
+WHERE context_token IS NULL;
+
+UPDATE snapshots
+SET context_token = lower(hex(randomblob(16)))
+WHERE context_token IS NULL;
+
+CREATE UNIQUE INDEX idx_saves_context_token
+    ON saves(context_token);
+
+CREATE UNIQUE INDEX idx_snapshots_context_token
+    ON snapshots(context_token);
+
+CREATE TRIGGER populate_save_context_token
+AFTER INSERT ON saves
+WHEN NEW.context_token IS NULL
+BEGIN
+    UPDATE saves
+    SET context_token = lower(hex(randomblob(16)))
+    WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER populate_snapshot_context_token
+AFTER INSERT ON snapshots
+WHEN NEW.context_token IS NULL
+BEGIN
+    UPDATE snapshots
+    SET context_token = lower(hex(randomblob(16)))
+    WHERE id = NEW.id;
+END;
+
+CREATE TRIGGER prevent_save_context_token_change
+BEFORE UPDATE OF context_token ON saves
+WHEN OLD.context_token IS NOT NULL
+ AND OLD.context_token IS NOT NEW.context_token
+BEGIN
+    SELECT RAISE(ABORT, 'save context token is immutable');
+END;
+
+CREATE TRIGGER prevent_snapshot_context_token_change
+BEFORE UPDATE OF context_token ON snapshots
+WHEN OLD.context_token IS NOT NULL
+ AND OLD.context_token IS NOT NEW.context_token
+BEGIN
+    SELECT RAISE(ABORT, 'snapshot context token is immutable');
+END;
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -628,6 +687,11 @@ pub fn all() -> &'static [Migration] {
             version: 18,
             description: "move_moneyball_enrichment_to_snapshots",
             sql: SNAPSHOT_MONEYBALL_ENRICHMENT_SCHEMA_SQL,
+        },
+        Migration {
+            version: 19,
+            description: "add_snapshot_management_context",
+            sql: SNAPSHOT_MANAGEMENT_CONTEXT_SQL,
         },
     ]
 }
@@ -734,7 +798,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
 
         let table_name: String = conn
             .query_row(
@@ -744,6 +808,113 @@ mod tests {
             )
             .expect("read sqlite_master");
         assert_eq!(table_name, "demo_value");
+    }
+
+    #[test]
+    fn migrates_v18_rows_to_immutable_snapshot_management_contexts() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("snapshot-management-v18.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 18) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v18");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Existing save', 1)",
+            [],
+        )
+        .expect("insert existing save");
+        let first_save_id = conn.last_insert_rowid();
+        conn.execute("INSERT INTO saves (name) VALUES ('Other save')", [])
+            .expect("insert second save");
+        let second_save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![first_save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert existing snapshot");
+        let first_snapshot_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![second_save_id, false, false, Option::<i64>::None],
+        )
+        .expect("insert second snapshot");
+
+        apply(&conn).expect("apply snapshot management migration");
+
+        let save_tokens: Vec<String> = conn
+            .prepare("SELECT context_token FROM saves ORDER BY id")
+            .expect("prepare save token query")
+            .query_map([], |row| row.get(0))
+            .expect("query save tokens")
+            .collect::<Result<_, _>>()
+            .expect("read save tokens");
+        let snapshot_tokens: Vec<String> = conn
+            .prepare("SELECT context_token FROM snapshots ORDER BY id")
+            .expect("prepare snapshot token query")
+            .query_map([], |row| row.get(0))
+            .expect("query snapshot tokens")
+            .collect::<Result<_, _>>()
+            .expect("read snapshot tokens");
+        assert_eq!(save_tokens.len(), 2);
+        assert_eq!(snapshot_tokens.len(), 2);
+        assert!(save_tokens.iter().all(|token| token.len() == 32));
+        assert!(snapshot_tokens.iter().all(|token| token.len() == 32));
+        assert_ne!(save_tokens[0], save_tokens[1]);
+        assert_ne!(snapshot_tokens[0], snapshot_tokens[1]);
+
+        conn.execute("INSERT INTO saves (name) VALUES ('New save')", [])
+            .expect("insert new save");
+        let new_save_id = conn.last_insert_rowid();
+        let new_save_token: String = conn
+            .query_row(
+                "SELECT context_token FROM saves WHERE id = ?1",
+                [new_save_id],
+                |row| row.get(0),
+            )
+            .expect("read generated save token");
+        assert_eq!(new_save_token.len(), 32);
+
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![new_save_id, false, false, Option::<i64>::None],
+        )
+        .expect("insert new snapshot");
+        let new_snapshot_id = conn.last_insert_rowid();
+        let new_snapshot_token: String = conn
+            .query_row(
+                "SELECT context_token FROM snapshots WHERE id = ?1",
+                [new_snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("read generated snapshot token");
+        assert_eq!(new_snapshot_token.len(), 32);
+
+        let save_error = conn
+            .execute(
+                "UPDATE saves SET context_token = 'changed' WHERE id = ?1",
+                [first_save_id],
+            )
+            .expect_err("reject changing save token");
+        assert_eq!(
+            save_error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::ConstraintViolation)
+        );
+        let snapshot_error = conn
+            .execute(
+                "UPDATE snapshots SET context_token = 'changed' WHERE id = ?1",
+                [first_snapshot_id],
+            )
+            .expect_err("reject changing snapshot token");
+        assert_eq!(
+            snapshot_error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::ConstraintViolation)
+        );
     }
 
     #[test]
@@ -1037,7 +1208,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, planner_club_settings.primary_club
@@ -1117,7 +1288,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -1304,7 +1475,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -1352,7 +1523,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -1593,7 +1764,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -1699,7 +1870,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
 
         let table_name: String = conn
             .query_row(
@@ -1729,7 +1900,8 @@ mod tests {
                 "name",
                 "is_active",
                 "created_at_utc",
-                "updated_at_utc"
+                "updated_at_utc",
+                "context_token",
             ]
         );
         assert_eq!(
@@ -1758,6 +1930,8 @@ mod tests {
                 "manager_club",
                 "manager_club_reputation",
                 "bridge_source_request_id",
+                "context_token",
+                "custom_name",
             ]
         );
         assert_eq!(
@@ -1857,7 +2031,9 @@ mod tests {
                 "idx_player_role_scores_snapshot_role",
                 "idx_players_snapshot_ca",
                 "idx_players_snapshot_name",
+                "idx_saves_context_token",
                 "idx_saves_one_active",
+                "idx_snapshots_context_token",
                 "idx_snapshots_one_current_per_save",
             ]
         );
@@ -1946,7 +2122,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
     }
 
     #[test]
@@ -1980,7 +2156,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -1996,7 +2172,7 @@ mod tests {
     fn migrates_snapshot_schema_from_every_prior_version() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
 
-        for legacy_version in 1..18 {
+        for legacy_version in 1..19 {
             let conn = Connection::open(
                 temp_dir
                     .path()
@@ -2020,7 +2196,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 18, "legacy version {legacy_version}");
+            assert_eq!(version, 19, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -2033,7 +2209,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 18);
+        assert_eq!(migrations.len(), 19);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -2104,6 +2280,12 @@ mod tests {
             "move_moneyball_enrichment_to_snapshots"
         );
         assert_eq!(migrations[17].sql, SNAPSHOT_MONEYBALL_ENRICHMENT_SCHEMA_SQL);
+        assert_eq!(migrations[18].version, 19);
+        assert_eq!(
+            migrations[18].description,
+            "add_snapshot_management_context"
+        );
+        assert_eq!(migrations[18].sql, SNAPSHOT_MANAGEMENT_CONTEXT_SQL);
     }
 
     #[test]

@@ -76,27 +76,45 @@ pub fn load_data_from_bridge(
     bridge_directory: &Path,
     wait: DumpWaitConfig,
 ) -> Result<LoadDataResult, LoadDataError> {
-    let save_id = service::active_save_id(conn).map_err(|message| LoadDataError::Scan {
-        kind: "internal".to_string(),
-        message,
-    })?;
+    let save_context =
+        service::capture_active_save_context(conn).map_err(|message| LoadDataError::Scan {
+            kind: "internal".to_string(),
+            message,
+        })?;
     let dump_result =
         request_player_dump(bridge_directory, wait).map_err(map_dump_request_error)?;
     let captured_dump_path = capture_completed_dump(bridge_directory, &dump_result)?;
-    load_data_after_scan(conn, captured_dump_path.as_ref(), dump_result, save_id)
+    load_data_after_scan_with_context(
+        conn,
+        captured_dump_path.as_ref(),
+        dump_result,
+        &save_context,
+    )
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn load_data_after_scan(
     conn: &mut Connection,
     captured_dump_path: &Path,
     dump_result: DumpRequestResult,
     save_id: i64,
 ) -> Result<LoadDataResult, LoadDataError> {
+    let save_context = service::save_context_for_id(conn, save_id)
+        .map_err(|message| LoadDataError::Ingest { message })?;
+    load_data_after_scan_with_context(conn, captured_dump_path, dump_result, &save_context)
+}
+
+pub(crate) fn load_data_after_scan_with_context(
+    conn: &mut Connection,
+    captured_dump_path: &Path,
+    dump_result: DumpRequestResult,
+    save_context: &service::SaveContext,
+) -> Result<LoadDataResult, LoadDataError> {
     ensure_scan_succeeded(&dump_result)?;
 
     let ingest_result = ingest::ingest_dump_file_for_save_with_bridge_source_request_id(
         conn,
-        save_id,
+        save_context,
         captured_dump_path,
         &dump_result.request_id,
     )
@@ -190,7 +208,9 @@ mod tests {
     use crate::features::memory_read::service::{
         request_path, status_path, BridgeRequest, BridgeStatus, PROTOCOL_VERSION,
     };
-    use crate::features::snapshot::service::{create_save, list_saves, set_active_save};
+    use crate::features::snapshot::service::{
+        capture_active_save_context, create_save, list_saves, set_active_save,
+    };
     use rusqlite::OptionalExtension;
     use std::fs;
     use std::path::Path;
@@ -531,6 +551,48 @@ mod tests {
             Some("req-captured-save")
         );
         assert_eq!(current_snapshot_id(&conn, second_save.id), None);
+    }
+
+    #[test]
+    fn load_data_rejects_a_deleted_and_reused_captured_save_context() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("reused-captured-save.db"));
+        let captured_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let context = capture_active_save_context(&conn).expect("capture save context");
+        let dump_path = temp_dir.path().join("captured.json");
+        fs::write(&dump_path, GOLDEN_FIXTURE).expect("write captured dump");
+
+        conn.execute("DELETE FROM saves WHERE id = ?1", [captured_save.id])
+            .expect("delete captured save");
+        conn.execute(
+            "INSERT INTO saves (id, name, is_active) VALUES (?1, 'Reused save', 1)",
+            [captured_save.id],
+        )
+        .expect("recreate numeric save id");
+
+        let error = load_data_after_scan_with_context(
+            &mut conn,
+            &dump_path,
+            DumpRequestResult {
+                request_id: "reused-save-request".to_string(),
+                state: "ready".to_string(),
+                players_found: Some(1),
+                dump_present: true,
+                error: None,
+                scan_truncated: Some(false),
+                max_accepted: None,
+            },
+            &context,
+        )
+        .expect_err("reject reused save context");
+
+        assert!(matches!(error, LoadDataError::Ingest { .. }));
+        assert!(error.to_string().contains("Save changed"));
+        assert_eq!(current_snapshot_id(&conn, captured_save.id), None);
     }
 
     #[test]

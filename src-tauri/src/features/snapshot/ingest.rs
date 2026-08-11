@@ -12,7 +12,7 @@ use crate::features::memory_read::dump_validation::parse_and_validate_dump;
 use crate::features::scoring::catalog::all_roles;
 use crate::features::scoring::score::score_role;
 
-use super::service;
+use super::service::{self, SaveContext};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotSummary {
@@ -52,28 +52,41 @@ pub fn ingest_dump_file(
     conn: &mut Connection,
     dump_path: &Path,
 ) -> Result<SnapshotSummary, String> {
-    let save_id = service::active_save_id(conn)?;
-    ingest_dump_file_for_save(conn, save_id, dump_path)
+    let save_context = service::capture_active_save_context(conn)?;
+    ingest_dump_file_for_save_with_optional_bridge_source_request_id(
+        conn,
+        &save_context,
+        dump_path,
+        None,
+    )
+    .map(|result| result.stored_snapshot)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn ingest_dump_file_for_save(
     conn: &mut Connection,
     save_id: i64,
     dump_path: &Path,
 ) -> Result<SnapshotSummary, String> {
-    ingest_dump_file_for_save_with_optional_bridge_source_request_id(conn, save_id, dump_path, None)
-        .map(|result| result.stored_snapshot)
+    let save_context = service::save_context_for_id(conn, save_id)?;
+    ingest_dump_file_for_save_with_optional_bridge_source_request_id(
+        conn,
+        &save_context,
+        dump_path,
+        None,
+    )
+    .map(|result| result.stored_snapshot)
 }
 
 pub(super) fn ingest_dump_file_for_save_with_bridge_source_request_id(
     conn: &mut Connection,
-    save_id: i64,
+    save_context: &SaveContext,
     dump_path: &Path,
     bridge_source_request_id: &str,
 ) -> Result<IngestResult, String> {
     ingest_dump_file_for_save_with_optional_bridge_source_request_id(
         conn,
-        save_id,
+        save_context,
         dump_path,
         Some(bridge_source_request_id),
     )
@@ -81,12 +94,12 @@ pub(super) fn ingest_dump_file_for_save_with_bridge_source_request_id(
 
 fn ingest_dump_file_for_save_with_optional_bridge_source_request_id(
     conn: &mut Connection,
-    save_id: i64,
+    save_context: &SaveContext,
     dump_path: &Path,
     bridge_source_request_id: Option<&str>,
 ) -> Result<IngestResult, String> {
     let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
-    ingest_dump_json_for_save(conn, save_id, &json, bridge_source_request_id)
+    ingest_dump_json_for_save(conn, save_context, &json, bridge_source_request_id)
         .map(|(result, _)| result)
 }
 
@@ -97,14 +110,15 @@ pub fn ingest_dump_file_for_save_timed(
     save_id: i64,
     dump_path: &Path,
 ) -> Result<(SnapshotSummary, IngestTimings), String> {
+    let save_context = service::save_context_for_id(conn, save_id)?;
     let json = fs::read_to_string(dump_path).map_err(|error| error.to_string())?;
-    ingest_dump_json_for_save(conn, save_id, &json, None)
+    ingest_dump_json_for_save(conn, &save_context, &json, None)
         .map(|(result, timings)| (result.stored_snapshot, timings))
 }
 
 fn ingest_dump_json_for_save(
     conn: &mut Connection,
-    save_id: i64,
+    save_context: &SaveContext,
     json: &str,
     bridge_source_request_id: Option<&str>,
 ) -> Result<(IngestResult, IngestTimings), String> {
@@ -120,6 +134,8 @@ fn ingest_dump_json_for_save(
 
     let insert_started = Instant::now();
     let tx = conn.transaction().map_err(|error| error.to_string())?;
+    service::ensure_save_context(&tx, save_context)?;
+    let save_id = save_context.id;
     let snapshot_id = insert_snapshot(&tx, save_id, object, bridge_source_request_id)?;
     insert_players(&tx, snapshot_id, object)?;
     insert_staff(&tx, snapshot_id, object)?;
@@ -592,7 +608,7 @@ fn reputation_field(
 mod tests {
     use super::*;
     use crate::db::migrations;
-    use crate::features::snapshot::service::list_saves;
+    use crate::features::snapshot::service::{list_saves, save_context_for_id};
     use rusqlite::OptionalExtension;
     use std::path::Path;
 
@@ -1330,9 +1346,11 @@ mod tests {
             .expect("active save");
 
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
+        let active_save_context =
+            save_context_for_id(&conn, active_save.id).expect("capture active save context");
         let first = ingest_dump_file_for_save_with_bridge_source_request_id(
             &mut conn,
-            active_save.id,
+            &active_save_context,
             &good_path,
             "req-first",
         )
@@ -1350,7 +1368,7 @@ mod tests {
         let rejected_path = write_dump(&temp_dir, "rejected.json", GOLDEN_FIXTURE);
         let error = ingest_dump_file_for_save_with_bridge_source_request_id(
             &mut conn,
-            active_save.id,
+            &active_save_context,
             &rejected_path,
             "req-rejected",
         )

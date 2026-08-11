@@ -33,7 +33,9 @@ pub(crate) struct CsvImportSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportContext {
     save_id: i64,
+    save_context_token: String,
     snapshot_id: i64,
+    snapshot_context_token: String,
     player_uids: HashSet<i64>,
 }
 
@@ -129,13 +131,13 @@ pub(crate) fn capture_import_context(
 ) -> Result<ImportContext, CsvImportServiceError> {
     let context = conn
         .query_row(
-            "SELECT sv.id, s.id
+            "SELECT sv.id, sv.context_token, s.id, s.context_token
              FROM saves sv
              INNER JOIN snapshots s ON s.save_id = sv.id
              WHERE sv.is_active = 1 AND s.is_current = 1
              LIMIT 1",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .optional()
         .map_err(|_| CsvImportServiceError::Database)?
@@ -145,14 +147,16 @@ pub(crate) fn capture_import_context(
         .prepare("SELECT uid FROM players WHERE snapshot_id = ?1")
         .map_err(|_| CsvImportServiceError::Database)?;
     let player_uids = statement
-        .query_map([context.1], |row| row.get(0))
+        .query_map([context.2], |row| row.get(0))
         .map_err(|_| CsvImportServiceError::Database)?
         .collect::<Result<HashSet<_>, _>>()
         .map_err(|_| CsvImportServiceError::Database)?;
 
     Ok(ImportContext {
         save_id: context.0,
-        snapshot_id: context.1,
+        save_context_token: context.1,
+        snapshot_id: context.2,
+        snapshot_context_token: context.3,
         player_uids,
     })
 }
@@ -259,10 +263,21 @@ pub(crate) fn revalidate_import_context(
             "SELECT EXISTS(
                 SELECT 1
                 FROM snapshots
-                WHERE id = ?1 AND save_id = ?2 AND is_current = 1
-                  AND EXISTS (SELECT 1 FROM saves WHERE id = ?2 AND is_active = 1)
+                WHERE id = ?1
+                  AND context_token = ?2
+                  AND save_id = ?3
+                  AND is_current = 1
+                  AND EXISTS (
+                      SELECT 1 FROM saves
+                      WHERE id = ?3 AND context_token = ?4 AND is_active = 1
+                  )
             )",
-            [context.snapshot_id, context.save_id],
+            params![
+                context.snapshot_id,
+                context.snapshot_context_token,
+                context.save_id,
+                context.save_context_token,
+            ],
             |row| row.get(0),
         )
         .map_err(|_| CsvImportServiceError::Database)?;
@@ -1062,6 +1077,24 @@ mod tests {
 
         assert_eq!(
             revalidate_import_context(&conn, &context).expect_err("reject stale context"),
+            CsvImportServiceError::StaleContext
+        );
+    }
+
+    #[test]
+    fn rejects_a_deleted_and_reused_current_snapshot_id() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("reused-snapshot-context.db"));
+        seed_current_snapshot(&mut conn, &[1]);
+        let context = capture_import_context(&conn).expect("capture current snapshot");
+
+        conn.execute("DELETE FROM snapshots WHERE id = ?1", [context.snapshot_id])
+            .expect("delete captured snapshot");
+        let replacement_snapshot_id = insert_snapshot(&mut conn, context.save_id, true, &[1]);
+        assert_eq!(replacement_snapshot_id, context.snapshot_id);
+
+        assert_eq!(
+            revalidate_import_context(&conn, &context).expect_err("reject reused snapshot id"),
             CsvImportServiceError::StaleContext
         );
     }

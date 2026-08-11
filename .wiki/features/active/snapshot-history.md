@@ -61,8 +61,8 @@ Retain every successfully loaded Football Manager snapshot inside its app save i
 
 - **Relevant components:** Rust snapshot ingest, reads, save services, and IPC live in `src-tauri/src/features/snapshot/`; CSV persistence lives in `src-tauri/src/features/csv_import/service.rs`; current-only Search, Player, Planner, and Academy reads live in their corresponding Rust feature modules; Tauri command registration lives in `src-tauri/src/lib.rs`.
 - **Frontend surfaces:** Dashboard save and snapshot panels live in `src/features/snapshot/`; Load Data result handling lives in `src/features/memory-read/`; Dashboard cross-feature composition lives in `src/app/routes/index.tsx`; browser IPC stubs and product smoke live under `src/testing/` and `e2e/`.
-- **Data model:** schema v18 has `saves`, one partially unique current `snapshots` row per save, snapshot-owned players/staff/role scores/Moneyball rows, save-owned Planner/Academy/Youth data, and a save-owned legacy Moneyball quarantine.
-- **Persistence and migrations:** `src-tauri/src/db/migrations.rs` owns ordered SQLite migrations and upgrade tests. `snapshots.game_date`, `game_date_source`, `loaded_at_utc`, and snapshot-owned Moneyball rows already exist; snapshot custom names and immutable save/snapshot context tokens do not.
+- **Data model:** schema v19 has `saves`, one partially unique current `snapshots` row per save, immutable save/snapshot context tokens, optional snapshot custom names, snapshot-owned players/staff/role scores/Moneyball rows, save-owned Planner/Academy/Youth data, and a save-owned legacy Moneyball quarantine.
+- **Persistence and migrations:** `src-tauri/src/db/migrations.rs` owns ordered SQLite migrations and upgrade tests. `snapshots.game_date`, `game_date_source`, `loaded_at_utc`, custom names, immutable save/snapshot context tokens, and snapshot-owned Moneyball rows all exist.
 - **Existing behavioral assumptions:** successful ingest retains complete snapshots and selects one current row by the shared date comparator. All normal domain queries join the active save to `snapshots.is_current = 1`. CSV import captures and revalidates that current snapshot before writing: Moneyball is snapshot-scoped, while Youth enrichment remains save-scoped.
 - **Architectural seams:** Rust owns selection, transactions, validation, and destructive policy. React owns presentation and confirmation state. Route and app-shell composition own cross-feature query invalidation; snapshot feature code must not import query keys from sibling features.
 - **Project validation commands:** `./scripts/dev test`, `./scripts/dev check`, and `./scripts/dev smoke`. `./scripts/dev bridge-test` is not part of the planned feature gate because the bridge is unchanged.
@@ -108,7 +108,7 @@ Snapshot-feature mutations invalidate snapshot-owned queries locally and call a 
 - Existing successful ingest retains every complete snapshot and selects the shared date-order winner in the same transaction.
 - CSV import already captures and revalidates the active save and current snapshot. Youth enrichment remains save-scoped; new Moneyball rows are snapshot-scoped, while all v17 Moneyball rows remain unread in a save-scoped legacy quarantine.
 - The bridge dump contract permits `gameDate: null`; a non-null bridge date is documented as `YYYY-MM-DD`.
-- The feature branch is at migration v18; the base branch was clean at `b7b81d3e11c08bf660f19b9eef8ecadf0a08632e` with migration v17.
+- The feature branch is at migration v19; the base branch was clean at `b7b81d3e11c08bf660f19b9eef8ecadf0a08632e` with migration v17.
 
 ### Assumptions
 
@@ -375,6 +375,7 @@ Snapshot and save management is transaction-safe, exposes metadata only, and pre
 - 2026-08-11: The originally backlogged history item included browsing/selecting old snapshots. Product scope now limits this feature to persistence and management metadata; historical player views and development tracking remain deferred.
 - 2026-08-11: Plan review found that v17 stored no Moneyball source-snapshot identity and rows can outlive both their original snapshot and player membership. The migration now quarantines every v17 row as unread save-scoped legacy data instead of failing app startup, losing data, or inventing an association from current membership.
 - 2026-08-11: Plan review made two current-only interactions explicit: historical loads need a composed player-boost provenance regression, and only a snapshot that becomes current may create an automatic Academy class.
+- 2026-08-11: Migration v19 can backfill and preserve immutable context tokens with additive columns, unique indexes, and SQLite triggers, without rebuilding unrelated ownership tables.
 
 ## Completed work
 
