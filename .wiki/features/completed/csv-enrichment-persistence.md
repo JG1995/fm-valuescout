@@ -4,6 +4,8 @@
 
 Persist supported Youth Tracker and Moneyball CSV data that the memory pipeline does not supply, while keeping memory-backed player identity and fields authoritative. Transport the implemented Moneyball statistic catalogue and calculations from the pinned legacy repository into this repository.
 
+> **Current ownership note:** This record describes the migration v17 save-scoped contract delivered by this feature. [Snapshot History and Management](./snapshot-history.md) supersedes Moneyball ownership for new imports in migration v18: Moneyball rows now belong to `(snapshot_id, player_uid)`, while Youth career rows remain save-owned. Existing v17 Moneyball rows are preserved in the unread legacy quarantine.
+
 ## Delivered behavior
 
 - The Dashboard imports one supported Youth Tracker or Moneyball CSV into the active app save after a current memory snapshot is loaded.
@@ -11,13 +13,13 @@ Persist supported Youth Tracker and Moneyball CSV data that the memory pipeline 
 - Youth Tracker imports store all-time career appearances, goals, assists, and international caps for matching UIDs. Academy uses those values for career columns, aggregates, and graduate status.
 - Moneyball imports store the latest per-season asking price, starts, substitute appearances, minutes, and 138 canonical exported-or-derived statistics for matching UIDs. This feature adds no Moneyball analytics screen.
 - Re-importing replaces the complete row for each included matching UID in that format. Omitted matching players keep their prior enrichment, and the other format remains unchanged.
-- Enrichment survives current-snapshot replacement and app restart, remains isolated by app save, and is deleted with its owning save.
+- Youth career enrichment survives current-snapshot changes and app restart, remains isolated by app save, and is deleted with its owning save. New Moneyball imports are versioned per snapshot by the downstream history feature.
 - The import result reports the detected format, parsed-player total, stored count, and skipped count. The selected path and file contents are not returned, retained, or displayed.
 - Invalid, stale, or failed imports write nothing. Native picker cancellation remains a no-op.
 
 ## Final architecture
 
-- Migration v17 adds `player_youth_career_stats` and `player_moneyball_stats`, each keyed by `(save_id, player_uid)` and referencing `saves(id) ON DELETE CASCADE`. The tables do not reference snapshot-owned `players`, so current-snapshot replacement preserves enrichment while save deletion removes it.
+- Migration v17 adds `player_youth_career_stats` and `player_moneyball_stats`, each keyed by `(save_id, player_uid)` and referencing `saves(id) ON DELETE CASCADE`. This was the delivered persistence state recorded here; migration v18 later moves new Moneyball rows to snapshot/player ownership and quarantines the v17 rows without inferring a source snapshot.
 - Rust `features/csv_import` validates bounded regular UTF-8 CSV files, detects the established Youth Tracker and Moneyball dialects, preserves nulls, canonicalizes the Moneyball contract, and performs the import transaction. It captures the active save, current snapshot, and eligible UID set under a brief lock, parses outside the lock, revalidates the context in the write transaction, and upserts only matching rows.
 - Moneyball persistence stores one validated JSON object with the exact 138 canonical performance keys from the pinned legacy schema. Exported values remain authoritative except where the pinned implementation defines a fallback; derived values preserve null and zero boundaries and never emit non-finite numbers.
 - React `features/csv-import` owns the dialog-backed Dashboard import action, bounded result state, safe errors, and context-generation guards. It clears state on save or snapshot changes, never displays the selected path, and invalidates Academy only after a successful Youth Tracker import.
@@ -31,6 +33,8 @@ Persist supported Youth Tracker and Moneyball CSV data that the memory pipeline 
 - Store the large Moneyball contract as one canonical JSON object rather than 138 SQLite columns or one row per metric.
 - Do not add season identity, import history, or Moneyball presentation. A future history feature must define an explicit season contract before adding historical rows.
 - No ADR or debug report was required. The feature uses the existing Rust IPC, trust-boundary, SQLite ownership, and save-scoping decisions.
+
+The save-scoped Moneyball ownership decision above is historical. The current boundary is recorded in [Snapshot History and Management](./snapshot-history.md).
 
 ## Migration and operational implications
 
@@ -118,4 +122,5 @@ publication_correction_evidence: none
 ## Follow-up
 
 - Publish the final PR only when the branch is intentionally handed to the GitHub publication workflow. Do not publish or merge it during documentation reconciliation.
-- Revisit the [Moneyball history backlog item](../../BACKLOG.md) when season comparisons or trends become planned work. The current tables intentionally keep only the latest row per save, format, and player.
+- [Snapshot History and Management](./snapshot-history.md) supersedes the Moneyball row ownership described above for new imports; Youth career enrichment remains save-scoped.
+- Revisit the [Moneyball history backlog item](../../BACKLOG.md) when season comparisons or trends become planned work. Current Moneyball rows intentionally keep only the latest row per snapshot and player, with no season identity.

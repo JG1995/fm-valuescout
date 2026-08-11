@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Completed — documentation reconciled; ready for publication
 
 ## Intent
 
@@ -151,7 +151,7 @@ Snapshot-feature mutations invalidate snapshot-owned queries locally and call a 
 
 Load a later-dated dump and then an earlier-dated dump into one save. Both snapshot rows and their player sets survive, the later date remains `is_current`, the Load Data outcome explains that the earlier snapshot was stored without becoming latest, and Search still returns only players from the later snapshot. This proves the persistence, ordering, current-only read seam, and rollback-cleanup foundation before management and enrichment presentation are added.
 
-## Delivery plan
+## Historical delivery plan
 
 ### PR 1 — Retain and manage snapshot history
 
@@ -175,7 +175,7 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 
 **Required checks:** strict `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Complete
 
 **CI repair rounds:** 0
 
@@ -346,7 +346,7 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 - Verify CSV state and every current-only screen refresh against the new active/current identity.
 - Confirm no historical player view or manual current selector is exposed.
 
-## Active work
+## Historical active-work record
 
 **PR:** PR 1 — Retain and manage snapshot history
 
@@ -383,9 +383,9 @@ The Dashboard manages date-ordered snapshot metadata and destructive save/snapsh
 | PR 1 — Retain and manage snapshot history | Commit 1 — Retain snapshots by in-game date | 1be3dd4 | Retained complete snapshots with shared date selection, truthful Load Data metadata, and current-only compatibility. | Sol xhigh accepted after a focused timestamp-precedence test correction. | None |
 | PR 1 — Retain and manage snapshot history | Commit 2 — Version Moneyball data by snapshot | 730c812 | Migrated new Moneyball imports to snapshot/player ownership while quarantining all v17 rows by save. | Sol xhigh accepted. | None |
 | PR 1 — Retain and manage snapshot history | Commit 3 — Add snapshot and save management commands | 120c333 | Added immutable target tokens plus rename/delete commands, current promotion, and transactional save fallback/default recreation. | Sol xhigh accepted after rollback coverage for final-save replacement. | None |
-| PR 1 — Retain and manage snapshot history | Commit 4 — Manage snapshot history from the Dashboard | 55b2fd4 | Added Dashboard history management with accessible rename/delete flows and route-owned current-only refreshes. | Sol High accepted after one correction round. | None |
+| PR 1 — Retain and manage snapshot history | Commit 4 — Manage snapshot history from the Dashboard | 55b2fd4 | Added Dashboard history management with accessible rename/delete flows and route-owned current-only refreshes. | Sol High accepted after one correction round. | `b176d22` corrected duplicate destructive target naming and stale save-context Load Data feedback. |
 
-## Final validation
+## Historical final-validation contract
 
 **Feature review profile:** Sol xhigh — final review must cross-check data retention, two migrations, destructive cascades, current-only reads, CSV concurrency, cache invalidation, and bridge provenance across all commits.
 
@@ -407,13 +407,98 @@ Manual native evidence target:
 
 `./scripts/dev bridge-test` is not planned because no bridge source or protocol changes are in scope. Run it and replan if implementation crosses that boundary. `./scripts/dev mutate` remains unsupported and must not be reported as passed.
 
-## Documentation impact
+## Implementation and lifecycle refs
 
-Complete during feature reconciliation after implementation is true:
+The exact feature base is `b7b81d3e11c08bf660f19b9eef8ecadf0a08632e`. Planning commit `f9b817073becdac63c897fe4dfa599ac85dad9d5` is context only and is excluded from the implementation set. The implementation and correction history is:
 
-- Update `.wiki/ARCHITECTURE.md` with retained snapshots, authoritative date selection, new snapshot-owned Moneyball rows, the unread save-scoped v17 Moneyball quarantine and its save cascade, save-owned Youth enrichment, immutable context tokens, management commands, and current-only automatic Academy class creation on ingest and promotion without deleting existing save-scoped classes.
-- Update `.wiki/CONCEPT.md` so current-only product reads and snapshot persistence are no longer described as replace-only, while development analysis remains deferred.
-- Update `.wiki/DESIGN.md` with the implemented Dashboard snapshot/save management surface, destructive states, and date/name presentation. Keep profile history and comparison surfaces deferred.
-- Reconcile `.wiki/TODO.md`, the historical Moneyball backlog wording, and this ledger; move the condensed record to `.wiki/features/completed/` during `$workflow-finish-feature`.
-- Assess whether the completed CSV enrichment record needs a short supersession pointer without rewriting its historical delivered-state account.
-- No ADR is planned: the feature extends existing save/snapshot ownership and can record its durable boundary in current-state architecture. Replan if implementation requires a new cross-feature ownership mechanism or a different latest-selection policy.
+| Ref | Subject | Result |
+| --- | --- | --- |
+| `1be3dd464035c573980318e5140439faebec7d89` | `feat(snapshot): retain snapshots by in-game date` | Accepted after the focused timestamp-precedence correction. |
+| `730c812d7949cf37371ddf2e5f000b9a1670ab17` | `feat(import): version Moneyball data by snapshot` | Accepted. |
+| `120c3334443e278d965696948430661218e2896f` | `feat(snapshot): add history management commands` | Accepted after rollback coverage for final-save replacement. |
+| `55b2fd47d79294450030e8dd70f8cd4f6526cdb7` | `feat(snapshot): manage history from the Dashboard` | Accepted after the correction recorded below. |
+| `c048e1e04a7dccb9903ce39301768d54dab27eb5` | `docs(snapshot): record history implementation state` | Recorded Commit 4 as complete and moved the PR to the implementation-complete boundary. |
+| `b176d220b54f08cb3bdf93a58a7ad3434fb30c63` | `fix(snapshot): preserve history management context` | Reviewed correction: names duplicate destructive targets and binds Load Data feedback to immutable save identity. |
+
+## Delivery profiles
+
+| Ref | Implementation profile | Review profile |
+| --- | --- | --- |
+| `1be3dd4` | Terra Max | Sol xhigh |
+| `730c812` | Terra Max | Sol xhigh |
+| `120c333` | Terra Max | Sol xhigh |
+| `55b2fd4` | Terra xhigh | Sol High |
+
+The `b176d22` correction stayed within the Dashboard packet. It has no separate ledger-assigned profile.
+
+## Validation
+
+- `./scripts/dev format` passed.
+- `./scripts/dev test` passed.
+- `./scripts/dev check` passed; 355 Rust tests passed, 0 failed, and 2 were ignored.
+- `./scripts/dev smoke` passed 25 Playwright tests through the browser IPC stub.
+- `git diff --check b7b81d3e11c08bf660f19b9eef8ecadf0a08632e...HEAD` passed for the implementation set.
+- The migration, date/null/tie selector, rollback, token and row-ID-reuse, current-promotion, cascade, stale-context, Dashboard, and smoke proofs listed in the historical plan passed.
+- `./scripts/dev bridge-test` was not run. The only bridge-tree change was an existing fixture literal rename; no bridge behavior or protocol changed.
+- No real Windows/FM26, Tauri WebView, native dialog, or SQLite-file integration was run. Browser IPC stubs and Rust tests do not prove that native path. Repowise refresh was unavailable or stalled, so no indexed evidence is claimed.
+- The initial Sol xhigh feature review found duplicate destructive target naming, stale save-context Load Data feedback, and a missing Commit 4 ledger reference. The `b176d22` correction review passed with no retained findings.
+- `./scripts/dev mutate` remains unsupported and was not reported as passed.
+
+## Final publication
+
+```yaml
+status: ready_for_publication
+pr_status: not_published
+merge_status: not_merged
+pr_ref: "Not published"
+merge_ref: "Not merged"
+branch: feature/snapshot-history
+base_branch: main
+provisional_pr_title: "feat(snapshot): retain and manage snapshot history"
+publication_provider: GitHub
+pr_template: .github/pull_request_template.md
+merge_method: squash
+required_checks: strict_check
+build_feature_loop_profile: terra_max
+feature_close_out: current
+feature_review_profile: sol_xhigh
+feature_review_blocking: false
+feature_review_critical: none
+feature_review_high: none
+feature_review_medium: none
+feature_review_nitpick: none
+project_fit: conforms
+feature_review_action: skip
+feature_review_recommendation: accept
+ci_repair_rounds: 0
+base_ref: b7b81d3e11c08bf660f19b9eef8ecadf0a08632e
+implementation_range: "base ref plus the four content refs and reviewed correction below; planning f9b8170 excluded"
+implementation_refs:
+  - 1be3dd464035c573980318e5140439faebec7d89
+  - 730c812d7949cf37371ddf2e5f000b9a1670ab17
+  - 120c3334443e278d965696948430661218e2896f
+  - 55b2fd47d79294450030e8dd70f8cd4f6526cdb7
+correction_ref: b176d220b54f08cb3bdf93a58a7ad3434fb30c63
+correction_summary: "Named duplicate destructive targets and cleared stale Load Data feedback after save replacement by binding it to the immutable save context."
+lifecycle_ref: c048e1e04a7dccb9903ce39301768d54dab27eb5
+close_out_documentation_ref: Pending record
+publication_correction_evidence: b176d220b54f08cb3bdf93a58a7ad3434fb30c63
+```
+
+## Documentation reconciliation
+
+- `.wiki/ARCHITECTURE.md` records schema v19, retained snapshots, the shared date selector, snapshot-owned Moneyball data, the v17 quarantine, immutable context tokens, management commands, and current-only invalidation.
+- `.wiki/CONCEPT.md` records retained snapshots and the latest-only product boundary; historical browsing and development comparison remain out of scope.
+- `.wiki/DESIGN.md` records the Dashboard history and save-management surface, date/name presentation, and destructive interaction states.
+- `.wiki/TODO.md` moves this feature from Active to Completed. `.wiki/BACKLOG.md` retains only deferred historical comparison and season work with current ownership wording.
+- Existing CSV and snapshot completion records carry narrow downstream pointers; no ADR or debug report is justified.
+
+## Feature close-out
+
+**State:** Current. The exact implementation and correction set passed final validation and the Sol xhigh feature review. The final PR remains unpublished and unmerged. Native Windows/FM26/WebView/SQLite integration remains an explicit manual risk.
+
+## Follow-up
+
+- Publish the final PR only when the branch is intentionally handed to the GitHub publication workflow. Do not publish or merge it during documentation reconciliation.
+- Revisit [historical player development and snapshot comparison](../../BACKLOG.md) when historical player reads or comparisons become planned work. Current product queries remain latest-only.
+- Revisit [historical Moneyball seasons](../../BACKLOG.md) when season identity and import-history rules are defined. Moneyball is snapshot-versioned now, but season history is not implemented.
