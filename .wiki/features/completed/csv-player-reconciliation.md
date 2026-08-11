@@ -29,14 +29,14 @@ Add a safe, reusable parser for the established Youth Tracker and Moneyball Foot
 - Parse in Rust at the trust boundary and return only bounded summaries, following [ADR 0014 — Rust backend and IPC trust boundary](../../decisions/0014-rust-backend-ipc-boundary.md).
 - Keep file reads and parsing outside the SQLite mutex, and revalidate the captured save and snapshot before reporting matches.
 - Reject duplicate UIDs and malformed populated values. Do not coerce missing or malformed statistics to zero.
-- Keep parsed rows ephemeral. CSV persistence, source precedence, provenance, retention, and calculations for statistics absent from exports remain a separate follow-up.
+- Keep parsed rows ephemeral in this preview. Save-scoped enrichment, source precedence, provenance, and latest-row replacement are delivered in [CSV enrichment persistence and derived statistics](./csv-enrichment-persistence.md); this record remains the non-mutating parser and reconciliation foundation.
 - No new ADR or debug report was needed. The feature uses the existing Rust-owned SQLite boundary from [ADR 0015 — SQLite with Rust-owned migrations and queries](../../decisions/0015-sqlite-rust-owned.md) without changing persistence.
 
 ## Migration and operational implications
 
 - No database migration, table, write path, cache overlay, or retained import state was added. Existing snapshots, Planner rows, Academy rows, and schema version remain unchanged after success or failure.
 - The selected file stays local and is read only for the preview command. The command enforces the regular-file, extension, UTF-8, byte, and row limits before returning a result.
-- A future CSV enrichment feature must design persistence and derived Moneyball statistics together, preserve memory-backed values when both sources provide a field, and decide provenance, replacement, retention, and consumers before adding a schema or read model.
+- The delivered [CSV enrichment persistence and derived statistics](./csv-enrichment-persistence.md) adds save-scoped persistence and canonical Moneyball calculations while preserving the parser's bounded, non-mutating contract. Historical season identity and retention remain a separate backlog item.
 
 ## Validation
 
@@ -117,5 +117,5 @@ publication_correction_evidence: 6f88ae29e80a5561dc28d54125bef807fa5211ec
 ## Follow-up
 
 - Keep draft [PR #40](https://github.com/JG1995/fm-valuescout/pull/40) unmerged until it is ready for review and the required checks pass.
-- Plan **CSV enrichment persistence and derived statistics** separately. Define save-scoped storage, provenance, retention, source replacement, memory-over-CSV precedence, and user-visible consumers before implementation.
-- Add calculations for Moneyball statistics that are absent from the exports only in that follow-up; this feature remains parsing and non-mutating reconciliation only.
+- **Delivered downstream:** [CSV enrichment persistence and derived statistics](./csv-enrichment-persistence.md) adds save-scoped storage, memory-over-CSV precedence, per-player replacement, and the implemented Moneyball calculations. This feature remains parsing and non-mutating reconciliation only.
+- Keep historical Moneyball seasons and import history in the [backlog](../../BACKLOG.md) until season identity and retention rules are defined.

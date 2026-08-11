@@ -2,14 +2,14 @@
 
 ## Intent
 
-Track save-scoped youth cohorts from the configured Planner club family across snapshot refreshes. Keep unsupported career statistics unavailable until the memory reader supplies them, and let the user record the sale or release outcomes that only the user knows.
+Track save-scoped youth cohorts from the configured Planner club family across snapshot refreshes. Keep career statistics nullable until a supported enrichment source supplies them, and let the user record the sale or release outcomes that only the user knows.
 
 ## Delivered behavior
 
 - The navigation rail opens `/academy` for the active app save. URL-backed workspaces provide **Overview**, **Graduates**, and **Class** views.
 - Every save has one protected automatic `Class of 2025`. A successful snapshot with a valid trusted (`memory` or `derived`) in-game year at or after 2025 creates that year once. Users can create a unique custom class year. Automatic classes cannot be deleted; custom classes require confirmation before deletion. Classes render from oldest to newest by numeric year.
 - **Add players** searches only current-snapshot players whose exact `current_club` appears in the configured Planner club family. A player UID can belong to one Academy class per save. Memberships keep the UID and last-known name across snapshot replacement, club-family departure, and unresolved current-snapshot records.
-- Overview and class detail show current-snapshot identity fields and supported aggregates. Reader-owned senior appearances, goals, assists, international caps, and dependent aggregates remain `—` with an unavailable explanation. A graduate is defined as a player with at least one senior league appearance; the Graduates view remains intentionally unavailable until that field exists.
+- Overview and class detail show current-snapshot identity fields and supported aggregates. Reader-owned senior appearances, goals, assists, international caps, and dependent aggregates remain nullable when no enrichment is available, with an unavailable explanation. A graduate is defined as a player with at least one reported career appearance; Youth Tracker enrichment can now supply that field without changing memory-backed identity.
 - Users can record a tracked player as **Sold** with a buying club and non-negative euro fee, mark a player **Released**, restore either outcome to **Still at club**, or remove a mistaken membership. Class rosters group members into Still at club, Sold, and Released sections. Manual outcomes persist independently of snapshot data and remain visible for departed or unresolved members.
 - Outcome metrics receive primary visual hierarchy while setup counts remain supporting context. Sold and released states use text and icons as well as colour. Loading, error, no-snapshot, no-club-family, no-class, and incomplete-class states retain an actionable recovery path.
 - A class view with existing classes but no class identifier, or with an identifier that does not match a listed class, recovers to Overview. Save switching and Load Data refresh the Academy query root with the other save-scoped features.
@@ -44,7 +44,7 @@ React does not access SQLite or recreate persistence, eligibility, graduation, o
 
 - Academy reuses the Rust Planner club-family service. The Academy page does not duplicate club configuration, and `team_level` does not decide candidate eligibility.
 - Classes, memberships, and manual outcomes are save-scoped rather than snapshot-scoped. Snapshot replacement updates live projections but never deletes class history.
-- The memory bridge is unchanged. Reader-owned career fields remain nullable and visibly unavailable; sale and release are explicit user-owned facts.
+- The memory bridge is unchanged. Reader-owned career fields remain nullable and visibly unavailable when no enrichment row exists; the later [CSV enrichment persistence](./csv-enrichment-persistence.md) feature can supply those values by save and UID without changing memory-backed identity. Sale and release remain explicit user-owned facts.
 - Automatic generation creates only the fixed 2025 baseline and years observed in successful snapshots. It does not invent intermediate years. A matching manual class keeps its identifier and memberships and is promoted to automatic when the observed year is trusted.
 - The implementation stays within existing Rust IPC, SQLite, save-scoping, and Planner boundaries, so no ADR is required.
 
@@ -75,6 +75,6 @@ React does not access SQLite or recreate persistence, eligibility, graduation, o
 
 ## Follow-up
 
-- Add memory-reader support for senior league appearances, goals, assists, and international caps. Until then, keep the existing `—` states and explanations.
+- The memory bridge still does not emit senior league appearances, goals, assists, or international caps. Youth Tracker CSV enrichment supplies these values for matching UIDs; add memory-reader support only if direct live-memory career data becomes a product requirement.
 - Add a populated Academy fixture to browser smoke or a full real-browser journey when that validation path exists.
-- CSV/HTML import, historical trends, transfer timelines, charts, notes, class renaming, bulk reassignment, and bridge schema changes remain out of scope.
+- Historical CSV imports, HTML import, trends, transfer timelines, charts, notes, class renaming, bulk reassignment, and bridge schema changes remain out of scope.

@@ -26,7 +26,7 @@ ValueScout solves this with four pillars tied to how FM players actually work:
 
 Load the current game world from a running FM26 session. One action refreshes clubs, squads, contracts, and attributes to match what is in memory. The primary workflow needs no manual export step. Snapshots are explicit (you click **Load Data** when you want fresh data), which keeps the model simple and predictable.
 
-An optional Dashboard preview checks the player IDs in supported Youth Tracker and Moneyball CSV exports against the current snapshot. The preview is transient and does not import, save, or replace live memory data.
+An optional Dashboard import supplements the current snapshot with supported Youth Tracker and Moneyball CSV values that the memory pipeline does not supply. Imports use exact numeric player IDs, stay scoped to the active app save, and never create players or replace live memory data.
 
 The app supports multiple **save slots** (separate scouting databases—for example, different FM careers). Exactly one slot is active; **Load Data** refreshes that slot's current snapshot only. Slots are app-side labels, not FM save files.
 
@@ -58,13 +58,13 @@ Given your tactic, optimize the lineup to maximize combined team score across po
 | --- | --- | --- |
 | **FM Genie Scout** | Mature scouting database, familiar to the community | Live FM26 memory snapshot; integrated squad planner and optimizer tied to your tactic |
 | **FM SuperScout** | Scouting-focused companion features | Role scoring plus squad optimization in one workflow; offline desktop app |
-| **Spreadsheets** | Full control, custom formulas | Live snapshots stay in sync with the loaded game world; an optional CSV preview checks exported player IDs without importing data |
+| **Spreadsheets** | Full control, custom formulas | Live snapshots stay in sync with the loaded game world; an optional CSV import supplements supported exported values without replacing memory-backed data |
 | **In-game FM UI** | Official, immersive, always current while playing | Searchable DB, cross-player role ranking, and lineup optimizer FM does not provide |
 
 ## Core Principles
 
 1. **Offline-first:** Core use works without network access. Online connectivity is only for app updates.
-2. **Live game as source of truth:** Data comes from the running FM26 session via memory read. The optional CSV preview checks identity only and never becomes a parallel data source.
+2. **Live game as source of truth:** Data comes from the running FM26 session via memory read. Supported CSV imports supplement only values the memory pipeline does not provide and never become a parallel identity source.
 3. **Explicit refresh:** The user loads data when they want a new snapshot—after signings, sales, or weekly progression—not silent background sync.
 4. **One scoring model:** The same position and role scores drive search, profiles, squad planning, and optimization.
 5. **Companion, not replacement:** Decisions (bids, contracts, team selection) happen in FM; ValueScout informs them.
@@ -91,14 +91,14 @@ A week later in-game, the signing completes. You click **Load Data** again. The 
 - Transfer search with sort/filter by role scores
 - Squad planner aligned to the user's tactic
 - Squad optimizer that maximizes combined team score for the tactic
-- Optional, non-persistent preview of supported Youth Tracker and Moneyball CSV player IDs against the current memory snapshot
+- Optional supported Youth Tracker and Moneyball CSV enrichment import matched to the current memory snapshot; imported career data can feed Youth Academy views
 - Offline use; online only for application updates
 
 ### Out of Scope (MVP)
 
 - FM editions other than FM26
 - Save-file import or parsing as an alternative data source
-- Persisted CSV enrichment or calculations for statistics that are absent from the exports
+- Historical Moneyball seasons, import snapshots, season selection, trends, comparisons, and analytics beyond the supported latest-row contract
 - Automatic or background sync while FM runs (refresh is manual)
 - Accounts, cloud sync, or multi-user collaboration
 - Executing transfers or general edits inside FM from the app. The only accepted exception is the two action-specific player boosts in [ADR-0017](./decisions/0017-action-specific-fm26-player-boosts.md). Those two fixed actions are implemented; transfers and general editing remain out of scope.
