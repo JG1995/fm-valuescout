@@ -1,27 +1,12 @@
-type SaveSummary = {
-  id: number;
-  name: string;
-  isActive: boolean;
-  createdAtUtc: string;
-  updatedAtUtc: string;
-};
+import type { SaveDeleteResult } from "@/features/snapshot/api/delete-save";
+import type { SaveSummary } from "@/features/snapshot/types/save";
+import type {
+  SnapshotDeleteResult,
+  SnapshotMetadata,
+  SnapshotSummary,
+} from "@/features/snapshot/types/snapshot";
 
-type SnapshotSummary = {
-  id: number;
-  saveId: number;
-  schemaVersion: number;
-  generatedAtUtc: string;
-  gameVersion: string;
-  supportedGameVersion: string;
-  bridgeVersion: string;
-  protocolVersion: number;
-  gameDate: string | null;
-  gameDateSource: string;
-  scanTruncated: boolean;
-  maxAccepted: number | null;
-  playerCount: number;
-  loadedAtUtc: string;
-};
+export type { SnapshotMetadata } from "@/features/snapshot/types/snapshot";
 
 type PlayerSanityRow = {
   name: string;
@@ -53,8 +38,11 @@ export type LoadDataIpcMockMode =
   | "ingestFailed"
   | "busy";
 
+export type SnapshotManagementIpcMockMode = "success" | "failure" | "busy";
+
 const DEFAULT_SAVE: SaveSummary = {
   id: 1,
+  contextToken: "save-token-1",
   name: "Default save",
   isActive: true,
   createdAtUtc: "2026-07-28T12:00:00.000Z",
@@ -72,11 +60,19 @@ const snapshotsBySaveId = new Map<
   number,
   { snapshot: SnapshotSummary; players: PlayerSanityRow[] }
 >();
+let snapshotHistory: SnapshotMetadata[] = [];
 let loadDataMode: LoadDataIpcMockMode = "success";
+let snapshotDeleteMode: SnapshotManagementIpcMockMode = "success";
+let snapshotRenameMode: SnapshotManagementIpcMockMode = "success";
 let lastLoadDataArgs: unknown;
+let lastSnapshotManagementArgs: unknown;
 let busyDeferred: {
   promise: Promise<LoadDataResult>;
   resolve: (value: LoadDataResult) => void;
+} | null = null;
+let busySnapshotDeleteDeferred: {
+  promise: Promise<SnapshotDeleteResult>;
+  resolve: (value: SnapshotDeleteResult) => void;
 } | null = null;
 let nextSaveId = 2;
 let nextSnapshotId = 1;
@@ -125,22 +121,130 @@ function activeSave() {
   return saves.find((save) => save.isActive) ?? saves[0];
 }
 
+function historySnapshotState(snapshot: SnapshotMetadata) {
+  return {
+    snapshot: buildSnapshot({
+      id: snapshot.id,
+      saveId: snapshot.saveId,
+      gameDate: snapshot.gameDate,
+      gameDateSource: snapshot.gameDateSource,
+      playerCount: snapshot.playerCount,
+      loadedAtUtc: snapshot.loadedAtUtc,
+    }),
+    players: [
+      {
+        name: `Snapshot ${snapshot.id} player`,
+        ca: snapshot.playerCount,
+        club: `Snapshot ${snapshot.id} FC`,
+        proofRoleScore: snapshot.playerCount,
+      },
+    ],
+  };
+}
+
 function activeSaveSnapshot() {
-  return snapshotsBySaveId.get(activeSave().id) ?? null;
+  const storedSnapshot = snapshotsBySaveId.get(activeSave().id) ?? null;
+  const currentHistorySnapshot = snapshotHistory.find(
+    (snapshot) => snapshot.saveId === activeSave().id && snapshot.isCurrent,
+  );
+  if (
+    currentHistorySnapshot &&
+    storedSnapshot?.snapshot.id === currentHistorySnapshot.id
+  ) {
+    return storedSnapshot;
+  }
+  return currentHistorySnapshot
+    ? historySnapshotState(currentHistorySnapshot)
+    : storedSnapshot;
+}
+
+function snapshotOrder(left: SnapshotMetadata, right: SnapshotMetadata) {
+  if (left.gameDate === null && right.gameDate !== null) {
+    return 1;
+  }
+  if (left.gameDate !== null && right.gameDate === null) {
+    return -1;
+  }
+  if (left.gameDate !== right.gameDate) {
+    return (right.gameDate ?? "").localeCompare(left.gameDate ?? "");
+  }
+  if (left.loadedAtUtc !== right.loadedAtUtc) {
+    return right.loadedAtUtc.localeCompare(left.loadedAtUtc);
+  }
+  return right.id - left.id;
+}
+
+function copySnapshotMetadata(snapshot: SnapshotMetadata): SnapshotMetadata {
+  return { ...snapshot };
+}
+
+function snapshotsForSave(saveId: number) {
+  return snapshotHistory
+    .filter((snapshot) => snapshot.saveId === saveId)
+    .sort(snapshotOrder);
+}
+
+function promoteCurrentSnapshot(saveId: number) {
+  const nextCurrent = snapshotsForSave(saveId)[0] ?? null;
+  snapshotHistory = snapshotHistory.map((snapshot) =>
+    snapshot.saveId === saveId
+      ? { ...snapshot, isCurrent: snapshot.id === nextCurrent?.id }
+      : snapshot,
+  );
+  return nextCurrent?.id ?? null;
+}
+
+function parseSnapshotMutationArgs(args: unknown) {
+  const snapshotId =
+    typeof args === "object" && args !== null && "snapshotId" in args
+      ? Number(args.snapshotId)
+      : NaN;
+  const contextToken =
+    typeof args === "object" && args !== null && "contextToken" in args
+      ? args.contextToken
+      : null;
+  return {
+    snapshotId,
+    contextToken: typeof contextToken === "string" ? contextToken : "",
+  };
+}
+
+function parseSaveDeleteArgs(args: unknown) {
+  const saveId =
+    typeof args === "object" && args !== null && "saveId" in args
+      ? Number(args.saveId)
+      : NaN;
+  const contextToken =
+    typeof args === "object" && args !== null && "contextToken" in args
+      ? args.contextToken
+      : null;
+  return {
+    saveId,
+    contextToken: typeof contextToken === "string" ? contextToken : "",
+  };
 }
 
 export function resetSnapshotIpcMock() {
   saves = [{ ...DEFAULT_SAVE }];
   snapshotsBySaveId.clear();
+  snapshotHistory = [];
   loadDataMode = "success";
+  snapshotDeleteMode = "success";
+  snapshotRenameMode = "success";
   lastLoadDataArgs = undefined;
+  lastSnapshotManagementArgs = undefined;
   busyDeferred = null;
+  busySnapshotDeleteDeferred = null;
   nextSaveId = 2;
   nextSnapshotId = 1;
 }
 
 export function getLastLoadDataIpcArgs() {
   return lastLoadDataArgs;
+}
+
+export function getLastSnapshotManagementIpcArgs() {
+  return lastSnapshotManagementArgs;
 }
 
 export function setLoadDataIpcMockMode(mode: LoadDataIpcMockMode) {
@@ -150,9 +254,45 @@ export function setLoadDataIpcMockMode(mode: LoadDataIpcMockMode) {
   }
 }
 
+export function setSnapshotHistoryIpcMock(snapshots: SnapshotMetadata[]) {
+  snapshotHistory = snapshots.map(copySnapshotMetadata);
+  nextSnapshotId = Math.max(
+    nextSnapshotId,
+    ...snapshotHistory.map((snapshot) => snapshot.id + 1),
+  );
+}
+
+export function setSnapshotDeleteIpcMockMode(
+  mode: SnapshotManagementIpcMockMode,
+) {
+  snapshotDeleteMode = mode;
+  if (mode !== "busy") {
+    busySnapshotDeleteDeferred = null;
+  }
+}
+
+export function setSnapshotRenameIpcMockMode(
+  mode: SnapshotManagementIpcMockMode,
+) {
+  snapshotRenameMode = mode;
+}
+
 export function resolveBusyLoadDataRequest(result?: LoadDataResult) {
   busyDeferred?.resolve(result ?? buildLoadDataResult());
   busyDeferred = null;
+}
+
+export function resolveBusySnapshotDeleteRequest(
+  result?: SnapshotDeleteResult,
+) {
+  busySnapshotDeleteDeferred?.resolve(
+    result ?? {
+      deletedSnapshotId: 0,
+      saveId: 0,
+      currentSnapshotId: null,
+    },
+  );
+  busySnapshotDeleteDeferred = null;
 }
 
 export function resolveListSavesIpcMock() {
@@ -160,6 +300,14 @@ export function resolveListSavesIpcMock() {
     saves = [{ ...DEFAULT_SAVE }];
   }
   return saves.map((save) => ({ ...save }));
+}
+
+export function resolveListSnapshotsIpcMock(args: unknown) {
+  const saveId =
+    typeof args === "object" && args !== null && "saveId" in args
+      ? Number(args.saveId)
+      : activeSave().id;
+  return snapshotsForSave(saveId).map(copySnapshotMetadata);
 }
 
 export function resolveGetCurrentSnapshotIpcMock() {
@@ -187,6 +335,7 @@ export function resolveCreateSaveIpcMock(args: unknown) {
 
   const created: SaveSummary = {
     id: nextSaveId,
+    contextToken: `save-token-${nextSaveId}`,
     name,
     isActive: false,
     createdAtUtc: "2026-07-28T16:00:00.000Z",
@@ -251,6 +400,129 @@ export function resolveSetActiveSaveIpcMock(args: unknown) {
   return saves.find((save) => save.id === saveId) ?? target;
 }
 
+export function resolveRenameSnapshotIpcMock(args: unknown) {
+  lastSnapshotManagementArgs = args;
+  if (snapshotRenameMode === "failure") {
+    throw "Snapshot rename failed";
+  }
+
+  const { snapshotId, contextToken } = parseSnapshotMutationArgs(args);
+  const customName =
+    typeof args === "object" && args !== null && "customName" in args
+      ? args.customName
+      : null;
+  if (customName !== null && typeof customName !== "string") {
+    throw "Snapshot name is invalid";
+  }
+
+  const index = snapshotHistory.findIndex(
+    (snapshot) =>
+      snapshot.id === snapshotId && snapshot.contextToken === contextToken,
+  );
+  if (index < 0) {
+    throw "Snapshot changed or no longer exists";
+  }
+
+  const updated = {
+    ...snapshotHistory[index],
+    customName: customName?.trim() || null,
+  };
+  snapshotHistory = snapshotHistory.map((snapshot, currentIndex) =>
+    currentIndex === index ? updated : snapshot,
+  );
+  return copySnapshotMetadata(updated);
+}
+
+export function resolveDeleteSnapshotIpcMock(
+  args: unknown,
+): Promise<SnapshotDeleteResult> {
+  lastSnapshotManagementArgs = args;
+  if (snapshotDeleteMode === "failure") {
+    return Promise.reject("Snapshot deletion failed");
+  }
+
+  const { snapshotId, contextToken } = parseSnapshotMutationArgs(args);
+  const target = snapshotHistory.find(
+    (snapshot) =>
+      snapshot.id === snapshotId && snapshot.contextToken === contextToken,
+  );
+  if (!target) {
+    return Promise.reject("Snapshot changed or no longer exists");
+  }
+
+  const deleteSnapshot = () => {
+    snapshotHistory = snapshotHistory.filter(
+      (snapshot) => snapshot.id !== target.id,
+    );
+    const currentSnapshotId = target.isCurrent
+      ? promoteCurrentSnapshot(target.saveId)
+      : (snapshotsForSave(target.saveId).find((snapshot) => snapshot.isCurrent)
+          ?.id ?? null);
+    return {
+      deletedSnapshotId: target.id,
+      saveId: target.saveId,
+      currentSnapshotId,
+    };
+  };
+
+  if (snapshotDeleteMode === "busy") {
+    if (!busySnapshotDeleteDeferred) {
+      let resolve!: (value: SnapshotDeleteResult) => void;
+      const promise = new Promise<SnapshotDeleteResult>((res) => {
+        resolve = res;
+      });
+      busySnapshotDeleteDeferred = { promise, resolve };
+    }
+    return busySnapshotDeleteDeferred.promise;
+  }
+
+  return Promise.resolve(deleteSnapshot());
+}
+
+export function resolveDeleteSaveIpcMock(args: unknown): SaveDeleteResult {
+  lastSnapshotManagementArgs = args;
+  const { saveId, contextToken } = parseSaveDeleteArgs(args);
+  const target = saves.find(
+    (save) => save.id === saveId && save.contextToken === contextToken,
+  );
+  if (!target) {
+    throw "Save changed or no longer exists";
+  }
+
+  saves = saves.filter((save) => save.id !== target.id);
+  snapshotHistory = snapshotHistory.filter(
+    (snapshot) => snapshot.saveId !== target.id,
+  );
+  snapshotsBySaveId.delete(target.id);
+
+  if (target.isActive) {
+    const fallback = saves[0];
+    if (fallback) {
+      saves = saves.map((save) => ({
+        ...save,
+        isActive: save.id === fallback.id,
+      }));
+    } else {
+      const replacement: SaveSummary = {
+        id: nextSaveId,
+        contextToken: `save-token-${nextSaveId}`,
+        name: "Default save",
+        isActive: true,
+        createdAtUtc: "2026-07-28T16:20:00.000Z",
+        updatedAtUtc: "2026-07-28T16:20:00.000Z",
+      };
+      nextSaveId += 1;
+      saves = [replacement];
+    }
+  }
+
+  return {
+    deletedSaveId: target.id,
+    deletedWasActive: target.isActive,
+    activeSave: { ...activeSave() },
+  };
+}
+
 export function resolveLoadDataIpcMock(
   args?: unknown,
 ): Promise<LoadDataResult> {
@@ -302,6 +574,26 @@ export function resolveLoadDataIpcMock(
     snapshot: result.effectiveSnapshot,
     players,
   });
+  snapshotHistory = [
+    ...snapshotHistory
+      .filter((snapshot) => snapshot.id !== result.effectiveSnapshot.id)
+      .map((snapshot) =>
+        snapshot.saveId === result.effectiveSnapshot.saveId
+          ? { ...snapshot, isCurrent: false }
+          : snapshot,
+      ),
+    {
+      id: result.effectiveSnapshot.id,
+      contextToken: `snapshot-token-${result.effectiveSnapshot.id}`,
+      saveId: result.effectiveSnapshot.saveId,
+      customName: null,
+      gameDate: result.effectiveSnapshot.gameDate,
+      gameDateSource: result.effectiveSnapshot.gameDateSource,
+      playerCount: result.effectiveSnapshot.playerCount,
+      loadedAtUtc: result.effectiveSnapshot.loadedAtUtc,
+      isCurrent: true,
+    },
+  ];
   nextSnapshotId += 1;
 
   return Promise.resolve(result);

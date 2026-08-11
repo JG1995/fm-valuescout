@@ -63,12 +63,17 @@ import {
 import {
   resetSnapshotIpcMock,
   resolveBusyLoadDataRequest,
+  resolveBusySnapshotDeleteRequest,
   resolveCreateSaveIpcMock,
+  resolveDeleteSaveIpcMock,
+  resolveDeleteSnapshotIpcMock,
   resolveGetCurrentSnapshotIpcMock,
   resolveListSanityPlayersIpcMock,
   resolveListSavesIpcMock,
+  resolveListSnapshotsIpcMock,
   resolveLoadDataIpcMock,
   resolveRenameSaveIpcMock,
+  resolveRenameSnapshotIpcMock,
   resolveSetActiveSaveIpcMock,
   setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
@@ -119,6 +124,22 @@ function registerIpcMocks() {
 
     if (cmd === "set_active_save") {
       return resolveSetActiveSaveIpcMock(args);
+    }
+
+    if (cmd === "list_snapshots") {
+      return resolveListSnapshotsIpcMock(args);
+    }
+
+    if (cmd === "rename_snapshot") {
+      return resolveRenameSnapshotIpcMock(args);
+    }
+
+    if (cmd === "delete_snapshot") {
+      return resolveDeleteSnapshotIpcMock(args);
+    }
+
+    if (cmd === "delete_save") {
+      return resolveDeleteSaveIpcMock(args);
     }
 
     if (cmd === "get_current_snapshot") {
@@ -270,6 +291,7 @@ registerIpcMocks();
 afterEach(() => {
   resolveBusyDumpRequest();
   resolveBusyLoadDataRequest();
+  resolveBusySnapshotDeleteRequest();
   resolveBusyCsvImportRequest();
   cleanup();
   clearMocks();

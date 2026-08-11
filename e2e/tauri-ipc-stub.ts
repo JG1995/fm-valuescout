@@ -5,6 +5,7 @@ type SmokeStubOptions = {
   plannerSnapshot?: boolean;
   plannerPotentialScores?: boolean;
   playerProfile?: boolean;
+  snapshotHistory?: boolean;
 };
 
 export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
@@ -12,6 +13,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const plannerSnapshot = options.plannerSnapshot ?? false;
   const plannerPotentialScores = options.plannerPotentialScores ?? false;
   const playerProfile = options.playerProfile ?? false;
+  const snapshotHistory = options.snapshotHistory ?? false;
   await page.addInitScript({
     content: `
       let demoValue = "";
@@ -20,6 +22,86 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
       const plannerPotentialScores = ${plannerPotentialScores ? "true" : "false"};
       const playerProfile = ${playerProfile ? "true" : "false"};
+      const snapshotHistoryEnabled = ${snapshotHistory ? "true" : "false"};
+      let nextSaveId = 2;
+      let saves = [{
+        id: 1,
+        contextToken: "save-token-1",
+        name: "Default save",
+        isActive: true,
+        createdAtUtc: "2026-07-28T12:00:00.000Z",
+        updatedAtUtc: "2026-07-28T12:00:00.000Z",
+      }];
+      let snapshots = snapshotHistoryEnabled ? [
+        {
+          id: 1,
+          contextToken: "snapshot-token-1",
+          saveId: 1,
+          customName: null,
+          gameDate: "2026-06-01",
+          gameDateSource: "inGame",
+          playerCount: 21,
+          loadedAtUtc: "2026-07-28T13:00:00.000Z",
+          isCurrent: false,
+        },
+        {
+          id: 2,
+          contextToken: "snapshot-token-2",
+          saveId: 1,
+          customName: null,
+          gameDate: "2026-08-01",
+          gameDateSource: "inGame",
+          playerCount: 24,
+          loadedAtUtc: "2026-07-28T15:00:00.000Z",
+          isCurrent: true,
+        },
+      ] : [];
+      const activeSave = () => saves.find((save) => save.isActive) || saves[0];
+      const snapshotOrder = (left, right) => {
+        if (left.gameDate === null && right.gameDate !== null) return 1;
+        if (left.gameDate !== null && right.gameDate === null) return -1;
+        if (left.gameDate !== right.gameDate) {
+          return (right.gameDate || "").localeCompare(left.gameDate || "");
+        }
+        if (left.loadedAtUtc !== right.loadedAtUtc) {
+          return right.loadedAtUtc.localeCompare(left.loadedAtUtc);
+        }
+        return right.id - left.id;
+      };
+      const snapshotsForSave = (saveId) => snapshots
+        .filter((snapshot) => snapshot.saveId === saveId)
+        .sort(snapshotOrder);
+      const promoteCurrentSnapshot = (saveId) => {
+        const next = snapshotsForSave(saveId)[0] || null;
+        snapshots = snapshots.map((snapshot) => snapshot.saveId === saveId
+          ? { ...snapshot, isCurrent: snapshot.id === next?.id }
+          : snapshot);
+        return next?.id || null;
+      };
+      const currentSnapshot = () => snapshotsForSave(activeSave().id)
+        .find((snapshot) => snapshot.isCurrent) || null;
+      const snapshotSummary = (snapshot) => ({
+        id: snapshot.id,
+        saveId: snapshot.saveId,
+        schemaVersion: 6,
+        generatedAtUtc: snapshot.loadedAtUtc,
+        gameVersion: "26.0.0",
+        supportedGameVersion: "26.0.0",
+        bridgeVersion: "0.1.0",
+        protocolVersion: 1,
+        gameDate: snapshot.gameDate,
+        gameDateSource: snapshot.gameDateSource,
+        scanTruncated: false,
+        maxAccepted: null,
+        playerCount: snapshot.playerCount,
+        loadedAtUtc: snapshot.loadedAtUtc,
+      });
+      const snapshotSanityPlayers = (snapshot) => [{
+        name: "Snapshot " + snapshot.id + " player",
+        ca: snapshot.playerCount,
+        club: "Snapshot " + snapshot.id + " FC",
+        proofRoleScore: snapshot.playerCount,
+      }];
       const plannerTactic = {
         lanes: [
           ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
@@ -107,48 +189,121 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "list_saves") {
-            return [
-              {
-                id: 1,
-                name: "Default save",
-                isActive: true,
-                createdAtUtc: "2026-07-28T12:00:00.000Z",
-                updatedAtUtc: "2026-07-28T12:00:00.000Z",
-              },
-            ];
+            return saves.map((save) => ({ ...save }));
           }
 
           if (cmd === "create_save") {
-            return {
-              id: 2,
+            const created = {
+              id: nextSaveId,
+              contextToken: "save-token-" + nextSaveId,
               name: args?.name ?? "New save",
               isActive: false,
               createdAtUtc: "2026-07-28T16:00:00.000Z",
               updatedAtUtc: "2026-07-28T16:00:00.000Z",
             };
+            nextSaveId += 1;
+            saves.push(created);
+            return created;
           }
 
           if (cmd === "rename_save") {
-            return {
-              id: args?.saveId ?? 1,
+            const index = saves.findIndex((save) => save.id === args?.saveId);
+            if (index < 0) throw new Error("Save not found");
+            const updated = {
+              ...saves[index],
               name: args?.name ?? "Renamed save",
-              isActive: true,
-              createdAtUtc: "2026-07-28T12:00:00.000Z",
               updatedAtUtc: "2026-07-28T16:05:00.000Z",
             };
+            saves[index] = updated;
+            return updated;
           }
 
           if (cmd === "set_active_save") {
+            const target = saves.find((save) => save.id === args?.saveId);
+            if (!target) throw new Error("Save not found");
+            saves = saves.map((save) => ({
+              ...save,
+              isActive: save.id === target.id,
+              updatedAtUtc: save.id === target.id
+                ? "2026-07-28T16:10:00.000Z"
+                : save.updatedAtUtc,
+            }));
+            return saves.find((save) => save.id === target.id);
+          }
+
+          if (cmd === "list_snapshots") {
+            return snapshotsForSave(args?.saveId ?? activeSave().id)
+              .map((snapshot) => ({ ...snapshot }));
+          }
+
+          if (cmd === "rename_snapshot") {
+            const index = snapshots.findIndex((snapshot) =>
+              snapshot.id === args?.snapshotId &&
+              snapshot.contextToken === args?.contextToken,
+            );
+            if (index < 0) throw new Error("Snapshot changed or no longer exists");
+            const updated = {
+              ...snapshots[index],
+              customName: typeof args?.customName === "string" && args.customName.trim()
+                ? args.customName.trim()
+                : null,
+            };
+            snapshots[index] = updated;
+            return updated;
+          }
+
+          if (cmd === "delete_snapshot") {
+            const target = snapshots.find((snapshot) =>
+              snapshot.id === args?.snapshotId &&
+              snapshot.contextToken === args?.contextToken,
+            );
+            if (!target) throw new Error("Snapshot changed or no longer exists");
+            snapshots = snapshots.filter((snapshot) => snapshot.id !== target.id);
+            const currentSnapshotId = target.isCurrent
+              ? promoteCurrentSnapshot(target.saveId)
+              : snapshotsForSave(target.saveId).find((snapshot) => snapshot.isCurrent)?.id || null;
             return {
-              id: args?.saveId ?? 1,
-              name: "Default save",
-              isActive: true,
-              createdAtUtc: "2026-07-28T12:00:00.000Z",
-              updatedAtUtc: "2026-07-28T16:10:00.000Z",
+              deletedSnapshotId: target.id,
+              saveId: target.saveId,
+              currentSnapshotId,
+            };
+          }
+
+          if (cmd === "delete_save") {
+            const target = saves.find((save) =>
+              save.id === args?.saveId && save.contextToken === args?.contextToken,
+            );
+            if (!target) throw new Error("Save changed or no longer exists");
+            saves = saves.filter((save) => save.id !== target.id);
+            snapshots = snapshots.filter((snapshot) => snapshot.saveId !== target.id);
+            if (target.isActive) {
+              if (saves.length === 0) {
+                saves = [{
+                  id: nextSaveId,
+                  contextToken: "save-token-" + nextSaveId,
+                  name: "Default save",
+                  isActive: true,
+                  createdAtUtc: "2026-07-28T16:20:00.000Z",
+                  updatedAtUtc: "2026-07-28T16:20:00.000Z",
+                }];
+                nextSaveId += 1;
+              } else {
+                saves = saves.map((save, index) => ({
+                  ...save,
+                  isActive: index === 0,
+                }));
+              }
+            }
+            return {
+              deletedSaveId: target.id,
+              deletedWasActive: target.isActive,
+              activeSave: { ...activeSave() },
             };
           }
 
           if (cmd === "get_current_snapshot") {
+            const snapshot = currentSnapshot();
+            if (snapshot) return snapshotSummary(snapshot);
             return plannerSnapshot || playerProfile
               ? {
                   id: 1,
@@ -170,7 +325,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "list_sanity_players") {
-            return [];
+            const snapshot = currentSnapshot();
+            return snapshot ? snapshotSanityPlayers(snapshot) : [];
           }
 
           if (cmd === "import_csv") {

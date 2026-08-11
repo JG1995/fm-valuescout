@@ -14,3 +14,21 @@ export type SnapshotSummary = {
   playerCount: number;
   loadedAtUtc: string;
 };
+
+export type SnapshotMetadata = {
+  id: number;
+  contextToken: string;
+  saveId: number;
+  customName: string | null;
+  gameDate: string | null;
+  gameDateSource: string;
+  playerCount: number;
+  loadedAtUtc: string;
+  isCurrent: boolean;
+};
+
+export type SnapshotDeleteResult = {
+  deletedSnapshotId: number;
+  saveId: number;
+  currentSnapshotId: number | null;
+};

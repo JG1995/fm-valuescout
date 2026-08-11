@@ -269,7 +269,7 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 
 #### Commit 3 — Add snapshot and save management commands
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(snapshot): add history management commands`
 
@@ -310,7 +310,7 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 
 #### Commit 4 — Manage snapshot history from the Dashboard
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(snapshot): manage history from the Dashboard`
 
@@ -350,19 +350,18 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 
 **PR:** PR 1 — Retain and manage snapshot history
 
-**Commit:** Commit 3 — Add snapshot and save management commands
+**Commit:** Commit 4 — Manage snapshot history from the Dashboard
 
 ### RED proof
 
-Add focused service and command tests for the missing snapshot metadata, rename, and token-bound deletion paths. Cover current promotion, save fallback/default recreation, cascades, stale ID/token rejection, and captured asynchronous context when IDs are reused.
+Add focused Dashboard tests for ordered metadata, rename, destructive confirmation, current promotion, inactive and active save deletion, final-save replacement, focus restoration, pending protection, stable target identity, and dialog-local failures.
 
 ### Expected outcome
 
-Snapshot and save management is transaction-safe, exposes metadata only, and preserves one active save plus the shared date-selected current snapshot after every mutation.
+The Dashboard manages date-ordered snapshot metadata and destructive save/snapshot actions while current-only product queries refresh only when their active/current context changes.
 
 ### Explicit exclusions
 
-- Do not add Dashboard controls or browser IPC stubs.
 - Do not expose historical player data or a manual current selector.
 - Do not add undo, soft deletion, retention, or bulk deletion.
 
@@ -382,7 +381,8 @@ Snapshot and save management is transaction-safe, exposes metadata only, and pre
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 — Retain and manage snapshot history | Commit 1 — Retain snapshots by in-game date | 1be3dd4 | Retained complete snapshots with shared date selection, truthful Load Data metadata, and current-only compatibility. | Sol xhigh accepted after a focused timestamp-precedence test correction. | None |
-| PR 1 — Retain and manage snapshot history | Commit 2 — Version Moneyball data by snapshot | Pending record | Migrated new Moneyball imports to snapshot/player ownership while quarantining all v17 rows by save. | Pending record | None |
+| PR 1 — Retain and manage snapshot history | Commit 2 — Version Moneyball data by snapshot | 730c812 | Migrated new Moneyball imports to snapshot/player ownership while quarantining all v17 rows by save. | Sol xhigh accepted. | None |
+| PR 1 — Retain and manage snapshot history | Commit 3 — Add snapshot and save management commands | 120c333 | Added immutable target tokens plus rename/delete commands, current promotion, and transactional save fallback/default recreation. | Sol xhigh accepted after rollback coverage for final-save replacement. | None |
 
 ## Final validation
 

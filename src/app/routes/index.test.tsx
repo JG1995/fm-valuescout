@@ -1,7 +1,11 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import { plannerKeys } from "@/features/planner/api/planner-keys";
+import { playerKeys } from "@/features/player-profile/api/player-keys";
+import { searchKeys } from "@/features/search/api/search-keys";
+import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import {
   getLastCsvImportIpcArgs,
   resolveBusyCsvImportRequest,
@@ -10,8 +14,38 @@ import {
   setCsvImportIpcMockResult,
 } from "@/testing/csv-import-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
+import {
+  resolveSetActiveSaveIpcMock,
+  type SnapshotMetadata,
+  setSnapshotHistoryIpcMock,
+} from "@/testing/snapshot-ipc-mock";
 
 const open = vi.hoisted(() => vi.fn());
+
+const HISTORY: SnapshotMetadata[] = [
+  {
+    id: 11,
+    contextToken: "snapshot-token-11",
+    saveId: 1,
+    customName: null,
+    gameDate: "2026-06-01",
+    gameDateSource: "inGame",
+    playerCount: 21,
+    loadedAtUtc: "2026-07-28T13:00:00.000Z",
+    isCurrent: false,
+  },
+  {
+    id: 12,
+    contextToken: "snapshot-token-12",
+    saveId: 1,
+    customName: null,
+    gameDate: "2026-08-01",
+    gameDateSource: "inGame",
+    playerCount: 24,
+    loadedAtUtc: "2026-07-28T15:00:00.000Z",
+    isCurrent: true,
+  },
+];
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open }));
 
@@ -329,5 +363,103 @@ describe("Dashboard CSV enrichment import", () => {
     expect(
       screen.queryByText(/Youth Tracker imported/i),
     ).not.toBeInTheDocument();
+  });
+
+  it("invalidates current-only products when deleting the current snapshot", async () => {
+    setSnapshotHistoryIpcMock(HISTORY);
+    setCsvImportIpcMockResult({
+      format: "moneyball",
+      totalPlayers: 75,
+      storedPlayers: 74,
+      skippedPlayers: 1,
+    });
+    open.mockResolvedValue("C:\\exports\\moneyball.csv");
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders();
+    queryClient.setQueryData(searchKeys.all, []);
+    queryClient.setQueryData(playerKeys.all, []);
+    queryClient.setQueryData(plannerKeys.all, []);
+    queryClient.setQueryData(academyKeys.classes(), []);
+
+    expect(await screen.findByText("Snapshot 12 player")).toBeInTheDocument();
+    expect(screen.getByText(/24 players/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
+    expect(await screen.findByText(/Moneyball imported/i)).toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Delete snapshot 2026-08-01",
+      }),
+    );
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: /^Delete snapshot/ }),
+      ).getByRole("button", { name: "Delete snapshot" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/21 players/)).toBeInTheDocument();
+      expect(screen.getByText("Snapshot 11 player")).toBeInTheDocument();
+      expect(screen.queryByText("Snapshot 12 player")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Moneyball imported/i)).not.toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /Choose a Youth Tracker or Moneyball export to import/i,
+        ),
+      ).toBeInTheDocument();
+      expect(queryClient.getQueryState(searchKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryState(playerKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryState(plannerKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryData(academyKeys.classes())).toBeUndefined();
+    });
+  });
+
+  it("refreshes current-only products if a delete target becomes active before confirmation", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders();
+
+    await user.type(await screen.findByLabelText("New save"), "Archive");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Delete save Archive" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: /^Delete save/ });
+    expect(dialog).toHaveTextContent("The active save stays unchanged");
+
+    resolveSetActiveSaveIpcMock({ saveId: 2 });
+    await queryClient.invalidateQueries({ queryKey: snapshotKeys.saves() });
+    await waitFor(() => {
+      expect(dialog).toHaveTextContent("Another save will become active");
+    });
+
+    queryClient.setQueryData(searchKeys.all, []);
+    queryClient.setQueryData(playerKeys.all, []);
+    queryClient.setQueryData(plannerKeys.all, []);
+    queryClient.setQueryData(academyKeys.classes(), []);
+    await user.click(
+      within(dialog).getByRole("button", { name: "Delete save" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "Active save" }),
+      ).toHaveDisplayValue("Default save");
+      expect(queryClient.getQueryState(searchKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryState(playerKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryState(plannerKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryData(academyKeys.classes())).toBeUndefined();
+    });
   });
 });

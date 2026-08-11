@@ -49,6 +49,7 @@ pub struct SnapshotDeleteResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveDeleteResult {
     pub deleted_save_id: i64,
+    pub deleted_was_active: bool,
     pub active_save: SaveSummary,
 }
 
@@ -373,6 +374,7 @@ pub fn delete_save(
     tx.commit().map_err(|error| error.to_string())?;
     Ok(SaveDeleteResult {
         deleted_save_id: save_id,
+        deleted_was_active: is_active,
         active_save: get_save_by_id(conn, active_save_id)?,
     })
 }
@@ -960,6 +962,7 @@ mod tests {
         let inactive_result =
             delete_save(&mut conn, inactive.id, &inactive_token).expect("delete inactive save");
         assert_eq!(inactive_result.active_save.id, default_save.id);
+        assert!(!inactive_result.deleted_was_active);
         assert_eq!(current_snapshot_id(&conn, default_save.id), None);
         assert_eq!(
             conn.query_row(
@@ -991,12 +994,14 @@ mod tests {
         let fallback_result = delete_save(&mut conn, replacement.id, &replacement_token)
             .expect("delete active save with fallback");
         assert_eq!(fallback_result.active_save.id, default_save.id);
+        assert!(fallback_result.deleted_was_active);
         assert!(fallback_result.active_save.is_active);
 
         let final_token = save_token(&conn, default_save.id);
         let final_result =
             delete_save(&mut conn, default_save.id, &final_token).expect("delete final save");
         assert_eq!(final_result.active_save.name, DEFAULT_SAVE_NAME);
+        assert!(final_result.deleted_was_active);
         assert!(final_result.active_save.is_active);
         assert_eq!(save_count(&conn).expect("count recreated saves"), 1);
         assert_eq!(

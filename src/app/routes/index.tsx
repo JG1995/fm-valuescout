@@ -7,6 +7,9 @@ import { demoValueQueryOptions } from "@/features/health/api/demo-value-query-op
 import { healthQueryOptions } from "@/features/health/api/health-query-options";
 import { HealthStatusPanelWithErrorBoundary } from "@/features/health/components/health-status-panel-with-error-boundary";
 import { BridgeStatusPanelWithErrorBoundary } from "@/features/memory-read/components/bridge-status-panel-with-error-boundary";
+import { plannerKeys } from "@/features/planner/api/planner-keys";
+import { playerKeys } from "@/features/player-profile/api/player-keys";
+import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { sanityPlayersQueryOptions } from "@/features/snapshot/api/sanity-players-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
@@ -43,7 +46,14 @@ function IndexPage() {
     <div className="space-y-gutter">
       <h1 className="text-headline-lg text-on-surface">Dashboard</h1>
       <Suspense fallback={<PanelFallback label="Loading snapshot data…" />}>
-        <SnapshotPanelsWithErrorBoundary />
+        <SnapshotPanelsWithErrorBoundary
+          onCurrentContextChanged={() => {
+            void queryClient.invalidateQueries({ queryKey: searchKeys.all });
+            void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+            void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
+            void queryClient.resetQueries({ queryKey: academyKeys.all });
+          }}
+        />
       </Suspense>
       <Suspense fallback={<PanelFallback label="Loading CSV import…" />}>
         <CsvImportPanel

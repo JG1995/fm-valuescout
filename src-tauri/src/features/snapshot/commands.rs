@@ -87,6 +87,7 @@ impl From<SnapshotDeleteResult> for SnapshotDeleteResultDto {
 #[serde(rename_all = "camelCase")]
 pub struct SaveDeleteResultDto {
     pub deleted_save_id: i64,
+    pub deleted_was_active: bool,
     pub active_save: SaveSummaryDto,
 }
 
@@ -94,6 +95,7 @@ impl From<SaveDeleteResult> for SaveDeleteResultDto {
     fn from(result: SaveDeleteResult) -> Self {
         Self {
             deleted_save_id: result.deleted_save_id,
+            deleted_was_active: result.deleted_was_active,
             active_save: SaveSummaryDto::from(result.active_save),
         }
     }
@@ -394,5 +396,23 @@ mod tests {
         assert_eq!(deleted_value["deletedSnapshotId"], 7);
         assert_eq!(deleted_value["saveId"], 3);
         assert_eq!(deleted_value["currentSnapshotId"], 6);
+
+        let deleted_save = SaveDeleteResultDto::from(SaveDeleteResult {
+            deleted_save_id: 3,
+            deleted_was_active: true,
+            active_save: SaveSummary {
+                id: 4,
+                context_token: "fallback-token".to_string(),
+                name: "Fallback".to_string(),
+                is_active: true,
+                created_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
+                updated_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
+            },
+        });
+        let deleted_save_value =
+            serde_json::to_value(deleted_save).expect("serialize save delete result");
+        assert_eq!(deleted_save_value["deletedSaveId"], 3);
+        assert_eq!(deleted_save_value["deletedWasActive"], true);
+        assert_eq!(deleted_save_value["activeSave"]["id"], 4);
     }
 }
