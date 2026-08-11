@@ -287,7 +287,7 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 #### Commit 3 — Persist matched CSV player enrichment
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): persist matched CSV player enrichment`
 
@@ -327,7 +327,7 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 #### Commit 4 — Use imported Youth career statistics in Academy
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(academy): use imported Youth career statistics`
 
@@ -407,19 +407,19 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 **PR:** PR 1 — Persist CSV player enrichment
 
-**Commit:** Commit 3 — Persist matched CSV player enrichment
+**Commit:** Commit 4 — Use imported Youth career statistics in Academy
 
 ### RED proof
 
-Add command/service integration tests that fail because no transactional matched-player CSV import exists. The failure must isolate the missing write path rather than a parser or fixture setup error.
+Add Academy service and utility/route tests that fail because save-scoped Youth career enrichment is not joined into member projections. The failure must isolate the missing enrichment projection rather than membership or snapshot setup.
 
 ### Expected outcome
 
-Youth and Moneyball imports replace complete enrichment rows only for memory-backed players in the active save. Each import parses before the write lock, revalidates the captured context inside one transaction, and returns a bounded stored/skipped summary without paths or raw rows.
+Academy members expose nullable reported career appearances, goals, assists, and international caps from save-scoped Youth enrichment. A graduate has at least one reported career appearance; missing values keep aggregates and Graduates availability honest while existing membership and outcome behavior remains unchanged.
 
 ### Explicit exclusions
 
-No Dashboard activation or copy, Academy read behavior, deletion of rows omitted from the file, historical imports, season identity, Moneyball read UI, bridge, or CSV dialect change belongs in the active commit.
+No Moneyball presentation, changes to Academy membership, outcome, or club-family rules, treating missing values as zero, career timelines or charts, Dashboard invalidation, bridge, or import behavior change belongs in the active commit.
 
 ## Discoveries and replanning
 
@@ -438,6 +438,7 @@ No Dashboard activation or copy, Academy read behavior, deletion of rows omitted
 | --- | --- | --- | --- | --- | --- |
 | PR 1 — Persist CSV player enrichment | Commit 1 — Add save-scoped enrichment schema | Pending record | Migration v17 and coverage | Sol xhigh — Accept | None |
 | PR 1 — Persist CSV player enrichment | Commit 2 — Derive canonical Moneyball statistics | Pending record | Canonical 138-key Moneyball statistics and coverage | Sol High — Accept | Corrected the inherited 176-key ledger count to the pinned 138-key source contract |
+| PR 1 — Persist CSV player enrichment | Commit 3 — Persist matched CSV player enrichment | Pending record | Transactional matched Youth and Moneyball imports and coverage | Sol xhigh — Accept | None |
 
 ## Final validation
 

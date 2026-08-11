@@ -39,6 +39,7 @@ pub fn run() {
             features::snapshot::commands::list_sanity_players,
             features::snapshot::commands::load_data,
             features::csv_import::commands::preview_csv_matches,
+            features::csv_import::commands::import_csv,
             features::search::commands::search_players,
             features::search::commands::suggest_players,
             features::player::commands::get_player,

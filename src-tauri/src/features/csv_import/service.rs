@@ -3,11 +3,12 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::Serialize;
+use serde_json::{Map, Number, Value};
 
 use super::parser::{parse_csv_with_row_limit, ParsedCsv};
-use super::CsvImportError;
+use super::{CsvImportError, MoneyballMetricValue, MoneyballPlayer, MoneyballTransferValue};
 pub(crate) const MAX_CSV_BYTES: u64 = 1024 * 1024;
 pub(crate) const MAX_CSV_ROWS: usize = 1_000;
 
@@ -25,6 +26,15 @@ pub(crate) struct CsvMatchPreview {
     pub total_players: usize,
     pub matched_players: usize,
     pub unmatched_players: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct CsvImportSummary {
+    pub format: CsvPreviewFormat,
+    pub total_players: usize,
+    pub stored_players: usize,
+    pub skipped_players: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,6 +75,59 @@ impl std::fmt::Display for CsvPreviewError {
 
 impl std::error::Error for CsvPreviewError {}
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CsvPersistenceError {
+    Preview(CsvPreviewError),
+    NumericValueOutOfRange,
+    InvalidStatistics,
+    Database,
+}
+
+impl std::fmt::Display for CsvPersistenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Preview(error) => error.fmt(f),
+            Self::NumericValueOutOfRange => {
+                write!(f, "CSV contains a value that is too large to store")
+            }
+            Self::InvalidStatistics => write!(f, "CSV contains a statistic that cannot be stored"),
+            Self::Database => write!(f, "CSV import is unavailable"),
+        }
+    }
+}
+
+impl std::error::Error for CsvPersistenceError {}
+
+impl From<CsvPreviewError> for CsvPersistenceError {
+    fn from(error: CsvPreviewError) -> Self {
+        Self::Preview(error)
+    }
+}
+
+pub(crate) enum PreparedCsvImport {
+    YouthTracker(Vec<PreparedYouthCareerStats>),
+    Moneyball(Vec<PreparedMoneyballStats>),
+}
+
+pub(crate) struct PreparedYouthCareerStats {
+    player_uid: i64,
+    career_appearances: Option<i64>,
+    international_caps: Option<i64>,
+    career_goals: Option<i64>,
+    career_assists: Option<i64>,
+}
+
+pub(crate) struct PreparedMoneyballStats {
+    player_uid: i64,
+    asking_price_kind: Option<&'static str>,
+    asking_price_lower_eur: Option<i64>,
+    asking_price_upper_eur: Option<i64>,
+    starts: Option<i64>,
+    substitute_appearances: Option<i64>,
+    minutes: Option<i64>,
+    statistics_json: String,
+}
+
 pub(crate) fn capture_preview_context(
     conn: &Connection,
 ) -> Result<PreviewContext, CsvPreviewError> {
@@ -102,6 +165,111 @@ pub(crate) fn preview_csv_file(
     path: &Path,
     context: &PreviewContext,
 ) -> Result<CsvMatchPreview, CsvPreviewError> {
+    let parsed = parse_csv_file(path)?;
+    let (format, uids) = match parsed {
+        ParsedCsv::YouthTracker(players) => (
+            CsvPreviewFormat::YouthTracker,
+            players
+                .into_iter()
+                .map(|player| i64::from(player.uid))
+                .collect::<Vec<_>>(),
+        ),
+        ParsedCsv::Moneyball(players) => (
+            CsvPreviewFormat::Moneyball,
+            players
+                .into_iter()
+                .map(|player| i64::from(player.uid))
+                .collect::<Vec<_>>(),
+        ),
+    };
+    let matched_players = uids
+        .iter()
+        .filter(|uid| context.player_uids.contains(uid))
+        .count();
+    let total_players = uids.len();
+
+    Ok(CsvMatchPreview {
+        format,
+        total_players,
+        matched_players,
+        unmatched_players: total_players - matched_players,
+    })
+}
+
+pub(crate) fn prepare_csv_import(path: &Path) -> Result<PreparedCsvImport, CsvPersistenceError> {
+    match parse_csv_file(path)? {
+        ParsedCsv::YouthTracker(players) => Ok(PreparedCsvImport::YouthTracker(
+            players
+                .into_iter()
+                .map(|player| PreparedYouthCareerStats {
+                    player_uid: i64::from(player.uid),
+                    career_appearances: player.all_time_appearances.map(i64::from),
+                    international_caps: player.international_appearances.map(i64::from),
+                    career_goals: player.all_time_goals.map(i64::from),
+                    career_assists: player.assists.map(i64::from),
+                })
+                .collect(),
+        )),
+        ParsedCsv::Moneyball(players) => players
+            .into_iter()
+            .map(prepare_moneyball_stats)
+            .collect::<Result<Vec<_>, _>>()
+            .map(PreparedCsvImport::Moneyball),
+    }
+}
+
+pub(crate) fn persist_csv_import(
+    conn: &mut Connection,
+    context: &PreviewContext,
+    import: PreparedCsvImport,
+) -> Result<CsvImportSummary, CsvPersistenceError> {
+    let tx = conn
+        .transaction()
+        .map_err(|_| CsvPersistenceError::Database)?;
+    revalidate_preview_context(&tx, context)?;
+
+    let summary = match import {
+        PreparedCsvImport::YouthTracker(players) => {
+            let total_players = players.len();
+            let mut stored_players = 0;
+            for player in players {
+                if !context.player_uids.contains(&player.player_uid) {
+                    continue;
+                }
+                upsert_youth_career_stats(&tx, context.save_id, &player)?;
+                stored_players += 1;
+            }
+            CsvImportSummary {
+                format: CsvPreviewFormat::YouthTracker,
+                total_players,
+                stored_players,
+                skipped_players: total_players - stored_players,
+            }
+        }
+        PreparedCsvImport::Moneyball(players) => {
+            let total_players = players.len();
+            let mut stored_players = 0;
+            for player in players {
+                if !context.player_uids.contains(&player.player_uid) {
+                    continue;
+                }
+                upsert_moneyball_stats(&tx, context.save_id, &player)?;
+                stored_players += 1;
+            }
+            CsvImportSummary {
+                format: CsvPreviewFormat::Moneyball,
+                total_players,
+                stored_players,
+                skipped_players: total_players - stored_players,
+            }
+        }
+    };
+
+    tx.commit().map_err(|_| CsvPersistenceError::Database)?;
+    Ok(summary)
+}
+
+fn parse_csv_file(path: &Path) -> Result<ParsedCsv, CsvPreviewError> {
     let metadata = fs::symlink_metadata(path).map_err(|_| CsvPreviewError::InvalidFile)?;
     if !metadata.file_type().is_file() || !has_csv_extension(path) {
         return Err(CsvPreviewError::InvalidFile);
@@ -116,35 +284,7 @@ pub(crate) fn preview_csv_file(
         return Err(CsvPreviewError::InvalidFile);
     }
     let input = read_bounded_file(&mut file)?;
-    let (format, uids) =
-        match parse_csv_with_row_limit(&input, Some(MAX_CSV_ROWS)).map_err(map_csv_error)? {
-            ParsedCsv::YouthTracker(players) => (
-                CsvPreviewFormat::YouthTracker,
-                players
-                    .into_iter()
-                    .map(|player| i64::from(player.uid))
-                    .collect::<Vec<_>>(),
-            ),
-            ParsedCsv::Moneyball(players) => (
-                CsvPreviewFormat::Moneyball,
-                players
-                    .into_iter()
-                    .map(|player| i64::from(player.uid))
-                    .collect::<Vec<_>>(),
-            ),
-        };
-    let matched_players = uids
-        .iter()
-        .filter(|uid| context.player_uids.contains(uid))
-        .count();
-    let total_players = uids.len();
-
-    Ok(CsvMatchPreview {
-        format,
-        total_players,
-        matched_players,
-        unmatched_players: total_players - matched_players,
-    })
+    parse_csv_with_row_limit(&input, Some(MAX_CSV_ROWS)).map_err(map_csv_error)
 }
 
 pub(crate) fn revalidate_preview_context(
@@ -167,6 +307,130 @@ pub(crate) fn revalidate_preview_context(
     is_current
         .then_some(())
         .ok_or(CsvPreviewError::StaleContext)
+}
+
+fn prepare_moneyball_stats(
+    player: MoneyballPlayer,
+) -> Result<PreparedMoneyballStats, CsvPersistenceError> {
+    let (asking_price_kind, asking_price_lower_eur, asking_price_upper_eur) =
+        match player.asking_price {
+            None => (None, None, None),
+            Some(MoneyballTransferValue::Single { euros }) => {
+                (Some("single"), Some(sqlite_integer(euros)?), None)
+            }
+            Some(MoneyballTransferValue::Range {
+                lower_euros,
+                upper_euros,
+            }) => (
+                Some("range"),
+                Some(sqlite_integer(lower_euros)?),
+                Some(sqlite_integer(upper_euros)?),
+            ),
+            Some(MoneyballTransferValue::NotForSale) => (Some("not_for_sale"), None, None),
+        };
+
+    Ok(PreparedMoneyballStats {
+        player_uid: i64::from(player.uid),
+        asking_price_kind,
+        asking_price_lower_eur,
+        asking_price_upper_eur,
+        starts: player
+            .appearances
+            .as_ref()
+            .map(|appearances| i64::from(appearances.starts)),
+        substitute_appearances: player
+            .appearances
+            .as_ref()
+            .map(|appearances| i64::from(appearances.substitutes)),
+        minutes: player.minutes.map(i64::from),
+        statistics_json: serialize_moneyball_statistics(&player)?,
+    })
+}
+
+fn sqlite_integer(value: u64) -> Result<i64, CsvPersistenceError> {
+    i64::try_from(value).map_err(|_| CsvPersistenceError::NumericValueOutOfRange)
+}
+
+fn serialize_moneyball_statistics(player: &MoneyballPlayer) -> Result<String, CsvPersistenceError> {
+    let mut statistics = Map::new();
+    for (key, value) in player.canonical_statistics() {
+        let value = match value {
+            None => Value::Null,
+            Some(MoneyballMetricValue::Count(value)) => Value::Number(Number::from(value)),
+            Some(MoneyballMetricValue::Decimal(value)) => Value::Number(
+                Number::from_f64(value).ok_or(CsvPersistenceError::InvalidStatistics)?,
+            ),
+        };
+        statistics.insert(key, value);
+    }
+
+    serde_json::to_string(&Value::Object(statistics))
+        .map_err(|_| CsvPersistenceError::InvalidStatistics)
+}
+
+fn upsert_youth_career_stats(
+    tx: &Transaction<'_>,
+    save_id: i64,
+    player: &PreparedYouthCareerStats,
+) -> Result<(), CsvPersistenceError> {
+    tx.execute(
+        "INSERT INTO player_youth_career_stats (
+            save_id, player_uid, career_appearances, international_caps, career_goals, career_assists
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(save_id, player_uid) DO UPDATE SET
+            career_appearances = excluded.career_appearances,
+            international_caps = excluded.international_caps,
+            career_goals = excluded.career_goals,
+            career_assists = excluded.career_assists,
+            imported_at_utc = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        params![
+            save_id,
+            player.player_uid,
+            player.career_appearances,
+            player.international_caps,
+            player.career_goals,
+            player.career_assists,
+        ],
+    )
+    .map_err(|_| CsvPersistenceError::Database)?;
+
+    Ok(())
+}
+
+fn upsert_moneyball_stats(
+    tx: &Transaction<'_>,
+    save_id: i64,
+    player: &PreparedMoneyballStats,
+) -> Result<(), CsvPersistenceError> {
+    tx.execute(
+        "INSERT INTO player_moneyball_stats (
+            save_id, player_uid, asking_price_kind, asking_price_lower_eur, asking_price_upper_eur,
+            starts, substitute_appearances, minutes, statistics_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(save_id, player_uid) DO UPDATE SET
+            asking_price_kind = excluded.asking_price_kind,
+            asking_price_lower_eur = excluded.asking_price_lower_eur,
+            asking_price_upper_eur = excluded.asking_price_upper_eur,
+            starts = excluded.starts,
+            substitute_appearances = excluded.substitute_appearances,
+            minutes = excluded.minutes,
+            statistics_json = excluded.statistics_json,
+            imported_at_utc = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        params![
+            save_id,
+            player.player_uid,
+            player.asking_price_kind,
+            player.asking_price_lower_eur,
+            player.asking_price_upper_eur,
+            player.starts,
+            player.substitute_appearances,
+            player.minutes,
+            player.statistics_json,
+        ],
+    )
+    .map_err(|_| CsvPersistenceError::Database)?;
+
+    Ok(())
 }
 
 fn has_csv_extension(path: &Path) -> bool {
@@ -206,14 +470,27 @@ fn map_csv_error(error: CsvImportError) -> CsvPreviewError {
 mod tests {
     use std::path::Path;
 
-    use rusqlite::{params, Connection};
+    use rusqlite::{params, Connection, OptionalExtension};
+    use serde_json::{json, Value};
 
     use super::*;
     use crate::db::migrations;
     use crate::features::csv_import::parser::{parse_csv, ParsedCsv};
+    use crate::features::snapshot::ingest::{ingest_dump_file, ingest_dump_file_for_save};
+    use crate::features::snapshot::service as snapshot_service;
 
     const YOUTH_EXPORT: &str = include_str!("fixtures/2030_07_01_Full_Squad_CA_PA_Monza.csv");
     const MONEYBALL_EXPORT: &str = include_str!("fixtures/moneyball_stats.csv");
+    type CareerValues = (Option<i64>, Option<i64>, Option<i64>, Option<i64>);
+    type MoneyballStoredValues = (
+        Option<String>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        String,
+    );
 
     #[test]
     fn previews_moneyball_uids_against_the_pinned_youth_snapshot() {
@@ -259,6 +536,368 @@ mod tests {
                 matched_players: 73,
                 unmatched_players: 1,
             }
+        );
+    }
+
+    #[test]
+    fn imports_only_matched_youth_rows_replaces_included_rows_and_preserves_omitted_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("youth-import.db"));
+        seed_current_snapshot(&mut conn, &[1, 2]);
+        let first_path = write_csv(
+            &temp_dir,
+            "first.csv",
+            "Unique ID;Player;AT Apps;Int Apps;AT Gls;Assists\n1;One;10;1;2;3\n2;Two;20;2;3;4\n",
+        );
+
+        assert_eq!(
+            import_csv_file(&mut conn, &first_path).expect("import matching players"),
+            CsvImportSummary {
+                format: CsvPreviewFormat::YouthTracker,
+                total_players: 2,
+                stored_players: 2,
+                skipped_players: 0,
+            }
+        );
+
+        let save_id = active_save_id(&conn);
+        conn.execute(
+            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
+             VALUES (?1, 99, 7)",
+            [save_id],
+        )
+        .expect("seed departed player enrichment");
+
+        let replacement_path = write_csv(
+            &temp_dir,
+            "replacement.csv",
+            "Unique ID;Player;AT Apps;Int Apps;AT Gls;Assists\n1;One;99;;;\n99;Unknown;8;7;6;5\n",
+        );
+        assert_eq!(
+            import_csv_file(&mut conn, &replacement_path).expect("replace matching player"),
+            CsvImportSummary {
+                format: CsvPreviewFormat::YouthTracker,
+                total_players: 2,
+                stored_players: 1,
+                skipped_players: 1,
+            }
+        );
+
+        assert_eq!(
+            career_values(&conn, save_id, 1),
+            Some((Some(99), None, None, None))
+        );
+        assert_eq!(
+            career_values(&conn, save_id, 2),
+            Some((Some(20), Some(2), Some(3), Some(4)))
+        );
+        assert_eq!(
+            career_values(&conn, save_id, 99),
+            Some((Some(7), None, None, None))
+        );
+    }
+
+    #[test]
+    fn imports_moneyball_statistics_without_replacing_youth_enrichment() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-import.db"));
+        let uid = 2_002_402_173;
+        seed_current_snapshot(&mut conn, &[uid]);
+        let youth_path = write_csv(
+            &temp_dir,
+            "youth.csv",
+            "Unique ID;Player;AT Apps\n2002402173;Andrea Bisceglia;12\n",
+        );
+        import_csv_file(&mut conn, &youth_path).expect("import Youth enrichment");
+        let moneyball_path = write_csv(
+            &temp_dir,
+            "moneyball.csv",
+            &append_moneyball_column(MONEYBALL_EXPORT, "Asking Price", "€1M - €2M"),
+        );
+
+        assert_eq!(
+            import_csv_file(&mut conn, &moneyball_path).expect("import Moneyball enrichment"),
+            CsvImportSummary {
+                format: CsvPreviewFormat::Moneyball,
+                total_players: 75,
+                stored_players: 1,
+                skipped_players: 74,
+            }
+        );
+
+        let (
+            asking_price_kind,
+            asking_price_lower,
+            asking_price_upper,
+            starts,
+            substitutes,
+            minutes,
+            statistics_json,
+        ): MoneyballStoredValues = conn
+            .query_row(
+                "SELECT asking_price_kind, asking_price_lower_eur, asking_price_upper_eur,
+                        starts, substitute_appearances, minutes, statistics_json
+                 FROM player_moneyball_stats
+                 WHERE player_uid = ?1",
+                params![uid],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                    ))
+                },
+            )
+            .expect("read Moneyball enrichment");
+        assert_eq!(
+            (
+                asking_price_kind,
+                asking_price_lower,
+                asking_price_upper,
+                starts,
+                substitutes,
+                minutes,
+            ),
+            (
+                Some("range".to_string()),
+                Some(1_000_000),
+                Some(2_000_000),
+                Some(0),
+                Some(0),
+                Some(0),
+            )
+        );
+        let statistics: Value = serde_json::from_str(&statistics_json).expect("parse statistics");
+        assert_eq!(
+            statistics.as_object().expect("statistics object").len(),
+            138
+        );
+        assert_eq!(statistics["goals"], json!(0));
+        assert_eq!(statistics["goals_per_90"], Value::Null);
+        assert_eq!(
+            career_values(&conn, active_save_id(&conn), i64::from(uid)),
+            Some((Some(12), None, None, None))
+        );
+    }
+
+    #[test]
+    fn rejects_a_stale_import_context_without_writing_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("stale-import.db"));
+        seed_current_snapshot(&mut conn, &[1]);
+        let path = write_csv(
+            &temp_dir,
+            "player.csv",
+            "Unique ID;Player;AT Apps\n1;One;12\n",
+        );
+        let context = capture_preview_context(&conn).expect("capture context");
+        let import = prepare_csv_import(&path).expect("prepare import outside transaction");
+
+        conn.execute(
+            "UPDATE snapshots SET is_current = 0 WHERE id = ?1",
+            [context.snapshot_id],
+        )
+        .expect("replace current snapshot");
+
+        assert_eq!(
+            persist_csv_import(&mut conn, &context, import).expect_err("reject stale context"),
+            CsvPersistenceError::Preview(CsvPreviewError::StaleContext)
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM player_youth_career_stats",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .expect("count enrichment rows"),
+            0
+        );
+    }
+
+    #[test]
+    fn rejects_an_import_when_the_active_save_changes_after_parsing() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("stale-save-import.db"));
+        seed_current_snapshot(&mut conn, &[1]);
+        let path = write_csv(
+            &temp_dir,
+            "player.csv",
+            "Unique ID;Player;AT Apps\n1;One;12\n",
+        );
+        let context = capture_preview_context(&conn).expect("capture context");
+        let import = prepare_csv_import(&path).expect("prepare import outside transaction");
+        conn.execute(
+            "UPDATE saves SET is_active = 0 WHERE id = ?1",
+            [context.save_id],
+        )
+        .expect("deactivate captured save");
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('New active save', 1)",
+            [],
+        )
+        .expect("activate another save");
+
+        assert_eq!(
+            persist_csv_import(&mut conn, &context, import).expect_err("reject stale save"),
+            CsvPersistenceError::Preview(CsvPreviewError::StaleContext)
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM player_youth_career_stats",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .expect("count enrichment rows"),
+            0
+        );
+    }
+
+    #[test]
+    fn rolls_back_every_matching_row_when_a_database_write_fails() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("rollback-import.db"));
+        seed_current_snapshot(&mut conn, &[1, 2]);
+        let path = write_csv(
+            &temp_dir,
+            "players.csv",
+            "Unique ID;Player;AT Apps\n1;One;12\n2;Two;13\n",
+        );
+        let context = capture_preview_context(&conn).expect("capture context");
+        let import = prepare_csv_import(&path).expect("prepare import");
+        conn.execute_batch(
+            "CREATE TRIGGER reject_second_youth_import
+             BEFORE INSERT ON player_youth_career_stats
+             WHEN NEW.player_uid = 2
+             BEGIN
+                 SELECT RAISE(ABORT, 'test write failure');
+             END;",
+        )
+        .expect("create test trigger");
+
+        assert_eq!(
+            persist_csv_import(&mut conn, &context, import).expect_err("reject failed write"),
+            CsvPersistenceError::Database
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM player_youth_career_stats",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .expect("count rolled-back rows"),
+            0
+        );
+    }
+
+    #[test]
+    fn invalid_and_overflow_imports_leave_prior_enrichment_unchanged() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("invalid-import.db"));
+        let uid = 2_002_402_173;
+        seed_current_snapshot(&mut conn, &[uid]);
+        let moneyball_path = write_csv(&temp_dir, "moneyball.csv", MONEYBALL_EXPORT);
+        import_csv_file(&mut conn, &moneyball_path).expect("import baseline Moneyball data");
+        let save_id = active_save_id(&conn);
+        let before: String = conn
+            .query_row(
+                "SELECT statistics_json FROM player_moneyball_stats WHERE save_id = ?1 AND player_uid = ?2",
+                params![save_id, uid],
+                |row| row.get(0),
+            )
+            .expect("read baseline statistics");
+
+        let malformed_path = write_csv(
+            &temp_dir,
+            "duplicate.csv",
+            "Unique ID;Player\n2002402173;First\n2002402173;Raw row that must not cross IPC\n",
+        );
+        let malformed =
+            import_csv_file(&mut conn, &malformed_path).expect_err("reject duplicate UID");
+        assert_eq!(
+            malformed,
+            CsvPersistenceError::Preview(CsvPreviewError::InvalidCsv(
+                CsvImportError::DuplicateUid {
+                    first_row: 2,
+                    row: 3,
+                }
+            ))
+        );
+        assert!(!malformed
+            .to_string()
+            .contains("Raw row that must not cross IPC"));
+
+        let overflow_path = write_csv(
+            &temp_dir,
+            "overflow.csv",
+            &append_moneyball_column(MONEYBALL_EXPORT, "Asking Price", "€9223372036854775808"),
+        );
+        assert_eq!(
+            import_csv_file(&mut conn, &overflow_path).expect_err("reject SQLite integer overflow"),
+            CsvPersistenceError::NumericValueOutOfRange
+        );
+        let after: String = conn
+            .query_row(
+                "SELECT statistics_json FROM player_moneyball_stats WHERE save_id = ?1 AND player_uid = ?2",
+                params![save_id, uid],
+                |row| row.get(0),
+            )
+            .expect("read preserved statistics");
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    fn enrichment_is_save_scoped_survives_snapshot_replacement_and_cascades_with_save_deletion() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("save-lifecycle-import.db"));
+        let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/features/memory_read/fixtures/golden_dump_v6.json");
+        let first_save_id = snapshot_service::active_save_id(&conn).expect("create default save");
+        ingest_dump_file_for_save(&mut conn, first_save_id, &dump_path)
+            .expect("ingest first snapshot");
+        let first_path = write_csv(
+            &temp_dir,
+            "first-save.csv",
+            "Unique ID;Player;AT Apps\n77;Player;12\n",
+        );
+        import_csv_file(&mut conn, &first_path).expect("import first save");
+
+        let second_save =
+            snapshot_service::create_save(&conn, "Second save").expect("create second save");
+        snapshot_service::set_active_save(&mut conn, second_save.id).expect("activate second save");
+        ingest_dump_file_for_save(&mut conn, second_save.id, &dump_path)
+            .expect("ingest second snapshot");
+        let second_path = write_csv(
+            &temp_dir,
+            "second-save.csv",
+            "Unique ID;Player;AT Apps\n77;Player;24\n",
+        );
+        import_csv_file(&mut conn, &second_path).expect("import second save");
+
+        assert_eq!(
+            career_values(&conn, first_save_id, 77),
+            Some((Some(12), None, None, None))
+        );
+        assert_eq!(
+            career_values(&conn, second_save.id, 77),
+            Some((Some(24), None, None, None))
+        );
+
+        ingest_dump_file(&mut conn, &dump_path).expect("replace active snapshot");
+        assert_eq!(
+            career_values(&conn, second_save.id, 77),
+            Some((Some(24), None, None, None))
+        );
+
+        conn.execute("DELETE FROM saves WHERE id = ?1", [second_save.id])
+            .expect("delete second save");
+        assert_eq!(career_values(&conn, second_save.id, 77), None);
+        assert_eq!(
+            career_values(&conn, first_save_id, 77),
+            Some((Some(12), None, None, None))
         );
     }
 
@@ -393,6 +1032,47 @@ mod tests {
         );
 
         assert_eq!(database_fingerprint(&conn), before);
+    }
+
+    fn import_csv_file(
+        conn: &mut Connection,
+        path: &Path,
+    ) -> Result<CsvImportSummary, CsvPersistenceError> {
+        let context = capture_preview_context(conn)?;
+        let import = prepare_csv_import(path)?;
+        persist_csv_import(conn, &context, import)
+    }
+
+    fn active_save_id(conn: &Connection) -> i64 {
+        conn.query_row("SELECT id FROM saves WHERE is_active = 1", [], |row| {
+            row.get(0)
+        })
+        .expect("read active save")
+    }
+
+    fn career_values(conn: &Connection, save_id: i64, player_uid: i64) -> Option<CareerValues> {
+        conn.query_row(
+            "SELECT career_appearances, international_caps, career_goals, career_assists
+             FROM player_youth_career_stats
+             WHERE save_id = ?1 AND player_uid = ?2",
+            params![save_id, player_uid],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .optional()
+        .expect("read career enrichment")
+    }
+
+    fn append_moneyball_column(input: &str, header: &str, first_row_value: &str) -> String {
+        input
+            .lines()
+            .enumerate()
+            .map(|(index, line)| match index {
+                0 => format!("{line};{header}"),
+                1 => format!("{line};{first_row_value}"),
+                _ => format!("{line};-"),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn open_migrated(path: &Path) -> Connection {
