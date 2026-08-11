@@ -447,10 +447,11 @@ The `b176d22` correction stayed within the Dashboard packet. It has no separate 
 ## Final publication
 
 ```yaml
-status: ready_for_publication
-pr_status: not_published
+status: published
+pr_status: draft
+pr_created: true
 merge_status: not_merged
-pr_ref: "Not published"
+pr_ref: "https://github.com/JG1995/fm-valuescout/pull/42"
 merge_ref: "Not merged"
 branch: feature/snapshot-history
 base_branch: main
@@ -481,7 +482,7 @@ implementation_refs:
 correction_ref: b176d220b54f08cb3bdf93a58a7ad3434fb30c63
 correction_summary: "Named duplicate destructive targets and cleared stale Load Data feedback after save replacement by binding it to the immutable save context."
 lifecycle_ref: c048e1e04a7dccb9903ce39301768d54dab27eb5
-close_out_documentation_ref: Pending record
+close_out_documentation_ref: 268aa6974258e463e29a2e5f08f9e183e9231aeb
 publication_correction_evidence: b176d220b54f08cb3bdf93a58a7ad3434fb30c63
 ```
 
@@ -495,10 +496,10 @@ publication_correction_evidence: b176d220b54f08cb3bdf93a58a7ad3434fb30c63
 
 ## Feature close-out
 
-**State:** Current. The exact implementation and correction set passed final validation and the Sol xhigh feature review. The final PR remains unpublished and unmerged. Native Windows/FM26/WebView/SQLite integration remains an explicit manual risk.
+**State:** Current. The exact implementation and correction set passed final validation and the Sol xhigh feature review. Draft [PR #42](https://github.com/JG1995/fm-valuescout/pull/42) is open and remains unmerged. Native Windows/FM26/WebView/SQLite integration remains an explicit manual risk.
 
 ## Follow-up
 
-- Publish the final PR only when the branch is intentionally handed to the GitHub publication workflow. Do not publish or merge it during documentation reconciliation.
+- Keep draft [PR #42](https://github.com/JG1995/fm-valuescout/pull/42) unmerged until it is ready for review and the required checks pass.
 - Revisit [historical player development and snapshot comparison](../../BACKLOG.md) when historical player reads or comparisons become planned work. Current product queries remain latest-only.
 - Revisit [historical Moneyball seasons](../../BACKLOG.md) when season identity and import-history rules are defined. Moneyball is snapshot-versioned now, but season history is not implemented.
