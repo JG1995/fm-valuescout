@@ -388,7 +388,7 @@ describe("Dashboard CSV enrichment import", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: "Delete snapshot 2026-08-01",
+        name: /^Delete snapshot 2026-08-01/,
       }),
     );
     await user.click(
@@ -427,7 +427,7 @@ describe("Dashboard CSV enrichment import", () => {
     await user.type(await screen.findByLabelText("New save"), "Archive");
     await user.click(screen.getByRole("button", { name: "Create save" }));
     await user.click(
-      await screen.findByRole("button", { name: "Delete save Archive" }),
+      await screen.findByRole("button", { name: /^Delete save Archive/ }),
     );
     const dialog = screen.getByRole("dialog", { name: /^Delete save/ });
     expect(dialog).toHaveTextContent("The active save stays unchanged");

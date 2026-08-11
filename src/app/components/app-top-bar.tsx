@@ -20,7 +20,7 @@ import { cn } from "@/utils/cn";
 export function AppTopBar() {
   const queryClient = useQueryClient();
   const { data: saves } = useQuery(savesQueryOptions);
-  const activeSaveId = saves?.find((save) => save.isActive)?.id;
+  const activeSave = saves?.find((save) => save.isActive);
   const capCheckboxId = useId();
   const capLimitId = useId();
 
@@ -46,8 +46,13 @@ export function AppTopBar() {
   // An outcome for a save the user has since left describes data they are no
   // longer looking at. One rule covers both banners, because a failure is as
   // misleading as a stale player count.
-  const [loadedSaveId, setLoadedSaveId] = useState<number>();
-  const stale = loadedSaveId !== activeSaveId;
+  const [loadedSave, setLoadedSave] = useState<
+    { id: number; contextToken: string } | undefined
+  >();
+  const stale =
+    !loadedSave ||
+    loadedSave.id !== activeSave?.id ||
+    loadedSave.contextToken !== activeSave?.contextToken;
 
   const capValid = Number.isInteger(playerCap) && playerCap > 0;
 
@@ -105,7 +110,14 @@ export function AppTopBar() {
             loadingLabel="Scanning…"
             disabled={playerCapEnabled && !capValid}
             onClick={() => {
-              setLoadedSaveId(activeSaveId);
+              setLoadedSave(
+                activeSave
+                  ? {
+                      id: activeSave.id,
+                      contextToken: activeSave.contextToken,
+                    }
+                  : undefined,
+              );
               load.mutate(playerCapEnabled ? playerCap : null);
             }}
           >

@@ -20,6 +20,10 @@ function readName(form: HTMLFormElement) {
   return typeof name === "string" ? name : "";
 }
 
+function saveTargetLabel(save: SaveSummary) {
+  return `${save.name} (save ${save.id})`;
+}
+
 type SaveSwitcherProps = {
   /** Route-owned invalidation for products that only read the current snapshot. */
   onCurrentContextChanged?: () => void;
@@ -75,7 +79,7 @@ function SaveDeletionModal({
   return (
     <Modal
       open={target !== null}
-      title={`Delete save ${visibleTarget.name}?`}
+      title={`Delete save ${saveTargetLabel(visibleTarget)}?`}
       variant="destructive"
       onClose={() => {
         if (!remove.isPending) {
@@ -231,7 +235,7 @@ export function SaveSwitcher({ onCurrentContextChanged }: SaveSwitcherProps) {
               </div>
               <Button
                 variant="ghost"
-                aria-label={`Delete save ${save.name}`}
+                aria-label={`Delete save ${saveTargetLabel(save)}`}
                 onClick={() => setDeleteTarget(save)}
               >
                 Delete

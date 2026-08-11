@@ -504,14 +504,13 @@ export function resolveDeleteSaveIpcMock(args: unknown): SaveDeleteResult {
       }));
     } else {
       const replacement: SaveSummary = {
-        id: nextSaveId,
-        contextToken: `save-token-${nextSaveId}`,
+        id: target.id,
+        contextToken: `save-token-${target.id}-replacement`,
         name: "Default save",
         isActive: true,
         createdAtUtc: "2026-07-28T16:20:00.000Z",
         updatedAtUtc: "2026-07-28T16:20:00.000Z",
       };
-      nextSaveId += 1;
       saves = [replacement];
     }
   }

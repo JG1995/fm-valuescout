@@ -42,9 +42,10 @@ function snapshotDate(snapshot: SnapshotMetadata) {
 }
 
 function snapshotTargetLabel(snapshot: SnapshotMetadata) {
-  return snapshot.customName
+  const label = snapshot.customName
     ? `${snapshot.customName} (${snapshotDate(snapshot)})`
     : snapshotDate(snapshot);
+  return `${label} (loaded ${formatAbsoluteUtc(snapshot.loadedAtUtc)}; snapshot #${snapshot.id})`;
 }
 
 function SnapshotRenameModal({
@@ -323,7 +324,7 @@ export function SnapshotHistoryPanel({
                         <Button
                           variant="ghost"
                           onClick={() => setDeleteTarget(snapshot)}
-                          aria-label={`Delete snapshot ${snapshotLabel(snapshot)}`}
+                          aria-label={`Delete snapshot ${snapshotTargetLabel(snapshot)}`}
                         >
                           Delete
                         </Button>

@@ -66,7 +66,7 @@ test.describe("walking skeleton smoke", () => {
     await expect(history.getByRole("row").nth(1)).toContainText("2026-08-01");
 
     await history
-      .getByRole("button", { name: "Delete snapshot 2026-06-01" })
+      .getByRole("button", { name: /^Delete snapshot 2026-06-01/ })
       .click();
     const deletion = page.getByRole("dialog", { name: /Delete snapshot/ });
     await expect(deletion).toContainText("Moneyball import data");
@@ -75,7 +75,7 @@ test.describe("walking skeleton smoke", () => {
       .click();
     await expect(history.getByRole("row")).toHaveCount(2);
     await expect(
-      history.getByRole("button", { name: "Delete snapshot 2026-06-01" }),
+      history.getByRole("button", { name: /^Delete snapshot 2026-06-01/ }),
     ).toHaveCount(0);
   });
 
@@ -97,7 +97,7 @@ test.describe("walking skeleton smoke", () => {
     await expect(main.getByText(/Moneyball imported/i)).toBeVisible();
 
     await history
-      .getByRole("button", { name: "Delete snapshot 2026-08-01" })
+      .getByRole("button", { name: /^Delete snapshot 2026-08-01/ })
       .click();
     await page
       .getByRole("dialog", { name: /Delete snapshot/ })
@@ -124,7 +124,7 @@ test.describe("walking skeleton smoke", () => {
     const activeSave = page.getByRole("combobox", { name: "Active save" });
     await main.getByLabel("New save").fill("Archive");
     await main.getByRole("button", { name: "Create save" }).click();
-    await main.getByRole("button", { name: "Delete save Archive" }).click();
+    await main.getByRole("button", { name: /^Delete save Archive/ }).click();
     const inactiveDeletion = page.getByRole("dialog", { name: /Delete save/ });
     await expect(inactiveDeletion).toContainText(
       "The active save stays unchanged",
@@ -137,7 +137,7 @@ test.describe("walking skeleton smoke", () => {
     await main.getByLabel("New save").fill("Archive");
     await main.getByRole("button", { name: "Create save" }).click();
     await main
-      .getByRole("button", { name: "Delete save Default save" })
+      .getByRole("button", { name: /^Delete save Default save/ })
       .click();
     await page
       .getByRole("dialog", { name: /Delete save/ })
@@ -153,7 +153,7 @@ test.describe("walking skeleton smoke", () => {
 
     const main = page.getByRole("main");
     await main
-      .getByRole("button", { name: "Delete save Default save" })
+      .getByRole("button", { name: /^Delete save Default save/ })
       .click();
     const deletion = page.getByRole("dialog", { name: /Delete save/ });
     await expect(deletion).toContainText(

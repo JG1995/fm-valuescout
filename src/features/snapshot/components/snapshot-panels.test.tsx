@@ -235,7 +235,7 @@ describe("snapshot panels", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: "Delete snapshot 2026-06-01",
+        name: /^Delete snapshot 2026-06-01/,
       }),
     );
     const dialog = screen.getByRole("dialog", { name: /^Delete snapshot/ });
@@ -248,11 +248,54 @@ describe("snapshot panels", () => {
     await waitFor(() => {
       expect(
         screen.queryByRole("button", {
-          name: "Delete snapshot 2026-06-01",
+          name: /^Delete snapshot 2026-06-01/,
         }),
       ).not.toBeInTheDocument();
     });
     expect(screen.getByText("Transfer window")).toBeInTheDocument();
+  });
+
+  it("distinguishes duplicate dated snapshots before deletion", async () => {
+    setSnapshotHistoryIpcMock([
+      {
+        ...HISTORY[0],
+        id: 21,
+        contextToken: "snapshot-token-21",
+        loadedAtUtc: "2026-07-28T13:00:00.000Z",
+        isCurrent: false,
+      },
+      {
+        ...HISTORY[0],
+        id: 22,
+        contextToken: "snapshot-token-22",
+        loadedAtUtc: "2026-07-28T15:00:00.000Z",
+        isCurrent: true,
+      },
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Delete snapshot 2026-06-01 (loaded 2026-07-28 15:00 UTC; snapshot #22)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Delete snapshot 2026-06-01 (loaded 2026-07-28 13:00 UTC; snapshot #21)",
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Delete snapshot 2026-06-01 (loaded 2026-07-28 15:00 UTC; snapshot #22)",
+      }),
+    );
+    expect(
+      screen.getByRole("dialog", {
+        name: "Delete snapshot 2026-06-01 (loaded 2026-07-28 15:00 UTC; snapshot #22)?",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("promotes the next in-game-date snapshot when deleting the current one", async () => {
@@ -262,7 +305,7 @@ describe("snapshot panels", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: "Delete snapshot Transfer window",
+        name: /^Delete snapshot Transfer window/,
       }),
     );
     await user.click(
@@ -289,7 +332,7 @@ describe("snapshot panels", () => {
     await user.type(await screen.findByLabelText("New save"), "Archive");
     await user.click(screen.getByRole("button", { name: "Create save" }));
     await user.click(
-      await screen.findByRole("button", { name: "Delete save Archive" }),
+      await screen.findByRole("button", { name: /^Delete save Archive/ }),
     );
     const dialog = screen.getByRole("dialog", { name: /^Delete save/ });
     expect(dialog).toHaveTextContent("The active save stays unchanged");
@@ -301,8 +344,40 @@ describe("snapshot panels", () => {
       screen.getByRole("combobox", { name: "Active save" }),
     ).toHaveValue("1");
     expect(
-      screen.queryByRole("button", { name: "Delete save Archive" }),
+      screen.queryByRole("button", { name: /^Delete save Archive/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("distinguishes duplicate save names before deletion", async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.type(await screen.findByLabelText("New save"), "Archive");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    await screen.findByRole("button", { name: "Delete save Archive (save 2)" });
+    const createSaveInput = screen.getByLabelText("New save");
+    await waitFor(() => expect(createSaveInput).toHaveValue(""));
+    await user.clear(createSaveInput);
+    await user.type(createSaveInput, "Archive");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+
+    expect(
+      await screen.findByRole("button", {
+        name: "Delete save Archive (save 2)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Delete save Archive (save 3)" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Delete save Archive (save 2)" }),
+    );
+    expect(
+      screen.getByRole("dialog", {
+        name: "Delete save Archive (save 2)?",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("switches to another save after deleting the active save", async () => {
@@ -312,7 +387,7 @@ describe("snapshot panels", () => {
     await user.type(await screen.findByLabelText("New save"), "Archive");
     await user.click(screen.getByRole("button", { name: "Create save" }));
     await user.click(
-      await screen.findByRole("button", { name: "Delete save Default save" }),
+      await screen.findByRole("button", { name: /^Delete save Default save/ }),
     );
     await user.click(
       within(screen.getByRole("dialog", { name: /^Delete save/ })).getByRole(
@@ -331,7 +406,7 @@ describe("snapshot panels", () => {
     renderWithProviders();
 
     await user.click(
-      await screen.findByRole("button", { name: "Delete save Default save" }),
+      await screen.findByRole("button", { name: /^Delete save Default save/ }),
     );
     const dialog = screen.getByRole("dialog", { name: /^Delete save/ });
     expect(dialog).toHaveTextContent("A blank Default save will replace it");
@@ -344,13 +419,40 @@ describe("snapshot panels", () => {
     ).toHaveDisplayValue("Default save");
   });
 
+  it("clears the Load Data outcome when a final save is recreated", async () => {
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+    expect(
+      await screen.findByText(/Loaded 3 players into the database/i),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /^Delete save Default save/ }),
+    );
+    await user.click(
+      within(screen.getByRole("dialog", { name: /^Delete save/ })).getByRole(
+        "button",
+        { name: "Delete save" },
+      ),
+    );
+
+    expect(
+      await screen.findByText(/No snapshot loaded for the active save/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Loaded 3 players into the database/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("restores focus to a cancelled snapshot deletion trigger", async () => {
     seedHistory();
     const user = userEvent.setup();
     renderWithProviders();
 
     const trigger = await screen.findByRole("button", {
-      name: "Delete snapshot 2026-06-01",
+      name: /^Delete snapshot 2026-06-01/,
     });
     trigger.focus();
     await user.click(trigger);
@@ -371,7 +473,7 @@ describe("snapshot panels", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: "Delete snapshot 2026-06-01",
+        name: /^Delete snapshot 2026-06-01/,
       }),
     );
     const dialog = screen.getByRole("dialog", { name: /^Delete snapshot/ });
@@ -400,7 +502,7 @@ describe("snapshot panels", () => {
     await user.click(screen.getByRole("button", { name: "Create save" }));
     await user.click(
       await screen.findByRole("button", {
-        name: "Delete snapshot 2026-06-01",
+        name: /^Delete snapshot 2026-06-01/,
       }),
     );
     await user.selectOptions(

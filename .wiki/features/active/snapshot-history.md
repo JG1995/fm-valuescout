@@ -383,7 +383,7 @@ The Dashboard manages date-ordered snapshot metadata and destructive save/snapsh
 | PR 1 — Retain and manage snapshot history | Commit 1 — Retain snapshots by in-game date | 1be3dd4 | Retained complete snapshots with shared date selection, truthful Load Data metadata, and current-only compatibility. | Sol xhigh accepted after a focused timestamp-precedence test correction. | None |
 | PR 1 — Retain and manage snapshot history | Commit 2 — Version Moneyball data by snapshot | 730c812 | Migrated new Moneyball imports to snapshot/player ownership while quarantining all v17 rows by save. | Sol xhigh accepted. | None |
 | PR 1 — Retain and manage snapshot history | Commit 3 — Add snapshot and save management commands | 120c333 | Added immutable target tokens plus rename/delete commands, current promotion, and transactional save fallback/default recreation. | Sol xhigh accepted after rollback coverage for final-save replacement. | None |
-| PR 1 — Retain and manage snapshot history | Commit 4 — Manage snapshot history from the Dashboard | Pending record | Added Dashboard history management with accessible rename/delete flows and route-owned current-only refreshes. | Sol High accepted after one correction round. | None |
+| PR 1 — Retain and manage snapshot history | Commit 4 — Manage snapshot history from the Dashboard | 55b2fd4 | Added Dashboard history management with accessible rename/delete flows and route-owned current-only refreshes. | Sol High accepted after one correction round. | None |
 
 ## Final validation
 
