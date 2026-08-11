@@ -52,11 +52,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No feature is currently active.
+- [CSV enrichment persistence and derived statistics](./features/active/csv-enrichment-persistence.md) — persist save-scoped Youth career and latest Moneyball data only for current memory-backed player UIDs, transport the canonical Moneyball calculations, and populate Academy career statistics while keeping memory authoritative
 
 ## Next
 
-- **CSV enrichment persistence and derived statistics** — after the completed parser/reconciliation preview, design save-scoped CSV storage and provenance, persist CSV enrichment only for fields the memory pipeline does not supply, keep memory-backed values authoritative wherever the sources overlap, and calculate required Moneyball statistics that are not exported. Decide retention, source replacement, and user-visible consumers when this feature is planned.
+No feature is currently queued. Reassess the backlog after CSV enrichment persistence is complete.
 
 ## Completed
 
