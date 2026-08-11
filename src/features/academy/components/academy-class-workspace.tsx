@@ -319,7 +319,7 @@ function AcademyRosterTableHeader() {
           "Determination",
           "Height",
           "Foot",
-          "Apps",
+          "Career apps",
           "Goals",
           "Assists",
           "Caps",
@@ -336,7 +336,7 @@ function AcademyRosterTableHeader() {
                 "PA",
                 "Determination",
                 "Height",
-                "Apps",
+                "Career apps",
                 "Goals",
                 "Assists",
                 "Caps",
@@ -440,7 +440,7 @@ function AcademyRosterRow({
         {formatPreferredFoot(member.preferredFoot)}
       </td>
       <td className="px-2 text-right text-body-sm tabular-nums">
-        {formatMissable(member.seniorLeagueAppearances)}
+        {formatMissable(member.reportedCareerAppearances)}
       </td>
       <td className="px-2 text-right text-body-sm tabular-nums">
         {formatMissable(member.goals)}

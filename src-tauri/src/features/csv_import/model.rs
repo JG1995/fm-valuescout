@@ -105,6 +105,8 @@ pub enum MoneyballMetricValue {
     Decimal(f64),
 }
 
+pub(crate) type MoneyballStatistics = BTreeMap<String, Option<MoneyballMetricValue>>;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoneyballPlayer {
     pub uid: u32,
@@ -132,6 +134,11 @@ pub struct MoneyballPlayer {
 
 #[cfg_attr(not(test), allow(dead_code))]
 impl MoneyballPlayer {
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) fn canonical_statistics(&self) -> MoneyballStatistics {
+        super::statistics::canonical_statistics(self)
+    }
+
     pub fn metric(&self, header: &str) -> Option<MoneyballMetricValue> {
         self.metrics.get(header).copied().flatten()
     }

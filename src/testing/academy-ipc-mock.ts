@@ -410,7 +410,7 @@ function academyMemberFromCandidate(
     determination: null,
     heightCm: null,
     preferredFoot: null,
-    seniorLeagueAppearances: null,
+    reportedCareerAppearances: null,
     goals: null,
     assists: null,
     internationalCaps: null,

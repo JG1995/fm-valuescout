@@ -94,7 +94,7 @@ pub struct AcademyMember {
     pub determination: Option<i64>,
     pub height_cm: Option<i64>,
     pub preferred_foot: Option<String>,
-    pub senior_league_appearances: Option<i64>,
+    pub reported_career_appearances: Option<i64>,
     pub goals: Option<i64>,
     pub assists: Option<i64>,
     pub international_caps: Option<i64>,
@@ -114,6 +114,13 @@ struct CurrentAcademyPlayer {
     determination: Option<i64>,
     height_cm: Option<i64>,
     preferred_foot: String,
+}
+
+struct AcademyCareerStats {
+    reported_career_appearances: Option<i64>,
+    goals: Option<i64>,
+    assists: Option<i64>,
+    international_caps: Option<i64>,
 }
 
 pub fn create_class(
@@ -251,11 +258,18 @@ pub fn get_class(
                     membership.last_known_name,
                     outcome.status,
                     outcome.buying_club,
-                    outcome.sale_fee_eur
+                    outcome.sale_fee_eur,
+                    career.career_appearances,
+                    career.career_goals,
+                    career.career_assists,
+                    career.international_caps
              FROM academy_memberships membership
              LEFT JOIN academy_member_outcomes outcome
                ON outcome.save_id = membership.save_id
               AND outcome.player_uid = membership.player_uid
+             LEFT JOIN player_youth_career_stats career
+               ON career.save_id = membership.save_id
+              AND career.player_uid = membership.player_uid
              WHERE membership.save_id = ?1 AND membership.class_id = ?2
              ORDER BY membership.last_known_name COLLATE NOCASE, membership.player_uid",
         )
@@ -268,6 +282,12 @@ pub fn get_class(
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, Option<String>>(3)?,
                 row.get::<_, Option<i64>>(4)?,
+                AcademyCareerStats {
+                    reported_career_appearances: row.get(5)?,
+                    goals: row.get(6)?,
+                    assists: row.get(7)?,
+                    international_caps: row.get(8)?,
+                },
             ))
         })
         .map_err(|error| error.to_string())?
@@ -278,13 +298,21 @@ pub fn get_class(
     let members = memberships
         .into_iter()
         .map(
-            |(player_uid, last_known_name, status, buying_club, sale_fee_eur)| {
+            |(player_uid, last_known_name, status, buying_club, sale_fee_eur, career_stats)| {
                 let player = match snapshot_id {
                     Some(snapshot_id) => load_current_player(conn, snapshot_id, player_uid)?,
                     None => None,
                 };
                 let outcome = stored_member_outcome(status, buying_club, sale_fee_eur)?;
-                academy_member(conn, save_id, player_uid, last_known_name, player, outcome)
+                academy_member(
+                    conn,
+                    save_id,
+                    player_uid,
+                    last_known_name,
+                    player,
+                    career_stats,
+                    outcome,
+                )
             },
         )
         .collect::<Result<Vec<_>, _>>()?;
@@ -575,6 +603,7 @@ fn academy_member(
     player_uid: i64,
     last_known_name: String,
     player: Option<CurrentAcademyPlayer>,
+    career_stats: AcademyCareerStats,
     outcome: Option<AcademyMemberOutcome>,
 ) -> Result<AcademyMember, String> {
     let Some(player) = player else {
@@ -593,12 +622,14 @@ fn academy_member(
             determination: None,
             height_cm: None,
             preferred_foot: None,
-            senior_league_appearances: None,
-            goals: None,
-            assists: None,
-            international_caps: None,
+            reported_career_appearances: career_stats.reported_career_appearances,
+            goals: career_stats.goals,
+            assists: career_stats.assists,
+            international_caps: career_stats.international_caps,
             outcome,
-            is_graduate: None,
+            is_graduate: career_stats
+                .reported_career_appearances
+                .map(|appearances| appearances >= 1),
         });
     };
     let state = if player_is_in_club_family(conn, save_id, player.current_club.as_deref())? {
@@ -622,12 +653,14 @@ fn academy_member(
         determination: player.determination,
         height_cm: player.height_cm,
         preferred_foot: Some(player.preferred_foot),
-        senior_league_appearances: None,
-        goals: None,
-        assists: None,
-        international_caps: None,
+        reported_career_appearances: career_stats.reported_career_appearances,
+        goals: career_stats.goals,
+        assists: career_stats.assists,
+        international_caps: career_stats.international_caps,
         outcome,
-        is_graduate: None,
+        is_graduate: career_stats
+            .reported_career_appearances
+            .map(|appearances| appearances >= 1),
     })
 }
 
@@ -953,6 +986,36 @@ mod tests {
         .expect("insert academy membership");
     }
 
+    fn insert_youth_career_stats(
+        conn: &Connection,
+        save_id: i64,
+        player_uid: i64,
+        career_appearances: i64,
+        international_caps: i64,
+        career_goals: i64,
+        career_assists: i64,
+    ) {
+        conn.execute(
+            "INSERT INTO player_youth_career_stats (
+                save_id,
+                player_uid,
+                career_appearances,
+                international_caps,
+                career_goals,
+                career_assists
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                save_id,
+                player_uid,
+                career_appearances,
+                international_caps,
+                career_goals,
+                career_assists,
+            ],
+        )
+        .expect("insert youth career stats");
+    }
+
     #[test]
     fn creates_and_lists_classes_for_one_save() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -1274,7 +1337,7 @@ mod tests {
         assert_eq!(member.state, super::AcademyMemberState::Resolved);
         assert_eq!(member.nationalities, ["ENG"]);
         assert_eq!(member.determination, None);
-        assert_eq!(member.senior_league_appearances, None);
+        assert_eq!(member.reported_career_appearances, None);
         assert_eq!(member.goals, None);
         assert_eq!(member.assists, None);
         assert_eq!(member.international_caps, None);
@@ -1288,6 +1351,79 @@ mod tests {
                 .collect::<Vec<_>>(),
             [78]
         );
+    }
+
+    #[test]
+    fn members_keep_save_scoped_youth_career_stats_after_snapshot_replacement() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("academy-career-stats.db"));
+        let first_save_id = insert_save(&conn, "First academy save");
+        let second_save_id = insert_save(&conn, "Second academy save");
+        ingest_players(
+            &temp_dir,
+            &mut conn,
+            first_save_id,
+            "academy-career-stats-first.json",
+            vec![
+                fixture_player(77, "Golden Fixture Player", "Loan FC", "senior"),
+                fixture_player(78, "Attached Player", "Loan B FC", "senior"),
+            ],
+        );
+        configure_club_family(&conn, first_save_id);
+        let first_class =
+            super::create_class(&conn, first_save_id, 2030).expect("create first academy class");
+        super::assign_member(&conn, first_save_id, first_class.id, 77)
+            .expect("assign first academy member");
+        let second_class =
+            super::create_class(&conn, second_save_id, 2030).expect("create second academy class");
+        insert_membership(&conn, second_save_id, second_class.id, 77);
+        insert_youth_career_stats(&conn, first_save_id, 77, 4, 3, 2, 1);
+        insert_youth_career_stats(&conn, second_save_id, 77, 0, 98, 97, 96);
+
+        let first_member = &super::get_class(&conn, first_save_id, first_class.id)
+            .expect("load first academy class")
+            .members[0];
+        assert_eq!(first_member.state, super::AcademyMemberState::Resolved);
+        assert_eq!(first_member.reported_career_appearances, Some(4));
+        assert_eq!(first_member.goals, Some(2));
+        assert_eq!(first_member.assists, Some(1));
+        assert_eq!(first_member.international_caps, Some(3));
+        assert_eq!(first_member.is_graduate, Some(true));
+
+        let second_member = &super::get_class(&conn, second_save_id, second_class.id)
+            .expect("load second academy class")
+            .members[0];
+        assert_eq!(second_member.state, super::AcademyMemberState::Unresolved);
+        assert_eq!(second_member.reported_career_appearances, Some(0));
+        assert_eq!(second_member.goals, Some(97));
+        assert_eq!(second_member.assists, Some(96));
+        assert_eq!(second_member.international_caps, Some(98));
+        assert_eq!(second_member.is_graduate, Some(false));
+
+        ingest_players(
+            &temp_dir,
+            &mut conn,
+            first_save_id,
+            "academy-career-stats-replaced.json",
+            vec![fixture_player(
+                78,
+                "Replacement Player",
+                "Loan FC",
+                "senior",
+            )],
+        );
+        let unresolved_member = &super::get_class(&conn, first_save_id, first_class.id)
+            .expect("load unresolved academy member")
+            .members[0];
+        assert_eq!(
+            unresolved_member.state,
+            super::AcademyMemberState::Unresolved
+        );
+        assert_eq!(unresolved_member.reported_career_appearances, Some(4));
+        assert_eq!(unresolved_member.goals, Some(2));
+        assert_eq!(unresolved_member.assists, Some(1));
+        assert_eq!(unresolved_member.international_caps, Some(3));
+        assert_eq!(unresolved_member.is_graduate, Some(true));
     }
 
     #[test]

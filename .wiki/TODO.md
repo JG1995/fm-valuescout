@@ -56,16 +56,17 @@ No feature is currently active.
 
 ## Next
 
-- **CSV enrichment persistence and derived statistics** — after the completed parser/reconciliation preview, design save-scoped CSV storage and provenance, persist CSV enrichment only for fields the memory pipeline does not supply, keep memory-backed values authoritative wherever the sources overlap, and calculate required Moneyball statistics that are not exported. Decide retention, source replacement, and user-visible consumers when this feature is planned.
+No feature is currently queued. Reassess the backlog after CSV enrichment persistence is complete.
 
 ## Completed
 
-- [CSV parsing and player reconciliation](./features/completed/csv-player-reconciliation.md) — transient Youth Tracker and Moneyball CSV parsing plus exact UID reconciliation against the active memory-backed snapshot; no persistence or derived statistics
+- [CSV enrichment persistence and derived statistics](./features/completed/csv-enrichment-persistence.md) — save-scoped Youth career and latest Moneyball enrichment for current memory-backed player UIDs, canonical 138-key statistics, and Academy career projections while keeping memory authoritative
+- [CSV parsing and player reconciliation](./features/completed/csv-player-reconciliation.md) — bounded Youth Tracker and Moneyball parsing plus exact UID reconciliation foundation; the parser remains non-mutating while persistence lives in the downstream enrichment feature
 - [Player Development Boosts](./features/completed/player-development-boosts.md) — two guarded player-profile actions for snapshot-derived CA and mentality boosts through a live-validated FM26 write bridge
 - [Potential role scores](./features/completed/potential-role-scores.md) — CA-to-PA visible-attribute projection, Current/Potential profile and assigned-role scores, and explicit current or potential Planner optimization
 - [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md) — schema-v6 direct player, staff, manager, scope, and club parity plus deterministic scan hardening and prior-output safety; PR 2 remains unpublished and unmerged
 - [Planner workspace redesign](./features/completed/planner-workspace-redesign.md) — URL-backed Planner workspaces, adaptive dual-phase tactic pitches, responsive three-team depth matrix, and transactional Clear all
-- [Youth Academy](./features/completed/youth-academy.md) — save-scoped `Class of YYYY` cohorts, club-family player tracking, manual sale/release outcomes, and honest placeholders for career statistics pending memory-reader support
+- [Youth Academy](./features/completed/youth-academy.md) — save-scoped `Class of YYYY` cohorts, club-family player tracking, manual sale/release outcomes, and nullable career statistics that CSV enrichment can populate
 - [Codex workflow migration](./features/completed/codex-workflow-migration.md) — Codex-only repository guidance, specialist agents, and product-focused validation
 - [Player profiles](./features/completed/player-profiles.md) — `/players/$uid` with a compact player summary, tabbed attribute groups, pitch-selected position roles, and entry from Search row and Ctrl+K
 - [Squad planner](./features/completed/squad-planner.md) — save-scoped club family, one dual-phase tactic, and Senior / Reserves / Youth depth strings with manual player assignment

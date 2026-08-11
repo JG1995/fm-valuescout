@@ -1,15 +1,15 @@
-import type { CsvMatchPreview } from "../types/csv-match-preview";
+import type { CsvImportSummary } from "../types/csv-import-summary";
 
-export type CsvPreviewState =
+export type CsvImportState =
   | { status: "idle" }
   | { status: "pending"; contextKey: string }
-  | { status: "success"; contextKey: string; preview: CsvMatchPreview }
+  | { status: "success"; contextKey: string; summary: CsvImportSummary }
   | { status: "error"; contextKey: string; error: Error };
 
-export function previewStateForContext(
-  state: CsvPreviewState,
+export function importStateForContext(
+  state: CsvImportState,
   contextKey: string,
-): CsvPreviewState {
+): CsvImportState {
   if (state.status === "idle" || state.contextKey === contextKey) {
     return state;
   }

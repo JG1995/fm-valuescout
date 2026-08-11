@@ -38,7 +38,7 @@ export type AcademyMember = {
   determination: number | null;
   heightCm: number | null;
   preferredFoot: string | null;
-  seniorLeagueAppearances: number | null;
+  reportedCareerAppearances: number | null;
   goals: number | null;
   assists: number | null;
   internationalCaps: number | null;

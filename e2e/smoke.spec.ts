@@ -41,18 +41,37 @@ test.describe("walking skeleton smoke", () => {
     ).toContainText("smoke-value");
   });
 
-  test("Dashboard keeps the CSV preview idle when the browser dialog stub cancels", async ({
+  test("Dashboard keeps the CSV import idle when the browser dialog stub cancels", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/");
 
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Choose CSV" }).click();
+    await main.getByRole("button", { name: "Import CSV" }).click();
 
     await expect(
-      main.getByText(/Choose one Youth Tracker or Moneyball export/i),
+      main.getByText(/Choose a Youth Tracker or Moneyball export to import/i),
     ).toBeVisible();
+  });
+
+  test("Dashboard reports the stubbed CSV import without exposing its path", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      csvImportFormat: "youthTracker",
+    });
+    await page.goto("/");
+
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Import CSV" }).click();
+
+    await expect(main.getByText(/Youth Tracker imported/i)).toBeVisible();
+    await expect(
+      main.getByText("3 of 3 player IDs were stored."),
+    ).toBeVisible();
+    expect(await main.textContent()).not.toContain("/tmp/smoke-import.csv");
   });
 
   test("nav rail expands from its own toggle", async ({ page }) => {

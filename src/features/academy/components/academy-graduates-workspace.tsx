@@ -45,7 +45,7 @@ export function AcademyGraduatesWorkspace({
   const members = classDetails.flatMap((detail) => detail.members);
   if (
     members.length === 0 ||
-    members.some((member) => member.seniorLeagueAppearances === null)
+    members.some((member) => member.reportedCareerAppearances === null)
   ) {
     return <AcademyGraduatesUnavailable />;
   }
@@ -60,7 +60,7 @@ export function AcademyGraduatesWorkspace({
     return (
       <Panel title="Graduates">
         <EmptyState icon={GraduationCap} title="No graduates yet">
-          A player becomes a graduate after one or more reported senior league
+          A player becomes a graduate after one or more reported career
           appearances.
         </EmptyState>
       </Panel>
@@ -74,15 +74,13 @@ export function AcademyGraduatesWorkspace({
           <caption className="sr-only">Youth Academy graduates</caption>
           <thead className="bg-surface-container-lowest">
             <tr>
-              {["Player", "Class", "Senior league apps", "Current club"].map(
+              {["Player", "Class", "Career apps", "Current club"].map(
                 (label) => (
                   <th
                     key={label}
                     scope="col"
                     className={`h-table-header-height px-2 text-label-md text-on-surface-variant uppercase ${
-                      label === "Senior league apps"
-                        ? "text-right"
-                        : "text-left"
+                      label === "Career apps" ? "text-right" : "text-left"
                     }`}
                   >
                     {label}
@@ -110,8 +108,8 @@ function AcademyGraduatesUnavailable() {
   return (
     <Panel title="Graduates">
       <EmptyState icon={GraduationCap} title="Graduate data unavailable">
-        Senior league appearances are not available from the current memory
-        reader, so graduate status and totals remain unavailable.
+        Career appearances have not been imported for every tracked player, so
+        graduate status and totals remain unavailable.
       </EmptyState>
     </Panel>
   );
@@ -133,7 +131,7 @@ function GraduateRow({
         Class of {academyClass.classYear}
       </td>
       <td className="px-2 text-right text-body-sm tabular-nums">
-        {formatMissable(member.seniorLeagueAppearances)}
+        {formatMissable(member.reportedCareerAppearances)}
       </td>
       <td className="px-2 text-body-sm text-on-surface-variant">
         {formatMissable(member.currentClub)}

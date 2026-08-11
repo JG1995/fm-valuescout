@@ -1,59 +1,59 @@
-import type { CsvMatchPreview } from "@/features/csv-import/types/csv-match-preview";
+import type { CsvImportSummary } from "@/features/csv-import/types/csv-import-summary";
 
-export type CsvPreviewIpcMockMode = "success" | "error" | "busy";
+export type CsvImportIpcMockMode = "success" | "error" | "busy";
 
-const DEFAULT_PREVIEW: CsvMatchPreview = {
+const DEFAULT_IMPORT: CsvImportSummary = {
   format: "youthTracker",
   totalPlayers: 3,
-  matchedPlayers: 3,
-  unmatchedPlayers: 0,
+  storedPlayers: 3,
+  skippedPlayers: 0,
 };
 
-let mode: CsvPreviewIpcMockMode = "success";
-let preview = DEFAULT_PREVIEW;
+let mode: CsvImportIpcMockMode = "success";
+let summary = DEFAULT_IMPORT;
 let error: unknown = new Error("CSV format is not supported");
 let lastArgs: unknown;
 let busyDeferred: {
-  promise: Promise<CsvMatchPreview>;
-  resolve: (value: CsvMatchPreview) => void;
+  promise: Promise<CsvImportSummary>;
+  resolve: (value: CsvImportSummary) => void;
 } | null = null;
 
-export function resetCsvPreviewIpcMock() {
+export function resetCsvImportIpcMock() {
   mode = "success";
-  preview = DEFAULT_PREVIEW;
+  summary = DEFAULT_IMPORT;
   error = new Error("CSV format is not supported");
   lastArgs = undefined;
   busyDeferred = null;
 }
 
-export function setCsvPreviewIpcMockResult(nextPreview: CsvMatchPreview) {
+export function setCsvImportIpcMockResult(nextSummary: CsvImportSummary) {
   mode = "success";
-  preview = nextPreview;
+  summary = nextSummary;
   busyDeferred = null;
 }
 
-export function setCsvPreviewIpcMockError(nextError: unknown) {
+export function setCsvImportIpcMockError(nextError: unknown) {
   mode = "error";
   error = nextError;
   busyDeferred = null;
 }
 
-export function setCsvPreviewIpcMockBusy() {
+export function setCsvImportIpcMockBusy() {
   mode = "busy";
 }
 
-export function resolveBusyCsvPreviewRequest(
-  result: CsvMatchPreview = preview,
+export function resolveBusyCsvImportRequest(
+  result: CsvImportSummary = summary,
 ) {
   busyDeferred?.resolve(result);
   busyDeferred = null;
 }
 
-export function getLastCsvPreviewIpcArgs() {
+export function getLastCsvImportIpcArgs() {
   return lastArgs;
 }
 
-export function resolveCsvPreviewIpcMock(args: unknown) {
+export function resolveCsvImportIpcMock(args: unknown) {
   lastArgs = args;
 
   if (mode === "error") {
@@ -62,8 +62,8 @@ export function resolveCsvPreviewIpcMock(args: unknown) {
 
   if (mode === "busy") {
     if (!busyDeferred) {
-      let resolve!: (value: CsvMatchPreview) => void;
-      const promise = new Promise<CsvMatchPreview>((resolvePromise) => {
+      let resolve!: (value: CsvImportSummary) => void;
+      const promise = new Promise<CsvImportSummary>((resolvePromise) => {
         resolve = resolvePromise;
       });
       busyDeferred = { promise, resolve };
@@ -71,5 +71,5 @@ export function resolveCsvPreviewIpcMock(args: unknown) {
     return busyDeferred.promise;
   }
 
-  return Promise.resolve(preview);
+  return Promise.resolve(summary);
 }

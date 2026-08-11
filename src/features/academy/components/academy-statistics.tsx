@@ -51,8 +51,8 @@ export function AcademyStatistics({
       explanation:
         unavailableExplanation ??
         (statistics.graduates === null
-          ? "Graduate data is not available until the memory reader exposes senior league appearances."
-          : "Players with at least one reported senior league appearance."),
+          ? "Graduate data is unavailable until career appearances have been imported for every tracked player."
+          : "Players with at least one reported all-time career appearance."),
       icon: GraduationCap,
       iconClassName: "text-primary",
     },
@@ -90,7 +90,7 @@ export function AcademyStatistics({
       explanation:
         unavailableExplanation ??
         (statistics.goals === null
-          ? "Career goals are not available from the current memory reader."
+          ? "Career goals have not been imported for every tracked player."
           : "Reported career goals for tracked players."),
       icon: Goal,
       iconClassName: "text-primary",
@@ -102,7 +102,7 @@ export function AcademyStatistics({
       explanation:
         unavailableExplanation ??
         (statistics.assists === null
-          ? "Career assists are not available from the current memory reader."
+          ? "Career assists have not been imported for every tracked player."
           : "Reported career assists for tracked players."),
       icon: Handshake,
       iconClassName: "text-primary",
@@ -114,7 +114,7 @@ export function AcademyStatistics({
       explanation:
         unavailableExplanation ??
         (statistics.internationalCaps === null
-          ? "International caps are not available from the current memory reader."
+          ? "International caps have not been imported for every tracked player."
           : "Reported international caps for tracked players."),
       icon: Globe2,
       iconClassName: "text-primary",

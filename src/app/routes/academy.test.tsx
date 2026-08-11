@@ -84,8 +84,8 @@ describe("academy route", () => {
       determination: valueOrDefault(overrides.determination, 15),
       heightCm: valueOrDefault(overrides.heightCm, 180),
       preferredFoot: valueOrDefault(overrides.preferredFoot, "right"),
-      seniorLeagueAppearances: valueOrDefault(
-        overrides.seniorLeagueAppearances,
+      reportedCareerAppearances: valueOrDefault(
+        overrides.reportedCareerAppearances,
         null,
       ),
       goals: valueOrDefault(overrides.goals, null),
@@ -132,7 +132,7 @@ describe("academy route", () => {
     await user.click(screen.getByRole("tab", { name: "Graduates" }));
     expect(router.state.location.search).toEqual({ view: "graduates" });
     expect(
-      screen.getByText(/senior league appearances are not available/i),
+      screen.getByText(/career appearances have not been imported/i),
     ).toBeInTheDocument();
   });
 
@@ -236,7 +236,7 @@ describe("academy route", () => {
     expect(screen.getByTestId("academy-stat-graduates")).toHaveTextContent("—");
     expect(
       screen.getByTestId("academy-stat-goals").parentElement,
-    ).toHaveTextContent(/not available from the current memory reader/i);
+    ).toHaveTextContent(/have not been imported for every tracked player/i);
 
     const outcomes = screen.getByRole("region", {
       name: "Academy outcomes",
@@ -281,7 +281,7 @@ describe("academy route", () => {
       academyMember({
         playerUid: 77,
         lastKnownName: "Sold graduate",
-        seniorLeagueAppearances: 1,
+        reportedCareerAppearances: 1,
         goals: null,
         assists: null,
         internationalCaps: null,
@@ -308,13 +308,13 @@ describe("academy route", () => {
       academyMember({
         playerUid: 77,
         lastKnownName: "Graduate candidate",
-        seniorLeagueAppearances: 2,
+        reportedCareerAppearances: 2,
         isGraduate: false,
       }),
       academyMember({
         playerUid: 78,
         lastKnownName: "Non-graduate candidate",
-        seniorLeagueAppearances: 0,
+        reportedCareerAppearances: 0,
         isGraduate: true,
       }),
     ]);
@@ -333,7 +333,7 @@ describe("academy route", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "Class" }));
     expect(
-      await screen.findAllByRole("columnheader", { name: "Apps" }),
+      await screen.findAllByRole("columnheader", { name: "Career apps" }),
     ).toHaveLength(3);
     expect(screen.getAllByRole("columnheader", { name: "Fee" })).toHaveLength(
       3,

@@ -27,9 +27,9 @@ import {
   resolveSetAcademyMemberOutcomeIpcMock,
 } from "@/testing/academy-ipc-mock";
 import {
-  resetCsvPreviewIpcMock,
-  resolveBusyCsvPreviewRequest,
-  resolveCsvPreviewIpcMock,
+  resetCsvImportIpcMock,
+  resolveBusyCsvImportRequest,
+  resolveCsvImportIpcMock,
 } from "@/testing/csv-import-ipc-mock";
 import {
   resetPlannerIpcMock,
@@ -129,8 +129,8 @@ function registerIpcMocks() {
       return resolveListSanityPlayersIpcMock();
     }
 
-    if (cmd === "preview_csv_matches") {
-      return resolveCsvPreviewIpcMock(args);
+    if (cmd === "import_csv") {
+      return resolveCsvImportIpcMock(args);
     }
 
     if (cmd === "search_players") {
@@ -270,7 +270,7 @@ registerIpcMocks();
 afterEach(() => {
   resolveBusyDumpRequest();
   resolveBusyLoadDataRequest();
-  resolveBusyCsvPreviewRequest();
+  resolveBusyCsvImportRequest();
   cleanup();
   clearMocks();
   demoValue = "";
@@ -279,7 +279,7 @@ afterEach(() => {
   setLoadDataIpcMockMode("success");
   resetBridgeInstallIpcMock();
   resetSnapshotIpcMock();
-  resetCsvPreviewIpcMock();
+  resetCsvImportIpcMock();
   resetSearchPlayersOverride();
   resetGetPlayerOverride();
   resetPlannerIpcMock();

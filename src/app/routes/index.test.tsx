@@ -1,12 +1,13 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { academyKeys } from "@/features/academy/api/academy-keys";
 import {
-  getLastCsvPreviewIpcArgs,
-  resolveBusyCsvPreviewRequest,
-  setCsvPreviewIpcMockBusy,
-  setCsvPreviewIpcMockError,
-  setCsvPreviewIpcMockResult,
+  getLastCsvImportIpcArgs,
+  resolveBusyCsvImportRequest,
+  setCsvImportIpcMockBusy,
+  setCsvImportIpcMockError,
+  setCsvImportIpcMockResult,
 } from "@/testing/csv-import-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
 
@@ -14,39 +15,39 @@ const open = vi.hoisted(() => vi.fn());
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open }));
 
-describe("Dashboard CSV reconciliation preview", () => {
+describe("Dashboard CSV enrichment import", () => {
   beforeEach(() => {
     open.mockReset();
     open.mockResolvedValue(null);
   });
 
-  it("guides the user to load a snapshot before selecting a CSV", async () => {
+  it("guides the user to load a snapshot before importing a CSV", async () => {
     renderWithProviders();
 
     expect(
-      await screen.findByRole("heading", { name: "CSV reconciliation" }),
+      await screen.findByRole("heading", { name: "CSV enrichment" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Load Data before previewing a CSV export/i),
+      screen.getByText(/Load Data before importing a CSV export/i),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Choose CSV" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Import CSV" })).toBeDisabled();
   });
 
-  it("leaves the preview idle when the native picker is cancelled", async () => {
+  it("leaves the import idle when the native picker is cancelled", async () => {
     const user = userEvent.setup();
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
 
     expect(open).toHaveBeenCalledWith({
       multiple: false,
       directory: false,
       filters: [{ name: "CSV", extensions: ["csv"] }],
     });
-    expect(getLastCsvPreviewIpcArgs()).toBeUndefined();
+    expect(getLastCsvImportIpcArgs()).toBeUndefined();
     expect(
-      screen.getByText(/Choose one Youth Tracker or Moneyball export/i),
+      screen.getByText(/Choose a Youth Tracker or Moneyball export to import/i),
     ).toBeInTheDocument();
   });
 
@@ -57,97 +58,109 @@ describe("Dashboard CSV reconciliation preview", () => {
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Could not preview CSV.",
+      "Could not import CSV.",
     );
     expect(screen.queryByText(privatePath)).not.toBeInTheDocument();
   });
 
-  it("shows a pending label while the preview command runs", async () => {
+  it("shows a pending label while the import command runs", async () => {
     const user = userEvent.setup();
-    setCsvPreviewIpcMockBusy();
+    setCsvImportIpcMockBusy();
     open.mockResolvedValue("C:\\exports\\players.csv");
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
 
     expect(
-      screen.getByRole("button", { name: "Checking CSV…" }),
+      screen.getByRole("button", { name: "Importing CSV…" }),
     ).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Checking CSV");
+    expect(screen.getByRole("status")).toHaveTextContent("Importing CSV");
 
-    resolveBusyCsvPreviewRequest();
+    resolveBusyCsvImportRequest();
     expect(
-      await screen.findByText(/Youth Tracker detected/i),
+      await screen.findByText(/Youth Tracker imported/i),
     ).toBeInTheDocument();
   });
 
-  it("shows a complete Youth Tracker match without exposing the selected path", async () => {
+  it("reports a Youth Tracker import without exposing its path and refreshes Academy", async () => {
     const user = userEvent.setup();
     const path = "C:\\Users\\Jonas\\Documents\\private-export.csv";
-    setCsvPreviewIpcMockResult({
+    setCsvImportIpcMockResult({
       format: "youthTracker",
       totalPlayers: 74,
-      matchedPlayers: 74,
-      unmatchedPlayers: 0,
+      storedPlayers: 74,
+      skippedPlayers: 0,
     });
     open.mockResolvedValue(path);
-    renderWithProviders();
+    const { queryClient } = renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    queryClient.setQueryData(academyKeys.classes(), []);
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
 
     expect(
-      await screen.findByText(/Youth Tracker detected/i),
+      await screen.findByText(/Youth Tracker imported/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("74 of 74 player IDs match the current snapshot."),
+      screen.getByText("74 of 74 player IDs were stored."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Every exported player ID matches/i),
+      screen.getByText(/Every exported player ID was stored/i),
     ).toBeInTheDocument();
     expect(screen.queryByText(path)).not.toBeInTheDocument();
-    expect(getLastCsvPreviewIpcArgs()).toEqual({ path });
+    expect(getLastCsvImportIpcArgs()).toEqual({ path });
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryState(academyKeys.classes())?.isInvalidated,
+      ).toBe(true);
+    });
   });
 
-  it("shows the Moneyball format and unmatched-player warning", async () => {
+  it("reports skipped Moneyball player IDs without invalidating Academy", async () => {
     const user = userEvent.setup();
-    setCsvPreviewIpcMockResult({
+    setCsvImportIpcMockResult({
       format: "moneyball",
       totalPlayers: 75,
-      matchedPlayers: 74,
-      unmatchedPlayers: 1,
+      storedPlayers: 74,
+      skippedPlayers: 1,
     });
     open.mockResolvedValue("C:\\exports\\moneyball.csv");
-    renderWithProviders();
+    const { queryClient } = renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    queryClient.setQueryData(academyKeys.classes(), []);
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
 
-    expect(await screen.findByText(/Moneyball detected/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Moneyball imported/i)).toBeInTheDocument();
     expect(
-      screen.getByText("74 of 75 player IDs match the current snapshot."),
+      screen.getByText("74 of 75 player IDs were stored."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/1 exported player ID does not match/i),
+      screen.getByText(
+        /1 player ID was skipped because it does not match the current snapshot/i,
+      ),
     ).toBeInTheDocument();
+    expect(
+      queryClient.getQueryState(academyKeys.classes())?.isInvalidated,
+    ).toBe(false);
   });
 
   it("uses safe error copy instead of a native error message", async () => {
     const user = userEvent.setup();
     const privatePath = "C:\\Users\\Jonas\\secret.csv";
-    setCsvPreviewIpcMockError(new Error(`Could not read ${privatePath}`));
+    setCsvImportIpcMockError(new Error(`Could not read ${privatePath}`));
     open.mockResolvedValue(privatePath);
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Could not preview CSV.",
+      "Could not import CSV.",
     );
     expect(screen.queryByText(privatePath)).not.toBeInTheDocument();
   });
@@ -155,7 +168,7 @@ describe("Dashboard CSV reconciliation preview", () => {
   it("shows safe record context for invalid CSV data", async () => {
     const user = userEvent.setup();
     const privatePath = "C:\\Users\\Jonas\\duplicate.csv";
-    setCsvPreviewIpcMockError(
+    setCsvImportIpcMockError(
       new Error(
         "CSV file is invalid: CSV record 3 repeats the Unique ID from record 2",
       ),
@@ -164,7 +177,7 @@ describe("Dashboard CSV reconciliation preview", () => {
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "CSV record 3 repeats the Unique ID from record 2",
@@ -172,16 +185,18 @@ describe("Dashboard CSV reconciliation preview", () => {
     expect(screen.queryByText(privatePath)).not.toBeInTheDocument();
   });
 
-  it("explains when the snapshot changes while a CSV is being checked", async () => {
+  it("explains when the snapshot changes while a CSV is being imported", async () => {
     const user = userEvent.setup();
-    setCsvPreviewIpcMockError(
-      new Error("The current save changed while the CSV was read"),
+    setCsvImportIpcMockError(
+      new Error(
+        "The current save or snapshot changed while the CSV was imported",
+      ),
     );
     open.mockResolvedValue("C:\\exports\\players.csv");
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Snapshot changed.",
@@ -191,73 +206,114 @@ describe("Dashboard CSV reconciliation preview", () => {
     );
   });
 
-  it("clears a completed preview when Load Data replaces the current snapshot", async () => {
+  it("clears a completed import when Load Data replaces the current snapshot", async () => {
     const user = userEvent.setup();
-    setCsvPreviewIpcMockResult({
+    setCsvImportIpcMockResult({
       format: "moneyball",
       totalPlayers: 75,
-      matchedPlayers: 74,
-      unmatchedPlayers: 1,
+      storedPlayers: 74,
+      skippedPlayers: 1,
     });
     open.mockResolvedValue("C:\\exports\\moneyball.csv");
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
-    expect(await screen.findByText(/Moneyball detected/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
+    expect(await screen.findByText(/Moneyball imported/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Load Data" }));
 
     await waitFor(() => {
-      expect(screen.queryByText(/Moneyball detected/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Moneyball imported/i)).not.toBeInTheDocument();
     });
     expect(
-      screen.getByText(/Choose one Youth Tracker or Moneyball export/i),
+      screen.getByText(/Choose a Youth Tracker or Moneyball export to import/i),
     ).toBeInTheDocument();
   });
 
-  it("does not restore a late preview after Load Data replaces the snapshot", async () => {
+  it("does not restore a late import after Load Data replaces the snapshot", async () => {
     const user = userEvent.setup();
-    setCsvPreviewIpcMockBusy();
+    setCsvImportIpcMockBusy();
     open.mockResolvedValue("C:\\exports\\moneyball.csv");
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
-    expect(screen.getByRole("status")).toHaveTextContent("Checking CSV");
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Importing CSV");
 
     await user.click(screen.getByRole("button", { name: "Load Data" }));
     expect(
-      await screen.findByText(/Choose one Youth Tracker or Moneyball export/i),
+      await screen.findByText(
+        /Choose a Youth Tracker or Moneyball export to import/i,
+      ),
     ).toBeInTheDocument();
 
-    resolveBusyCsvPreviewRequest({
+    resolveBusyCsvImportRequest({
       format: "moneyball",
       totalPlayers: 75,
-      matchedPlayers: 74,
-      unmatchedPlayers: 1,
+      storedPlayers: 74,
+      skippedPlayers: 1,
     });
 
     await waitFor(() => {
-      expect(screen.queryByText(/Moneyball detected/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Moneyball imported/i)).not.toBeInTheDocument();
     });
   });
 
-  it("clears a completed preview when the active save changes", async () => {
+  it("does not restore a late import after returning to the same save", async () => {
     const user = userEvent.setup();
-    setCsvPreviewIpcMockResult({
+    setCsvImportIpcMockBusy();
+    open.mockResolvedValue("C:\\exports\\youth.csv");
+    const { queryClient } = renderWithProviders();
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+    queryClient.setQueryData(academyKeys.classes(), []);
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Importing CSV");
+
+    await user.type(screen.getByLabelText("New save"), "Second save");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Active save" }),
+      "2",
+    );
+    await screen.findByText(/Load Data before importing a CSV export/i);
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Active save" }),
+      "1",
+    );
+    await screen.findByText(
+      /Choose a Youth Tracker or Moneyball export to import/i,
+    );
+
+    await act(async () => {
+      resolveBusyCsvImportRequest();
+    });
+
+    expect(
+      screen.queryByText(/Youth Tracker imported/i),
+    ).not.toBeInTheDocument();
+    expect(
+      queryClient.getQueryState(academyKeys.classes())?.isInvalidated,
+    ).toBe(false);
+  });
+
+  it("clears a completed import when the active save changes", async () => {
+    const user = userEvent.setup();
+    setCsvImportIpcMockResult({
       format: "youthTracker",
       totalPlayers: 74,
-      matchedPlayers: 74,
-      unmatchedPlayers: 0,
+      storedPlayers: 74,
+      skippedPlayers: 0,
     });
     open.mockResolvedValue("C:\\exports\\youth.csv");
     renderWithProviders();
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    await user.click(screen.getByRole("button", { name: "Import CSV" }));
     expect(
-      await screen.findByText(/Youth Tracker detected/i),
+      await screen.findByText(/Youth Tracker imported/i),
     ).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("New save"), "Second save");
@@ -268,10 +324,10 @@ describe("Dashboard CSV reconciliation preview", () => {
     );
 
     expect(
-      await screen.findByText(/Load Data before previewing a CSV export/i),
+      await screen.findByText(/Load Data before importing a CSV export/i),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(/Youth Tracker detected/i),
+      screen.queryByText(/Youth Tracker imported/i),
     ).not.toBeInTheDocument();
   });
 });
