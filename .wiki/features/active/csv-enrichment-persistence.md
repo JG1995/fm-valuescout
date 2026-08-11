@@ -74,7 +74,7 @@ Persist the supported Youth Tracker and Moneyball CSV data that the memory pipel
   - Academy member projection is the first read consumer for Youth Tracker enrichment.
 - External source contract:
   - The pinned legacy source is commit `366aa20b5282d3a63c94854ddb8da6992462b0c5` of `JG1995/fm-valuescout-react`.
-  - Its [`schema.rs`](https://github.com/JG1995/fm-valuescout-react/blob/366aa20b5282d3a63c94854ddb8da6992462b0c5/src-tauri/src/data/schema.rs) defines 198 canonical columns: 22 base columns and 176 performance-stat columns.
+  - Its [`schema.rs`](https://github.com/JG1995/fm-valuescout-react/blob/366aa20b5282d3a63c94854ddb8da6992462b0c5/src-tauri/src/data/schema.rs) defines 160 canonical top-level columns: 22 base columns and 138 performance-stat columns.
   - Its [`row.rs`](https://github.com/JG1995/fm-valuescout-react/blob/366aa20b5282d3a63c94854ddb8da6992462b0c5/src-tauri/src/data/row.rs) and [`derived.rs`](https://github.com/JG1995/fm-valuescout-react/blob/366aa20b5282d3a63c94854ddb8da6992462b0c5/src-tauri/src/data/derived.rs) define the implemented calculations. These files, not older speculative documentation, are the transport source of truth.
 - Project validation commands:
   - `./scripts/dev test [target...]`
@@ -93,7 +93,7 @@ Persist the supported Youth Tracker and Moneyball CSV data that the memory pipel
 - Migration v17 adds `player_youth_career_stats`, keyed by `(save_id, player_uid)`, with nullable career appearances, international caps, career goals, career assists, and a row-level `imported_at_utc` timestamp.
 - Migration v17 adds `player_moneyball_stats`, keyed by `(save_id, player_uid)`, with a normalized nullable asking-price shape, nullable starts, substitute appearances, and minutes, a non-null canonical statistics JSON object, and a row-level `imported_at_utc` timestamp.
 - Both tables reference `saves(id) ON DELETE CASCADE`. They intentionally do not reference `players`, because a player row belongs to a replaceable snapshot rather than the stable save.
-- The Moneyball statistics object contains all 176 canonical performance keys from the pinned legacy schema, each with a numeric value or `null`. Persisted keys keep the exact pinned schema spelling, including identifiers such as `np-xg` and `xg-op`; CSV export-header spelling remains a parser concern.
+- The Moneyball statistics object contains all 138 canonical performance keys from the pinned legacy schema, each with a numeric value or `null`. Persisted keys keep the exact pinned schema spelling, including identifiers such as `np-xg` and `xg-op`; CSV export-header spelling remains a parser concern.
 - The asking-price shape preserves missing, single price, price range, and not-for-sale without reusing the memory-owned transfer-value field.
 - No season key or import-parent table is added. A later history feature must introduce an explicit season identity and copy or migrate the stable canonical metric contract into historical rows.
 
@@ -103,7 +103,7 @@ Persist the supported Youth Tracker and Moneyball CSV data that the memory pipel
 | --- | --- | --- |
 | Youth Tracker | All-time career appearances, international caps, all-time goals, assists | UID except as key; identity; age; nationality; positions and best position; CA/PA; height; determination; personality label; preferred foot; visible and hidden attributes |
 | Moneyball base data | Asking price; starts; substitute appearances; minutes | UID except as key; name; nations; club; division; position; age; height; left/right foot; CA/PA; transfer value; wage; expiry; internal source marker |
-| Moneyball performance data | All 176 canonical exported-or-calculated statistic values under the exact pinned schema keys | Moneyball CSV header spelling and duplicate source formatting |
+| Moneyball performance data | All 138 canonical exported-or-calculated statistic values under the exact pinned schema keys | Moneyball CSV header spelling and duplicate source formatting |
 
 ### Moneyball calculation contract
 
@@ -140,7 +140,7 @@ Persist the supported Youth Tracker and Moneyball CSV data that the memory pipel
 - The current CSV parsers already retain every field needed for the Youth and Moneyball persistence contracts.
 - The current `players` lifecycle is snapshot-scoped and therefore unsuitable for durable enrichment columns.
 - The memory bridge reads numeric left- and right-foot strength before deriving preferred foot.
-- The legacy implemented schema contains 176 performance fields and the implemented formulas cover total/per-90 completion plus the listed ratios and minutes-per-event metrics.
+- The legacy implemented schema contains 138 performance fields and the implemented formulas cover total/per-90 completion plus the listed ratios and minutes-per-event metrics.
 - Neither supported CSV format supplies a trustworthy, normalized Moneyball season identifier.
 - Academy already has nullable presentation seams for the four Youth career values.
 
@@ -155,7 +155,7 @@ Persist the supported Youth Tracker and Moneyball CSV data that the memory pipel
 
 - Use separate save-scoped Youth career and Moneyball latest-season tables rather than expanding snapshot-owned `players`.
 - Keep one latest row per save, format, and player. Prepare for history with stable metric keys and row-level import timestamps, but do not add an unused season abstraction now.
-- Store the large canonical Moneyball metric set as one validated JSON object per player rather than adding 176 nullable SQLite columns or one row per metric.
+- Store the large canonical Moneyball metric set as one validated JSON object per player rather than adding 138 nullable SQLite columns or one row per metric.
 - Preserve a normalized asking-price value because memory does not supply it; discard Moneyball transfer value because memory already owns market value.
 - Exclude both Youth and Moneyball foot text because memory is the source for the underlying foot attributes.
 - Make per-player upsert the replacement unit. Do not clear all prior rows when a file contains only a subset of the current snapshot.
@@ -248,11 +248,11 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 #### Commit 2 — Derive canonical Moneyball statistics
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): derive canonical Moneyball statistics`
 
-**Work:** Transport the pinned 176-field Moneyball performance catalogue and its implemented calculation rules into the current Rust CSV domain, producing stable canonical keys and nullable exported-or-derived numeric values.
+**Work:** Transport the pinned 138-field Moneyball performance catalogue and its implemented calculation rules into the current Rust CSV domain, producing stable canonical keys and nullable exported-or-derived numeric values.
 
 **Out of scope:**
 
@@ -265,7 +265,7 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 - Owners and files: `src-tauri/src/features/csv_import/model.rs`, `parser.rs`, a focused statistics module if separation improves clarity, and CSV parser/statistic tests and fixtures.
 - Existing patterns to verify: current `MoneyballMetricValue`, `BTreeMap` ordering, fixture-backed parser tests, blank-as-null behavior, and safe parse diagnostics.
-- Constraints and invariants: exactly 176 canonical performance keys with the exact pinned schema spelling; exported values remain authoritative except where the pinned implementation explicitly defines a fallback; calculations follow the pinned `schema.rs`, `row.rs`, and `derived.rs`; zero and null remain distinct; no non-finite JSON numbers.
+- Constraints and invariants: exactly 138 canonical performance keys with the exact pinned schema spelling; exported values remain authoritative except where the pinned implementation explicitly defines a fallback; calculations follow the pinned `schema.rs`, `row.rs`, and `derived.rs`; zero and null remain distinct; no non-finite JSON numbers.
 - Dependencies and ordering: consumes the existing Moneyball parsed fields and supplies the complete object written in commit 3.
 
 **Implementation profile:** Terra xhigh — the formula outcomes are pinned, but transporting a large typed catalogue without omissions or semantic drift requires substantial local mapping judgment.
@@ -278,7 +278,7 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 **Review mandate:**
 
-- Compare all 176 canonical keys against the pinned schema, including spelling and numeric kind.
+- Compare all 138 canonical keys against the pinned schema, including spelling and numeric kind.
 - Verify every exported legacy input maps once and no speculative prose-only metric is added.
 - Verify per-90 and reverse-total formulas, rounding, and positive-minute boundaries.
 - Verify each ratio uses the correct numerator and denominator and preserves zero numerators.
@@ -287,7 +287,7 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 #### Commit 3 — Persist matched CSV player enrichment
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(import): persist matched CSV player enrichment`
 
@@ -407,19 +407,19 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 **PR:** PR 1 — Persist CSV player enrichment
 
-**Commit:** Commit 1 — Add save-scoped enrichment schema
+**Commit:** Commit 3 — Persist matched CSV player enrichment
 
 ### RED proof
 
-Add migration tests that expect schema version 17, both enrichment tables, exact key and cascade behavior, and preservation of a populated v16 database. Before the migration exists, `./scripts/dev check` must fail for the missing version and tables rather than for test setup.
+Add command/service integration tests that fail because no transactional matched-player CSV import exists. The failure must isolate the missing write path rather than a parser or fixture setup error.
 
 ### Expected outcome
 
-Fresh and existing databases migrate to v17 with empty, save-scoped Youth and Moneyball enrichment tables. Existing saves, snapshots, players, Planner state, and Academy state remain unchanged. Deleting a save removes enrichment; replacing a snapshot cannot.
+Youth and Moneyball imports replace complete enrichment rows only for memory-backed players in the active save. Each import parses before the write lock, revalidates the captured context inside one transaction, and returns a bounded stored/skipped summary without paths or raw rows.
 
 ### Explicit exclusions
 
-No parser, command, service write, Academy, React, bridge, or history change belongs in the active commit.
+No Dashboard activation or copy, Academy read behavior, deletion of rows omitted from the file, historical imports, season identity, Moneyball read UI, bridge, or CSV dialect change belongs in the active commit.
 
 ## Discoveries and replanning
 
@@ -428,6 +428,7 @@ No parser, command, service write, Academy, React, bridge, or history change bel
 - The bridge inspection confirmed that numeric left- and right-foot strengths are already read and decoded internally. Both CSV foot representations are therefore excluded, and the bridge remains unchanged.
 - The user delegated the immediate consumer decision. Academy is selected because it already exposes nullable placeholders for the four Youth career values; Moneyball presentation is deferred.
 - The retired repository's implemented schema and formulas are pinned at commit `366aa20b5282d3a63c94854ddb8da6992462b0c5`. Older prose is not accepted when it differs from code.
+- Commit 2 source inspection found 160 top-level `schema.rs` fields: 22 base fields and 138 performance fields. The nearby `198 columns total` comment is inaccurate, so every planned 176-key reference now uses the implemented 138-key contract. No implemented legacy key was removed.
 - Pre-commit review corrected four planning contradictions: the native selected path is an inbound IPC argument but is never returned or retained; live FM26 is not a completion gate; persisted metric keys keep exact legacy schema spelling; and a zero exported save percentage uses the pinned counts-based fallback.
 - No planned feature spec exists to promote. No new ADR is justified because the plan follows the existing Rust IPC, SQLite ownership, and save-scoping decisions.
 
@@ -436,6 +437,7 @@ No parser, command, service write, Academy, React, bridge, or history change bel
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 — Persist CSV player enrichment | Commit 1 — Add save-scoped enrichment schema | Pending record | Migration v17 and coverage | Sol xhigh — Accept | None |
+| PR 1 — Persist CSV player enrichment | Commit 2 — Derive canonical Moneyball statistics | Pending record | Canonical 138-key Moneyball statistics and coverage | Sol High — Accept | Corrected the inherited 176-key ledger count to the pinned 138-key source contract |
 
 ## Final validation
 
@@ -452,7 +454,7 @@ No parser, command, service write, Academy, React, bridge, or history change bel
 - Confirm a CSV-only UID is skipped and cannot appear in player search, profile, Planner, or Academy candidate results.
 - Confirm the same UID in two app saves has isolated enrichment and that importing against one active save cannot change the other.
 - Confirm malformed, duplicate-UID, oversized, excessive-row, invalid-UTF-8, stale-context, conversion, and database failures leave prior enrichment unchanged.
-- Confirm the canonical Moneyball object contains exactly the pinned 176 keys and representative exported/derived values after persistence round-trip.
+- Confirm the canonical Moneyball object contains exactly the pinned 138 keys and representative exported/derived values after persistence round-trip.
 - Run a fresh-context Sol xhigh feature review over the exact implementation set and resolve all retained Critical, High, and Medium findings before documentation reconciliation.
 
 ## Documentation impact
