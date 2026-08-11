@@ -189,7 +189,7 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 
 #### Commit 1 — Retain snapshots by in-game date
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(snapshot): retain snapshots by in-game date`
 
@@ -229,7 +229,7 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 
 #### Commit 2 — Version Moneyball data by snapshot
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(import): version Moneyball data by snapshot`
 
@@ -350,22 +350,22 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 
 **PR:** PR 1 — Retain and manage snapshot history
 
-**Commit:** Commit 1 — Retain snapshots by in-game date
+**Commit:** Commit 2 — Version Moneyball data by snapshot
 
 ### RED proof
 
-Add the smallest ingest tests that load two fixtures into one save and assert both rows survive while `is_current` follows the greater in-game date. Under current behavior, the first assertion fails because `replace_current_snapshot` deletes the old row, and a later-loaded earlier date incorrectly becomes current. Add one Load Data outcome test asserting an earlier stored row is distinguished from the effective latest row; the current result shape cannot express that state. Add an Academy assertion that the non-current historical load creates no class; current ingest creates one today. Add the equal-values R2-current/R1-live boost regression; current replace-only ingest cannot construct that retained-history state.
+Build a populated v17 database with both current and departed player UIDs, then assert the migration preserves every Moneyball row and timestamp in an unread save-scoped quarantine while the new snapshot-owned table starts empty. Add service tests that prove later imports attach only to the effective latest snapshot, preserve historical Moneyball rows, and leave Youth career enrichment save-scoped.
 
 ### Expected outcome
 
-One save can retain multiple complete snapshots, exactly one current row follows the agreed date/null/tie ordering, all existing player-facing reads and automatic Academy class creation remain current-only, the historical-load boost seam fails closed, and Load Data truthfully reports whether the new row became latest.
+Moneyball data is snapshot-owned for all new imports, legacy v17 values remain preserved but unread in save-owned quarantine, and Youth Tracker career totals remain save-scoped.
 
 ### Explicit exclusions
 
-- Do not migrate CSV tables in this commit.
+- Do not add Moneyball analytics, import-history metadata, or legacy-row reassignment.
+- Do not version Youth Tracker career totals by snapshot.
 - Do not add management commands or Dashboard controls.
-- Do not add historical player queries, selection, comparison, or retention settings.
-- Do not modify the bridge protocol or memory extraction.
+- Do not modify CSV parsing or memory-field precedence.
 
 ## Discoveries and replanning
 
@@ -379,7 +379,9 @@ One save can retain multiple complete snapshots, exactly one current row follows
 
 ## Completed work
 
-No implementation commits are complete.
+| PR | Commit | Git ref | Implementation | Review | Deviations |
+| --- | --- | --- | --- | --- | --- |
+| PR 1 — Retain and manage snapshot history | Commit 1 — Retain snapshots by in-game date | Pending record | Retained complete snapshots with shared date selection, truthful Load Data metadata, and current-only compatibility. | Sol xhigh accepted after a focused timestamp-precedence test correction. | None |
 
 ## Final validation
 

@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, Row, Transaction};
+use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 
 use crate::features::academy::service as academy_service;
 
@@ -130,6 +130,40 @@ pub fn set_active_save(conn: &mut Connection, save_id: i64) -> Result<SaveSummar
     tx.commit().map_err(|error| error.to_string())?;
 
     get_save_by_id(conn, save_id)
+}
+
+pub(crate) fn select_current_snapshot(
+    tx: &Transaction<'_>,
+    save_id: i64,
+) -> Result<Option<i64>, String> {
+    let current_snapshot_id = tx
+        .query_row(
+            "SELECT id
+             FROM snapshots
+             WHERE save_id = ?1
+             ORDER BY game_date IS NULL, game_date DESC, loaded_at_utc DESC, id DESC
+             LIMIT 1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+
+    tx.execute(
+        "UPDATE snapshots SET is_current = 0 WHERE save_id = ?1 AND is_current = 1",
+        params![save_id],
+    )
+    .map_err(|error| error.to_string())?;
+
+    if let Some(snapshot_id) = current_snapshot_id {
+        tx.execute(
+            "UPDATE snapshots SET is_current = 1 WHERE id = ?1",
+            params![snapshot_id],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+
+    Ok(current_snapshot_id)
 }
 
 fn set_active_save_in_transaction(tx: &Transaction<'_>, save_id: i64) -> Result<(), String> {

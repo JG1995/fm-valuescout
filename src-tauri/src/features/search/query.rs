@@ -465,11 +465,20 @@ mod tests {
     }
 
     fn ingest_players(conn: &mut rusqlite::Connection, players: Vec<Value>) {
+        ingest_players_for_game_date(conn, players, "2026-08-14");
+    }
+
+    fn ingest_players_for_game_date(
+        conn: &mut rusqlite::Connection,
+        players: Vec<Value>,
+        game_date: &str,
+    ) {
         let mut root: Value =
             serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v6.json"))
                 .expect("parse golden fixture");
         root["players"] = Value::Array(players);
         root["playerCount"] = json!(root["players"].as_array().unwrap().len());
+        root["gameDate"] = json!(game_date);
 
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let dump_path = temp_dir.path().join("search-dump.json");
@@ -518,6 +527,37 @@ mod tests {
 
         assert_eq!(page.total, 0);
         assert!(page.players.is_empty());
+    }
+
+    #[test]
+    fn excludes_players_retained_only_in_an_earlier_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("history-search.db"));
+        ingest_players_for_game_date(
+            &mut conn,
+            vec![player_template(1, "Current player", 150)],
+            "2027-08-16",
+        );
+        ingest_players_for_game_date(
+            &mut conn,
+            vec![player_template(2, "Removed player", 160)],
+            "2026-08-14",
+        );
+
+        let page = search_without_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+        )
+        .expect("search latest snapshot");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Current player");
+        assert!(suggest_players(&conn, "Removed", DEFAULT_SUGGEST_LIMIT)
+            .expect("suggest latest snapshot")
+            .is_empty());
     }
 
     #[test]

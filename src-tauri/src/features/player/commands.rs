@@ -237,7 +237,7 @@ mod tests {
     use super::*;
     use crate::db::migrations;
     use crate::features::memory_read::service::{
-        PlayerBoostResult, OPERATION_BOOST_CURRENT_ABILITY,
+        PlayerBoostRequestError, PlayerBoostResult, OPERATION_BOOST_CURRENT_ABILITY,
     };
     use crate::features::snapshot::ingest::ingest_dump_file;
 
@@ -260,6 +260,40 @@ mod tests {
         .expect("bind source request");
 
         (temp_dir, Db(Mutex::new(conn)))
+    }
+
+    fn seeded_history_db() -> (tempfile::TempDir, Db, i64, i64) {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db_path = temp_dir.path().join("player-boost-history-command.db");
+        let mut conn = Connection::open(&db_path).expect("open db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        migrations::apply(&conn).expect("apply migrations");
+
+        let mut later_dump: serde_json::Value =
+            serde_json::from_str(GOLDEN_FIXTURE).expect("parse golden fixture");
+        later_dump["gameDate"] = serde_json::Value::from("2027-08-16");
+        let later_path = temp_dir.path().join("later.json");
+        std::fs::write(&later_path, later_dump.to_string()).expect("write later dump");
+        let current = ingest_dump_file(&mut conn, &later_path).expect("ingest later dump");
+        conn.execute(
+            "UPDATE snapshots SET bridge_source_request_id = ?1 WHERE id = ?2",
+            params!["R2", current.id],
+        )
+        .expect("bind current source request");
+
+        let mut earlier_dump = later_dump;
+        earlier_dump["gameDate"] = serde_json::Value::from("2026-08-14");
+        let earlier_path = temp_dir.path().join("earlier.json");
+        std::fs::write(&earlier_path, earlier_dump.to_string()).expect("write earlier dump");
+        let historical = ingest_dump_file(&mut conn, &earlier_path).expect("ingest earlier dump");
+        conn.execute(
+            "UPDATE snapshots SET bridge_source_request_id = ?1 WHERE id = ?2",
+            params!["R1", historical.id],
+        )
+        .expect("bind historical source request");
+
+        (temp_dir, Db(Mutex::new(conn)), current.id, historical.id)
     }
 
     fn verified_ca_result() -> PlayerBoostResult {
@@ -310,5 +344,51 @@ mod tests {
             })
             .expect("read reconciled CA");
         assert_eq!(ca, 160);
+    }
+
+    #[test]
+    fn historical_load_keeps_the_later_snapshot_source_for_a_bridge_mismatch() {
+        let (_temp_dir, db, current_snapshot_id, historical_snapshot_id) = seeded_history_db();
+
+        let error = execute_player_boost_with(
+            77,
+            &db,
+            service::prepare_current_ability_boost,
+            |prepared| {
+                assert_eq!(prepared.snapshot_id, current_snapshot_id);
+                assert_eq!(prepared.source_request_id, "R2");
+                assert_eq!(prepared.expected_current_ability, 150);
+                assert_eq!(prepared.expected_potential_ability, 170);
+
+                Err(service::map_bridge_error(PlayerBoostRequestError::Failed(
+                    "Load Data again before using player boosts".to_string(),
+                )))
+            },
+        )
+        .err()
+        .expect("the R1 live index must reject the R2 source request");
+
+        assert!(matches!(
+            error,
+            PlayerBoostError::Bridge { kind, message }
+                if kind == "rejected" && message == "Load Data again before using player boosts"
+        ));
+        let conn = db.0.lock().expect("lock db");
+        let active_snapshot_id: i64 = conn
+            .query_row("SELECT id FROM snapshots WHERE is_current = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("current snapshot");
+        assert_eq!(active_snapshot_id, current_snapshot_id);
+        for snapshot_id in [current_snapshot_id, historical_snapshot_id] {
+            let abilities: (i64, i64) = conn
+                .query_row(
+                    "SELECT ca, pa FROM players WHERE snapshot_id = ?1 AND uid = 77",
+                    params![snapshot_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .expect("retained player abilities");
+            assert_eq!(abilities, (150, 170));
+        }
     }
 }

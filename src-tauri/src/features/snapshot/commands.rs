@@ -128,7 +128,8 @@ pub struct LoadDataResultDto {
     pub players_found: Option<i32>,
     pub scan_truncated: Option<bool>,
     pub max_accepted: Option<i32>,
-    pub snapshot: SnapshotSummaryDto,
+    pub stored_snapshot: SnapshotSummaryDto,
+    pub effective_snapshot: SnapshotSummaryDto,
     pub timings: LoadDataTimingsDto,
 }
 
@@ -149,7 +150,8 @@ impl From<LoadDataResult> for LoadDataResultDto {
             players_found: result.players_found,
             scan_truncated: result.scan_truncated,
             max_accepted: result.max_accepted,
-            snapshot: SnapshotSummaryDto::from(result.snapshot),
+            stored_snapshot: SnapshotSummaryDto::from(result.stored_snapshot),
+            effective_snapshot: SnapshotSummaryDto::from(result.effective_snapshot),
             timings: LoadDataTimingsDto::from(result.timings),
         }
     }

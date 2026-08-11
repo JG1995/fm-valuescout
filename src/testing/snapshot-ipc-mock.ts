@@ -41,7 +41,8 @@ type LoadDataResult = {
   playersFound: number | null;
   scanTruncated: boolean | null;
   maxAccepted: number | null;
-  snapshot: SnapshotSummary;
+  storedSnapshot: SnapshotSummary;
+  effectiveSnapshot: SnapshotSummary;
   timings: LoadDataTimings;
 };
 
@@ -104,13 +105,17 @@ function buildSnapshot(overrides?: Partial<SnapshotSummary>): SnapshotSummary {
 function buildLoadDataResult(
   overrides?: Partial<LoadDataResult>,
 ): LoadDataResult {
-  const snapshot = buildSnapshot(overrides?.snapshot);
+  const storedSnapshot = buildSnapshot(overrides?.storedSnapshot);
+  const effectiveSnapshot = overrides?.effectiveSnapshot
+    ? buildSnapshot(overrides.effectiveSnapshot)
+    : storedSnapshot;
   return {
     requestId: "req-mock",
-    playersFound: snapshot.playerCount,
-    scanTruncated: snapshot.scanTruncated,
-    maxAccepted: snapshot.maxAccepted,
-    snapshot,
+    playersFound: storedSnapshot.playerCount,
+    scanTruncated: storedSnapshot.scanTruncated,
+    maxAccepted: storedSnapshot.maxAccepted,
+    storedSnapshot,
+    effectiveSnapshot,
     timings: { scanMs: 1200, ingestMs: 400, totalMs: 1600 },
     ...overrides,
   };
@@ -282,7 +287,7 @@ export function resolveLoadDataIpcMock(
     playersFound: truncated ? 500 : SAMPLE_PLAYERS.length,
     scanTruncated: truncated,
     maxAccepted: truncated ? 500 : null,
-    snapshot: buildSnapshot({
+    storedSnapshot: buildSnapshot({
       scanTruncated: truncated,
       maxAccepted: truncated ? 500 : null,
       playerCount: truncated ? 500 : SAMPLE_PLAYERS.length,
@@ -294,7 +299,7 @@ export function resolveLoadDataIpcMock(
     : [...SAMPLE_PLAYERS];
 
   snapshotsBySaveId.set(activeSave().id, {
-    snapshot: result.snapshot,
+    snapshot: result.effectiveSnapshot,
     players,
   });
   nextSnapshotId += 1;

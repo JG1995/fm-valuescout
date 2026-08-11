@@ -54,21 +54,35 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
     return null;
   }
 
-  const loaded = `Loaded ${formatCount(result.snapshot.playerCount)} players into the database.${formatLoadTimings(result.timings)}`;
-  if (result.snapshot.scanTruncated !== true) {
-    return { icon: CircleCheck, tone: toneClasses.success, body: loaded };
+  const storedSnapshot = result.storedSnapshot;
+  const latestSnapshot = result.effectiveSnapshot;
+  const loaded = `Loaded ${formatCount(storedSnapshot.playerCount)} players into the database.${formatLoadTimings(result.timings)}`;
+  const storedBecameLatest = storedSnapshot.id === latestSnapshot.id;
+  const latestMessage = storedBecameLatest
+    ? " This snapshot is now the latest."
+    : ` Stored this snapshot in history; the latest remains ${formatSnapshotDate(latestSnapshot.gameDate)}.`;
+  if (storedSnapshot.scanTruncated !== true) {
+    return {
+      icon: CircleCheck,
+      tone: toneClasses.success,
+      body: `${loaded}${latestMessage}`,
+    };
   }
 
   const cap = formatMissable(
-    result.snapshot.maxAccepted === null
+    storedSnapshot.maxAccepted === null
       ? null
-      : formatCount(result.snapshot.maxAccepted),
+      : formatCount(storedSnapshot.maxAccepted),
   );
   return {
     icon: TriangleAlert,
     tone: toneClasses.warning,
-    body: `${loaded} Partial ingest — the scan was capped at ${cap} players.`,
+    body: `${loaded} Partial ingest — the scan was capped at ${cap} players.${latestMessage}`,
   };
+}
+
+function formatSnapshotDate(gameDate: string | null): string {
+  return gameDate ?? "an undated snapshot";
 }
 
 export function LoadDataOutcome(props: LoadDataOutcomeProps) {
