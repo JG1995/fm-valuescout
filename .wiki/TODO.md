@@ -8,7 +8,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 > **Lifecycle:** Approved 2026-07-28 from [CONCEPT.md](./CONCEPT.md) MVP scope. Ordering is **provisional — revisit after speccing** individual features.
 >
-> **Gating context:** FM26 memory read is complete — C# BepInEx IL2CPP bridge + Rust file protocol ([completed record](./features/completed/fm26-memory-read.md), dump schema v6 in `bridge/DUMP_SCHEMA.md`). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm. Multi-save (thin) shipped with snapshot ingest; snapshot **history** is backlog.
+> **Gating context:** FM26 memory read is complete — C# BepInEx IL2CPP bridge + Rust file protocol ([completed record](./features/completed/fm26-memory-read.md), dump schema v6 in `bridge/DUMP_SCHEMA.md`). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm. Multi-save (thin) shipped with snapshot ingest; [snapshot history and management](./features/active/snapshot-history.md) is active.
 
 | Order | Feature | Spec | Confidence | Why this position |
 | --- | --- | --- | --- | --- |
@@ -52,11 +52,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No feature is currently active.
+- [Snapshot history and management](./features/active/snapshot-history.md) — retain snapshots per save, keep current-only reads on the greatest in-game date, version Moneyball enrichment by snapshot, and add snapshot/save management
 
 ## Next
 
-No feature is currently queued. Reassess the backlog after CSV enrichment persistence is complete.
+No feature is currently queued beyond snapshot history and management. Reassess the backlog after it is complete.
 
 ## Completed
 
