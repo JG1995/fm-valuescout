@@ -327,7 +327,7 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 #### Commit 4 — Use imported Youth career statistics in Academy
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(academy): use imported Youth career statistics`
 
@@ -366,7 +366,7 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 #### Commit 5 — Import CSV enrichment from the Dashboard
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(import): import CSV enrichment from Dashboard`
 
@@ -407,19 +407,19 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 **PR:** PR 1 — Persist CSV player enrichment
 
-**Commit:** Commit 4 — Use imported Youth career statistics in Academy
+**Commit:** Commit 5 — Import CSV enrichment from the Dashboard
 
 ### RED proof
 
-Add Academy service and utility/route tests that fail because save-scoped Youth career enrichment is not joined into member projections. The failure must isolate the missing enrichment projection rather than membership or snapshot setup.
+Add Dashboard route and smoke assertions that fail because selecting a CSV only previews reconciliation instead of importing enrichment and reporting a bounded result.
 
 ### Expected outcome
 
-Academy members expose nullable reported career appearances, goals, assists, and international caps from save-scoped Youth enrichment. A graduate has at least one reported career appearance; missing values keep aggregates and Graduates availability honest while existing membership and outcome behavior remains unchanged.
+Selecting a supported CSV performs the bounded persistent import. The Dashboard reports the detected format plus stored and skipped players, clears stale results, and refreshes Academy only after a successful Youth Tracker import.
 
 ### Explicit exclusions
 
-No Moneyball presentation, changes to Academy membership, outcome, or club-family rules, treating missing values as zero, career timelines or charts, Dashboard invalidation, bridge, or import behavior change belongs in the active commit.
+No preview-before-confirmation workflow, Moneyball analytics UI, import history, delete/reset controls, source-file metadata, or change to the primary Load Data action belongs in the active commit.
 
 ## Discoveries and replanning
 
@@ -430,6 +430,7 @@ No Moneyball presentation, changes to Academy membership, outcome, or club-famil
 - The retired repository's implemented schema and formulas are pinned at commit `366aa20b5282d3a63c94854ddb8da6992462b0c5`. Older prose is not accepted when it differs from code.
 - Commit 2 source inspection found 160 top-level `schema.rs` fields: 22 base fields and 138 performance fields. The nearby `198 columns total` comment is inaccurate, so every planned 176-key reference now uses the implemented 138-key contract. No implemented legacy key was removed.
 - Pre-commit review corrected four planning contradictions: the native selected path is an inbound IPC argument but is never returned or retained; live FM26 is not a completion gate; persisted metric keys keep exact legacy schema spelling; and a zero exported save percentage uses the pinned counts-based fallback.
+- Commit 4 joins Youth career enrichment by the Academy membership's save and UID, so a tracked player retains imported career data after they become unresolved without rebuilding identity from CSV.
 - No planned feature spec exists to promote. No new ADR is justified because the plan follows the existing Rust IPC, SQLite ownership, and save-scoping decisions.
 
 ## Completed work
@@ -439,6 +440,7 @@ No Moneyball presentation, changes to Academy membership, outcome, or club-famil
 | PR 1 — Persist CSV player enrichment | Commit 1 — Add save-scoped enrichment schema | Pending record | Migration v17 and coverage | Sol xhigh — Accept | None |
 | PR 1 — Persist CSV player enrichment | Commit 2 — Derive canonical Moneyball statistics | Pending record | Canonical 138-key Moneyball statistics and coverage | Sol High — Accept | Corrected the inherited 176-key ledger count to the pinned 138-key source contract |
 | PR 1 — Persist CSV player enrichment | Commit 3 — Persist matched CSV player enrichment | Pending record | Transactional matched Youth and Moneyball imports and coverage | Sol xhigh — Accept | None |
+| PR 1 — Persist CSV player enrichment | Commit 4 — Use imported Youth career statistics in Academy | Pending record | Save-scoped Youth career projection, all-time copy, and coverage | Sol High — Accept | None |
 
 ## Final validation
 

@@ -27,9 +27,9 @@ export function unavailableAcademyStatistics(): AcademyStatistics {
 }
 
 export function academyMemberIsGraduate(member: AcademyMember): boolean | null {
-  return member.seniorLeagueAppearances === null
+  return member.reportedCareerAppearances === null
     ? null
-    : member.seniorLeagueAppearances >= 1;
+    : member.reportedCareerAppearances >= 1;
 }
 
 export function summarizeAcademyMembers(
@@ -42,7 +42,7 @@ export function summarizeAcademyMembers(
     graduates: completeCount(
       members,
       (member) => academyMemberIsGraduate(member) === true,
-      (member) => member.seniorLeagueAppearances,
+      (member) => member.reportedCareerAppearances,
     ),
     goals: completeSum(members, (member) => member.goals),
     assists: completeSum(members, (member) => member.assists),
