@@ -205,11 +205,12 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 | Required checks | strict `check` |
 | Feature close-out | Not run |
 | CI repair rounds | 0 |
-| Build-feature-loop profile | Terra Max |
+
+**Build-feature-loop profile:** Terra Max
 
 #### Commit 1 — Add save-scoped enrichment schema
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): add save-scoped enrichment schema`
 
@@ -247,7 +248,7 @@ Commits 1 through 3 form the thinnest end-to-end backend path: migration v17 pro
 
 #### Commit 2 — Derive canonical Moneyball statistics
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(import): derive canonical Moneyball statistics`
 
@@ -434,7 +435,7 @@ No parser, command, service write, Academy, React, bridge, or history change bel
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| — | No implementation commits yet | — | — | — | None |
+| PR 1 — Persist CSV player enrichment | Commit 1 — Add save-scoped enrichment schema | Pending record | Migration v17 and coverage | Sol xhigh — Accept | None |
 
 ## Final validation
 

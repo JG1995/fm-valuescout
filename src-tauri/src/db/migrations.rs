@@ -373,6 +373,59 @@ ALTER TABLE snapshots
     ADD COLUMN bridge_source_request_id TEXT;
 ";
 
+pub const CSV_ENRICHMENT_SCHEMA_SQL: &str = "
+CREATE TABLE player_youth_career_stats (
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    player_uid INTEGER NOT NULL,
+    career_appearances INTEGER CHECK (career_appearances IS NULL OR career_appearances >= 0),
+    international_caps INTEGER CHECK (international_caps IS NULL OR international_caps >= 0),
+    career_goals INTEGER CHECK (career_goals IS NULL OR career_goals >= 0),
+    career_assists INTEGER CHECK (career_assists IS NULL OR career_assists >= 0),
+    imported_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (save_id, player_uid)
+);
+
+CREATE TABLE player_moneyball_stats (
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    player_uid INTEGER NOT NULL,
+    asking_price_kind TEXT CHECK (
+        asking_price_kind IS NULL
+        OR asking_price_kind IN ('single', 'range', 'not_for_sale')
+    ),
+    asking_price_lower_eur INTEGER CHECK (
+        asking_price_lower_eur IS NULL OR asking_price_lower_eur >= 0
+    ),
+    asking_price_upper_eur INTEGER CHECK (
+        asking_price_upper_eur IS NULL OR asking_price_upper_eur >= 0
+    ),
+    starts INTEGER CHECK (starts IS NULL OR starts >= 0),
+    substitute_appearances INTEGER CHECK (
+        substitute_appearances IS NULL OR substitute_appearances >= 0
+    ),
+    minutes INTEGER CHECK (minutes IS NULL OR minutes >= 0),
+    statistics_json TEXT NOT NULL CHECK (
+        json_valid(statistics_json) = 1 AND json_type(statistics_json) = 'object'
+    ),
+    imported_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (save_id, player_uid),
+    CHECK (
+        CASE
+            WHEN asking_price_kind IS NULL THEN
+                asking_price_lower_eur IS NULL AND asking_price_upper_eur IS NULL
+            WHEN asking_price_kind = 'single' THEN
+                asking_price_lower_eur IS NOT NULL AND asking_price_upper_eur IS NULL
+            WHEN asking_price_kind = 'range' THEN
+                asking_price_lower_eur IS NOT NULL
+                AND asking_price_upper_eur IS NOT NULL
+                AND asking_price_lower_eur <= asking_price_upper_eur
+            WHEN asking_price_kind = 'not_for_sale' THEN
+                asking_price_lower_eur IS NULL AND asking_price_upper_eur IS NULL
+            ELSE 0
+        END
+    )
+);
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -455,6 +508,11 @@ pub fn all() -> &'static [Migration] {
             description: "add_snapshot_bridge_source_request_id",
             sql: SNAPSHOT_BRIDGE_SOURCE_REQUEST_SQL,
         },
+        Migration {
+            version: 17,
+            description: "create_csv_enrichment_schema",
+            sql: CSV_ENRICHMENT_SCHEMA_SQL,
+        },
     ]
 }
 
@@ -535,7 +593,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
 
         let table_name: String = conn
             .query_row(
@@ -545,6 +603,247 @@ mod tests {
             )
             .expect("read sqlite_master");
         assert_eq!(table_name, "demo_value");
+    }
+
+    #[test]
+    fn opening_fresh_db_creates_save_scoped_csv_enrichment_schema() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("csv-enrichment-migration-test.db"));
+
+        assert_eq!(
+            table_columns(&conn, "player_youth_career_stats"),
+            [
+                "save_id",
+                "player_uid",
+                "career_appearances",
+                "international_caps",
+                "career_goals",
+                "career_assists",
+                "imported_at_utc",
+            ]
+        );
+        assert_eq!(
+            table_columns(&conn, "player_moneyball_stats"),
+            [
+                "save_id",
+                "player_uid",
+                "asking_price_kind",
+                "asking_price_lower_eur",
+                "asking_price_upper_eur",
+                "starts",
+                "substitute_appearances",
+                "minutes",
+                "statistics_json",
+                "imported_at_utc",
+            ]
+        );
+
+        for table in ["player_youth_career_stats", "player_moneyball_stats"] {
+            let (parent_table, on_delete): (String, String) = conn
+                .query_row(
+                    &format!("SELECT \"table\", on_delete FROM pragma_foreign_key_list('{table}')"),
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .expect("read enrichment foreign key");
+            assert_eq!(parent_table, "saves");
+            assert_eq!(on_delete, "CASCADE");
+        }
+
+        conn.execute("INSERT INTO saves (name) VALUES ('CSV save')", [])
+            .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+
+        conn.execute(
+            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
+             VALUES (?1, 77, 12)",
+            [save_id],
+        )
+        .expect("insert youth career stats");
+        let error = conn
+            .execute(
+                "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
+                 VALUES (?1, 77, 13)",
+                [save_id],
+            )
+            .expect_err("reject duplicate youth player row");
+        assert_eq!(
+            error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::ConstraintViolation)
+        );
+        conn.execute(
+            "INSERT INTO player_moneyball_stats (
+                save_id, player_uid, asking_price_kind, asking_price_lower_eur, statistics_json
+             ) VALUES (?1, 77, 'single', 5000000, '{}')",
+            [save_id],
+        )
+        .expect("insert moneyball stats");
+        let error = conn
+            .execute(
+                "INSERT INTO player_moneyball_stats (save_id, player_uid, statistics_json)
+                 VALUES (?1, 77, '{}')",
+                [save_id],
+            )
+            .expect_err("reject duplicate moneyball player row");
+        assert_eq!(
+            error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::ConstraintViolation)
+        );
+
+        conn.execute("DELETE FROM snapshots WHERE id = ?1", [snapshot_id])
+            .expect("delete snapshot");
+        for table in ["player_youth_career_stats", "player_moneyball_stats"] {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .expect("count enrichment after snapshot deletion");
+            assert_eq!(count, 1, "{table} survives snapshot deletion");
+        }
+
+        conn.execute("DELETE FROM saves WHERE id = ?1", [save_id])
+            .expect("delete save");
+        for table in ["player_youth_career_stats", "player_moneyball_stats"] {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .expect("count enrichment after save deletion");
+            assert_eq!(count, 0, "{table} cascades with save deletion");
+        }
+    }
+
+    #[test]
+    fn csv_enrichment_schema_rejects_invalid_values_and_asking_price_shapes() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("csv-enrichment-constraint-test.db"));
+        conn.execute("INSERT INTO saves (name) VALUES ('CSV save')", [])
+            .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+
+        for (player_uid, kind, lower, upper) in [
+            (1, None, None, None),
+            (2, Some("single"), Some(5_000_000), None),
+            (3, Some("range"), Some(5_000_000), Some(8_000_000)),
+            (4, Some("not_for_sale"), None, None),
+        ] {
+            conn.execute(
+                "INSERT INTO player_moneyball_stats (
+                    save_id, player_uid, asking_price_kind, asking_price_lower_eur,
+                    asking_price_upper_eur, statistics_json
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, '{}')",
+                params![save_id, player_uid, kind, lower, upper],
+            )
+            .expect("insert valid asking-price shape");
+        }
+
+        for (player_uid, kind, lower, upper) in [
+            (5, Some("single"), None, None),
+            (6, Some("range"), Some(8_000_000), Some(5_000_000)),
+            (7, Some("not_for_sale"), Some(1), None),
+            (8, None, Some(1), None),
+        ] {
+            let error = conn
+                .execute(
+                    "INSERT INTO player_moneyball_stats (
+                        save_id, player_uid, asking_price_kind, asking_price_lower_eur,
+                        asking_price_upper_eur, statistics_json
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, '{}')",
+                    params![save_id, player_uid, kind, lower, upper],
+                )
+                .expect_err("reject invalid asking-price shape");
+            assert_eq!(
+                error.sqlite_error_code(),
+                Some(rusqlite::ErrorCode::ConstraintViolation)
+            );
+        }
+
+        for statement in [
+            "INSERT INTO player_youth_career_stats (save_id, player_uid, career_goals)
+             VALUES (1, 9, -1)",
+            "INSERT INTO player_moneyball_stats (save_id, player_uid, starts, statistics_json)
+             VALUES (1, 10, -1, '{}')",
+            "INSERT INTO player_moneyball_stats (save_id, player_uid, statistics_json)
+             VALUES (1, 11, '[]')",
+            "INSERT INTO player_moneyball_stats (
+                save_id, player_uid, asking_price_kind, asking_price_lower_eur, statistics_json
+             ) VALUES (1, 12, 'single', -1, '{}')",
+        ] {
+            let error = conn
+                .execute(statement, [])
+                .expect_err("reject invalid enrichment value");
+            assert_eq!(
+                error.sqlite_error_code(),
+                Some(rusqlite::ErrorCode::ConstraintViolation)
+            );
+        }
+    }
+
+    #[test]
+    fn migrates_populated_v16_database_to_csv_enrichment_schema_without_touching_existing_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("csv-enrichment-v16-migration.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 16) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v16");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Existing save', 1)",
+            [],
+        )
+        .expect("insert existing save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert existing snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_club_settings (save_id, primary_club) VALUES (?1, 'Existing FC')",
+            [save_id],
+        )
+        .expect("insert existing planner state");
+
+        apply(&conn).expect("apply CSV enrichment migration");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user version");
+        assert_eq!(version, 17);
+        let (save_name, is_current, primary_club): (String, i32, String) = conn
+            .query_row(
+                "SELECT saves.name, snapshots.is_current, planner_club_settings.primary_club
+                 FROM saves
+                 JOIN snapshots ON snapshots.save_id = saves.id
+                 JOIN planner_club_settings ON planner_club_settings.save_id = saves.id
+                 WHERE saves.id = ?1 AND snapshots.id = ?2",
+                params![save_id, snapshot_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read preserved v16 rows");
+        assert_eq!(save_name, "Existing save");
+        assert_eq!(is_current, 1);
+        assert_eq!(primary_club, "Existing FC");
+        for table in ["player_youth_career_stats", "player_moneyball_stats"] {
+            let count: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .expect("count new enrichment table");
+            assert_eq!(count, 0);
+        }
     }
 
     #[test]
@@ -611,7 +910,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -659,7 +958,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -900,7 +1199,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -1006,7 +1305,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
 
         let table_name: String = conn
             .query_row(
@@ -1253,7 +1552,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
     }
 
     #[test]
@@ -1287,7 +1586,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 16);
+        assert_eq!(version, 17);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -1303,7 +1602,7 @@ mod tests {
     fn migrates_snapshot_schema_from_every_prior_version() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
 
-        for legacy_version in 1..16 {
+        for legacy_version in 1..17 {
             let conn = Connection::open(
                 temp_dir
                     .path()
@@ -1327,7 +1626,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 16, "legacy version {legacy_version}");
+            assert_eq!(version, 17, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -1340,7 +1639,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 16);
+        assert_eq!(migrations.len(), 17);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -1402,6 +1701,9 @@ mod tests {
             "add_snapshot_bridge_source_request_id"
         );
         assert_eq!(migrations[15].sql, SNAPSHOT_BRIDGE_SOURCE_REQUEST_SQL);
+        assert_eq!(migrations[16].version, 17);
+        assert_eq!(migrations[16].description, "create_csv_enrichment_schema");
+        assert_eq!(migrations[16].sql, CSV_ENRICHMENT_SCHEMA_SQL);
     }
 
     #[test]
