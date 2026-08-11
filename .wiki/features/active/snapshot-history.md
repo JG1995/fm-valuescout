@@ -61,9 +61,9 @@ Retain every successfully loaded Football Manager snapshot inside its app save i
 
 - **Relevant components:** Rust snapshot ingest, reads, save services, and IPC live in `src-tauri/src/features/snapshot/`; CSV persistence lives in `src-tauri/src/features/csv_import/service.rs`; current-only Search, Player, Planner, and Academy reads live in their corresponding Rust feature modules; Tauri command registration lives in `src-tauri/src/lib.rs`.
 - **Frontend surfaces:** Dashboard save and snapshot panels live in `src/features/snapshot/`; Load Data result handling lives in `src/features/memory-read/`; Dashboard cross-feature composition lives in `src/app/routes/index.tsx`; browser IPC stubs and product smoke live under `src/testing/` and `e2e/`.
-- **Data model:** schema v17 has `saves`, one partially unique current `snapshots` row per save, snapshot-owned players/staff/role scores, save-owned Planner/Academy data, and save-owned Youth and Moneyball CSV enrichment.
-- **Persistence and migrations:** `src-tauri/src/db/migrations.rs` owns ordered SQLite migrations and upgrade tests. `snapshots.game_date`, `game_date_source`, and `loaded_at_utc` already exist; snapshot custom names, immutable save/snapshot context tokens, and snapshot-owned Moneyball rows do not.
-- **Existing behavioral assumptions:** `replace_current_snapshot` demotes the old row, promotes the new row, and deletes the old row. All normal domain queries join the active save to `snapshots.is_current = 1`. CSV import captures that same current snapshot before parsing and revalidates it before writing. Save-scoped enrichment intentionally survives replacement even when an omitted player UID no longer exists in the replacement snapshot.
+- **Data model:** schema v18 has `saves`, one partially unique current `snapshots` row per save, snapshot-owned players/staff/role scores/Moneyball rows, save-owned Planner/Academy/Youth data, and a save-owned legacy Moneyball quarantine.
+- **Persistence and migrations:** `src-tauri/src/db/migrations.rs` owns ordered SQLite migrations and upgrade tests. `snapshots.game_date`, `game_date_source`, `loaded_at_utc`, and snapshot-owned Moneyball rows already exist; snapshot custom names and immutable save/snapshot context tokens do not.
+- **Existing behavioral assumptions:** successful ingest retains complete snapshots and selects one current row by the shared date comparator. All normal domain queries join the active save to `snapshots.is_current = 1`. CSV import captures and revalidates that current snapshot before writing: Moneyball is snapshot-scoped, while Youth enrichment remains save-scoped.
 - **Architectural seams:** Rust owns selection, transactions, validation, and destructive policy. React owns presentation and confirmation state. Route and app-shell composition own cross-feature query invalidation; snapshot feature code must not import query keys from sibling features.
 - **Project validation commands:** `./scripts/dev test`, `./scripts/dev check`, and `./scripts/dev smoke`. `./scripts/dev bridge-test` is not part of the planned feature gate because the bridge is unchanged.
 - **Primary risks:** silent loss during the Moneyball table rebuild, an incorrect date comparator making stale players searchable, SQLite row-ID reuse retargeting in-flight work, destructive cascades exceeding the named target, stale caches after current promotion or save deletion, and bridge write provenance becoming misleading after a historical load.
@@ -105,10 +105,10 @@ Snapshot-feature mutations invalidate snapshot-owned queries locally and call a 
 - Snapshot rows already persist a nullable in-game date and a load timestamp, and snapshot-owned player data already cascades from the snapshot.
 - The database currently enforces at most one current snapshot per save with a partial unique index.
 - Every existing Search, Player, Planner, Academy candidate, and sanity query resolves through the active save's current snapshot.
-- Existing successful ingest deletes the previous current snapshot only after the replacement row, players, staff, and role scores have been inserted in the same transaction.
-- CSV import already captures and revalidates the active save and current snapshot. Both enrichment tables are currently save-scoped in migration v17, and rows omitted from a later import or current snapshot intentionally survive.
+- Existing successful ingest retains every complete snapshot and selects the shared date-order winner in the same transaction.
+- CSV import already captures and revalidates the active save and current snapshot. Youth enrichment remains save-scoped; new Moneyball rows are snapshot-scoped, while all v17 Moneyball rows remain unread in a save-scoped legacy quarantine.
 - The bridge dump contract permits `gameDate: null`; a non-null bridge date is documented as `YYYY-MM-DD`.
-- The database is currently at migration v17, and the base branch is clean at `b7b81d3e11c08bf660f19b9eef8ecadf0a08632e`.
+- The feature branch is at migration v18; the base branch was clean at `b7b81d3e11c08bf660f19b9eef8ecadf0a08632e` with migration v17.
 
 ### Assumptions
 
@@ -229,7 +229,7 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 
 #### Commit 2 — Version Moneyball data by snapshot
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): version Moneyball data by snapshot`
 
@@ -269,7 +269,7 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 
 #### Commit 3 — Add snapshot and save management commands
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(snapshot): add history management commands`
 
@@ -350,22 +350,21 @@ Load a later-dated dump and then an earlier-dated dump into one save. Both snaps
 
 **PR:** PR 1 — Retain and manage snapshot history
 
-**Commit:** Commit 2 — Version Moneyball data by snapshot
+**Commit:** Commit 3 — Add snapshot and save management commands
 
 ### RED proof
 
-Build a populated v17 database with both current and departed player UIDs, then assert the migration preserves every Moneyball row and timestamp in an unread save-scoped quarantine while the new snapshot-owned table starts empty. Add service tests that prove later imports attach only to the effective latest snapshot, preserve historical Moneyball rows, and leave Youth career enrichment save-scoped.
+Add focused service and command tests for the missing snapshot metadata, rename, and token-bound deletion paths. Cover current promotion, save fallback/default recreation, cascades, stale ID/token rejection, and captured asynchronous context when IDs are reused.
 
 ### Expected outcome
 
-Moneyball data is snapshot-owned for all new imports, legacy v17 values remain preserved but unread in save-owned quarantine, and Youth Tracker career totals remain save-scoped.
+Snapshot and save management is transaction-safe, exposes metadata only, and preserves one active save plus the shared date-selected current snapshot after every mutation.
 
 ### Explicit exclusions
 
-- Do not add Moneyball analytics, import-history metadata, or legacy-row reassignment.
-- Do not version Youth Tracker career totals by snapshot.
-- Do not add management commands or Dashboard controls.
-- Do not modify CSV parsing or memory-field precedence.
+- Do not add Dashboard controls or browser IPC stubs.
+- Do not expose historical player data or a manual current selector.
+- Do not add undo, soft deletion, retention, or bulk deletion.
 
 ## Discoveries and replanning
 
@@ -381,7 +380,8 @@ Moneyball data is snapshot-owned for all new imports, legacy v17 values remain p
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 — Retain and manage snapshot history | Commit 1 — Retain snapshots by in-game date | Pending record | Retained complete snapshots with shared date selection, truthful Load Data metadata, and current-only compatibility. | Sol xhigh accepted after a focused timestamp-precedence test correction. | None |
+| PR 1 — Retain and manage snapshot history | Commit 1 — Retain snapshots by in-game date | 1be3dd4 | Retained complete snapshots with shared date selection, truthful Load Data metadata, and current-only compatibility. | Sol xhigh accepted after a focused timestamp-precedence test correction. | None |
+| PR 1 — Retain and manage snapshot history | Commit 2 — Version Moneyball data by snapshot | Pending record | Migrated new Moneyball imports to snapshot/player ownership while quarantining all v17 rows by save. | Pending record | None |
 
 ## Final validation
 

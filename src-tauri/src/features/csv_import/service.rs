@@ -214,7 +214,7 @@ pub(crate) fn persist_csv_import(
                 if !context.player_uids.contains(&player.player_uid) {
                     continue;
                 }
-                upsert_moneyball_stats(&tx, context.save_id, &player)?;
+                upsert_moneyball_stats(&tx, context.snapshot_id, &player)?;
                 stored_players += 1;
             }
             CsvImportSummary {
@@ -362,15 +362,15 @@ fn upsert_youth_career_stats(
 
 fn upsert_moneyball_stats(
     tx: &Transaction<'_>,
-    save_id: i64,
+    snapshot_id: i64,
     player: &PreparedMoneyballStats,
 ) -> Result<(), CsvPersistenceError> {
     tx.execute(
         "INSERT INTO player_moneyball_stats (
-            save_id, player_uid, asking_price_kind, asking_price_lower_eur, asking_price_upper_eur,
+            snapshot_id, player_uid, asking_price_kind, asking_price_lower_eur, asking_price_upper_eur,
             starts, substitute_appearances, minutes, statistics_json
          ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-         ON CONFLICT(save_id, player_uid) DO UPDATE SET
+         ON CONFLICT(snapshot_id, player_uid) DO UPDATE SET
             asking_price_kind = excluded.asking_price_kind,
             asking_price_lower_eur = excluded.asking_price_lower_eur,
             asking_price_upper_eur = excluded.asking_price_upper_eur,
@@ -380,7 +380,7 @@ fn upsert_moneyball_stats(
             statistics_json = excluded.statistics_json,
             imported_at_utc = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
         params![
-            save_id,
+            snapshot_id,
             player.player_uid,
             player.asking_price_kind,
             player.asking_price_lower_eur,
@@ -554,8 +554,8 @@ mod tests {
                 "SELECT asking_price_kind, asking_price_lower_eur, asking_price_upper_eur,
                         starts, substitute_appearances, minutes, statistics_json
                  FROM player_moneyball_stats
-                 WHERE player_uid = ?1",
-                params![uid],
+                 WHERE snapshot_id = ?1 AND player_uid = ?2",
+                params![active_snapshot_id(&conn), uid],
                 |row| {
                     Ok((
                         row.get(0)?,
@@ -598,6 +598,140 @@ mod tests {
             career_values(&conn, active_save_id(&conn), i64::from(uid)),
             Some((Some(12), None, None, None))
         );
+    }
+
+    #[test]
+    fn moneyball_imports_follow_the_effective_current_snapshot_and_retain_history() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("snapshot-moneyball-import.db"));
+        seed_current_snapshot(&mut conn, &[1]);
+        let save_id = active_save_id(&conn);
+        let first_snapshot_id = active_snapshot_id(&conn);
+        conn.execute(
+            "UPDATE snapshots SET game_date = '2026-05-01' WHERE id = ?1",
+            [first_snapshot_id],
+        )
+        .expect("date first snapshot");
+        let first_context = capture_import_context(&conn).expect("capture first context");
+        persist_csv_import(&mut conn, &first_context, moneyball_import(1, 1_000_000))
+            .expect("import first snapshot Moneyball data");
+        persist_csv_import(&mut conn, &first_context, youth_import(1, 12))
+            .expect("import save-scoped youth data");
+
+        let second_snapshot_id = insert_snapshot(&mut conn, save_id, false, &[1]);
+        conn.execute(
+            "UPDATE snapshots SET game_date = '2026-06-01' WHERE id = ?1",
+            [second_snapshot_id],
+        )
+        .expect("date second snapshot");
+        select_current_snapshot(&mut conn, save_id);
+        assert_eq!(active_snapshot_id(&conn), second_snapshot_id);
+
+        let second_context = capture_import_context(&conn).expect("capture second context");
+        persist_csv_import(&mut conn, &second_context, moneyball_import(1, 2_000_000))
+            .expect("import second snapshot Moneyball data");
+        persist_csv_import(&mut conn, &second_context, moneyball_import(1, 3_000_000))
+            .expect("replace Moneyball data within the second snapshot");
+
+        let historical_snapshot_id = insert_snapshot(&mut conn, save_id, false, &[1, 2]);
+        conn.execute(
+            "UPDATE snapshots SET game_date = '2026-04-01' WHERE id = ?1",
+            [historical_snapshot_id],
+        )
+        .expect("date historical snapshot");
+        select_current_snapshot(&mut conn, save_id);
+        assert_eq!(active_snapshot_id(&conn), second_snapshot_id);
+
+        let latest_context =
+            capture_import_context(&conn).expect("capture effective latest context");
+        assert_eq!(latest_context.snapshot_id, second_snapshot_id);
+        persist_csv_import(&mut conn, &latest_context, moneyball_import(1, 4_000_000))
+            .expect("import against effective current snapshot");
+        assert_eq!(
+            persist_csv_import(&mut conn, &latest_context, moneyball_import(2, 5_000_000))
+                .expect("skip a player retained only in the historical snapshot"),
+            CsvImportSummary {
+                format: CsvImportFormat::Moneyball,
+                total_players: 1,
+                stored_players: 0,
+                skipped_players: 1,
+            }
+        );
+
+        let rows: Vec<(i64, i64)> = conn
+            .prepare(
+                "SELECT snapshot_id, asking_price_lower_eur
+                 FROM player_moneyball_stats
+                 WHERE player_uid = 1
+                 ORDER BY snapshot_id",
+            )
+            .expect("prepare Moneyball history query")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("query Moneyball history")
+            .collect::<Result<_, _>>()
+            .expect("read Moneyball history");
+        assert_eq!(
+            rows,
+            vec![
+                (first_snapshot_id, 1_000_000),
+                (second_snapshot_id, 4_000_000),
+            ]
+        );
+        assert_eq!(
+            career_values(&conn, save_id, 1),
+            Some((Some(12), None, None, None))
+        );
+        let historical_only_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_moneyball_stats WHERE player_uid = 2",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count skipped historical-only player rows");
+        assert_eq!(historical_only_count, 0);
+        let legacy_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_moneyball_stats_legacy",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count unchanged legacy quarantine");
+        assert_eq!(legacy_count, 0);
+    }
+
+    #[test]
+    fn rejects_moneyball_import_when_current_snapshot_changes_after_parsing() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("stale-moneyball-import.db"));
+        seed_current_snapshot(&mut conn, &[1]);
+        let save_id = active_save_id(&conn);
+        let first_snapshot_id = active_snapshot_id(&conn);
+        conn.execute(
+            "UPDATE snapshots SET game_date = '2026-05-01' WHERE id = ?1",
+            [first_snapshot_id],
+        )
+        .expect("date first snapshot");
+        let context = capture_import_context(&conn).expect("capture import context");
+        let import = moneyball_import(1, 1_000_000);
+        let second_snapshot_id = insert_snapshot(&mut conn, save_id, false, &[1]);
+        conn.execute(
+            "UPDATE snapshots SET game_date = '2026-06-01' WHERE id = ?1",
+            [second_snapshot_id],
+        )
+        .expect("date replacement snapshot");
+        select_current_snapshot(&mut conn, save_id);
+
+        assert_eq!(
+            persist_csv_import(&mut conn, &context, import)
+                .expect_err("reject stale Moneyball context"),
+            CsvPersistenceError::Import(CsvImportServiceError::StaleContext)
+        );
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM player_moneyball_stats", [], |row| {
+                row.get(0)
+            })
+            .expect("count Moneyball rows after stale rejection");
+        assert_eq!(count, 0);
     }
 
     #[test]
@@ -717,11 +851,12 @@ mod tests {
         seed_current_snapshot(&mut conn, &[uid]);
         let moneyball_path = write_csv(&temp_dir, "moneyball.csv", MONEYBALL_EXPORT);
         import_csv_file(&mut conn, &moneyball_path).expect("import baseline Moneyball data");
-        let save_id = active_save_id(&conn);
+        let snapshot_id = active_snapshot_id(&conn);
         let before: String = conn
             .query_row(
-                "SELECT statistics_json FROM player_moneyball_stats WHERE save_id = ?1 AND player_uid = ?2",
-                params![save_id, uid],
+                "SELECT statistics_json FROM player_moneyball_stats
+                 WHERE snapshot_id = ?1 AND player_uid = ?2",
+                params![snapshot_id, uid],
                 |row| row.get(0),
             )
             .expect("read baseline statistics");
@@ -757,8 +892,9 @@ mod tests {
         );
         let after: String = conn
             .query_row(
-                "SELECT statistics_json FROM player_moneyball_stats WHERE save_id = ?1 AND player_uid = ?2",
-                params![save_id, uid],
+                "SELECT statistics_json FROM player_moneyball_stats
+                 WHERE snapshot_id = ?1 AND player_uid = ?2",
+                params![snapshot_id, uid],
                 |row| row.get(0),
             )
             .expect("read preserved statistics");
@@ -960,6 +1096,49 @@ mod tests {
         .expect("read active save")
     }
 
+    fn active_snapshot_id(conn: &Connection) -> i64 {
+        conn.query_row(
+            "SELECT snapshots.id
+             FROM snapshots
+             INNER JOIN saves ON saves.id = snapshots.save_id
+             WHERE saves.is_active = 1 AND snapshots.is_current = 1",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read active current snapshot")
+    }
+
+    fn moneyball_import(player_uid: i64, asking_price_lower_eur: i64) -> PreparedCsvImport {
+        PreparedCsvImport::Moneyball(vec![PreparedMoneyballStats {
+            player_uid,
+            asking_price_kind: Some("single"),
+            asking_price_lower_eur: Some(asking_price_lower_eur),
+            asking_price_upper_eur: None,
+            starts: Some(10),
+            substitute_appearances: Some(2),
+            minutes: Some(900),
+            statistics_json: format!(r#"{{"value":{asking_price_lower_eur}}}"#),
+        }])
+    }
+
+    fn youth_import(player_uid: i64, career_appearances: i64) -> PreparedCsvImport {
+        PreparedCsvImport::YouthTracker(vec![PreparedYouthCareerStats {
+            player_uid,
+            career_appearances: Some(career_appearances),
+            international_caps: None,
+            career_goals: None,
+            career_assists: None,
+        }])
+    }
+
+    fn select_current_snapshot(conn: &mut Connection, save_id: i64) {
+        let tx = conn
+            .transaction()
+            .expect("begin current-snapshot selection");
+        snapshot_service::select_current_snapshot(&tx, save_id).expect("select current snapshot");
+        tx.commit().expect("commit current-snapshot selection");
+    }
+
     fn career_values(conn: &Connection, save_id: i64, player_uid: i64) -> Option<CareerValues> {
         conn.query_row(
             "SELECT career_appearances, international_caps, career_goals, career_assists
@@ -1000,17 +1179,21 @@ mod tests {
         )
         .expect("create active save");
         let save_id = conn.last_insert_rowid();
+        insert_snapshot(conn, save_id, true, uids);
+    }
+
+    fn insert_snapshot(conn: &mut Connection, save_id: i64, is_current: bool, uids: &[u32]) -> i64 {
         conn.execute(
             "INSERT INTO snapshots (
                 save_id, is_current, schema_version, generated_at_utc, game_version,
                 supported_game_version, bridge_version, protocol_version, game_date_source,
                 game_date_basis, player_database_scope, scan_truncated, max_accepted,
                 player_count, staff_count
-            ) VALUES (?1, 1, 6, '2026-01-01T00:00:00Z', '26.0', '26.0', 'test', 1,
-                'memory', 'memory', 'men', 0, NULL, ?2, 0)",
-            params![save_id, uids.len() as i64],
+            ) VALUES (?1, ?2, 6, '2026-01-01T00:00:00Z', '26.0', '26.0', 'test', 1,
+                'memory', 'memory', 'men', 0, NULL, ?3, 0)",
+            params![save_id, is_current, uids.len() as i64],
         )
-        .expect("create current snapshot");
+        .expect("create snapshot");
         let snapshot_id = conn.last_insert_rowid();
         let tx = conn.transaction().expect("begin player transaction");
         let mut statement = tx
@@ -1030,6 +1213,7 @@ mod tests {
         }
         drop(statement);
         tx.commit().expect("commit players");
+        snapshot_id
     }
 
     fn write_csv(temp_dir: &tempfile::TempDir, name: &str, contents: &str) -> std::path::PathBuf {
