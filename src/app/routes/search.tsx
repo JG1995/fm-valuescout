@@ -91,7 +91,7 @@ export const Route = createFileRoute("/search")({
 
 function PanelFallback() {
   return (
-    <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
+    <div className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
       Loading search results…
     </div>
   );
@@ -148,24 +148,26 @@ function SearchPageContent() {
           updateSearch({ filters: rules, combine: nextCombine });
         }}
       />
-      <Suspense fallback={<PanelFallback />}>
-        <SearchResultsPanel
-          sortBy={sort}
-          sortDir={dir}
-          filters={filters}
-          filterCombine={combine}
-          onSortChange={(nextSort, nextDir) => {
-            updateSearch({ sort: nextSort, dir: nextDir });
-          }}
-        />
-      </Suspense>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Suspense fallback={<PanelFallback />}>
+          <SearchResultsPanel
+            sortBy={sort}
+            sortDir={dir}
+            filters={filters}
+            filterCombine={combine}
+            onSortChange={(nextSort, nextDir) => {
+              updateSearch({ sort: nextSort, dir: nextDir });
+            }}
+          />
+        </Suspense>
+      </div>
     </>
   );
 }
 
 function SearchPage() {
   return (
-    <div className="space-y-gutter">
+    <div className="flex min-h-full min-w-0 flex-col gap-gutter">
       <h1 className="text-headline-lg text-on-surface">Search</h1>
       <Suspense fallback={<PanelFallback />}>
         <SearchPageContent />

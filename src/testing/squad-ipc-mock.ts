@@ -16,6 +16,13 @@ import {
 
 let overridePlayers: SquadPlayer[] | null = null;
 let lastSquadPlayersArgs: Record<string, unknown> | null = null;
+let squadPlayersPageMode: SquadPlayersPageIpcMockMode = "success";
+let pendingSquadPlayersPage: {
+  args: unknown;
+  promise: Promise<SquadPlayersPage>;
+  resolve: (page: SquadPlayersPage) => void;
+} | null = null;
+let rejectedSecondPage = false;
 let squadCurrentAbilityBoostMode: SquadCurrentAbilityBoostIpcMockMode =
   "success";
 let squadCurrentAbilityBoostCalls: unknown[] = [];
@@ -37,6 +44,11 @@ export type SquadCurrentAbilityBoostIpcMockMode =
   | "recoveryRequired"
   | "error";
 
+export type SquadPlayersPageIpcMockMode =
+  | "success"
+  | "pendingSecondPage"
+  | "rejectSecondPageOnce";
+
 export type SquadWonderkidMentalityBoostIpcMockMode =
   | "success"
   | "pending"
@@ -50,6 +62,9 @@ export function setSquadPlayersOverride(players: SquadPlayer[] | null) {
 export function resetSquadPlayersOverride() {
   overridePlayers = null;
   lastSquadPlayersArgs = null;
+  squadPlayersPageMode = "success";
+  pendingSquadPlayersPage = null;
+  rejectedSecondPage = false;
   squadCurrentAbilityBoostMode = "success";
   squadCurrentAbilityBoostCalls = [];
   pendingSquadCurrentAbilityBoost = null;
@@ -60,6 +75,24 @@ export function resetSquadPlayersOverride() {
 
 export function getLastSquadPlayersArgs(): Record<string, unknown> | null {
   return lastSquadPlayersArgs;
+}
+
+export function setSquadPlayersPageIpcMockMode(
+  mode: SquadPlayersPageIpcMockMode,
+) {
+  squadPlayersPageMode = mode;
+  pendingSquadPlayersPage = null;
+  rejectedSecondPage = false;
+}
+
+export function resolvePendingSquadPlayersPageIpcMock() {
+  const pending = pendingSquadPlayersPage;
+  if (!pending) {
+    return;
+  }
+  pendingSquadPlayersPage = null;
+  squadPlayersPageMode = "success";
+  pending.resolve(squadPlayersPage(pending.args));
 }
 
 export function setSquadCurrentAbilityBoostIpcMockMode(
@@ -275,11 +308,7 @@ function comparePlayers(
   return sortDir === "asc" ? cmp : -cmp;
 }
 
-export function resolveSquadPlayersIpcMock(args: unknown): SquadPlayersPage {
-  lastSquadPlayersArgs =
-    typeof args === "object" && args !== null
-      ? (args as Record<string, unknown>)
-      : {};
+function squadPlayersPage(args: unknown): SquadPlayersPage {
   const { offset, limit, sortBy, sortDir } = parsePaging(args);
   const players = [...(overridePlayers ?? [])].sort((a, b) =>
     comparePlayers(a, b, sortBy, sortDir),
@@ -288,4 +317,36 @@ export function resolveSquadPlayersIpcMock(args: unknown): SquadPlayersPage {
     players: players.slice(offset, offset + limit),
     total: players.length,
   };
+}
+
+export function resolveSquadPlayersIpcMock(
+  args: unknown,
+): SquadPlayersPage | Promise<SquadPlayersPage> {
+  lastSquadPlayersArgs =
+    typeof args === "object" && args !== null
+      ? (args as Record<string, unknown>)
+      : {};
+  const { offset } = parsePaging(args);
+
+  if (offset >= 50 && squadPlayersPageMode === "pendingSecondPage") {
+    if (!pendingSquadPlayersPage) {
+      let resolve!: (page: SquadPlayersPage) => void;
+      const promise = new Promise<SquadPlayersPage>((next) => {
+        resolve = next;
+      });
+      pendingSquadPlayersPage = { args, promise, resolve };
+    }
+    return pendingSquadPlayersPage.promise;
+  }
+
+  if (
+    offset >= 50 &&
+    squadPlayersPageMode === "rejectSecondPageOnce" &&
+    !rejectedSecondPage
+  ) {
+    rejectedSecondPage = true;
+    return Promise.reject(new Error("Could not load the next squad page."));
+  }
+
+  return squadPlayersPage(args);
 }

@@ -283,6 +283,7 @@ test.describe("walking skeleton smoke", () => {
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Squad overview" });
     await expect(table).toBeVisible();
+    await expect(main.getByTestId("squad-overview-scroller")).toBeVisible();
     await expect(
       table.getByRole("link", { name: "Alex Scout" }),
     ).toHaveAttribute("href", "/players/42?tab=technical");
@@ -290,6 +291,191 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       table.getByRole("columnheader", { name: "Name" }),
     ).toHaveAttribute("aria-sort", "ascending");
+    await expect(main.getByRole("button", { name: "Next page" })).toHaveCount(
+      0,
+    );
+    await table
+      .locator("tbody tr[data-index]")
+      .first()
+      .getByText("Barcelona")
+      .click();
+    await expect(page).toHaveURL(/\/players\/42\?tab=technical$/);
+  });
+
+  test("configured Squad keeps its table inside desktop viewports", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await page.goto("/planner");
+
+      const main = page.getByRole("main");
+      const scroller = main.getByTestId("squad-overview-scroller");
+      await expect(scroller).toBeVisible();
+
+      const [mainBox, scrollerBox, mainDimensions, dimensions] =
+        await Promise.all([
+          main.boundingBox(),
+          scroller.boundingBox(),
+          main.evaluate((element) => {
+            const mainElement = element as unknown as {
+              clientHeight: number;
+              scrollHeight: number;
+            };
+            return {
+              clientHeight: mainElement.clientHeight,
+              scrollHeight: mainElement.scrollHeight,
+            };
+          }),
+          scroller.evaluate((element) => {
+            const scrollerElement = element as unknown as {
+              clientHeight: number;
+              clientWidth: number;
+              scrollHeight: number;
+              scrollWidth: number;
+            };
+            return {
+              clientHeight: scrollerElement.clientHeight,
+              clientWidth: scrollerElement.clientWidth,
+              scrollHeight: scrollerElement.scrollHeight,
+              scrollWidth: scrollerElement.scrollWidth,
+            };
+          }),
+        ]);
+      expect(mainBox).not.toBeNull();
+      expect(scrollerBox).not.toBeNull();
+      if (!mainBox || !scrollerBox) {
+        throw new Error("Expected the Squad table to have a visible layout.");
+      }
+      expect(scrollerBox.height).toBeGreaterThan(100);
+      expect(scrollerBox.y + scrollerBox.height).toBeLessThanOrEqual(
+        mainBox.y + mainBox.height + 1,
+      );
+      expect(mainDimensions.scrollHeight).toBeLessThanOrEqual(
+        mainDimensions.clientHeight + 1,
+      );
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(
+        dimensions.clientWidth + 1,
+      );
+      expect(dimensions.scrollHeight).toBeGreaterThanOrEqual(
+        dimensions.clientHeight,
+      );
+    }
+  });
+
+  test("configured Squad keeps a later-page retry visible over its scrollport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+      squadPageFailure: true,
+    });
+    await page.goto("/planner");
+
+    const scroller = page.getByTestId("squad-overview-scroller");
+    await expect(scroller).toBeVisible();
+    await scroller.evaluate((element) => {
+      const scrollElement = element as unknown as {
+        dispatchEvent: (event: Event) => boolean;
+        scrollHeight: number;
+        scrollTop: number;
+      };
+      scrollElement.scrollTop = scrollElement.scrollHeight;
+      scrollElement.dispatchEvent(new Event("scroll"));
+    });
+
+    const alert = page.getByRole("alert");
+    await expect(alert).toBeVisible();
+    const [scrollportBox, alertBox] = await Promise.all([
+      scroller.boundingBox(),
+      alert.boundingBox(),
+    ]);
+    expect(scrollportBox).not.toBeNull();
+    expect(alertBox).not.toBeNull();
+    if (!scrollportBox || !alertBox) {
+      throw new Error("Expected the retry control to have a visible layout.");
+    }
+    expect(alertBox.y).toBeGreaterThanOrEqual(scrollportBox.y);
+    expect(alertBox.y + alertBox.height).toBeLessThanOrEqual(
+      scrollportBox.y + scrollportBox.height,
+    );
+  });
+
+  test("Search keeps its table inside desktop viewports", async ({ page }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await page.goto("/search");
+
+      const main = page.getByRole("main");
+      const scroller = main.getByTestId("search-results-scroller");
+      await expect(scroller).toBeVisible();
+
+      const [mainBox, scrollerBox, mainDimensions, dimensions] =
+        await Promise.all([
+          main.boundingBox(),
+          scroller.boundingBox(),
+          main.evaluate((element) => {
+            const mainElement = element as unknown as {
+              clientHeight: number;
+              scrollHeight: number;
+            };
+            return {
+              clientHeight: mainElement.clientHeight,
+              scrollHeight: mainElement.scrollHeight,
+            };
+          }),
+          scroller.evaluate((element) => {
+            const scrollerElement = element as unknown as {
+              clientHeight: number;
+              clientWidth: number;
+              scrollHeight: number;
+              scrollWidth: number;
+            };
+            return {
+              clientHeight: scrollerElement.clientHeight,
+              clientWidth: scrollerElement.clientWidth,
+              scrollHeight: scrollerElement.scrollHeight,
+              scrollWidth: scrollerElement.scrollWidth,
+            };
+          }),
+        ]);
+      expect(mainBox).not.toBeNull();
+      expect(scrollerBox).not.toBeNull();
+      if (!mainBox || !scrollerBox) {
+        throw new Error("Expected the Search table to have a visible layout.");
+      }
+      expect(scrollerBox.height).toBeGreaterThan(100);
+      expect(scrollerBox.y + scrollerBox.height).toBeLessThanOrEqual(
+        mainBox.y + mainBox.height + 1,
+      );
+      expect(mainDimensions.scrollHeight).toBeLessThanOrEqual(
+        mainDimensions.clientHeight + 1,
+      );
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(
+        dimensions.clientWidth + 1,
+      );
+      expect(dimensions.scrollHeight).toBeGreaterThanOrEqual(
+        dimensions.clientHeight,
+      );
+    }
   });
 
   test("configured Squad exposes its format-bound CSV upload modals", async ({

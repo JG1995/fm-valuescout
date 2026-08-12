@@ -22,7 +22,9 @@ import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   getLastSearchPlayersArgs,
   getSearchPlayersCallCount,
+  resolvePendingSearchPlayersPageIpcMock,
   setSearchPlayersOverride,
+  setSearchPlayersPageIpcMockMode,
 } from "@/testing/search-ipc-mock";
 import {
   resolveCreateSaveIpcMock,
@@ -86,6 +88,15 @@ function manyPlayers(count: number): PlayerSummary[] {
   }));
 }
 
+function mockScrollerScrollTo(scroller: HTMLElement) {
+  Object.defineProperty(scroller, "scrollTo", {
+    configurable: true,
+    value: (options: { top?: number }) => {
+      scroller.scrollTop = options.top ?? scroller.scrollTop;
+    },
+  });
+}
+
 describe("search route", () => {
   beforeEach(() => {
     useLayoutStore.setState({ railExpanded: true });
@@ -131,6 +142,9 @@ describe("search route", () => {
       .filter((row) => row.hasAttribute("data-index"));
     expect(bodyRows.length).toBeGreaterThan(0);
     expect(bodyRows.length).toBeLessThan(80);
+    const scroller = screen.getByTestId("search-results-scroller");
+    expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
+    expect(scroller.parentElement).toHaveClass("relative", "min-h-0", "flex-1");
     expect(getLastSearchPlayersArgs()).toMatchObject({
       requestedFields: [],
     });
@@ -173,6 +187,56 @@ describe("search route", () => {
     });
   });
 
+  it("restores Search sort after returning from a player profile", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Zara Scout", 160),
+      playerNamed("Alex Scout", 145),
+    ]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "name",
+        dir: "asc",
+      });
+    });
+    const sortedRow = within(table)
+      .getAllByRole("row")
+      .find((row) => row.hasAttribute("data-index"));
+    if (!sortedRow) {
+      throw new Error("expected a sorted virtualized body row");
+    }
+    expect(sortedRow).toHaveTextContent("Alex Scout");
+
+    await user.click(sortedRow);
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/players/145");
+    });
+
+    await router.history.back();
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/search");
+      expect(router.state.location.search).toMatchObject({
+        sort: "name",
+        dir: "asc",
+      });
+    });
+    const restoredTable = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(restoredTable).getByRole("columnheader", { name: "Name" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+  });
+
   it("moves keyboard focus to the next results row on ArrowDown", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -203,6 +267,49 @@ describe("search route", () => {
     await waitFor(() => {
       expect(bodyRows()[1]).toHaveFocus();
     });
+  });
+
+  it("does not reclaim focus from a Search header while a virtual page is pending", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride(manyPlayers(101));
+    setSearchPlayersPageIpcMockMode("pendingSecondPage");
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const scroller = screen.getByTestId("search-results-scroller");
+    mockScrollerScrollTo(scroller);
+    fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({ offset: 50 });
+    });
+
+    const boundaryRow = await waitFor(() => {
+      const row = scroller.querySelector<HTMLElement>('[data-index="49"]');
+      if (!row) {
+        throw new Error("Expected the loaded page boundary row.");
+      }
+      return row;
+    });
+    boundaryRow.focus();
+    await user.keyboard("{ArrowDown}");
+
+    const nameHeader = within(table).getByRole("button", { name: "Name" });
+    await user.click(nameHeader);
+    expect(nameHeader).toHaveFocus();
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "name",
+        dir: "asc",
+      });
+    });
+
+    resolvePendingSearchPlayersPageIpcMock();
+
+    expect(await screen.findByText("Player 051")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Name" })).toHaveFocus();
   });
 
   it("moves keyboard focus to the previous results row on ArrowUp", async () => {

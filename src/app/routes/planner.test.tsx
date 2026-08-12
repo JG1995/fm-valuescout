@@ -59,9 +59,11 @@ import {
   getSquadCurrentAbilityBoostIpcMockCalls,
   getSquadWonderkidMentalityBoostIpcMockCalls,
   resolvePendingSquadCurrentAbilityBoostIpcMock,
+  resolvePendingSquadPlayersPageIpcMock,
   resolvePendingSquadWonderkidMentalityBoostIpcMock,
   setSquadCurrentAbilityBoostIpcMockMode,
   setSquadPlayersOverride,
+  setSquadPlayersPageIpcMockMode,
   setSquadWonderkidMentalityBoostIpcMockMode,
 } from "@/testing/squad-ipc-mock";
 
@@ -168,6 +170,15 @@ async function setPlannerMatrixWidth(width: number) {
     value: width,
   });
   fireEvent(window, new Event("resize"));
+}
+
+function mockScrollerScrollTo(scroller: HTMLElement) {
+  Object.defineProperty(scroller, "scrollTo", {
+    configurable: true,
+    value: (options: { top?: number }) => {
+      scroller.scrollTop = options.top ?? scroller.scrollTop;
+    },
+  });
 }
 
 describe("planner route", () => {
@@ -557,12 +568,10 @@ describe("planner route", () => {
         { name: "Name" },
       ),
     ).toHaveAttribute("aria-sort", "ascending");
-    expect(
-      screen.getByRole("link", { name: "Alex Scout" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Alex Scout")).toBeInTheDocument();
   });
 
-  it("moves between Squad player links with the arrow keys", async () => {
+  it("moves focus between Squad rows with the arrow keys", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
@@ -578,59 +587,290 @@ describe("planner route", () => {
     const table = await screen.findByRole("table", {
       name: "Squad overview",
     });
-    const links = within(table).getAllByRole("link");
-    links[0].focus();
+    const rows = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    rows[0].focus();
     await user.keyboard("{ArrowDown}");
 
     await waitFor(() => {
-      expect(links[1]).toHaveFocus();
+      expect(rows[1]).toHaveFocus();
     });
   });
 
-  it("loads a bounded next Squad page", async () => {
-    const user = userEvent.setup();
+  it("loads bounded virtual Squad pages without pagination controls", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
       primaryClub: "Metro FC",
       sources: [],
     });
-    setSquadPlayersOverride(manySquadPlayers(51));
+    setSquadPlayersOverride(manySquadPlayers(101));
     renderPlannerRoute({ initialEntry: "/planner" });
 
-    await screen.findByRole("link", { name: "Squad player 001" });
-    await user.click(screen.getByRole("button", { name: "Next page" }));
-
-    expect(
-      await screen.findByRole("link", { name: "Squad player 051" }),
-    ).toBeInTheDocument();
-    expect(getLastSquadPlayersArgs()).toMatchObject({
-      offset: 50,
-      limit: 50,
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
     });
+    const scroller = screen.getByTestId("squad-overview-scroller");
+    expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
+    expect(scroller.parentElement).toHaveClass("relative", "min-h-0", "flex-1");
+    expect(
+      screen.queryByRole("navigation", { name: "Squad overview pages" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Previous page" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
+    const virtualRows = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    expect(virtualRows.length).toBeGreaterThan(0);
+    expect(virtualRows.length).toBeLessThan(101);
+
+    fireEvent.scroll(scroller, { target: { scrollTop: 2_000 } });
+
+    await waitFor(() => {
+      expect(getLastSquadPlayersArgs()).toMatchObject({
+        offset: 50,
+        limit: 50,
+      });
+    });
+    expect(await screen.findByText("Squad player 051")).toBeInTheDocument();
+
+    fireEvent.scroll(scroller, { target: { scrollTop: 4_000 } });
+
+    await waitFor(() => {
+      expect(getLastSquadPlayersArgs()).toMatchObject({
+        offset: 100,
+        limit: 50,
+      });
+    });
+    expect(await screen.findByText("Squad player 101")).toBeInTheDocument();
   });
 
-  it("returns to the first Squad page after its data shrinks", async () => {
+  it("keeps ArrowDown focus pending while a virtual Squad page loads", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
       primaryClub: "Metro FC",
       sources: [],
     });
-    setSquadPlayersOverride(manySquadPlayers(51));
+    setSquadPlayersOverride(manySquadPlayers(101));
+    setSquadPlayersPageIpcMockMode("pendingSecondPage");
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    const scroller = screen.getByTestId("squad-overview-scroller");
+    mockScrollerScrollTo(scroller);
+    fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    await waitFor(() => {
+      expect(getLastSquadPlayersArgs()).toMatchObject({ offset: 50 });
+    });
+
+    const boundaryRow = await waitFor(() => {
+      const row = scroller.querySelector<HTMLElement>('[data-index="49"]');
+      if (!row) {
+        throw new Error("Expected the loaded page boundary row.");
+      }
+      return row;
+    });
+    boundaryRow.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(boundaryRow).toHaveFocus();
+
+    resolvePendingSquadPlayersPageIpcMock();
+
+    await waitFor(() => {
+      expect(
+        scroller.querySelector<HTMLElement>('[data-index="50"]'),
+      ).toHaveFocus();
+    });
+  });
+
+  it("does not reclaim focus after a pending virtual Squad page loses it", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride(manySquadPlayers(101));
+    setSquadPlayersPageIpcMockMode("pendingSecondPage");
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    const scroller = screen.getByTestId("squad-overview-scroller");
+    mockScrollerScrollTo(scroller);
+    fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    await waitFor(() => {
+      expect(getLastSquadPlayersArgs()).toMatchObject({ offset: 50 });
+    });
+
+    const boundaryRow = await waitFor(() => {
+      const row = scroller.querySelector<HTMLElement>('[data-index="49"]');
+      if (!row) {
+        throw new Error("Expected the loaded page boundary row.");
+      }
+      return row;
+    });
+    boundaryRow.focus();
+    await user.keyboard("{ArrowDown}");
+
+    const plannerTab = screen.getByRole("tab", { name: "Planner" });
+    plannerTab.focus();
+    expect(plannerTab).toHaveFocus();
+
+    resolvePendingSquadPlayersPageIpcMock();
+
+    expect(await screen.findByText("Squad player 051")).toBeInTheDocument();
+    expect(plannerTab).toHaveFocus();
+  });
+
+  it("offers a retry when a visible virtual Squad page fails", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride(manySquadPlayers(101));
+    setSquadPlayersPageIpcMockMode("rejectSecondPageOnce");
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    const scroller = screen.getByTestId("squad-overview-scroller");
+    mockScrollerScrollTo(scroller);
+    fireEvent.scroll(scroller, { target: { scrollTop: 2_000 } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Couldn't load this part of the table.",
+    );
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Squad player 051")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  });
+
+  it("clamps the virtual Squad range after its data shrinks", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride(manySquadPlayers(101));
     const { queryClient } = renderPlannerRoute({ initialEntry: "/planner" });
 
-    await screen.findByRole("link", { name: "Squad player 001" });
-    await user.click(screen.getByRole("button", { name: "Next page" }));
-    await screen.findByRole("link", { name: "Squad player 051" });
+    await screen.findByRole("table", { name: "Squad overview" });
+    const scroller = screen.getByTestId("squad-overview-scroller");
+    mockScrollerScrollTo(scroller);
+    let scrollHeight = 4_072;
+    Object.defineProperties(scroller, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: {
+        configurable: true,
+        get: () => scrollHeight,
+      },
+      scrollTop: { configurable: true, value: 3_672, writable: true },
+    });
+    fireEvent.scroll(scroller, { target: { scrollTop: 4_000 } });
+    await waitFor(() => {
+      expect(getLastSquadPlayersArgs()).toMatchObject({ offset: 100 });
+    });
 
-    setSquadPlayersOverride([squadPlayerNamed("Fresh Squad Player", 99)]);
+    setSquadPlayersOverride(manySquadPlayers(11));
+    scrollHeight = 472;
     await queryClient.invalidateQueries({ queryKey: plannerKeys.all });
 
+    expect(await screen.findByText("Squad player 011")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSquadPlayersArgs()).toMatchObject({
+        offset: 0,
+        limit: 50,
+      });
+      expect(scroller.scrollTop).toBe(72);
+      expect(scroller.scrollTop + scroller.clientHeight).toBe(
+        scroller.scrollHeight,
+      );
+    });
+  });
+
+  it("opens a Squad player from a non-name cell", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    const { router } = renderPlannerRoute({ initialEntry: "/planner" });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    await user.click(within(table).getByText("Metro FC"));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/players/42");
+    });
+  });
+
+  it("opens a focused Squad row with Enter and restores its sort on back", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      squadPlayerNamed("Zara Scout", 42),
+      squadPlayerNamed("Alex Scout", 43),
+    ]);
+    const { router } = renderPlannerRoute({ initialEntry: "/planner" });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({
+        sort: "name",
+        dir: "asc",
+      });
+    });
+    const sortedRow = await waitFor(() => {
+      const currentTable = screen.getByRole("table", {
+        name: "Squad overview",
+      });
+      const row = within(currentTable)
+        .getAllByRole("row")
+        .find((candidate) => candidate.hasAttribute("data-index"));
+      if (!row) {
+        throw new Error("expected a sorted virtualized Squad row");
+      }
+      expect(row).toHaveTextContent("Alex Scout");
+      return row;
+    });
+    sortedRow.focus();
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/players/43");
+    });
+
+    await router.history.back();
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/planner");
+      expect(router.state.location.search).toEqual({
+        sort: "name",
+        dir: "asc",
+      });
+    });
+    const restoredTable = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
     expect(
-      await screen.findByRole("link", { name: "Fresh Squad Player" }),
-    ).toBeInTheDocument();
-    expect(getLastSquadPlayersArgs()).toMatchObject({ offset: 0, limit: 50 });
-    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
+      within(restoredTable).getByRole("columnheader", { name: "Name" }),
+    ).toHaveAttribute("aria-sort", "ascending");
   });
 
   it("uses the Squad default and replaces workspace URL state", async () => {
