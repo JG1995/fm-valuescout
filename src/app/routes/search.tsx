@@ -133,8 +133,8 @@ function SearchPageContent() {
         onRulesChange={(rules) => {
           updateSearch({ filters: rules });
         }}
-        onCombineChange={(nextCombine) => {
-          updateSearch({ combine: nextCombine });
+        onApply={(rules, nextCombine) => {
+          updateSearch({ filters: rules, combine: nextCombine });
         }}
       />
       <Suspense fallback={<PanelFallback />}>

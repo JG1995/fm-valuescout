@@ -153,6 +153,8 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **Status:** Active
 
+**Build-feature-loop profile:** Terra Max
+
 **PR ref:** Not published
 
 **Merge ref:** Not merged
@@ -165,7 +167,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 #### Commit 1 — Stage organized filter changes
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(search): stage organized filter changes`
 
@@ -201,7 +203,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 #### Commit 2 — Cache potential table role scores
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(scoring): cache potential table role scores`
 
@@ -386,19 +388,19 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **PR:** PR 1 — Configurable player tables
 
-**Commit:** Commit 1 — Stage organized filter changes
+**Commit:** Commit 2 — Cache potential table role scores
 
 ### RED proof
 
-Add focused Search filter-editor tests that expect a searchable grouped metric picker and a local draft transaction. They must prove that typing, changing controls, adding or removing rules, and changing combine mode make zero apply calls; Done applies one valid draft; invalid drafts cannot be applied; every dismissal path discards the draft; and reopening uses the latest applied state. They must fail because the current editor renders one flat native select and invokes route callbacks immediately.
+Add failing migration and cache tests for v20-to-v21 upgrade, cold and repeated potential-filter reads, multi-role shared projection, cached `NULL`, model-version mismatch, snapshot cascade, and player-boost invalidation. Add a Search route test proving a drafted potential filter makes no IPC request until Done.
 
 ### Expected outcome
 
-The existing Search filter catalog is presented through an accessible organized picker and shared presentation registry. Modal edits remain local until Done performs one URL update and Search refresh; cancelled edits perform none. Later potential-filter and column work can reuse the same picker and apply boundary without importing Search internals.
+Potential role-score filters appear beside Current scores and materialize a bounded, reusable snapshot-scoped cache only after Done applies them. Cold full-cohort work is complete before count or result ordering, while repeated reads reuse the nullable, version-gated rows and successful boosts invalidate only the affected player.
 
 ### Explicit exclusions
 
-No Rust, migration, table layout, column state, potential-score, flag, Git, or publication change belongs in the active implementation commit.
+No potential attribute table columns, ingest-time potential scoring, profile or Planner cache adoption, selected table columns, background job system, Git, or publication change belongs in the active implementation commit.
 
 ## Discoveries and replanning
 
@@ -411,7 +413,9 @@ No Rust, migration, table layout, column state, potential-score, flag, Git, or p
 
 ## Completed work
 
-No implementation commits completed.
+| PR | Commit | Git ref | Implementation | Review | Deviations |
+| --- | --- | --- | --- | --- | --- |
+| PR 1 — Configurable player tables | Commit 1 — Stage organized filter changes | Pending record | Added the shared metric catalog and accessible grouped picker, then made Search filter edits transactional until Done. | Sol Medium accepted after one correction round. | None |
 
 ## Final validation
 

@@ -21,6 +21,7 @@ import {
 
 let overridePlayers: PlayerSummary[] | null = null;
 let lastSearchPlayersArgs: Record<string, unknown> | null = null;
+let searchPlayersCallCount = 0;
 let suggestOverride: PlayerSuggestHit[] | null = null;
 let lastSuggestPlayersArgs: Record<string, unknown> | null = null;
 
@@ -35,12 +36,17 @@ export function setSuggestPlayersOverride(hits: PlayerSuggestHit[] | null) {
 export function resetSearchPlayersOverride() {
   overridePlayers = null;
   lastSearchPlayersArgs = null;
+  searchPlayersCallCount = 0;
   suggestOverride = null;
   lastSuggestPlayersArgs = null;
 }
 
 export function getLastSearchPlayersArgs(): Record<string, unknown> | null {
   return lastSearchPlayersArgs;
+}
+
+export function getSearchPlayersCallCount(): number {
+  return searchPlayersCallCount;
 }
 
 export function getLastSuggestPlayersArgs(): Record<string, unknown> | null {
@@ -330,6 +336,7 @@ export function resolveSuggestPlayersIpcMock(
 
 /** Builds a paged search response from the active snapshot mock state. */
 export function resolveSearchPlayersIpcMock(args: unknown): SearchPlayersPage {
+  searchPlayersCallCount += 1;
   lastSearchPlayersArgs =
     typeof args === "object" && args !== null
       ? (args as Record<string, unknown>)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { ROLE_CATALOG } from "@/utils/role-catalog";
 import { createFilterRuleId } from "../types/filter-rule";
 import { dynamicColumnFields, isVisibleSortField } from "./dynamic-columns";
-import { ROLE_CATALOG } from "./role-catalog";
 
 describe("dynamicColumnFields", () => {
   it("returns unique non-basic complete filter fields", () => {

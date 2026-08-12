@@ -21,6 +21,7 @@ import { useLayoutStore } from "@/stores/use-layout-store";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   getLastSearchPlayersArgs,
+  getSearchPlayersCallCount,
   setSearchPlayersOverride,
 } from "@/testing/search-ipc-mock";
 import {
@@ -371,14 +372,14 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Alice")).toBeInTheDocument();
   });
 
-  it("renders filter tags, opens editor, and applies filters immediately", async () => {
+  it("keeps filter edits query-silent until Done, then applies the complete draft", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
       playerNamed("High CA", 180),
       playerNamed("Low CA", 100),
     ]);
-    renderSearchRoute();
+    const { router } = renderSearchRoute();
 
     expect(await screen.findByText("High CA")).toBeInTheDocument();
     expect(screen.getByText("Low CA")).toBeInTheDocument();
@@ -386,61 +387,58 @@ describe("search route", () => {
     await user.click(screen.getByRole("button", { name: "Edit filters" }));
     const dialog = screen.getByRole("dialog", { name: "Edit filters" });
     expect(dialog).toBeInTheDocument();
+    const callsBeforeEdit = getSearchPlayersCallCount();
 
     await user.click(
       within(dialog).getByRole("button", { name: "Add filter" }),
     );
 
+    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "ca",
+    );
+    await user.click(within(dialog).getByRole("option", { name: "CA" }));
+
     const valueField = within(dialog).getByLabelText("Value");
     fireEvent.change(valueField, { target: { value: "150" } });
+    await user.click(within(dialog).getByRole("button", { name: "or" }));
+
+    expect(getSearchPlayersCallCount()).toBe(callsBeforeEdit);
+    expect(router.state.location.search).toMatchObject({
+      combine: "and",
+      filters: [],
+    });
+    expect(screen.getByText("Low CA")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
 
     await waitFor(() => {
+      expect(getSearchPlayersCallCount()).toBeGreaterThan(callsBeforeEdit);
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
         { field: "ca", op: "gt", value: 150 },
       ]);
-      expect(
-        screen.getByRole("button", {
-          name: /Remove filter CA > 150/i,
-        }),
-      ).toBeInTheDocument();
-      expect(screen.queryByText("Low CA")).not.toBeInTheDocument();
+      expect(getLastSearchPlayersArgs()?.filterCombine).toBe("or");
     });
+    expect(router.state.location.search).toMatchObject({
+      combine: "or",
+      filters: [expect.objectContaining({ field: "ca", op: "gt", value: 150 })],
+    });
+    expect(
+      screen.getByRole("button", {
+        name: /Remove filter CA > 150/i,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Low CA")).not.toBeInTheDocument();
     expect(screen.getByText("High CA")).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: /Remove filter CA > 150/i }),
     );
-    expect(screen.queryByRole("button", { name: /Remove filter/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Remove filter CA > 150/i }),
+    ).toBeNull();
     expect(await screen.findByText("Low CA")).toBeInTheDocument();
-  });
-
-  it("sends filterCombine or when OR mode is selected in the editor", async () => {
-    const user = userEvent.setup();
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([
-      playerNamed("High CA", 180),
-      playerNamed("Low CA", 100),
-    ]);
-    renderSearchRoute();
-
-    expect(await screen.findByText("High CA")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Edit filters" }));
-    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
-
-    await user.click(within(dialog).getByRole("button", { name: "or" }));
-    await user.click(
-      within(dialog).getByRole("button", { name: "Add filter" }),
-    );
-
-    const valueField = within(dialog).getByLabelText("Value");
-    fireEvent.change(valueField, { target: { value: "150" } });
-
-    await waitFor(() => {
-      expect(getLastSearchPlayersArgs()?.filterCombine).toBe("or");
-      expect(getLastSearchPlayersArgs()?.filters).toEqual([
-        { field: "ca", op: "gt", value: 150 },
-      ]);
-    });
   });
 
   it("shows a no-matches empty state when filters exclude every player", async () => {
@@ -461,6 +459,7 @@ describe("search route", () => {
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "250" },
     });
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
 
     expect(
       await screen.findByText("No players match these filters"),
@@ -512,6 +511,7 @@ describe("search route", () => {
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "150" },
     });
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
 
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
@@ -605,7 +605,7 @@ describe("search route", () => {
     expect(
       within(dialog).getAllByRole("button", { name: "Remove filter rule" }),
     ).toHaveLength(32);
-    expect(router.state.location.search.filters).toHaveLength(32);
+    expect(router.state.location.search.filters).toHaveLength(0);
   });
 
   it("toggles CA from default descending to ascending on header click", async () => {
