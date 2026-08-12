@@ -31,6 +31,7 @@ Use a short, numbered filename such as `0001-decision-title.md`.
 | [0015](./0015-sqlite-rust-owned.md) | SQLite — Rust-owned migrations and queries |
 | [0016](./0016-csharp-bepinex-fm26-bridge.md) | C# BepInEx bridge for FM26 memory read |
 | [0017](./0017-action-specific-fm26-player-boosts.md) | Action-specific FM26 player boosts |
+| [0018](./0018-squad-wide-player-boosts.md) | Squad-wide action-specific player boosts |
 
 ## ADR format
 
