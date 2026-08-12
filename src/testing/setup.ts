@@ -81,6 +81,7 @@ import {
   resetSquadPlayersOverride,
   resolveSquadCurrentAbilityBoostIpcMock,
   resolveSquadPlayersIpcMock,
+  resolveSquadWonderkidMentalityBoostIpcMock,
 } from "@/testing/squad-ipc-mock";
 
 let demoValue = "";
@@ -221,6 +222,10 @@ function registerIpcMocks() {
 
     if (cmd === "boost_squad_current_ability") {
       return resolveSquadCurrentAbilityBoostIpcMock(args);
+    }
+
+    if (cmd === "boost_squad_wonderkid_mentality") {
+      return resolveSquadWonderkidMentalityBoostIpcMock(args);
     }
 
     if (cmd === "list_planner_clubs") {

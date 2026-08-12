@@ -364,7 +364,7 @@ Expected evidence: Rust tests cover distinct cohort capture, ages 20/21/28/29, c
 
 #### Commit 6 — Apply squad Wonderkid Mentality
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(squad): apply Wonderkid Mentality to squad`
 
@@ -448,6 +448,7 @@ CA eligibility changes, parallel writes, all-or-nothing rollback, arbitrary play
 | PR 1 | Commit 3 — Import squad CSV enrichment | Pending record | Format-bound Squad CSV modals, guarded browse/drop intake, expected-format persistence enforcement, and retained Dashboard auto-detection | Sol High — Accept | None |
 | PR 1 | Commit 4 — Correct CA boost age eligibility | Pending record | Corrected CA age boundaries, pre-bridge age exclusion, and profile result parity | Sol High — Accept | None |
 | PR 1 | Commit 5 — Boost squad current ability | Pending record | Closed sequential CA action, frozen club-family cohort, shared gate, persistent recovery latch, partial-result state, and Squad confirmation feedback | Sol xhigh — Accept | None |
+| PR 1 | Commit 6 — Apply squad Wonderkid Mentality | Pending record | Closed sequential Wonderkid action, shared gate and orchestration, field-level eligibility, partial-result state, and Squad confirmation feedback | Sol xhigh — Accept | None |
 
 ## Final validation
 

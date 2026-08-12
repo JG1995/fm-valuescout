@@ -30,9 +30,13 @@ import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { boostSquadCurrentAbility } from "@/features/squad/api/boost-squad-current-ability";
+import { boostSquadWonderkidMentality } from "@/features/squad/api/boost-squad-wonderkid-mentality";
 import { squadPlayersQueryOptions } from "@/features/squad/api/squad-players-query-options";
-import { SquadCurrentAbilityBoost } from "@/features/squad/components/squad-current-ability-boost";
 import { SquadOverviewPanel } from "@/features/squad/components/squad-overview-panel";
+import {
+  SquadCurrentAbilityBoost,
+  SquadWonderkidMentalityBoost,
+} from "@/features/squad/components/squad-player-boost";
 import type {
   SquadSortDir,
   SquadSortField,
@@ -106,17 +110,22 @@ function PlannerPageContent() {
   const { data: depth, isRefetchError: depthRefreshError } = useSuspenseQuery(
     plannerDepthQueryOptions,
   );
-  const squadBoost = useMutation({
+  const invalidateSquadBoostQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
+      queryClient.invalidateQueries({ queryKey: searchKeys.all }),
+      queryClient.invalidateQueries({ queryKey: playerKeys.all }),
+      queryClient.invalidateQueries({ queryKey: plannerKeys.all }),
+      queryClient.invalidateQueries({ queryKey: academyKeys.all }),
+    ]);
+  };
+  const squadCurrentAbilityBoost = useMutation({
     mutationFn: (_: { snapshotId: number }) => boostSquadCurrentAbility(),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
-        queryClient.invalidateQueries({ queryKey: searchKeys.all }),
-        queryClient.invalidateQueries({ queryKey: playerKeys.all }),
-        queryClient.invalidateQueries({ queryKey: plannerKeys.all }),
-        queryClient.invalidateQueries({ queryKey: academyKeys.all }),
-      ]);
-    },
+    onSuccess: invalidateSquadBoostQueries,
+  });
+  const squadWonderkidMentalityBoost = useMutation({
+    mutationFn: (_: { snapshotId: number }) => boostSquadWonderkidMentality(),
+    onSuccess: invalidateSquadBoostQueries,
   });
   const isPlannerRefreshing = useIsFetching({ queryKey: plannerKeys.all }) > 0;
   const isSnapshotRefreshing =
@@ -134,8 +143,20 @@ function PlannerPageContent() {
   const navigate = Route.useNavigate();
   const requestedWorkspace = parsePlannerWorkspace(view);
   const activeWorkspace = requestedWorkspace ?? "squad";
-  const squadBoostContextIsCurrent =
-    squadBoost.variables?.snapshotId === snapshot?.id;
+  const squadCurrentAbilityBoostContextIsCurrent =
+    squadCurrentAbilityBoost.variables?.snapshotId === snapshot?.id;
+  const squadWonderkidMentalityBoostContextIsCurrent =
+    squadWonderkidMentalityBoost.variables?.snapshotId === snapshot?.id;
+  const squadBoostPending =
+    (squadCurrentAbilityBoostContextIsCurrent &&
+      squadCurrentAbilityBoost.isPending) ||
+    (squadWonderkidMentalityBoostContextIsCurrent &&
+      squadWonderkidMentalityBoost.isPending);
+  const squadBoostRecoveryRequired =
+    (squadCurrentAbilityBoostContextIsCurrent &&
+      squadCurrentAbilityBoost.data?.recoveryRequired === true) ||
+    (squadWonderkidMentalityBoostContextIsCurrent &&
+      squadWonderkidMentalityBoost.data?.recoveryRequired === true);
   const onWorkspaceChange = (nextWorkspace: PlannerWorkspace) => {
     void navigate({
       search: (previous) => ({ ...previous, view: nextWorkspace }),
@@ -205,16 +226,52 @@ function PlannerPageContent() {
               actions={
                 <div className="flex flex-wrap justify-end gap-2">
                   <SquadCurrentAbilityBoost
-                    key={snapshot.id}
-                    pending={squadBoostContextIsCurrent && squadBoost.isPending}
+                    key={`current-ability-${snapshot.id}`}
+                    pending={
+                      squadCurrentAbilityBoostContextIsCurrent &&
+                      squadCurrentAbilityBoost.isPending
+                    }
+                    disabled={squadBoostPending || squadBoostRecoveryRequired}
                     result={
-                      squadBoostContextIsCurrent ? squadBoost.data : undefined
+                      squadCurrentAbilityBoostContextIsCurrent
+                        ? squadCurrentAbilityBoost.data
+                        : undefined
                     }
-                    error={squadBoostContextIsCurrent ? squadBoost.error : null}
+                    error={
+                      squadCurrentAbilityBoostContextIsCurrent
+                        ? squadCurrentAbilityBoost.error
+                        : null
+                    }
                     onBoost={() =>
-                      squadBoost.mutateAsync({ snapshotId: snapshot.id })
+                      squadCurrentAbilityBoost.mutateAsync({
+                        snapshotId: snapshot.id,
+                      })
                     }
-                    onOpenConfirmation={squadBoost.reset}
+                    onOpenConfirmation={squadCurrentAbilityBoost.reset}
+                  />
+                  <SquadWonderkidMentalityBoost
+                    key={`wonderkid-mentality-${snapshot.id}`}
+                    pending={
+                      squadWonderkidMentalityBoostContextIsCurrent &&
+                      squadWonderkidMentalityBoost.isPending
+                    }
+                    disabled={squadBoostPending || squadBoostRecoveryRequired}
+                    result={
+                      squadWonderkidMentalityBoostContextIsCurrent
+                        ? squadWonderkidMentalityBoost.data
+                        : undefined
+                    }
+                    error={
+                      squadWonderkidMentalityBoostContextIsCurrent
+                        ? squadWonderkidMentalityBoost.error
+                        : null
+                    }
+                    onBoost={() =>
+                      squadWonderkidMentalityBoost.mutateAsync({
+                        snapshotId: snapshot.id,
+                      })
+                    }
+                    onOpenConfirmation={squadWonderkidMentalityBoost.reset}
                   />
                   <SquadCsvImportActions
                     activeSaveId={snapshot.saveId}

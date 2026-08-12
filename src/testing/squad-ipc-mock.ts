@@ -1,8 +1,8 @@
-import type { SquadCurrentAbilityBoostResult } from "@/features/squad/types/squad-current-ability-boost";
 import type {
   SquadPlayer,
   SquadPlayersPage,
 } from "@/features/squad/types/squad-player";
+import type { SquadPlayerBoostResult } from "@/features/squad/types/squad-player-boost";
 import type {
   SquadSortDir,
   SquadSortField,
@@ -20,11 +20,24 @@ let squadCurrentAbilityBoostMode: SquadCurrentAbilityBoostIpcMockMode =
   "success";
 let squadCurrentAbilityBoostCalls: unknown[] = [];
 let pendingSquadCurrentAbilityBoost: {
-  promise: Promise<SquadCurrentAbilityBoostResult>;
-  resolve: (result: SquadCurrentAbilityBoostResult) => void;
+  promise: Promise<SquadPlayerBoostResult>;
+  resolve: (result: SquadPlayerBoostResult) => void;
+} | null = null;
+let squadWonderkidMentalityBoostMode: SquadWonderkidMentalityBoostIpcMockMode =
+  "success";
+let squadWonderkidMentalityBoostCalls: unknown[] = [];
+let pendingSquadWonderkidMentalityBoost: {
+  promise: Promise<SquadPlayerBoostResult>;
+  resolve: (result: SquadPlayerBoostResult) => void;
 } | null = null;
 
 export type SquadCurrentAbilityBoostIpcMockMode =
+  | "success"
+  | "pending"
+  | "recoveryRequired"
+  | "error";
+
+export type SquadWonderkidMentalityBoostIpcMockMode =
   | "success"
   | "pending"
   | "recoveryRequired"
@@ -40,6 +53,9 @@ export function resetSquadPlayersOverride() {
   squadCurrentAbilityBoostMode = "success";
   squadCurrentAbilityBoostCalls = [];
   pendingSquadCurrentAbilityBoost = null;
+  squadWonderkidMentalityBoostMode = "success";
+  squadWonderkidMentalityBoostCalls = [];
+  pendingSquadWonderkidMentalityBoost = null;
 }
 
 export function getLastSquadPlayersArgs(): Record<string, unknown> | null {
@@ -66,7 +82,7 @@ export function resolvePendingSquadCurrentAbilityBoostIpcMock(
   pendingSquadCurrentAbilityBoost = null;
 }
 
-function squadCurrentAbilityBoostResult(): SquadCurrentAbilityBoostResult {
+function squadCurrentAbilityBoostResult(): SquadPlayerBoostResult {
   return {
     updated: 2,
     skipped: 1,
@@ -78,13 +94,13 @@ function squadCurrentAbilityBoostResult(): SquadCurrentAbilityBoostResult {
 
 export function resolveSquadCurrentAbilityBoostIpcMock(
   args: unknown,
-): Promise<SquadCurrentAbilityBoostResult> {
+): Promise<SquadPlayerBoostResult> {
   squadCurrentAbilityBoostCalls = [...squadCurrentAbilityBoostCalls, args];
 
   if (squadCurrentAbilityBoostMode === "pending") {
     if (!pendingSquadCurrentAbilityBoost) {
-      let resolve!: (result: SquadCurrentAbilityBoostResult) => void;
-      const promise = new Promise<SquadCurrentAbilityBoostResult>((next) => {
+      let resolve!: (result: SquadPlayerBoostResult) => void;
+      const promise = new Promise<SquadPlayerBoostResult>((next) => {
         resolve = next;
       });
       pendingSquadCurrentAbilityBoost = { promise, resolve };
@@ -112,6 +128,77 @@ export function resolveSquadCurrentAbilityBoostIpcMock(
   }
 
   return Promise.resolve(squadCurrentAbilityBoostResult());
+}
+
+export function setSquadWonderkidMentalityBoostIpcMockMode(
+  mode: SquadWonderkidMentalityBoostIpcMockMode,
+) {
+  squadWonderkidMentalityBoostMode = mode;
+  if (mode !== "pending") {
+    pendingSquadWonderkidMentalityBoost = null;
+  }
+}
+
+export function getSquadWonderkidMentalityBoostIpcMockCalls() {
+  return squadWonderkidMentalityBoostCalls;
+}
+
+export function resolvePendingSquadWonderkidMentalityBoostIpcMock(
+  result = squadWonderkidMentalityBoostResult(),
+) {
+  pendingSquadWonderkidMentalityBoost?.resolve(result);
+  pendingSquadWonderkidMentalityBoost = null;
+}
+
+function squadWonderkidMentalityBoostResult(): SquadPlayerBoostResult {
+  return {
+    updated: 2,
+    skipped: 1,
+    failed: 0,
+    recoveryRequired: false,
+    recoveryMessage: null,
+  };
+}
+
+export function resolveSquadWonderkidMentalityBoostIpcMock(
+  args: unknown,
+): Promise<SquadPlayerBoostResult> {
+  squadWonderkidMentalityBoostCalls = [
+    ...squadWonderkidMentalityBoostCalls,
+    args,
+  ];
+
+  if (squadWonderkidMentalityBoostMode === "pending") {
+    if (!pendingSquadWonderkidMentalityBoost) {
+      let resolve!: (result: SquadPlayerBoostResult) => void;
+      const promise = new Promise<SquadPlayerBoostResult>((next) => {
+        resolve = next;
+      });
+      pendingSquadWonderkidMentalityBoost = { promise, resolve };
+    }
+    return pendingSquadWonderkidMentalityBoost.promise;
+  }
+
+  if (squadWonderkidMentalityBoostMode === "recoveryRequired") {
+    return Promise.resolve({
+      updated: 1,
+      skipped: 2,
+      failed: 1,
+      recoveryRequired: true,
+      recoveryMessage: "FM may have changed before the result was verified.",
+    });
+  }
+
+  if (squadWonderkidMentalityBoostMode === "error") {
+    return Promise.reject({
+      phase: "eligibility",
+      kind: "clubFamilyRequired",
+      message:
+        "Set up your club family in Dashboard before boosting the squad.",
+    });
+  }
+
+  return Promise.resolve(squadWonderkidMentalityBoostResult());
 }
 
 function parsePaging(args: unknown): {

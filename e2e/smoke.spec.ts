@@ -360,6 +360,31 @@ test.describe("walking skeleton smoke", () => {
     );
   });
 
+  test("configured Squad confirms and reports a closed Wonderkid action", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Make all Wonderkids" }).click();
+    const dialog = page.getByRole("dialog", { name: "Make all Wonderkids?" });
+    await expect(dialog).toContainText(
+      "Known Ambition, Professionalism, and Determination values at 10 or below can change.",
+    );
+    await expect(dialog).toContainText(
+      "Unknown and higher values are unchanged.",
+    );
+    await dialog.getByRole("button", { name: "Make all Wonderkids" }).click();
+
+    await expect(main.getByRole("status")).toContainText(
+      "Updated 2 players. Skipped 0. Failed 0.",
+    );
+  });
+
   test("planner tactic editor saves a linked phase adjustment", async ({
     page,
   }) => {

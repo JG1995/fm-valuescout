@@ -535,6 +535,16 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
+          if (cmd === "boost_squad_wonderkid_mentality") {
+            return {
+              updated: 2,
+              skipped: 0,
+              failed: 0,
+              recoveryRequired: false,
+              recoveryMessage: null,
+            };
+          }
+
           if (cmd === "get_planner_club_family") {
             return squadOverview
               ? { primaryClub: "Barcelona", sources: [] }

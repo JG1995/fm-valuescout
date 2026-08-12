@@ -1,4 +1,4 @@
-export type SquadCurrentAbilityBoostResult = {
+export type SquadPlayerBoostResult = {
   updated: number;
   skipped: number;
   failed: number;

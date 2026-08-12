@@ -57,9 +57,12 @@ import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 import {
   getLastSquadPlayersArgs,
   getSquadCurrentAbilityBoostIpcMockCalls,
+  getSquadWonderkidMentalityBoostIpcMockCalls,
   resolvePendingSquadCurrentAbilityBoostIpcMock,
+  resolvePendingSquadWonderkidMentalityBoostIpcMock,
   setSquadCurrentAbilityBoostIpcMockMode,
   setSquadPlayersOverride,
+  setSquadWonderkidMentalityBoostIpcMockMode,
 } from "@/testing/squad-ipc-mock";
 
 function renderPlannerRoute({
@@ -416,6 +419,105 @@ describe("planner route", () => {
     expect(action).toBeDisabled();
     await user.click(action);
     expect(getSquadCurrentAbilityBoostIpcMockCalls()).toEqual([{}]);
+  });
+
+  it("confirms the Squad Wonderkid action before applying it", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(
+      screen.getByRole("button", { name: "Make all Wonderkids" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Make all Wonderkids?",
+    });
+    expect(dialog).toHaveTextContent(
+      "Known Ambition, Professionalism, and Determination values at 10 or below can change.",
+    );
+    expect(dialog).toHaveTextContent(
+      "Unknown and higher values are unchanged.",
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Make all Wonderkids" }),
+    );
+    expect(getSquadWonderkidMentalityBoostIpcMockCalls()).toEqual([{}]);
+  });
+
+  it("locks both Squad actions while Wonderkid Mentality is pending", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    setSquadWonderkidMentalityBoostIpcMockMode("pending");
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(
+      screen.getByRole("button", { name: "Make all Wonderkids" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Make all Wonderkids?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Make all Wonderkids" }),
+    );
+
+    expect(screen.getByRole("button", { name: "Boost all CA" })).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Applying…" }),
+    ).toBeDisabled();
+    expect(getSquadWonderkidMentalityBoostIpcMockCalls()).toEqual([{}]);
+
+    resolvePendingSquadWonderkidMentalityBoostIpcMock();
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Updated 2 players. Skipped 1. Failed 0.",
+    );
+  });
+
+  it("requires Load Data before either Squad action after Wonderkid recovery", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    setSquadWonderkidMentalityBoostIpcMockMode("recoveryRequired");
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(
+      screen.getByRole("button", { name: "Make all Wonderkids" }),
+    );
+    await user.click(
+      within(
+        await screen.findByRole("dialog", { name: "Make all Wonderkids?" }),
+      ).getByRole("button", { name: "Make all Wonderkids" }),
+    );
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Load Data is required before another boost.",
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: "Make all Wonderkids" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Boost all CA" })).toBeDisabled();
+    expect(getSquadWonderkidMentalityBoostIpcMockCalls()).toEqual([{}]);
+    expect(getSquadCurrentAbilityBoostIpcMockCalls()).toEqual([]);
   });
 
   it("sorts the Squad table through the URL and backend query", async () => {

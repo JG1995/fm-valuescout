@@ -133,7 +133,7 @@ pub struct PlayerBoostResultDto {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SquadCurrentAbilityBoostResultDto {
+pub struct SquadPlayerBoostResultDto {
     pub updated: usize,
     pub skipped: usize,
     pub failed: usize,
@@ -189,8 +189,15 @@ pub fn boost_wonderkid_mentality(
 #[tauri::command]
 pub fn boost_squad_current_ability(
     db: State<'_, Db>,
-) -> Result<SquadCurrentAbilityBoostResultDto, PlayerBoostError> {
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
     execute_squad_current_ability_boost(db.inner())
+}
+
+#[tauri::command]
+pub fn boost_squad_wonderkid_mentality(
+    db: State<'_, Db>,
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
+    execute_squad_wonderkid_mentality_boost(db.inner())
 }
 
 fn execute_player_boost(
@@ -198,17 +205,7 @@ fn execute_player_boost(
     db: &Db,
     prepare: fn(&rusqlite::Connection, i64) -> Result<PreparedPlayerBoost, PlayerBoostError>,
 ) -> Result<PlayerBoostResultDto, PlayerBoostError> {
-    execute_player_boost_with(uid, db, prepare, |prepared| {
-        request_player_boost_from_local_app_data(
-            &prepared.source_request_id,
-            prepared.player_uid,
-            prepared.expected_current_ability as i32,
-            prepared.expected_potential_ability as i32,
-            prepared.bridge_operation(),
-            DumpWaitConfig::default(),
-        )
-        .map_err(service::map_bridge_error)
-    })
+    execute_player_boost_with(uid, db, prepare, request_local_player_boost)
 }
 
 fn execute_player_boost_with<F>(
@@ -234,24 +231,63 @@ where
 
 fn execute_squad_current_ability_boost(
     db: &Db,
-) -> Result<SquadCurrentAbilityBoostResultDto, PlayerBoostError> {
-    execute_squad_current_ability_boost_with(db, |prepared| {
-        request_player_boost_from_local_app_data(
-            &prepared.source_request_id,
-            prepared.player_uid,
-            prepared.expected_current_ability as i32,
-            prepared.expected_potential_ability as i32,
-            prepared.bridge_operation(),
-            DumpWaitConfig::default(),
-        )
-        .map_err(service::map_bridge_error)
-    })
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
+    execute_squad_current_ability_boost_with(db, request_local_player_boost)
+}
+
+fn execute_squad_wonderkid_mentality_boost(
+    db: &Db,
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
+    execute_squad_wonderkid_mentality_boost_with(db, request_local_player_boost)
+}
+
+fn request_local_player_boost(
+    prepared: &PreparedPlayerBoost,
+) -> Result<PlayerBoostResult, PlayerBoostError> {
+    request_player_boost_from_local_app_data(
+        &prepared.source_request_id,
+        prepared.player_uid,
+        prepared.expected_current_ability as i32,
+        prepared.expected_potential_ability as i32,
+        prepared.bridge_operation(),
+        DumpWaitConfig::default(),
+    )
+    .map_err(service::map_bridge_error)
 }
 
 fn execute_squad_current_ability_boost_with<F>(
     db: &Db,
+    request_bridge_boost: F,
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError>
+where
+    F: FnMut(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
+{
+    execute_squad_player_boost_with(
+        db,
+        service::prepare_current_ability_boost,
+        request_bridge_boost,
+    )
+}
+
+fn execute_squad_wonderkid_mentality_boost_with<F>(
+    db: &Db,
+    request_bridge_boost: F,
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError>
+where
+    F: FnMut(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
+{
+    execute_squad_player_boost_with(
+        db,
+        service::prepare_wonderkid_mentality_boost,
+        request_bridge_boost,
+    )
+}
+
+fn execute_squad_player_boost_with<F>(
+    db: &Db,
+    prepare: fn(&rusqlite::Connection, i64) -> Result<PreparedPlayerBoost, PlayerBoostError>,
     mut request_bridge_boost: F,
-) -> Result<SquadCurrentAbilityBoostResultDto, PlayerBoostError>
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError>
 where
     F: FnMut(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
 {
@@ -261,9 +297,9 @@ where
             kind: "databaseUnavailable".to_string(),
             message: "could not read the current snapshot for this squad boost".to_string(),
         })?;
-        capture_squad_current_ability_cohort(&conn)?
+        capture_squad_player_boost_cohort(&conn)?
     };
-    let mut result = SquadCurrentAbilityBoostResultDto {
+    let mut result = SquadPlayerBoostResultDto {
         updated: 0,
         skipped: 0,
         failed: 0,
@@ -272,14 +308,9 @@ where
     };
 
     for uid in player_uids {
-        let prepared = match prepare_player_boost(
-            uid,
-            db,
-            service::prepare_current_ability_boost,
-            Some(&context),
-        ) {
+        let prepared = match prepare_player_boost(uid, db, prepare, Some(&context)) {
             Ok(prepared) => prepared,
-            Err(error) if is_skippable_squad_eligibility(&error) => {
+            Err(error) if is_skippable_squad_player_boost_eligibility(&error) => {
                 result.skipped += 1;
                 continue;
             }
@@ -309,7 +340,7 @@ fn acquire_player_boost_gate() -> Result<std::sync::MutexGuard<'static, ()>, Pla
     })
 }
 
-fn capture_squad_current_ability_cohort(
+fn capture_squad_player_boost_cohort(
     conn: &rusqlite::Connection,
 ) -> Result<(PlayerBoostContext, Vec<i64>), PlayerBoostError> {
     let context = service::capture_active_player_boost_context(conn)?;
@@ -416,13 +447,16 @@ where
         .map(PlayerBoostResultDto::from)
 }
 
-fn is_skippable_squad_eligibility(error: &PlayerBoostError) -> bool {
+fn is_skippable_squad_player_boost_eligibility(error: &PlayerBoostError) -> bool {
     matches!(
         error,
             PlayerBoostError::Eligibility { kind, .. }
             if matches!(
                 kind.as_str(),
-                "unknownAge" | "ageIneligible" | "currentAbilityAtLimit"
+                "unknownAge"
+                    | "ageIneligible"
+                    | "currentAbilityAtLimit"
+                    | "noEligibleMentality"
             )
     )
 }
@@ -430,9 +464,9 @@ fn is_skippable_squad_eligibility(error: &PlayerBoostError) -> bool {
 fn recovery_required_result(
     db: &Db,
     context: &PlayerBoostContext,
-    mut result: SquadCurrentAbilityBoostResultDto,
+    mut result: SquadPlayerBoostResultDto,
     error: PlayerBoostError,
-) -> Result<SquadCurrentAbilityBoostResultDto, PlayerBoostError> {
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
     mark_player_boost_recovery_required(db, context)?;
     result.recovery_required = true;
     result.recovery_message = Some(error.to_string());
@@ -593,6 +627,52 @@ mod tests {
             previous_determination: None,
             determination: None,
         }
+    }
+
+    fn verified_wonderkid_result_for(prepared: &PreparedPlayerBoost) -> PlayerBoostResult {
+        let target =
+            |value: Option<i64>| value.map(|value| if value <= 10 { 11 } else { value as i32 });
+
+        PlayerBoostResult {
+            operation: "wonderkid-mentality".to_string(),
+            outcome: "verified".to_string(),
+            rollback: "not-needed".to_string(),
+            previous_current_ability: Some(prepared.expected_current_ability as i32),
+            current_ability: Some(prepared.expected_current_ability as i32),
+            potential_ability: Some(prepared.expected_potential_ability as i32),
+            previous_ambition: prepared.expected_ambition.map(|value| value as i32),
+            ambition: target(prepared.expected_ambition),
+            previous_professionalism: prepared.expected_professionalism.map(|value| value as i32),
+            professionalism: target(prepared.expected_professionalism),
+            previous_determination: prepared.expected_determination.map(|value| value as i32),
+            determination: target(prepared.expected_determination),
+        }
+    }
+
+    fn set_squad_player_mentality(
+        db: &Db,
+        uid: i64,
+        ambition: Option<i64>,
+        professionalism: Option<i64>,
+        determination: Option<i64>,
+    ) {
+        db.0.lock()
+            .expect("lock db")
+            .execute(
+                "UPDATE players
+                 SET attributes_json = ?1, personality_json = ?2
+                 WHERE uid = ?3",
+                params![
+                    serde_json::json!({ "Determination": determination }).to_string(),
+                    serde_json::json!({
+                        "Ambition": ambition,
+                        "Professionalism": professionalism,
+                    })
+                    .to_string(),
+                    uid,
+                ],
+            )
+            .expect("set squad player mentality");
     }
 
     #[test]
@@ -785,6 +865,156 @@ mod tests {
                 .expect("read squad CA");
             assert_eq!(ca, expected_ca, "unexpected CA for player {uid}");
         }
+    }
+
+    #[test]
+    fn squad_wonderkid_boost_updates_only_known_low_mentality_fields() {
+        let _test_guard = PLAYER_BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp_dir, db) = seeded_squad_db();
+        set_squad_player_mentality(&db, 77, Some(10), Some(14), Some(8));
+        set_squad_player_mentality(&db, 78, Some(11), Some(12), Some(13));
+        set_squad_player_mentality(&db, 79, None, None, None);
+        set_squad_player_mentality(&db, 80, Some(9), Some(15), Some(16));
+        set_squad_player_mentality(&db, 81, Some(18), Some(19), Some(20));
+        let bridge_calls = RefCell::new(Vec::new());
+
+        let result = execute_squad_wonderkid_mentality_boost_with(&db, |prepared| {
+            if prepared.player_uid == 77 {
+                let error = match execute_squad_current_ability_boost_with(&db, |_| {
+                    panic!("CA must not reach the bridge while Wonderkid is active")
+                }) {
+                    Err(error) => error,
+                    Ok(_) => panic!("Wonderkid must hold the shared player boost gate"),
+                };
+                assert!(matches!(
+                    error,
+                    PlayerBoostError::Bridge { kind, .. } if kind == "inProgress"
+                ));
+            }
+            bridge_calls.borrow_mut().push(prepared.player_uid);
+            assert_eq!(prepared.current_ability_increment, None);
+            Ok(verified_wonderkid_result_for(prepared))
+        })
+        .expect("apply Wonderkid Mentality to the frozen squad cohort");
+
+        assert_eq!(bridge_calls.into_inner(), vec![77, 80]);
+        assert_eq!(result.updated, 2);
+        assert_eq!(result.skipped, 3);
+        assert_eq!(result.failed, 0);
+        assert!(!result.recovery_required);
+
+        let conn = db.0.lock().expect("lock db");
+        let read_mentality = |uid| {
+            conn.query_row(
+                "SELECT attributes_json, personality_json FROM players WHERE uid = ?1",
+                params![uid],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )
+            .expect("read reconciled mentality")
+        };
+        let (attributes, personality) = read_mentality(77);
+        let attributes: serde_json::Value =
+            serde_json::from_str(&attributes).expect("parse attributes");
+        let personality: serde_json::Value =
+            serde_json::from_str(&personality).expect("parse personality");
+        assert_eq!(personality["Ambition"], serde_json::json!(11));
+        assert_eq!(personality["Professionalism"], serde_json::json!(14));
+        assert_eq!(attributes["Determination"], serde_json::json!(11));
+
+        let (attributes, personality) = read_mentality(80);
+        let attributes: serde_json::Value =
+            serde_json::from_str(&attributes).expect("parse partially changed attributes");
+        let personality: serde_json::Value =
+            serde_json::from_str(&personality).expect("parse partially changed personality");
+        assert_eq!(personality["Ambition"], serde_json::json!(11));
+        assert_eq!(personality["Professionalism"], serde_json::json!(15));
+        assert_eq!(attributes["Determination"], serde_json::json!(16));
+
+        let (attributes, personality) = read_mentality(78);
+        let attributes: serde_json::Value =
+            serde_json::from_str(&attributes).expect("parse untouched attributes");
+        let personality: serde_json::Value =
+            serde_json::from_str(&personality).expect("parse untouched personality");
+        assert_eq!(personality["Ambition"], serde_json::json!(11));
+        assert_eq!(personality["Professionalism"], serde_json::json!(12));
+        assert_eq!(attributes["Determination"], serde_json::json!(13));
+
+        let (attributes, personality) = read_mentality(79);
+        let attributes: serde_json::Value =
+            serde_json::from_str(&attributes).expect("parse unknown attributes");
+        let personality: serde_json::Value =
+            serde_json::from_str(&personality).expect("parse unknown personality");
+        assert_eq!(personality["Ambition"], serde_json::Value::Null);
+        assert_eq!(personality["Professionalism"], serde_json::Value::Null);
+        assert_eq!(attributes["Determination"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn squad_wonderkid_boost_continues_after_a_proven_no_write_failure_then_stops() {
+        let _test_guard = PLAYER_BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp_dir, db) = seeded_squad_db();
+        for uid in [77, 78, 79] {
+            set_squad_player_mentality(&db, uid, Some(10), Some(15), Some(16));
+        }
+        let bridge_calls = RefCell::new(Vec::new());
+
+        let result = execute_squad_wonderkid_mentality_boost_with(&db, |prepared| {
+            bridge_calls.borrow_mut().push(prepared.player_uid);
+            match prepared.player_uid {
+                77 => Err(PlayerBoostError::LiveValue {
+                    message: "player values changed in FM; Load Data again".to_string(),
+                }),
+                78 => Ok(verified_wonderkid_result_for(prepared)),
+                79 => Err(PlayerBoostError::SnapshotSync {
+                    message: "FM may have changed before this result was verified".to_string(),
+                }),
+                uid => panic!("player {uid} must not reach the bridge after recovery is required"),
+            }
+        })
+        .expect("report the partial Wonderkid result");
+
+        assert_eq!(bridge_calls.into_inner(), vec![77, 78, 79]);
+        assert_eq!(result.updated, 1);
+        assert_eq!(result.skipped, 0);
+        assert_eq!(result.failed, 1);
+        assert!(result.recovery_required);
+    }
+
+    #[test]
+    fn squad_wonderkid_recovery_blocks_later_ca_boosts() {
+        let _test_guard = PLAYER_BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp_dir, db) = seeded_squad_db();
+        set_squad_player_mentality(&db, 77, Some(10), Some(15), Some(8));
+        db.0.lock()
+            .expect("lock db")
+            .execute_batch(
+                "CREATE TRIGGER fail_squad_wonderkid_reconciliation
+                 BEFORE UPDATE OF attributes_json ON players
+                 BEGIN
+                   SELECT RAISE(FAIL, 'test reconciliation failure');
+                 END;",
+            )
+            .expect("make Wonderkid reconciliation fail");
+
+        let first_result = execute_squad_wonderkid_mentality_boost_with(&db, |prepared| {
+            Ok(verified_wonderkid_result_for(prepared))
+        })
+        .expect("report the reconciliation recovery outcome");
+        assert!(first_result.recovery_required);
+
+        let ca_error = match execute_squad_current_ability_boost_with(&db, |_| {
+            panic!("a recovery-required snapshot must not reach the CA bridge")
+        }) {
+            Err(error) => error,
+            Ok(_) => panic!("a Wonderkid recovery requirement must block CA"),
+        };
+        assert!(matches!(ca_error, PlayerBoostError::SnapshotSync { .. }));
     }
 
     #[test]

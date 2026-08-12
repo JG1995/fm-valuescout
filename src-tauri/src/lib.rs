@@ -49,6 +49,7 @@ pub fn run() {
             features::player::commands::boost_current_ability,
             features::player::commands::boost_wonderkid_mentality,
             features::player::commands::boost_squad_current_ability,
+            features::player::commands::boost_squad_wonderkid_mentality,
             features::academy::commands::list_academy_classes,
             features::academy::commands::get_academy_class,
             features::academy::commands::create_academy_class,
