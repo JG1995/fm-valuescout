@@ -33,7 +33,26 @@ pub(super) struct PreparedPlayerBoost {
     pub(super) expected_determination: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PlayerBoostContext {
+    pub(super) snapshot_id: i64,
+    pub(super) snapshot_context_token: String,
+    pub(super) save_id: i64,
+    pub(super) save_context_token: String,
+    pub(super) source_request_id: String,
+}
+
 impl PreparedPlayerBoost {
+    pub(super) fn context(&self) -> PlayerBoostContext {
+        PlayerBoostContext {
+            snapshot_id: self.snapshot_id,
+            snapshot_context_token: self.snapshot_context_token.clone(),
+            save_id: self.save_id,
+            save_context_token: self.save_context_token.clone(),
+            source_request_id: self.source_request_id.clone(),
+        }
+    }
+
     pub(super) fn bridge_operation(&self) -> PlayerBoostOperation {
         match self.current_ability_increment {
             Some(increment) => PlayerBoostOperation::CurrentAbility { increment },
@@ -106,8 +125,14 @@ pub(super) fn prepare_current_ability_boost(
             "player age is invalid; Load Data again",
         ));
     }
+    if age >= 29 {
+        return Err(eligibility_error(
+            "ageIneligible",
+            "current ability boosts are unavailable for players aged 29 or older",
+        ));
+    }
 
-    let increment = if age <= 21 { 5 } else { 10 };
+    let increment = if age <= 20 { 5 } else { 10 };
     let target = (player.current_ability + i64::from(increment))
         .min(player.potential_ability)
         .min(MAX_ABILITY);
@@ -240,6 +265,99 @@ pub(super) fn reconcile_verified_boost(
     Ok(verified)
 }
 
+pub(super) fn capture_active_player_boost_context(
+    conn: &Connection,
+) -> Result<PlayerBoostContext, PlayerBoostError> {
+    let snapshot: Option<(i64, i64, String, String, Option<String>, i32)> = conn
+        .query_row(
+            "SELECT
+                s.id,
+                s.save_id,
+                s.context_token,
+                sv.context_token,
+                s.bridge_source_request_id,
+                s.player_boost_recovery_required
+             FROM snapshots s
+             INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
+             WHERE s.is_current = 1
+             LIMIT 1",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| eligibility_error("database", error.to_string()))?;
+    let Some((
+        snapshot_id,
+        save_id,
+        snapshot_context_token,
+        save_context_token,
+        source_request_id,
+        recovery_required,
+    )) = snapshot
+    else {
+        return Err(eligibility_error(
+            "noSnapshot",
+            "Load Data before using player boosts",
+        ));
+    };
+    if recovery_required != 0 {
+        return Err(snapshot_sync_error(
+            "Load Data before using player boosts; the current snapshot could not be reconciled.",
+        ));
+    }
+    let Some(source_request_id) = source_request_id.filter(|value| !value.trim().is_empty()) else {
+        return Err(eligibility_error(
+            "missingProvenance",
+            "Load Data again before using player boosts",
+        ));
+    };
+
+    Ok(PlayerBoostContext {
+        snapshot_id,
+        snapshot_context_token,
+        save_id,
+        save_context_token,
+        source_request_id,
+    })
+}
+
+pub(super) fn active_player_boost_context_matches(
+    conn: &Connection,
+    expected: &PlayerBoostContext,
+) -> Result<bool, PlayerBoostError> {
+    Ok(capture_active_player_boost_context(conn)? == *expected)
+}
+
+pub(super) fn require_load_data_for_player_boost(
+    conn: &Connection,
+    context: &PlayerBoostContext,
+) -> Result<(), PlayerBoostError> {
+    let changed = conn
+        .execute(
+            "UPDATE snapshots
+             SET player_boost_recovery_required = 1
+             WHERE id = ?1 AND context_token = ?2",
+            params![context.snapshot_id, &context.snapshot_context_token],
+        )
+        .map_err(database_sync_error)?;
+    if changed == 1 {
+        return Ok(());
+    }
+
+    Err(snapshot_sync_error(
+        "FM may have changed, but FM ValueScout could not preserve the recovery requirement. Load Data again.",
+    ))
+}
+
 fn capture_player(conn: &Connection, uid: i64) -> Result<CapturedPlayer, PlayerBoostError> {
     let player_uid = u32::try_from(uid).map_err(|_| {
         eligibility_error(
@@ -254,54 +372,21 @@ fn capture_player(conn: &Connection, uid: i64) -> Result<CapturedPlayer, PlayerB
         ));
     }
 
-    let snapshot: Option<(i64, i64, String, String, Option<String>)> = conn
-        .query_row(
-            "SELECT s.id, s.save_id, s.context_token, sv.context_token, s.bridge_source_request_id
-             FROM snapshots s
-             INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
-             WHERE s.is_current = 1
-             LIMIT 1",
-            [],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|error| eligibility_error("database", error.to_string()))?;
-    let Some((snapshot_id, save_id, snapshot_context_token, save_context_token, source_request_id)) =
-        snapshot
-    else {
-        return Err(eligibility_error(
-            "noSnapshot",
-            "Load Data before using player boosts",
-        ));
-    };
-    let Some(source_request_id) = source_request_id.filter(|value| !value.trim().is_empty()) else {
-        return Err(eligibility_error(
-            "missingProvenance",
-            "Load Data again before using player boosts",
-        ));
-    };
+    let context = capture_active_player_boost_context(conn)?;
 
     let player = conn
         .query_row(
             "SELECT ca, pa, age, attributes_json, personality_json
              FROM players
              WHERE snapshot_id = ?1 AND uid = ?2",
-            params![snapshot_id, uid],
+            params![context.snapshot_id, uid],
             |row| {
                 Ok(CapturedPlayer {
-                    snapshot_id,
-                    snapshot_context_token: snapshot_context_token.clone(),
-                    save_id,
-                    save_context_token: save_context_token.clone(),
-                    source_request_id: source_request_id.clone(),
+                    snapshot_id: context.snapshot_id,
+                    snapshot_context_token: context.snapshot_context_token.clone(),
+                    save_id: context.save_id,
+                    save_context_token: context.save_context_token.clone(),
+                    source_request_id: context.source_request_id.clone(),
                     uid: player_uid,
                     current_ability: row.get(0)?,
                     potential_ability: row.get(1)?,
@@ -893,9 +978,9 @@ mod tests {
     }
 
     #[test]
-    fn current_ability_boost_prepares_the_under_twenty_two_increment_and_source_request() {
+    fn current_ability_boost_prepares_the_age_twenty_increment_and_source_request() {
         let fixture = seeded_player(
-            Some(21),
+            Some(20),
             150,
             170,
             Mentality {
@@ -916,23 +1001,25 @@ mod tests {
     }
 
     #[test]
-    fn current_ability_boost_uses_ten_at_twenty_two_and_clamps_to_potential() {
-        let fixture = seeded_player(
-            Some(22),
-            168,
-            170,
-            Mentality {
-                ambition: Some(14),
-                professionalism: Some(14),
-                determination: Some(14),
-            },
-        );
+    fn current_ability_boost_uses_ten_from_age_twenty_one_through_twenty_eight() {
+        for age in [21, 28] {
+            let fixture = seeded_player(
+                Some(age),
+                168,
+                170,
+                Mentality {
+                    ambition: Some(14),
+                    professionalism: Some(14),
+                    determination: Some(14),
+                },
+            );
 
-        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
-            .expect("prepare CA boost");
+            let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
+                .expect("prepare CA boost");
 
-        assert_eq!(prepared.current_ability_increment, Some(10));
-        assert_eq!(prepared.target_current_ability, Some(170));
+            assert_eq!(prepared.current_ability_increment, Some(10));
+            assert_eq!(prepared.target_current_ability, Some(170));
+        }
     }
 
     #[test]
@@ -951,6 +1038,22 @@ mod tests {
             super::prepare_current_ability_boost(&unknown_age.conn, PLAYER_UID)
                 .expect_err("unknown age must be ineligible"),
             "unknownAge",
+        );
+
+        let age_ineligible = seeded_player(
+            Some(29),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+        assert_eligibility_kind(
+            super::prepare_current_ability_boost(&age_ineligible.conn, PLAYER_UID)
+                .expect_err("age 29 must be ineligible"),
+            "ageIneligible",
         );
 
         let at_potential = seeded_player(
@@ -1005,7 +1108,7 @@ mod tests {
     #[test]
     fn current_ability_reconciliation_updates_the_snapshot_and_supports_a_repeat() {
         let mut fixture = seeded_player(
-            Some(21),
+            Some(20),
             150,
             170,
             Mentality {
@@ -1297,7 +1400,7 @@ mod tests {
         let error = super::reconcile_verified_boost(
             &mut fixture.conn,
             &prepared,
-            verified_ca_result(150, 155, 170),
+            verified_ca_result(150, 160, 170),
         )
         .expect_err("changed source request must reject reconciliation");
 
@@ -1332,7 +1435,7 @@ mod tests {
         let error = super::reconcile_verified_boost(
             &mut fixture.conn,
             &prepared,
-            verified_ca_result(150, 155, 170),
+            verified_ca_result(150, 160, 170),
         )
         .expect_err("replaced snapshot must reject reconciliation");
 
@@ -1373,7 +1476,7 @@ mod tests {
         let error = super::reconcile_verified_boost(
             &mut fixture.conn,
             &prepared,
-            verified_ca_result(150, 155, 170),
+            verified_ca_result(150, 160, 170),
         )
         .expect_err("reused snapshot id must reject reconciliation");
 
@@ -1421,7 +1524,7 @@ mod tests {
         let error = super::reconcile_verified_boost(
             &mut fixture.conn,
             &prepared,
-            verified_ca_result(150, 155, 170),
+            verified_ca_result(150, 160, 170),
         )
         .expect_err("save switch must reject reconciliation");
 

@@ -191,7 +191,7 @@ function currentAbilityBoostResult(): PlayerBoostResult {
   if (player.pa === null) {
     throw new Error("Potential ability is unavailable");
   }
-  const increment = player.age !== null && player.age <= 21 ? 5 : 10;
+  const increment = player.age !== null && player.age <= 20 ? 5 : 10;
   const currentAbility = Math.min(player.ca + increment, player.pa, 200);
   const result: PlayerBoostResult = {
     snapshotId: 1,

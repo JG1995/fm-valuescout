@@ -8,6 +8,7 @@ import { healthQueryOptions } from "@/features/health/api/health-query-options";
 import { HealthStatusPanelWithErrorBoundary } from "@/features/health/components/health-status-panel-with-error-boundary";
 import { BridgeStatusPanelWithErrorBoundary } from "@/features/memory-read/components/bridge-status-panel-with-error-boundary";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
+import { PlannerClubFamilyPanel } from "@/features/planner/components/planner-club-family-panel";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
@@ -55,6 +56,13 @@ function IndexPage() {
           }}
         />
       </Suspense>
+      {snapshot ? (
+        <section aria-label="Club Setup" id="club-setup">
+          <Suspense fallback={<PanelFallback label="Loading club setup…" />}>
+            <PlannerClubFamilyPanel />
+          </Suspense>
+        </section>
+      ) : null}
       <Suspense fallback={<PanelFallback label="Loading CSV import…" />}>
         <CsvImportPanel
           activeSaveId={activeSaveId}

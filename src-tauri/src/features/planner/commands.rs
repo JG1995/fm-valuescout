@@ -10,6 +10,10 @@ use super::depth::{
 };
 use super::optimizer;
 use super::service::{self as planner_service, ClubFamily, ClubSourceInput};
+use super::squad::{
+    self as squad_service, SquadPlayer, SquadPlayersPage, SquadSortDir, SquadSortField,
+    DEFAULT_SQUAD_PAGE_LIMIT, MAX_SQUAD_PAGE_LIMIT,
+};
 use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
 
 #[derive(Deserialize)]
@@ -62,6 +66,56 @@ impl From<ClubFamily> for ClubFamilyDto {
                     is_primary: source.is_primary,
                 })
                 .collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadPlayerDto {
+    pub uid: i64,
+    pub name: String,
+    pub age: Option<i64>,
+    pub birth_year: i64,
+    pub birth_day_of_year: i64,
+    pub nationalities: Vec<String>,
+    pub club: Option<String>,
+    pub division: Option<String>,
+    pub ca: i64,
+    pub pa: i64,
+    pub market_value_gbp: Option<i64>,
+}
+
+impl From<SquadPlayer> for SquadPlayerDto {
+    fn from(player: SquadPlayer) -> Self {
+        Self {
+            uid: player.uid,
+            name: player.name,
+            age: player.age,
+            birth_year: player.birth_year,
+            birth_day_of_year: player.birth_day_of_year,
+            nationalities: player.nationalities,
+            club: player.club,
+            division: player.division,
+            ca: player.ca,
+            pa: player.pa,
+            market_value_gbp: player.market_value_gbp,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadPlayersPageDto {
+    pub players: Vec<SquadPlayerDto>,
+    pub total: i64,
+}
+
+impl From<SquadPlayersPage> for SquadPlayersPageDto {
+    fn from(page: SquadPlayersPage) -> Self {
+        Self {
+            players: page.players.into_iter().map(SquadPlayerDto::from).collect(),
+            total: page.total,
         }
     }
 }
@@ -340,6 +394,34 @@ pub fn list_planner_clubs(db: State<'_, Db>) -> Result<Vec<String>, String> {
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
     planner_service::list_clubs_for_snapshot(&conn, save_id)
+}
+
+#[tauri::command]
+pub fn list_squad_players(
+    offset: Option<u32>,
+    limit: Option<u32>,
+    sort_by: Option<String>,
+    sort_dir: Option<String>,
+    db: State<'_, Db>,
+) -> Result<SquadPlayersPageDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    let offset = offset.unwrap_or(0) as usize;
+    let limit = limit
+        .map(|value| value as usize)
+        .unwrap_or(DEFAULT_SQUAD_PAGE_LIMIT)
+        .clamp(1, MAX_SQUAD_PAGE_LIMIT);
+    let sort_by = match sort_by.as_deref() {
+        None => SquadSortField::DEFAULT,
+        Some(value) => SquadSortField::parse(value)?,
+    };
+    let sort_dir = match sort_dir.as_deref() {
+        None => SquadSortDir::DEFAULT,
+        Some(value) => SquadSortDir::parse(value)?,
+    };
+    Ok(squad_service::list_squad_players(&conn, save_id, offset, limit, sort_by, sort_dir)?.into())
 }
 
 #[tauri::command]

@@ -596,6 +596,12 @@ BEGIN
 END;
 ";
 
+pub const PLAYER_BOOST_RECOVERY_SQL: &str = "
+ALTER TABLE snapshots
+    ADD COLUMN player_boost_recovery_required INTEGER NOT NULL DEFAULT 0
+    CHECK (player_boost_recovery_required IN (0, 1));
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -692,6 +698,11 @@ pub fn all() -> &'static [Migration] {
             version: 19,
             description: "add_snapshot_management_context",
             sql: SNAPSHOT_MANAGEMENT_CONTEXT_SQL,
+        },
+        Migration {
+            version: 20,
+            description: "add_player_boost_recovery_requirement",
+            sql: PLAYER_BOOST_RECOVERY_SQL,
         },
     ]
 }
@@ -798,7 +809,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
 
         let table_name: String = conn
             .query_row(
@@ -913,6 +924,55 @@ mod tests {
             .expect_err("reject changing snapshot token");
         assert_eq!(
             snapshot_error.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::ConstraintViolation)
+        );
+    }
+
+    #[test]
+    fn migrates_v19_snapshots_to_unlatched_player_boost_recovery() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("player-boost-recovery-v19.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 19) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v19");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Existing save', 1)",
+            [],
+        )
+        .expect("insert existing save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert existing snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+
+        apply(&conn).expect("apply player boost recovery migration");
+
+        let recovery_required: i64 = conn
+            .query_row(
+                "SELECT player_boost_recovery_required FROM snapshots WHERE id = ?1",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("read migrated recovery requirement");
+        assert_eq!(recovery_required, 0);
+        let error = conn
+            .execute(
+                "UPDATE snapshots SET player_boost_recovery_required = 2 WHERE id = ?1",
+                [snapshot_id],
+            )
+            .expect_err("reject an invalid recovery requirement");
+        assert_eq!(
+            error.sqlite_error_code(),
             Some(rusqlite::ErrorCode::ConstraintViolation)
         );
     }
@@ -1208,7 +1268,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, planner_club_settings.primary_club
@@ -1288,7 +1348,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -1475,7 +1535,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -1523,7 +1583,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -1764,7 +1824,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -1870,7 +1930,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
 
         let table_name: String = conn
             .query_row(
@@ -1932,6 +1992,7 @@ mod tests {
                 "bridge_source_request_id",
                 "context_token",
                 "custom_name",
+                "player_boost_recovery_required",
             ]
         );
         assert_eq!(
@@ -2122,7 +2183,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
     }
 
     #[test]
@@ -2156,7 +2217,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -2172,7 +2233,7 @@ mod tests {
     fn migrates_snapshot_schema_from_every_prior_version() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
 
-        for legacy_version in 1..19 {
+        for legacy_version in 1..20 {
             let conn = Connection::open(
                 temp_dir
                     .path()
@@ -2196,7 +2257,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 19, "legacy version {legacy_version}");
+            assert_eq!(version, 20, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -2209,7 +2270,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 19);
+        assert_eq!(migrations.len(), 20);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -2286,6 +2347,12 @@ mod tests {
             "add_snapshot_management_context"
         );
         assert_eq!(migrations[18].sql, SNAPSHOT_MANAGEMENT_CONTEXT_SQL);
+        assert_eq!(migrations[19].version, 20);
+        assert_eq!(
+            migrations[19].description,
+            "add_player_boost_recovery_requirement"
+        );
+        assert_eq!(migrations[19].sql, PLAYER_BOOST_RECOVERY_SQL);
     }
 
     #[test]

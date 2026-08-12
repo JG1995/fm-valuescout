@@ -77,6 +77,12 @@ import {
   resolveSetActiveSaveIpcMock,
   setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
+import {
+  resetSquadPlayersOverride,
+  resolveSquadCurrentAbilityBoostIpcMock,
+  resolveSquadPlayersIpcMock,
+  resolveSquadWonderkidMentalityBoostIpcMock,
+} from "@/testing/squad-ipc-mock";
 
 let demoValue = "";
 
@@ -210,6 +216,18 @@ function registerIpcMocks() {
       return resolvePlannerClubFamilyIpcMock();
     }
 
+    if (cmd === "list_squad_players") {
+      return resolveSquadPlayersIpcMock(args);
+    }
+
+    if (cmd === "boost_squad_current_ability") {
+      return resolveSquadCurrentAbilityBoostIpcMock(args);
+    }
+
+    if (cmd === "boost_squad_wonderkid_mentality") {
+      return resolveSquadWonderkidMentalityBoostIpcMock(args);
+    }
+
     if (cmd === "list_planner_clubs") {
       return resolvePlannerClubsIpcMock();
     }
@@ -303,6 +321,7 @@ afterEach(() => {
   resetSnapshotIpcMock();
   resetCsvImportIpcMock();
   resetSearchPlayersOverride();
+  resetSquadPlayersOverride();
   resetGetPlayerOverride();
   resetPlannerIpcMock();
   resetAcademyIpcMock();

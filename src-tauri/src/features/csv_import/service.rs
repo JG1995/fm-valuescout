@@ -4,7 +4,7 @@ use std::io::Read;
 use std::path::Path;
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value};
 
 use super::parser::{parse_csv_with_row_limit, ParsedCsv};
@@ -14,7 +14,7 @@ use super::{
 pub(crate) const MAX_CSV_BYTES: u64 = 1024 * 1024;
 pub(crate) const MAX_CSV_ROWS: usize = 1_000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum CsvImportFormat {
     YouthTracker,
@@ -47,6 +47,7 @@ pub(crate) enum CsvImportServiceError {
     FileTooLarge,
     InvalidUtf8,
     UnsupportedFormat,
+    FormatMismatch,
     TooManyRows,
     InvalidCsv(ParsedCsvError),
     Database,
@@ -64,6 +65,9 @@ impl std::fmt::Display for CsvImportServiceError {
             Self::FileTooLarge => write!(f, "CSV file exceeds the 1 MiB limit"),
             Self::InvalidUtf8 => write!(f, "CSV file must use UTF-8 encoding"),
             Self::UnsupportedFormat => write!(f, "CSV format is not supported"),
+            Self::FormatMismatch => {
+                write!(f, "CSV does not match the selected upload format")
+            }
             Self::TooManyRows => write!(f, "CSV contains more than 1000 player rows"),
             Self::InvalidCsv(error) => write!(f, "CSV file is invalid: {error}"),
             Self::Database => write!(f, "CSV import is unavailable"),
@@ -105,6 +109,15 @@ impl From<CsvImportServiceError> for CsvPersistenceError {
 pub(crate) enum PreparedCsvImport {
     YouthTracker(Vec<PreparedYouthCareerStats>),
     Moneyball(Vec<PreparedMoneyballStats>),
+}
+
+impl PreparedCsvImport {
+    fn format(&self) -> CsvImportFormat {
+        match self {
+            Self::YouthTracker(_) => CsvImportFormat::YouthTracker,
+            Self::Moneyball(_) => CsvImportFormat::Moneyball,
+        }
+    }
 }
 
 pub(crate) struct PreparedYouthCareerStats {
@@ -181,6 +194,17 @@ pub(crate) fn prepare_csv_import(path: &Path) -> Result<PreparedCsvImport, CsvPe
             .collect::<Result<Vec<_>, _>>()
             .map(PreparedCsvImport::Moneyball),
     }
+}
+
+pub(crate) fn prepare_csv_import_for_expected_format(
+    path: &Path,
+    expected_format: Option<CsvImportFormat>,
+) -> Result<PreparedCsvImport, CsvPersistenceError> {
+    let import = prepare_csv_import(path)?;
+    if expected_format.is_some_and(|expected| expected != import.format()) {
+        return Err(CsvImportServiceError::FormatMismatch.into());
+    }
+    Ok(import)
 }
 
 pub(crate) fn persist_csv_import(

@@ -515,7 +515,7 @@ describe("academy route", () => {
     setAcademyCreateError(null);
   });
 
-  it("guides an unconfigured save to Planner club setup", async () => {
+  it("guides an unconfigured save to Dashboard Club Setup", async () => {
     await resolveLoadDataIpcMock();
     renderAcademyRoute();
 
@@ -523,8 +523,8 @@ describe("academy route", () => {
       await screen.findByText("Set up your club family"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Open Planner club setup" }),
-    ).toHaveAttribute("href", "/planner?view=clubs");
+      screen.getByRole("link", { name: "Open Club Setup" }),
+    ).toHaveAttribute("href", "/#club-setup");
   });
 
   it("shows Load Data guidance when the active save has no snapshot", async () => {

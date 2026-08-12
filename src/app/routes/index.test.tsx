@@ -13,8 +13,14 @@ import {
   setCsvImportIpcMockError,
   setCsvImportIpcMockResult,
 } from "@/testing/csv-import-ipc-mock";
+import {
+  getPlannerClubFamilySaveCalls,
+  resolvePlannerClubFamilyIpcMock,
+  setPlannerAvailableClubs,
+} from "@/testing/planner-ipc-mock";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
+  resolveLoadDataIpcMock,
   resolveSetActiveSaveIpcMock,
   type SnapshotMetadata,
   setSnapshotHistoryIpcMock,
@@ -49,10 +55,154 @@ const HISTORY: SnapshotMetadata[] = [
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open }));
 
-describe("Dashboard CSV enrichment import", () => {
+describe("Dashboard", () => {
   beforeEach(() => {
     open.mockReset();
     open.mockResolvedValue(null);
+  });
+
+  it("hosts Club Setup and persists a separate Reserves club", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona", "Barca Athletic", "Barcelona U19"]);
+    renderWithProviders();
+
+    expect(
+      await screen.findByRole("region", { name: "Club Setup" }),
+    ).toBeInTheDocument();
+    const primaryClub = await screen.findByRole("combobox", {
+      name: "Primary club",
+    });
+    await user.type(primaryClub, "Barcelona");
+    await user.click(await screen.findByRole("option", { name: "Barcelona" }));
+    await user.click(screen.getByRole("button", { name: "Save club family" }));
+
+    const addReserves = await screen.findByRole("button", {
+      name: "Add Reserves source",
+    });
+    await user.click(addReserves);
+    await user.selectOptions(
+      screen.getByLabelText("Reserves club 1"),
+      "Barca Athletic",
+    );
+    await user.click(screen.getByRole("button", { name: "Save club family" }));
+
+    expect(
+      (await screen.findAllByRole("option", { name: "Barca Athletic" })).length,
+    ).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "Add Youth source" }));
+    expect(screen.getByLabelText("Youth club 1")).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Youth player level 1"),
+    ).not.toBeInTheDocument();
+    expect(
+      resolvePlannerClubFamilyIpcMock().sources.some(
+        (source) =>
+          source.clubName === "Barca Athletic" &&
+          source.team === "reserves" &&
+          source.teamLevel === null,
+      ),
+    ).toBe(true);
+    expect(
+      within(screen.getByRole("main")).getByText(/Associated clubs/),
+    ).toBeInTheDocument();
+  });
+
+  it("filters Dashboard club setup primary-club suggestions", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["FC København", "Brøndby IF", "Copenhagen City"]);
+    renderWithProviders();
+
+    const primaryClub = await screen.findByRole("combobox", {
+      name: "Primary club",
+    });
+    await user.type(primaryClub, "en");
+
+    const suggestions = await screen.findByRole("listbox", {
+      name: "Club suggestions",
+    });
+    expect(
+      within(suggestions).getByRole("option", { name: "FC København" }),
+    ).toBeInTheDocument();
+    expect(
+      within(suggestions).getByRole("option", { name: "Copenhagen City" }),
+    ).toBeInTheDocument();
+    expect(
+      within(suggestions).queryByRole("option", { name: "Brøndby IF" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(suggestions).getByRole("option", { name: "FC København" }),
+    );
+
+    expect(primaryClub).toHaveValue("FC København");
+    expect(
+      screen.getByRole("button", { name: "Save club family" }),
+    ).toBeEnabled();
+  });
+
+  it("does not submit a stale Dashboard club-family search", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderWithProviders();
+
+    const primaryClub = await screen.findByRole("combobox", {
+      name: "Primary club",
+    });
+    await user.type(primaryClub, "Barcelona");
+    await user.click(await screen.findByRole("option", { name: "Barcelona" }));
+    await user.click(screen.getByRole("button", { name: "Save club family" }));
+    await waitFor(() => expect(getPlannerClubFamilySaveCalls()).toBe(1));
+
+    await user.clear(primaryClub);
+    await user.type(primaryClub, "No matching club");
+    await user.keyboard("{Enter}");
+
+    expect(getPlannerClubFamilySaveCalls()).toBe(1);
+    expect(
+      screen.getByRole("button", { name: "Save club family" }),
+    ).toBeDisabled();
+  });
+
+  it("selects the highlighted Dashboard club with the keyboard", async () => {
+    const scrollIntoView = vi.fn();
+    const scrollDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollIntoView",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    try {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setPlannerAvailableClubs(["Barcelona", "Barca Athletic"]);
+      renderWithProviders();
+
+      const primaryClub = await screen.findByRole("combobox", {
+        name: "Primary club",
+      });
+      await user.type(primaryClub, "bar");
+      scrollIntoView.mockClear();
+      await user.keyboard("{ArrowDown}");
+
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+      await user.keyboard("{Enter}");
+      expect(primaryClub).toHaveValue("Barca Athletic");
+    } finally {
+      if (scrollDescriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollIntoView",
+          scrollDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
+    }
   });
 
   it("guides the user to load a snapshot before importing a CSV", async () => {
