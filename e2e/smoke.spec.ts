@@ -271,6 +271,27 @@ test.describe("walking skeleton smoke", () => {
     ).toBeVisible();
   });
 
+  test("configured Squad shows its sortable player overview", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    const table = main.getByRole("table", { name: "Squad overview" });
+    await expect(table).toBeVisible();
+    await expect(
+      table.getByRole("link", { name: "Alex Scout" }),
+    ).toHaveAttribute("href", "/players/42?tab=technical");
+    await table.getByRole("button", { name: "Name" }).click();
+    await expect(
+      table.getByRole("columnheader", { name: "Name" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+  });
+
   test("planner tactic editor saves a linked phase adjustment", async ({
     page,
   }) => {

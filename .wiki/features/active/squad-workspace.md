@@ -49,10 +49,10 @@ Turn the current Planner surface into a broader Squad workspace. Give the user o
 
 ## Current-state map
 
-- Relevant components: `src/app/routes/planner.tsx` composes the current Squad depth, Tactic, and Club Setup workspaces; `src/features/planner/components/planner-workspace-tabs.tsx` owns their tab semantics; `src/app/routes/index.tsx` composes Dashboard snapshot and CSV panels; `src/app/components/app-nav-rail.tsx` labels the route Planner.
+- Relevant components: `src/app/routes/planner.tsx` composes the Squad overview, Planner depth, and Tactic workspaces; `src/features/squad/` owns the overview query and table; `src/features/planner/components/planner-workspace-tabs.tsx` owns tab semantics; `src/app/routes/index.tsx` composes Dashboard snapshot, Club Setup, and CSV panels; `src/app/components/app-nav-rail.tsx` labels the route Squad.
 - Data model: save-scoped `planner_club_settings` and `planner_club_sources` define the primary and associated club names; current-snapshot `players.current_club` supplies exact membership; no schema change is required.
 - Persistence and migrations: Planner club-family settings remain save-scoped. Moneyball enrichment remains snapshot-owned and Youth career enrichment remains save-owned. Player boosts reconcile current-snapshot player rows and affected role scores. No migration is planned.
-- Existing behavioral assumptions: `/planner?view=squad` currently means the depth matrix, `/planner?view=tactic` means the tactic editor, and `/planner?view=clubs` means Club Setup. Configured saves default to the current Squad depth view; unconfigured saves default to Club Setup.
+- Existing behavior: `/planner?view=squad` is the configured club-family overview, `/planner?view=planner` is the depth matrix, and `/planner?view=tactic` is the tactic editor. Club Setup is Dashboard-only at `/#club-setup`; configured and unconfigured saves both default to Squad.
 - Architectural seams: Rust `features/planner` owns club-family discovery and persistence; Rust `features/search` demonstrates paginated fixed-column player queries; Rust `features/csv_import` owns bounded imports; Rust `features/player` owns the two UID-only boost commands and snapshot reconciliation; Rust `features/memory_read` and the C# bridge own serialized action-specific FM writes.
 - Frontend analogues: Search provides the fixed columns, sortable headers, row keyboard behavior, virtualization, and profile navigation; Modal provides focus trapping and restoration; the current CSV panel provides context-bound import state and safe result copy; player profiles provide confirmation and phase-specific boost feedback.
 - Project validation commands: `./scripts/dev test`, `./scripts/dev check`, `./scripts/dev bridge-test`, and `./scripts/dev smoke`; `./scripts/dev format` applies formatting before checkpoint. `./scripts/dev mutate` remains unsupported.
@@ -193,7 +193,7 @@ Expected evidence: the targeted route tests prove the new labels, URLs, defaults
 
 #### Commit 2 — List configured squad players
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(squad): list configured club players`
 
@@ -235,7 +235,7 @@ Expected evidence: Rust tests prove exact family membership, deduplication, save
 
 #### Commit 3 — Import squad CSV enrichment
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(import): add squad CSV import modals`
 
@@ -410,19 +410,19 @@ Expected evidence: Rust and bridge tests prove eligibility, untouched null/high 
 
 **PR:** PR 1 — Build the Squad workspace
 
-**Commit:** Commit 2 — List configured squad players
+**Commit:** Commit 3 — Import squad CSV enrichment
 
 ### RED proof
 
-Add the bounded Planner squad-query tests and Squad route tests first. They must require the exact configured-club union, one row per UID, active current-snapshot isolation, allowlisted sortable fixed columns, deterministic paging, and profile-name links; the current Squad placeholder must fail those assertions.
+Add focused CSV-import modal tests first. They must require explicit Moneyball and Youth Academy entry points, format-specific rejection before writes, a single guarded browse-or-drop path, context-bound feedback, and retained Dashboard auto-detection.
 
 ### Expected outcome
 
-Configured Squad presents a filter-free, sortable overview of only current players in the configured club family, with Rust-owned paging and sorting and accessible links to their existing profiles. The Squad, Planner, and Tactic composition from Commit 1 remains unchanged.
+Configured Squad provides explicit Moneyball and Youth Academy CSV import modals with format-safe, context-bound persistence while Dashboard retains its current auto-detect importer.
 
 ### Explicit exclusions
 
-No CSV import modal, CA-rule correction, bulk command, bridge change, Search filters, custom columns, row selection, historical snapshots, Planner-depth changes, push, or publication belongs in this active commit.
+CA-rule correction, bulk commands, bridge changes, Search filters, custom columns, row selection, historical snapshots, Planner-depth changes, push, and publication do not belong in this active commit.
 
 ## Discoveries and replanning
 
@@ -431,12 +431,14 @@ No CSV import modal, CA-rule correction, bulk command, bridge change, Search fil
 - 2026-08-12: The developer accepted sequential best-effort bulk execution. Proven no-write player-local rejections continue; active-context loss and recovery-required uncertainty stop before another write.
 - 2026-08-12: Commit review found that the initial plan treated every player-specific bridge or reconciliation failure as continuable. The plan now preserves ADR-0017's fail-closed recovery boundary and requires a fatal-versus-continuable test matrix for both squad actions.
 - 2026-08-12: The Dashboard is expected to leave the user-facing app later, but this feature keeps its current CSV import while adding explicit Squad import entry points.
+- 2026-08-12: Commit 2 keeps overview reads under the existing Planner invalidation root with a nested `['planner', 'squad']` key. Its 50-row pages stay below the table virtualization threshold while Rust retains the 200-row hard limit.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Reorganize the Squad workspace | Pending record | Squad navigation, URL-backed workspace composition, Dashboard Club Setup, and recovery links | Sol Medium — Accept | None |
+| PR 1 | Commit 2 — List configured squad players | Pending record | Bounded exact club-family overview query, sortable fixed-column table, paging, and profile links | Sol High — Accept | None |
 
 ## Final validation
 

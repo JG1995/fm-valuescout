@@ -20,13 +20,44 @@ import {
 } from "@/features/planner/components/planner-workspace-tabs";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import { squadPlayersQueryOptions } from "@/features/squad/api/squad-players-query-options";
+import { SquadOverviewPanel } from "@/features/squad/components/squad-overview-panel";
+import type {
+  SquadSortDir,
+  SquadSortField,
+} from "@/features/squad/types/squad-sort";
+import {
+  DEFAULT_SQUAD_SORT_DIR,
+  DEFAULT_SQUAD_SORT_FIELD,
+  defaultDirForSquadSortField,
+  isSquadSortDir,
+  isSquadSortField,
+} from "@/features/squad/types/squad-sort";
 
 export type PlannerSearch = {
   view?: PlannerWorkspace;
+  sort?: SquadSortField;
+  dir?: SquadSortDir;
 };
 
+function squadSortForSearch(search: PlannerSearch): {
+  sort: SquadSortField;
+  dir: SquadSortDir;
+} {
+  const sort = isSquadSortField(search.sort)
+    ? search.sort
+    : DEFAULT_SQUAD_SORT_FIELD;
+  const dir = isSquadSortDir(search.dir)
+    ? search.dir
+    : isSquadSortField(search.sort)
+      ? defaultDirForSquadSortField(sort)
+      : DEFAULT_SQUAD_SORT_DIR;
+  return { sort, dir };
+}
+
 export const Route = createFileRoute("/planner")({
-  loader: ({ context: { queryClient } }) =>
+  loaderDeps: ({ search }) => squadSortForSearch(search),
+  loader: ({ context: { queryClient }, deps: { sort, dir } }) =>
     Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(plannerClubFamilyQueryOptions),
@@ -34,10 +65,19 @@ export const Route = createFileRoute("/planner")({
       queryClient.ensureQueryData(plannerTacticQueryOptions),
       queryClient.ensureQueryData(plannerTacticOptionsQueryOptions),
       queryClient.ensureQueryData(plannerDepthQueryOptions),
+      queryClient.ensureQueryData(
+        squadPlayersQueryOptions(0, undefined, sort, dir),
+      ),
     ]),
   validateSearch: (search: Record<string, unknown>): PlannerSearch => {
     const view = parsePlannerWorkspace(search.view);
-    return view ? { view } : {};
+    const sort = isSquadSortField(search.sort) ? search.sort : undefined;
+    const dir = isSquadSortDir(search.dir) ? search.dir : undefined;
+    return {
+      ...(view ? { view } : {}),
+      ...(sort ? { sort } : {}),
+      ...(dir ? { dir } : {}),
+    };
   },
   component: PlannerPage,
 });
@@ -64,13 +104,28 @@ function PlannerPageContent() {
     depthRefreshError;
   const isActiveSaveUnavailable =
     isPlannerRefreshing || isSnapshotRefreshing || activeSaveRefreshError;
-  const { view } = Route.useSearch();
+  const search = Route.useSearch();
+  const { view } = search;
+  const { sort: squadSort, dir: squadDir } = squadSortForSearch(search);
   const navigate = Route.useNavigate();
   const requestedWorkspace = parsePlannerWorkspace(view);
   const activeWorkspace = requestedWorkspace ?? "squad";
   const onWorkspaceChange = (nextWorkspace: PlannerWorkspace) => {
     void navigate({
       search: (previous) => ({ ...previous, view: nextWorkspace }),
+      replace: true,
+    });
+  };
+  const onSquadSortChange = (
+    nextSort: SquadSortField,
+    nextDir: SquadSortDir,
+  ) => {
+    void navigate({
+      search: (previous) => ({
+        ...previous,
+        sort: nextSort,
+        dir: nextDir,
+      }),
       replace: true,
     });
   };
@@ -112,23 +167,20 @@ function PlannerPageContent() {
       {plannerHeader}
       <div {...plannerWorkspacePanelProps("squad", activeWorkspace)}>
         {clubFamily.primaryClub ? (
-          <Panel title="Squad overview" flush>
-            <EmptyState
-              icon={UsersRound}
-              title="Squad overview"
-              action={
-                <Link
-                  to="/planner"
-                  search={{ view: "planner" }}
-                  className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
-                >
-                  Open Planner
-                </Link>
-              }
-            >
-              Use Planner to manage your squad depth.
-            </EmptyState>
-          </Panel>
+          <Suspense
+            fallback={
+              <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
+                Loading squad overview…
+              </div>
+            }
+          >
+            <SquadOverviewPanel
+              key={`${squadSort}:${squadDir}`}
+              sortBy={squadSort}
+              sortDir={squadDir}
+              onSortChange={onSquadSortChange}
+            />
+          </Suspense>
         ) : (
           <Panel title="Squad" flush>
             <EmptyState

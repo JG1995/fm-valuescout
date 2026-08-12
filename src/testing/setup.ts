@@ -77,6 +77,10 @@ import {
   resolveSetActiveSaveIpcMock,
   setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
+import {
+  resetSquadPlayersOverride,
+  resolveSquadPlayersIpcMock,
+} from "@/testing/squad-ipc-mock";
 
 let demoValue = "";
 
@@ -210,6 +214,10 @@ function registerIpcMocks() {
       return resolvePlannerClubFamilyIpcMock();
     }
 
+    if (cmd === "list_squad_players") {
+      return resolveSquadPlayersIpcMock(args);
+    }
+
     if (cmd === "list_planner_clubs") {
       return resolvePlannerClubsIpcMock();
     }
@@ -303,6 +311,7 @@ afterEach(() => {
   resetSnapshotIpcMock();
   resetCsvImportIpcMock();
   resetSearchPlayersOverride();
+  resetSquadPlayersOverride();
   resetGetPlayerOverride();
   resetPlannerIpcMock();
   resetAcademyIpcMock();

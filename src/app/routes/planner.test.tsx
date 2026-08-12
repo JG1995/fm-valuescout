@@ -24,6 +24,7 @@ import type { PlannerTactic } from "@/features/planner/types/tactic";
 import { phasePositionLabel } from "@/features/planner/utils/tactic-editor";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
+import type { SquadPlayer } from "@/features/squad/types/squad-player";
 import { routeTree } from "@/routeTree.gen";
 import {
   getPlannerAddStringIpcMockCalls,
@@ -50,6 +51,10 @@ import {
   setPlannerTacticSaveError,
 } from "@/testing/planner-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
+import {
+  getLastSquadPlayersArgs,
+  setSquadPlayersOverride,
+} from "@/testing/squad-ipc-mock";
 
 function renderPlannerRoute({
   staleTime = 0,
@@ -94,6 +99,32 @@ const KEEPER_POSITION = "IP: GK · Goalkeeper / OOP: GK · Line-Holding Keeper";
 const SENIOR_FIRST_KEEPER = `Senior · 1st string · ${KEEPER_POSITION}`;
 const SENIOR_SECOND_KEEPER = `Senior · 2nd string · ${KEEPER_POSITION}`;
 const RESERVES_FIRST_KEEPER = `Reserves · 1st string · ${KEEPER_POSITION}`;
+
+function squadPlayerNamed(name: string, uid: number, ca = 160): SquadPlayer {
+  return {
+    uid,
+    name,
+    age: 25,
+    birthYear: 2001,
+    birthDayOfYear: 80,
+    nationalities: ["ENG"],
+    club: "Metro FC",
+    division: "Premier Division",
+    ca,
+    pa: ca + 5,
+    marketValueGbp: ca * 100_000,
+  };
+}
+
+function manySquadPlayers(count: number): SquadPlayer[] {
+  return Array.from({ length: count }, (_, index) =>
+    squadPlayerNamed(
+      `Squad player ${String(index + 1).padStart(3, "0")}`,
+      index + 1,
+      200 - index,
+    ),
+  );
+}
 
 function withSecondStringForEveryTeam(depth: PlannerDepth): PlannerDepth {
   let nextStringId =
@@ -200,6 +231,160 @@ describe("planner route", () => {
     await openPlannerWorkspace(user, "tactic");
     expect(tacticEditor).toBeInTheDocument();
     expect(weight).toHaveValue("51");
+  });
+
+  it("shows a sortable overview for a configured squad", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    for (const column of [
+      "Name",
+      "Age / DOB",
+      "Nationality",
+      "Club",
+      "Division",
+      "CA",
+      "PA",
+      "Value",
+    ]) {
+      expect(
+        within(table).getByRole("columnheader", { name: column }),
+      ).toBeInTheDocument();
+    }
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
+    expect(
+      within(table).getByRole("link", { name: "Alex Scout" }),
+    ).toHaveAttribute("href", "/players/42?tab=technical");
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent === "1 player · sorted by CA (descending)",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit filters" })).toBeNull();
+  });
+
+  it("sorts the Squad table through the URL and backend query", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      squadPlayerNamed("Zara Scout", 1, 160),
+      squadPlayerNamed("Alex Scout", 2, 150),
+    ]);
+    const { router } = renderPlannerRoute({ initialEntry: "/planner" });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toEqual({
+        sort: "name",
+        dir: "asc",
+      });
+      expect(getLastSquadPlayersArgs()).toMatchObject({
+        offset: 0,
+        limit: 50,
+        sortBy: "name",
+        sortDir: "asc",
+      });
+    });
+    expect(
+      within(screen.getByRole("table", { name: "Squad overview" })).getByRole(
+        "columnheader",
+        { name: "Name" },
+      ),
+    ).toHaveAttribute("aria-sort", "ascending");
+    expect(
+      screen.getByRole("link", { name: "Alex Scout" }),
+    ).toBeInTheDocument();
+  });
+
+  it("moves between Squad player links with the arrow keys", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      squadPlayerNamed("Alex Scout", 42, 160),
+      squadPlayerNamed("Zara Scout", 43, 150),
+    ]);
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    const links = within(table).getAllByRole("link");
+    links[0].focus();
+    await user.keyboard("{ArrowDown}");
+
+    await waitFor(() => {
+      expect(links[1]).toHaveFocus();
+    });
+  });
+
+  it("loads a bounded next Squad page", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride(manySquadPlayers(51));
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("link", { name: "Squad player 001" });
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(
+      await screen.findByRole("link", { name: "Squad player 051" }),
+    ).toBeInTheDocument();
+    expect(getLastSquadPlayersArgs()).toMatchObject({
+      offset: 50,
+      limit: 50,
+    });
+  });
+
+  it("returns to the first Squad page after its data shrinks", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride(manySquadPlayers(51));
+    const { queryClient } = renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("link", { name: "Squad player 001" });
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await screen.findByRole("link", { name: "Squad player 051" });
+
+    setSquadPlayersOverride([squadPlayerNamed("Fresh Squad Player", 99)]);
+    await queryClient.invalidateQueries({ queryKey: plannerKeys.all });
+
+    expect(
+      await screen.findByRole("link", { name: "Fresh Squad Player" }),
+    ).toBeInTheDocument();
+    expect(getLastSquadPlayersArgs()).toMatchObject({ offset: 0, limit: 50 });
+    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
   });
 
   it("uses the Squad default and replaces workspace URL state", async () => {

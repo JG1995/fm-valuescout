@@ -58,6 +58,7 @@ pub fn run() {
             features::academy::commands::set_academy_member_outcome,
             features::planner::commands::get_planner_club_family,
             features::planner::commands::list_planner_clubs,
+            features::planner::commands::list_squad_players,
             features::planner::commands::save_planner_club_family,
             features::planner::commands::get_planner_tactic,
             features::planner::commands::get_planner_tactic_options,

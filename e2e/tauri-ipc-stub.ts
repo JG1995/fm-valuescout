@@ -4,6 +4,7 @@ type SmokeStubOptions = {
   csvImportFormat?: "youthTracker" | "moneyball";
   plannerSnapshot?: boolean;
   plannerPotentialScores?: boolean;
+  squadOverview?: boolean;
   playerProfile?: boolean;
   snapshotHistory?: boolean;
 };
@@ -12,6 +13,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const csvImportFormat = options.csvImportFormat ?? null;
   const plannerSnapshot = options.plannerSnapshot ?? false;
   const plannerPotentialScores = options.plannerPotentialScores ?? false;
+  const squadOverview = options.squadOverview ?? false;
   const playerProfile = options.playerProfile ?? false;
   const snapshotHistory = options.snapshotHistory ?? false;
   await page.addInitScript({
@@ -21,6 +23,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const csvImportFormat = ${JSON.stringify(csvImportFormat)};
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
       const plannerPotentialScores = ${plannerPotentialScores ? "true" : "false"};
+      const squadOverview = ${squadOverview ? "true" : "false"};
       const playerProfile = ${playerProfile ? "true" : "false"};
       const snapshotHistoryEnabled = ${snapshotHistory ? "true" : "false"};
       let nextSaveId = 2;
@@ -147,6 +150,34 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }],
         })),
       };
+      const squadPlayers = squadOverview ? [
+        {
+          uid: 42,
+          name: "Alex Scout",
+          age: 25,
+          birthYear: 2001,
+          birthDayOfYear: 80,
+          nationalities: ["ENG"],
+          club: "Barcelona",
+          division: "La Liga",
+          ca: 160,
+          pa: 170,
+          marketValueGbp: 16000000,
+        },
+        {
+          uid: 77,
+          name: "Zara Keeper",
+          age: 22,
+          birthYear: 2004,
+          birthDayOfYear: 124,
+          nationalities: ["ESP"],
+          club: "Barcelona",
+          division: "La Liga",
+          ca: 150,
+          pa: 165,
+          marketValueGbp: 12000000,
+        },
+      ] : [];
 
       window.__TAURI_INTERNALS__ = {
         invoke: async (cmd, args) => {
@@ -495,7 +526,41 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_planner_club_family") {
-            return { primaryClub: null, sources: [] };
+            return squadOverview
+              ? { primaryClub: "Barcelona", sources: [] }
+              : { primaryClub: null, sources: [] };
+          }
+
+          if (cmd === "list_squad_players") {
+            const sortBy = args?.sortBy || "ca";
+            const sortDir = args?.sortDir || "desc";
+            const offset = Number.isInteger(args?.offset)
+              ? Math.max(0, args.offset)
+              : 0;
+            const limit = Number.isInteger(args?.limit)
+              ? Math.min(200, Math.max(1, args.limit))
+              : 50;
+            const sorted = [...squadPlayers].sort((left, right) => {
+              const values = {
+                name: [left.name, right.name],
+                age: [left.age, right.age],
+                nationality: [left.nationalities.join(", "), right.nationalities.join(", ")],
+                club: [left.club || "", right.club || ""],
+                division: [left.division || "", right.division || ""],
+                ca: [left.ca, right.ca],
+                pa: [left.pa, right.pa],
+                value: [left.marketValueGbp || -1, right.marketValueGbp || -1],
+              }[sortBy] || [left.ca, right.ca];
+              const comparison = typeof values[0] === "string"
+                ? values[0].localeCompare(values[1])
+                : values[0] - values[1];
+              if (comparison === 0) return left.uid - right.uid;
+              return sortDir === "asc" ? comparison : -comparison;
+            });
+            return {
+              players: sorted.slice(offset, offset + limit),
+              total: sorted.length,
+            };
           }
 
           if (cmd === "list_planner_clubs") {
