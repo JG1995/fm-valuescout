@@ -35,5 +35,5 @@ If a context-changing command is added, make it acquire `features::player::boost
 ## Related records
 
 - ADR: [0018 — Squad-wide action-specific player boosts](../decisions/0018-squad-wide-player-boosts.md)
-- Feature record: [Squad Workspace](../features/active/squad-workspace.md)
+- Feature record: [Squad Workspace](../features/completed/squad-workspace.md)
 - Supersedes: none

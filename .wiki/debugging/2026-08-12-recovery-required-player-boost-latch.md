@@ -35,5 +35,5 @@ If a player boost adds a terminal outcome, verify it sets the snapshot recovery 
 ## Related records
 
 - ADR: [0018 — Squad-wide action-specific player boosts](../decisions/0018-squad-wide-player-boosts.md)
-- Feature record: [Squad Workspace](../features/active/squad-workspace.md)
+- Feature record: [Squad Workspace](../features/completed/squad-workspace.md)
 - Supersedes: none

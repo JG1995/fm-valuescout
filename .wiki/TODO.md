@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Squad Workspace](./features/active/squad-workspace.md) — club-scoped overview, Squad / Planner / Tactic navigation, Dashboard Club Setup, explicit CSV imports, and sequential squad-wide development actions
+No feature is currently active.
 
 ## Next
 
@@ -60,6 +60,7 @@ No feature is currently queued. Reassess the backlog when the next initiative is
 
 ## Completed
 
+- [Squad Workspace](./features/completed/squad-workspace.md) — club-scoped overview, Squad / Planner / Tactic navigation, Dashboard Club Setup, explicit CSV imports, and sequential squad-wide development actions
 - [Snapshot history and management](./features/completed/snapshot-history.md) — retained snapshots selected by greatest valid in-game date, snapshot-owned Moneyball enrichment, immutable management context, and Dashboard save/snapshot controls while product reads remain current-only
 - [CSV enrichment persistence and derived statistics](./features/completed/csv-enrichment-persistence.md) — save-scoped Youth career and snapshot-versioned Moneyball enrichment for current memory-backed player UIDs, canonical 138-key statistics, and Academy career projections while keeping memory authoritative
 - [CSV parsing and player reconciliation](./features/completed/csv-player-reconciliation.md) — bounded Youth Tracker and Moneyball parsing plus exact UID reconciliation foundation; the parser remains non-mutating while persistence lives in the downstream enrichment feature

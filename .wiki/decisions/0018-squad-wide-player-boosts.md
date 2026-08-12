@@ -66,13 +66,15 @@ Send the currently loaded or selected UIDs from the WebView. This would trust a 
 
 ### Follow-up
 
-- Implement and validate this decision through the [Squad Workspace](../features/active/squad-workspace.md) ledger.
+- The delivered implementation and validation are recorded in the [completed Squad Workspace record](../features/completed/squad-workspace.md).
 - Keep any new edit action, arbitrary value, parallel mutation, or general batch protocol behind another product and architecture decision.
 - Reassess progress reporting only if measured squad runtimes make one pending state insufficient.
 
 ## Related work
 
-- Feature plan: [Squad Workspace](../features/active/squad-workspace.md)
+- Completed feature record: [Squad Workspace](../features/completed/squad-workspace.md)
 - Existing action boundary: [ADR-0017](./0017-action-specific-fm26-player-boosts.md)
-- Commits: Pending implementation
+- Planning context: `fab15ed9ddede3f44a46141465521d2b3542e156` (excluded from implementation)
+- Implementation range: `fab15ed9ddede3f44a46141465521d2b3542e156..8e143eb46c92f40cf1abb39c8ac2c8e09514e037`
+- Implementation commits: `c6e702f3773c7e6fb8ce37d90d9f0acbea17872e`, `48adddfaa3197adf37d8424f73bb089e7b7c5601`, `87a4f00e1990bf6060255605fe4a1af4547bc08d`, `bfa4328b86c42707cc7a37c110a54c24370c77bb`, `fceee890ca08e3a3843fe3f22f8aa31f198b4da5`, `8e143eb46c92f40cf1abb39c8ac2c8e09514e037`
 - Supersedes: none; extends ADR-0017 for sequential squad scope and corrects its CA age eligibility
