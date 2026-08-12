@@ -52,11 +52,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No feature is currently active.
+- [Configurable Player Tables](./features/active/configurable-player-tables.md) — full-height virtual Search and Squad tables, staged organized filters, persistent resizable columns, on-demand potential role-score caching, and nationality flags
 
 ## Next
 
-No feature is currently queued. Reassess the backlog when the next initiative is selected.
+- **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
 
 ## Completed
 
