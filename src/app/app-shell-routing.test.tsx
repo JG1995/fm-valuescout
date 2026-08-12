@@ -98,12 +98,13 @@ describe("app shell routing", () => {
     ).toBeInTheDocument();
   });
 
-  it("lists Planner in the nav rail", async () => {
+  it("lists Squad in the nav rail", async () => {
     renderWithProviders();
 
     expect(
-      await screen.findByRole("link", { name: "Planner" }),
+      await screen.findByRole("link", { name: "Squad" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Planner" })).toBeNull();
   });
 
   it("lists Youth Academy in the nav rail", async () => {

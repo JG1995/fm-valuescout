@@ -150,7 +150,7 @@ Commits 1 and 2 form the walking skeleton: the navigation opens Squad, the tabs 
 
 #### Commit 1 — Reorganize the Squad workspace
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(squad): reorganize squad navigation`
 
@@ -193,7 +193,7 @@ Expected evidence: the targeted route tests prove the new labels, URLs, defaults
 
 #### Commit 2 — List configured squad players
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(squad): list configured club players`
 
@@ -410,19 +410,19 @@ Expected evidence: Rust and bridge tests prove eligibility, untouched null/high 
 
 **PR:** PR 1 — Build the Squad workspace
 
-**Commit:** Commit 1 — Reorganize the Squad workspace
+**Commit:** Commit 2 — List configured squad players
 
 ### RED proof
 
-Update the focused route and app-shell tests first so they expect a **Squad** navigation link, **Squad / Planner / Tactic** tabs, the depth matrix under Planner, Club Setup on Dashboard, Squad as the unconfigured default, and a Dashboard recovery link. The existing implementation must fail those assertions because it still labels the rail Planner, uses Squad / Tactic / Club Setup, and renders Club Setup inside `/planner`.
+Add the bounded Planner squad-query tests and Squad route tests first. They must require the exact configured-club union, one row per UID, active current-snapshot isolation, allowlisted sortable fixed columns, deterministic paging, and profile-name links; the current Squad placeholder must fail those assertions.
 
 ### Expected outcome
 
-The stable `/planner` route presents the new Squad information architecture, the Dashboard owns Club Setup, and all existing depth, tactic, snapshot, save, CSV, and accessibility behavior remains green.
+Configured Squad presents a filter-free, sortable overview of only current players in the configured club family, with Rust-owned paging and sorting and accessible links to their existing profiles. The Squad, Planner, and Tactic composition from Commit 1 remains unchanged.
 
 ### Explicit exclusions
 
-No Squad table, import modal, age-rule correction, bulk command, bridge change, schema change, staging, commit, push, or publication belongs in this active commit.
+No CSV import modal, CA-rule correction, bulk command, bridge change, Search filters, custom columns, row selection, historical snapshots, Planner-depth changes, push, or publication belongs in this active commit.
 
 ## Discoveries and replanning
 
@@ -436,7 +436,7 @@ No Squad table, import modal, age-rule correction, bulk command, bridge change, 
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | None | Pending record | Planning only | Not run | None |
+| PR 1 | Commit 1 — Reorganize the Squad workspace | Pending record | Squad navigation, URL-backed workspace composition, Dashboard Club Setup, and recovery links | Sol Medium — Accept | None |
 
 ## Final validation
 

@@ -1,13 +1,13 @@
 import type { KeyboardEvent } from "react";
 import { cn } from "@/utils/cn";
 
-export const PLANNER_WORKSPACES = ["squad", "tactic", "clubs"] as const;
+export const PLANNER_WORKSPACES = ["squad", "planner", "tactic"] as const;
 export type PlannerWorkspace = (typeof PLANNER_WORKSPACES)[number];
 
 const WORKSPACE_LABELS: Record<PlannerWorkspace, string> = {
   squad: "Squad",
+  planner: "Planner",
   tactic: "Tactic",
-  clubs: "Club Setup",
 };
 
 export function parsePlannerWorkspace(raw: unknown): PlannerWorkspace | null {
@@ -57,7 +57,7 @@ export function PlannerWorkspaceTabs({
   return (
     <div
       role="tablist"
-      aria-label="Planner workspaces"
+      aria-label="Squad workspaces"
       className="inline-flex rounded-full bg-surface-container-high p-0.5"
       onKeyDown={onKeyDown}
     >

@@ -1,6 +1,6 @@
 import { useIsFetching, useSuspenseQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
-import { DatabaseZap } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { DatabaseZap, UsersRound } from "lucide-react";
 import { Suspense } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
@@ -10,7 +10,6 @@ import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-q
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { plannerTacticOptionsQueryOptions } from "@/features/planner/api/planner-tactic-options-query-options";
 import { plannerTacticQueryOptions } from "@/features/planner/api/planner-tactic-query-options";
-import { PlannerClubFamilyPanel } from "@/features/planner/components/planner-club-family-panel";
 import { PlannerDepthMatrix } from "@/features/planner/components/planner-depth-matrix";
 import { PlannerTacticEditor } from "@/features/planner/components/planner-tactic-editor";
 import {
@@ -68,8 +67,7 @@ function PlannerPageContent() {
   const { view } = Route.useSearch();
   const navigate = Route.useNavigate();
   const requestedWorkspace = parsePlannerWorkspace(view);
-  const activeWorkspace =
-    requestedWorkspace ?? (clubFamily.primaryClub ? "squad" : "clubs");
+  const activeWorkspace = requestedWorkspace ?? "squad";
   const onWorkspaceChange = (nextWorkspace: PlannerWorkspace) => {
     void navigate({
       search: (previous) => ({ ...previous, view: nextWorkspace }),
@@ -79,7 +77,7 @@ function PlannerPageContent() {
   const plannerHeader = (
     <header className="flex flex-col items-start gap-2">
       <div>
-        <h1 className="text-headline-lg text-on-surface">Squad Planner</h1>
+        <h1 className="text-headline-lg text-on-surface">Squad</h1>
         {clubFamily.primaryClub ? (
           <p className="text-body-sm text-on-surface-variant">
             Primary club: {clubFamily.primaryClub}
@@ -99,11 +97,10 @@ function PlannerPageContent() {
     return (
       <div className="space-y-2">
         {plannerHeader}
-        <Panel title="Planner" flush>
+        <Panel title="Squad" flush>
           <EmptyState icon={DatabaseZap} title="No data loaded for this save">
             No snapshot loaded for the active save. Use Load Data to scan
-            Football Manager and ingest players before setting up your club
-            family.
+            Football Manager and ingest players before reviewing your squad.
           </EmptyState>
         </Panel>
       </div>
@@ -114,6 +111,46 @@ function PlannerPageContent() {
     <div className="space-y-2">
       {plannerHeader}
       <div {...plannerWorkspacePanelProps("squad", activeWorkspace)}>
+        {clubFamily.primaryClub ? (
+          <Panel title="Squad overview" flush>
+            <EmptyState
+              icon={UsersRound}
+              title="Squad overview"
+              action={
+                <Link
+                  to="/planner"
+                  search={{ view: "planner" }}
+                  className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
+                >
+                  Open Planner
+                </Link>
+              }
+            >
+              Use Planner to manage your squad depth.
+            </EmptyState>
+          </Panel>
+        ) : (
+          <Panel title="Squad" flush>
+            <EmptyState
+              icon={UsersRound}
+              title="Set up your club family"
+              action={
+                <Link
+                  to="/"
+                  hash="club-setup"
+                  className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
+                >
+                  Open Club Setup
+                </Link>
+              }
+            >
+              Configure your club family in Dashboard before reviewing your
+              squad.
+            </EmptyState>
+          </Panel>
+        )}
+      </div>
+      <div {...plannerWorkspacePanelProps("planner", activeWorkspace)}>
         <PlannerDepthMatrix
           activeSaveId={snapshot.saveId}
           depth={depth}
@@ -131,9 +168,6 @@ function PlannerPageContent() {
           options={tacticOptions}
         />
       </div>
-      <div {...plannerWorkspacePanelProps("clubs", activeWorkspace)}>
-        <PlannerClubFamilyPanel />
-      </div>
     </div>
   );
 }
@@ -143,7 +177,7 @@ function PlannerPage() {
     <Suspense
       fallback={
         <div className="space-y-gutter">
-          <h1 className="text-headline-lg text-on-surface">Squad Planner</h1>
+          <h1 className="text-headline-lg text-on-surface">Squad</h1>
           <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
             Loading planner…
           </div>

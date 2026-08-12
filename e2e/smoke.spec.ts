@@ -238,7 +238,7 @@ test.describe("walking skeleton smoke", () => {
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("heading", { level: 1, name: "Squad Planner" }),
+      main.getByRole("heading", { level: 1, name: "Squad" }),
     ).toBeVisible();
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
     await expect(
@@ -246,7 +246,7 @@ test.describe("walking skeleton smoke", () => {
     ).toBeVisible();
   });
 
-  test("planner route shows first-use club setup for a loaded snapshot", async ({
+  test("Squad points an unconfigured save to Dashboard Club Setup", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
@@ -254,16 +254,21 @@ test.describe("walking skeleton smoke", () => {
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("heading", { level: 1, name: "Squad Planner" }),
+      main.getByRole("heading", { level: 1, name: "Squad" }),
     ).toBeVisible();
-    await expect(main.getByRole("tab", { name: "Club Setup" })).toHaveAttribute(
+    await expect(main.getByRole("tab", { name: "Squad" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    await expect(
-      main.getByRole("combobox", { name: "Primary club" }),
-    ).toBeVisible();
     await expect(main.getByText("Set up your club family")).toBeVisible();
+    await main.getByRole("link", { name: "Open Club Setup" }).click();
+    await expect(page).toHaveURL(/\/#club-setup$/);
+    await expect(
+      page.getByRole("main").getByRole("region", { name: "Club Setup" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("main").getByRole("combobox", { name: "Primary club" }),
+    ).toBeVisible();
   });
 
   test("planner tactic editor saves a linked phase adjustment", async ({
@@ -410,10 +415,10 @@ test.describe("walking skeleton smoke", () => {
     });
     const plannerHeading = main.getByRole("heading", {
       level: 1,
-      name: "Squad Planner",
+      name: "Squad",
     });
     const workspaceTabs = main.getByRole("tablist", {
-      name: "Planner workspaces",
+      name: "Squad workspaces",
     });
     const navToggle = page.getByRole("button", {
       name: "Toggle navigation",
@@ -512,7 +517,7 @@ test.describe("walking skeleton smoke", () => {
     await page.goto("/planner");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Squad" }).click();
+    await main.getByRole("tab", { name: "Planner" }).click();
     for (const team of ["Senior", "Reserves", "Youth"]) {
       await main.getByRole("tab", { name: team }).click();
       await main.getByRole("button", { name: "Manage 1st string" }).click();
@@ -536,7 +541,7 @@ test.describe("walking skeleton smoke", () => {
       await page.goto("/planner");
 
       const main = page.getByRole("main");
-      await main.getByRole("tab", { name: "Squad" }).click();
+      await main.getByRole("tab", { name: "Planner" }).click();
       const controls = main.getByRole("group", { name: "Squad controls" });
       const current = main.getByRole("button", { name: "Optimize squads" });
       const potential = main.getByRole("button", {
@@ -589,7 +594,7 @@ test.describe("walking skeleton smoke", () => {
     await page.goto("/planner");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Squad" }).click();
+    await main.getByRole("tab", { name: "Planner" }).click();
     await main.getByRole("button", { name: "Optimize squads" }).click();
     await expect(main.getByRole("status")).toHaveText(
       "Squads optimized by current scores.",
@@ -620,7 +625,7 @@ test.describe("walking skeleton smoke", () => {
     await page.goto("/planner");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Squad" }).click();
+    await main.getByRole("tab", { name: "Planner" }).click();
     const matrix = main.getByRole("region", {
       name: "All squads depth matrix",
     });
@@ -647,7 +652,7 @@ test.describe("walking skeleton smoke", () => {
     await page.goto("/planner");
 
     const main = page.getByRole("main");
-    await main.getByRole("tab", { name: "Squad" }).click();
+    await main.getByRole("tab", { name: "Planner" }).click();
     const scoreCell = main.getByRole("button", {
       name: /Senior, 1st string, IP: GK .* Potential Keeper, Resolved, current score 82, potential score 91/,
     });
