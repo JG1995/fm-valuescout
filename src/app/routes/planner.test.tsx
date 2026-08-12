@@ -14,6 +14,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import { academyKeys } from "@/features/academy/api/academy-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import type { PlannerWorkspace } from "@/features/planner/components/planner-workspace-tabs";
 import type {
@@ -22,6 +23,8 @@ import type {
 } from "@/features/planner/types/depth";
 import type { PlannerTactic } from "@/features/planner/types/tactic";
 import { phasePositionLabel } from "@/features/planner/utils/tactic-editor";
+import { playerKeys } from "@/features/player-profile/api/player-keys";
+import { searchKeys } from "@/features/search/api/search-keys";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import type { SquadPlayer } from "@/features/squad/types/squad-player";
@@ -53,6 +56,9 @@ import {
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 import {
   getLastSquadPlayersArgs,
+  getSquadCurrentAbilityBoostIpcMockCalls,
+  resolvePendingSquadCurrentAbilityBoostIpcMock,
+  setSquadCurrentAbilityBoostIpcMockMode,
   setSquadPlayersOverride,
 } from "@/testing/squad-ipc-mock";
 
@@ -317,6 +323,99 @@ describe("planner route", () => {
         name: "Upload Youth Academy CSV",
       }),
     ).toHaveTextContent("Only a Youth Academy export can be imported");
+  });
+
+  it("confirms a Squad CA boost, locks the action, and refreshes affected views", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    setSquadCurrentAbilityBoostIpcMockMode("pending");
+    const { queryClient } = renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    await user.click(screen.getByRole("button", { name: "Boost all CA" }));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Boost all CA?",
+    });
+    expect(dialog).toHaveTextContent(
+      "Players aged 20 or younger receive +5 CA.",
+    );
+    expect(dialog).toHaveTextContent(
+      "Players aged 21 through 28 receive +10 CA.",
+    );
+    expect(dialog).toHaveTextContent("Players aged 29 or older are skipped.");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Boost all CA" }),
+    );
+
+    expect(
+      within(dialog).getByRole("button", { name: "Boosting…" }),
+    ).toBeDisabled();
+    expect(getSquadCurrentAbilityBoostIpcMockCalls()).toEqual([{}]);
+
+    resolvePendingSquadCurrentAbilityBoostIpcMock();
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Updated 2 players. Skipped 1. Failed 0.",
+    );
+    await waitFor(() => {
+      expect(invalidateQueries).toHaveBeenCalledTimes(5);
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: snapshotKeys.all,
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: searchKeys.all,
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: playerKeys.all,
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: plannerKeys.all,
+    });
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: academyKeys.all,
+    });
+  });
+
+  it("reports when a Squad CA boost needs Load Data before another attempt", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    setSquadCurrentAbilityBoostIpcMockMode("recoveryRequired");
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(screen.getByRole("button", { name: "Boost all CA" }));
+    await user.click(
+      within(
+        await screen.findByRole("dialog", { name: "Boost all CA?" }),
+      ).getByRole("button", { name: "Boost all CA" }),
+    );
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Updated 1 player. Skipped 2. Failed 1.",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Load Data is required before another boost.",
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    const action = screen.getByRole("button", { name: "Boost all CA" });
+    expect(action).toBeDisabled();
+    await user.click(action);
+    expect(getSquadCurrentAbilityBoostIpcMockCalls()).toEqual([{}]);
   });
 
   it("sorts the Squad table through the URL and backend query", async () => {

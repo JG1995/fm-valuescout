@@ -92,6 +92,33 @@ pub struct SquadPlayersPage {
     pub total: i64,
 }
 
+pub fn list_squad_player_uids(
+    conn: &Connection,
+    save_id: i64,
+    snapshot_id: i64,
+) -> Result<Vec<i64>, String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT DISTINCT p.uid
+             FROM players p
+             WHERE p.snapshot_id = ?1
+               AND EXISTS(
+                   SELECT 1
+                   FROM planner_club_sources source
+                   WHERE source.save_id = ?2
+                     AND source.club_name = p.current_club
+               )
+             ORDER BY p.uid ASC",
+        )
+        .map_err(|error| error.to_string())?;
+    let player_uids = statement
+        .query_map(params![snapshot_id, save_id], |row| row.get(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(player_uids)
+}
+
 pub fn list_squad_players(
     conn: &Connection,
     save_id: i64,

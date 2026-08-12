@@ -1,3 +1,4 @@
+import type { SquadCurrentAbilityBoostResult } from "@/features/squad/types/squad-current-ability-boost";
 import type {
   SquadPlayer,
   SquadPlayersPage,
@@ -15,6 +16,19 @@ import {
 
 let overridePlayers: SquadPlayer[] | null = null;
 let lastSquadPlayersArgs: Record<string, unknown> | null = null;
+let squadCurrentAbilityBoostMode: SquadCurrentAbilityBoostIpcMockMode =
+  "success";
+let squadCurrentAbilityBoostCalls: unknown[] = [];
+let pendingSquadCurrentAbilityBoost: {
+  promise: Promise<SquadCurrentAbilityBoostResult>;
+  resolve: (result: SquadCurrentAbilityBoostResult) => void;
+} | null = null;
+
+export type SquadCurrentAbilityBoostIpcMockMode =
+  | "success"
+  | "pending"
+  | "recoveryRequired"
+  | "error";
 
 export function setSquadPlayersOverride(players: SquadPlayer[] | null) {
   overridePlayers = players;
@@ -23,10 +37,81 @@ export function setSquadPlayersOverride(players: SquadPlayer[] | null) {
 export function resetSquadPlayersOverride() {
   overridePlayers = null;
   lastSquadPlayersArgs = null;
+  squadCurrentAbilityBoostMode = "success";
+  squadCurrentAbilityBoostCalls = [];
+  pendingSquadCurrentAbilityBoost = null;
 }
 
 export function getLastSquadPlayersArgs(): Record<string, unknown> | null {
   return lastSquadPlayersArgs;
+}
+
+export function setSquadCurrentAbilityBoostIpcMockMode(
+  mode: SquadCurrentAbilityBoostIpcMockMode,
+) {
+  squadCurrentAbilityBoostMode = mode;
+  if (mode !== "pending") {
+    pendingSquadCurrentAbilityBoost = null;
+  }
+}
+
+export function getSquadCurrentAbilityBoostIpcMockCalls() {
+  return squadCurrentAbilityBoostCalls;
+}
+
+export function resolvePendingSquadCurrentAbilityBoostIpcMock(
+  result = squadCurrentAbilityBoostResult(),
+) {
+  pendingSquadCurrentAbilityBoost?.resolve(result);
+  pendingSquadCurrentAbilityBoost = null;
+}
+
+function squadCurrentAbilityBoostResult(): SquadCurrentAbilityBoostResult {
+  return {
+    updated: 2,
+    skipped: 1,
+    failed: 0,
+    recoveryRequired: false,
+    recoveryMessage: null,
+  };
+}
+
+export function resolveSquadCurrentAbilityBoostIpcMock(
+  args: unknown,
+): Promise<SquadCurrentAbilityBoostResult> {
+  squadCurrentAbilityBoostCalls = [...squadCurrentAbilityBoostCalls, args];
+
+  if (squadCurrentAbilityBoostMode === "pending") {
+    if (!pendingSquadCurrentAbilityBoost) {
+      let resolve!: (result: SquadCurrentAbilityBoostResult) => void;
+      const promise = new Promise<SquadCurrentAbilityBoostResult>((next) => {
+        resolve = next;
+      });
+      pendingSquadCurrentAbilityBoost = { promise, resolve };
+    }
+    return pendingSquadCurrentAbilityBoost.promise;
+  }
+
+  if (squadCurrentAbilityBoostMode === "recoveryRequired") {
+    return Promise.resolve({
+      updated: 1,
+      skipped: 2,
+      failed: 1,
+      recoveryRequired: true,
+      recoveryMessage: "FM may have changed before the result was verified.",
+    });
+  }
+
+  if (squadCurrentAbilityBoostMode === "error") {
+    return Promise.reject({
+      phase: "eligibility",
+      kind: "clubFamilyRequired",
+      message:
+        "Set up your club family in Dashboard before boosting the squad.",
+    });
+  }
+
+  return Promise.resolve(squadCurrentAbilityBoostResult());
 }
 
 function parsePaging(args: unknown): {

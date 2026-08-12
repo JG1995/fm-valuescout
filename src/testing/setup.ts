@@ -79,6 +79,7 @@ import {
 } from "@/testing/snapshot-ipc-mock";
 import {
   resetSquadPlayersOverride,
+  resolveSquadCurrentAbilityBoostIpcMock,
   resolveSquadPlayersIpcMock,
 } from "@/testing/squad-ipc-mock";
 
@@ -216,6 +217,10 @@ function registerIpcMocks() {
 
     if (cmd === "list_squad_players") {
       return resolveSquadPlayersIpcMock(args);
+    }
+
+    if (cmd === "boost_squad_current_ability") {
+      return resolveSquadCurrentAbilityBoostIpcMock(args);
     }
 
     if (cmd === "list_planner_clubs") {

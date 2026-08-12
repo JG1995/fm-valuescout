@@ -50,8 +50,8 @@ Turn the current Planner surface into a broader Squad workspace. Give the user o
 ## Current-state map
 
 - Relevant components: `src/app/routes/planner.tsx` composes the Squad overview, CSV actions, Planner depth, and Tactic workspaces; `src/features/squad/` owns the overview query and table; `src/features/csv-import/` owns the shared context-bound importer and Squad modals; `src/features/planner/components/planner-workspace-tabs.tsx` owns tab semantics; `src/app/routes/index.tsx` composes Dashboard snapshot, Club Setup, and CSV panels; `src/app/components/app-nav-rail.tsx` labels the route Squad.
-- Data model: save-scoped `planner_club_settings` and `planner_club_sources` define the primary and associated club names; current-snapshot `players.current_club` supplies exact membership; no schema change is required.
-- Persistence and migrations: Planner club-family settings remain save-scoped. Moneyball enrichment remains snapshot-owned and Youth career enrichment remains save-owned. Player boosts reconcile current-snapshot player rows and affected role scores. No migration is planned.
+- Data model: save-scoped `planner_club_settings` and `planner_club_sources` define the primary and associated club names; current-snapshot `players.current_club` supplies exact membership; current snapshots also carry `player_boost_recovery_required` for fail-closed player boosts.
+- Persistence and migrations: Planner club-family settings remain save-scoped. Moneyball enrichment remains snapshot-owned and Youth career enrichment remains save-owned. Player boosts reconcile current-snapshot player rows and affected role scores. Migration v20 adds the 0/1 recovery flag, defaulting existing snapshots to 0.
 - Existing behavior: `/planner?view=squad` is the configured club-family overview, `/planner?view=planner` is the depth matrix, and `/planner?view=tactic` is the tactic editor. Club Setup is Dashboard-only at `/#club-setup`; configured and unconfigured saves both default to Squad.
 - Architectural seams: Rust `features/planner` owns club-family discovery and persistence; Rust `features/search` demonstrates paginated fixed-column player queries; Rust `features/csv_import` owns bounded imports; Rust `features/player` owns the two UID-only boost commands and snapshot reconciliation; Rust `features/memory_read` and the C# bridge own serialized action-specific FM writes.
 - Frontend analogues: Search provides the fixed columns, sortable headers, row keyboard behavior, virtualization, and profile navigation; Modal provides focus trapping and restoration; the current CSV panel provides context-bound import state and safe result copy; player profiles provide confirmation and phase-specific boost feedback.
@@ -320,7 +320,7 @@ Expected evidence: Rust and frontend boundary tests cover ages 20, 21, 28, and 2
 
 #### Commit 5 — Boost squad current ability
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(squad): boost squad current ability`
 
@@ -333,8 +333,8 @@ Expected evidence: Rust and frontend boundary tests cover ages 20, 21, 28, and 2
 **Implementation packet:**
 
 - Owners and files: Rust `features/player` bulk orchestration and command DTOs; Planner club-family service reuse; player command registration; Squad frontend API, types, confirmation/result UI, and context guards; cross-feature query invalidation; Rust, route, and smoke tests.
-- Existing patterns to verify: `PLAYER_BOOST_GATE`; UID-only prepare/request/reconcile flow; immutable save/snapshot context checks; `planner::service::get_club_family`; profile confirmation and error copy; Load Data and boost invalidation roots; context-bound mutation feedback.
-- Constraints and invariants: the WebView sends no UID list or increment; distinct club-family players only; corrected age rule; one bridge request at a time; age 29 or older and other ineligible states are skipped before the bridge; only a bridge-proven player-local no-write rejection continues; recovery-required uncertainty and context loss stop before the next request; each success commits before continuing; no claim of batch atomicity.
+- Existing patterns to verify: the shared player boost gate; UID-only prepare/request/reconcile flow; immutable save/snapshot context checks; `planner::service::get_club_family`; profile confirmation and error copy; Load Data and boost invalidation roots; context-bound mutation feedback.
+- Constraints and invariants: the WebView sends no UID list or increment; distinct club-family players only; corrected age rule; one bridge request at a time; age 29 or older, unknown-age, and CA-at-limit players are skipped before the bridge; snapshot-invalid players stop the batch; only a bridge-proven player-local no-write rejection continues; recovery-required uncertainty and context loss stop before the next request and latch that snapshot for later profile and Squad actions; a new effective current snapshot from Load Data clears the path; each success commits before continuing; no claim of batch atomicity.
 - Dependencies and ordering: Commits 1 and 2 supply the surface and cohort read contract; Commit 4 supplies the corrected shared age rule; ADR-0018 governs the safety boundary.
 
 **Implementation profile:** Terra Max — this settled outcome combines live-process writes, long-running sequential orchestration, immutable context, partial failure, per-player SQLite reconciliation, and cross-feature cache effects.
@@ -348,7 +348,7 @@ Expected evidence: Rust and frontend boundary tests cover ages 20, 21, 28, and 2
 - `./scripts/dev bridge-test`
 - `./scripts/dev smoke`
 
-Expected evidence: Rust tests cover distinct cohort capture, ages 20/21/28/29, caps, age-ineligible bridge exclusion, skip/fail/continue accounting, profile-action mutual exclusion, per-player commit order, and the full continuation matrix. A proven no-write player-local rejection continues, while active-context replacement, unconfirmed or timed-out results, uncertain rollback, recovery-required bridge failures, and FM-success/SQLite-failure stop before player two reaches the bridge. Frontend and smoke tests cover confirmation, pending lockout, summary copy, recovery, and invalidation.
+Expected evidence: Rust tests cover distinct cohort capture, ages 20/21/28/29, caps, age-ineligible bridge exclusion, skip/fail/continue accounting, profile-action mutual exclusion, per-player commit order, and the full continuation matrix. A proven no-write player-local rejection continues, while active-context replacement, unconfirmed or timed-out results, uncertain rollback, recovery-required bridge failures, and FM-success/SQLite-failure stop before player two reaches the bridge and latch the snapshot across later profile and Squad invocations. Frontend and smoke tests cover confirmation, pending lockout, summary copy, recovery, and invalidation.
 
 **Stop conditions:** Replan if the existing one-player bridge path cannot be safely reused, if a required write would bypass the boost gate, if context cannot be revalidated before each request, if the command needs a WebView-supplied UID list, or if truthful partial outcomes cannot distinguish updated, skipped, failed, and recovery-stopped states.
 
@@ -364,7 +364,7 @@ Expected evidence: Rust tests cover distinct cohort capture, ages 20/21/28/29, c
 
 #### Commit 6 — Apply squad Wonderkid Mentality
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(squad): apply Wonderkid Mentality to squad`
 
@@ -410,19 +410,19 @@ Expected evidence: Rust and bridge tests prove eligibility, untouched null/high 
 
 **PR:** PR 1 — Build the Squad workspace
 
-**Commit:** Commit 5 — Boost squad current ability
+**Commit:** Commit 6 — Apply squad Wonderkid Mentality
 
 ### RED proof
 
-Add focused Rust and Squad route tests first. They must freeze a distinct configured club-family cohort at the active current snapshot; cover ages 20, 21, 28, and 29, caps, and per-player bridge exclusion; prove sequential success, skip, and continue accounting; and distinguish a proven no-write player-local rejection from every outcome that must stop before player two.
+Add focused Rust and Squad route tests first. They must reuse the established frozen cohort and failure matrix; cover eligible, unknown, and above-10 mentality fields; prove Determination role-score reconciliation; and distinguish a proven no-write player-local rejection from every outcome that must stop before player two.
 
 ### Expected outcome
 
-A confirmed Squad CA action sends no player selection or increment from the WebView. Rust derives the cohort and corrected increment, runs each eligible player through the shared locked boost path in order, reconciles each verified result before moving on, reports accurate partial results, and invalidates shared reads once when complete or stopped.
+A confirmed Squad Wonderkid action sends no player selection or target values from the WebView. Rust derives the cohort and eligible fields, runs each player through the shared locked boost path in order, reconciles each verified result and affected role scores before moving on, reports accurate partial results, and invalidates shared reads once when complete or stopped.
 
 ### Explicit exclusions
 
-Wonderkid bulk behavior, parallel writes, all-or-nothing rollback, arbitrary player selection, new bridge operations, progress cancellation, Search filters, custom columns, row selection, historical snapshots, Planner-depth changes, push, and publication do not belong in this active commit.
+CA eligibility changes, parallel writes, all-or-nothing rollback, arbitrary player selection, new bridge operations, progress cancellation, Search filters, custom columns, row selection, historical snapshots, Planner-depth changes, push, and publication do not belong in this active commit.
 
 ## Discoveries and replanning
 
@@ -435,6 +435,9 @@ Wonderkid bulk behavior, parallel writes, all-or-nothing rollback, arbitrary pla
 - 2026-08-12: Commit 3 uses the installed Tauri WebView drop API without a new capability. Each open modal captures its save/snapshot generation, so a delayed drop from a replaced context is ignored before IPC.
 - 2026-08-12: Commit 3 serializes all modal intake while a CSV persistence request is pending. Later single-file drops and multi-file validation errors are ignored until the active request settles, so they cannot overwrite truthful pending state or reopen another import path.
 - 2026-08-12: Commit 4 aligned the shared frontend IPC double with the corrected age-20 boundary and added submitted age-21 result parity coverage after review found that preview-only coverage could mask a conflicting test result.
+- 2026-08-12: Commit 5 keeps the WebView command closed. Rust captures the active snapshot and configured club-family union, rechecks that context immediately before each request, and reports a separate recovery state without counting an uncertain player as failed.
+- 2026-08-12: Commit 5 review found that the original boost gate did not protect the gap between the final context check and a bridge request. The shared gate now also rejects Load Data, active-save selection, and save or snapshot deletion until the boost ends. Snapshot-invalid rows stop the batch instead of counting as skipped.
+- 2026-08-12: Commit 5 review also found that terminal recovery was only a returned result after the shared gate released. Snapshots now persist a recovery requirement after an uncertain boost result, blocking later profile and Squad actions until a newly ingested snapshot becomes current.
 
 ## Completed work
 
@@ -444,6 +447,7 @@ Wonderkid bulk behavior, parallel writes, all-or-nothing rollback, arbitrary pla
 | PR 1 | Commit 2 — List configured squad players | Pending record | Bounded exact club-family overview query, sortable fixed-column table, paging, and profile links | Sol High — Accept | None |
 | PR 1 | Commit 3 — Import squad CSV enrichment | Pending record | Format-bound Squad CSV modals, guarded browse/drop intake, expected-format persistence enforcement, and retained Dashboard auto-detection | Sol High — Accept | None |
 | PR 1 | Commit 4 — Correct CA boost age eligibility | Pending record | Corrected CA age boundaries, pre-bridge age exclusion, and profile result parity | Sol High — Accept | None |
+| PR 1 | Commit 5 — Boost squad current ability | Pending record | Closed sequential CA action, frozen club-family cohort, shared gate, persistent recovery latch, partial-result state, and Squad confirmation feedback | Sol xhigh — Accept | None |
 
 ## Final validation
 

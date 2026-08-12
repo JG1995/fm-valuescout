@@ -1,5 +1,6 @@
 import {
   useIsFetching,
+  useMutation,
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
@@ -24,9 +25,13 @@ import {
   parsePlannerWorkspace,
   plannerWorkspacePanelProps,
 } from "@/features/planner/components/planner-workspace-tabs";
+import { playerKeys } from "@/features/player-profile/api/player-keys";
+import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import { boostSquadCurrentAbility } from "@/features/squad/api/boost-squad-current-ability";
 import { squadPlayersQueryOptions } from "@/features/squad/api/squad-players-query-options";
+import { SquadCurrentAbilityBoost } from "@/features/squad/components/squad-current-ability-boost";
 import { SquadOverviewPanel } from "@/features/squad/components/squad-overview-panel";
 import type {
   SquadSortDir,
@@ -101,6 +106,18 @@ function PlannerPageContent() {
   const { data: depth, isRefetchError: depthRefreshError } = useSuspenseQuery(
     plannerDepthQueryOptions,
   );
+  const squadBoost = useMutation({
+    mutationFn: (_: { snapshotId: number }) => boostSquadCurrentAbility(),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: snapshotKeys.all }),
+        queryClient.invalidateQueries({ queryKey: searchKeys.all }),
+        queryClient.invalidateQueries({ queryKey: playerKeys.all }),
+        queryClient.invalidateQueries({ queryKey: plannerKeys.all }),
+        queryClient.invalidateQueries({ queryKey: academyKeys.all }),
+      ]);
+    },
+  });
   const isPlannerRefreshing = useIsFetching({ queryKey: plannerKeys.all }) > 0;
   const isSnapshotRefreshing =
     useIsFetching({ queryKey: snapshotKeys.all }) > 0;
@@ -117,6 +134,8 @@ function PlannerPageContent() {
   const navigate = Route.useNavigate();
   const requestedWorkspace = parsePlannerWorkspace(view);
   const activeWorkspace = requestedWorkspace ?? "squad";
+  const squadBoostContextIsCurrent =
+    squadBoost.variables?.snapshotId === snapshot?.id;
   const onWorkspaceChange = (nextWorkspace: PlannerWorkspace) => {
     void navigate({
       search: (previous) => ({ ...previous, view: nextWorkspace }),
@@ -184,15 +203,29 @@ function PlannerPageContent() {
             <SquadOverviewPanel
               key={`${squadSort}:${squadDir}`}
               actions={
-                <SquadCsvImportActions
-                  activeSaveId={snapshot.saveId}
-                  snapshotId={snapshot.id}
-                  onYouthImported={() => {
-                    void queryClient.invalidateQueries({
-                      queryKey: academyKeys.all,
-                    });
-                  }}
-                />
+                <div className="flex flex-wrap justify-end gap-2">
+                  <SquadCurrentAbilityBoost
+                    key={snapshot.id}
+                    pending={squadBoostContextIsCurrent && squadBoost.isPending}
+                    result={
+                      squadBoostContextIsCurrent ? squadBoost.data : undefined
+                    }
+                    error={squadBoostContextIsCurrent ? squadBoost.error : null}
+                    onBoost={() =>
+                      squadBoost.mutateAsync({ snapshotId: snapshot.id })
+                    }
+                    onOpenConfirmation={squadBoost.reset}
+                  />
+                  <SquadCsvImportActions
+                    activeSaveId={snapshot.saveId}
+                    snapshotId={snapshot.id}
+                    onYouthImported={() => {
+                      void queryClient.invalidateQueries({
+                        queryKey: academyKeys.all,
+                      });
+                    }}
+                  />
+                </div>
               }
               sortBy={squadSort}
               sortDir={squadDir}

@@ -33,7 +33,26 @@ pub(super) struct PreparedPlayerBoost {
     pub(super) expected_determination: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PlayerBoostContext {
+    pub(super) snapshot_id: i64,
+    pub(super) snapshot_context_token: String,
+    pub(super) save_id: i64,
+    pub(super) save_context_token: String,
+    pub(super) source_request_id: String,
+}
+
 impl PreparedPlayerBoost {
+    pub(super) fn context(&self) -> PlayerBoostContext {
+        PlayerBoostContext {
+            snapshot_id: self.snapshot_id,
+            snapshot_context_token: self.snapshot_context_token.clone(),
+            save_id: self.save_id,
+            save_context_token: self.save_context_token.clone(),
+            source_request_id: self.source_request_id.clone(),
+        }
+    }
+
     pub(super) fn bridge_operation(&self) -> PlayerBoostOperation {
         match self.current_ability_increment {
             Some(increment) => PlayerBoostOperation::CurrentAbility { increment },
@@ -246,6 +265,99 @@ pub(super) fn reconcile_verified_boost(
     Ok(verified)
 }
 
+pub(super) fn capture_active_player_boost_context(
+    conn: &Connection,
+) -> Result<PlayerBoostContext, PlayerBoostError> {
+    let snapshot: Option<(i64, i64, String, String, Option<String>, i32)> = conn
+        .query_row(
+            "SELECT
+                s.id,
+                s.save_id,
+                s.context_token,
+                sv.context_token,
+                s.bridge_source_request_id,
+                s.player_boost_recovery_required
+             FROM snapshots s
+             INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
+             WHERE s.is_current = 1
+             LIMIT 1",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| eligibility_error("database", error.to_string()))?;
+    let Some((
+        snapshot_id,
+        save_id,
+        snapshot_context_token,
+        save_context_token,
+        source_request_id,
+        recovery_required,
+    )) = snapshot
+    else {
+        return Err(eligibility_error(
+            "noSnapshot",
+            "Load Data before using player boosts",
+        ));
+    };
+    if recovery_required != 0 {
+        return Err(snapshot_sync_error(
+            "Load Data before using player boosts; the current snapshot could not be reconciled.",
+        ));
+    }
+    let Some(source_request_id) = source_request_id.filter(|value| !value.trim().is_empty()) else {
+        return Err(eligibility_error(
+            "missingProvenance",
+            "Load Data again before using player boosts",
+        ));
+    };
+
+    Ok(PlayerBoostContext {
+        snapshot_id,
+        snapshot_context_token,
+        save_id,
+        save_context_token,
+        source_request_id,
+    })
+}
+
+pub(super) fn active_player_boost_context_matches(
+    conn: &Connection,
+    expected: &PlayerBoostContext,
+) -> Result<bool, PlayerBoostError> {
+    Ok(capture_active_player_boost_context(conn)? == *expected)
+}
+
+pub(super) fn require_load_data_for_player_boost(
+    conn: &Connection,
+    context: &PlayerBoostContext,
+) -> Result<(), PlayerBoostError> {
+    let changed = conn
+        .execute(
+            "UPDATE snapshots
+             SET player_boost_recovery_required = 1
+             WHERE id = ?1 AND context_token = ?2",
+            params![context.snapshot_id, &context.snapshot_context_token],
+        )
+        .map_err(database_sync_error)?;
+    if changed == 1 {
+        return Ok(());
+    }
+
+    Err(snapshot_sync_error(
+        "FM may have changed, but FM ValueScout could not preserve the recovery requirement. Load Data again.",
+    ))
+}
+
 fn capture_player(conn: &Connection, uid: i64) -> Result<CapturedPlayer, PlayerBoostError> {
     let player_uid = u32::try_from(uid).map_err(|_| {
         eligibility_error(
@@ -260,54 +372,21 @@ fn capture_player(conn: &Connection, uid: i64) -> Result<CapturedPlayer, PlayerB
         ));
     }
 
-    let snapshot: Option<(i64, i64, String, String, Option<String>)> = conn
-        .query_row(
-            "SELECT s.id, s.save_id, s.context_token, sv.context_token, s.bridge_source_request_id
-             FROM snapshots s
-             INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
-             WHERE s.is_current = 1
-             LIMIT 1",
-            [],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|error| eligibility_error("database", error.to_string()))?;
-    let Some((snapshot_id, save_id, snapshot_context_token, save_context_token, source_request_id)) =
-        snapshot
-    else {
-        return Err(eligibility_error(
-            "noSnapshot",
-            "Load Data before using player boosts",
-        ));
-    };
-    let Some(source_request_id) = source_request_id.filter(|value| !value.trim().is_empty()) else {
-        return Err(eligibility_error(
-            "missingProvenance",
-            "Load Data again before using player boosts",
-        ));
-    };
+    let context = capture_active_player_boost_context(conn)?;
 
     let player = conn
         .query_row(
             "SELECT ca, pa, age, attributes_json, personality_json
              FROM players
              WHERE snapshot_id = ?1 AND uid = ?2",
-            params![snapshot_id, uid],
+            params![context.snapshot_id, uid],
             |row| {
                 Ok(CapturedPlayer {
-                    snapshot_id,
-                    snapshot_context_token: snapshot_context_token.clone(),
-                    save_id,
-                    save_context_token: save_context_token.clone(),
-                    source_request_id: source_request_id.clone(),
+                    snapshot_id: context.snapshot_id,
+                    snapshot_context_token: context.snapshot_context_token.clone(),
+                    save_id: context.save_id,
+                    save_context_token: context.save_context_token.clone(),
+                    source_request_id: context.source_request_id.clone(),
                     uid: player_uid,
                     current_ability: row.get(0)?,
                     potential_ability: row.get(1)?,

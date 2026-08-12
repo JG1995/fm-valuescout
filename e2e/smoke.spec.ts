@@ -334,6 +334,32 @@ test.describe("walking skeleton smoke", () => {
     ).toContainText("Only a Youth Academy export can be imported");
   });
 
+  test("configured Squad confirms and reports a closed CA boost", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Boost all CA" }).click();
+    const dialog = page.getByRole("dialog", { name: "Boost all CA?" });
+    await expect(dialog).toContainText(
+      "Players aged 20 or younger receive +5 CA.",
+    );
+    await expect(dialog).toContainText(
+      "Players aged 21 through 28 receive +10 CA.",
+    );
+    await expect(dialog).toContainText("Players aged 29 or older are skipped.");
+    await dialog.getByRole("button", { name: "Boost all CA" }).click();
+
+    await expect(main.getByRole("status")).toContainText(
+      "Updated 2 players. Skipped 0. Failed 0.",
+    );
+  });
+
   test("planner tactic editor saves a linked phase adjustment", async ({
     page,
   }) => {
