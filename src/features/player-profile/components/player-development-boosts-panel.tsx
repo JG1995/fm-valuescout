@@ -45,6 +45,12 @@ function currentAbilityBoostPreview(
       reason: "Age is unavailable. Load Data again to refresh this player.",
     };
   }
+  if (player.age >= 29) {
+    return {
+      reason:
+        "Current ability boosts are unavailable for players aged 29 or older.",
+    };
+  }
   const potentialAbility = player.pa;
   if (
     typeof potentialAbility !== "number" ||
@@ -72,7 +78,7 @@ function currentAbilityBoostPreview(
     };
   }
 
-  const increment = player.age <= 21 ? 5 : 10;
+  const increment = player.age <= 20 ? 5 : 10;
   const target = Math.min(player.ca + increment, potentialAbility, 200);
   return {
     target,

@@ -230,6 +230,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
     use std::sync::Mutex;
 
     use rusqlite::{params, Connection};
@@ -242,6 +243,7 @@ mod tests {
     use crate::features::snapshot::ingest::ingest_dump_file;
 
     const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v6.json");
+    static PLAYER_BOOST_TEST_GATE: Mutex<()> = Mutex::new(());
 
     fn seeded_db() -> (tempfile::TempDir, Db) {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -315,6 +317,9 @@ mod tests {
 
     #[test]
     fn bridge_polling_runs_after_the_snapshot_lock_is_released() {
+        let _test_guard = PLAYER_BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let (_temp_dir, db) = seeded_db();
 
         let result = execute_player_boost_with(
@@ -347,7 +352,42 @@ mod tests {
     }
 
     #[test]
+    fn age_twenty_nine_does_not_request_a_bridge_boost() {
+        let _test_guard = PLAYER_BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp_dir, db) = seeded_db();
+        {
+            let conn = db.0.lock().expect("lock db");
+            conn.execute("UPDATE players SET age = 29 WHERE uid = 77", [])
+                .expect("set player age");
+        }
+
+        let bridge_called = Cell::new(false);
+        let error =
+            match execute_player_boost_with(77, &db, service::prepare_current_ability_boost, |_| {
+                bridge_called.set(true);
+                Err(PlayerBoostError::Bridge {
+                    kind: "unexpectedBridgeCall".to_string(),
+                    message: "age-ineligible player reached the bridge".to_string(),
+                })
+            }) {
+                Err(error) => error,
+                Ok(_) => panic!("age 29 must reject the boost"),
+            };
+
+        assert!(!bridge_called.get(), "age 29 must not reach the bridge");
+        assert!(matches!(
+            error,
+            PlayerBoostError::Eligibility { kind, .. } if kind == "ageIneligible"
+        ));
+    }
+
+    #[test]
     fn historical_load_keeps_the_later_snapshot_source_for_a_bridge_mismatch() {
+        let _test_guard = PLAYER_BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         let (_temp_dir, db, current_snapshot_id, historical_snapshot_id) = seeded_history_db();
 
         let error = execute_player_boost_with(

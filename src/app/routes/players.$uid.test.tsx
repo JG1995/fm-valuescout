@@ -507,26 +507,35 @@ describe("player profile route", () => {
     renderProfileRoute("/players/42");
 
     const action = await screen.findByRole("button", { name: "Boost CA" });
-    expect(screen.getByText("CA 140 → 145 (+5)")).toBeInTheDocument();
+    expect(screen.getByText("CA 140 → 150 (+10)")).toBeInTheDocument();
 
     await user.click(action);
 
+    const dialog = screen.getByRole("dialog");
     expect(
-      screen.getByRole("heading", { level: 2, name: "Boost CA?" }),
+      within(dialog).getByRole("heading", { level: 2, name: "Boost CA?" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("This raises current ability from 140 to 145."),
+      within(dialog).getByText("This raises current ability from 140 to 150."),
     ).toBeInTheDocument();
     expect(
-      screen.getAllByText(
+      within(dialog).getAllByText(
         "FM may redistribute attributes over the following in-game days, sometimes up to one month.",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
+
+    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+
+    expect(
+      await screen.findByText("CA boosted from 140 to 150."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("CA 150 → 160 (+10)")).toBeInTheDocument();
+    expect(getCurrentAbilityBoostIpcMockCalls()).toEqual([{ uid: 42 }]);
   });
 
-  it("uses the age-22 increment while capping the preview at PA", async () => {
+  it("uses the age-28 increment while capping the preview at PA", async () => {
     await resolveLoadDataIpcMock();
-    setGetPlayerOverride(fixturePlayerDetail({ age: 22, ca: 192, pa: 195 }));
+    setGetPlayerOverride(fixturePlayerDetail({ age: 28, ca: 192, pa: 195 }));
     renderProfileRoute("/players/42");
 
     expect(
@@ -545,6 +554,20 @@ describe("player profile route", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+  });
+
+  it("disables CA boost at age 29 without invoking the bridge", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ age: 29, ca: 140, pa: 160 }));
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByText(
+        "Current ability boosts are unavailable for players aged 29 or older.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
+    expect(getCurrentAbilityBoostIpcMockCalls()).toEqual([]);
   });
 
   it("disables CA boost when PA is unavailable", async () => {
@@ -586,9 +609,9 @@ describe("player profile route", () => {
     expect(screen.getByRole("button", { name: "Boost CA" })).toBeDisabled();
   });
 
-  it("reports the verified CA result and refreshes the profile", async () => {
+  it("reports the verified CA result and refreshes the age-20 profile", async () => {
     await resolveLoadDataIpcMock();
-    setGetPlayerOverride(fixturePlayerDetail({ age: 21, ca: 140, pa: 160 }));
+    setGetPlayerOverride(fixturePlayerDetail({ age: 20, ca: 140, pa: 160 }));
     const user = userEvent.setup();
     renderProfileRoute("/players/42");
 
@@ -618,7 +641,7 @@ describe("player profile route", () => {
       }),
     );
     expect(
-      await screen.findByText("CA boosted from 140 to 145."),
+      await screen.findByText("CA boosted from 140 to 150."),
     ).toBeInTheDocument();
 
     setGetPlayerOverride(
@@ -634,7 +657,7 @@ describe("player profile route", () => {
       await screen.findByRole("heading", { level: 1, name: "Jamie Scout" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText("CA boosted from 140 to 145."),
+      screen.queryByText("CA boosted from 140 to 150."),
     ).not.toBeInTheDocument();
   });
 
@@ -671,7 +694,7 @@ describe("player profile route", () => {
       snapshotId: 1,
       operation: "boost-current-ability",
       previousCurrentAbility: 140,
-      currentAbility: 145,
+      currentAbility: 150,
       potentialAbility: 160,
       previousAmbition: null,
       ambition: null,
@@ -683,7 +706,7 @@ describe("player profile route", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByText("CA boosted from 140 to 145."),
+        screen.queryByText("CA boosted from 140 to 150."),
       ).not.toBeInTheDocument();
     });
   });
@@ -710,7 +733,7 @@ describe("player profile route", () => {
 
     resolvePendingCurrentAbilityBoostIpcMock();
     expect(
-      await screen.findByText("CA boosted from 140 to 145."),
+      await screen.findByText("CA boosted from 140 to 150."),
     ).toBeInTheDocument();
   });
 

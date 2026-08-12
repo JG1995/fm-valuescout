@@ -278,7 +278,7 @@ Expected evidence: frontend tests prove modal focus, drop/browse equivalence, ca
 
 #### Commit 4 — Correct CA boost age eligibility
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `fix(player): correct CA boost age eligibility`
 
@@ -320,7 +320,7 @@ Expected evidence: Rust and frontend boundary tests cover ages 20, 21, 28, and 2
 
 #### Commit 5 — Boost squad current ability
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(squad): boost squad current ability`
 
@@ -410,19 +410,19 @@ Expected evidence: Rust and bridge tests prove eligibility, untouched null/high 
 
 **PR:** PR 1 — Build the Squad workspace
 
-**Commit:** Commit 4 — Correct CA boost age eligibility
+**Commit:** Commit 5 — Boost squad current ability
 
 ### RED proof
 
-Add focused Rust and profile tests first. They must reject the previous age-21 +5 rule, prove ages 20, 21, 28, and 29 map to +5, +10, +10, and ineligible respectively, and prove age 29 cannot submit a bridge request.
+Add focused Rust and Squad route tests first. They must freeze a distinct configured club-family cohort at the active current snapshot; cover ages 20, 21, 28, and 29, caps, and per-player bridge exclusion; prove sequential success, skip, and continue accounting; and distinguish a proven no-write player-local rejection from every outcome that must stop before player two.
 
 ### Expected outcome
 
-The Rust authority and profile preview agree: age 20 or younger receives +5, ages 21 through 28 receive +10, and age 29 or older has no CA action while existing caps and recovery behavior stay intact.
+A confirmed Squad CA action sends no player selection or increment from the WebView. Rust derives the cohort and corrected increment, runs each eligible player through the shared locked boost path in order, reconciles each verified result before moving on, reports accurate partial results, and invalidates shared reads once when complete or stopped.
 
 ### Explicit exclusions
 
-Squad-wide orchestration, bridge protocol changes, custom increments, Wonderkid behavior, Search filters, custom columns, row selection, historical snapshots, Planner-depth changes, push, and publication do not belong in this active commit.
+Wonderkid bulk behavior, parallel writes, all-or-nothing rollback, arbitrary player selection, new bridge operations, progress cancellation, Search filters, custom columns, row selection, historical snapshots, Planner-depth changes, push, and publication do not belong in this active commit.
 
 ## Discoveries and replanning
 
@@ -434,6 +434,7 @@ Squad-wide orchestration, bridge protocol changes, custom increments, Wonderkid 
 - 2026-08-12: Commit 2 keeps overview reads under the existing Planner invalidation root with a nested `['planner', 'squad']` key. Its 50-row pages stay below the table virtualization threshold while Rust retains the 200-row hard limit.
 - 2026-08-12: Commit 3 uses the installed Tauri WebView drop API without a new capability. Each open modal captures its save/snapshot generation, so a delayed drop from a replaced context is ignored before IPC.
 - 2026-08-12: Commit 3 serializes all modal intake while a CSV persistence request is pending. Later single-file drops and multi-file validation errors are ignored until the active request settles, so they cannot overwrite truthful pending state or reopen another import path.
+- 2026-08-12: Commit 4 aligned the shared frontend IPC double with the corrected age-20 boundary and added submitted age-21 result parity coverage after review found that preview-only coverage could mask a conflicting test result.
 
 ## Completed work
 
@@ -442,6 +443,7 @@ Squad-wide orchestration, bridge protocol changes, custom increments, Wonderkid 
 | PR 1 | Commit 1 — Reorganize the Squad workspace | Pending record | Squad navigation, URL-backed workspace composition, Dashboard Club Setup, and recovery links | Sol Medium — Accept | None |
 | PR 1 | Commit 2 — List configured squad players | Pending record | Bounded exact club-family overview query, sortable fixed-column table, paging, and profile links | Sol High — Accept | None |
 | PR 1 | Commit 3 — Import squad CSV enrichment | Pending record | Format-bound Squad CSV modals, guarded browse/drop intake, expected-format persistence enforcement, and retained Dashboard auto-detection | Sol High — Accept | None |
+| PR 1 | Commit 4 — Correct CA boost age eligibility | Pending record | Corrected CA age boundaries, pre-bridge age exclusion, and profile result parity | Sol High — Accept | None |
 
 ## Final validation
 

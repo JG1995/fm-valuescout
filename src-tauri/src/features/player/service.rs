@@ -106,8 +106,14 @@ pub(super) fn prepare_current_ability_boost(
             "player age is invalid; Load Data again",
         ));
     }
+    if age >= 29 {
+        return Err(eligibility_error(
+            "ageIneligible",
+            "current ability boosts are unavailable for players aged 29 or older",
+        ));
+    }
 
-    let increment = if age <= 21 { 5 } else { 10 };
+    let increment = if age <= 20 { 5 } else { 10 };
     let target = (player.current_ability + i64::from(increment))
         .min(player.potential_ability)
         .min(MAX_ABILITY);
@@ -893,9 +899,9 @@ mod tests {
     }
 
     #[test]
-    fn current_ability_boost_prepares_the_under_twenty_two_increment_and_source_request() {
+    fn current_ability_boost_prepares_the_age_twenty_increment_and_source_request() {
         let fixture = seeded_player(
-            Some(21),
+            Some(20),
             150,
             170,
             Mentality {
@@ -916,23 +922,25 @@ mod tests {
     }
 
     #[test]
-    fn current_ability_boost_uses_ten_at_twenty_two_and_clamps_to_potential() {
-        let fixture = seeded_player(
-            Some(22),
-            168,
-            170,
-            Mentality {
-                ambition: Some(14),
-                professionalism: Some(14),
-                determination: Some(14),
-            },
-        );
+    fn current_ability_boost_uses_ten_from_age_twenty_one_through_twenty_eight() {
+        for age in [21, 28] {
+            let fixture = seeded_player(
+                Some(age),
+                168,
+                170,
+                Mentality {
+                    ambition: Some(14),
+                    professionalism: Some(14),
+                    determination: Some(14),
+                },
+            );
 
-        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
-            .expect("prepare CA boost");
+            let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
+                .expect("prepare CA boost");
 
-        assert_eq!(prepared.current_ability_increment, Some(10));
-        assert_eq!(prepared.target_current_ability, Some(170));
+            assert_eq!(prepared.current_ability_increment, Some(10));
+            assert_eq!(prepared.target_current_ability, Some(170));
+        }
     }
 
     #[test]
@@ -951,6 +959,22 @@ mod tests {
             super::prepare_current_ability_boost(&unknown_age.conn, PLAYER_UID)
                 .expect_err("unknown age must be ineligible"),
             "unknownAge",
+        );
+
+        let age_ineligible = seeded_player(
+            Some(29),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+        assert_eligibility_kind(
+            super::prepare_current_ability_boost(&age_ineligible.conn, PLAYER_UID)
+                .expect_err("age 29 must be ineligible"),
+            "ageIneligible",
         );
 
         let at_potential = seeded_player(
@@ -1005,7 +1029,7 @@ mod tests {
     #[test]
     fn current_ability_reconciliation_updates_the_snapshot_and_supports_a_repeat() {
         let mut fixture = seeded_player(
-            Some(21),
+            Some(20),
             150,
             170,
             Mentality {
@@ -1297,7 +1321,7 @@ mod tests {
         let error = super::reconcile_verified_boost(
             &mut fixture.conn,
             &prepared,
-            verified_ca_result(150, 155, 170),
+            verified_ca_result(150, 160, 170),
         )
         .expect_err("changed source request must reject reconciliation");
 
@@ -1332,7 +1356,7 @@ mod tests {
         let error = super::reconcile_verified_boost(
             &mut fixture.conn,
             &prepared,
-            verified_ca_result(150, 155, 170),
+            verified_ca_result(150, 160, 170),
         )
         .expect_err("replaced snapshot must reject reconciliation");
 
@@ -1373,7 +1397,7 @@ mod tests {
         let error = super::reconcile_verified_boost(
             &mut fixture.conn,
             &prepared,
-            verified_ca_result(150, 155, 170),
+            verified_ca_result(150, 160, 170),
         )
         .expect_err("reused snapshot id must reject reconciliation");
 
@@ -1421,7 +1445,7 @@ mod tests {
         let error = super::reconcile_verified_boost(
             &mut fixture.conn,
             &prepared,
-            verified_ca_result(150, 155, 170),
+            verified_ca_result(150, 160, 170),
         )
         .expect_err("save switch must reject reconciliation");
 
