@@ -192,6 +192,7 @@ function SearchResultsVirtualTable({
   filters,
   filterCombine,
   columns,
+  requestedFields,
   onSortChange,
 }: {
   total: number;
@@ -200,6 +201,7 @@ function SearchResultsVirtualTable({
   filters: FilterRule[];
   filterCombine: FilterCombineMode;
   columns: TableColumn[];
+  requestedFields: string[];
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
 }) {
   const navigate = useNavigate();
@@ -306,6 +308,7 @@ function SearchResultsVirtualTable({
         sortDir,
         filters,
         filterCombine,
+        requestedFields,
       ),
     ),
   });
@@ -513,6 +516,7 @@ export function SearchResultsPanel({
       sortDir,
       filters,
       filterCombine,
+      dynamicFields,
     ),
   );
   const listKey = useMemo(
@@ -568,6 +572,7 @@ export function SearchResultsPanel({
         filters={filters}
         filterCombine={filterCombine}
         columns={columns}
+        requestedFields={dynamicFields}
         onSortChange={onSortChange}
       />
     </Panel>

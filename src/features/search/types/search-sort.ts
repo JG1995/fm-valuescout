@@ -58,6 +58,7 @@ export function defaultDirForSortField(field: SearchSortField): SearchSortDir {
     case "parent_club":
     case "preferred_foot":
     case "team_level":
+    case "position":
       return "asc";
     default:
       return "desc";

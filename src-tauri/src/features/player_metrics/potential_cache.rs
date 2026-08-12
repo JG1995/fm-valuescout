@@ -62,6 +62,48 @@ pub fn materialize_snapshot_roles(
     }
 }
 
+/// Materializes missing or stale potential role scores for a bounded requested cohort.
+///
+/// Display-only table fields use this after their page UIDs are known. The cache retains
+/// the same version and nullable-result semantics as full-cohort materialization.
+pub fn materialize_player_roles(
+    conn: &Connection,
+    snapshot_id: i64,
+    player_uids: &[i64],
+    role_ids: &[String],
+) -> Result<(), String> {
+    let roles = requested_roles(role_ids)?;
+    if roles.is_empty() || player_uids.is_empty() {
+        return Ok(());
+    }
+
+    let mut seen_uids = HashSet::new();
+    let unique_uids = player_uids
+        .iter()
+        .copied()
+        .filter(|uid| seen_uids.insert(*uid))
+        .collect::<Vec<_>>();
+
+    for uid_batch in unique_uids.chunks(MATERIALIZATION_BATCH_SIZE) {
+        let players = load_players_by_uids(conn, snapshot_id, uid_batch)?;
+        if players.is_empty() {
+            continue;
+        }
+        let cached_role_ids = load_cached_role_ids(conn, snapshot_id, &players, &roles)?;
+        let scores = score_missing_roles(players, &roles, &cached_role_ids)?;
+        if scores.is_empty() {
+            continue;
+        }
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|error| error.to_string())?;
+        persist_scores(&tx, snapshot_id, &scores)?;
+        tx.commit().map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
 /// Removes a player's derived potential scores alongside the source-data update.
 pub fn invalidate_player_cache(
     tx: &Transaction<'_>,
@@ -170,6 +212,42 @@ fn load_player_batch(
         ),
     };
     let mut stmt = conn.prepare(sql).map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(params_from_iter(values.iter()), |row| {
+            Ok(PlayerForProjection {
+                uid: row.get(0)?,
+                ca: row.get(1)?,
+                pa: row.get(2)?,
+                age: row.get(3)?,
+                positions_json: row.get(4)?,
+                attributes_json: row.get(5)?,
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+fn load_players_by_uids(
+    conn: &Connection,
+    snapshot_id: i64,
+    player_uids: &[i64],
+) -> Result<Vec<PlayerForProjection>, String> {
+    let placeholders = player_uids
+        .iter()
+        .enumerate()
+        .map(|(index, _)| format!("?{}", index + 2))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT uid, ca, pa, age, positions_json, attributes_json
+         FROM players
+         WHERE snapshot_id = ?1 AND uid IN ({placeholders})
+         ORDER BY uid"
+    );
+    let mut values = vec![Value::Integer(snapshot_id)];
+    values.extend(player_uids.iter().copied().map(Value::Integer));
+    let mut stmt = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let rows = stmt
         .query_map(params_from_iter(values.iter()), |row| {
             Ok(PlayerForProjection {

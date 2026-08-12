@@ -84,5 +84,5 @@ Keep calculated scores only for the current process. This avoids a migration but
 - Active feature plan: [Configurable Player Tables](../features/active/configurable-player-tables.md)
 - Existing projection contract: [Potential role scores](../features/completed/potential-role-scores.md)
 - Existing current-score contract: [Role scoring engine](../features/completed/role-scoring-engine.md)
-- Commits: Pending record
+- Commits: `b258df8`
 - Supersedes: the blanket non-persistence decision for potential values only for this disposable table cache; potential values remain derived and non-authoritative

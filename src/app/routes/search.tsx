@@ -21,7 +21,10 @@ import {
   defaultDirForSortField,
   isSearchSortDir,
 } from "@/features/search/types/search-sort";
-import { isVisibleSortField } from "@/features/search/utils/dynamic-columns";
+import {
+  dynamicColumnFields,
+  isVisibleSortField,
+} from "@/features/search/utils/dynamic-columns";
 import type { FilterRuleUrl } from "@/features/search/utils/search-url-search";
 import {
   parseSearchCombine,
@@ -71,7 +74,15 @@ export const Route = createFileRoute("/search")({
     return Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(
-        searchPlayersQueryOptions(0, undefined, sort, dir, rules, combine),
+        searchPlayersQueryOptions(
+          0,
+          undefined,
+          sort,
+          dir,
+          rules,
+          combine,
+          dynamicColumnFields(rules),
+        ),
       ),
     ]);
   },

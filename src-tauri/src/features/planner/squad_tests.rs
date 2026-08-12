@@ -1,7 +1,11 @@
 use rusqlite::params;
+use serde_json::json;
 
 use super::squad::{list_squad_players, SquadSortDir, SquadSortField, DEFAULT_SQUAD_PAGE_LIMIT};
-use super::test_support::{add_picker_candidates, current_snapshot_id, open_with_snapshot};
+use super::test_support::{
+    add_picker_candidates, current_snapshot_id, open_with_snapshot, set_role_score,
+};
+use crate::features::player_metrics::resolver::DynamicValue;
 
 #[test]
 fn lists_the_distinct_current_club_family_union() {
@@ -15,6 +19,7 @@ fn lists_the_distinct_current_club_family_union() {
         DEFAULT_SQUAD_PAGE_LIMIT,
         SquadSortField::DEFAULT,
         SquadSortDir::DEFAULT,
+        &[],
     )
     .expect("list configured squad");
 
@@ -162,8 +167,8 @@ fn orders_every_fixed_column_and_pages_deterministically() {
             vec![79, 80, 77, 78],
         ),
     ] {
-        let page =
-            list_squad_players(&conn, save_id, 0, 4, field, direction).expect("sort squad players");
+        let page = list_squad_players(&conn, save_id, 0, 4, field, direction, &[])
+            .expect("sort squad players");
         assert_eq!(
             page.players
                 .iter()
@@ -180,6 +185,7 @@ fn orders_every_fixed_column_and_pages_deterministically() {
         2,
         SquadSortField::DEFAULT,
         SquadSortDir::DEFAULT,
+        &[],
     )
     .expect("page squad players");
     assert_eq!(page.total, 4);
@@ -213,6 +219,7 @@ fn returns_no_players_without_a_configuration_or_matching_current_players() {
         DEFAULT_SQUAD_PAGE_LIMIT,
         SquadSortField::DEFAULT,
         SquadSortDir::DEFAULT,
+        &[],
     )
     .expect("list without configuration");
     assert_eq!(no_configuration.total, 0);
@@ -233,6 +240,7 @@ fn returns_no_players_without_a_configuration_or_matching_current_players() {
         DEFAULT_SQUAD_PAGE_LIMIT,
         SquadSortField::DEFAULT,
         SquadSortDir::DEFAULT,
+        &[],
     )
     .expect("list empty configured squad");
     assert_eq!(empty_current_result.total, 0);
@@ -262,6 +270,7 @@ fn excludes_retained_players_from_an_earlier_snapshot() {
         DEFAULT_SQUAD_PAGE_LIMIT,
         SquadSortField::DEFAULT,
         SquadSortDir::DEFAULT,
+        &[],
     )
     .expect("list current squad");
 
@@ -273,4 +282,163 @@ fn excludes_retained_players_from_an_earlier_snapshot() {
 fn rejects_unknown_sort_inputs() {
     assert!(SquadSortField::parse("ca; DROP TABLE players").is_err());
     assert!(SquadSortDir::parse("sideways").is_err());
+}
+
+#[test]
+fn accepts_position_as_a_sortable_display_metric() {
+    assert!(SquadSortField::parse("position").is_ok());
+}
+
+#[test]
+fn returns_requested_metrics_with_the_shared_search_value_contract() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE players
+         SET parent_club = 'Parent FC',
+             positions_json = ?1,
+             attributes_json = ?2,
+             hidden_attributes_json = ?3,
+             personality_json = ?4
+         WHERE snapshot_id = ?5 AND uid = 77",
+        params![
+            json!({ "MC": 16, "AMC": 20 }).to_string(),
+            json!({ "Acceleration": 16 }).to_string(),
+            json!({ "Consistency": 12 }).to_string(),
+            json!({ "Ambition": 14 }).to_string(),
+            snapshot_id,
+        ],
+    )
+    .expect("set requested metrics");
+    set_role_score(&conn, save_id, 77, "deep_lying_playmaker_ip", Some(82));
+
+    let requested_fields = vec![
+        "parent_club".to_string(),
+        "position".to_string(),
+        "attr.Acceleration".to_string(),
+        "hidden.Consistency".to_string(),
+        "personality.Ambition".to_string(),
+        "role.deep_lying_playmaker_ip".to_string(),
+        "attr.Acceleration".to_string(),
+    ];
+    let page = list_squad_players(
+        &conn,
+        save_id,
+        0,
+        DEFAULT_SQUAD_PAGE_LIMIT,
+        SquadSortField::DEFAULT,
+        SquadSortDir::DEFAULT,
+        &requested_fields,
+    )
+    .expect("list requested metrics");
+    let player = page
+        .players
+        .iter()
+        .find(|player| player.uid == 77)
+        .expect("configured player");
+
+    assert_eq!(
+        player.dynamic_values.get("parent_club"),
+        Some(&Some(DynamicValue::Text("Parent FC".to_string())))
+    );
+    assert_eq!(
+        player.dynamic_values.get("position"),
+        Some(&Some(DynamicValue::Text("AMC, MC".to_string())))
+    );
+    assert_eq!(
+        player.dynamic_values.get("attr.Acceleration"),
+        Some(&Some(DynamicValue::Integer(16)))
+    );
+    assert_eq!(
+        player.dynamic_values.get("hidden.Consistency"),
+        Some(&Some(DynamicValue::Integer(12)))
+    );
+    assert_eq!(
+        player.dynamic_values.get("personality.Ambition"),
+        Some(&Some(DynamicValue::Integer(14)))
+    );
+    assert_eq!(
+        player.dynamic_values.get("role.deep_lying_playmaker_ip"),
+        Some(&Some(DynamicValue::Integer(82)))
+    );
+}
+
+#[test]
+fn potential_display_is_page_scoped_and_potential_sort_materializes_the_squad_cohort() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    for (uid, score) in [(77, 8), (78, 10), (79, 12), (80, 16)] {
+        conn.execute(
+            "UPDATE players
+             SET ca = 100,
+                 pa = 100,
+                 positions_json = ?1,
+                 attributes_json = ?2
+             WHERE snapshot_id = ?3 AND uid = ?4",
+            params![
+                json!({ "GK": 20 }).to_string(),
+                json!({ "Positioning": score, "Concentration": score }).to_string(),
+                snapshot_id,
+                uid,
+            ],
+        )
+        .expect("set potential source values");
+    }
+    let requested_fields = vec!["potential_role.line_holding_keeper_oop".to_string()];
+
+    let display_page = list_squad_players(
+        &conn,
+        save_id,
+        0,
+        1,
+        SquadSortField::DEFAULT,
+        SquadSortDir::DEFAULT,
+        &requested_fields,
+    )
+    .expect("display potential page");
+    assert_eq!(display_page.players.len(), 1);
+    assert!(matches!(
+        display_page.players[0]
+            .dynamic_values
+            .get("potential_role.line_holding_keeper_oop"),
+        Some(Some(DynamicValue::Integer(_)))
+    ));
+    let display_cache_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM player_potential_role_scores",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count page cache rows");
+    assert_eq!(display_cache_rows, 1);
+
+    let sorted_page = list_squad_players(
+        &conn,
+        save_id,
+        0,
+        DEFAULT_SQUAD_PAGE_LIMIT,
+        SquadSortField::parse("potential_role.line_holding_keeper_oop")
+            .expect("parse potential sort"),
+        SquadSortDir::Desc,
+        &[],
+    )
+    .expect("sort squad potential");
+    assert_eq!(
+        sorted_page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [80, 79, 78, 77]
+    );
+    let sort_cache_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM player_potential_role_scores",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count sorted cache rows");
+    assert_eq!(sort_cache_rows, 4);
 }

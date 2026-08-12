@@ -240,7 +240,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 #### Commit 3 — Query selected player metrics
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): query selected player metrics`
 
@@ -276,7 +276,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 #### Commit 4 — Virtualize full-height player lists
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tables): virtualize full-height player lists`
 
@@ -388,19 +388,19 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **PR:** PR 1 — Configurable player tables
 
-**Commit:** Commit 3 — Query selected player metrics
+**Commit:** Commit 4 — Virtualize full-height player lists
 
 ### RED proof
 
-Add failing Search and Squad query tests for validated requested fields, duplicate IDs, current and potential role values, Position display and sort, bounded pages, and global potential sorting. Add frontend request-shape and query-key tests for both routes.
+Add failing route and table tests that prove both tables request bounded virtual page windows, Squad has no pagination controls, whole Squad rows open profiles by pointer and Enter, and route-backed sort survives profile/back navigation.
 
 ### Expected outcome
 
-Search and Squad request the same validated player-metric field IDs and receive typed dynamic values without sending an unbounded player set across IPC. Display-only potential fields materialize only page players; potential sorts materialize the relevant full cohort before ordered results return.
+Search and Squad each fill the remaining workspace with one vertically scrolling, fixed-row virtual table. Squad replaces visible page controls with bounded virtual page queries and gives every row the same pointer and keyboard profile activation as Search.
 
 ### Explicit exclusions
 
-No column menus, persisted layouts, resizing, full-height layout, row-interaction, flag rendering, Git, or publication change belongs in the active implementation commit.
+No column menus, persisted layouts, resizing, flag rendering, Git, or publication change belongs in the active implementation commit.
 
 ## Discoveries and replanning
 
@@ -417,7 +417,8 @@ No column menus, persisted layouts, resizing, full-height layout, row-interactio
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 — Configurable player tables | Commit 1 — Stage organized filter changes | `1014999` | Added the shared metric catalog and accessible grouped picker, then made Search filter edits transactional until Done. | Sol Medium accepted after one correction round. | None |
-| PR 1 — Configurable player tables | Commit 2 — Cache potential table role scores | Pending record | Added migration v21, sparse versioned potential-role cache population, potential Search filters, and atomic boost invalidation. | Sol xhigh accepted after one correction round. | Windows representative cold/warm timing remains a pre-publication validation gap. |
+| PR 1 — Configurable player tables | Commit 2 — Cache potential table role scores | `b258df8` | Added migration v21, sparse versioned potential-role cache population, potential Search filters, and atomic boost invalidation. | Sol xhigh accepted after one correction round. | Windows representative cold/warm timing remains a pre-publication validation gap. |
+| PR 1 — Configurable player tables | Commit 3 — Query selected player metrics | Pending record | Added the shared validated metric resolver and typed dynamic values to Search and Squad, including Position display/sort and page-versus-cohort potential cache population. | Sol xhigh accepted after one correction round. | Windows representative cold/warm timing remains a pre-publication validation gap. |
 
 ## Final validation
 

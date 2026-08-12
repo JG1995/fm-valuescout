@@ -13,6 +13,11 @@ export const squadKeys = {
     limit: number,
     sortBy: SquadSortField = DEFAULT_SQUAD_SORT_FIELD,
     sortDir: SquadSortDir = DEFAULT_SQUAD_SORT_DIR,
+    requestedFields: string[] = [],
   ) =>
-    [...squadKeys.all, "players", { offset, limit, sortBy, sortDir }] as const,
+    [
+      ...squadKeys.all,
+      "players",
+      { offset, limit, sortBy, sortDir, requestedFields },
+    ] as const,
 };

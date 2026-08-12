@@ -84,6 +84,25 @@ pub struct SquadPlayerDto {
     pub ca: i64,
     pub pa: i64,
     pub market_value_gbp: Option<i64>,
+    pub dynamic_values: std::collections::BTreeMap<String, Option<DynamicValueDto>>,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum DynamicValueDto {
+    Integer(i64),
+    Text(String),
+}
+
+impl From<crate::features::player_metrics::resolver::DynamicValue> for DynamicValueDto {
+    fn from(value: crate::features::player_metrics::resolver::DynamicValue) -> Self {
+        match value {
+            crate::features::player_metrics::resolver::DynamicValue::Integer(number) => {
+                Self::Integer(number)
+            }
+            crate::features::player_metrics::resolver::DynamicValue::Text(text) => Self::Text(text),
+        }
+    }
 }
 
 impl From<SquadPlayer> for SquadPlayerDto {
@@ -100,6 +119,11 @@ impl From<SquadPlayer> for SquadPlayerDto {
             ca: player.ca,
             pa: player.pa,
             market_value_gbp: player.market_value_gbp,
+            dynamic_values: player
+                .dynamic_values
+                .into_iter()
+                .map(|(key, value)| (key, value.map(DynamicValueDto::from)))
+                .collect(),
         }
     }
 }
@@ -402,6 +426,7 @@ pub fn list_squad_players(
     limit: Option<u32>,
     sort_by: Option<String>,
     sort_dir: Option<String>,
+    requested_fields: Option<Vec<String>>,
     db: State<'_, Db>,
 ) -> Result<SquadPlayersPageDto, String> {
     let conn =
@@ -421,7 +446,17 @@ pub fn list_squad_players(
         None => SquadSortDir::DEFAULT,
         Some(value) => SquadSortDir::parse(value)?,
     };
-    Ok(squad_service::list_squad_players(&conn, save_id, offset, limit, sort_by, sort_dir)?.into())
+    let requested_fields = requested_fields.unwrap_or_default();
+    Ok(squad_service::list_squad_players(
+        &conn,
+        save_id,
+        offset,
+        limit,
+        sort_by,
+        sort_dir,
+        &requested_fields,
+    )?
+    .into())
 }
 
 #[tauri::command]

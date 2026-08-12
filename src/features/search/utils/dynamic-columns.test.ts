@@ -38,7 +38,7 @@ describe("dynamicColumnFields", () => {
     ]);
   });
 
-  it("allows sorting by a visible dynamic column only", () => {
+  it("allows sorting by known metrics whether or not they are requested", () => {
     const filters = [
       {
         id: createFilterRuleId(),
@@ -50,11 +50,11 @@ describe("dynamicColumnFields", () => {
     expect(isVisibleSortField("role.deep_lying_playmaker_ip", filters)).toBe(
       true,
     );
-    expect(isVisibleSortField("attr.Acceleration", filters)).toBe(false);
+    expect(isVisibleSortField("attr.Acceleration", filters)).toBe(true);
     expect(isVisibleSortField("ca", filters)).toBe(true);
   });
 
-  it("excludes position presence from dynamic columns", () => {
+  it("includes Position and position-suitability display fields", () => {
     expect(
       dynamicColumnFields([
         {
@@ -70,10 +70,10 @@ describe("dynamicColumnFields", () => {
           value: { type: "integer", value: 15 },
         },
       ]),
-    ).toEqual(["pos.MC"]);
+    ).toEqual(["position", "pos.MC"]);
   });
 
-  it("keeps potential role filters out of the legacy dynamic-column contract", () => {
+  it("includes potential role filters in requested table fields", () => {
     const filters = [
       {
         id: createFilterRuleId(),
@@ -83,10 +83,18 @@ describe("dynamicColumnFields", () => {
       },
     ];
 
-    expect(dynamicColumnFields(filters)).toEqual([]);
+    expect(dynamicColumnFields(filters)).toEqual([
+      "potential_role.goalkeeper_ip",
+    ]);
     expect(isVisibleSortField("potential_role.goalkeeper_ip", filters)).toBe(
-      false,
+      true,
     );
+  });
+
+  it("allows a known metric to sort even while its column is not requested", () => {
+    expect(isVisibleSortField("position", [])).toBe(true);
+    expect(isVisibleSortField("attr.Acceleration", [])).toBe(true);
+    expect(isVisibleSortField("unknown.metric", [])).toBe(false);
   });
 });
 

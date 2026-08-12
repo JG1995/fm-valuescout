@@ -1,3 +1,5 @@
+import { getPlayerMetric } from "@/utils/player-metrics";
+
 export const SQUAD_SORT_FIELDS = [
   "name",
   "age",
@@ -9,17 +11,14 @@ export const SQUAD_SORT_FIELDS = [
   "value",
 ] as const;
 
-export type SquadSortField = (typeof SQUAD_SORT_FIELDS)[number];
+export type SquadSortField = string;
 export type SquadSortDir = "asc" | "desc";
 
 export const DEFAULT_SQUAD_SORT_FIELD: SquadSortField = "ca";
 export const DEFAULT_SQUAD_SORT_DIR: SquadSortDir = "desc";
 
 export function isSquadSortField(value: unknown): value is SquadSortField {
-  return (
-    typeof value === "string" &&
-    (SQUAD_SORT_FIELDS as readonly string[]).includes(value)
-  );
+  return typeof value === "string" && getPlayerMetric(value) !== undefined;
 }
 
 export function isSquadSortDir(value: unknown): value is SquadSortDir {
@@ -34,6 +33,10 @@ export function defaultDirForSquadSortField(
     case "nationality":
     case "club":
     case "division":
+    case "parent_club":
+    case "preferred_foot":
+    case "team_level":
+    case "position":
       return "asc";
     default:
       return "desc";

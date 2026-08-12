@@ -14,9 +14,17 @@ export function squadPlayersQueryOptions(
   limit = SQUAD_PAGE_SIZE,
   sortBy: SquadSortField = DEFAULT_SQUAD_SORT_FIELD,
   sortDir: SquadSortDir = DEFAULT_SQUAD_SORT_DIR,
+  requestedFields: string[] = [],
 ) {
   return queryOptions({
-    queryKey: squadKeys.players(offset, limit, sortBy, sortDir),
-    queryFn: () => fetchSquadPlayers(offset, limit, sortBy, sortDir),
+    queryKey: squadKeys.players(
+      offset,
+      limit,
+      sortBy,
+      sortDir,
+      requestedFields,
+    ),
+    queryFn: () =>
+      fetchSquadPlayers(offset, limit, sortBy, sortDir, requestedFields),
   });
 }

@@ -11,13 +11,19 @@ import {
   formatMoney,
   formatPlayerDob,
 } from "@/utils/format";
+import { getPlayerMetric } from "@/utils/player-metrics";
 import {
   SQUAD_PAGE_SIZE,
   squadPlayersQueryOptions,
 } from "../api/squad-players-query-options";
 import type { SquadPlayer } from "../types/squad-player";
 import type { SquadSortDir, SquadSortField } from "../types/squad-sort";
-import { defaultDirForSquadSortField } from "../types/squad-sort";
+import {
+  defaultDirForSquadSortField,
+  type SQUAD_SORT_FIELDS,
+} from "../types/squad-sort";
+
+type BasicSquadSortField = (typeof SQUAD_SORT_FIELDS)[number];
 
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
@@ -34,12 +40,12 @@ const COLUMNS = [
   { key: "pa", label: "PA", align: "right" },
   { key: "value", label: "Value", align: "right" },
 ] as const satisfies ReadonlyArray<{
-  key: SquadSortField;
+  key: BasicSquadSortField;
   label: string;
   align: "left" | "right";
 }>;
 
-const SORT_LABELS: Record<SquadSortField, string> = {
+const SORT_LABELS = {
   name: "Name",
   age: "Age / DOB",
   nationality: "Nationality",
@@ -48,7 +54,7 @@ const SORT_LABELS: Record<SquadSortField, string> = {
   ca: "CA",
   pa: "PA",
   value: "Value",
-};
+} as const satisfies Record<BasicSquadSortField, string>;
 
 type SquadOverviewPanelProps = {
   actions?: ReactNode;
@@ -76,7 +82,7 @@ function nextSort(
 
 function basicCell(
   player: SquadPlayer,
-  key: SquadSortField,
+  key: BasicSquadSortField,
 ): { text: string; title?: string; numeric: boolean } {
   switch (key) {
     case "name":
@@ -317,13 +323,17 @@ export function SquadOverviewPanel({
 
   const pageNumber = Math.floor(offset / SQUAD_PAGE_SIZE) + 1;
   const dirLabel = sortDir === "asc" ? "ascending" : "descending";
+  const sortLabel =
+    (SORT_LABELS as Record<string, string>)[sortBy] ??
+    getPlayerMetric(sortBy)?.label ??
+    sortBy;
 
   return (
     <Panel title="Squad overview" actions={actions} flush>
       <p className="px-4 pb-3 text-body-md text-on-surface-variant">
         <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
-        {page.total === 1 ? "player" : "players"} · sorted by{" "}
-        {SORT_LABELS[sortBy]} ({dirLabel})
+        {page.total === 1 ? "player" : "players"} · sorted by {sortLabel} (
+        {dirLabel})
       </p>
       <SquadOverviewTable
         players={page.players}

@@ -131,6 +131,9 @@ describe("search route", () => {
       .filter((row) => row.hasAttribute("data-index"));
     expect(bodyRows.length).toBeGreaterThan(0);
     expect(bodyRows.length).toBeLessThan(80);
+    expect(getLastSearchPlayersArgs()).toMatchObject({
+      requestedFields: [],
+    });
   });
 
   it("navigates to /players/$uid when a results row is clicked", async () => {
@@ -730,5 +733,8 @@ describe("search route", () => {
     }
     expect(within(firstRow).getByText("82")).toBeInTheDocument();
     expect(within(firstRow).getByText("16")).toBeInTheDocument();
+    expect(getLastSearchPlayersArgs()).toMatchObject({
+      requestedFields: ["role.deep_lying_playmaker_ip", "attr.Acceleration"],
+    });
   });
 });

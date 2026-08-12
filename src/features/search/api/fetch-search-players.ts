@@ -19,6 +19,7 @@ export function fetchSearchPlayers(
   sortDir: SearchSortDir = DEFAULT_SEARCH_SORT_DIR,
   filters: FilterRule[] = [],
   filterCombine: FilterCombineMode = "and",
+  requestedFields: string[] = [],
 ) {
   const applied = completeFilterRules(filters);
   return invokeCommand<SearchPlayersPage>("search_players", {
@@ -26,6 +27,7 @@ export function fetchSearchPlayers(
     limit,
     sortBy,
     sortDir,
+    requestedFields,
     ...(applied.length > 0
       ? {
           filters: applied.map(filterRuleToIpc),

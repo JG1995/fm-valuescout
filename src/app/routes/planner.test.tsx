@@ -548,6 +548,7 @@ describe("planner route", () => {
         limit: 50,
         sortBy: "name",
         sortDir: "asc",
+        requestedFields: [],
       });
     });
     expect(

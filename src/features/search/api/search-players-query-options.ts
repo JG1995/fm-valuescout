@@ -17,6 +17,7 @@ export function searchPlayersQueryOptions(
   sortDir: SearchSortDir = DEFAULT_SEARCH_SORT_DIR,
   filters: FilterRule[] = [],
   filterCombine: FilterCombineMode = "and",
+  requestedFields: string[] = [],
 ) {
   return queryOptions({
     queryKey: searchKeys.players(
@@ -26,6 +27,7 @@ export function searchPlayersQueryOptions(
       sortDir,
       filters,
       filterCombine,
+      requestedFields,
     ),
     queryFn: () =>
       fetchSearchPlayers(
@@ -35,6 +37,7 @@ export function searchPlayersQueryOptions(
         sortDir,
         filters,
         filterCombine,
+        requestedFields,
       ),
   });
 }
