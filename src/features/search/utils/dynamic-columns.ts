@@ -9,7 +9,11 @@ const BASIC_COLUMN_FIELDS = new Set<string>(BASIC_SEARCH_SORT_FIELDS);
 export function dynamicColumnFields(filters: FilterRule[]): string[] {
   const fields: string[] = [];
   for (const rule of completeFilterRules(filters)) {
-    if (BASIC_COLUMN_FIELDS.has(rule.field) || rule.field === "position") {
+    if (
+      BASIC_COLUMN_FIELDS.has(rule.field) ||
+      rule.field === "position" ||
+      rule.field.startsWith("potential_role.")
+    ) {
       continue;
     }
     if (!getFilterField(rule.field)) {

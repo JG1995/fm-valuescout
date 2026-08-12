@@ -203,7 +203,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 #### Commit 2 — Cache potential table role scores
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(scoring): cache potential table role scores`
 
@@ -240,7 +240,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 #### Commit 3 — Query selected player metrics
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tables): query selected player metrics`
 
@@ -388,19 +388,19 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **PR:** PR 1 — Configurable player tables
 
-**Commit:** Commit 2 — Cache potential table role scores
+**Commit:** Commit 3 — Query selected player metrics
 
 ### RED proof
 
-Add failing migration and cache tests for v20-to-v21 upgrade, cold and repeated potential-filter reads, multi-role shared projection, cached `NULL`, model-version mismatch, snapshot cascade, and player-boost invalidation. Add a Search route test proving a drafted potential filter makes no IPC request until Done.
+Add failing Search and Squad query tests for validated requested fields, duplicate IDs, current and potential role values, Position display and sort, bounded pages, and global potential sorting. Add frontend request-shape and query-key tests for both routes.
 
 ### Expected outcome
 
-Potential role-score filters appear beside Current scores and materialize a bounded, reusable snapshot-scoped cache only after Done applies them. Cold full-cohort work is complete before count or result ordering, while repeated reads reuse the nullable, version-gated rows and successful boosts invalidate only the affected player.
+Search and Squad request the same validated player-metric field IDs and receive typed dynamic values without sending an unbounded player set across IPC. Display-only potential fields materialize only page players; potential sorts materialize the relevant full cohort before ordered results return.
 
 ### Explicit exclusions
 
-No potential attribute table columns, ingest-time potential scoring, profile or Planner cache adoption, selected table columns, background job system, Git, or publication change belongs in the active implementation commit.
+No column menus, persisted layouts, resizing, full-height layout, row-interaction, flag rendering, Git, or publication change belongs in the active implementation commit.
 
 ## Discoveries and replanning
 
@@ -410,12 +410,14 @@ No potential attribute table columns, ingest-time potential scoring, profile or 
 - 2026-08-12: League-country flags were removed from scope. Nationality flags must cover every stored nationality in the array, including second and later values.
 - 2026-08-12: Repeated and multi-column potential-score latency is addressed with the sparse versioned SQLite cache in ADR-0019. One request shares a player projection across all missing requested roles; unchanged later reads reuse the rows.
 - 2026-08-12: Stored nationality values are full FM names, so flag rendering requires an explicit alias map rather than treating the value as an ISO code.
+- 2026-08-12: Potential metric IDs use `potential_role.<role_id>` beside the existing `role.<role_id>` current-score IDs. Both Rust and the frontend catalog validate them against the shared role catalog before SQL selection.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 — Configurable player tables | Commit 1 — Stage organized filter changes | Pending record | Added the shared metric catalog and accessible grouped picker, then made Search filter edits transactional until Done. | Sol Medium accepted after one correction round. | None |
+| PR 1 — Configurable player tables | Commit 1 — Stage organized filter changes | `1014999` | Added the shared metric catalog and accessible grouped picker, then made Search filter edits transactional until Done. | Sol Medium accepted after one correction round. | None |
+| PR 1 — Configurable player tables | Commit 2 — Cache potential table role scores | Pending record | Added migration v21, sparse versioned potential-role cache population, potential Search filters, and atomic boost invalidation. | Sol xhigh accepted after one correction round. | Windows representative cold/warm timing remains a pre-publication validation gap. |
 
 ## Final validation
 

@@ -261,6 +261,13 @@ pub(super) fn reconcile_verified_boost(
         reconcile_mentality(&tx, prepared, &verified, &current)?;
     }
 
+    crate::features::player_metrics::potential_cache::invalidate_player_cache(
+        &tx,
+        prepared.snapshot_id,
+        i64::from(prepared.player_uid),
+    )
+    .map_err(database_sync_error)?;
+
     tx.commit().map_err(database_sync_error)?;
     Ok(verified)
 }
@@ -1134,6 +1141,49 @@ mod tests {
         assert_eq!(repeated.expected_current_ability, 155);
         assert_eq!(repeated.target_current_ability, Some(160));
         assert_eq!(repeated.source_request_id, "scan-player-1");
+    }
+
+    #[test]
+    fn successful_player_boost_invalidates_that_players_potential_role_cache() {
+        let mut fixture = seeded_player(
+            Some(20),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO player_potential_role_scores (
+                    snapshot_id, uid, role_id, score, projection_model_version
+                 ) VALUES (?1, ?2, 'goalkeeper_ip', 80, 1)",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed potential cache");
+        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare CA boost");
+
+        super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_ca_result(150, 155, 170),
+        )
+        .expect("reconcile CA boost");
+
+        let cache_rows: i64 = fixture
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1 AND uid = ?2",
+                params![fixture.snapshot_id, PLAYER_UID],
+                |row| row.get(0),
+            )
+            .expect("count invalidated potential cache rows");
+        assert_eq!(cache_rows, 0);
     }
 
     #[test]

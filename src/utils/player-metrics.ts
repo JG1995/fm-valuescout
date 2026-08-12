@@ -10,7 +10,8 @@ export type PlayerMetricCategory =
   | "hidden-attributes"
   | "personality"
   | "position-suitability"
-  | "current-role-scores";
+  | "current-role-scores"
+  | "potential-role-scores";
 
 export type PlayerMetricRoleFamily =
   | "Goalkeepers"
@@ -268,6 +269,17 @@ const CURRENT_ROLE_SCORE_METRICS: PlayerMetric[] = ROLE_CATALOG.map((role) => ({
   roleFamily: ROLE_FAMILY_BY_ID[role.id],
 }));
 
+const POTENTIAL_ROLE_SCORE_METRICS: PlayerMetric[] = ROLE_CATALOG.map(
+  (role) => ({
+    id: `potential_role.${role.id}`,
+    label: `Potential role · ${role.label}`,
+    category: "potential-role-scores",
+    kind: "integer",
+    operators: INTEGER_OPERATORS,
+    roleFamily: ROLE_FAMILY_BY_ID[role.id],
+  }),
+);
+
 export const PLAYER_METRICS: readonly PlayerMetric[] = [
   {
     id: "name",
@@ -446,6 +458,7 @@ export const PLAYER_METRICS: readonly PlayerMetric[] = [
   ...PERSONALITY_METRICS,
   ...POSITION_SUITABILITY_METRICS,
   ...CURRENT_ROLE_SCORE_METRICS,
+  ...POTENTIAL_ROLE_SCORE_METRICS,
 ];
 
 const METRIC_BY_ID = new Map(

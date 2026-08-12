@@ -6,6 +6,18 @@ function roleMetric(roleId: string) {
 }
 
 describe("PLAYER_METRICS", () => {
+  it("keeps potential role metrics in their own grouped family", () => {
+    expect(
+      PLAYER_METRICS.find(
+        (metric) => metric.id === "potential_role.goalkeeper_ip",
+      ),
+    ).toMatchObject({
+      label: "Potential role · Goalkeeper (IP)",
+      category: "potential-role-scores",
+      roleFamily: "Goalkeepers",
+    });
+  });
+
   it.each([
     ["goalkeeper_ip", "Goalkeepers"],
     ["centre_back_ip", "Central defense"],

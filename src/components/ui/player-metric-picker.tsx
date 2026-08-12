@@ -32,6 +32,7 @@ const CATEGORY_ORDER: readonly PlayerMetricCategory[] = [
   "personality",
   "position-suitability",
   "current-role-scores",
+  "potential-role-scores",
 ];
 
 const CATEGORY_LABELS: Record<PlayerMetricCategory, string> = {
@@ -43,6 +44,7 @@ const CATEGORY_LABELS: Record<PlayerMetricCategory, string> = {
   personality: "Personality",
   "position-suitability": "Position suitability",
   "current-role-scores": "Current role scores",
+  "potential-role-scores": "Potential role scores",
 };
 
 const ROLE_FAMILY_ORDER: readonly PlayerMetricRoleFamily[] = [
@@ -79,7 +81,10 @@ function groupsForMetrics(
       continue;
     }
 
-    if (category !== "current-role-scores") {
+    if (
+      category !== "current-role-scores" &&
+      category !== "potential-role-scores"
+    ) {
       groups.push({
         label: CATEGORY_LABELS[category],
         metrics: categoryMetrics,

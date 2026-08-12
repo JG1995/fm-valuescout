@@ -4,6 +4,7 @@ pub mod health;
 pub mod memory_read;
 pub mod planner;
 pub mod player;
+pub mod player_metrics;
 pub mod scoring;
 pub mod search;
 pub mod snapshot;

@@ -72,6 +72,22 @@ describe("dynamicColumnFields", () => {
       ]),
     ).toEqual(["pos.MC"]);
   });
+
+  it("keeps potential role filters out of the legacy dynamic-column contract", () => {
+    const filters = [
+      {
+        id: createFilterRuleId(),
+        field: "potential_role.goalkeeper_ip",
+        op: "gt",
+        value: { type: "integer" as const, value: 70 },
+      },
+    ];
+
+    expect(dynamicColumnFields(filters)).toEqual([]);
+    expect(isVisibleSortField("potential_role.goalkeeper_ip", filters)).toBe(
+      false,
+    );
+  });
 });
 
 describe("ROLE_CATALOG", () => {

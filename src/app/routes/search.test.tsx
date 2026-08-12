@@ -441,6 +441,50 @@ describe("search route", () => {
     expect(await screen.findByText("Low CA")).toBeInTheDocument();
   });
 
+  it("keeps a drafted potential role filter query-silent until Done", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Potential target", 180)]);
+    renderSearchRoute();
+
+    expect(await screen.findByText("Potential target")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+    const callsBeforeEdit = getSearchPlayersCallCount();
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "potential role",
+    );
+
+    expect(
+      within(dialog).getByRole("group", {
+        name: "Potential role scores · Goalkeepers",
+      }),
+    ).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole("option", {
+        name: "Potential role · Goalkeeper (IP)",
+      }),
+    );
+    fireEvent.change(within(dialog).getByLabelText("Value"), {
+      target: { value: "50" },
+    });
+
+    expect(getSearchPlayersCallCount()).toBe(callsBeforeEdit);
+
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()?.filters).toEqual([
+        { field: "potential_role.goalkeeper_ip", op: "gt", value: 50 },
+      ]);
+    });
+  });
+
   it("shows a no-matches empty state when filters exclude every player", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

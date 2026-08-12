@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 
 use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Row};
 
-use super::filter::{compile_filters, dynamic_fields_from_ast, field_value_sql, FilterAst};
+use super::filter::{
+    compile_filters, dynamic_fields_from_ast, field_value_sql, potential_role_ids_from_ast,
+    FilterAst,
+};
 
 pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
@@ -239,6 +242,15 @@ pub fn search_players(
             }
         }
     };
+
+    if let Some(ast) = filter_ast {
+        let potential_role_ids = potential_role_ids_from_ast(ast)?;
+        crate::features::player_metrics::potential_cache::materialize_snapshot_roles(
+            conn,
+            snapshot_id,
+            &potential_role_ids,
+        )?;
+    }
 
     let mut where_sql = "players.snapshot_id = ?1".to_string();
     if let Some(compiled) = &compiled {
@@ -1272,6 +1284,228 @@ mod tests {
 
         assert_eq!(page.total, 1);
         assert_eq!(page.players[0].name, "High DLP");
+    }
+
+    #[test]
+    fn potential_role_filter_materializes_the_full_snapshot_and_reuses_cached_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("potential-role-filter.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Potential target",
+                    100,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "GK": 20 }),
+                        attributes: json!({ "Positioning": 10, "Concentration": 10 }),
+                        hidden: json!({}),
+                        personality: json!({}),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Unknown potential",
+                    180,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "GK": 20 }),
+                        attributes: json!({ "Positioning": null, "Concentration": 20 }),
+                        hidden: json!({}),
+                        personality: json!({}),
+                    },
+                ),
+            ],
+        );
+
+        let rules = vec![filter_rule(
+            "potential_role.line_holding_keeper_oop",
+            "gt",
+            FilterValue::Integer(0),
+        )];
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            rules.clone(),
+            None,
+        )
+        .expect("potential role filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Potential target");
+        let cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE role_id = 'line_holding_keeper_oop'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count materialized rows");
+        assert_eq!(cache_rows, 2, "the filter needs the whole snapshot");
+        let null_scores: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE role_id = 'line_holding_keeper_oop' AND score IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count cached null scores");
+        assert_eq!(null_scores, 1);
+
+        conn.execute(
+            "UPDATE players SET attributes_json = '{invalid JSON}'
+             WHERE snapshot_id = (SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1)",
+            [],
+        )
+        .expect("make a recalculation observable");
+
+        search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            rules,
+            None,
+        )
+        .expect("repeat potential role filter");
+        let repeated_cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE role_id = 'line_holding_keeper_oop'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count reused cache rows");
+        assert_eq!(repeated_cache_rows, 2);
+    }
+
+    #[test]
+    fn invalid_filter_rules_do_not_materialize_potential_cache_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("invalid-potential-filter.db"));
+        ingest_players(&mut conn, vec![player_template(1, "No cache work", 150)]);
+
+        let error = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![
+                filter_rule(
+                    "potential_role.goalkeeper_ip",
+                    "gt",
+                    FilterValue::Integer(70),
+                ),
+                filter_rule("name", "gt", FilterValue::Text("Scout".to_string())),
+            ],
+            Some("and"),
+        )
+        .expect_err("invalid filter");
+        assert!(error.contains("invalid string filter operator"));
+        let cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count cache rows");
+        assert_eq!(cache_rows, 0);
+    }
+
+    #[test]
+    fn potential_role_filters_materialize_each_requested_role_and_replace_stale_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("potential-role-stale.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_with_deep_fields(
+                1,
+                "Projected keeper",
+                100,
+                DeepPlayerFields {
+                    nationalities: json!(["ENG"]),
+                    positions: json!({ "GK": 20 }),
+                    attributes: json!({
+                        "Positioning": 10,
+                        "Concentration": 10,
+                        "RushingOut": 10,
+                        "Anticipation": 10,
+                        "Decisions": 10,
+                    }),
+                    hidden: json!({}),
+                    personality: json!({}),
+                },
+            )],
+        );
+        let rules = vec![
+            filter_rule(
+                "potential_role.line_holding_keeper_oop",
+                "gt",
+                FilterValue::Integer(0),
+            ),
+            filter_rule(
+                "potential_role.sweeper_keeper_oop",
+                "gt",
+                FilterValue::Integer(0),
+            ),
+        ];
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            rules.clone(),
+            Some("and"),
+        )
+        .expect("materialize multiple potential roles");
+        assert_eq!(page.total, 1);
+        let cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count cached roles");
+        assert_eq!(cache_rows, 2);
+
+        conn.execute(
+            "UPDATE player_potential_role_scores
+             SET score = 99, projection_model_version = 2
+             WHERE role_id = 'line_holding_keeper_oop'",
+            [],
+        )
+        .expect("mark cache row stale");
+
+        search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            rules,
+            Some("and"),
+        )
+        .expect("replace stale cache row");
+        let (score, version): (Option<i64>, i64) = conn
+            .query_row(
+                "SELECT score, projection_model_version
+                 FROM player_potential_role_scores
+                 WHERE role_id = 'line_holding_keeper_oop'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read refreshed cache row");
+        assert!(score.is_some_and(|value| value < 99));
+        assert_eq!(version, 1);
     }
 
     #[test]
