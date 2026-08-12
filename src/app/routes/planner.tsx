@@ -1,9 +1,15 @@
-import { useIsFetching, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useIsFetching,
+  useQueryClient,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { DatabaseZap, UsersRound } from "lucide-react";
 import { Suspense } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { academyKeys } from "@/features/academy/api/academy-keys";
+import { SquadCsvImportActions } from "@/features/csv-import/components/squad-csv-import-actions";
 import { plannerClubFamilyQueryOptions } from "@/features/planner/api/get-planner-club-family-query-options";
 import { plannerClubsQueryOptions } from "@/features/planner/api/planner-clubs-query-options";
 import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
@@ -83,6 +89,7 @@ export const Route = createFileRoute("/planner")({
 });
 
 function PlannerPageContent() {
+  const queryClient = useQueryClient();
   const { data: snapshot, isRefetchError: snapshotRefreshError } =
     useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: clubFamily } = useSuspenseQuery(plannerClubFamilyQueryOptions);
@@ -176,6 +183,17 @@ function PlannerPageContent() {
           >
             <SquadOverviewPanel
               key={`${squadSort}:${squadDir}`}
+              actions={
+                <SquadCsvImportActions
+                  activeSaveId={snapshot.saveId}
+                  snapshotId={snapshot.id}
+                  onYouthImported={() => {
+                    void queryClient.invalidateQueries({
+                      queryKey: academyKeys.all,
+                    });
+                  }}
+                />
+              }
               sortBy={squadSort}
               sortDir={squadDir}
               onSortChange={onSquadSortChange}

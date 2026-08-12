@@ -49,7 +49,7 @@ Turn the current Planner surface into a broader Squad workspace. Give the user o
 
 ## Current-state map
 
-- Relevant components: `src/app/routes/planner.tsx` composes the Squad overview, Planner depth, and Tactic workspaces; `src/features/squad/` owns the overview query and table; `src/features/planner/components/planner-workspace-tabs.tsx` owns tab semantics; `src/app/routes/index.tsx` composes Dashboard snapshot, Club Setup, and CSV panels; `src/app/components/app-nav-rail.tsx` labels the route Squad.
+- Relevant components: `src/app/routes/planner.tsx` composes the Squad overview, CSV actions, Planner depth, and Tactic workspaces; `src/features/squad/` owns the overview query and table; `src/features/csv-import/` owns the shared context-bound importer and Squad modals; `src/features/planner/components/planner-workspace-tabs.tsx` owns tab semantics; `src/app/routes/index.tsx` composes Dashboard snapshot, Club Setup, and CSV panels; `src/app/components/app-nav-rail.tsx` labels the route Squad.
 - Data model: save-scoped `planner_club_settings` and `planner_club_sources` define the primary and associated club names; current-snapshot `players.current_club` supplies exact membership; no schema change is required.
 - Persistence and migrations: Planner club-family settings remain save-scoped. Moneyball enrichment remains snapshot-owned and Youth career enrichment remains save-owned. Player boosts reconcile current-snapshot player rows and affected role scores. No migration is planned.
 - Existing behavior: `/planner?view=squad` is the configured club-family overview, `/planner?view=planner` is the depth matrix, and `/planner?view=tactic` is the tactic editor. Club Setup is Dashboard-only at `/#club-setup`; configured and unconfigured saves both default to Squad.
@@ -235,7 +235,7 @@ Expected evidence: Rust tests prove exact family membership, deduplication, save
 
 #### Commit 3 — Import squad CSV enrichment
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): add squad CSV import modals`
 
@@ -278,7 +278,7 @@ Expected evidence: frontend tests prove modal focus, drop/browse equivalence, ca
 
 #### Commit 4 — Correct CA boost age eligibility
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `fix(player): correct CA boost age eligibility`
 
@@ -410,19 +410,19 @@ Expected evidence: Rust and bridge tests prove eligibility, untouched null/high 
 
 **PR:** PR 1 — Build the Squad workspace
 
-**Commit:** Commit 3 — Import squad CSV enrichment
+**Commit:** Commit 4 — Correct CA boost age eligibility
 
 ### RED proof
 
-Add focused CSV-import modal tests first. They must require explicit Moneyball and Youth Academy entry points, format-specific rejection before writes, a single guarded browse-or-drop path, context-bound feedback, and retained Dashboard auto-detection.
+Add focused Rust and profile tests first. They must reject the previous age-21 +5 rule, prove ages 20, 21, 28, and 29 map to +5, +10, +10, and ineligible respectively, and prove age 29 cannot submit a bridge request.
 
 ### Expected outcome
 
-Configured Squad provides explicit Moneyball and Youth Academy CSV import modals with format-safe, context-bound persistence while Dashboard retains its current auto-detect importer.
+The Rust authority and profile preview agree: age 20 or younger receives +5, ages 21 through 28 receive +10, and age 29 or older has no CA action while existing caps and recovery behavior stay intact.
 
 ### Explicit exclusions
 
-CA-rule correction, bulk commands, bridge changes, Search filters, custom columns, row selection, historical snapshots, Planner-depth changes, push, and publication do not belong in this active commit.
+Squad-wide orchestration, bridge protocol changes, custom increments, Wonderkid behavior, Search filters, custom columns, row selection, historical snapshots, Planner-depth changes, push, and publication do not belong in this active commit.
 
 ## Discoveries and replanning
 
@@ -432,6 +432,8 @@ CA-rule correction, bulk commands, bridge changes, Search filters, custom column
 - 2026-08-12: Commit review found that the initial plan treated every player-specific bridge or reconciliation failure as continuable. The plan now preserves ADR-0017's fail-closed recovery boundary and requires a fatal-versus-continuable test matrix for both squad actions.
 - 2026-08-12: The Dashboard is expected to leave the user-facing app later, but this feature keeps its current CSV import while adding explicit Squad import entry points.
 - 2026-08-12: Commit 2 keeps overview reads under the existing Planner invalidation root with a nested `['planner', 'squad']` key. Its 50-row pages stay below the table virtualization threshold while Rust retains the 200-row hard limit.
+- 2026-08-12: Commit 3 uses the installed Tauri WebView drop API without a new capability. Each open modal captures its save/snapshot generation, so a delayed drop from a replaced context is ignored before IPC.
+- 2026-08-12: Commit 3 serializes all modal intake while a CSV persistence request is pending. Later single-file drops and multi-file validation errors are ignored until the active request settles, so they cannot overwrite truthful pending state or reopen another import path.
 
 ## Completed work
 
@@ -439,6 +441,7 @@ CA-rule correction, bulk commands, bridge changes, Search filters, custom column
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Reorganize the Squad workspace | Pending record | Squad navigation, URL-backed workspace composition, Dashboard Club Setup, and recovery links | Sol Medium — Accept | None |
 | PR 1 | Commit 2 — List configured squad players | Pending record | Bounded exact club-family overview query, sortable fixed-column table, paging, and profile links | Sol High — Accept | None |
+| PR 1 | Commit 3 — Import squad CSV enrichment | Pending record | Format-bound Squad CSV modals, guarded browse/drop intake, expected-format persistence enforcement, and retained Dashboard auto-detection | Sol High — Accept | None |
 
 ## Final validation
 

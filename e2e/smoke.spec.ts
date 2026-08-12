@@ -292,6 +292,48 @@ test.describe("walking skeleton smoke", () => {
     ).toHaveAttribute("aria-sort", "ascending");
   });
 
+  test("configured Squad exposes its format-bound CSV upload modals", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+      csvImportFormat: "moneyball",
+    });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("button", { name: "Upload Moneyball CSV" }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("button", { name: "Upload Youth Academy CSV" }),
+    ).toBeVisible();
+
+    await main.getByRole("button", { name: "Upload Moneyball CSV" }).click();
+    const moneyballDialog = page.getByRole("dialog", {
+      name: "Upload Moneyball CSV",
+    });
+    await expect(moneyballDialog).toContainText(
+      "Drop one CSV file here, or browse your files.",
+    );
+    await moneyballDialog.getByRole("button", { name: "Browse files" }).click();
+    await expect(
+      moneyballDialog.getByText(/Moneyball imported/i),
+    ).toBeVisible();
+    expect(await moneyballDialog.textContent()).not.toContain(
+      "/tmp/smoke-import.csv",
+    );
+    await moneyballDialog.getByRole("button", { name: "Close" }).click();
+
+    await main
+      .getByRole("button", { name: "Upload Youth Academy CSV" })
+      .click();
+    await expect(
+      page.getByRole("dialog", { name: "Upload Youth Academy CSV" }),
+    ).toContainText("Only a Youth Academy export can be imported");
+  });
+
   test("planner tactic editor saves a linked phase adjustment", async ({
     page,
   }) => {

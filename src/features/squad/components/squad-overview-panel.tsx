@@ -1,6 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronUp, UsersRound } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
@@ -50,6 +51,7 @@ const SORT_LABELS: Record<SquadSortField, string> = {
 };
 
 type SquadOverviewPanelProps = {
+  actions?: ReactNode;
   sortBy: SquadSortField;
   sortDir: SquadSortDir;
   onSortChange: (sortBy: SquadSortField, sortDir: SquadSortDir) => void;
@@ -271,6 +273,7 @@ function SquadOverviewTable({
 }
 
 export function SquadOverviewPanel({
+  actions,
   sortBy,
   sortDir,
   onSortChange,
@@ -282,7 +285,6 @@ export function SquadOverviewPanel({
   const pageCount = Math.ceil(page.total / SQUAD_PAGE_SIZE);
   const maxOffset = Math.max(0, (pageCount - 1) * SQUAD_PAGE_SIZE);
   const needsPageClamp = offset > maxOffset;
-
   useEffect(() => {
     if (needsPageClamp) {
       setOffset(maxOffset);
@@ -291,7 +293,7 @@ export function SquadOverviewPanel({
 
   if (needsPageClamp) {
     return (
-      <Panel title="Squad overview" flush>
+      <Panel title="Squad overview" actions={actions} flush>
         <div
           aria-busy="true"
           aria-live="polite"
@@ -305,7 +307,7 @@ export function SquadOverviewPanel({
 
   if (page.total === 0) {
     return (
-      <Panel title="Squad overview" flush>
+      <Panel title="Squad overview" actions={actions} flush>
         <EmptyState icon={UsersRound} title="No players in your club family">
           No current-snapshot players match the clubs configured for this save.
         </EmptyState>
@@ -317,7 +319,7 @@ export function SquadOverviewPanel({
   const dirLabel = sortDir === "asc" ? "ascending" : "descending";
 
   return (
-    <Panel title="Squad overview" flush>
+    <Panel title="Squad overview" actions={actions} flush>
       <p className="px-4 pb-3 text-body-md text-on-surface-variant">
         <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
         {page.total === 1 ? "player" : "players"} · sorted by{" "}
