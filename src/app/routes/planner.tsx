@@ -210,7 +210,7 @@ function PlannerPageContent() {
   }
 
   return (
-    <div className="flex min-h-full min-w-0 flex-col gap-2">
+    <div className="flex h-full min-w-0 flex-col gap-2">
       {plannerHeader}
       <div
         {...plannerWorkspacePanelProps("squad", activeWorkspace)}

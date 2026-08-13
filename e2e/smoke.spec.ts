@@ -307,6 +307,7 @@ test.describe("walking skeleton smoke", () => {
   }) => {
     await stubTauriIpc(page, {
       plannerSnapshot: true,
+      playerTableRowCount: 101,
       squadOverview: true,
     });
 
@@ -366,8 +367,11 @@ test.describe("walking skeleton smoke", () => {
         dimensions.clientWidth + 1,
       );
       expect(dimensions.scrollHeight).toBeGreaterThanOrEqual(
-        dimensions.clientHeight,
+        dimensions.clientHeight + 1,
       );
+      expect(
+        await scroller.locator("tbody tr[data-index]").count(),
+      ).toBeLessThan(101);
     }
   });
 
@@ -414,6 +418,7 @@ test.describe("walking skeleton smoke", () => {
   test("Search keeps its table inside desktop viewports", async ({ page }) => {
     await stubTauriIpc(page, {
       plannerSnapshot: true,
+      playerTableRowCount: 101,
       squadOverview: true,
     });
 
@@ -473,8 +478,11 @@ test.describe("walking skeleton smoke", () => {
         dimensions.clientWidth + 1,
       );
       expect(dimensions.scrollHeight).toBeGreaterThanOrEqual(
-        dimensions.clientHeight,
+        dimensions.clientHeight + 1,
       );
+      expect(
+        await scroller.locator("tbody tr[data-index]").count(),
+      ).toBeLessThan(101);
     }
   });
 

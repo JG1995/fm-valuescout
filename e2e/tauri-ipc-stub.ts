@@ -4,6 +4,7 @@ type SmokeStubOptions = {
   csvImportFormat?: "youthTracker" | "moneyball";
   plannerSnapshot?: boolean;
   plannerPotentialScores?: boolean;
+  playerTableRowCount?: number;
   squadPageFailure?: boolean;
   squadOverview?: boolean;
   playerProfile?: boolean;
@@ -14,6 +15,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const csvImportFormat = options.csvImportFormat ?? null;
   const plannerSnapshot = options.plannerSnapshot ?? false;
   const plannerPotentialScores = options.plannerPotentialScores ?? false;
+  const playerTableRowCount = options.playerTableRowCount ?? null;
   const squadPageFailure = options.squadPageFailure ?? false;
   const squadOverview = options.squadOverview ?? false;
   const playerProfile = options.playerProfile ?? false;
@@ -25,6 +27,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const csvImportFormat = ${JSON.stringify(csvImportFormat)};
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
       const plannerPotentialScores = ${plannerPotentialScores ? "true" : "false"};
+      const playerTableRowCount = ${JSON.stringify(playerTableRowCount)};
       const squadPageFailure = ${squadPageFailure ? "true" : "false"};
       const squadOverview = ${squadOverview ? "true" : "false"};
       const playerProfile = ${playerProfile ? "true" : "false"};
@@ -181,6 +184,21 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           marketValueGbp: 12000000,
         },
       ] : [];
+      if (squadOverview && playerTableRowCount !== null) {
+        squadPlayers = Array.from({ length: playerTableRowCount }, (_, index) => ({
+          uid: index + 1,
+          name: "Player " + String(index + 1).padStart(3, "0"),
+          age: 25,
+          birthYear: 2001,
+          birthDayOfYear: 80,
+          nationalities: ["ENG"],
+          club: "Barcelona",
+          division: "La Liga",
+          ca: 200 - index,
+          pa: 210 - index,
+          marketValueGbp: 16000000,
+        }));
+      }
       if (squadPageFailure) {
         squadPlayers = Array.from({ length: 51 }, (_, index) => ({
           uid: index + 1,
@@ -389,8 +407,17 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "search_players") {
+            const offset = Number.isInteger(args?.offset)
+              ? Math.max(0, args.offset)
+              : 0;
+            const limit = Number.isInteger(args?.limit)
+              ? Math.min(200, Math.max(1, args.limit))
+              : 50;
             return squadOverview
-              ? { players: squadPlayers, total: squadPlayers.length }
+              ? {
+                  players: squadPlayers.slice(offset, offset + limit),
+                  total: squadPlayers.length,
+                }
               : { players: [], total: 0 };
           }
 

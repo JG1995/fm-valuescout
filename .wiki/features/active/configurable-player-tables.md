@@ -280,7 +280,11 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **Provisional commit:** `feat(tables): virtualize full-height player lists`
 
+**Correction ref:** Pending record.
+
 **Work:** Extract the stable shared virtual-table behavior, make Search and Squad propagate full-height flex constraints, remove Squad's page controls in favor of virtual page loading, and make every Squad row pointer- and keyboard-activatable.
+
+**Correction:** The initial `min-h-full` route roots let the virtual spacer expand the document and made `<main>` the scroll owner. Use `h-full` route roots so the table scroller remains the only vertical scroll owner.
 
 **Out of scope:**
 
@@ -291,13 +295,13 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 - Owners and files: shared player-table component/hook under `src/components/`, Search and Squad panels, Search/Planner routes, narrowly necessary Panel/app-shell flex hooks, route tests, IPC stub, and smoke coverage.
 - Existing patterns to verify: Search virtual page math and roving focus, `ResizeObserver` fallback, sticky header constants, Squad URL sort, hidden Planner tab panels, and the existing route-level suspense states.
 - Constraints and invariants: one vertical scroll owner; no visible pagination; no all-row client array; fixed row height; bounded overscan/page queries; row click and Enter open the profile; browser back restores route sort/filter state; Planner and Tactic tabs retain usable scrolling.
-- Dependencies and ordering: consumes commit 3's common paged metric shape and creates the header/table base extended in commit 5.
+- Dependencies and ordering: consumes commit 3's common paged metric shape and creates the header/table base extended in commit 5. Commit 5 remains the next planned work after this correction; Commit 6 keeps its original position.
 
 **Implementation profile:** Terra Max — two high-churn table implementations, route sizing, virtualization, and keyboard navigation must converge without regressions.
 
 **Review profile:** Sol High — focus on user-visible navigation, paging boundaries, layout containment, and accessibility.
 
-**Validation:** Start with failing tests for Squad virtual range page requests, absence of page navigation, whole-row click/Enter, Search and Squad sort persistence after profile/back, and bounded full-height scrollers. Run `./scripts/dev test src/app/routes/search.test.tsx src/app/routes/planner.test.tsx`, `./scripts/dev check`, `./scripts/dev smoke`, and `./scripts/dev secrets --staged`. Manually inspect Search and all three Squad workspaces at 1280×800 and 1600×900. Expected evidence: one continuous table fills remaining height and only virtual pages load.
+**Validation:** Start with failing tests for Squad virtual range page requests, absence of page navigation, whole-row click/Enter, Search and Squad sort persistence after profile/back, and bounded full-height scrollers. Add a paged browser fixture with 101 rows and assert that each table renders fewer than 101 rows while `<main>` stays bounded. Against the initial route roots, only the Search and Squad layout tests failed, with approximately 4,353 px and 4,406 px `<main>` scrollports in an 800 px viewport. After the `h-full` correction, `./scripts/dev test src/app/routes/search.test.tsx src/app/routes/planner.test.tsx` passed 88/88, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 32 tests. Manual inspection remains at 1280×800 and 1600×900.
 
 **Stop conditions:** Stop if a shared component needs feature-specific imports, if route sizing introduces nested vertical scrollbars, or if hidden Planner panels influence the active Squad table's measured height.
 
@@ -307,6 +311,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 - Verify Search did not lose its loading placeholders or row focus behavior.
 - Verify Squad has no Previous / Next UI and never requests an unbounded limit.
 - Verify click, Enter, ArrowUp, ArrowDown, and visible focus on both tables.
+- Verify a paged fixture larger than the viewport keeps `<main>` bounded and the table scroller as the only vertical scroll owner.
 - Inspect 1280×800 overflow and Planner/Tactic workspace behavior.
 - Verify back navigation preserves URL state without promising scroll restoration.
 
@@ -400,7 +405,7 @@ Search and Squad retain independent persisted column order and widths. Headers s
 
 ### Explicit exclusions
 
-No column menus, persisted layouts, resizing, flag rendering, Git, or publication change belongs in the active implementation commit.
+No drag reordering, shared Search/Squad presets, column-width URLs, nationality flags, or Squad filters belong in Commit 5.
 
 ## Discoveries and replanning
 
@@ -411,6 +416,7 @@ No column menus, persisted layouts, resizing, flag rendering, Git, or publicatio
 - 2026-08-12: Repeated and multi-column potential-score latency is addressed with the sparse versioned SQLite cache in ADR-0019. One request shares a player projection across all missing requested roles; unchanged later reads reuse the rows.
 - 2026-08-12: Stored nationality values are full FM names, so flag rendering requires an explicit alias map rather than treating the value as an ISO code.
 - 2026-08-12: Potential metric IDs use `potential_role.<role_id>` beside the existing `role.<role_id>` current-score IDs. Both Rust and the frontend catalog validate them against the shared role catalog before SQL selection.
+- 2026-08-13: Reopened Commit 4 after a 101-row paged browser regression found that `min-h-full` route roots let the virtual spacer expand the document and made `<main>` the scroll owner. The earlier two-row browser fixtures and synthetic unit viewport did not create a large spacer. Only the Search and Squad layout tests failed in an 800 px viewport, with approximately 4,353 px and 4,406 px scrollports. Changing the route roots to `h-full` bounded the layout; `./scripts/dev smoke` passed 32 tests. Commit 5 remains next and Commit 6 is not renumbered.
 
 ## Completed work
 
@@ -419,7 +425,7 @@ No column menus, persisted layouts, resizing, flag rendering, Git, or publicatio
 | PR 1 — Configurable player tables | Commit 1 — Stage organized filter changes | `1014999` | Added the shared metric catalog and accessible grouped picker, then made Search filter edits transactional until Done. | Sol Medium accepted after one correction round. | None |
 | PR 1 — Configurable player tables | Commit 2 — Cache potential table role scores | `b258df8` | Added migration v21, sparse versioned potential-role cache population, potential Search filters, and atomic boost invalidation. | Sol xhigh accepted after one correction round. | Windows representative cold/warm timing remains a pre-publication validation gap. |
 | PR 1 — Configurable player tables | Commit 3 — Query selected player metrics | `ef85cd6` | Added the shared validated metric resolver and typed dynamic values to Search and Squad, including Position display/sort and page-versus-cohort potential cache population. | Sol xhigh accepted after one correction round. | Windows representative cold/warm timing remains a pre-publication validation gap. |
-| PR 1 — Configurable player tables | Commit 4 — Virtualize full-height player lists | Pending record | Extracted the shared full-height virtual table, removed Squad pagination, and added whole-row profile activation with resilient page-boundary behavior. | Sol High accepted after three correction rounds. | None |
+| PR 1 — Configurable player tables | Commit 4 — Virtualize full-height player lists | `7b16eef`; correction pending record | Extracted the shared full-height virtual table, removed Squad pagination, and added whole-row profile activation with resilient page-boundary behavior. Corrected the route height chain and added paged 101-row browser coverage. | Sol High accepted the initial implementation after three correction rounds; a fresh Sol High review accepted the correction with no findings. | Native Tauri/WebView visual inspection remains outstanding; automated Chromium covers 1280×800 and 1600×900. |
 
 ## Final validation
 
