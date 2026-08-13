@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -151,7 +151,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 ### PR 1 — Configurable player tables
 
-**Status:** Active
+**Status:** Ready for publication
 
 **Build-feature-loop profile:** Terra Max
 
@@ -355,7 +355,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 #### Commit 6 — Render all nationality flags
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): render nationality flags`
 
@@ -367,9 +367,9 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **Implementation packet:**
 
-- Owners and files: `package.json`, `pnpm-lock.yaml`, a checked-in fixture containing every distinct nationality from the representative snapshot, shared nationality mapping/component/tests, and Search/Squad cell renderers. Record the dependency license through existing package metadata rather than vendoring untracked artwork.
+- Owners and files: `package.json`, `pnpm-lock.yaml`, one vetted public-domain Zanzibar SVG, a checked-in fixture containing every distinct nationality from the representative snapshot, shared nationality mapping/component/tests, and Search/Squad cell renderers. Record the dependency license through existing package metadata and the Zanzibar asset source in the tracked SVG comment.
 - Existing patterns to verify: ordered `nationalities` arrays, existing title-based compact tooltips, fixed row height, Vite asset bundling, and the complete distinct set of stored FM nationality names.
-- Constraints and invariants: every value in the observed-nationality fixture resolves to a flag; render every array value in order; use ISO 3166-1 or supported subdivision codes only after explicit mapping; include England, Scotland, Wales, and Northern Ireland flags; only unseen future strings show original text; no network request; no league icon.
+- Constraints and invariants: every value in the observed-nationality fixture resolves to a flag; render every array value in order; use ISO 3166-1 or supported subdivision codes only after explicit mapping, except the one vetted public-domain Zanzibar SVG; include England, Scotland, Wales, and Northern Ireland flags; only unseen future strings show original text; no network request; no league icon.
 - Dependencies and ordering: lands last so one shared configurable nationality column receives the behavior in both tables.
 
 **Implementation profile:** Terra xhigh — a contained presentation change with a correctness-sensitive mapping and new bundled asset dependency.
@@ -378,7 +378,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **Validation:** Start with a failing coverage test that enumerates every distinct nationality from the representative snapshot and requires a flag mapping for each one. Add renderer tests for all four UK home nations, two and three nationalities, empty arrays, and an invented future value that exercises truthful text fallback. Run `./scripts/dev test src/components src/features/search src/features/squad`, `./scripts/dev check`, `./scripts/dev smoke`, and `./scripts/dev secrets --staged`. Manually hover every flag in a multi-nationality cell and inspect the packaged/offline asset path. Expected evidence: all currently stored values resolve and render in order with full-name tooltips, while only the invented unknown falls back to text and no league flags appear.
 
-**Stop conditions:** Stop if the selected package cannot bundle the required home-nation subdivisions offline under a compatible license, or if representative FM names cannot be mapped without guessing.
+**Stop conditions:** Stop if the selected package cannot bundle the required home-nation subdivisions offline under a compatible license, if the approved Zanzibar source cannot be bundled as a public-domain SVG, or if representative FM names cannot be mapped without guessing.
 
 **Review mandate:**
 
@@ -393,19 +393,19 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **PR:** PR 1 — Configurable player tables
 
-**Commit:** Commit 6 — Render all nationality flags
+**Commit:** No active content commit — feature validation pending
 
 ### RED proof
 
-Add a failing coverage test for every distinct nationality in the representative snapshot, then add renderer tests for the four UK home nations, multiple nationalities, empty arrays, and truthful unknown-value fallback.
+Commit 6 is complete. Run the feature-complete validation and review before publication.
 
 ### Expected outcome
 
-Search and Squad render bundled SVG flags for every stored nationality in order, with full-name hover and accessibility labels. Unknown values remain truthful text, and no league flags or runtime network requests appear.
+PR 1 is ready for publication after feature-complete validation. No push or pull request has been created.
 
 ### Explicit exclusions
 
-No league or division flags, remote assets, flag emoji, nationality normalization in SQLite, or nationality sort changes belong in Commit 6.
+No league or division flags, remote assets, flag emoji, nationality normalization in SQLite, or nationality sort changes belong in Commit 6. The one approved exception is a vetted public-domain Zanzibar SVG bundled with the app.
 
 ## Discoveries and replanning
 
@@ -417,6 +417,7 @@ No league or division flags, remote assets, flag emoji, nationality normalizatio
 - 2026-08-12: Stored nationality values are full FM names, so flag rendering requires an explicit alias map rather than treating the value as an ISO code.
 - 2026-08-12: Potential metric IDs use `potential_role.<role_id>` beside the existing `role.<role_id>` current-score IDs. Both Rust and the frontend catalog validate them against the shared role catalog before SQL selection.
 - 2026-08-13: Reopened Commit 4 after a 101-row paged browser regression found that `min-h-full` route roots let the virtual spacer expand the document and made `<main>` the scroll owner. The earlier two-row browser fixtures and synthetic unit viewport did not create a large spacer. Only the Search and Squad layout tests failed in an 800 px viewport, with approximately 4,353 px and 4,406 px scrollports. Changing the route roots to `h-full` bounded the layout; `./scripts/dev smoke` passed 32 tests. Commit 5 remains next and Commit 6 is not renumbered.
+- 2026-08-13: The representative bridge dump contains 224 distinct player nationality values. `Zanzibar` is a distinct FM nation (`nationUid` 13100103), but the selected offline package has no Zanzibar SVG; mapping it to Tanzania would misrepresent the stored value. The developer approved one vetted public-domain Zanzibar SVG exception, so every observed value can remain accurately flagged offline.
 
 ## Completed work
 
@@ -427,6 +428,7 @@ No league or division flags, remote assets, flag emoji, nationality normalizatio
 | PR 1 — Configurable player tables | Commit 3 — Query selected player metrics | `ef85cd6` | Added the shared validated metric resolver and typed dynamic values to Search and Squad, including Position display/sort and page-versus-cohort potential cache population. | Sol xhigh accepted after one correction round. | Windows representative cold/warm timing remains a pre-publication validation gap. |
 | PR 1 — Configurable player tables | Commit 4 — Virtualize full-height player lists | `7b16eef`; correction pending record | Extracted the shared full-height virtual table, removed Squad pagination, and added whole-row profile activation with resilient page-boundary behavior. Corrected the route height chain and added paged 101-row browser coverage. | Sol High accepted the initial implementation after three correction rounds; a fresh Sol High review accepted the correction with no findings. | Native Tauri/WebView visual inspection remains outstanding; automated Chromium covers 1280×800 and 1600×900. |
 | PR 1 — Configurable player tables | Commit 5 — Persist resizable column layouts | Pending record | Added independent persisted layouts, fixed-width accessible headers, metric picker/menu controls, pointer and keyboard resize, and Done-only filter-column insertion. | Sol xhigh accepted after the P1 correction; re-review clean. | Native Tauri/WebView manual verification remains unperformed. |
+| PR 1 — Configurable player tables | Commit 6 — Render all nationality flags | Pending record | Added all observed 224 FM-name mappings and a vetted Zanzibar asset, then rendered ordered, labelled offline flags through both configurable tables. | Sol High accepted with no findings. | Native multi-nationality hover verification remains unperformed; unit and route tests cover the labels and ordering. |
 
 ## Final validation
 

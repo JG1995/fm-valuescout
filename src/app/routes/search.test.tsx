@@ -151,6 +151,28 @@ describe("search route", () => {
     });
   });
 
+  it("renders every nationality flag in stored order", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Flagged Scout", 160),
+        nationalities: ["England", "Wales", "South Korea"],
+      },
+    ]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const flags = await within(table).findAllByRole("img");
+
+    expect(flags.map((flag) => flag.getAttribute("aria-label"))).toEqual([
+      "England",
+      "Wales",
+      "South Korea",
+    ]);
+  });
+
   it("adds a metric from a header menu without changing the active sort", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

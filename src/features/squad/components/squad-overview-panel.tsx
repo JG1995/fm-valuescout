@@ -2,6 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { UsersRound } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
+import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
   type PlayerTableColumn,
   PlayerTableHeader,
@@ -212,6 +213,16 @@ function SquadOverviewTable({
                 title={text !== "—" && text !== "…" ? text : undefined}
               >
                 {text}
+              </td>
+            );
+          }
+          if (column.id === "nationality" && player) {
+            return (
+              <td
+                key={column.id}
+                className="h-table-row-height-two-line px-2 align-middle text-on-surface"
+              >
+                <NationalityCell nationalities={player.nationalities} />
               </td>
             );
           }

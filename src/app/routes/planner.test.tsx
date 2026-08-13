@@ -296,6 +296,30 @@ describe("planner route", () => {
     expect(screen.queryByRole("button", { name: "Edit filters" })).toBeNull();
   });
 
+  it("renders every nationality flag in the squad overview", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("Flagged Squad", 42),
+        nationalities: ["England", "Wales", "South Korea"],
+      },
+    ]);
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+    const flags = await within(table).findAllByRole("img");
+
+    expect(flags.map((flag) => flag.getAttribute("aria-label"))).toEqual([
+      "England",
+      "Wales",
+      "South Korea",
+    ]);
+  });
+
   it("keeps the Squad layout independent while querying added columns", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
