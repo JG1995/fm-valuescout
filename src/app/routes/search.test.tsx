@@ -229,6 +229,44 @@ describe("search route", () => {
     });
   });
 
+  it("closes a header menu after either pointer button is pressed outside", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Dismissible menu", 160)]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const caHeader = within(table).getByRole("columnheader", { name: "CA" });
+
+    fireEvent.contextMenu(caHeader);
+    expect(
+      screen.getByRole("menu", { name: "CA column actions" }),
+    ).toBeInTheDocument();
+    fireEvent.pointerDown(document.body, { button: 0 });
+    expect(
+      screen.queryByRole("menu", { name: "CA column actions" }),
+    ).toBeNull();
+
+    fireEvent.contextMenu(caHeader);
+    expect(
+      screen.getByRole("menu", { name: "CA column actions" }),
+    ).toBeInTheDocument();
+    fireEvent.pointerDown(document.body, { button: 2 });
+    expect(
+      screen.queryByRole("menu", { name: "CA column actions" }),
+    ).toBeNull();
+
+    fireEvent.contextMenu(caHeader);
+    fireEvent.pointerDown(
+      within(table).getByRole("separator", { name: "Resize CA column" }),
+      { button: 0, pointerId: 1, clientX: 0 },
+    );
+    expect(
+      screen.queryByRole("menu", { name: "CA column actions" }),
+    ).toBeNull();
+  });
+
   it("resizes Search columns without changing the active sort", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([playerNamed("Resizable", 160)]);

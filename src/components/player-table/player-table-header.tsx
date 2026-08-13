@@ -132,6 +132,7 @@ export function PlayerTableHeader({
 }: PlayerTableHeaderProps) {
   const [openColumnId, setOpenColumnId] = useState<string | null>(null);
   const [pickingColumnId, setPickingColumnId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const availableMetrics = useMemo(
     () =>
@@ -141,6 +142,24 @@ export function PlayerTableHeader({
       ),
     [columns],
   );
+
+  useEffect(() => {
+    if (!openColumnId) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const menu = menuRef.current;
+      if (menu && !event.composedPath().includes(menu)) {
+        setOpenColumnId(null);
+        setPickingColumnId(null);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [openColumnId]);
 
   const closeMenu = () => {
     const columnId = openColumnId;
@@ -223,6 +242,7 @@ export function PlayerTableHeader({
 
               {open && !picking ? (
                 <div
+                  ref={menuRef}
                   role="menu"
                   aria-label={`${column.label} column actions`}
                   className="absolute right-1 top-full z-30 mt-1 w-44 rounded-md border border-outline-variant bg-surface-container-highest p-1 text-left shadow-overlay"
@@ -261,6 +281,7 @@ export function PlayerTableHeader({
 
               {open && picking ? (
                 <div
+                  ref={menuRef}
                   role="dialog"
                   aria-label="Add a column"
                   className="absolute right-1 top-full z-30 mt-1 w-72 rounded-md border border-outline-variant bg-surface-container-highest p-3 text-left shadow-overlay"

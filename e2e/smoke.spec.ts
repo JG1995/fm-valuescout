@@ -666,6 +666,32 @@ test.describe("walking skeleton smoke", () => {
     ).toHaveCount(0);
   });
 
+  test("Search dismisses a column menu with either pointer button outside", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+    await page.goto("/search");
+
+    const caHeader = page
+      .getByRole("table", { name: "Player search results" })
+      .getByRole("columnheader", { name: "CA" });
+    const menu = page.getByRole("menu", { name: "CA column actions" });
+    const heading = page.getByRole("heading", { level: 1, name: "Search" });
+
+    await caHeader.click({ button: "right" });
+    await expect(menu).toBeVisible();
+    await heading.click();
+    await expect(menu).toHaveCount(0);
+
+    await caHeader.click({ button: "right" });
+    await expect(menu).toBeVisible();
+    await heading.click({ button: "right" });
+    await expect(menu).toHaveCount(0);
+  });
+
   test("configured Squad exposes its format-bound CSV upload modals", async ({
     page,
   }) => {
