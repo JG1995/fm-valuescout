@@ -416,12 +416,17 @@ describe("planner route", () => {
       value: () => ({ left: 0, right: 100, top: 0, bottom: 32, width: 100 }),
     });
 
+    const dataTransfer = {
+      effectAllowed: "none",
+      dropEffect: "none",
+      setData: () => {},
+    };
     fireEvent.dragStart(
       within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
-      { dataTransfer: { effectAllowed: "move", setData: () => {} } },
+      { dataTransfer },
     );
-    fireEvent.dragOver(agilityHeader, { clientX: 90 });
-    fireEvent.drop(agilityHeader, { clientX: 90 });
+    fireEvent.dragOver(agilityHeader, { clientX: 90, dataTransfer });
+    fireEvent.drop(agilityHeader, { clientX: 90, dataTransfer });
     fireEvent.dragEnd(
       within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
     );

@@ -294,12 +294,24 @@ describe("search route", () => {
       "attr.Agility",
     ]);
 
+    const dataTransfer = {
+      effectAllowed: "none",
+      dropEffect: "none",
+      setData: () => {},
+    };
     fireEvent.dragStart(
       within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
-      { dataTransfer: { effectAllowed: "move", setData: () => {} } },
+      { dataTransfer },
     );
-    fireEvent.dragOver(agilityHeader, { clientX: 90 });
-    fireEvent.drop(agilityHeader, { clientX: 90 });
+    expect(fireEvent.dragEnter(agilityHeader, { dataTransfer })).toBe(false);
+    expect(
+      fireEvent.dragOver(agilityHeader, { clientX: 90, dataTransfer }),
+    ).toBe(false);
+    expect(dataTransfer).toMatchObject({
+      effectAllowed: "move",
+      dropEffect: "move",
+    });
+    fireEvent.drop(agilityHeader, { clientX: 90, dataTransfer });
     fireEvent.dragEnd(
       within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
     );

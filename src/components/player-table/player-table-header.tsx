@@ -216,12 +216,21 @@ export function PlayerTableHeader({
               className={`relative h-table-header-height px-2 ${insertionCue} ${
                 column.align === "right" ? "text-right" : "text-left"
               } ${draggedColumnId === column.id ? "opacity-50" : ""}`}
+              onDragEnter={(event) => {
+                const draggedColumnId = draggedColumnIdRef.current;
+                if (!draggedColumnId || draggedColumnId === column.id) {
+                  return;
+                }
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
               onDragOver={(event) => {
                 const draggedColumnId = draggedColumnIdRef.current;
                 if (!draggedColumnId || draggedColumnId === column.id) {
                   return;
                 }
                 event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
                 const bounds = event.currentTarget.getBoundingClientRect();
                 setDropTarget({
                   columnId: column.id,
