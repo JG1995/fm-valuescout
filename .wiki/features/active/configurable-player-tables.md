@@ -2,20 +2,20 @@
 
 ## Status
 
-Validation
+Build
 
 ## Intent
 
-Turn Search and Squad into consistent, full-height player workspaces. Both tables should keep one continuously scrollable, virtualized result set; retain user choices across profile navigation; support stable, resizable, configurable columns; and expose the same organized player-metric catalog used by Search filters. The feature also adds current and potential role-score metrics and compact nationality flags.
+Turn Search and Squad into consistent, full-height player workspaces. Both tables should keep one continuously scrollable, virtualized result set; retain user choices across profile navigation; support stable, reorderable, resizable, configurable columns; and expose the same organized player-metric catalog used by Search filters. The feature also adds current and potential role-score metrics and compact nationality flags.
 
 ## User-visible behavior
 
 - Search and Squad fill the vertical workspace left below their route controls. Rows remain virtualized and IPC remains paged, but the user sees one continuous table with no Previous or Next controls.
 - Search keeps its applied filters, filter-combine mode, sort field, and sort direction in the URL. Squad keeps its workspace and sort state in the URL. Opening a player and navigating back restores that table state.
 - Opening the Search filter editor creates a local draft. Changing fields, operators, values, rules, or combine mode does not update the URL or run the query. Done applies one complete, valid draft; Cancel, close, Escape, or backdrop interaction discards it.
-- Search and Squad persist independent visible-column order and width preferences across route changes and app launches. Sorting never changes column order or width.
+- Search and Squad persist independent visible-column order and width preferences across route changes and app launches. A user can drag a header to move its column or use Move left and Move right from the keyboard-accessible header menu. Sorting never changes column order or width.
 - The whole Squad row opens the player profile. Both tables keep the existing arrow-key row movement and Enter activation behavior.
-- Every header supports sorting, pointer and keyboard resizing, and a right-click or keyboard-accessible menu. The menu can remove the current column or open the shared metric picker to append another column. At least one column must remain visible.
+- Every header supports sorting, pointer reordering, pointer and keyboard resizing, and a right-click or keyboard-accessible menu. The menu can move or remove the current column or open the shared metric picker to append another column. At least one column must remain visible.
 - Every scalar or list field currently offered by Search filters is also available as a display and sort column. Position is displayed as a strongest-first list of position keys. Current role scores and potential role scores are separate filter and column families.
 - Applying a Search filter with Done adds that metric to the Search table once if it is not already visible. Removing the column later does not remove or disable the filter.
 - The metric picker is searchable and grouped by player identity, club and contract, ability and reputation, visible attributes, hidden attributes, personality, position suitability, current role scores, and potential role scores. Role scores are further grouped by playing-area family. Search filter-field selection and table column selection reuse the same picker.
@@ -31,7 +31,7 @@ Turn Search and Squad into consistent, full-height player workspaces. Both table
 - A potential score used for global filtering or sorting is complete for the relevant current-snapshot cohort before the count and ordered page query runs. A potential score used only for display may be materialized for the requested page.
 - Cache rows with an unknown score are still recorded, so `NULL` is not recalculated on every read. Snapshot or player deletion cascades to the cache, every successful supported player boost invalidates that player's cached potential scores, and a projection-model version change makes older rows ineligible.
 - Search and Squad use the same frontend metric metadata and the same Rust metric resolver. Search-specific filter operators stay in Search; Squad-specific club-family membership stays in Planner.
-- URL state remains the source of truth for applied filters and sorting. While the filter editor is open, its rules and combine mode exist only as local draft state. Only Done may commit that draft and trigger Search or potential-cache work. Zustand owns only client preferences that do not belong in the URL: visible columns, insertion order, and widths for each table.
+- URL state remains the source of truth for applied filters and sorting. While the filter editor is open, its rules and combine mode exist only as local draft state. Only Done may commit that draft and trigger Search or potential-cache work. Zustand owns only client preferences that do not belong in the URL: visible columns, their order, and widths for each table.
 - Table rows retain a fixed measured height. Column customization may create horizontal scrolling, but it must not disable row virtualization or create page navigation.
 - Context-menu actions and resize handles have keyboard equivalents, visible focus, and accessible names. A right-click-only path is not acceptable.
 - Nationality artwork is bundled with the app. The feature does not fetch flag assets at runtime and never substitutes a national flag from a guessed country.
@@ -41,7 +41,7 @@ Turn Search and Squad into consistent, full-height player workspaces. Both table
 
 - Player gender filtering and the accompanying memory-reader or stored-data investigation. Both are deferred to `.wiki/TODO.md` until representative snapshots contain trustworthy values.
 - Adding league or division-country flags, league-country metadata, or a division-country mapping.
-- Adding Squad filters, saved filter presets, shared table presets, column drag-and-drop reordering, or table-scroll restoration.
+- Adding Squad filters, saved filter presets, shared table presets, or table-scroll restoration.
 - Precomputing potential role scores during Load Data or replacing persisted current role scores.
 - Reusing the table cache in player profiles, Planner depth, or Planner optimization in this feature.
 - Changing role definitions, projection weights, role-score bands, or the meaning of Current and Potential.
@@ -91,7 +91,7 @@ Turn Search and Squad into consistent, full-height player workspaces. Both table
 
 The Search filter modal will copy the currently applied URL-backed rules and combine mode into local draft state each time it opens. Field, operator, value, add, remove, and combine interactions mutate only that draft. Done remains disabled while any draft rule is incomplete or invalid; one route-level apply callback commits the whole draft, auto-adds its metrics as columns, closes the modal, and lets the resulting URL change begin the next Search refresh cycle. Cancel, the close control, Escape, and backdrop dismissal close without applying. Removing or clearing an already-applied filter from the filter strip remains immediate because it is outside the editing transaction.
 
-`src/stores/use-player-table-store.ts` will persist versioned `search` and `squad` layouts. Each layout contains a non-empty ordered metric-ID list and clamped widths keyed by metric ID. Unknown IDs from an older store version are dropped. Adding a column appends it; there is no drag reorder. Removing the active sort column selects CA when CA remains visible, otherwise the first visible sortable column, and updates the route URL in the same interaction.
+`src/stores/use-player-table-store.ts` persists versioned `search` and `squad` layouts. Each layout contains a non-empty ordered metric-ID list and clamped widths keyed by metric ID. Unknown IDs from an older store version are dropped. Adding a column appends it. Reordering moves one known metric ID within the same layout and preserves all widths. Removing the active sort column selects CA when CA remains visible, otherwise the first visible sortable column, and updates the route URL in the same interaction.
 
 A shared player-table component will own semantic headers, fixed `<colgroup>` widths, resize handles, header menus, row virtualization, page-window selection, roving row focus, horizontal overflow, and its single vertical scroll owner. Search and Squad adapters supply query options, totals, route-backed sort callbacks, cells, and row activation. Both backend commands retain bounded page limits; continuous scrolling is a presentation contract, not an unbounded IPC response.
 
@@ -125,7 +125,7 @@ Nationality presentation will use the offline `country-flag-icons` SVG package a
 - Position becomes a real sortable display metric: Rust returns a strongest-suitability-first comma-separated key list with stable key tie-breaking, and sorting uses that normalized display value.
 - Potential cache population is sparse by requested role, versioned, persistent, snapshot-owned, and disposable. It is not populated during ingest.
 - Multiple missing potential roles in one request share one player projection pass. A later request for a new role can add only that role without rewriting earlier cached roles.
-- Column insertion order is stable and append-only except removal. Sorting does not reorder columns, and drag reordering is deferred.
+- Column order is independent per table and persists after direct drag or the equivalent menu action. Sorting and resizing do not reorder columns, and reordering does not change the active sort or stored widths.
 - The flag dependency is bundled locally; no remote request or emoji rendering is used. Unmapped values show text rather than a guessed flag.
 
 ### Unknowns
@@ -140,18 +140,19 @@ Nationality presentation will use the offline `country-flag-icons` SVG package a
 - A metric accepted by the frontend but rejected or decoded differently in Rust would break configurable columns. Contract tests must cover every metric family, including Position and both role-score bases.
 - Persisted width or field IDs can outlive a catalog change. Store hydration must sanitize rather than crash or render an empty table.
 - Many columns require horizontal scrolling. The table must keep fixed widths and one vertical scroll owner without squeezing columns based on sorted cell content.
+- Header drag can conflict with sort clicks, resize handles, and context menus. Reordering must start only from the header surface, show a clear insertion target, and leave each action's existing behavior unchanged when no drag completes.
 - Flag aliases are correctness-sensitive. A missing map entry is acceptable only through the truthful text fallback; a wrong national flag is not.
 - Draft state can become stale if it survives a close/reopen cycle. The modal must initialize from current route state on every open and discard its draft on every non-Done close path.
 
 ## Walking skeleton
 
-The thinnest end-to-end path is: choose a Potential role score in the categorized Search filter draft, click Done, let the resulting applied filter make Rust materialize and reuse its versioned score cache, render the filtered paged result in the virtual table, open a player, and navigate back to the same URL-backed sort/filter state. No query or cache work begins while the user is still editing. Later commits generalize that metric path to requested columns and Squad, then add the shared full-height table, persisted widths, header menus, and nationality renderer.
+The thinnest end-to-end path is: choose a Potential role score in the categorized Search filter draft, click Done, let the resulting applied filter make Rust materialize and reuse its versioned score cache, render the filtered paged result in the virtual table, open a player, and navigate back to the same URL-backed sort/filter state. No query or cache work begins while the user is still editing. Later commits generalize that metric path to requested columns and Squad, then add the shared full-height table, persisted widths and order, header menus, and nationality renderer.
 
 ## Delivery plan
 
 ### PR 1 — Configurable player tables
 
-**Status:** Ready for publication
+**Status:** In progress
 
 **Build-feature-loop profile:** Terra Max
 
@@ -161,7 +162,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **Provisional PR title:** `feat(tables): add configurable player views`
 
-**Purpose:** Deliver the complete Search and Squad table refinement as one user-facing feature while keeping staged metric selection, cache persistence, query contracts, virtualization, column interaction, and flag rendering in separate revertible commits.
+**Purpose:** Deliver the complete Search and Squad table refinement as one user-facing feature while keeping staged metric selection, cache persistence, query contracts, virtualization, column interaction, reordering, and flag rendering in separate revertible commits.
 
 **Depends on:** Current `main` at `d15b854178d8`; no external feature branch or unpublished PR.
 
@@ -370,7 +371,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 - Owners and files: `package.json`, `pnpm-lock.yaml`, one vetted public-domain Zanzibar SVG, a checked-in fixture containing every distinct nationality from the representative snapshot, shared nationality mapping/component/tests, and Search/Squad cell renderers. Record the dependency license through existing package metadata and the Zanzibar asset source in the tracked SVG comment.
 - Existing patterns to verify: ordered `nationalities` arrays, existing title-based compact tooltips, fixed row height, Vite asset bundling, and the complete distinct set of stored FM nationality names.
 - Constraints and invariants: every value in the observed-nationality fixture resolves to a flag; render every array value in order; use ISO 3166-1 or supported subdivision codes only after explicit mapping, except the one vetted public-domain Zanzibar SVG; include England, Scotland, Wales, and Northern Ireland flags; only unseen future strings show original text; no network request; no league icon.
-- Dependencies and ordering: lands last so one shared configurable nationality column receives the behavior in both tables.
+- Dependencies and ordering: lands after the shared configurable table so one nationality column receives the behavior in both tables. Later interaction and reorder work must preserve this shared renderer.
 
 **Implementation profile:** Terra xhigh — a contained presentation change with a correctness-sensitive mapping and new bundled asset dependency.
 
@@ -410,23 +411,63 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **Validation:** Start with failing route assertions for Search nav activity and the absence of visible manage buttons, plus browser geometry assertions for full-width tables and unclipped filter options. Add browser coverage for horizontal overflow after column minimums exceed the scrollport. Run affected tests, `./scripts/dev check`, `./scripts/dev smoke`, and `./scripts/dev secrets --staged` at checkpoint.
 
+#### Commit 8 — Reorder visible columns
+
+**Status:** Active
+
+**Provisional commit:** `feat(tables): reorder visible columns`
+
+**Work:** Let users drag a Search or Squad header to move its column, add Move left and Move right to the existing keyboard-accessible header menu, and persist each table's new order without changing its widths or active sort.
+
+**Out of scope:**
+
+- Shared Search/Squad layouts, named presets, cross-table moves, column groups, touch-only drag affordances, column-width URLs, or table-scroll restoration.
+
+**Implementation packet:**
+
+- Owners and files: `src/stores/use-player-table-store.ts`, the shared player-table header, Search and Squad table adapters, focused store and route tests, browser smoke coverage, and this ledger.
+- Existing patterns to verify: ordered `columnIds` persistence and hydration, metric-ID keyed widths, the shared header's sort button and resize separator, right-click and Shift+F10 menu access, outside-press dismissal, Search/Squad layout isolation, and column-driven header/body rendering.
+- Constraints and invariants: move one existing metric ID to a bounded target index; reject unknown IDs and no-op moves; preserve every width; keep Search and Squad independent; use browser-native drag behavior without a new dependency; expose a clear insertion cue; disable Move left or Move right at its respective edge; close the menu after a move and restore focus to the moved header; keep header and body cell order aligned; keep the requested metric set and query identity stable when only its display order changes; preserve the current virtual window and focused row; and do not change sorting, filtering, requested values, row navigation, or horizontal overflow behavior.
+- Interaction boundary: a completed drag reorders once. A click still sorts, the resize separator still resizes, right-click still opens the menu, and an abandoned drag leaves the layout unchanged. The menu actions provide the complete keyboard path; no drag-only command is allowed.
+- Dependencies and ordering: extends Commit 5's persisted layouts and shared header after Commit 7 stabilized the context-menu and overflow interactions. No Rust, SQLite, IPC, bridge, migration, dependency, or asset change is required.
+
+**Implementation profile:** Terra xhigh — the change is frontend-only, but drag, sort, resize, menu, persisted state, and column-to-cell alignment share the same header boundary.
+
+**Review profile:** Sol High — focus on event separation, accessible parity, persisted layout integrity, and header/body alignment across both tables.
+
+**Validation:** Start RED with store tests for moving a middle column to either edge, no-op and invalid moves, width retention, hydration, and Search/Squad isolation. Add route tests proving drag and menu moves update header and body cell order without changing sort or widths; edge menu actions are disabled; focus returns to the moved header; and sort, resize, context-menu, and outside-dismiss behavior still work. Add Search and Squad regressions that configure at least two dynamic metrics, scroll and focus a non-initial virtual row, reorder those metrics, and prove that the same query identity, virtual window, and row focus remain without another IPC request or suspense state. Add Chromium smoke coverage that drags a Search column, reloads to prove persistence, and verifies the Squad order is unchanged. Before checkpoint, exercise the assembled Tauri/WebView at 1280×800: complete and abandon a drag, then sort, resize, and right-click the same header to prove the interactions remain separate. Record the result in this ledger; stop instead of committing the content change if this native check fails or cannot be run. Run `./scripts/dev test src/stores/use-player-table-store.test.ts src/app/routes/search.test.tsx src/app/routes/planner.test.tsx`, `./scripts/dev check`, `./scripts/dev smoke`, and `./scripts/dev secrets --staged` at checkpoint.
+
+**Stop conditions:** Stop and replan if the native drag path cannot reliably separate a completed move from sort or resize in the assembled Tauri/WebView, if moving a column can misalign headers and cells, or if the same action mutates both table layouts.
+
+**Review mandate:**
+
+- Verify every move preserves the exact set of visible metric IDs and all stored widths.
+- Verify Search and Squad persist different orders across reloads without affecting one another.
+- Verify drag insertion before and after a target, both edge moves, a no-op drop, and an abandoned drag.
+- Verify Move left and Move right provide keyboard parity, correct disabled states, menu dismissal, and focus restoration.
+- Verify dragging cannot sort, resizing cannot reorder, sorting cannot reorder, and right-click cannot start a drag.
+- Verify header, `<colgroup>`, and every virtualized body row use the same order after a move.
+- Verify a layout-only reorder does not remount the virtual table, reset its scroll or row focus, change the requested metric set, or issue another IPC request.
+- Verify the checkpoint records a passing assembled Tauri/WebView interaction check rather than relying on Chromium for native drag behavior.
+- Reject a new drag-and-drop dependency, backend changes, presets, column grouping, or unrelated header styling.
+
 ## Active work
 
 **PR:** PR 1 — Configurable player tables
 
-**Commit:** No active content commit — feature validation pending
+**Commit:** Commit 8 — Reorder visible columns
 
 ### RED proof
 
-Commit 7 is complete. Run feature-complete validation and review before publication.
+Not run. Begin with the Commit 8 store and route regressions described above and confirm that the current append-only implementation fails them for the missing reorder behavior.
 
 ### Expected outcome
 
-PR 1 is ready for publication after feature-complete validation.
+Search and Squad each allow direct drag and keyboard-accessible menu reordering. The chosen order survives reloads, while widths, active sorting, and the other table's layout remain unchanged.
 
 ### Explicit exclusions
 
-No new metrics, changed sort or filter semantics, persistence changes, navigation redesign, or unrelated visual cleanup belongs in Commit 7.
+No new metrics, changed sort or filter semantics, backend work, shared presets, touch-only drag design, navigation redesign, or unrelated visual cleanup belongs in Commit 8.
 
 ## Discoveries and replanning
 
@@ -440,6 +481,7 @@ No new metrics, changed sort or filter semantics, persistence changes, navigatio
 - 2026-08-13: Reopened Commit 4 after a 101-row paged browser regression found that `min-h-full` route roots let the virtual spacer expand the document and made `<main>` the scroll owner. The earlier two-row browser fixtures and synthetic unit viewport did not create a large spacer. Only the Search and Squad layout tests failed in an 800 px viewport, with approximately 4,353 px and 4,406 px scrollports. Changing the route roots to `h-full` bounded the layout; `./scripts/dev smoke` passed 32 tests. Commit 5 remains next and Commit 6 is not renumbered.
 - 2026-08-13: The representative bridge dump contains 224 distinct player nationality values. `Zanzibar` is a distinct FM nation (`nationUid` 13100103), but the selected offline package has no Zanzibar SVG; mapping it to Tanzania would misrepresent the stored value. The developer approved one vetted public-domain Zanzibar SVG exception, so every observed value can remain accurately flagged offline.
 - 2026-08-13: Assembled-screen inspection found four PR 1 interaction regressions: the absolute metric list was clipped by the modal body's scroll container; the table used the exact sum of stored widths instead of filling its scrollport; visible ellipsis buttons duplicated the intended context-menu path; and exact nav matching included normalized Search query state. Commit 7 corrects these shared presentation boundaries before feature validation.
+- 2026-08-13: The developer restored column reordering to PR 1 before feature validation because the earlier deferral did not match the intended configurable-table scope. Commit 8 adds direct header drag and equivalent Move left / Move right menu actions without reopening backend or metric work.
 
 ## Completed work
 
@@ -469,6 +511,7 @@ Before feature-complete review:
 - At 1280×800 and 1600×900, inspect Search and Squad vertical fill, horizontal overflow, sticky headers, resize behavior, no pagination controls, full-row activation, and the Planner/Tactic sibling workspaces.
 - Verify profile/back navigation preserves Search filters/combine/sort and Squad workspace/sort, while both table column layouts survive route changes and app restart.
 - Verify right-click and keyboard header menus, keyboard resize, focus restoration, last-column protection, active-sort removal, and multi-page arrow navigation.
+- Verify direct column drag and Move left / Move right menu actions in Search and Squad, including edge and abandoned moves, exact width retention, unchanged sorting, header/body alignment, independent persisted orders, and reload behavior.
 - Verify every filter-editor control is query-silent before Done, Done issues one applied update, dismissal issues none, potential-score materialization cannot start from draft state, and filter-derived columns are inserted only when the draft is applied.
 - Verify mapped FM nationality aliases, all four UK home nations, second and later nationality flags, full-name hover labels, unknown fallback, offline bundling, and the absence of league flags.
 - `./scripts/dev bridge-test` is not part of this feature's affected validation because no bridge or C# path may change. `./scripts/dev mutate` remains unsupported and must not be reported as passed.
@@ -476,7 +519,7 @@ Before feature-complete review:
 ## Documentation impact
 
 - During feature reconciliation, update `.wiki/ARCHITECTURE.md` for the shared player-metric boundary, v21 derived cache, invalidation map, dynamic Search/Squad DTOs, virtual paging, and per-table Zustand state.
-- During feature reconciliation, update `.wiki/DESIGN.md` for full-height table containment, fixed resizable columns, header context menus, categorized metric picker, staged Done/Cancel filter editing, and the approved nationality-flag exception to the current no-flag guidance.
+- During feature reconciliation, update `.wiki/DESIGN.md` for full-height table containment, fixed reorderable and resizable columns, header context menus, categorized metric picker, staged Done/Cancel filter editing, and the approved nationality-flag exception to the current no-flag guidance.
 - Keep [ADR-0019](../../decisions/0019-lazy-potential-role-score-cache.md) with the cache commit and update its implementation references at close-out.
 - Move this ledger to completed features and restore `.wiki/TODO.md` to no active feature only after final validation, feature review, and documentation reconciliation.
 - No CONCEPT, memory-reader, dump-schema, bridge, league, or deployment documentation change is planned in this feature.
