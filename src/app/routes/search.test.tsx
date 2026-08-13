@@ -18,6 +18,7 @@ import type { PlayerSummary } from "@/features/search/types/player-summary";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
+import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   getLastSearchPlayersArgs,
@@ -147,6 +148,140 @@ describe("search route", () => {
     expect(scroller.parentElement).toHaveClass("relative", "min-h-0", "flex-1");
     expect(getLastSearchPlayersArgs()).toMatchObject({
       requestedFields: [],
+    });
+  });
+
+  it("adds a metric from a header menu without changing the active sort", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Accelerating Scout", 160),
+        dynamicValues: { "attr.Acceleration": 16 },
+      },
+    ]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const manageCa = within(table).getByRole("button", {
+      name: "Manage CA column",
+    });
+    await user.click(manageCa);
+    await user.keyboard("{Escape}");
+    expect(manageCa).toHaveFocus();
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    );
+    expect(
+      screen.getByRole("menu", { name: "CA column actions" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Add column" }));
+    await user.click(
+      screen.getByRole("button", { name: "Column: Choose a metric" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Search columns" }),
+      "acceleration",
+    );
+    await user.click(screen.getByRole("option", { name: "Acceleration" }));
+
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
+      "attr.Acceleration",
+    );
+
+    expect(
+      await screen.findByRole("columnheader", { name: "Acceleration" }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        requestedFields: ["attr.Acceleration"],
+      });
+    });
+    expect(router.state.location.search).toMatchObject({
+      sort: "ca",
+      dir: "desc",
+    });
+  });
+
+  it("resizes Search columns without changing the active sort", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Resizable", 160)]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const handle = within(table).getByRole("separator", {
+      name: "Resize CA column",
+    });
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 20 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 60 });
+    fireEvent.pointerUp(handle, { pointerId: 1 });
+
+    await waitFor(() => {
+      expect(handle).toHaveAttribute("aria-valuenow", "112");
+    });
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    fireEvent.keyDown(handle, { key: "End" });
+    expect(handle).toHaveAttribute("aria-valuenow", "360");
+    fireEvent.keyDown(handle, { key: "Home" });
+    expect(handle).toHaveAttribute("aria-valuenow", "72");
+    expect(usePlayerTableStore.getState().layouts.search.widths.ca).toBe(72);
+    expect(router.state.location.search).toMatchObject({
+      sort: "ca",
+      dir: "desc",
+    });
+  });
+
+  it("keeps Search column widths when sorting", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Stable width", 160)]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const resizeCa = within(table).getByRole("separator", {
+      name: "Resize CA column",
+    });
+    fireEvent.keyDown(resizeCa, { key: "ArrowRight" });
+    expect(resizeCa).toHaveAttribute("aria-valuenow", "88");
+
+    fireEvent.click(within(table).getByRole("button", { name: "Name" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "name",
+        dir: "asc",
+      });
+    });
+    expect(
+      screen.getByRole("separator", { name: "Resize CA column" }),
+    ).toHaveAttribute("aria-valuenow", "88");
+  });
+
+  it("resets the active Search sort when its visible column is removed", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Sort reset", 160)]);
+    const { router } = renderSearchRoute("/search?sort=name&dir=asc");
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    await user.click(
+      within(table).getByRole("button", { name: "Manage Name column" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Remove Name" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "ca",
+        dir: "desc",
+      });
+      expect(screen.queryByRole("columnheader", { name: "Name" })).toBeNull();
     });
   });
 
@@ -554,7 +689,12 @@ describe("search route", () => {
   it("keeps a drafted potential role filter query-silent until Done", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([playerNamed("Potential target", 180)]);
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Potential target", 180),
+        dynamicValues: { "potential_role.goalkeeper_ip": 60 },
+      },
+    ]);
     renderSearchRoute();
 
     expect(await screen.findByText("Potential target")).toBeInTheDocument();
@@ -592,6 +732,28 @@ describe("search route", () => {
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
         { field: "potential_role.goalkeeper_ip", op: "gt", value: 50 },
       ]);
+    });
+    expect(
+      await screen.findByRole("columnheader", {
+        name: "Potential role · Goalkeeper (IP)",
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /Remove filter Potential role · Goalkeeper \(IP\) > 50/i,
+      }),
+    );
+
+    expect(
+      await screen.findByRole("columnheader", {
+        name: "Potential role · Goalkeeper (IP)",
+      }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        requestedFields: ["potential_role.goalkeeper_ip"],
+      });
     });
   });
 
@@ -797,7 +959,7 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Low")).toBeInTheDocument();
   });
 
-  it("shows dynamic columns for active non-basic filter fields", async () => {
+  it("keeps active non-basic filter fields hidden until added to the layout", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
       {
@@ -823,25 +985,19 @@ describe("search route", () => {
       name: "Player search results",
     });
     expect(
-      within(table).getByRole("columnheader", {
+      within(table).queryByRole("columnheader", {
         name: /Role · Deep-Lying Playmaker \(IP\)/i,
       }),
-    ).toBeInTheDocument();
+    ).toBeNull();
     expect(
-      within(table).getByRole("columnheader", { name: /Acceleration/i }),
-    ).toBeInTheDocument();
-
-    const bodyRows = within(table)
-      .getAllByRole("row")
-      .filter((row) => row.hasAttribute("data-index"));
-    const firstRow = bodyRows[0];
-    if (!firstRow) {
-      throw new Error("expected a virtualized body row");
-    }
-    expect(within(firstRow).getByText("82")).toBeInTheDocument();
-    expect(within(firstRow).getByText("16")).toBeInTheDocument();
+      within(table).queryByRole("columnheader", { name: /Acceleration/i }),
+    ).toBeNull();
     expect(getLastSearchPlayersArgs()).toMatchObject({
-      requestedFields: ["role.deep_lying_playmaker_ip", "attr.Acceleration"],
+      requestedFields: [],
+      filters: [
+        { field: "role.deep_lying_playmaker_ip", op: "gt", value: 70 },
+        { field: "attr.Acceleration", op: "gt", value: 12 },
+      ],
     });
   });
 });

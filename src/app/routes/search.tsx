@@ -21,10 +21,7 @@ import {
   defaultDirForSortField,
   isSearchSortDir,
 } from "@/features/search/types/search-sort";
-import {
-  dynamicColumnFields,
-  isVisibleSortField,
-} from "@/features/search/utils/dynamic-columns";
+import { isVisibleSortField } from "@/features/search/utils/dynamic-columns";
 import type { FilterRuleUrl } from "@/features/search/utils/search-url-search";
 import {
   parseSearchCombine,
@@ -32,6 +29,7 @@ import {
   searchFiltersForUrl,
 } from "@/features/search/utils/search-url-search";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { usePlayerTableStore } from "@/stores/use-player-table-store";
 
 export type SearchRouteSearch = {
   sort: SearchSortField;
@@ -70,7 +68,6 @@ export const Route = createFileRoute("/search")({
     context: { queryClient },
     deps: { sort, dir, filters, combine },
   }) => {
-    const rules = parseSearchFilters(filters);
     return Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(
@@ -79,9 +76,9 @@ export const Route = createFileRoute("/search")({
           undefined,
           sort,
           dir,
-          rules,
+          parseSearchFilters(filters),
           combine,
-          dynamicColumnFields(rules),
+          [],
         ),
       ),
     ]);
@@ -99,6 +96,7 @@ function PanelFallback() {
 
 function SearchPageContent() {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
+  const addColumns = usePlayerTableStore((state) => state.addColumns);
   const { sort, dir, filters: filterUrls, combine } = Route.useSearch();
   const navigate = Route.useNavigate();
   const filters = useMemo(() => parseSearchFilters(filterUrls), [filterUrls]);
@@ -110,8 +108,8 @@ function SearchPageContent() {
       filters: FilterRule[];
       combine: FilterCombineMode;
     }>,
-  ) => {
-    void navigate({
+  ) =>
+    navigate({
       search: (previous) => ({
         sort: patch.sort ?? previous.sort,
         dir: patch.dir ?? previous.dir,
@@ -123,7 +121,6 @@ function SearchPageContent() {
       }),
       replace: true,
     });
-  };
 
   if (!snapshot) {
     return (
@@ -145,7 +142,12 @@ function SearchPageContent() {
           updateSearch({ filters: rules });
         }}
         onApply={(rules, nextCombine) => {
-          updateSearch({ filters: rules, combine: nextCombine });
+          void updateSearch({ filters: rules, combine: nextCombine }).then(() =>
+            addColumns(
+              "search",
+              rules.map((rule) => rule.field),
+            ),
+          );
         }}
       />
       <div className="flex min-h-0 flex-1 flex-col">

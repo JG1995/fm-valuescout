@@ -29,6 +29,7 @@ import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import type { SquadPlayer } from "@/features/squad/types/squad-player";
 import { routeTree } from "@/routeTree.gen";
+import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import {
   getPlannerAddStringIpcMockCalls,
   getPlannerClearAllIpcMockCalls,
@@ -293,6 +294,54 @@ describe("planner route", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit filters" })).toBeNull();
+  });
+
+  it("keeps the Squad layout independent while querying added columns", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    usePlayerTableStore.getState().addColumns("search", ["attr.Acceleration"]);
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("Accelerating Squad", 42),
+        dynamicValues: { "attr.Acceleration": 16 },
+      },
+    ]);
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    expect(
+      within(table).queryByRole("columnheader", { name: "Acceleration" }),
+    ).toBeNull();
+    await user.click(
+      within(table).getByRole("button", { name: "Manage CA column" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Add column" }));
+    await user.click(
+      screen.getByRole("button", { name: "Column: Choose a metric" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Search columns" }),
+      "acceleration",
+    );
+    await user.click(screen.getByRole("option", { name: "Acceleration" }));
+
+    expect(
+      await screen.findByRole("columnheader", { name: "Acceleration" }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSquadPlayersArgs()).toMatchObject({
+        requestedFields: ["attr.Acceleration"],
+      });
+    });
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
+      "attr.Acceleration",
+    );
   });
 
   it("opens distinct format-bound CSV import modals from Squad", async () => {

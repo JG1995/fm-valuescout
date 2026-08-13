@@ -25,6 +25,7 @@ type VirtualizedPlayerTableProps<
 > = {
   caption: string;
   columnCount: number;
+  columns: ReadonlyArray<{ id: string; width: number }>;
   header: ReactNode;
   pageQueryOptions: (
     offset: number,
@@ -67,6 +68,7 @@ export function VirtualizedPlayerTable<
 >({
   caption,
   columnCount,
+  columns,
   header,
   onPlayerActivate,
   pageQueryOptions,
@@ -204,8 +206,18 @@ export function VirtualizedPlayerTable<
         data-testid={testId}
         className="h-full min-h-0 overflow-auto"
       >
-        <table className="w-full border-collapse text-left">
+        <table
+          className="table-fixed border-collapse text-left"
+          style={{
+            width: columns.reduce((total, column) => total + column.width, 0),
+          }}
+        >
           <caption className="sr-only">{caption}</caption>
+          <colgroup>
+            {columns.map((column) => (
+              <col key={column.id} style={{ width: column.width }} />
+            ))}
+          </colgroup>
           {header}
           <tbody>
             {paddingTop > 0 ? (

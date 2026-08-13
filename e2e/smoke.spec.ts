@@ -287,7 +287,7 @@ test.describe("walking skeleton smoke", () => {
     await expect(
       table.getByRole("link", { name: "Alex Scout" }),
     ).toHaveAttribute("href", "/players/42?tab=technical");
-    await table.getByRole("button", { name: "Name" }).click();
+    await table.getByRole("button", { name: "Name", exact: true }).click();
     await expect(
       table.getByRole("columnheader", { name: "Name" }),
     ).toHaveAttribute("aria-sort", "ascending");
@@ -431,6 +431,9 @@ test.describe("walking skeleton smoke", () => {
 
       const main = page.getByRole("main");
       const scroller = main.getByTestId("search-results-scroller");
+      const table = scroller.getByRole("table", {
+        name: "Player search results",
+      });
       await expect(scroller).toBeVisible();
 
       const [mainBox, scrollerBox, mainDimensions, dimensions] =
@@ -480,10 +483,59 @@ test.describe("walking skeleton smoke", () => {
       expect(dimensions.scrollHeight).toBeGreaterThanOrEqual(
         dimensions.clientHeight + 1,
       );
+      await expect(table).toHaveCSS("width", "1144px");
       expect(
         await scroller.locator("tbody tr[data-index]").count(),
       ).toBeLessThan(101);
     }
+  });
+
+  test("Search preserves a resized custom column without changing Squad", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+    await page.goto("/search");
+
+    const search = page.getByRole("main");
+    const searchTable = search.getByRole("table", {
+      name: "Player search results",
+    });
+    await searchTable.getByRole("button", { name: "Manage CA column" }).click();
+    await page.getByRole("menuitem", { name: "Add column" }).click();
+    await page.getByRole("button", { name: "Column: Choose a metric" }).click();
+    await page
+      .getByRole("combobox", { name: "Search columns" })
+      .fill("acceleration");
+    await page.getByRole("option", { name: "Acceleration" }).click();
+
+    const acceleration = search.getByRole("columnheader", {
+      name: "Acceleration",
+    });
+    await expect(acceleration).toBeVisible();
+    const resizeAcceleration = search.getByRole("separator", {
+      name: "Resize Acceleration column",
+    });
+    await resizeAcceleration.press("ArrowRight");
+    await expect(resizeAcceleration).toHaveAttribute("aria-valuenow", "104");
+
+    await page.reload();
+    await expect(
+      search.getByRole("columnheader", { name: "Acceleration" }),
+    ).toBeVisible();
+    await expect(
+      search.getByRole("separator", { name: "Resize Acceleration column" }),
+    ).toHaveAttribute("aria-valuenow", "104");
+
+    await page.goto("/planner");
+    const squad = page.getByRole("main");
+    await expect(
+      squad
+        .getByRole("table", { name: "Squad overview" })
+        .getByRole("columnheader", { name: "Acceleration" }),
+    ).toHaveCount(0);
   });
 
   test("configured Squad exposes its format-bound CSV upload modals", async ({

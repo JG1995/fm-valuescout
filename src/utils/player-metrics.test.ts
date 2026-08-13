@@ -1,20 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { PLAYER_METRICS } from "./player-metrics";
+import { getPlayerMetric, PLAYER_METRICS } from "./player-metrics";
 
-function roleMetric(roleId: string) {
-  return PLAYER_METRICS.find((metric) => metric.id === `role.${roleId}`);
-}
-
-describe("PLAYER_METRICS", () => {
-  it("keeps potential role metrics in their own grouped family", () => {
-    expect(
-      PLAYER_METRICS.find(
-        (metric) => metric.id === "potential_role.goalkeeper_ip",
-      ),
-    ).toMatchObject({
-      label: "Potential role · Goalkeeper (IP)",
-      category: "potential-role-scores",
-      roleFamily: "Goalkeepers",
+describe("player metric table metadata", () => {
+  it("gives every selectable metric a fixed table width and alignment", () => {
+    expect(getPlayerMetric("name")).toMatchObject({
+      align: "left",
+      defaultWidth: 224,
+      sortable: true,
+    });
+    expect(getPlayerMetric("attr.Acceleration")).toMatchObject({
+      align: "right",
+      defaultWidth: 88,
+      sortable: true,
+    });
+    expect(getPlayerMetric("potential_role.goalkeeper_ip")).toMatchObject({
+      align: "right",
+      defaultWidth: 112,
+      sortable: true,
     });
   });
 
@@ -27,7 +29,18 @@ describe("PLAYER_METRICS", () => {
     ["inside_winger_ip", "Wide midfield and wings"],
     ["channel_midfielder_ip", "Attacking midfield"],
     ["wide_forward_ip", "Forwards"],
-  ])("groups %s by its catalog playing area", (roleId, roleFamily) => {
-    expect(roleMetric(roleId)).toMatchObject({ roleFamily });
+  ])("keeps %s in its catalog playing area", (roleId, roleFamily) => {
+    expect(
+      PLAYER_METRICS.find((metric) => metric.id === `role.${roleId}`),
+    ).toMatchObject({
+      category: "current-role-scores",
+      roleFamily,
+    });
+    expect(
+      PLAYER_METRICS.find((metric) => metric.id === `potential_role.${roleId}`),
+    ).toMatchObject({
+      category: "potential-role-scores",
+      roleFamily,
+    });
   });
 });

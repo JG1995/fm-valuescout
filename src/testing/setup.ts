@@ -16,6 +16,10 @@ import {
   setDumpRequestIpcMockMode,
 } from "@/features/memory-read/api/bridge-status-ipc-mock";
 import {
+  defaultPlayerTableLayouts,
+  usePlayerTableStore,
+} from "@/stores/use-player-table-store";
+import {
   resetAcademyIpcMock,
   resolveAssignAcademyMemberIpcMock,
   resolveCreateAcademyClassIpcMock,
@@ -325,5 +329,7 @@ afterEach(() => {
   resetGetPlayerOverride();
   resetPlannerIpcMock();
   resetAcademyIpcMock();
+  usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
+  usePlayerTableStore.persist.clearStorage();
   registerIpcMocks();
 });

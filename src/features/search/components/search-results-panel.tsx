@@ -1,16 +1,22 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronDown, ChevronUp, SearchX } from "lucide-react";
+import { SearchX } from "lucide-react";
 import { useMemo } from "react";
+import {
+  type PlayerTableColumn,
+  PlayerTableHeader,
+} from "@/components/player-table/player-table-header";
 import { VirtualizedPlayerTable } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import {
   formatCount,
   formatMissable,
   formatMoney,
   formatPlayerDob,
 } from "@/utils/format";
+import { getPlayerMetric } from "@/utils/player-metrics";
 import {
   SEARCH_PAGE_SIZE,
   searchPlayersQueryOptions,
@@ -24,52 +30,14 @@ import {
   defaultDirForSortField,
   isBasicSearchSortField,
 } from "../types/search-sort";
-import {
-  dynamicColumnFields,
-  dynamicColumnLabel,
-} from "../utils/dynamic-columns";
-import { completeFilterRules, getFilterField } from "../utils/filter-registry";
+import { completeFilterRules } from "../utils/filter-registry";
 
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
 const NUM_CELL =
   "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
 
-const BASIC_COLUMNS = [
-  { key: "name", label: "Name", align: "left" as const },
-  { key: "age", label: "Age / DOB", align: "left" as const },
-  { key: "nationality", label: "Nationality", align: "left" as const },
-  { key: "club", label: "Club", align: "left" as const },
-  { key: "division", label: "Division", align: "left" as const },
-  { key: "ca", label: "CA", align: "right" as const },
-  { key: "pa", label: "PA", align: "right" as const },
-  { key: "value", label: "Value", align: "right" as const },
-] as const satisfies ReadonlyArray<{
-  key: (typeof BASIC_SEARCH_SORT_FIELDS)[number];
-  label: string;
-  align: "left" | "right";
-}>;
-
-type TableColumn = {
-  key: SearchSortField;
-  label: string;
-  align: "left" | "right";
-  dynamic?: boolean;
-};
-
-const BASIC_SORT_LABELS: Record<
-  (typeof BASIC_SEARCH_SORT_FIELDS)[number],
-  string
-> = {
-  name: "Name",
-  age: "Age / DOB",
-  nationality: "Nationality",
-  club: "Club",
-  division: "Division",
-  ca: "CA",
-  pa: "PA",
-  value: "Value",
-};
+type TableColumn = PlayerTableColumn;
 
 type SearchResultsPanelProps = {
   sortBy: SearchSortField;
@@ -162,6 +130,22 @@ function basicCell(
   }
 }
 
+function tableColumnForMetric(
+  metricId: string,
+  width: number | undefined,
+): TableColumn | undefined {
+  const metric = getPlayerMetric(metricId);
+  if (!metric) {
+    return undefined;
+  }
+  return {
+    id: metric.id,
+    label: metric.id === "age" ? "Age / DOB" : metric.label,
+    align: metric.align,
+    width: width ?? metric.defaultWidth,
+  };
+}
+
 function SearchResultsVirtualTable({
   total,
   sortBy,
@@ -171,6 +155,9 @@ function SearchResultsVirtualTable({
   columns,
   requestedFields,
   onSortChange,
+  onAddColumn,
+  onRemoveColumn,
+  onResizeColumn,
 }: {
   total: number;
   sortBy: SearchSortField;
@@ -180,6 +167,9 @@ function SearchResultsVirtualTable({
   columns: TableColumn[];
   requestedFields: string[];
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
+  onAddColumn: (metricId: string) => void;
+  onRemoveColumn: (metricId: string) => void;
+  onResizeColumn: (metricId: string, width: number) => void;
 }) {
   const navigate = useNavigate();
 
@@ -187,54 +177,20 @@ function SearchResultsVirtualTable({
     <VirtualizedPlayerTable
       caption="Player search results"
       columnCount={columns.length}
+      columns={columns}
       header={
-        <thead className="sticky top-0 z-10">
-          <tr className="bg-surface-container-lowest">
-            {columns.map((column) => {
-              const active = column.key === sortBy;
-              const ariaSort = active
-                ? sortDir === "asc"
-                  ? "ascending"
-                  : "descending"
-                : "none";
-              const Caret = sortDir === "asc" ? ChevronUp : ChevronDown;
-              return (
-                <th
-                  key={column.key}
-                  scope="col"
-                  aria-sort={ariaSort}
-                  className={
-                    column.align === "right"
-                      ? "h-table-header-height px-2 text-right"
-                      : "h-table-header-height px-2 text-left"
-                  }
-                >
-                  <button
-                    type="button"
-                    className={
-                      active
-                        ? "inline-flex items-center gap-1 text-label-md text-primary uppercase"
-                        : "inline-flex items-center gap-1 text-label-md text-on-surface-variant uppercase"
-                    }
-                    onClick={() => {
-                      const next = nextSort(sortBy, sortDir, column.key);
-                      onSortChange(next.sortBy, next.sortDir);
-                    }}
-                  >
-                    {column.label}
-                    {active ? (
-                      <Caret
-                        aria-hidden
-                        className="size-3.5 shrink-0"
-                        strokeWidth={2}
-                      />
-                    ) : null}
-                  </button>
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
+        <PlayerTableHeader
+          columns={columns}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSortChange={(metricId) => {
+            const next = nextSort(sortBy, sortDir, metricId);
+            onSortChange(next.sortBy, next.sortDir);
+          }}
+          onAddColumn={onAddColumn}
+          onRemoveColumn={onRemoveColumn}
+          onResizeColumn={onResizeColumn}
+        />
       }
       pageQueryOptions={(offset, limit) =>
         searchPlayersQueryOptions(
@@ -250,11 +206,11 @@ function SearchResultsVirtualTable({
       pageSize={SEARCH_PAGE_SIZE}
       renderCells={(player) =>
         columns.map((column) => {
-          if (column.dynamic) {
-            const text = formatDynamicCell(player, column.key);
+          if (!isBasicSearchSortField(column.id)) {
+            const text = formatDynamicCell(player, column.id);
             return (
               <td
-                key={column.key}
+                key={column.id}
                 className={
                   column.align === "right"
                     ? NUM_CELL
@@ -268,15 +224,15 @@ function SearchResultsVirtualTable({
           }
           const cell = basicCell(
             player,
-            column.key as (typeof BASIC_SEARCH_SORT_FIELDS)[number],
+            column.id as (typeof BASIC_SEARCH_SORT_FIELDS)[number],
           );
           return (
             <td
-              key={column.key}
+              key={column.id}
               className={
                 cell.numeric
                   ? NUM_CELL
-                  : `${TEXT_CELL} ${column.key === "age" || column.key === "division" ? "text-on-surface-variant" : "text-on-surface"}`
+                  : `${TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
               }
               title={cell.title}
             >
@@ -306,22 +262,24 @@ export function SearchResultsPanel({
   filterCombine,
   onSortChange,
 }: SearchResultsPanelProps) {
-  const dynamicFields = useMemo(() => dynamicColumnFields(filters), [filters]);
+  const layout = usePlayerTableStore((state) => state.layouts.search);
+  const addColumns = usePlayerTableStore((state) => state.addColumns);
+  const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
+  const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
   const columns = useMemo<TableColumn[]>(
-    () => [
-      ...BASIC_COLUMNS.map((column) => ({ ...column })),
-      ...dynamicFields.map((fieldId) => {
-        const kind = getFilterField(fieldId)?.kind;
-        const numeric = kind === "integer" || kind === "boolean";
-        return {
-          key: fieldId,
-          label: dynamicColumnLabel(fieldId),
-          align: numeric ? ("right" as const) : ("left" as const),
-          dynamic: true,
-        };
+    () =>
+      layout.columnIds.flatMap((metricId) => {
+        const column = tableColumnForMetric(metricId, layout.widths[metricId]);
+        return column ? [column] : [];
       }),
-    ],
-    [dynamicFields],
+    [layout],
+  );
+  const requestedFields = useMemo(
+    () =>
+      columns
+        .filter((column) => !isBasicSearchSortField(column.id))
+        .map((column) => column.id),
+    [columns],
   );
 
   const { data: page } = useSuspenseQuery(
@@ -332,19 +290,20 @@ export function SearchResultsPanel({
       sortDir,
       filters,
       filterCombine,
-      dynamicFields,
+      requestedFields,
     ),
   );
   const listKey = useMemo(
     () =>
       [
         filterCombine,
+        layout.columnIds.join(","),
         ...filters.map(
           (rule) =>
             `${rule.field}:${rule.op}:${String(filterValueToIpc(rule.value))}`,
         ),
       ].join("|"),
-    [filterCombine, filters],
+    [filterCombine, filters, layout.columnIds],
   );
 
   if (page.total === 0) {
@@ -370,9 +329,29 @@ export function SearchResultsPanel({
   }
 
   const dirLabel = sortDir === "asc" ? "ascending" : "descending";
-  const sortLabel = isBasicSearchSortField(sortBy)
-    ? BASIC_SORT_LABELS[sortBy]
-    : dynamicColumnLabel(sortBy);
+  const sortMetric = getPlayerMetric(sortBy);
+  const sortLabel = sortMetric
+    ? sortMetric.id === "age"
+      ? "Age / DOB"
+      : sortMetric.label
+    : sortBy;
+  const removeColumn = (metricId: string) => {
+    const remainingColumns = columns.filter((column) => column.id !== metricId);
+    if (remainingColumns.length === columns.length) {
+      return;
+    }
+    removeStoredColumn("search", metricId);
+    if (sortBy !== metricId) {
+      return;
+    }
+    const nextColumn =
+      remainingColumns.find((column) => column.id === "ca") ??
+      remainingColumns[0];
+    if (!nextColumn) {
+      return;
+    }
+    onSortChange(nextColumn.id, defaultDirForSortField(nextColumn.id));
+  };
 
   return (
     <Panel
@@ -393,8 +372,13 @@ export function SearchResultsPanel({
         filters={filters}
         filterCombine={filterCombine}
         columns={columns}
-        requestedFields={dynamicFields}
+        requestedFields={requestedFields}
         onSortChange={onSortChange}
+        onAddColumn={(metricId) => addColumns("search", [metricId])}
+        onRemoveColumn={removeColumn}
+        onResizeColumn={(metricId, width) =>
+          setColumnWidth("search", metricId, width)
+        }
       />
     </Panel>
   );

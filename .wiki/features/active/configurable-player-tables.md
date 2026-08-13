@@ -295,7 +295,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 - Owners and files: shared player-table component/hook under `src/components/`, Search and Squad panels, Search/Planner routes, narrowly necessary Panel/app-shell flex hooks, route tests, IPC stub, and smoke coverage.
 - Existing patterns to verify: Search virtual page math and roving focus, `ResizeObserver` fallback, sticky header constants, Squad URL sort, hidden Planner tab panels, and the existing route-level suspense states.
 - Constraints and invariants: one vertical scroll owner; no visible pagination; no all-row client array; fixed row height; bounded overscan/page queries; row click and Enter open the profile; browser back restores route sort/filter state; Planner and Tactic tabs retain usable scrolling.
-- Dependencies and ordering: consumes commit 3's common paged metric shape and creates the header/table base extended in commit 5. Commit 5 remains the next planned work after this correction; Commit 6 keeps its original position.
+- Dependencies and ordering: consumes commit 3's common paged metric shape and creates the header/table base extended in commit 5.
 
 **Implementation profile:** Terra Max — two high-churn table implementations, route sizing, virtualization, and keyboard navigation must converge without regressions.
 
@@ -317,7 +317,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 #### Commit 5 — Persist resizable column layouts
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): persist resizable column layouts`
 
@@ -338,7 +338,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **Review profile:** Sol xhigh — subtle state or event defects can corrupt layouts, hide active sorting, or make headers unusable by keyboard.
 
-**Validation:** Begin with failing store hydration/sanitization, context-menu add/remove, Done-only filter-auto-add, cancelled-draft no-op, last-column guard, active-sort removal, pointer/keyboard resize, and sort-without-layout-change tests. Run `./scripts/dev test src/features/search src/features/squad src/app/routes/search.test.tsx src/app/routes/planner.test.tsx`, `./scripts/dev check`, `./scripts/dev smoke`, and `./scripts/dev secrets --staged`. Manually reload the app and revisit both routes after profile navigation. Expected evidence: widths and insertion order persist, sort/filter URLs persist, a draft changes neither, and multiple potential columns reuse cached values.
+**Validation:** The initial test run was RED against the current suite before implementation. P1 RED then exposed a browser layout failure: 32/33 smoke tests passed, but the Search table width was expected at 1144px and measured 1190px. After the correction, focused metrics/store/Search/Planner tests passed 105/105; `./scripts/dev check` passed (395 Rust passed; 2 ignored); `./scripts/dev smoke` passed 33/33; and `./scripts/dev secrets --staged` was clean. The P1 review correction passed re-review with no findings. Native Tauri/WebView manual verification remains unperformed.
 
 **Stop conditions:** Stop if hydration depends on route timing, if a context-menu-only action has no keyboard trigger, or if width persistence requires duplicating server data in Zustand.
 
@@ -355,7 +355,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 #### Commit 6 — Render all nationality flags
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(tables): render nationality flags`
 
@@ -393,19 +393,19 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 **PR:** PR 1 — Configurable player tables
 
-**Commit:** Commit 5 — Persist resizable column layouts
+**Commit:** Commit 6 — Render all nationality flags
 
 ### RED proof
 
-Add failing store, header, and route tests that prove layout hydration is sanitized, columns can be added and removed through accessible controls, filter fields add only on Done, widths resize by pointer and keyboard, and sorting preserves column order and widths.
+Add a failing coverage test for every distinct nationality in the representative snapshot, then add renderer tests for the four UK home nations, multiple nationalities, empty arrays, and truthful unknown-value fallback.
 
 ### Expected outcome
 
-Search and Squad retain independent persisted column order and widths. Headers support accessible adding, removal, and resizing while fixed widths keep sorting from shifting columns and every selected metric remains queryable and sortable.
+Search and Squad render bundled SVG flags for every stored nationality in order, with full-name hover and accessibility labels. Unknown values remain truthful text, and no league flags or runtime network requests appear.
 
 ### Explicit exclusions
 
-No drag reordering, shared Search/Squad presets, column-width URLs, nationality flags, or Squad filters belong in Commit 5.
+No league or division flags, remote assets, flag emoji, nationality normalization in SQLite, or nationality sort changes belong in Commit 6.
 
 ## Discoveries and replanning
 
@@ -426,6 +426,7 @@ No drag reordering, shared Search/Squad presets, column-width URLs, nationality 
 | PR 1 — Configurable player tables | Commit 2 — Cache potential table role scores | `b258df8` | Added migration v21, sparse versioned potential-role cache population, potential Search filters, and atomic boost invalidation. | Sol xhigh accepted after one correction round. | Windows representative cold/warm timing remains a pre-publication validation gap. |
 | PR 1 — Configurable player tables | Commit 3 — Query selected player metrics | `ef85cd6` | Added the shared validated metric resolver and typed dynamic values to Search and Squad, including Position display/sort and page-versus-cohort potential cache population. | Sol xhigh accepted after one correction round. | Windows representative cold/warm timing remains a pre-publication validation gap. |
 | PR 1 — Configurable player tables | Commit 4 — Virtualize full-height player lists | `7b16eef`; correction pending record | Extracted the shared full-height virtual table, removed Squad pagination, and added whole-row profile activation with resilient page-boundary behavior. Corrected the route height chain and added paged 101-row browser coverage. | Sol High accepted the initial implementation after three correction rounds; a fresh Sol High review accepted the correction with no findings. | Native Tauri/WebView visual inspection remains outstanding; automated Chromium covers 1280×800 and 1600×900. |
+| PR 1 — Configurable player tables | Commit 5 — Persist resizable column layouts | Pending record | Added independent persisted layouts, fixed-width accessible headers, metric picker/menu controls, pointer and keyboard resize, and Done-only filter-column insertion. | Sol xhigh accepted after the P1 correction; re-review clean. | Native Tauri/WebView manual verification remains unperformed. |
 
 ## Final validation
 

@@ -2,6 +2,8 @@ import { ROLE_CATALOG } from "@/utils/role-catalog";
 
 export type PlayerMetricKind = "string" | "integer" | "boolean" | "enum";
 
+export type PlayerMetricAlignment = "left" | "right";
+
 export type PlayerMetricCategory =
   | "identity"
   | "club-contract"
@@ -33,10 +35,69 @@ export type PlayerMetric = {
   label: string;
   category: PlayerMetricCategory;
   kind: PlayerMetricKind;
+  align: PlayerMetricAlignment;
+  defaultWidth: number;
+  sortable: boolean;
   operators: readonly PlayerMetricOperator[];
   enumOptions?: ReadonlyArray<{ value: string; label: string }>;
   roleFamily?: PlayerMetricRoleFamily;
 };
+
+export const DEFAULT_PLAYER_TABLE_COLUMN_IDS = [
+  "name",
+  "age",
+  "nationality",
+  "club",
+  "division",
+  "ca",
+  "pa",
+  "value",
+] as const;
+
+export const PLAYER_TABLE_MIN_COLUMN_WIDTH = 72;
+export const PLAYER_TABLE_MAX_COLUMN_WIDTH = 360;
+
+type PlayerMetricDefinition = Omit<
+  PlayerMetric,
+  "align" | "defaultWidth" | "sortable"
+> &
+  Partial<Pick<PlayerMetric, "align" | "defaultWidth" | "sortable">>;
+
+function defaultWidthForMetric(id: string, kind: PlayerMetricKind): number {
+  if (id.startsWith("role.") || id.startsWith("potential_role.")) {
+    return 112;
+  }
+  if (
+    id.startsWith("attr.") ||
+    id.startsWith("hidden.") ||
+    id.startsWith("personality.") ||
+    id.startsWith("pos.")
+  ) {
+    return 88;
+  }
+  if (kind === "integer") {
+    return 96;
+  }
+  if (kind === "boolean") {
+    return 112;
+  }
+  if (kind === "enum") {
+    return 128;
+  }
+  return 176;
+}
+
+function playerMetric(definition: PlayerMetricDefinition): PlayerMetric {
+  return {
+    ...definition,
+    align:
+      definition.align ?? (definition.kind === "integer" ? "right" : "left"),
+    defaultWidth:
+      definition.defaultWidth ??
+      defaultWidthForMetric(definition.id, definition.kind),
+    sortable: definition.sortable ?? true,
+  };
+}
 
 const STRING_OPERATORS: readonly PlayerMetricOperator[] = [
   { id: "contains", label: "contains" },
@@ -226,32 +287,38 @@ const ROLE_FAMILY_BY_ID = {
   tracking_centre_forward_oop: "Forwards",
 } as const satisfies Record<RoleId, PlayerMetricRoleFamily>;
 
-const ATTRIBUTE_METRICS: PlayerMetric[] = ATTR_KEYS.map((key) => ({
-  id: `attr.${key}`,
-  label: labelFromPascal(key),
-  category: "visible-attributes",
-  kind: "integer",
-  operators: INTEGER_OPERATORS,
-}));
+const ATTRIBUTE_METRICS: PlayerMetric[] = ATTR_KEYS.map((key) =>
+  playerMetric({
+    id: `attr.${key}`,
+    label: labelFromPascal(key),
+    category: "visible-attributes",
+    kind: "integer",
+    operators: INTEGER_OPERATORS,
+  }),
+);
 
-const HIDDEN_METRICS: PlayerMetric[] = HIDDEN_ATTR_KEYS.map((key) => ({
-  id: `hidden.${key}`,
-  label: `Hidden · ${labelFromPascal(key)}`,
-  category: "hidden-attributes",
-  kind: "integer",
-  operators: INTEGER_OPERATORS,
-}));
+const HIDDEN_METRICS: PlayerMetric[] = HIDDEN_ATTR_KEYS.map((key) =>
+  playerMetric({
+    id: `hidden.${key}`,
+    label: `Hidden · ${labelFromPascal(key)}`,
+    category: "hidden-attributes",
+    kind: "integer",
+    operators: INTEGER_OPERATORS,
+  }),
+);
 
-const PERSONALITY_METRICS: PlayerMetric[] = PERSONALITY_KEYS.map((key) => ({
-  id: `personality.${key}`,
-  label: `Personality · ${labelFromPascal(key)}`,
-  category: "personality",
-  kind: "integer",
-  operators: INTEGER_OPERATORS,
-}));
+const PERSONALITY_METRICS: PlayerMetric[] = PERSONALITY_KEYS.map((key) =>
+  playerMetric({
+    id: `personality.${key}`,
+    label: `Personality · ${labelFromPascal(key)}`,
+    category: "personality",
+    kind: "integer",
+    operators: INTEGER_OPERATORS,
+  }),
+);
 
-const POSITION_SUITABILITY_METRICS: PlayerMetric[] = POSITION_KEYS.map(
-  (key) => ({
+const POSITION_SUITABILITY_METRICS: PlayerMetric[] = POSITION_KEYS.map((key) =>
+  playerMetric({
     id: `pos.${key}`,
     label: `Position · ${key} suitability`,
     category: "position-suitability",
@@ -260,17 +327,19 @@ const POSITION_SUITABILITY_METRICS: PlayerMetric[] = POSITION_KEYS.map(
   }),
 );
 
-const CURRENT_ROLE_SCORE_METRICS: PlayerMetric[] = ROLE_CATALOG.map((role) => ({
-  id: `role.${role.id}`,
-  label: `Role · ${role.label}`,
-  category: "current-role-scores",
-  kind: "integer",
-  operators: INTEGER_OPERATORS,
-  roleFamily: ROLE_FAMILY_BY_ID[role.id],
-}));
+const CURRENT_ROLE_SCORE_METRICS: PlayerMetric[] = ROLE_CATALOG.map((role) =>
+  playerMetric({
+    id: `role.${role.id}`,
+    label: `Role · ${role.label}`,
+    category: "current-role-scores",
+    kind: "integer",
+    operators: INTEGER_OPERATORS,
+    roleFamily: ROLE_FAMILY_BY_ID[role.id],
+  }),
+);
 
-const POTENTIAL_ROLE_SCORE_METRICS: PlayerMetric[] = ROLE_CATALOG.map(
-  (role) => ({
+const POTENTIAL_ROLE_SCORE_METRICS: PlayerMetric[] = ROLE_CATALOG.map((role) =>
+  playerMetric({
     id: `potential_role.${role.id}`,
     label: `Potential role · ${role.label}`,
     category: "potential-role-scores",
@@ -280,12 +349,13 @@ const POTENTIAL_ROLE_SCORE_METRICS: PlayerMetric[] = ROLE_CATALOG.map(
   }),
 );
 
-export const PLAYER_METRICS: readonly PlayerMetric[] = [
+const PLAYER_METRIC_DEFINITIONS: readonly PlayerMetricDefinition[] = [
   {
     id: "name",
     label: "Name",
     category: "identity",
     kind: "string",
+    defaultWidth: 224,
     operators: STRING_OPERATORS,
   },
   {
@@ -293,6 +363,7 @@ export const PLAYER_METRICS: readonly PlayerMetric[] = [
     label: "Nationality",
     category: "identity",
     kind: "string",
+    defaultWidth: 160,
     operators: STRING_OPERATORS,
   },
   {
@@ -300,6 +371,8 @@ export const PLAYER_METRICS: readonly PlayerMetric[] = [
     label: "Age",
     category: "identity",
     kind: "integer",
+    align: "left",
+    defaultWidth: 144,
     operators: INTEGER_OPERATORS,
   },
   {
@@ -326,6 +399,7 @@ export const PLAYER_METRICS: readonly PlayerMetric[] = [
     label: "Club",
     category: "club-contract",
     kind: "string",
+    defaultWidth: 192,
     operators: STRING_OPERATORS,
   },
   {
@@ -333,6 +407,7 @@ export const PLAYER_METRICS: readonly PlayerMetric[] = [
     label: "Division",
     category: "club-contract",
     kind: "string",
+    defaultWidth: 168,
     operators: STRING_OPERATORS,
   },
   {
@@ -361,6 +436,7 @@ export const PLAYER_METRICS: readonly PlayerMetric[] = [
     label: "Value",
     category: "club-contract",
     kind: "integer",
+    defaultWidth: 112,
     operators: INTEGER_OPERATORS,
   },
   {
@@ -422,6 +498,7 @@ export const PLAYER_METRICS: readonly PlayerMetric[] = [
     label: "CA",
     category: "ability-reputation",
     kind: "integer",
+    defaultWidth: 72,
     operators: INTEGER_OPERATORS,
   },
   {
@@ -429,6 +506,7 @@ export const PLAYER_METRICS: readonly PlayerMetric[] = [
     label: "PA",
     category: "ability-reputation",
     kind: "integer",
+    defaultWidth: 72,
     operators: INTEGER_OPERATORS,
   },
   {
@@ -450,9 +528,14 @@ export const PLAYER_METRICS: readonly PlayerMetric[] = [
     label: "Position",
     category: "position-suitability",
     kind: "enum",
+    defaultWidth: 144,
     operators: ENUM_OPERATORS,
     enumOptions: POSITION_KEYS.map((key) => ({ value: key, label: key })),
   },
+];
+
+export const PLAYER_METRICS: readonly PlayerMetric[] = [
+  ...PLAYER_METRIC_DEFINITIONS.map(playerMetric),
   ...ATTRIBUTE_METRICS,
   ...HIDDEN_METRICS,
   ...PERSONALITY_METRICS,
