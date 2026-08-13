@@ -14,9 +14,9 @@ export function AppShellLayout() {
         Skip to content
       </a>
       <AppNavRail />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <AppTopBar />
-        <main id="main-content" className="flex-1 overflow-y-auto p-4">
+        <main id="main-content" className="min-h-0 flex-1 overflow-y-auto p-4">
           <Outlet />
         </main>
       </div>

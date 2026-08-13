@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { ROLE_CATALOG } from "@/utils/role-catalog";
 import { createFilterRuleId } from "../types/filter-rule";
 import { dynamicColumnFields, isVisibleSortField } from "./dynamic-columns";
-import { ROLE_CATALOG } from "./role-catalog";
 
 describe("dynamicColumnFields", () => {
   it("returns unique non-basic complete filter fields", () => {
@@ -38,7 +38,7 @@ describe("dynamicColumnFields", () => {
     ]);
   });
 
-  it("allows sorting by a visible dynamic column only", () => {
+  it("allows sorting by known metrics whether or not they are requested", () => {
     const filters = [
       {
         id: createFilterRuleId(),
@@ -50,11 +50,11 @@ describe("dynamicColumnFields", () => {
     expect(isVisibleSortField("role.deep_lying_playmaker_ip", filters)).toBe(
       true,
     );
-    expect(isVisibleSortField("attr.Acceleration", filters)).toBe(false);
+    expect(isVisibleSortField("attr.Acceleration", filters)).toBe(true);
     expect(isVisibleSortField("ca", filters)).toBe(true);
   });
 
-  it("excludes position presence from dynamic columns", () => {
+  it("includes Position and position-suitability display fields", () => {
     expect(
       dynamicColumnFields([
         {
@@ -70,7 +70,31 @@ describe("dynamicColumnFields", () => {
           value: { type: "integer", value: 15 },
         },
       ]),
-    ).toEqual(["pos.MC"]);
+    ).toEqual(["position", "pos.MC"]);
+  });
+
+  it("includes potential role filters in requested table fields", () => {
+    const filters = [
+      {
+        id: createFilterRuleId(),
+        field: "potential_role.goalkeeper_ip",
+        op: "gt",
+        value: { type: "integer" as const, value: 70 },
+      },
+    ];
+
+    expect(dynamicColumnFields(filters)).toEqual([
+      "potential_role.goalkeeper_ip",
+    ]);
+    expect(isVisibleSortField("potential_role.goalkeeper_ip", filters)).toBe(
+      true,
+    );
+  });
+
+  it("allows a known metric to sort even while its column is not requested", () => {
+    expect(isVisibleSortField("position", [])).toBe(true);
+    expect(isVisibleSortField("attr.Acceleration", [])).toBe(true);
+    expect(isVisibleSortField("unknown.metric", [])).toBe(false);
   });
 });
 

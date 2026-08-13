@@ -1,5 +1,9 @@
 use rusqlite::types::Value;
 
+use crate::features::player_metrics::resolver::{
+    attribute_key, catalog_role_id, hidden_attribute_key, personality_key, POSITION_KEYS,
+};
+
 /// Maximum filter rules accepted at the trust boundary.
 pub const MAX_FILTER_RULES: usize = 32;
 
@@ -52,11 +56,6 @@ pub struct CompiledFilter {
     pub params: Vec<Value>,
 }
 
-/// FM26 dump position keys (bridge `PositionEntries`).
-const POSITION_KEYS: &[&str] = &[
-    "GK", "SW", "DL", "DC", "DR", "DM", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "WBL", "WBR",
-];
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FieldKind {
     String {
@@ -89,77 +88,25 @@ enum FieldKind {
     RoleScore {
         role_id: String,
     },
+    /// Cached projected score for a catalog `role_id`.
+    PotentialRoleScore {
+        role_id: String,
+    },
 }
 
-/// Fields that already have a fixed results-table column.
-pub fn is_basic_column_field(field: &str) -> bool {
-    matches!(
-        field,
-        "name" | "age" | "nationality" | "club" | "division" | "ca" | "pa" | "value"
-    )
-}
-
-/// Non-basic filter fields that should appear as dynamic result columns.
-/// Skips `position` presence (no single numeric cell without the rule value).
-pub fn collects_dynamic_column(field: &str) -> bool {
-    !is_basic_column_field(field) && field != "position"
-}
-
-/// Unique dynamic column field ids from an AST, in first-seen order.
-pub fn dynamic_fields_from_ast(ast: &FilterAst) -> Vec<String> {
-    let mut fields = Vec::new();
+/// Unique potential role ids from an AST, in first-seen order.
+pub fn potential_role_ids_from_ast(ast: &FilterAst) -> Result<Vec<String>, String> {
+    let mut role_ids = Vec::new();
     for rule in &ast.rules {
-        if !collects_dynamic_column(&rule.field) {
+        let Some(role_id) = rule.field.strip_prefix("potential_role.") else {
             continue;
-        }
-        if fields.iter().any(|existing| existing == &rule.field) {
-            continue;
-        }
-        fields.push(rule.field.clone());
-    }
-    fields
-}
-
-/// SQL expression (relative to `players`) for selecting or sorting a filter field.
-pub fn field_value_sql(field: &str) -> Result<String, String> {
-    match resolve_field(field)? {
-        FieldKind::String { column, .. }
-        | FieldKind::Integer { column, .. }
-        | FieldKind::Boolean { column }
-        | FieldKind::Enum { column, .. } => Ok(column.to_string()),
-        FieldKind::JsonInteger { column, key } => Ok(json_extract_expr(column, &key)),
-        FieldKind::StringList { column } => Ok(column.to_string()),
-        FieldKind::PositionPresence => {
-            Err("position presence is not a sortable column".to_string())
-        }
-        FieldKind::RoleScore { role_id } => {
-            // role_id is catalog-validated (`[a-z0-9_]+`).
-            Ok(format!(
-                "(SELECT prs.score FROM player_role_scores prs WHERE prs.snapshot_id = players.snapshot_id AND prs.uid = players.uid AND prs.role_id = '{role_id}')"
-            ))
+        };
+        let role_id = catalog_role_id(role_id)?;
+        if !role_ids.iter().any(|existing| existing == role_id) {
+            role_ids.push(role_id.to_string());
         }
     }
-}
-
-fn is_safe_json_object_key(key: &str) -> bool {
-    !key.is_empty() && key.chars().all(|ch| ch.is_ascii_alphanumeric())
-}
-
-fn resolve_prefixed_json_integer(
-    field: &str,
-    prefix: &str,
-    column: &'static str,
-) -> Result<Option<FieldKind>, String> {
-    let Some(key) = field.strip_prefix(prefix) else {
-        return Ok(None);
-    };
-    if !is_safe_json_object_key(key) {
-        return Err(format!("invalid filter field key: {key}"));
-    }
-    Ok(Some(FieldKind::JsonInteger {
-        column,
-        key: key.to_string(),
-    }))
+    Ok(role_ids)
 }
 
 fn resolve_position_suitability(field: &str) -> Result<Option<FieldKind>, String> {
@@ -263,20 +210,28 @@ fn resolve_field(field: &str) -> Result<FieldKind, String> {
         }),
         "position" => Ok(FieldKind::PositionPresence),
         _ => {
-            if let Some(kind) = resolve_prefixed_json_integer(field, "attr.", "attributes_json")? {
-                return Ok(kind);
+            if let Some(key) = attribute_key(field)? {
+                return Ok(FieldKind::JsonInteger {
+                    column: "attributes_json",
+                    key: key.to_string(),
+                });
             }
-            if let Some(kind) =
-                resolve_prefixed_json_integer(field, "hidden.", "hidden_attributes_json")?
-            {
-                return Ok(kind);
+            if let Some(key) = hidden_attribute_key(field)? {
+                return Ok(FieldKind::JsonInteger {
+                    column: "hidden_attributes_json",
+                    key: key.to_string(),
+                });
             }
-            if let Some(kind) =
-                resolve_prefixed_json_integer(field, "personality.", "personality_json")?
-            {
-                return Ok(kind);
+            if let Some(key) = personality_key(field)? {
+                return Ok(FieldKind::JsonInteger {
+                    column: "personality_json",
+                    key: key.to_string(),
+                });
             }
             if let Some(kind) = resolve_position_suitability(field)? {
+                return Ok(kind);
+            }
+            if let Some(kind) = resolve_potential_role_score(field)? {
                 return Ok(kind);
             }
             if let Some(kind) = resolve_role_score(field)? {
@@ -291,14 +246,17 @@ fn resolve_role_score(field: &str) -> Result<Option<FieldKind>, String> {
     let Some(role_id) = field.strip_prefix("role.") else {
         return Ok(None);
     };
-    let Some(role) = crate::features::scoring::catalog::all_roles()
-        .iter()
-        .find(|candidate| candidate.role_id == role_id)
-    else {
-        return Err(format!("unknown role id: {role_id}"));
-    };
     Ok(Some(FieldKind::RoleScore {
-        role_id: role.role_id.to_string(),
+        role_id: catalog_role_id(role_id)?.to_string(),
+    }))
+}
+
+fn resolve_potential_role_score(field: &str) -> Result<Option<FieldKind>, String> {
+    let Some(role_id) = field.strip_prefix("potential_role.") else {
+        return Ok(None);
+    };
+    Ok(Some(FieldKind::PotentialRoleScore {
+        role_id: catalog_role_id(role_id)?.to_string(),
     }))
 }
 
@@ -387,6 +345,9 @@ fn compile_rule(
         FieldKind::RoleScore { role_id } => {
             compile_role_score_rule(&role_id, op, value, next_index)
         }
+        FieldKind::PotentialRoleScore { role_id } => {
+            compile_potential_role_score_rule(&role_id, op, value, next_index)
+        }
     }
 }
 
@@ -408,6 +369,32 @@ fn compile_role_score_rule(
     let score_placeholder = next_placeholder(next_index);
     let clause = format!(
         "EXISTS (SELECT 1 FROM player_role_scores prs WHERE prs.snapshot_id = players.snapshot_id AND prs.uid = players.uid AND prs.role_id = {role_placeholder} AND prs.score IS NOT NULL AND prs.score {compare} {score_placeholder})"
+    );
+    Ok((
+        clause,
+        vec![Value::Text(role_id.to_string()), Value::Integer(number)],
+    ))
+}
+
+fn compile_potential_role_score_rule(
+    role_id: &str,
+    op: &str,
+    value: &FilterValue,
+    next_index: &mut usize,
+) -> Result<(String, Vec<Value>), String> {
+    let number = value_as_integer(value)?;
+    let compare = match op {
+        "gt" => ">",
+        "lt" => "<",
+        "eq" => "=",
+        "neq" => "!=",
+        _ => return Err(format!("invalid integer filter operator: {op}")),
+    };
+    let role_placeholder = next_placeholder(next_index);
+    let score_placeholder = next_placeholder(next_index);
+    let clause = format!(
+        "EXISTS (SELECT 1 FROM player_potential_role_scores pprs WHERE pprs.snapshot_id = players.snapshot_id AND pprs.uid = players.uid AND pprs.role_id = {role_placeholder} AND pprs.projection_model_version = {} AND pprs.score IS NOT NULL AND pprs.score {compare} {score_placeholder})",
+        crate::features::player_metrics::potential_cache::PROJECTION_MODEL_VERSION,
     );
     Ok((
         clause,
@@ -944,7 +931,24 @@ mod tests {
         .expect("parse ast");
 
         let error = compile_filters(&ast, 2).expect_err("unsafe key");
-        assert!(error.contains("unknown filter field") || error.contains("invalid"));
+        assert!(error.contains("unknown player metric"));
+    }
+
+    #[test]
+    fn rejects_well_formed_unknown_json_metric_keys() {
+        for field in [
+            "attr.NotARealMetric",
+            "hidden.NotARealMetric",
+            "personality.NotARealMetric",
+        ] {
+            let ast = parse_filter_ast(vec![rule(field, "gt", FilterValue::Integer(1))], None)
+                .expect("parse ast");
+
+            assert!(
+                compile_filters(&ast, 2).is_err(),
+                "expected {field} to fail"
+            );
+        }
     }
 
     #[test]
@@ -1046,6 +1050,51 @@ mod tests {
                 Value::Integer(70),
             ]
         );
+    }
+
+    #[test]
+    fn compiles_potential_role_score_filter_via_versioned_cache() {
+        let ast = parse_filter_ast(
+            vec![rule(
+                "potential_role.goalkeeper_ip",
+                "gt",
+                FilterValue::Integer(70),
+            )],
+            None,
+        )
+        .expect("parse ast");
+
+        let compiled = compile_filters(&ast, 2).expect("compile");
+        assert!(
+            compiled.sql.contains("player_potential_role_scores"),
+            "expected potential cache SQL, got {}",
+            compiled.sql
+        );
+        assert!(compiled.sql.contains("projection_model_version = 1"));
+        assert_eq!(
+            compiled.params,
+            vec![Value::Text("goalkeeper_ip".to_string()), Value::Integer(70),]
+        );
+        assert_eq!(
+            potential_role_ids_from_ast(&ast).expect("extract roles"),
+            ["goalkeeper_ip"]
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_potential_role_id() {
+        let ast = parse_filter_ast(
+            vec![rule(
+                "potential_role.not_a_role",
+                "gt",
+                FilterValue::Integer(70),
+            )],
+            None,
+        )
+        .expect("parse ast");
+
+        assert!(potential_role_ids_from_ast(&ast).is_err());
+        assert!(compile_filters(&ast, 2).is_err());
     }
 
     #[test]

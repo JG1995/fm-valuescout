@@ -9,7 +9,7 @@ const BASIC_COLUMN_FIELDS = new Set<string>(BASIC_SEARCH_SORT_FIELDS);
 export function dynamicColumnFields(filters: FilterRule[]): string[] {
   const fields: string[] = [];
   for (const rule of completeFilterRules(filters)) {
-    if (BASIC_COLUMN_FIELDS.has(rule.field) || rule.field === "position") {
+    if (BASIC_COLUMN_FIELDS.has(rule.field)) {
       continue;
     }
     if (!getFilterField(rule.field)) {
@@ -27,10 +27,10 @@ export function dynamicColumnLabel(fieldId: string): string {
   return getFilterField(fieldId)?.label ?? fieldId;
 }
 
-/** Sort is allowed for basic columns and currently visible dynamic columns. */
+/** Sort is allowed for every known player metric, including hidden table fields. */
 export function isVisibleSortField(
   value: unknown,
-  filters: FilterRule[],
+  _filters: FilterRule[],
 ): value is SearchSortField {
   if (typeof value !== "string") {
     return false;
@@ -38,5 +38,5 @@ export function isVisibleSortField(
   if ((BASIC_SEARCH_SORT_FIELDS as readonly string[]).includes(value)) {
     return true;
   }
-  return dynamicColumnFields(filters).includes(value);
+  return getFilterField(value) !== undefined;
 }

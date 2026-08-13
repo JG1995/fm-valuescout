@@ -21,8 +21,17 @@ import {
 
 let overridePlayers: PlayerSummary[] | null = null;
 let lastSearchPlayersArgs: Record<string, unknown> | null = null;
+let searchPlayersCallCount = 0;
+let searchPlayersPageMode: SearchPlayersPageIpcMockMode = "success";
+let pendingSearchPlayersPage: {
+  args: unknown;
+  promise: Promise<SearchPlayersPage>;
+  resolve: (page: SearchPlayersPage) => void;
+} | null = null;
 let suggestOverride: PlayerSuggestHit[] | null = null;
 let lastSuggestPlayersArgs: Record<string, unknown> | null = null;
+
+export type SearchPlayersPageIpcMockMode = "success" | "pendingSecondPage";
 
 export function setSearchPlayersOverride(players: PlayerSummary[] | null) {
   overridePlayers = players;
@@ -35,12 +44,36 @@ export function setSuggestPlayersOverride(hits: PlayerSuggestHit[] | null) {
 export function resetSearchPlayersOverride() {
   overridePlayers = null;
   lastSearchPlayersArgs = null;
+  searchPlayersCallCount = 0;
+  searchPlayersPageMode = "success";
+  pendingSearchPlayersPage = null;
   suggestOverride = null;
   lastSuggestPlayersArgs = null;
 }
 
 export function getLastSearchPlayersArgs(): Record<string, unknown> | null {
   return lastSearchPlayersArgs;
+}
+
+export function getSearchPlayersCallCount(): number {
+  return searchPlayersCallCount;
+}
+
+export function setSearchPlayersPageIpcMockMode(
+  mode: SearchPlayersPageIpcMockMode,
+) {
+  searchPlayersPageMode = mode;
+  pendingSearchPlayersPage = null;
+}
+
+export function resolvePendingSearchPlayersPageIpcMock() {
+  const pending = pendingSearchPlayersPage;
+  if (!pending) {
+    return;
+  }
+  pendingSearchPlayersPage = null;
+  searchPlayersPageMode = "success";
+  pending.resolve(searchPlayersPage(pending.args));
 }
 
 export function getLastSuggestPlayersArgs(): Record<string, unknown> | null {
@@ -328,13 +361,7 @@ export function resolveSuggestPlayersIpcMock(
   }));
 }
 
-/** Builds a paged search response from the active snapshot mock state. */
-export function resolveSearchPlayersIpcMock(args: unknown): SearchPlayersPage {
-  lastSearchPlayersArgs =
-    typeof args === "object" && args !== null
-      ? (args as Record<string, unknown>)
-      : {};
-
+function searchPlayersPage(args: unknown): SearchPlayersPage {
   const snapshot = resolveGetCurrentSnapshotIpcMock();
   if (!snapshot) {
     return { players: [], total: 0 };
@@ -352,4 +379,29 @@ export function resolveSearchPlayersIpcMock(args: unknown): SearchPlayersPage {
     players: players.slice(offset, offset + limit),
     total: players.length,
   };
+}
+
+/** Builds a paged search response from the active snapshot mock state. */
+export function resolveSearchPlayersIpcMock(
+  args: unknown,
+): SearchPlayersPage | Promise<SearchPlayersPage> {
+  searchPlayersCallCount += 1;
+  lastSearchPlayersArgs =
+    typeof args === "object" && args !== null
+      ? (args as Record<string, unknown>)
+      : {};
+  const { offset } = parsePaging(args);
+
+  if (offset >= 50 && searchPlayersPageMode === "pendingSecondPage") {
+    if (!pendingSearchPlayersPage) {
+      let resolve!: (page: SearchPlayersPage) => void;
+      const promise = new Promise<SearchPlayersPage>((next) => {
+        resolve = next;
+      });
+      pendingSearchPlayersPage = { args, promise, resolve };
+    }
+    return pendingSearchPlayersPage.promise;
+  }
+
+  return searchPlayersPage(args);
 }

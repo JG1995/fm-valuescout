@@ -1,8 +1,10 @@
 import { Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { SelectField } from "@/components/ui/field/select-field";
 import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
+import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import type {
   FilterCombineMode,
   FilterRule,
@@ -14,6 +16,7 @@ import {
   defaultValueForField,
   FILTER_FIELDS,
   getFilterField,
+  isFilterRuleComplete,
 } from "../utils/filter-registry";
 import { capFilterRules, MAX_FILTER_RULES } from "../utils/search-url-search";
 
@@ -22,9 +25,12 @@ type SearchFilterEditorModalProps = {
   onClose: () => void;
   rules: FilterRule[];
   combine: FilterCombineMode;
-  onRulesChange: (rules: FilterRule[]) => void;
-  onCombineChange: (combine: FilterCombineMode) => void;
+  onApply: (rules: FilterRule[], combine: FilterCombineMode) => void;
 };
+
+function copyRules(rules: FilterRule[]): FilterRule[] {
+  return rules.map((rule) => ({ ...rule, value: { ...rule.value } }));
+}
 
 function FilterRuleRow({
   rule,
@@ -59,19 +65,12 @@ function FilterRuleRow({
 
   return (
     <div className="grid gap-3 rounded-lg border border-outline-variant bg-surface-container-high p-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-      <SelectField
+      <PlayerMetricPicker
         label="Field"
+        metrics={FILTER_FIELDS}
         value={rule.field}
-        onChange={(event) => {
-          handleFieldChange(event.target.value);
-        }}
-      >
-        {FILTER_FIELDS.map((candidate) => (
-          <option key={candidate.id} value={candidate.id}>
-            {candidate.label}
-          </option>
-        ))}
-      </SelectField>
+        onChange={handleFieldChange}
+      />
 
       <SelectField
         label="Operator"
@@ -164,33 +163,64 @@ export function SearchFilterEditorModal({
   onClose,
   rules,
   combine,
-  onRulesChange,
-  onCombineChange,
+  onApply,
 }: SearchFilterEditorModalProps) {
-  const atCap = rules.length >= MAX_FILTER_RULES;
+  const [draftRules, setDraftRules] = useState(() => copyRules(rules));
+  const [draftCombine, setDraftCombine] = useState(combine);
+  const atCap = draftRules.length >= MAX_FILTER_RULES;
+  const draftIsComplete = draftRules.every(isFilterRuleComplete);
+
+  useEffect(() => {
+    if (open) {
+      setDraftRules(copyRules(rules));
+      setDraftCombine(combine);
+    }
+  }, [open, rules, combine]);
+
+  const dismiss = () => {
+    setDraftRules(copyRules(rules));
+    setDraftCombine(combine);
+    onClose();
+  };
 
   const addRule = () => {
     if (atCap) {
       return;
     }
-    onRulesChange(capFilterRules([...rules, createDefaultFilterRule()]));
+    setDraftRules((current) =>
+      capFilterRules([...current, createDefaultFilterRule()]),
+    );
+  };
+
+  const apply = () => {
+    if (!draftIsComplete) {
+      return;
+    }
+    onApply(draftRules, draftCombine);
+    onClose();
   };
 
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={dismiss}
       title="Edit filters"
+      variant="informational"
       footer={
-        <Button variant="secondary" onClick={onClose}>
-          Done
-        </Button>
+        <>
+          <Button variant="secondary" onClick={dismiss}>
+            Cancel
+          </Button>
+          <Button disabled={!draftIsComplete} onClick={apply}>
+            Done
+          </Button>
+        </>
       }
     >
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-body-md text-on-surface-variant">
-            Changes apply immediately — no Apply button.
+            Changes apply when you select Done.
           </p>
           <fieldset className="inline-flex rounded-full border border-outline bg-surface-container-high p-0.5">
             <legend className="sr-only">Combine filters</legend>
@@ -198,15 +228,13 @@ export function SearchFilterEditorModal({
               <button
                 key={mode}
                 type="button"
-                aria-pressed={combine === mode}
+                aria-pressed={draftCombine === mode}
                 className={
-                  combine === mode
+                  draftCombine === mode
                     ? "rounded-full bg-primary px-3 py-1 text-label-md text-on-primary uppercase"
                     : "rounded-full px-3 py-1 text-label-md text-on-surface-variant uppercase hover:bg-surface-container-highest"
                 }
-                onClick={() => {
-                  onCombineChange(mode);
-                }}
+                onClick={() => setDraftCombine(mode)}
               >
                 {mode}
               </button>
@@ -214,23 +242,31 @@ export function SearchFilterEditorModal({
           </fieldset>
         </div>
 
+        {!draftIsComplete ? (
+          <p className="text-body-sm text-error" role="alert">
+            Complete every filter rule before applying filters.
+          </p>
+        ) : null}
+
         <div className="space-y-3">
-          {rules.length === 0 ? (
+          {draftRules.length === 0 ? (
             <p className="text-body-md text-on-surface-variant">
               No filter rules yet. Add one below.
             </p>
           ) : (
-            rules.map((rule) => (
+            draftRules.map((rule) => (
               <FilterRuleRow
                 key={rule.id}
                 rule={rule}
                 onChange={(next) => {
-                  onRulesChange(
-                    rules.map((item) => (item.id === rule.id ? next : item)),
+                  setDraftRules((current) =>
+                    current.map((item) => (item.id === rule.id ? next : item)),
                   );
                 }}
                 onRemove={() => {
-                  onRulesChange(rules.filter((item) => item.id !== rule.id));
+                  setDraftRules((current) =>
+                    current.filter((item) => item.id !== rule.id),
+                  );
                 }}
               />
             ))

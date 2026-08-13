@@ -18,10 +18,14 @@ import type { PlayerSummary } from "@/features/search/types/player-summary";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
+import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   getLastSearchPlayersArgs,
+  getSearchPlayersCallCount,
+  resolvePendingSearchPlayersPageIpcMock,
   setSearchPlayersOverride,
+  setSearchPlayersPageIpcMockMode,
 } from "@/testing/search-ipc-mock";
 import {
   resolveCreateSaveIpcMock,
@@ -85,6 +89,15 @@ function manyPlayers(count: number): PlayerSummary[] {
   }));
 }
 
+function mockScrollerScrollTo(scroller: HTMLElement) {
+  Object.defineProperty(scroller, "scrollTo", {
+    configurable: true,
+    value: (options: { top?: number }) => {
+      scroller.scrollTop = options.top ?? scroller.scrollTop;
+    },
+  });
+}
+
 describe("search route", () => {
   beforeEach(() => {
     useLayoutStore.setState({ railExpanded: true });
@@ -100,6 +113,7 @@ describe("search route", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Search" }),
     ).toBeInTheDocument();
+    expect(searchLink).toHaveAttribute("aria-current", "page");
     expect(
       screen.getByText("No data loaded for this save"),
     ).toBeInTheDocument();
@@ -130,6 +144,315 @@ describe("search route", () => {
       .filter((row) => row.hasAttribute("data-index"));
     expect(bodyRows.length).toBeGreaterThan(0);
     expect(bodyRows.length).toBeLessThan(80);
+    const scroller = screen.getByTestId("search-results-scroller");
+    expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
+    expect(scroller.parentElement).toHaveClass("relative", "min-h-0", "flex-1");
+    expect(getLastSearchPlayersArgs()).toMatchObject({
+      requestedFields: [],
+    });
+  });
+
+  it("renders every nationality flag in stored order", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Flagged Scout", 160),
+        nationalities: ["England", "Wales", "South Korea"],
+      },
+    ]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const flags = await within(table).findAllByRole("img");
+
+    expect(flags.map((flag) => flag.getAttribute("aria-label"))).toEqual([
+      "England",
+      "Wales",
+      "South Korea",
+    ]);
+  });
+
+  it("adds a metric from a header menu without changing the active sort", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Accelerating Scout", 160),
+        dynamicValues: { "attr.Acceleration": 16 },
+      },
+    ]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const caHeader = within(table).getByRole("columnheader", { name: "CA" });
+    const caSort = within(caHeader).getByRole("button", { name: "CA" });
+    expect(
+      within(table).queryByRole("button", { name: "Manage CA column" }),
+    ).toBeNull();
+    caSort.focus();
+    fireEvent.keyDown(caSort, { key: "F10", shiftKey: true });
+    await user.keyboard("{Escape}");
+    expect(caSort).toHaveFocus();
+    fireEvent.contextMenu(caHeader);
+    expect(
+      screen.getByRole("menu", { name: "CA column actions" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Add column" }));
+    await user.click(
+      screen.getByRole("button", { name: "Column: Choose a metric" }),
+    );
+    await user.type(
+      screen.getByRole("combobox", { name: "Search columns" }),
+      "acceleration",
+    );
+    await user.click(screen.getByRole("option", { name: "Acceleration" }));
+
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
+      "attr.Acceleration",
+    );
+
+    expect(
+      await screen.findByRole("columnheader", { name: "Acceleration" }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        requestedFields: ["attr.Acceleration"],
+      });
+    });
+    expect(router.state.location.search).toMatchObject({
+      sort: "ca",
+      dir: "desc",
+    });
+  });
+
+  it("reorders Search columns from the menu without changing its query, virtual row, or widths", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const store = usePlayerTableStore.getState();
+    store.addColumns("search", ["attr.Acceleration", "attr.Agility"]);
+    store.setColumnWidth("search", "attr.Acceleration", 216);
+    setSearchPlayersOverride(
+      manyPlayers(101).map((player) => ({
+        ...player,
+        dynamicValues: { "attr.Acceleration": 16, "attr.Agility": 15 },
+      })),
+    );
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const scroller = screen.getByTestId("search-results-scroller");
+    mockScrollerScrollTo(scroller);
+    fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        offset: 50,
+        requestedFields: ["attr.Acceleration", "attr.Agility"],
+      });
+    });
+    const focusedRow = await waitFor(() => {
+      const row = scroller.querySelector<HTMLElement>('[data-index="49"]');
+      if (!row) {
+        throw new Error("Expected the loaded virtual row.");
+      }
+      return row;
+    });
+    focusedRow.focus();
+    const callCountBeforeReorder = getSearchPlayersCallCount();
+    const accelerationHeader = within(table).getByRole("columnheader", {
+      name: "Acceleration",
+    });
+    fireEvent.contextMenu(accelerationHeader);
+    await user.click(screen.getByRole("menuitem", { name: "Move right" }));
+
+    await waitFor(() => {
+      const headerLabels = within(table)
+        .getAllByRole("columnheader")
+        .map((header) => header.getAttribute("aria-label"));
+      expect(headerLabels.indexOf("Agility")).toBeLessThan(
+        headerLabels.indexOf("Acceleration"),
+      );
+    });
+    const headerLabels = within(table)
+      .getAllByRole("columnheader")
+      .map((header) => header.getAttribute("aria-label"));
+    const cellTexts = within(focusedRow)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent);
+    expect(cellTexts[headerLabels.indexOf("Agility")]).toBe("15");
+    expect(cellTexts[headerLabels.indexOf("Acceleration")]).toBe("16");
+    expect(screen.getByRole("button", { name: "Acceleration" })).toHaveFocus();
+    expect(scroller.scrollTop).toBe(1_950);
+    expect(getSearchPlayersCallCount()).toBe(callCountBeforeReorder);
+    expect(
+      screen.getByRole("separator", { name: "Resize Acceleration column" }),
+    ).toHaveAttribute("aria-valuenow", "216");
+    expect(router.state.location.search).toMatchObject({
+      sort: "ca",
+      dir: "desc",
+    });
+  });
+
+  it("moves Search columns from the header menu with edge guards and focus restoration", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Movable menu", 160)]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const caHeader = within(table).getByRole("columnheader", { name: "CA" });
+    fireEvent.contextMenu(caHeader);
+    await user.click(screen.getByRole("menuitem", { name: "Move left" }));
+
+    expect(screen.getByRole("button", { name: "CA" })).toHaveFocus();
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      "name",
+      "age",
+      "nationality",
+      "club",
+      "ca",
+      "division",
+      "pa",
+      "value",
+    ]);
+    expect(router.state.location.search).toMatchObject({
+      sort: "ca",
+      dir: "desc",
+    });
+
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "Name" }),
+    );
+    expect(screen.getByRole("menuitem", { name: "Move left" })).toBeDisabled();
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "Value" }),
+    );
+    expect(screen.getByRole("menuitem", { name: "Move right" })).toBeDisabled();
+  });
+
+  it("closes a header menu after either pointer button is pressed outside", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Dismissible menu", 160)]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const caHeader = within(table).getByRole("columnheader", { name: "CA" });
+
+    fireEvent.contextMenu(caHeader);
+    expect(
+      screen.getByRole("menu", { name: "CA column actions" }),
+    ).toBeInTheDocument();
+    fireEvent.pointerDown(document.body, { button: 0 });
+    expect(
+      screen.queryByRole("menu", { name: "CA column actions" }),
+    ).toBeNull();
+
+    fireEvent.contextMenu(caHeader);
+    expect(
+      screen.getByRole("menu", { name: "CA column actions" }),
+    ).toBeInTheDocument();
+    fireEvent.pointerDown(document.body, { button: 2 });
+    expect(
+      screen.queryByRole("menu", { name: "CA column actions" }),
+    ).toBeNull();
+
+    fireEvent.contextMenu(caHeader);
+    fireEvent.pointerDown(
+      within(table).getByRole("separator", { name: "Resize CA column" }),
+      { button: 0, pointerId: 1, clientX: 0 },
+    );
+    expect(
+      screen.queryByRole("menu", { name: "CA column actions" }),
+    ).toBeNull();
+  });
+
+  it("resizes Search columns without changing the active sort", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Resizable", 160)]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const handle = within(table).getByRole("separator", {
+      name: "Resize CA column",
+    });
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 20 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 60 });
+    fireEvent.pointerUp(handle, { pointerId: 1 });
+
+    await waitFor(() => {
+      expect(handle).toHaveAttribute("aria-valuenow", "112");
+    });
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    fireEvent.keyDown(handle, { key: "End" });
+    expect(handle).toHaveAttribute("aria-valuenow", "360");
+    fireEvent.keyDown(handle, { key: "Home" });
+    expect(handle).toHaveAttribute("aria-valuenow", "72");
+    expect(usePlayerTableStore.getState().layouts.search.widths.ca).toBe(72);
+    expect(router.state.location.search).toMatchObject({
+      sort: "ca",
+      dir: "desc",
+    });
+  });
+
+  it("keeps Search column widths when sorting", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Stable width", 160)]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const resizeCa = within(table).getByRole("separator", {
+      name: "Resize CA column",
+    });
+    fireEvent.keyDown(resizeCa, { key: "ArrowRight" });
+    expect(resizeCa).toHaveAttribute("aria-valuenow", "88");
+
+    fireEvent.click(within(table).getByRole("button", { name: "Name" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "name",
+        dir: "asc",
+      });
+    });
+    expect(
+      screen.getByRole("separator", { name: "Resize CA column" }),
+    ).toHaveAttribute("aria-valuenow", "88");
+  });
+
+  it("resets the active Search sort when its visible column is removed", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Sort reset", 160)]);
+    const { router } = renderSearchRoute("/search?sort=name&dir=asc");
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "Name" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Remove Name" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "ca",
+        dir: "desc",
+      });
+      expect(screen.queryByRole("columnheader", { name: "Name" })).toBeNull();
+    });
   });
 
   it("navigates to /players/$uid when a results row is clicked", async () => {
@@ -169,6 +492,56 @@ describe("search route", () => {
     });
   });
 
+  it("restores Search sort after returning from a player profile", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Zara Scout", 160),
+      playerNamed("Alex Scout", 145),
+    ]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "name",
+        dir: "asc",
+      });
+    });
+    const sortedRow = within(table)
+      .getAllByRole("row")
+      .find((row) => row.hasAttribute("data-index"));
+    if (!sortedRow) {
+      throw new Error("expected a sorted virtualized body row");
+    }
+    expect(sortedRow).toHaveTextContent("Alex Scout");
+
+    await user.click(sortedRow);
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/players/145");
+    });
+
+    await router.history.back();
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/search");
+      expect(router.state.location.search).toMatchObject({
+        sort: "name",
+        dir: "asc",
+      });
+    });
+    const restoredTable = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(restoredTable).getByRole("columnheader", { name: "Name" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+  });
+
   it("moves keyboard focus to the next results row on ArrowDown", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -199,6 +572,49 @@ describe("search route", () => {
     await waitFor(() => {
       expect(bodyRows()[1]).toHaveFocus();
     });
+  });
+
+  it("does not reclaim focus from a Search header while a virtual page is pending", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride(manyPlayers(101));
+    setSearchPlayersPageIpcMockMode("pendingSecondPage");
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const scroller = screen.getByTestId("search-results-scroller");
+    mockScrollerScrollTo(scroller);
+    fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({ offset: 50 });
+    });
+
+    const boundaryRow = await waitFor(() => {
+      const row = scroller.querySelector<HTMLElement>('[data-index="49"]');
+      if (!row) {
+        throw new Error("Expected the loaded page boundary row.");
+      }
+      return row;
+    });
+    boundaryRow.focus();
+    await user.keyboard("{ArrowDown}");
+
+    const nameHeader = within(table).getByRole("button", { name: "Name" });
+    await user.click(nameHeader);
+    expect(nameHeader).toHaveFocus();
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "name",
+        dir: "asc",
+      });
+    });
+
+    resolvePendingSearchPlayersPageIpcMock();
+
+    expect(await screen.findByText("Player 051")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Name" })).toHaveFocus();
   });
 
   it("moves keyboard focus to the previous results row on ArrowUp", async () => {
@@ -371,14 +787,14 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Alice")).toBeInTheDocument();
   });
 
-  it("renders filter tags, opens editor, and applies filters immediately", async () => {
+  it("keeps filter edits query-silent until Done, then applies the complete draft", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
       playerNamed("High CA", 180),
       playerNamed("Low CA", 100),
     ]);
-    renderSearchRoute();
+    const { router } = renderSearchRoute();
 
     expect(await screen.findByText("High CA")).toBeInTheDocument();
     expect(screen.getByText("Low CA")).toBeInTheDocument();
@@ -386,60 +802,128 @@ describe("search route", () => {
     await user.click(screen.getByRole("button", { name: "Edit filters" }));
     const dialog = screen.getByRole("dialog", { name: "Edit filters" });
     expect(dialog).toBeInTheDocument();
+    const callsBeforeEdit = getSearchPlayersCallCount();
 
     await user.click(
       within(dialog).getByRole("button", { name: "Add filter" }),
     );
 
+    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "ca",
+    );
+    await user.click(within(dialog).getByRole("option", { name: "CA" }));
+
     const valueField = within(dialog).getByLabelText("Value");
     fireEvent.change(valueField, { target: { value: "150" } });
+    await user.click(within(dialog).getByRole("button", { name: "or" }));
+
+    expect(getSearchPlayersCallCount()).toBe(callsBeforeEdit);
+    expect(router.state.location.search).toMatchObject({
+      combine: "and",
+      filters: [],
+    });
+    expect(screen.getByText("Low CA")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
 
     await waitFor(() => {
+      expect(getSearchPlayersCallCount()).toBeGreaterThan(callsBeforeEdit);
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
         { field: "ca", op: "gt", value: 150 },
       ]);
-      expect(
-        screen.getByRole("button", {
-          name: /Remove filter CA > 150/i,
-        }),
-      ).toBeInTheDocument();
-      expect(screen.queryByText("Low CA")).not.toBeInTheDocument();
+      expect(getLastSearchPlayersArgs()?.filterCombine).toBe("or");
     });
+    expect(router.state.location.search).toMatchObject({
+      combine: "or",
+      filters: [expect.objectContaining({ field: "ca", op: "gt", value: 150 })],
+    });
+    expect(
+      screen.getByRole("button", {
+        name: /Remove filter CA > 150/i,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Low CA")).not.toBeInTheDocument();
     expect(screen.getByText("High CA")).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: /Remove filter CA > 150/i }),
     );
-    expect(screen.queryByRole("button", { name: /Remove filter/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Remove filter CA > 150/i }),
+    ).toBeNull();
     expect(await screen.findByText("Low CA")).toBeInTheDocument();
   });
 
-  it("sends filterCombine or when OR mode is selected in the editor", async () => {
+  it("keeps a drafted potential role filter query-silent until Done", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
-      playerNamed("High CA", 180),
-      playerNamed("Low CA", 100),
+      {
+        ...playerNamed("Potential target", 180),
+        dynamicValues: { "potential_role.goalkeeper_ip": 60 },
+      },
     ]);
     renderSearchRoute();
 
-    expect(await screen.findByText("High CA")).toBeInTheDocument();
+    expect(await screen.findByText("Potential target")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Edit filters" }));
     const dialog = screen.getByRole("dialog", { name: "Edit filters" });
-
-    await user.click(within(dialog).getByRole("button", { name: "or" }));
+    const callsBeforeEdit = getSearchPlayersCallCount();
     await user.click(
       within(dialog).getByRole("button", { name: "Add filter" }),
     );
+    await user.click(within(dialog).getByRole("button", { name: "Field: CA" }));
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "potential role",
+    );
 
-    const valueField = within(dialog).getByLabelText("Value");
-    fireEvent.change(valueField, { target: { value: "150" } });
+    expect(
+      within(dialog).getByRole("group", {
+        name: "Potential role scores · Goalkeepers",
+      }),
+    ).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole("option", {
+        name: "Potential role · Goalkeeper (IP)",
+      }),
+    );
+    fireEvent.change(within(dialog).getByLabelText("Value"), {
+      target: { value: "50" },
+    });
+
+    expect(getSearchPlayersCallCount()).toBe(callsBeforeEdit);
+
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
 
     await waitFor(() => {
-      expect(getLastSearchPlayersArgs()?.filterCombine).toBe("or");
       expect(getLastSearchPlayersArgs()?.filters).toEqual([
-        { field: "ca", op: "gt", value: 150 },
+        { field: "potential_role.goalkeeper_ip", op: "gt", value: 50 },
       ]);
+    });
+    expect(
+      await screen.findByRole("columnheader", {
+        name: "Potential role · Goalkeeper (IP)",
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /Remove filter Potential role · Goalkeeper \(IP\) > 50/i,
+      }),
+    );
+
+    expect(
+      await screen.findByRole("columnheader", {
+        name: "Potential role · Goalkeeper (IP)",
+      }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        requestedFields: ["potential_role.goalkeeper_ip"],
+      });
     });
   });
 
@@ -461,6 +945,7 @@ describe("search route", () => {
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "250" },
     });
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
 
     expect(
       await screen.findByText("No players match these filters"),
@@ -512,6 +997,7 @@ describe("search route", () => {
     fireEvent.change(within(dialog).getByLabelText("Value"), {
       target: { value: "150" },
     });
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
 
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
@@ -605,7 +1091,7 @@ describe("search route", () => {
     expect(
       within(dialog).getAllByRole("button", { name: "Remove filter rule" }),
     ).toHaveLength(32);
-    expect(router.state.location.search.filters).toHaveLength(32);
+    expect(router.state.location.search.filters).toHaveLength(0);
   });
 
   it("toggles CA from default descending to ascending on header click", async () => {
@@ -643,7 +1129,7 @@ describe("search route", () => {
     expect(within(firstRow).getByText("Low")).toBeInTheDocument();
   });
 
-  it("shows dynamic columns for active non-basic filter fields", async () => {
+  it("keeps active non-basic filter fields hidden until added to the layout", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
       {
@@ -669,22 +1155,19 @@ describe("search route", () => {
       name: "Player search results",
     });
     expect(
-      within(table).getByRole("columnheader", {
+      within(table).queryByRole("columnheader", {
         name: /Role · Deep-Lying Playmaker \(IP\)/i,
       }),
-    ).toBeInTheDocument();
+    ).toBeNull();
     expect(
-      within(table).getByRole("columnheader", { name: /Acceleration/i }),
-    ).toBeInTheDocument();
-
-    const bodyRows = within(table)
-      .getAllByRole("row")
-      .filter((row) => row.hasAttribute("data-index"));
-    const firstRow = bodyRows[0];
-    if (!firstRow) {
-      throw new Error("expected a virtualized body row");
-    }
-    expect(within(firstRow).getByText("82")).toBeInTheDocument();
-    expect(within(firstRow).getByText("16")).toBeInTheDocument();
+      within(table).queryByRole("columnheader", { name: /Acceleration/i }),
+    ).toBeNull();
+    expect(getLastSearchPlayersArgs()).toMatchObject({
+      requestedFields: [],
+      filters: [
+        { field: "role.deep_lying_playmaker_ip", op: "gt", value: 70 },
+        { field: "attr.Acceleration", op: "gt", value: 12 },
+      ],
+    });
   });
 });

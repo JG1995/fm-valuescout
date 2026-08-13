@@ -2,7 +2,14 @@ use std::collections::BTreeMap;
 
 use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Row};
 
-use super::filter::{compile_filters, dynamic_fields_from_ast, field_value_sql, FilterAst};
+use crate::features::player_metrics::{
+    potential_cache::{materialize_player_roles, materialize_snapshot_roles},
+    resolver::{parse_requested_fields, read_dynamic_value, MetricField},
+};
+
+use super::filter::{compile_filters, potential_role_ids_from_ast, FilterAst};
+
+pub use crate::features::player_metrics::resolver::DynamicValue;
 
 pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
@@ -98,8 +105,8 @@ pub enum SortField {
     Ca,
     Pa,
     Value,
-    /// Whitelisted filter field id (`role.*`, `attr.*`, scalar non-basics, …).
-    Dynamic(String),
+    /// Whitelisted player metric (`role.*`, `attr.*`, potential role, Position, …).
+    Dynamic(MetricField),
 }
 
 impl SortField {
@@ -115,16 +122,12 @@ impl SortField {
             "ca" => Ok(Self::Ca),
             "pa" => Ok(Self::Pa),
             "value" => Ok(Self::Value),
-            other => {
-                // Reject fields that cannot produce a single sortable expression.
-                let _ = field_value_sql(other)?;
-                Ok(Self::Dynamic(other.to_string()))
-            }
+            other => Ok(Self::Dynamic(MetricField::parse(other)?)),
         }
     }
 
-    fn sql_expr(&self) -> Result<String, String> {
-        Ok(match self {
+    fn sql_expr(&self) -> String {
+        match self {
             Self::Name => "name COLLATE NOCASE".to_string(),
             Self::Age => "age".to_string(),
             // ponytail: sort by raw nationalities_json text, not display join order
@@ -135,8 +138,15 @@ impl SortField {
             Self::Ca => "ca".to_string(),
             Self::Pa => "pa".to_string(),
             Self::Value => "market_value_gbp".to_string(),
-            Self::Dynamic(field) => field_value_sql(field)?,
-        })
+            Self::Dynamic(field) => field.sql_sort_expression("players"),
+        }
+    }
+
+    fn potential_role_id(&self) -> Option<&'static str> {
+        match self {
+            Self::Dynamic(field) => field.potential_role_id(),
+            _ => None,
+        }
     }
 }
 
@@ -166,12 +176,6 @@ impl SortDir {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DynamicValue {
-    Integer(i64),
-    Text(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerSummary {
     pub uid: i64,
     pub name: String,
@@ -184,7 +188,7 @@ pub struct PlayerSummary {
     pub ca: i64,
     pub pa: i64,
     pub market_value_gbp: Option<i64>,
-    /// Values for active non-basic filter fields (field id → nullable cell).
+    /// Values for requested non-basic metric fields (field id → nullable cell).
     pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
 }
 
@@ -201,7 +205,13 @@ pub fn search_players(
     sort_by: SortField,
     sort_dir: SortDir,
     filter_ast: Option<&FilterAst>,
+    requested_fields: &[String],
 ) -> Result<SearchPlayersPage, String> {
+    let requested_fields = parse_requested_fields(requested_fields)?;
+    let dynamic_fields = requested_fields
+        .into_iter()
+        .filter(|field| !field.is_basic_table_field())
+        .collect::<Vec<_>>();
     let snapshot_id: Option<i64> = conn
         .query_row(
             "SELECT s.id
@@ -226,8 +236,6 @@ pub fn search_players(
     let offset = i64::try_from(offset).map_err(|_| "search offset out of range".to_string())?;
     let limit = i64::try_from(limit).map_err(|_| "search limit out of range".to_string())?;
 
-    let dynamic_fields = filter_ast.map(dynamic_fields_from_ast).unwrap_or_default();
-
     let compiled = match filter_ast {
         None => None,
         Some(ast) => {
@@ -239,6 +247,17 @@ pub fn search_players(
             }
         }
     };
+
+    let mut full_snapshot_roles = filter_ast
+        .map(potential_role_ids_from_ast)
+        .transpose()?
+        .unwrap_or_default();
+    if let Some(role_id) = sort_by.potential_role_id() {
+        add_role_once(&mut full_snapshot_roles, role_id);
+    }
+    if !full_snapshot_roles.is_empty() {
+        materialize_snapshot_roles(conn, snapshot_id, &full_snapshot_roles)?;
+    }
 
     let mut where_sql = "players.snapshot_id = ?1".to_string();
     if let Some(compiled) = &compiled {
@@ -259,15 +278,10 @@ pub fn search_players(
         .query_row(params_from_iter(bind_values.iter()), |row| row.get(0))
         .map_err(|error| error.to_string())?;
 
-    let limit_index = bind_values.len() + 1;
-    let offset_index = bind_values.len() + 2;
-    bind_values.push(Value::Integer(limit));
-    bind_values.push(Value::Integer(offset));
-
     // Whitelisted expr + dir only — never interpolate raw client strings.
     let order_sql = format!(
         "ORDER BY {} {}, players.uid ASC",
-        sort_by.sql_expr()?,
+        sort_by.sql_expr(),
         sort_dir.sql_keyword()
     );
 
@@ -285,9 +299,20 @@ pub fn search_players(
                 players.pa,
                 players.market_value_gbp",
     );
+    let potential_display_roles = potential_role_ids(&dynamic_fields);
+    if !potential_display_roles.is_empty() {
+        let page_uids = query_page_uids(conn, &where_sql, &bind_values, &order_sql, limit, offset)?;
+        materialize_player_roles(conn, snapshot_id, &page_uids, &potential_display_roles)?;
+    }
+
+    let limit_index = bind_values.len() + 1;
+    let offset_index = bind_values.len() + 2;
+    bind_values.push(Value::Integer(limit));
+    bind_values.push(Value::Integer(offset));
+
     for field in &dynamic_fields {
         select_sql.push_str(", ");
-        select_sql.push_str(&field_value_sql(field)?);
+        select_sql.push_str(&field.sql_expression("players"));
     }
     select_sql.push_str(&format!(
         "
@@ -312,7 +337,10 @@ pub fn search_players(
     Ok(SearchPlayersPage { players, total })
 }
 
-fn map_player_summary(row: &Row<'_>, dynamic_fields: &[String]) -> rusqlite::Result<PlayerSummary> {
+fn map_player_summary(
+    row: &Row<'_>,
+    dynamic_fields: &[MetricField],
+) -> rusqlite::Result<PlayerSummary> {
     let nationalities_json: String = row.get(5)?;
     let nationalities = parse_nationalities(&nationalities_json).map_err(|message| {
         rusqlite::Error::FromSqlConversionFailure(
@@ -328,8 +356,8 @@ fn map_player_summary(row: &Row<'_>, dynamic_fields: &[String]) -> rusqlite::Res
     let mut dynamic_values = BTreeMap::new();
     for (offset, field) in dynamic_fields.iter().enumerate() {
         let idx = 11 + offset;
-        let cell = read_dynamic_cell(row, idx, field)?;
-        dynamic_values.insert(field.clone(), cell);
+        let cell = read_dynamic_value(row, idx, field)?;
+        dynamic_values.insert(field.id().to_string(), cell);
     }
 
     Ok(PlayerSummary {
@@ -348,38 +376,44 @@ fn map_player_summary(row: &Row<'_>, dynamic_fields: &[String]) -> rusqlite::Res
     })
 }
 
-fn read_dynamic_cell(
-    row: &Row<'_>,
-    idx: usize,
-    field: &str,
-) -> rusqlite::Result<Option<DynamicValue>> {
-    // Integer-like fields (scores, attrs, scalars, bools as 0/1).
-    if field.starts_with("role.")
-        || field.starts_with("attr.")
-        || field.starts_with("hidden.")
-        || field.starts_with("personality.")
-        || field.starts_with("pos.")
-        || matches!(
-            field,
-            "height"
-                | "wage"
-                | "reputation"
-                | "world_reputation"
-                | "birth_year"
-                | "contract_year"
-                | "transfer_listed"
-                | "loan_listed"
-                | "not_for_sale"
-                | "set_for_release"
-                | "on_loan"
-        )
-    {
-        let value: Option<i64> = row.get(idx)?;
-        return Ok(value.map(DynamicValue::Integer));
+fn add_role_once(role_ids: &mut Vec<String>, role_id: &str) {
+    if !role_ids.iter().any(|existing| existing == role_id) {
+        role_ids.push(role_id.to_string());
     }
+}
 
-    let value: Option<String> = row.get(idx)?;
-    Ok(value.map(DynamicValue::Text))
+fn potential_role_ids(fields: &[MetricField]) -> Vec<String> {
+    let mut role_ids = Vec::new();
+    for field in fields {
+        if let Some(role_id) = field.potential_role_id() {
+            add_role_once(&mut role_ids, role_id);
+        }
+    }
+    role_ids
+}
+
+fn query_page_uids(
+    conn: &Connection,
+    where_sql: &str,
+    bind_values: &[Value],
+    order_sql: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<i64>, String> {
+    let limit_index = bind_values.len() + 1;
+    let offset_index = bind_values.len() + 2;
+    let sql = format!(
+        "SELECT players.uid FROM players WHERE {where_sql} {order_sql} LIMIT ?{limit_index} OFFSET ?{offset_index}"
+    );
+    let mut values = bind_values.to_vec();
+    values.push(Value::Integer(limit));
+    values.push(Value::Integer(offset));
+    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params_from_iter(values.iter()), |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 fn parse_nationalities(json: &str) -> Result<Vec<String>, String> {
@@ -403,7 +437,7 @@ mod tests {
         sort_by: SortField,
         sort_dir: SortDir,
     ) -> Result<SearchPlayersPage, String> {
-        search_players(conn, offset, limit, sort_by, sort_dir, None)
+        search_players(conn, offset, limit, sort_by, sort_dir, None, &[])
     }
 
     fn search_with_filters(
@@ -416,7 +450,7 @@ mod tests {
         combine: Option<&str>,
     ) -> Result<SearchPlayersPage, String> {
         let ast = parse_filter_ast(rules, combine)?;
-        search_players(conn, offset, limit, sort_by, sort_dir, Some(&ast))
+        search_players(conn, offset, limit, sort_by, sort_dir, Some(&ast), &[])
     }
 
     fn open_migrated(db_path: &Path) -> rusqlite::Connection {
@@ -669,6 +703,11 @@ mod tests {
         assert!(SortField::parse("not_a_column").is_err());
         assert!(SortField::parse("ca; DROP TABLE players").is_err());
         assert!(SortDir::parse("sideways").is_err());
+    }
+
+    #[test]
+    fn accepts_position_as_a_sortable_display_metric() {
+        assert!(SortField::parse("position").is_ok());
     }
 
     #[test]
@@ -1275,6 +1314,228 @@ mod tests {
     }
 
     #[test]
+    fn potential_role_filter_materializes_the_full_snapshot_and_reuses_cached_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("potential-role-filter.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Potential target",
+                    100,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "GK": 20 }),
+                        attributes: json!({ "Positioning": 10, "Concentration": 10 }),
+                        hidden: json!({}),
+                        personality: json!({}),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Unknown potential",
+                    180,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "GK": 20 }),
+                        attributes: json!({ "Positioning": null, "Concentration": 20 }),
+                        hidden: json!({}),
+                        personality: json!({}),
+                    },
+                ),
+            ],
+        );
+
+        let rules = vec![filter_rule(
+            "potential_role.line_holding_keeper_oop",
+            "gt",
+            FilterValue::Integer(0),
+        )];
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            rules.clone(),
+            None,
+        )
+        .expect("potential role filter");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].name, "Potential target");
+        let cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE role_id = 'line_holding_keeper_oop'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count materialized rows");
+        assert_eq!(cache_rows, 2, "the filter needs the whole snapshot");
+        let null_scores: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE role_id = 'line_holding_keeper_oop' AND score IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count cached null scores");
+        assert_eq!(null_scores, 1);
+
+        conn.execute(
+            "UPDATE players SET attributes_json = '{invalid JSON}'
+             WHERE snapshot_id = (SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1)",
+            [],
+        )
+        .expect("make a recalculation observable");
+
+        search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            rules,
+            None,
+        )
+        .expect("repeat potential role filter");
+        let repeated_cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE role_id = 'line_holding_keeper_oop'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count reused cache rows");
+        assert_eq!(repeated_cache_rows, 2);
+    }
+
+    #[test]
+    fn invalid_filter_rules_do_not_materialize_potential_cache_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("invalid-potential-filter.db"));
+        ingest_players(&mut conn, vec![player_template(1, "No cache work", 150)]);
+
+        let error = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![
+                filter_rule(
+                    "potential_role.goalkeeper_ip",
+                    "gt",
+                    FilterValue::Integer(70),
+                ),
+                filter_rule("name", "gt", FilterValue::Text("Scout".to_string())),
+            ],
+            Some("and"),
+        )
+        .expect_err("invalid filter");
+        assert!(error.contains("invalid string filter operator"));
+        let cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count cache rows");
+        assert_eq!(cache_rows, 0);
+    }
+
+    #[test]
+    fn potential_role_filters_materialize_each_requested_role_and_replace_stale_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("potential-role-stale.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_with_deep_fields(
+                1,
+                "Projected keeper",
+                100,
+                DeepPlayerFields {
+                    nationalities: json!(["ENG"]),
+                    positions: json!({ "GK": 20 }),
+                    attributes: json!({
+                        "Positioning": 10,
+                        "Concentration": 10,
+                        "RushingOut": 10,
+                        "Anticipation": 10,
+                        "Decisions": 10,
+                    }),
+                    hidden: json!({}),
+                    personality: json!({}),
+                },
+            )],
+        );
+        let rules = vec![
+            filter_rule(
+                "potential_role.line_holding_keeper_oop",
+                "gt",
+                FilterValue::Integer(0),
+            ),
+            filter_rule(
+                "potential_role.sweeper_keeper_oop",
+                "gt",
+                FilterValue::Integer(0),
+            ),
+        ];
+
+        let page = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            rules.clone(),
+            Some("and"),
+        )
+        .expect("materialize multiple potential roles");
+        assert_eq!(page.total, 1);
+        let cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count cached roles");
+        assert_eq!(cache_rows, 2);
+
+        conn.execute(
+            "UPDATE player_potential_role_scores
+             SET score = 99, projection_model_version = 2
+             WHERE role_id = 'line_holding_keeper_oop'",
+            [],
+        )
+        .expect("mark cache row stale");
+
+        search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            rules,
+            Some("and"),
+        )
+        .expect("replace stale cache row");
+        let (score, version): (Option<i64>, i64) = conn
+            .query_row(
+                "SELECT score, projection_model_version
+                 FROM player_potential_role_scores
+                 WHERE role_id = 'line_holding_keeper_oop'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read refreshed cache row");
+        assert!(score.is_some_and(|value| value < 99));
+        assert_eq!(version, 1);
+    }
+
+    #[test]
     fn returns_dynamic_values_for_active_non_basic_filter_fields() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("dynamic-cols.db"));
@@ -1295,21 +1556,27 @@ mod tests {
         );
         set_role_score(&conn, 1, "deep_lying_playmaker_ip", Some(82));
 
-        let page = search_with_filters(
+        let requested_fields = vec![
+            "role.deep_lying_playmaker_ip".to_string(),
+            "attr.Acceleration".to_string(),
+        ];
+        let filters = vec![
+            filter_rule(
+                "role.deep_lying_playmaker_ip",
+                "gt",
+                FilterValue::Integer(70),
+            ),
+            filter_rule("attr.Acceleration", "gt", FilterValue::Integer(12)),
+        ];
+        let ast = parse_filter_ast(filters, None).expect("parse filters");
+        let page = search_players(
             &conn,
             0,
             DEFAULT_PAGE_LIMIT,
             SortField::DEFAULT,
             SortDir::DEFAULT,
-            vec![
-                filter_rule(
-                    "role.deep_lying_playmaker_ip",
-                    "gt",
-                    FilterValue::Integer(70),
-                ),
-                filter_rule("attr.Acceleration", "gt", FilterValue::Integer(12)),
-            ],
-            None,
+            Some(&ast),
+            &requested_fields,
         )
         .expect("dynamic values search");
 
@@ -1327,6 +1594,328 @@ mod tests {
             !player.dynamic_values.contains_key("ca"),
             "basic fields must not appear in dynamic_values"
         );
+    }
+
+    #[test]
+    fn returns_requested_field_families_once_without_tying_them_to_filters() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("requested-fields.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_with_deep_fields(
+                1,
+                "Metric Target",
+                150,
+                DeepPlayerFields {
+                    nationalities: json!(["ENG"]),
+                    positions: json!({ "MC": 16, "AMC": 20 }),
+                    attributes: json!({ "Acceleration": 16 }),
+                    hidden: json!({ "Consistency": 12 }),
+                    personality: json!({ "Ambition": 14 }),
+                },
+            )],
+        );
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "UPDATE players
+             SET parent_club = 'Parent FC', transfer_listed = 1
+             WHERE snapshot_id = ?1 AND uid = 1",
+            [snapshot_id],
+        )
+        .expect("set scalar values");
+        set_role_score(&conn, 1, "deep_lying_playmaker_ip", Some(82));
+
+        let requested_fields = vec![
+            "parent_club".to_string(),
+            "height".to_string(),
+            "transfer_listed".to_string(),
+            "preferred_foot".to_string(),
+            "attr.Acceleration".to_string(),
+            "hidden.Consistency".to_string(),
+            "personality.Ambition".to_string(),
+            "pos.MC".to_string(),
+            "position".to_string(),
+            "role.deep_lying_playmaker_ip".to_string(),
+            "attr.Acceleration".to_string(),
+            "ca".to_string(),
+        ];
+        let page = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            None,
+            &requested_fields,
+        )
+        .expect("query requested fields");
+
+        let values = &page.players[0].dynamic_values;
+        assert_eq!(values.len(), 10, "duplicates and basic fields are omitted");
+        assert_eq!(
+            values.get("parent_club"),
+            Some(&Some(DynamicValue::Text("Parent FC".to_string())))
+        );
+        assert_eq!(
+            values.get("height"),
+            Some(&Some(DynamicValue::Integer(180)))
+        );
+        assert_eq!(
+            values.get("transfer_listed"),
+            Some(&Some(DynamicValue::Integer(1)))
+        );
+        assert_eq!(
+            values.get("preferred_foot"),
+            Some(&Some(DynamicValue::Text("right".to_string())))
+        );
+        assert_eq!(
+            values.get("attr.Acceleration"),
+            Some(&Some(DynamicValue::Integer(16)))
+        );
+        assert_eq!(
+            values.get("hidden.Consistency"),
+            Some(&Some(DynamicValue::Integer(12)))
+        );
+        assert_eq!(
+            values.get("personality.Ambition"),
+            Some(&Some(DynamicValue::Integer(14)))
+        );
+        assert_eq!(values.get("pos.MC"), Some(&Some(DynamicValue::Integer(16))));
+        assert_eq!(
+            values.get("position"),
+            Some(&Some(DynamicValue::Text("AMC, MC".to_string())))
+        );
+        assert_eq!(
+            values.get("role.deep_lying_playmaker_ip"),
+            Some(&Some(DynamicValue::Integer(82)))
+        );
+        assert!(!values.contains_key("ca"));
+    }
+
+    #[test]
+    fn displays_positions_strongest_first_and_sorts_by_the_same_text() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("position-display.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Midfielder",
+                    150,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 16, "AMC": 20 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({}),
+                        personality: json!({}),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Keeper",
+                    160,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "GK": 20 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({}),
+                        personality: json!({}),
+                    },
+                ),
+            ],
+        );
+
+        let requested_fields = vec!["position".to_string()];
+        let page = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::parse("position").expect("parse Position sort"),
+            SortDir::Asc,
+            None,
+            &requested_fields,
+        )
+        .expect("query Position display");
+
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Midfielder", "Keeper"]
+        );
+        assert_eq!(
+            page.players[0].dynamic_values.get("position"),
+            Some(&Some(DynamicValue::Text("AMC, MC".to_string())))
+        );
+    }
+
+    #[test]
+    fn potential_display_materializes_only_requested_page_players() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("potential-page.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Lower potential",
+                    100,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "GK": 20 }),
+                        attributes: json!({ "Positioning": 8, "Concentration": 8 }),
+                        hidden: json!({}),
+                        personality: json!({}),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Higher potential",
+                    180,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "GK": 20 }),
+                        attributes: json!({ "Positioning": 16, "Concentration": 16 }),
+                        hidden: json!({}),
+                        personality: json!({}),
+                    },
+                ),
+            ],
+        );
+        let requested_fields = vec!["potential_role.line_holding_keeper_oop".to_string()];
+
+        let page = search_players(
+            &conn,
+            0,
+            1,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            None,
+            &requested_fields,
+        )
+        .expect("query first potential page");
+        assert_eq!(page.players[0].name, "Higher potential");
+        assert!(matches!(
+            page.players[0]
+                .dynamic_values
+                .get("potential_role.line_holding_keeper_oop"),
+            Some(Some(DynamicValue::Integer(_)))
+        ));
+        let first_page_cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count first page cache rows");
+        assert_eq!(first_page_cache_rows, 1);
+
+        search_players(
+            &conn,
+            1,
+            1,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            None,
+            &requested_fields,
+        )
+        .expect("query second potential page");
+        let second_page_cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count second page cache rows");
+        assert_eq!(second_page_cache_rows, 2);
+    }
+
+    #[test]
+    fn potential_sort_materializes_the_full_search_cohort_before_ordering() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("potential-sort.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_with_deep_fields(
+                    1,
+                    "Lower potential",
+                    100,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "GK": 20 }),
+                        attributes: json!({ "Positioning": 8, "Concentration": 8 }),
+                        hidden: json!({}),
+                        personality: json!({}),
+                    },
+                ),
+                player_with_deep_fields(
+                    2,
+                    "Higher potential",
+                    180,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "GK": 20 }),
+                        attributes: json!({ "Positioning": 16, "Concentration": 16 }),
+                        hidden: json!({}),
+                        personality: json!({}),
+                    },
+                ),
+            ],
+        );
+
+        let page = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::parse("potential_role.line_holding_keeper_oop")
+                .expect("parse potential sort"),
+            SortDir::Desc,
+            None,
+            &[],
+        )
+        .expect("sort by potential role");
+
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Higher potential", "Lower potential"]
+        );
+        let cache_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count sorted cohort cache rows");
+        assert_eq!(cache_rows, 2);
+    }
+
+    #[test]
+    fn rejects_unknown_requested_metric_ids_before_reading_the_snapshot() {
+        let conn = Connection::open_in_memory().expect("open database");
+        let error = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            None,
+            &["unknown.metric".to_string()],
+        )
+        .expect_err("reject unknown requested field");
+
+        assert!(error.contains("unknown player metric"));
     }
 
     #[test]

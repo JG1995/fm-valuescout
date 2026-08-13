@@ -41,6 +41,7 @@ playwright/.cache/
 *.tsbuildinfo
 
 # Local configuration and secrets
+.mcp.json
 .env
 .env.*
 !.env.example

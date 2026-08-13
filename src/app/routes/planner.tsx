@@ -210,13 +210,16 @@ function PlannerPageContent() {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="flex h-full min-w-0 flex-col gap-2">
       {plannerHeader}
-      <div {...plannerWorkspacePanelProps("squad", activeWorkspace)}>
+      <div
+        {...plannerWorkspacePanelProps("squad", activeWorkspace)}
+        className="flex min-h-0 flex-1 flex-col"
+      >
         {clubFamily.primaryClub ? (
           <Suspense
             fallback={
-              <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
+              <div className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
                 Loading squad overview…
               </div>
             }
@@ -310,7 +313,10 @@ function PlannerPageContent() {
           </Panel>
         )}
       </div>
-      <div {...plannerWorkspacePanelProps("planner", activeWorkspace)}>
+      <div
+        {...plannerWorkspacePanelProps("planner", activeWorkspace)}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
         <PlannerDepthMatrix
           activeSaveId={snapshot.saveId}
           depth={depth}
@@ -318,7 +324,10 @@ function PlannerPageContent() {
           options={tacticOptions}
         />
       </div>
-      <div {...plannerWorkspacePanelProps("tactic", activeWorkspace)}>
+      <div
+        {...plannerWorkspacePanelProps("tactic", activeWorkspace)}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
         {/* Key the editor to the active save so its local draft cannot cross a save boundary. */}
         <PlannerTacticEditor
           key={snapshot.saveId}

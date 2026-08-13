@@ -228,7 +228,10 @@ test.describe("walking skeleton smoke", () => {
       main.getByRole("heading", { level: 1, name: "Search" }),
     ).toBeVisible();
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Search" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 
   test("planner route shows no-snapshot Load Data guidance", async ({
@@ -283,13 +286,481 @@ test.describe("walking skeleton smoke", () => {
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Squad overview" });
     await expect(table).toBeVisible();
+    await expect(main.getByTestId("squad-overview-scroller")).toBeVisible();
     await expect(
       table.getByRole("link", { name: "Alex Scout" }),
     ).toHaveAttribute("href", "/players/42?tab=technical");
-    await table.getByRole("button", { name: "Name" }).click();
+    await table.getByRole("button", { name: "Name", exact: true }).click();
     await expect(
       table.getByRole("columnheader", { name: "Name" }),
     ).toHaveAttribute("aria-sort", "ascending");
+    await expect(main.getByRole("button", { name: "Next page" })).toHaveCount(
+      0,
+    );
+    await table
+      .locator("tbody tr[data-index]")
+      .first()
+      .getByText("Barcelona")
+      .click();
+    await expect(page).toHaveURL(/\/players\/42\?tab=technical$/);
+  });
+
+  test("configured Squad keeps its table inside desktop viewports", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      playerTableRowCount: 101,
+      squadOverview: true,
+    });
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await page.goto("/planner");
+
+      const main = page.getByRole("main");
+      const scroller = main.getByTestId("squad-overview-scroller");
+      await expect(scroller).toBeVisible();
+
+      const [mainBox, scrollerBox, mainDimensions, dimensions] =
+        await Promise.all([
+          main.boundingBox(),
+          scroller.boundingBox(),
+          main.evaluate((element) => {
+            const mainElement = element as unknown as {
+              clientHeight: number;
+              scrollHeight: number;
+            };
+            return {
+              clientHeight: mainElement.clientHeight,
+              scrollHeight: mainElement.scrollHeight,
+            };
+          }),
+          scroller.evaluate((element) => {
+            const scrollerElement = element as unknown as {
+              clientHeight: number;
+              clientWidth: number;
+              scrollHeight: number;
+              scrollWidth: number;
+            };
+            return {
+              clientHeight: scrollerElement.clientHeight,
+              clientWidth: scrollerElement.clientWidth,
+              scrollHeight: scrollerElement.scrollHeight,
+              scrollWidth: scrollerElement.scrollWidth,
+            };
+          }),
+        ]);
+      expect(mainBox).not.toBeNull();
+      expect(scrollerBox).not.toBeNull();
+      if (!mainBox || !scrollerBox) {
+        throw new Error("Expected the Squad table to have a visible layout.");
+      }
+      expect(scrollerBox.height).toBeGreaterThan(100);
+      expect(scrollerBox.y + scrollerBox.height).toBeLessThanOrEqual(
+        mainBox.y + mainBox.height + 1,
+      );
+      expect(mainDimensions.scrollHeight).toBeLessThanOrEqual(
+        mainDimensions.clientHeight + 1,
+      );
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(
+        dimensions.clientWidth + 1,
+      );
+      expect(dimensions.scrollHeight).toBeGreaterThanOrEqual(
+        dimensions.clientHeight + 1,
+      );
+      expect(
+        await scroller.locator("tbody tr[data-index]").count(),
+      ).toBeLessThan(101);
+    }
+  });
+
+  test("configured Squad keeps a later-page retry visible over its scrollport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+      squadPageFailure: true,
+    });
+    await page.goto("/planner");
+
+    const scroller = page.getByTestId("squad-overview-scroller");
+    await expect(scroller).toBeVisible();
+    await scroller.evaluate((element) => {
+      const scrollElement = element as unknown as {
+        dispatchEvent: (event: Event) => boolean;
+        scrollHeight: number;
+        scrollTop: number;
+      };
+      scrollElement.scrollTop = scrollElement.scrollHeight;
+      scrollElement.dispatchEvent(new Event("scroll"));
+    });
+
+    const alert = page.getByRole("alert");
+    await expect(alert).toBeVisible();
+    const [scrollportBox, alertBox] = await Promise.all([
+      scroller.boundingBox(),
+      alert.boundingBox(),
+    ]);
+    expect(scrollportBox).not.toBeNull();
+    expect(alertBox).not.toBeNull();
+    if (!scrollportBox || !alertBox) {
+      throw new Error("Expected the retry control to have a visible layout.");
+    }
+    expect(alertBox.y).toBeGreaterThanOrEqual(scrollportBox.y);
+    expect(alertBox.y + alertBox.height).toBeLessThanOrEqual(
+      scrollportBox.y + scrollportBox.height,
+    );
+  });
+
+  test("Search keeps its table inside desktop viewports", async ({ page }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      playerTableRowCount: 101,
+      squadOverview: true,
+    });
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await page.goto("/search");
+
+      const main = page.getByRole("main");
+      const scroller = main.getByTestId("search-results-scroller");
+      const table = scroller.getByRole("table", {
+        name: "Player search results",
+      });
+      await expect(scroller).toBeVisible();
+
+      const [mainBox, scrollerBox, mainDimensions, dimensions] =
+        await Promise.all([
+          main.boundingBox(),
+          scroller.boundingBox(),
+          main.evaluate((element) => {
+            const mainElement = element as unknown as {
+              clientHeight: number;
+              scrollHeight: number;
+            };
+            return {
+              clientHeight: mainElement.clientHeight,
+              scrollHeight: mainElement.scrollHeight,
+            };
+          }),
+          scroller.evaluate((element) => {
+            const scrollerElement = element as unknown as {
+              clientHeight: number;
+              clientWidth: number;
+              scrollHeight: number;
+              scrollWidth: number;
+            };
+            return {
+              clientHeight: scrollerElement.clientHeight,
+              clientWidth: scrollerElement.clientWidth,
+              scrollHeight: scrollerElement.scrollHeight,
+              scrollWidth: scrollerElement.scrollWidth,
+            };
+          }),
+        ]);
+      expect(mainBox).not.toBeNull();
+      expect(scrollerBox).not.toBeNull();
+      if (!mainBox || !scrollerBox) {
+        throw new Error("Expected the Search table to have a visible layout.");
+      }
+      expect(scrollerBox.height).toBeGreaterThan(100);
+      expect(scrollerBox.y + scrollerBox.height).toBeLessThanOrEqual(
+        mainBox.y + mainBox.height + 1,
+      );
+      expect(mainDimensions.scrollHeight).toBeLessThanOrEqual(
+        mainDimensions.clientHeight + 1,
+      );
+      expect(dimensions.scrollWidth).toBeLessThanOrEqual(
+        dimensions.clientWidth + 1,
+      );
+      expect(dimensions.scrollHeight).toBeGreaterThanOrEqual(
+        dimensions.clientHeight + 1,
+      );
+      const tableBox = await table.boundingBox();
+      expect(tableBox).not.toBeNull();
+      expect(tableBox?.width).toBeGreaterThanOrEqual(
+        dimensions.clientWidth - 1,
+      );
+      expect(tableBox?.width).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+      expect(
+        await scroller.locator("tbody tr[data-index]").count(),
+      ).toBeLessThan(101);
+    }
+  });
+
+  test("Search filter options remain fully interactive outside the modal scrollport", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/search");
+
+    await page.getByRole("button", { name: "Edit filters" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit filters" });
+    await dialog.getByRole("button", { name: "Add filter" }).click();
+    await dialog.getByRole("button", { name: "Field: CA" }).click();
+
+    const listbox = dialog.getByRole("listbox", { name: "Field options" });
+    const searchFields = dialog.getByRole("combobox", {
+      name: "Search fields",
+    });
+    await expect(listbox).toBeVisible();
+    expect(
+      await listbox.evaluate((element) => {
+        const listboxElement = element as unknown as {
+          contains: (node: unknown) => boolean;
+          getBoundingClientRect: () => {
+            bottom: number;
+            left: number;
+            width: number;
+          };
+        };
+        const browser = globalThis as unknown as {
+          document: {
+            elementFromPoint: (x: number, y: number) => unknown;
+          };
+          innerHeight: number;
+        };
+        const bounds = listboxElement.getBoundingClientRect();
+        const hit = browser.document.elementFromPoint(
+          bounds.left + Math.min(8, bounds.width / 2),
+          Math.min(bounds.bottom - 4, browser.innerHeight - 4),
+        );
+        return (
+          hit === element || (hit !== null && listboxElement.contains(hit))
+        );
+      }),
+    ).toBe(true);
+    await expect(searchFields).toBeFocused();
+    await page.keyboard.type("club");
+    await page.keyboard.press("Enter");
+    await expect(
+      dialog.getByRole("button", { name: "Field: Club" }),
+    ).toBeVisible();
+  });
+
+  test("Search scrolls horizontally after columns reach their readable minimums", async ({
+    page,
+  }) => {
+    const defaultColumns = [
+      "name",
+      "age",
+      "nationality",
+      "club",
+      "division",
+      "ca",
+      "pa",
+      "value",
+    ];
+    const searchColumns = [
+      ...defaultColumns,
+      "birth_year",
+      "preferred_foot",
+      "parent_club",
+      "height",
+      "wage",
+      "contract_year",
+      "transfer_listed",
+      "loan_listed",
+    ];
+    await page.addInitScript(
+      ({ defaultColumnIds, searchColumnIds }) => {
+        const browser = globalThis as unknown as {
+          localStorage: {
+            setItem: (key: string, value: string) => void;
+          };
+        };
+        browser.localStorage.setItem(
+          "fm-valuescout-player-table-layouts",
+          JSON.stringify({
+            state: {
+              layouts: {
+                search: { columnIds: searchColumnIds, widths: {} },
+                squad: { columnIds: defaultColumnIds, widths: {} },
+              },
+            },
+            version: 1,
+          }),
+        );
+      },
+      { defaultColumnIds: defaultColumns, searchColumnIds: searchColumns },
+    );
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/search");
+
+    const scroller = page.getByTestId("search-results-scroller");
+    await expect(
+      scroller.getByRole("columnheader", { name: "Loan listed" }),
+    ).toBeVisible();
+    expect(
+      await scroller.evaluate((element) => {
+        const scrollerElement = element as unknown as {
+          clientWidth: number;
+          scrollWidth: number;
+        };
+        return scrollerElement.scrollWidth > scrollerElement.clientWidth;
+      }),
+    ).toBe(true);
+  });
+
+  test("Search persists a reordered resized column without changing Squad", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+    await page.goto("/search");
+
+    const search = page.getByRole("main");
+    const searchTable = search.getByRole("table", {
+      name: "Player search results",
+    });
+    await searchTable
+      .getByRole("columnheader", { name: "CA" })
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Add column" }).click();
+    await page.getByRole("button", { name: "Column: Choose a metric" }).click();
+    await page
+      .getByRole("combobox", { name: "Search columns" })
+      .fill("acceleration");
+    await page.getByRole("option", { name: "Acceleration" }).click();
+
+    const acceleration = search.getByRole("columnheader", {
+      name: "Acceleration",
+    });
+    await expect(acceleration).toBeVisible();
+    const resizeAcceleration = search.getByRole("separator", {
+      name: "Resize Acceleration column",
+    });
+    await resizeAcceleration.press("ArrowRight");
+    await expect(resizeAcceleration).toHaveAttribute("aria-valuenow", "104");
+
+    await acceleration.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Add column" }).click();
+    await page.getByRole("button", { name: "Column: Choose a metric" }).click();
+    await page
+      .getByRole("combobox", { name: "Search columns" })
+      .fill("agility");
+    await page.getByRole("option", { name: "Agility" }).click();
+
+    const agility = search.getByRole("columnheader", { name: "Agility" });
+    await expect(agility).toBeVisible();
+    const scroller = search.getByTestId("search-results-scroller");
+    await scroller.evaluate((element) => {
+      const scrollport = element as unknown as {
+        scrollLeft: number;
+        scrollWidth: number;
+      };
+      scrollport.scrollLeft = scrollport.scrollWidth;
+    });
+    await expect(acceleration).toBeInViewport();
+    await expect(agility).toBeInViewport();
+    await acceleration.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Move right" }).click();
+    await expect
+      .poll(async () =>
+        searchTable.locator("thead th").evaluateAll((headers) =>
+          headers.map((header) =>
+            (
+              header as unknown as {
+                getAttribute: (name: string) => string | null;
+              }
+            ).getAttribute("aria-label"),
+          ),
+        ),
+      )
+      .toEqual([
+        "Name",
+        "Age / DOB",
+        "Nationality",
+        "Club",
+        "Division",
+        "CA",
+        "PA",
+        "Value",
+        "Agility",
+        "Acceleration",
+      ]);
+
+    await page.reload();
+    await expect(
+      search.getByRole("columnheader", { name: "Acceleration" }),
+    ).toBeVisible();
+    await expect
+      .poll(async () =>
+        searchTable.locator("thead th").evaluateAll((headers) =>
+          headers.map((header) =>
+            (
+              header as unknown as {
+                getAttribute: (name: string) => string | null;
+              }
+            ).getAttribute("aria-label"),
+          ),
+        ),
+      )
+      .toEqual([
+        "Name",
+        "Age / DOB",
+        "Nationality",
+        "Club",
+        "Division",
+        "CA",
+        "PA",
+        "Value",
+        "Agility",
+        "Acceleration",
+      ]);
+    await expect(
+      search.getByRole("separator", { name: "Resize Acceleration column" }),
+    ).toHaveAttribute("aria-valuenow", "104");
+
+    await page.goto("/planner");
+    const squad = page.getByRole("main");
+    await expect(
+      squad
+        .getByRole("table", { name: "Squad overview" })
+        .getByRole("columnheader", { name: "Acceleration" }),
+    ).toHaveCount(0);
+  });
+
+  test("Search dismisses a column menu with either pointer button outside", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+    await page.goto("/search");
+
+    const caHeader = page
+      .getByRole("table", { name: "Player search results" })
+      .getByRole("columnheader", { name: "CA" });
+    const menu = page.getByRole("menu", { name: "CA column actions" });
+    const heading = page.getByRole("heading", { level: 1, name: "Search" });
+
+    await caHeader.click({ button: "right" });
+    await expect(menu).toBeVisible();
+    await heading.click();
+    await expect(menu).toHaveCount(0);
+
+    await caHeader.click({ button: "right" });
+    await expect(menu).toBeVisible();
+    await heading.click({ button: "right" });
+    await expect(menu).toHaveCount(0);
   });
 
   test("configured Squad exposes its format-bound CSV upload modals", async ({

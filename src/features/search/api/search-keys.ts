@@ -15,6 +15,7 @@ export const searchKeys = {
     sortDir: SearchSortDir = DEFAULT_SEARCH_SORT_DIR,
     filters: FilterRule[] = [],
     filterCombine: FilterCombineMode = "and",
+    requestedFields: string[] = [],
   ) =>
     [
       ...searchKeys.all,
@@ -26,6 +27,7 @@ export const searchKeys = {
         sortDir,
         filters: completeFilterRules(filters),
         filterCombine,
+        requestedFields,
       },
     ] as const,
   suggest: (query: string, limit: number) =>

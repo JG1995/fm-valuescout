@@ -29,6 +29,7 @@ import {
   searchFiltersForUrl,
 } from "@/features/search/utils/search-url-search";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { usePlayerTableStore } from "@/stores/use-player-table-store";
 
 export type SearchRouteSearch = {
   sort: SearchSortField;
@@ -67,11 +68,18 @@ export const Route = createFileRoute("/search")({
     context: { queryClient },
     deps: { sort, dir, filters, combine },
   }) => {
-    const rules = parseSearchFilters(filters);
     return Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(
-        searchPlayersQueryOptions(0, undefined, sort, dir, rules, combine),
+        searchPlayersQueryOptions(
+          0,
+          undefined,
+          sort,
+          dir,
+          parseSearchFilters(filters),
+          combine,
+          [],
+        ),
       ),
     ]);
   },
@@ -80,7 +88,7 @@ export const Route = createFileRoute("/search")({
 
 function PanelFallback() {
   return (
-    <div className="flex min-h-40 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
+    <div className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
       Loading search results…
     </div>
   );
@@ -88,6 +96,7 @@ function PanelFallback() {
 
 function SearchPageContent() {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
+  const addColumns = usePlayerTableStore((state) => state.addColumns);
   const { sort, dir, filters: filterUrls, combine } = Route.useSearch();
   const navigate = Route.useNavigate();
   const filters = useMemo(() => parseSearchFilters(filterUrls), [filterUrls]);
@@ -99,8 +108,8 @@ function SearchPageContent() {
       filters: FilterRule[];
       combine: FilterCombineMode;
     }>,
-  ) => {
-    void navigate({
+  ) =>
+    navigate({
       search: (previous) => ({
         sort: patch.sort ?? previous.sort,
         dir: patch.dir ?? previous.dir,
@@ -112,7 +121,6 @@ function SearchPageContent() {
       }),
       replace: true,
     });
-  };
 
   if (!snapshot) {
     return (
@@ -133,28 +141,35 @@ function SearchPageContent() {
         onRulesChange={(rules) => {
           updateSearch({ filters: rules });
         }}
-        onCombineChange={(nextCombine) => {
-          updateSearch({ combine: nextCombine });
+        onApply={(rules, nextCombine) => {
+          void updateSearch({ filters: rules, combine: nextCombine }).then(() =>
+            addColumns(
+              "search",
+              rules.map((rule) => rule.field),
+            ),
+          );
         }}
       />
-      <Suspense fallback={<PanelFallback />}>
-        <SearchResultsPanel
-          sortBy={sort}
-          sortDir={dir}
-          filters={filters}
-          filterCombine={combine}
-          onSortChange={(nextSort, nextDir) => {
-            updateSearch({ sort: nextSort, dir: nextDir });
-          }}
-        />
-      </Suspense>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Suspense fallback={<PanelFallback />}>
+          <SearchResultsPanel
+            sortBy={sort}
+            sortDir={dir}
+            filters={filters}
+            filterCombine={combine}
+            onSortChange={(nextSort, nextDir) => {
+              updateSearch({ sort: nextSort, dir: nextDir });
+            }}
+          />
+        </Suspense>
+      </div>
     </>
   );
 }
 
 function SearchPage() {
   return (
-    <div className="space-y-gutter">
+    <div className="flex h-full min-w-0 flex-col gap-gutter">
       <h1 className="text-headline-lg text-on-surface">Search</h1>
       <Suspense fallback={<PanelFallback />}>
         <SearchPageContent />

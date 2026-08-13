@@ -8,6 +8,8 @@ type PanelProps = {
   /** Drop the content padding when the only child is a full-bleed table. */
   flush?: boolean;
   className?: string;
+  /** Adds layout constraints to the content wrapper without changing its padding. */
+  contentClassName?: string;
   children: ReactNode;
 };
 
@@ -16,6 +18,7 @@ export function Panel({
   actions,
   flush = false,
   className,
+  contentClassName,
   children,
 }: PanelProps) {
   return (
@@ -35,7 +38,12 @@ export function Panel({
           {actions}
         </div>
       ) : null}
-      <div className={cn(flush ? (title ? "mt-4" : undefined) : "p-4")}>
+      <div
+        className={cn(
+          flush ? (title ? "mt-4" : undefined) : "p-4",
+          contentClassName,
+        )}
+      >
         {children}
       </div>
     </section>

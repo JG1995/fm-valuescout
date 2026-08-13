@@ -59,7 +59,7 @@ export function AppNavRail() {
           <li key={item.to}>
             <Link
               to={item.to}
-              activeOptions={{ exact: true }}
+              activeOptions={{ exact: true, includeSearch: false }}
               title={railExpanded ? undefined : item.label}
               className={cn(
                 "relative flex h-10 items-center gap-3 rounded-md px-3 text-label-lg text-on-surface-variant",

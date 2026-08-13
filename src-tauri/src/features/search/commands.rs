@@ -105,6 +105,7 @@ impl From<SearchPlayersPage> for SearchPlayersPageDto {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri deserializes this established flat query payload.
 pub fn search_players(
     offset: Option<u32>,
     limit: Option<u32>,
@@ -112,6 +113,7 @@ pub fn search_players(
     sort_dir: Option<String>,
     filters: Option<Vec<FilterRuleInput>>,
     filter_combine: Option<String>,
+    requested_fields: Option<Vec<String>>,
     db: State<'_, Db>,
 ) -> Result<SearchPlayersPageDto, String> {
     let conn =
@@ -143,7 +145,16 @@ pub fn search_players(
             )?)
         }
     };
-    let page = query::search_players(&conn, offset, limit, sort_by, sort_dir, filter_ast.as_ref())?;
+    let requested_fields = requested_fields.unwrap_or_default();
+    let page = query::search_players(
+        &conn,
+        offset,
+        limit,
+        sort_by,
+        sort_dir,
+        filter_ast.as_ref(),
+        &requested_fields,
+    )?;
     Ok(SearchPlayersPageDto::from(page))
 }
 

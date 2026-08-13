@@ -7,14 +7,14 @@ type SearchFilterBarProps = {
   rules: FilterRule[];
   combine: FilterCombineMode;
   onRulesChange: (rules: FilterRule[]) => void;
-  onCombineChange: (combine: FilterCombineMode) => void;
+  onApply: (rules: FilterRule[], combine: FilterCombineMode) => void;
 };
 
 export function SearchFilterBar({
   rules,
   combine,
   onRulesChange,
-  onCombineChange,
+  onApply,
 }: SearchFilterBarProps) {
   const [editorOpen, setEditorOpen] = useState(false);
   const closeEditor = useCallback(() => {
@@ -37,8 +37,7 @@ export function SearchFilterBar({
         onClose={closeEditor}
         rules={rules}
         combine={combine}
-        onRulesChange={onRulesChange}
-        onCombineChange={onCombineChange}
+        onApply={onApply}
       />
     </>
   );

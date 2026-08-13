@@ -1,54 +1,41 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { ChevronDown, ChevronUp, UsersRound } from "lucide-react";
-import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { UsersRound } from "lucide-react";
+import { type ReactNode, useMemo } from "react";
+import { NationalityCell } from "@/components/player-table/nationality-cell";
+import {
+  type PlayerTableColumn,
+  PlayerTableHeader,
+} from "@/components/player-table/player-table-header";
+import { VirtualizedPlayerTable } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import {
   formatCount,
   formatMissable,
   formatMoney,
   formatPlayerDob,
 } from "@/utils/format";
+import { getPlayerMetric } from "@/utils/player-metrics";
 import {
   SQUAD_PAGE_SIZE,
   squadPlayersQueryOptions,
 } from "../api/squad-players-query-options";
 import type { SquadPlayer } from "../types/squad-player";
 import type { SquadSortDir, SquadSortField } from "../types/squad-sort";
-import { defaultDirForSquadSortField } from "../types/squad-sort";
+import {
+  defaultDirForSquadSortField,
+  SQUAD_SORT_FIELDS,
+} from "../types/squad-sort";
 
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
 const NUM_CELL =
   "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
 
-const COLUMNS = [
-  { key: "name", label: "Name", align: "left" },
-  { key: "age", label: "Age / DOB", align: "left" },
-  { key: "nationality", label: "Nationality", align: "left" },
-  { key: "club", label: "Club", align: "left" },
-  { key: "division", label: "Division", align: "left" },
-  { key: "ca", label: "CA", align: "right" },
-  { key: "pa", label: "PA", align: "right" },
-  { key: "value", label: "Value", align: "right" },
-] as const satisfies ReadonlyArray<{
-  key: SquadSortField;
-  label: string;
-  align: "left" | "right";
-}>;
-
-const SORT_LABELS: Record<SquadSortField, string> = {
-  name: "Name",
-  age: "Age / DOB",
-  nationality: "Nationality",
-  club: "Club",
-  division: "Division",
-  ca: "CA",
-  pa: "PA",
-  value: "Value",
-};
+type BasicSquadSortField = (typeof SQUAD_SORT_FIELDS)[number];
+type TableColumn = PlayerTableColumn;
 
 type SquadOverviewPanelProps = {
   actions?: ReactNode;
@@ -75,9 +62,12 @@ function nextSort(
 }
 
 function basicCell(
-  player: SquadPlayer,
-  key: SquadSortField,
+  player: SquadPlayer | undefined,
+  key: BasicSquadSortField,
 ): { text: string; title?: string; numeric: boolean } {
+  if (!player) {
+    return { text: "…", numeric: key !== "name" && key !== "age" };
+  }
   switch (key) {
     case "name":
       return { text: player.name, title: player.name, numeric: false };
@@ -126,149 +116,168 @@ function basicCell(
   }
 }
 
+function tableColumnForMetric(
+  metricId: string,
+  width: number | undefined,
+): TableColumn | undefined {
+  const metric = getPlayerMetric(metricId);
+  if (!metric) {
+    return undefined;
+  }
+  return {
+    id: metric.id,
+    label: metric.id === "age" ? "Age / DOB" : metric.label,
+    align: metric.align,
+    width: width ?? metric.defaultWidth,
+  };
+}
+
+function formatDynamicCell(
+  player: SquadPlayer | undefined,
+  fieldId: string,
+): string {
+  if (!player) {
+    return "…";
+  }
+  const value = player.dynamicValues?.[fieldId];
+  if (value === undefined || value === null) {
+    return "—";
+  }
+  return String(value);
+}
+
 function SquadOverviewTable({
-  players,
+  total,
   sortBy,
   sortDir,
+  columns,
+  requestedFields,
   onSortChange,
+  onAddColumn,
+  onRemoveColumn,
+  onMoveColumn,
+  onResizeColumn,
 }: {
-  players: SquadPlayer[];
+  total: number;
   sortBy: SquadSortField;
   sortDir: SquadSortDir;
+  columns: TableColumn[];
+  requestedFields: string[];
   onSortChange: SquadOverviewPanelProps["onSortChange"];
+  onAddColumn: (metricId: string) => void;
+  onRemoveColumn: (metricId: string) => void;
+  onMoveColumn: (metricId: string, targetIndex: number) => void;
+  onResizeColumn: (metricId: string, width: number) => void;
 }) {
-  const tableRef = useRef<HTMLTableElement>(null);
-  const [keyboardFocusIndex, setKeyboardFocusIndex] = useState(0);
-  const clampedFocusIndex = Math.min(
-    keyboardFocusIndex,
-    Math.max(0, players.length - 1),
-  );
-
-  const focusPlayer = (index: number) => {
-    if (index < 0 || index >= players.length) {
-      return;
-    }
-    setKeyboardFocusIndex(index);
-    requestAnimationFrame(() => {
-      tableRef.current
-        ?.querySelector<HTMLAnchorElement>(
-          `[data-squad-player-index="${index}"]`,
-        )
-        ?.focus();
-    });
-  };
+  const navigate = useNavigate();
 
   return (
-    <div className="max-h-[min(70vh,720px)] overflow-auto">
-      <table ref={tableRef} className="w-full border-collapse text-left">
-        <caption className="sr-only">Squad overview</caption>
-        <thead className="sticky top-0 z-10">
-          <tr className="bg-surface-container-lowest">
-            {COLUMNS.map((column) => {
-              const active = column.key === sortBy;
-              const ariaSort = active
-                ? sortDir === "asc"
-                  ? "ascending"
-                  : "descending"
-                : "none";
-              const Caret = sortDir === "asc" ? ChevronUp : ChevronDown;
-              return (
-                <th
-                  key={column.key}
-                  scope="col"
-                  aria-sort={ariaSort}
-                  className={
-                    column.align === "right"
-                      ? "h-table-header-height px-2 text-right"
-                      : "h-table-header-height px-2 text-left"
-                  }
-                >
-                  <button
-                    type="button"
-                    className={
-                      active
-                        ? "inline-flex items-center gap-1 text-label-md text-primary uppercase"
-                        : "inline-flex items-center gap-1 text-label-md text-on-surface-variant uppercase"
-                    }
-                    onClick={() => {
-                      const next = nextSort(sortBy, sortDir, column.key);
-                      onSortChange(next.sortBy, next.sortDir);
-                    }}
-                  >
-                    {column.label}
-                    {active ? (
-                      <Caret
-                        aria-hidden
-                        className="size-3.5 shrink-0"
-                        strokeWidth={2}
-                      />
-                    ) : null}
-                  </button>
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {players.map((player, index) => (
-            <tr
-              key={player.uid}
-              className="border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-within:bg-surface-container-high"
-            >
-              {COLUMNS.map((column) => {
-                const cell = basicCell(player, column.key);
-                if (column.key === "name") {
-                  return (
-                    <td
-                      key={column.key}
-                      className={`${TEXT_CELL} text-on-surface`}
-                      title={cell.title}
-                    >
-                      <Link
-                        to="/players/$uid"
-                        params={{ uid: String(player.uid) }}
-                        search={{ tab: "technical" }}
-                        data-squad-player-index={index}
-                        tabIndex={index === clampedFocusIndex ? undefined : -1}
-                        className="block scroll-mt-8 truncate text-on-surface underline decoration-outline-variant underline-offset-2 transition-colors duration-150 ease-out hover:text-primary focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        title={player.name}
-                        onFocus={() => {
-                          setKeyboardFocusIndex(index);
-                        }}
-                        onKeyDown={(event) => {
-                          if (event.key === "ArrowDown") {
-                            event.preventDefault();
-                            focusPlayer(index + 1);
-                          } else if (event.key === "ArrowUp") {
-                            event.preventDefault();
-                            focusPlayer(index - 1);
-                          }
-                        }}
-                      >
-                        {player.name}
-                      </Link>
-                    </td>
-                  );
+    <VirtualizedPlayerTable
+      caption="Squad overview"
+      columnCount={columns.length}
+      columns={columns}
+      header={
+        <PlayerTableHeader
+          columns={columns}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSortChange={(metricId) => {
+            const next = nextSort(sortBy, sortDir, metricId);
+            onSortChange(next.sortBy, next.sortDir);
+          }}
+          onAddColumn={onAddColumn}
+          onRemoveColumn={onRemoveColumn}
+          onMoveColumn={onMoveColumn}
+          onResizeColumn={onResizeColumn}
+        />
+      }
+      pageQueryOptions={(offset, limit) =>
+        squadPlayersQueryOptions(
+          offset,
+          limit,
+          sortBy,
+          sortDir,
+          requestedFields,
+        )
+      }
+      pageSize={SQUAD_PAGE_SIZE}
+      renderCells={(player) =>
+        columns.map((column) => {
+          if (!(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id)) {
+            const text = formatDynamicCell(player, column.id);
+            return (
+              <td
+                key={column.id}
+                className={
+                  column.align === "right"
+                    ? NUM_CELL
+                    : `${TEXT_CELL} text-on-surface`
                 }
-                return (
-                  <td
-                    key={column.key}
-                    className={
-                      cell.numeric
-                        ? NUM_CELL
-                        : `${TEXT_CELL} ${column.key === "age" || column.key === "division" ? "text-on-surface-variant" : "text-on-surface"}`
-                    }
-                    title={cell.title}
-                  >
-                    {cell.text}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+                title={text !== "—" && text !== "…" ? text : undefined}
+              >
+                {text}
+              </td>
+            );
+          }
+          if (column.id === "nationality" && player) {
+            return (
+              <td
+                key={column.id}
+                className="h-table-row-height-two-line px-2 align-middle text-on-surface"
+              >
+                <NationalityCell nationalities={player.nationalities} />
+              </td>
+            );
+          }
+          const cell = basicCell(player, column.id as BasicSquadSortField);
+          if (column.id === "name" && player) {
+            return (
+              <td
+                key={column.id}
+                className={`${TEXT_CELL} text-on-surface`}
+                title={cell.title}
+              >
+                <Link
+                  to="/players/$uid"
+                  params={{ uid: String(player.uid) }}
+                  search={{ tab: "technical" }}
+                  tabIndex={-1}
+                  className="block truncate text-on-surface underline decoration-outline-variant underline-offset-2 transition-colors duration-150 ease-out hover:text-primary"
+                  title={player.name}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                >
+                  {cell.text}
+                </Link>
+              </td>
+            );
+          }
+          return (
+            <td
+              key={column.id}
+              className={
+                cell.numeric
+                  ? NUM_CELL
+                  : `${TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
+              }
+              title={cell.title}
+            >
+              {cell.text}
+            </td>
+          );
+        })
+      }
+      testId="squad-overview-scroller"
+      total={total}
+      onPlayerActivate={(player) => {
+        void navigate({
+          to: "/players/$uid",
+          params: { uid: String(player.uid) },
+          search: { tab: "technical" },
+        });
+      }}
+    />
   );
 }
 
@@ -278,32 +287,39 @@ export function SquadOverviewPanel({
   sortDir,
   onSortChange,
 }: SquadOverviewPanelProps) {
-  const [offset, setOffset] = useState(0);
-  const { data: page } = useSuspenseQuery(
-    squadPlayersQueryOptions(offset, SQUAD_PAGE_SIZE, sortBy, sortDir),
+  const layout = usePlayerTableStore((state) => state.layouts.squad);
+  const addColumns = usePlayerTableStore((state) => state.addColumns);
+  const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
+  const moveColumn = usePlayerTableStore((state) => state.moveColumn);
+  const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
+  const columns = useMemo<TableColumn[]>(
+    () =>
+      layout.columnIds.flatMap((metricId) => {
+        const column = tableColumnForMetric(metricId, layout.widths[metricId]);
+        return column ? [column] : [];
+      }),
+    [layout],
   );
-  const pageCount = Math.ceil(page.total / SQUAD_PAGE_SIZE);
-  const maxOffset = Math.max(0, (pageCount - 1) * SQUAD_PAGE_SIZE);
-  const needsPageClamp = offset > maxOffset;
-  useEffect(() => {
-    if (needsPageClamp) {
-      setOffset(maxOffset);
-    }
-  }, [maxOffset, needsPageClamp]);
-
-  if (needsPageClamp) {
-    return (
-      <Panel title="Squad overview" actions={actions} flush>
-        <div
-          aria-busy="true"
-          aria-live="polite"
-          className="flex min-h-40 items-center justify-center text-body-md text-on-surface-variant"
-        >
-          Refreshing squad overview…
-        </div>
-      </Panel>
-    );
-  }
+  const requestedFields = useMemo(
+    () =>
+      columns
+        .filter(
+          (column) =>
+            !(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id),
+        )
+        .map((column) => column.id)
+        .sort(),
+    [columns],
+  );
+  const { data: page } = useSuspenseQuery(
+    squadPlayersQueryOptions(
+      0,
+      SQUAD_PAGE_SIZE,
+      sortBy,
+      sortDir,
+      requestedFields,
+    ),
+  );
 
   if (page.total === 0) {
     return (
@@ -315,52 +331,60 @@ export function SquadOverviewPanel({
     );
   }
 
-  const pageNumber = Math.floor(offset / SQUAD_PAGE_SIZE) + 1;
   const dirLabel = sortDir === "asc" ? "ascending" : "descending";
+  const sortMetric = getPlayerMetric(sortBy);
+  const sortLabel = sortMetric
+    ? sortMetric.id === "age"
+      ? "Age / DOB"
+      : sortMetric.label
+    : sortBy;
+  const removeColumn = (metricId: string) => {
+    const remainingColumns = columns.filter((column) => column.id !== metricId);
+    if (remainingColumns.length === columns.length) {
+      return;
+    }
+    removeStoredColumn("squad", metricId);
+    if (sortBy !== metricId) {
+      return;
+    }
+    const nextColumn =
+      remainingColumns.find((column) => column.id === "ca") ??
+      remainingColumns[0];
+    if (!nextColumn) {
+      return;
+    }
+    onSortChange(nextColumn.id, defaultDirForSquadSortField(nextColumn.id));
+  };
 
   return (
-    <Panel title="Squad overview" actions={actions} flush>
-      <p className="px-4 pb-3 text-body-md text-on-surface-variant">
+    <Panel
+      title="Squad overview"
+      actions={actions}
+      flush
+      className="flex min-h-0 flex-1 flex-col"
+      contentClassName="flex min-h-0 flex-1 flex-col"
+    >
+      <p className="shrink-0 px-4 pb-3 text-body-md text-on-surface-variant">
         <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
-        {page.total === 1 ? "player" : "players"} · sorted by{" "}
-        {SORT_LABELS[sortBy]} ({dirLabel})
+        {page.total === 1 ? "player" : "players"} · sorted by {sortLabel} (
+        {dirLabel})
       </p>
       <SquadOverviewTable
-        players={page.players}
+        total={page.total}
         sortBy={sortBy}
         sortDir={sortDir}
+        columns={columns}
+        requestedFields={requestedFields}
         onSortChange={onSortChange}
+        onAddColumn={(metricId) => addColumns("squad", [metricId])}
+        onRemoveColumn={removeColumn}
+        onMoveColumn={(metricId, targetIndex) =>
+          moveColumn("squad", metricId, targetIndex)
+        }
+        onResizeColumn={(metricId, width) =>
+          setColumnWidth("squad", metricId, width)
+        }
       />
-      {pageCount > 1 ? (
-        <nav
-          aria-label="Squad overview pages"
-          className="flex items-center justify-between gap-3 border-t border-outline-variant px-4 py-3"
-        >
-          <button
-            type="button"
-            className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={offset === 0}
-            onClick={() => {
-              setOffset((current) => Math.max(0, current - SQUAD_PAGE_SIZE));
-            }}
-          >
-            Previous page
-          </button>
-          <p className="text-body-sm text-on-surface-variant">
-            Page {pageNumber} of {pageCount}
-          </p>
-          <button
-            type="button"
-            className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={pageNumber === pageCount}
-            onClick={() => {
-              setOffset((current) => current + SQUAD_PAGE_SIZE);
-            }}
-          >
-            Next page
-          </button>
-        </nav>
-      ) : null}
     </Panel>
   );
 }

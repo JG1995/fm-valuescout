@@ -14,11 +14,13 @@ export function fetchSquadPlayers(
   limit = SQUAD_PAGE_SIZE,
   sortBy: SquadSortField = DEFAULT_SQUAD_SORT_FIELD,
   sortDir: SquadSortDir = DEFAULT_SQUAD_SORT_DIR,
+  requestedFields: string[] = [],
 ) {
   return invokeCommand<SquadPlayersPage>("list_squad_players", {
     offset,
     limit,
     sortBy,
     sortDir,
+    requestedFields,
   });
 }
