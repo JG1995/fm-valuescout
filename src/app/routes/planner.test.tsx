@@ -58,6 +58,7 @@ import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 import {
   getLastSquadPlayersArgs,
   getSquadCurrentAbilityBoostIpcMockCalls,
+  getSquadPlayersCallCount,
   getSquadWonderkidMentalityBoostIpcMockCalls,
   resolvePendingSquadCurrentAbilityBoostIpcMock,
   resolvePendingSquadPlayersPageIpcMock,
@@ -366,6 +367,90 @@ describe("planner route", () => {
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
       "attr.Acceleration",
     );
+  });
+
+  it("reorders Squad columns by drag without changing its query, virtual row, or widths", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    const store = usePlayerTableStore.getState();
+    store.addColumns("squad", ["attr.Acceleration", "attr.Agility"]);
+    store.setColumnWidth("squad", "attr.Acceleration", 216);
+    setSquadPlayersOverride(
+      manySquadPlayers(101).map((player) => ({
+        ...player,
+        dynamicValues: { "attr.Acceleration": 16, "attr.Agility": 15 },
+      })),
+    );
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+    const scroller = screen.getByTestId("squad-overview-scroller");
+    mockScrollerScrollTo(scroller);
+    fireEvent.scroll(scroller, { target: { scrollTop: 1_950 } });
+    await waitFor(() => {
+      expect(getLastSquadPlayersArgs()).toMatchObject({
+        offset: 50,
+        requestedFields: ["attr.Acceleration", "attr.Agility"],
+      });
+    });
+    const focusedRow = await waitFor(() => {
+      const row = scroller.querySelector<HTMLElement>('[data-index="49"]');
+      if (!row) {
+        throw new Error("Expected the loaded virtual row.");
+      }
+      return row;
+    });
+    focusedRow.focus();
+    const callCountBeforeReorder = getSquadPlayersCallCount();
+    const accelerationHeader = within(table).getByRole("columnheader", {
+      name: "Acceleration",
+    });
+    const agilityHeader = within(table).getByRole("columnheader", {
+      name: "Agility",
+    });
+    Object.defineProperty(agilityHeader, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, right: 100, top: 0, bottom: 32, width: 100 }),
+    });
+
+    fireEvent.dragStart(
+      within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
+      { dataTransfer: { effectAllowed: "move", setData: () => {} } },
+    );
+    fireEvent.dragOver(agilityHeader, { clientX: 90 });
+    fireEvent.drop(agilityHeader, { clientX: 90 });
+    fireEvent.dragEnd(
+      within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
+    );
+
+    await waitFor(() => {
+      const headerLabels = within(table)
+        .getAllByRole("columnheader")
+        .map((header) => header.getAttribute("aria-label"));
+      expect(headerLabels.indexOf("Agility")).toBeLessThan(
+        headerLabels.indexOf("Acceleration"),
+      );
+    });
+    const headerLabels = within(table)
+      .getAllByRole("columnheader")
+      .map((header) => header.getAttribute("aria-label"));
+    const cellTexts = within(focusedRow)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent);
+    expect(cellTexts[headerLabels.indexOf("Agility")]).toBe("15");
+    expect(cellTexts[headerLabels.indexOf("Acceleration")]).toBe("16");
+    expect(focusedRow).toHaveFocus();
+    expect(scroller.scrollTop).toBe(1_950);
+    expect(getSquadPlayersCallCount()).toBe(callCountBeforeReorder);
+    expect(
+      screen.getByRole("separator", { name: "Resize Acceleration column" }),
+    ).toHaveAttribute("aria-valuenow", "216");
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
   });
 
   it("opens distinct format-bound CSV import modals from Squad", async () => {

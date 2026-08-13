@@ -616,7 +616,7 @@ test.describe("walking skeleton smoke", () => {
     ).toBe(true);
   });
 
-  test("Search preserves a resized custom column without changing Squad", async ({
+  test("Search persists a reordered resized column without changing Squad", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
@@ -649,10 +649,89 @@ test.describe("walking skeleton smoke", () => {
     await resizeAcceleration.press("ArrowRight");
     await expect(resizeAcceleration).toHaveAttribute("aria-valuenow", "104");
 
+    await acceleration.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Add column" }).click();
+    await page.getByRole("button", { name: "Column: Choose a metric" }).click();
+    await page
+      .getByRole("combobox", { name: "Search columns" })
+      .fill("agility");
+    await page.getByRole("option", { name: "Agility" }).click();
+
+    const agility = search.getByRole("columnheader", { name: "Agility" });
+    await expect(agility).toBeVisible();
+    const scroller = search.getByTestId("search-results-scroller");
+    await scroller.evaluate((element) => {
+      const scrollport = element as unknown as {
+        scrollLeft: number;
+        scrollWidth: number;
+      };
+      scrollport.scrollLeft = scrollport.scrollWidth;
+    });
+    await expect(acceleration).toBeInViewport();
+    await expect(agility).toBeInViewport();
+    const agilityBox = await agility.boundingBox();
+    if (!agilityBox) {
+      throw new Error("Expected the Agility header to have a visible layout.");
+    }
+    await acceleration.dragTo(agility, {
+      targetPosition: {
+        x: Math.floor(agilityBox.width * 0.75),
+        y: Math.floor(agilityBox.height / 2),
+      },
+    });
+    await expect
+      .poll(async () =>
+        searchTable.locator("thead th").evaluateAll((headers) =>
+          headers.map((header) =>
+            (
+              header as unknown as {
+                getAttribute: (name: string) => string | null;
+              }
+            ).getAttribute("aria-label"),
+          ),
+        ),
+      )
+      .toEqual([
+        "Name",
+        "Age / DOB",
+        "Nationality",
+        "Club",
+        "Division",
+        "CA",
+        "PA",
+        "Value",
+        "Agility",
+        "Acceleration",
+      ]);
+
     await page.reload();
     await expect(
       search.getByRole("columnheader", { name: "Acceleration" }),
     ).toBeVisible();
+    await expect
+      .poll(async () =>
+        searchTable.locator("thead th").evaluateAll((headers) =>
+          headers.map((header) =>
+            (
+              header as unknown as {
+                getAttribute: (name: string) => string | null;
+              }
+            ).getAttribute("aria-label"),
+          ),
+        ),
+      )
+      .toEqual([
+        "Name",
+        "Age / DOB",
+        "Nationality",
+        "Club",
+        "Division",
+        "CA",
+        "PA",
+        "Value",
+        "Agility",
+        "Acceleration",
+      ]);
     await expect(
       search.getByRole("separator", { name: "Resize Acceleration column" }),
     ).toHaveAttribute("aria-valuenow", "104");

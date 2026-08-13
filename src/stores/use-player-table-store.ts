@@ -23,6 +23,11 @@ type PlayerTableStore = {
   layouts: PlayerTableLayouts;
   addColumns: (table: PlayerTableId, metricIds: readonly string[]) => void;
   removeColumn: (table: PlayerTableId, metricId: string) => void;
+  moveColumn: (
+    table: PlayerTableId,
+    metricId: string,
+    targetIndex: number,
+  ) => void;
   setColumnWidth: (
     table: PlayerTableId,
     metricId: string,
@@ -131,6 +136,30 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
                 columnIds: layout.columnIds.filter((id) => id !== metricId),
                 widths,
               },
+            },
+          };
+        });
+      },
+      moveColumn: (table, metricId, targetIndex) => {
+        set((state) => {
+          const layout = state.layouts[table];
+          const currentIndex = layout.columnIds.indexOf(metricId);
+          if (
+            currentIndex < 0 ||
+            !Number.isInteger(targetIndex) ||
+            targetIndex < 0 ||
+            targetIndex >= layout.columnIds.length ||
+            currentIndex === targetIndex
+          ) {
+            return state;
+          }
+          const columnIds = [...layout.columnIds];
+          columnIds.splice(currentIndex, 1);
+          columnIds.splice(targetIndex, 0, metricId);
+          return {
+            layouts: {
+              ...state.layouts,
+              [table]: { ...layout, columnIds },
             },
           };
         });

@@ -158,6 +158,7 @@ function SearchResultsVirtualTable({
   onSortChange,
   onAddColumn,
   onRemoveColumn,
+  onMoveColumn,
   onResizeColumn,
 }: {
   total: number;
@@ -170,6 +171,7 @@ function SearchResultsVirtualTable({
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
   onAddColumn: (metricId: string) => void;
   onRemoveColumn: (metricId: string) => void;
+  onMoveColumn: (metricId: string, targetIndex: number) => void;
   onResizeColumn: (metricId: string, width: number) => void;
 }) {
   const navigate = useNavigate();
@@ -190,6 +192,7 @@ function SearchResultsVirtualTable({
           }}
           onAddColumn={onAddColumn}
           onRemoveColumn={onRemoveColumn}
+          onMoveColumn={onMoveColumn}
           onResizeColumn={onResizeColumn}
         />
       }
@@ -276,6 +279,7 @@ export function SearchResultsPanel({
   const layout = usePlayerTableStore((state) => state.layouts.search);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
+  const moveColumn = usePlayerTableStore((state) => state.moveColumn);
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
   const columns = useMemo<TableColumn[]>(
     () =>
@@ -289,7 +293,8 @@ export function SearchResultsPanel({
     () =>
       columns
         .filter((column) => !isBasicSearchSortField(column.id))
-        .map((column) => column.id),
+        .map((column) => column.id)
+        .sort(),
     [columns],
   );
 
@@ -308,13 +313,12 @@ export function SearchResultsPanel({
     () =>
       [
         filterCombine,
-        layout.columnIds.join(","),
         ...filters.map(
           (rule) =>
             `${rule.field}:${rule.op}:${String(filterValueToIpc(rule.value))}`,
         ),
       ].join("|"),
-    [filterCombine, filters, layout.columnIds],
+    [filterCombine, filters],
   );
 
   if (page.total === 0) {
@@ -387,6 +391,9 @@ export function SearchResultsPanel({
         onSortChange={onSortChange}
         onAddColumn={(metricId) => addColumns("search", [metricId])}
         onRemoveColumn={removeColumn}
+        onMoveColumn={(metricId, targetIndex) =>
+          moveColumn("search", metricId, targetIndex)
+        }
         onResizeColumn={(metricId, width) =>
           setColumnWidth("search", metricId, width)
         }

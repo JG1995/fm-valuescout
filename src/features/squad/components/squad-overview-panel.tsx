@@ -155,6 +155,7 @@ function SquadOverviewTable({
   onSortChange,
   onAddColumn,
   onRemoveColumn,
+  onMoveColumn,
   onResizeColumn,
 }: {
   total: number;
@@ -165,6 +166,7 @@ function SquadOverviewTable({
   onSortChange: SquadOverviewPanelProps["onSortChange"];
   onAddColumn: (metricId: string) => void;
   onRemoveColumn: (metricId: string) => void;
+  onMoveColumn: (metricId: string, targetIndex: number) => void;
   onResizeColumn: (metricId: string, width: number) => void;
 }) {
   const navigate = useNavigate();
@@ -185,6 +187,7 @@ function SquadOverviewTable({
           }}
           onAddColumn={onAddColumn}
           onRemoveColumn={onRemoveColumn}
+          onMoveColumn={onMoveColumn}
           onResizeColumn={onResizeColumn}
         />
       }
@@ -287,6 +290,7 @@ export function SquadOverviewPanel({
   const layout = usePlayerTableStore((state) => state.layouts.squad);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
+  const moveColumn = usePlayerTableStore((state) => state.moveColumn);
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
   const columns = useMemo<TableColumn[]>(
     () =>
@@ -303,7 +307,8 @@ export function SquadOverviewPanel({
           (column) =>
             !(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id),
         )
-        .map((column) => column.id),
+        .map((column) => column.id)
+        .sort(),
     [columns],
   );
   const { data: page } = useSuspenseQuery(
@@ -373,6 +378,9 @@ export function SquadOverviewPanel({
         onSortChange={onSortChange}
         onAddColumn={(metricId) => addColumns("squad", [metricId])}
         onRemoveColumn={removeColumn}
+        onMoveColumn={(metricId, targetIndex) =>
+          moveColumn("squad", metricId, targetIndex)
+        }
         onResizeColumn={(metricId, width) =>
           setColumnWidth("squad", metricId, width)
         }

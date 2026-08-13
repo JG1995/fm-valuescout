@@ -2,7 +2,7 @@
 
 ## Status
 
-Build
+Validation
 
 ## Intent
 
@@ -152,7 +152,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 ### PR 1 — Configurable player tables
 
-**Status:** In progress
+**Status:** Ready for publication
 
 **Build-feature-loop profile:** Terra Max
 
@@ -413,7 +413,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 #### Commit 8 — Reorder visible columns
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): reorder visible columns`
 
@@ -459,7 +459,7 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 ### RED proof
 
-Not run. Begin with the Commit 8 store and route regressions described above and confirm that the current append-only implementation fails them for the missing reorder behavior.
+Confirmed: store coverage failed because `moveColumn` was absent, while route coverage failed because headers could neither drag nor expose Move left / Move right actions. The completed store, Search, and Squad regressions now pass.
 
 ### Expected outcome
 
@@ -471,6 +471,7 @@ No new metrics, changed sort or filter semantics, backend work, shared presets, 
 
 ## Discoveries and replanning
 
+- 2026-08-13: The developer confirmed a passing assembled Tauri/WebView check at 1280×800: completed and abandoned drags, then sorting, resizing, and right-clicking the same header remained independent. Commit 8 may proceed to checkpoint.
 - 2026-08-12: Direct inspection found 182,836 current rows, all stored as `gender = 'unknown'`. The developer removed gender filtering from this feature and deferred both the memory-reader/data investigation and an eventual Men / Women / Both control to `.wiki/TODO.md`.
 - 2026-08-12: Filter-modal changes must be transactional. Typing and other draft edits remain query-silent; Done applies once, while cancellation and dismissal discard the draft.
 - 2026-08-12: Both Current and Potential role scores must be available for display and Search filtering. Potential values remain calculated only when a column, sort, or filter requires them.
@@ -494,6 +495,7 @@ No new metrics, changed sort or filter semantics, backend work, shared presets, 
 | PR 1 — Configurable player tables | Commit 5 — Persist resizable column layouts | Pending record | Added independent persisted layouts, fixed-width accessible headers, metric picker/menu controls, pointer and keyboard resize, and Done-only filter-column insertion. | Sol xhigh accepted after the P1 correction; re-review clean. | Native Tauri/WebView manual verification remains unperformed. |
 | PR 1 — Configurable player tables | Commit 6 — Render all nationality flags | Pending record | Added all observed 224 FM-name mappings and a vetted Zanzibar asset, then rendered ordered, labelled offline flags through both configurable tables. | Sol High accepted with no findings. | Native multi-nationality hover verification remains unperformed; unit and route tests cover the labels and ordering. |
 | PR 1 — Configurable player tables | Commit 7 — Correct shared table interactions | Pending record | Escaped metric pickers from modal clipping, made columns fill available width before horizontal overflow, moved column actions to context menus, and corrected Search rail activity. | Sol Medium accepted after Chromium disproved the initial focus concern. | Native Tauri/WebView visual verification remains unperformed; Chromium covers geometry, focus, keyboard selection, and overflow. |
+| PR 1 — Configurable player tables | Commit 8 — Reorder visible columns | Pending record | Added independent persisted Search and Squad column reordering through native header drag and Move left / Move right actions, while preserving widths, sorting, virtual state, and request identity. | Sol High accepted with no findings. | Repowise refresh did not complete; direct staged-diff and test evidence was used. Developer confirmed the required 1280×800 Tauri/WebView interaction check. |
 
 ## Final validation
 
@@ -528,7 +530,7 @@ Before feature-complete review:
 
 ```yaml
 status: active
-pr_status: not_published
+pr_status: ready_for_publication
 merge_status: not_merged
 pr_ref: "Not published"
 merge_ref: "Not merged"

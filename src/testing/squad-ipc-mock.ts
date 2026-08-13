@@ -16,6 +16,7 @@ import {
 
 let overridePlayers: SquadPlayer[] | null = null;
 let lastSquadPlayersArgs: Record<string, unknown> | null = null;
+let squadPlayersCallCount = 0;
 let squadPlayersPageMode: SquadPlayersPageIpcMockMode = "success";
 let pendingSquadPlayersPage: {
   args: unknown;
@@ -62,6 +63,7 @@ export function setSquadPlayersOverride(players: SquadPlayer[] | null) {
 export function resetSquadPlayersOverride() {
   overridePlayers = null;
   lastSquadPlayersArgs = null;
+  squadPlayersCallCount = 0;
   squadPlayersPageMode = "success";
   pendingSquadPlayersPage = null;
   rejectedSecondPage = false;
@@ -75,6 +77,10 @@ export function resetSquadPlayersOverride() {
 
 export function getLastSquadPlayersArgs(): Record<string, unknown> | null {
   return lastSquadPlayersArgs;
+}
+
+export function getSquadPlayersCallCount(): number {
+  return squadPlayersCallCount;
 }
 
 export function setSquadPlayersPageIpcMockMode(
@@ -322,6 +328,7 @@ function squadPlayersPage(args: unknown): SquadPlayersPage {
 export function resolveSquadPlayersIpcMock(
   args: unknown,
 ): SquadPlayersPage | Promise<SquadPlayersPage> {
+  squadPlayersCallCount += 1;
   lastSquadPlayersArgs =
     typeof args === "object" && args !== null
       ? (args as Record<string, unknown>)

@@ -77,6 +77,64 @@ describe("usePlayerTableStore", () => {
     });
   });
 
+  it("moves a visible column to either edge without changing its width or the other table", () => {
+    const store = usePlayerTableStore.getState();
+    store.setColumnWidth("search", "club", 248);
+
+    store.moveColumn("search", "club", 0);
+    expect(usePlayerTableStore.getState().layouts.search).toEqual({
+      columnIds: [
+        "club",
+        "name",
+        "age",
+        "nationality",
+        "division",
+        "ca",
+        "pa",
+        "value",
+      ],
+      widths: { club: 248 },
+    });
+
+    store.moveColumn("search", "club", 7);
+    expect(usePlayerTableStore.getState().layouts.search).toEqual({
+      columnIds: [
+        "name",
+        "age",
+        "nationality",
+        "division",
+        "ca",
+        "pa",
+        "value",
+        "club",
+      ],
+      widths: { club: 248 },
+    });
+    expect(usePlayerTableStore.getState().layouts.squad).toEqual({
+      columnIds: [...DEFAULT_PLAYER_TABLE_COLUMN_IDS],
+      widths: {},
+    });
+  });
+
+  it("ignores unknown, out-of-range, and no-op column moves", () => {
+    const before = usePlayerTableStore.getState().layouts.search;
+    const store = usePlayerTableStore.getState();
+
+    store.moveColumn("search", "unknown.metric", 0);
+    expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
+    store.moveColumn("search", "ca", -1);
+    expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
+    store.moveColumn("search", "ca", 99);
+    expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
+    store.moveColumn("search", "ca", Number.NaN);
+    expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
+    store.moveColumn("search", "ca", 2.5);
+    expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
+    store.moveColumn("search", "ca", 5);
+
+    expect(usePlayerTableStore.getState().layouts.search).toEqual(before);
+  });
+
   it("does not remove the last visible column", () => {
     usePlayerTableStore.setState({
       layouts: {
