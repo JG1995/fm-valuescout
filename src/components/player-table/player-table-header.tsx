@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Ellipsis, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
 import {
@@ -182,11 +182,33 @@ export function PlayerTableHeader({
             >
               <div className="flex min-w-0 items-center justify-between gap-1 pr-1">
                 <button
+                  ref={(element) => {
+                    if (element) {
+                      triggerRefs.current.set(column.id, element);
+                    } else {
+                      triggerRefs.current.delete(column.id);
+                    }
+                  }}
                   type="button"
-                  className={`inline-flex min-w-0 items-center gap-1 truncate text-label-md uppercase ${
-                    active ? "text-primary" : "text-on-surface-variant"
-                  }`}
+                  aria-keyshortcuts="Shift+F10"
+                  title={`${column.label}: click to sort; right-click or press Shift+F10 for column options`}
+                  className={`inline-flex w-full min-w-0 items-center gap-1 truncate text-label-md uppercase ${
+                    column.align === "right" ? "justify-end" : "justify-start"
+                  } ${active ? "text-primary" : "text-on-surface-variant"}`}
                   onClick={() => onSortChange(column.id)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "ContextMenu" ||
+                      (event.key === "F10" && event.shiftKey)
+                    ) {
+                      event.preventDefault();
+                      setOpenColumnId(column.id);
+                      setPickingColumnId(null);
+                    } else if (open && event.key === "Escape") {
+                      event.preventDefault();
+                      closeMenu();
+                    }
+                  }}
                 >
                   <span className="truncate">{column.label}</span>
                   {active ? (
@@ -196,36 +218,6 @@ export function PlayerTableHeader({
                       strokeWidth={2}
                     />
                   ) : null}
-                </button>
-                <button
-                  ref={(element) => {
-                    if (element) {
-                      triggerRefs.current.set(column.id, element);
-                    } else {
-                      triggerRefs.current.delete(column.id);
-                    }
-                  }}
-                  type="button"
-                  aria-label={`Manage ${column.label} column`}
-                  aria-expanded={open}
-                  aria-haspopup="menu"
-                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-on-surface-variant transition-colors duration-150 ease-out hover:bg-surface-container-high hover:text-on-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-                  onClick={() => {
-                    if (open) {
-                      closeMenu();
-                    } else {
-                      setOpenColumnId(column.id);
-                      setPickingColumnId(null);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (open && event.key === "Escape") {
-                      event.preventDefault();
-                      closeMenu();
-                    }
-                  }}
-                >
-                  <Ellipsis aria-hidden size={16} strokeWidth={1.5} />
                 </button>
               </div>
 

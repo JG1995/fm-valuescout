@@ -198,6 +198,10 @@ export function VirtualizedPlayerTable<
       ? virtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
       : 0;
   const failedPageQuery = pageQueries.find((query) => query.isError);
+  const minimumTableWidth = columns.reduce(
+    (total, column) => total + column.width,
+    0,
+  );
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -209,13 +213,19 @@ export function VirtualizedPlayerTable<
         <table
           className="table-fixed border-collapse text-left"
           style={{
-            width: columns.reduce((total, column) => total + column.width, 0),
+            width: "100%",
+            minWidth: minimumTableWidth,
           }}
         >
           <caption className="sr-only">{caption}</caption>
           <colgroup>
             {columns.map((column) => (
-              <col key={column.id} style={{ width: column.width }} />
+              <col
+                key={column.id}
+                style={{
+                  width: `${(column.width / minimumTableWidth) * 100}%`,
+                }}
+              />
             ))}
           </colgroup>
           {header}

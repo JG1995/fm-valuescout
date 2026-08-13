@@ -113,6 +113,7 @@ describe("search route", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Search" }),
     ).toBeInTheDocument();
+    expect(searchLink).toHaveAttribute("aria-current", "page");
     expect(
       screen.getByText("No data loaded for this save"),
     ).toBeInTheDocument();
@@ -187,15 +188,16 @@ describe("search route", () => {
     const table = await screen.findByRole("table", {
       name: "Player search results",
     });
-    const manageCa = within(table).getByRole("button", {
-      name: "Manage CA column",
-    });
-    await user.click(manageCa);
+    const caHeader = within(table).getByRole("columnheader", { name: "CA" });
+    const caSort = within(caHeader).getByRole("button", { name: "CA" });
+    expect(
+      within(table).queryByRole("button", { name: "Manage CA column" }),
+    ).toBeNull();
+    caSort.focus();
+    fireEvent.keyDown(caSort, { key: "F10", shiftKey: true });
     await user.keyboard("{Escape}");
-    expect(manageCa).toHaveFocus();
-    fireEvent.contextMenu(
-      within(table).getByRole("columnheader", { name: "CA" }),
-    );
+    expect(caSort).toHaveFocus();
+    fireEvent.contextMenu(caHeader);
     expect(
       screen.getByRole("menu", { name: "CA column actions" }),
     ).toBeInTheDocument();
@@ -293,8 +295,8 @@ describe("search route", () => {
     const table = await screen.findByRole("table", {
       name: "Player search results",
     });
-    await user.click(
-      within(table).getByRole("button", { name: "Manage Name column" }),
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "Name" }),
     );
     await user.click(screen.getByRole("menuitem", { name: "Remove Name" }));
 

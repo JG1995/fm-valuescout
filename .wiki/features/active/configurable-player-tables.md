@@ -389,6 +389,27 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 - Verify unknown values remain truthful text and empty arrays render `—`.
 - Verify no CDN, runtime network, emoji, league flag, or reader change entered the diff.
 
+#### Commit 7 — Correct shared table interactions
+
+**Status:** Completed
+
+**Provisional commit:** `fix(tables): correct shared table interactions`
+
+**Work:** Let the shared metric picker escape modal clipping, make configured columns fill spare table width until their readable minimums require horizontal scrolling, remove visible column-option buttons while retaining right-click and Shift+F10 access, and keep the Search rail item active when URL-backed Search state is present.
+
+**Out of scope:**
+
+- New table features, changed sort semantics, new column metadata, filter behavior changes, or navigation redesign.
+
+**Implementation packet:**
+
+- Owners and files: shared metric picker, virtualized player table and header, app navigation rail, focused Search/Planner route tests, browser smoke coverage, and this ledger.
+- Constraints and invariants: preserve modal focus containment and searchable picker behavior; preserve stored column order and resize weights; fill the scrollport while configured minimums fit; keep horizontal overflow after they do not; sort only from the header button; open column actions from right-click, Context Menu, or Shift+F10; preserve visible focus and `aria-sort`; match nav activity by pathname rather than Search query state.
+
+**Review profile:** Sol Medium — focus on popup geometry, table overflow thresholds, keyboard menu access, and route active-state matching.
+
+**Validation:** Start with failing route assertions for Search nav activity and the absence of visible manage buttons, plus browser geometry assertions for full-width tables and unclipped filter options. Add browser coverage for horizontal overflow after column minimums exceed the scrollport. Run affected tests, `./scripts/dev check`, `./scripts/dev smoke`, and `./scripts/dev secrets --staged` at checkpoint.
+
 ## Active work
 
 **PR:** PR 1 — Configurable player tables
@@ -397,15 +418,15 @@ The thinnest end-to-end path is: choose a Potential role score in the categorize
 
 ### RED proof
 
-Commit 6 is complete. Run the feature-complete validation and review before publication.
+Commit 7 is complete. Run feature-complete validation and review before publication.
 
 ### Expected outcome
 
-PR 1 is ready for publication after feature-complete validation. No push or pull request has been created.
+PR 1 is ready for publication after feature-complete validation.
 
 ### Explicit exclusions
 
-No league or division flags, remote assets, flag emoji, nationality normalization in SQLite, or nationality sort changes belong in Commit 6. The one approved exception is a vetted public-domain Zanzibar SVG bundled with the app.
+No new metrics, changed sort or filter semantics, persistence changes, navigation redesign, or unrelated visual cleanup belongs in Commit 7.
 
 ## Discoveries and replanning
 
@@ -418,6 +439,7 @@ No league or division flags, remote assets, flag emoji, nationality normalizatio
 - 2026-08-12: Potential metric IDs use `potential_role.<role_id>` beside the existing `role.<role_id>` current-score IDs. Both Rust and the frontend catalog validate them against the shared role catalog before SQL selection.
 - 2026-08-13: Reopened Commit 4 after a 101-row paged browser regression found that `min-h-full` route roots let the virtual spacer expand the document and made `<main>` the scroll owner. The earlier two-row browser fixtures and synthetic unit viewport did not create a large spacer. Only the Search and Squad layout tests failed in an 800 px viewport, with approximately 4,353 px and 4,406 px scrollports. Changing the route roots to `h-full` bounded the layout; `./scripts/dev smoke` passed 32 tests. Commit 5 remains next and Commit 6 is not renumbered.
 - 2026-08-13: The representative bridge dump contains 224 distinct player nationality values. `Zanzibar` is a distinct FM nation (`nationUid` 13100103), but the selected offline package has no Zanzibar SVG; mapping it to Tanzania would misrepresent the stored value. The developer approved one vetted public-domain Zanzibar SVG exception, so every observed value can remain accurately flagged offline.
+- 2026-08-13: Assembled-screen inspection found four PR 1 interaction regressions: the absolute metric list was clipped by the modal body's scroll container; the table used the exact sum of stored widths instead of filling its scrollport; visible ellipsis buttons duplicated the intended context-menu path; and exact nav matching included normalized Search query state. Commit 7 corrects these shared presentation boundaries before feature validation.
 
 ## Completed work
 
@@ -429,6 +451,7 @@ No league or division flags, remote assets, flag emoji, nationality normalizatio
 | PR 1 — Configurable player tables | Commit 4 — Virtualize full-height player lists | `7b16eef`; correction pending record | Extracted the shared full-height virtual table, removed Squad pagination, and added whole-row profile activation with resilient page-boundary behavior. Corrected the route height chain and added paged 101-row browser coverage. | Sol High accepted the initial implementation after three correction rounds; a fresh Sol High review accepted the correction with no findings. | Native Tauri/WebView visual inspection remains outstanding; automated Chromium covers 1280×800 and 1600×900. |
 | PR 1 — Configurable player tables | Commit 5 — Persist resizable column layouts | Pending record | Added independent persisted layouts, fixed-width accessible headers, metric picker/menu controls, pointer and keyboard resize, and Done-only filter-column insertion. | Sol xhigh accepted after the P1 correction; re-review clean. | Native Tauri/WebView manual verification remains unperformed. |
 | PR 1 — Configurable player tables | Commit 6 — Render all nationality flags | Pending record | Added all observed 224 FM-name mappings and a vetted Zanzibar asset, then rendered ordered, labelled offline flags through both configurable tables. | Sol High accepted with no findings. | Native multi-nationality hover verification remains unperformed; unit and route tests cover the labels and ordering. |
+| PR 1 — Configurable player tables | Commit 7 — Correct shared table interactions | Pending record | Escaped metric pickers from modal clipping, made columns fill available width before horizontal overflow, moved column actions to context menus, and corrected Search rail activity. | Sol Medium accepted after Chromium disproved the initial focus concern. | Native Tauri/WebView visual verification remains unperformed; Chromium covers geometry, focus, keyboard selection, and overflow. |
 
 ## Final validation
 

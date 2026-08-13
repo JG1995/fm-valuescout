@@ -228,7 +228,10 @@ test.describe("walking skeleton smoke", () => {
       main.getByRole("heading", { level: 1, name: "Search" }),
     ).toBeVisible();
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Search" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 
   test("planner route shows no-snapshot Load Data guidance", async ({
@@ -483,11 +486,134 @@ test.describe("walking skeleton smoke", () => {
       expect(dimensions.scrollHeight).toBeGreaterThanOrEqual(
         dimensions.clientHeight + 1,
       );
-      await expect(table).toHaveCSS("width", "1144px");
+      const tableBox = await table.boundingBox();
+      expect(tableBox).not.toBeNull();
+      expect(tableBox?.width).toBeGreaterThanOrEqual(
+        dimensions.clientWidth - 1,
+      );
+      expect(tableBox?.width).toBeLessThanOrEqual(dimensions.clientWidth + 1);
       expect(
         await scroller.locator("tbody tr[data-index]").count(),
       ).toBeLessThan(101);
     }
+  });
+
+  test("Search filter options remain fully interactive outside the modal scrollport", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/search");
+
+    await page.getByRole("button", { name: "Edit filters" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit filters" });
+    await dialog.getByRole("button", { name: "Add filter" }).click();
+    await dialog.getByRole("button", { name: "Field: CA" }).click();
+
+    const listbox = dialog.getByRole("listbox", { name: "Field options" });
+    const searchFields = dialog.getByRole("combobox", {
+      name: "Search fields",
+    });
+    await expect(listbox).toBeVisible();
+    expect(
+      await listbox.evaluate((element) => {
+        const listboxElement = element as unknown as {
+          contains: (node: unknown) => boolean;
+          getBoundingClientRect: () => {
+            bottom: number;
+            left: number;
+            width: number;
+          };
+        };
+        const browser = globalThis as unknown as {
+          document: {
+            elementFromPoint: (x: number, y: number) => unknown;
+          };
+          innerHeight: number;
+        };
+        const bounds = listboxElement.getBoundingClientRect();
+        const hit = browser.document.elementFromPoint(
+          bounds.left + Math.min(8, bounds.width / 2),
+          Math.min(bounds.bottom - 4, browser.innerHeight - 4),
+        );
+        return (
+          hit === element || (hit !== null && listboxElement.contains(hit))
+        );
+      }),
+    ).toBe(true);
+    await expect(searchFields).toBeFocused();
+    await page.keyboard.type("club");
+    await page.keyboard.press("Enter");
+    await expect(
+      dialog.getByRole("button", { name: "Field: Club" }),
+    ).toBeVisible();
+  });
+
+  test("Search scrolls horizontally after columns reach their readable minimums", async ({
+    page,
+  }) => {
+    const defaultColumns = [
+      "name",
+      "age",
+      "nationality",
+      "club",
+      "division",
+      "ca",
+      "pa",
+      "value",
+    ];
+    const searchColumns = [
+      ...defaultColumns,
+      "birth_year",
+      "preferred_foot",
+      "parent_club",
+      "height",
+      "wage",
+      "contract_year",
+      "transfer_listed",
+      "loan_listed",
+    ];
+    await page.addInitScript(
+      ({ defaultColumnIds, searchColumnIds }) => {
+        const browser = globalThis as unknown as {
+          localStorage: {
+            setItem: (key: string, value: string) => void;
+          };
+        };
+        browser.localStorage.setItem(
+          "fm-valuescout-player-table-layouts",
+          JSON.stringify({
+            state: {
+              layouts: {
+                search: { columnIds: searchColumnIds, widths: {} },
+                squad: { columnIds: defaultColumnIds, widths: {} },
+              },
+            },
+            version: 1,
+          }),
+        );
+      },
+      { defaultColumnIds: defaultColumns, searchColumnIds: searchColumns },
+    );
+    await stubTauriIpc(page, {
+      plannerSnapshot: true,
+      squadOverview: true,
+    });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/search");
+
+    const scroller = page.getByTestId("search-results-scroller");
+    await expect(
+      scroller.getByRole("columnheader", { name: "Loan listed" }),
+    ).toBeVisible();
+    expect(
+      await scroller.evaluate((element) => {
+        const scrollerElement = element as unknown as {
+          clientWidth: number;
+          scrollWidth: number;
+        };
+        return scrollerElement.scrollWidth > scrollerElement.clientWidth;
+      }),
+    ).toBe(true);
   });
 
   test("Search preserves a resized custom column without changing Squad", async ({
@@ -503,7 +629,9 @@ test.describe("walking skeleton smoke", () => {
     const searchTable = search.getByRole("table", {
       name: "Player search results",
     });
-    await searchTable.getByRole("button", { name: "Manage CA column" }).click();
+    await searchTable
+      .getByRole("columnheader", { name: "CA" })
+      .click({ button: "right" });
     await page.getByRole("menuitem", { name: "Add column" }).click();
     await page.getByRole("button", { name: "Column: Choose a metric" }).click();
     await page

@@ -342,8 +342,8 @@ describe("planner route", () => {
     expect(
       within(table).queryByRole("columnheader", { name: "Acceleration" }),
     ).toBeNull();
-    await user.click(
-      within(table).getByRole("button", { name: "Manage CA column" }),
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "CA" }),
     );
     await user.click(screen.getByRole("menuitem", { name: "Add column" }));
     await user.click(
