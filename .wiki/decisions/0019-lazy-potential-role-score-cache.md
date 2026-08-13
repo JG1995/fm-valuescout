@@ -4,6 +4,8 @@
 
 Accepted
 
+Implementation status: Implemented in the completed [Configurable Player Tables](../features/completed/configurable-player-tables.md) feature. Migration v21, lazy materialization, version checks, and boost invalidation are live. Cold and warm Windows timings through the assembled Tauri/WebView remain a follow-up gap.
+
 ## Context
 
 Potential attributes and role scores are currently derived at read time from the existing CA-to-PA visible-attribute projection. That is appropriate for one profile or a bounded Planner candidate set, and the resulting IPC response can live in TanStack Query's in-memory cache.
@@ -77,12 +79,12 @@ Keep calculated scores only for the current process. This avoids a migration but
 - Measure cold and warm Search and Squad behavior on a representative Windows snapshot before publication.
 - If cold materialization makes the WebView unresponsive or exceeds the accepted minute-scale first-use delay, replace the synchronous materializer with a cancellable background job and explicit progress rather than weakening global query correctness.
 - If repeated addition of new roles dominates measured use, reconsider a versioned projected-attribute cache or complete per-player score vector with a new ADR.
-- Reconcile the implemented cache and invalidation contract into `.wiki/ARCHITECTURE.md` when the feature completes.
+- Keep the cache and invalidation contract aligned with `.wiki/ARCHITECTURE.md` if a future projection-model or materialization boundary changes.
 
 ## Related work
 
-- Active feature plan: [Configurable Player Tables](../features/active/configurable-player-tables.md)
+- Completed feature record: [Configurable Player Tables](../features/completed/configurable-player-tables.md)
 - Existing projection contract: [Potential role scores](../features/completed/potential-role-scores.md)
 - Existing current-score contract: [Role scoring engine](../features/completed/role-scoring-engine.md)
-- Commits: `b258df8`
+- Implementation refs: `b258df83f578a20b1114e6de68a087512a28929a` (migration and cache), `ef85cd6e01cb6c205c6a7dbba56b5b1118307302` (shared metric resolver and Search/Squad query contract), `484d3a2078419c3ec62b4b79bdf624dbac924cd9` (table integration)
 - Supersedes: the blanket non-persistence decision for potential values only for this disposable table cache; potential values remain derived and non-authoritative

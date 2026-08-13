@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Configurable Player Tables](./features/active/configurable-player-tables.md) — full-height virtual Search and Squad tables, staged organized filters, persistent resizable columns, on-demand potential role-score caching, and nationality flags
+No feature is currently active.
 
 ## Next
 
