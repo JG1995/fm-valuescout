@@ -229,7 +229,8 @@ describe("search route", () => {
     });
   });
 
-  it("reorders Search columns by drag without changing its query, virtual row, or widths", async () => {
+  it("reorders Search columns from the menu without changing its query, virtual row, or widths", async () => {
+    const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     const store = usePlayerTableStore.getState();
     store.addColumns("search", ["attr.Acceleration", "attr.Agility"]);
@@ -266,55 +267,8 @@ describe("search route", () => {
     const accelerationHeader = within(table).getByRole("columnheader", {
       name: "Acceleration",
     });
-    const agilityHeader = within(table).getByRole("columnheader", {
-      name: "Agility",
-    });
-    Object.defineProperty(agilityHeader, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({ left: 0, right: 100, top: 0, bottom: 32, width: 100 }),
-    });
-
-    fireEvent.dragStart(
-      within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
-      { dataTransfer: { effectAllowed: "move", setData: () => {} } },
-    );
-    fireEvent.dragEnd(
-      within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
-    );
-    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
-      "name",
-      "age",
-      "nationality",
-      "club",
-      "division",
-      "ca",
-      "pa",
-      "value",
-      "attr.Acceleration",
-      "attr.Agility",
-    ]);
-
-    const dataTransfer = {
-      effectAllowed: "none",
-      dropEffect: "none",
-      setData: () => {},
-    };
-    fireEvent.dragStart(
-      within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
-      { dataTransfer },
-    );
-    expect(fireEvent.dragEnter(agilityHeader, { dataTransfer })).toBe(false);
-    expect(
-      fireEvent.dragOver(agilityHeader, { clientX: 90, dataTransfer }),
-    ).toBe(false);
-    expect(dataTransfer).toMatchObject({
-      effectAllowed: "move",
-      dropEffect: "move",
-    });
-    fireEvent.drop(agilityHeader, { clientX: 90, dataTransfer });
-    fireEvent.dragEnd(
-      within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
-    );
+    fireEvent.contextMenu(accelerationHeader);
+    await user.click(screen.getByRole("menuitem", { name: "Move right" }));
 
     await waitFor(() => {
       const headerLabels = within(table)
@@ -332,7 +286,7 @@ describe("search route", () => {
       .map((cell) => cell.textContent);
     expect(cellTexts[headerLabels.indexOf("Agility")]).toBe("15");
     expect(cellTexts[headerLabels.indexOf("Acceleration")]).toBe("16");
-    expect(focusedRow).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Acceleration" })).toHaveFocus();
     expect(scroller.scrollTop).toBe(1_950);
     expect(getSearchPlayersCallCount()).toBe(callCountBeforeReorder);
     expect(

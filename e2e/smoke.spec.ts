@@ -669,16 +669,8 @@ test.describe("walking skeleton smoke", () => {
     });
     await expect(acceleration).toBeInViewport();
     await expect(agility).toBeInViewport();
-    const agilityBox = await agility.boundingBox();
-    if (!agilityBox) {
-      throw new Error("Expected the Agility header to have a visible layout.");
-    }
-    await acceleration.dragTo(agility, {
-      targetPosition: {
-        x: Math.floor(agilityBox.width * 0.75),
-        y: Math.floor(agilityBox.height / 2),
-      },
-    });
+    await acceleration.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Move right" }).click();
     await expect
       .poll(async () =>
         searchTable.locator("thead th").evaluateAll((headers) =>

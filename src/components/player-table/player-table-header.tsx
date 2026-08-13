@@ -141,13 +141,7 @@ export function PlayerTableHeader({
 }: PlayerTableHeaderProps) {
   const [openColumnId, setOpenColumnId] = useState<string | null>(null);
   const [pickingColumnId, setPickingColumnId] = useState<string | null>(null);
-  const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{
-    columnId: string;
-    position: "before" | "after";
-  } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const draggedColumnIdRef = useRef<string | null>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const availableMetrics = useMemo(
     () =>
@@ -193,12 +187,6 @@ export function PlayerTableHeader({
           const open = openColumnId === column.id;
           const picking = pickingColumnId === column.id;
           const columnIndex = columns.findIndex(({ id }) => id === column.id);
-          const insertionCue =
-            dropTarget?.columnId === column.id
-              ? dropTarget.position === "before"
-                ? "before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary before:content-['']"
-                : "after:absolute after:inset-y-0 after:right-0 after:w-0.5 after:bg-primary after:content-['']"
-              : "";
           const ariaSort = active
             ? sortDir === "asc"
               ? "ascending"
@@ -212,72 +200,13 @@ export function PlayerTableHeader({
               scope="col"
               aria-label={column.label}
               aria-sort={ariaSort}
-              draggable
-              className={`relative h-table-header-height px-2 ${insertionCue} ${
+              className={`relative h-table-header-height px-2 ${
                 column.align === "right" ? "text-right" : "text-left"
-              } ${draggedColumnId === column.id ? "opacity-50" : ""}`}
-              onDragEnter={(event) => {
-                const draggedColumnId = draggedColumnIdRef.current;
-                if (!draggedColumnId || draggedColumnId === column.id) {
-                  return;
-                }
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-              }}
-              onDragOver={(event) => {
-                const draggedColumnId = draggedColumnIdRef.current;
-                if (!draggedColumnId || draggedColumnId === column.id) {
-                  return;
-                }
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-                const bounds = event.currentTarget.getBoundingClientRect();
-                setDropTarget({
-                  columnId: column.id,
-                  position:
-                    event.clientX < bounds.left + bounds.width / 2
-                      ? "before"
-                      : "after",
-                });
-              }}
-              onDrop={(event) => {
-                const draggedColumnId = draggedColumnIdRef.current;
-                if (!draggedColumnId || draggedColumnId === column.id) {
-                  return;
-                }
-                event.preventDefault();
-                const bounds = event.currentTarget.getBoundingClientRect();
-                const insertionIndex =
-                  columnIndex +
-                  (event.clientX < bounds.left + bounds.width / 2 ? 0 : 1);
-                const draggedIndex = columns.findIndex(
-                  ({ id }) => id === draggedColumnId,
-                );
-                const targetIndex =
-                  draggedIndex < insertionIndex
-                    ? insertionIndex - 1
-                    : insertionIndex;
-                onMoveColumn(draggedColumnId, targetIndex);
-                draggedColumnIdRef.current = null;
-                setDraggedColumnId(null);
-                setDropTarget(null);
-              }}
+              }`}
               onContextMenu={(event) => {
                 event.preventDefault();
                 setOpenColumnId(column.id);
                 setPickingColumnId(null);
-              }}
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", column.id);
-                draggedColumnIdRef.current = column.id;
-                setDraggedColumnId(column.id);
-                setDropTarget(null);
-              }}
-              onDragEnd={() => {
-                draggedColumnIdRef.current = null;
-                setDraggedColumnId(null);
-                setDropTarget(null);
               }}
             >
               <div className="flex min-w-0 items-center justify-between gap-1 pr-1">
@@ -291,7 +220,7 @@ export function PlayerTableHeader({
                   }}
                   type="button"
                   aria-keyshortcuts="Shift+F10"
-                  title={`${column.label}: drag to reorder, click to sort; right-click or press Shift+F10 for column options`}
+                  title={`${column.label}: click to sort; right-click or press Shift+F10 for column options`}
                   className={`inline-flex w-full min-w-0 items-center gap-1 truncate text-label-md uppercase ${
                     column.align === "right" ? "justify-end" : "justify-start"
                   } ${active ? "text-primary" : "text-on-surface-variant"}`}

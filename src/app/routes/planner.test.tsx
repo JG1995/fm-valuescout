@@ -369,7 +369,8 @@ describe("planner route", () => {
     );
   });
 
-  it("reorders Squad columns by drag without changing its query, virtual row, or widths", async () => {
+  it("reorders Squad columns from the menu without changing its query, virtual row, or widths", async () => {
+    const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
       primaryClub: "Metro FC",
@@ -408,28 +409,8 @@ describe("planner route", () => {
     const accelerationHeader = within(table).getByRole("columnheader", {
       name: "Acceleration",
     });
-    const agilityHeader = within(table).getByRole("columnheader", {
-      name: "Agility",
-    });
-    Object.defineProperty(agilityHeader, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({ left: 0, right: 100, top: 0, bottom: 32, width: 100 }),
-    });
-
-    const dataTransfer = {
-      effectAllowed: "none",
-      dropEffect: "none",
-      setData: () => {},
-    };
-    fireEvent.dragStart(
-      within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
-      { dataTransfer },
-    );
-    fireEvent.dragOver(agilityHeader, { clientX: 90, dataTransfer });
-    fireEvent.drop(agilityHeader, { clientX: 90, dataTransfer });
-    fireEvent.dragEnd(
-      within(accelerationHeader).getByRole("button", { name: "Acceleration" }),
-    );
+    fireEvent.contextMenu(accelerationHeader);
+    await user.click(screen.getByRole("menuitem", { name: "Move right" }));
 
     await waitFor(() => {
       const headerLabels = within(table)
@@ -447,7 +428,7 @@ describe("planner route", () => {
       .map((cell) => cell.textContent);
     expect(cellTexts[headerLabels.indexOf("Agility")]).toBe("15");
     expect(cellTexts[headerLabels.indexOf("Acceleration")]).toBe("16");
-    expect(focusedRow).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Acceleration" })).toHaveFocus();
     expect(scroller.scrollTop).toBe(1_950);
     expect(getSquadPlayersCallCount()).toBe(callCountBeforeReorder);
     expect(
