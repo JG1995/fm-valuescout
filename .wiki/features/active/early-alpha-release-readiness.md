@@ -604,21 +604,21 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 **PR:** PR 1 — Prepare Windows early alpha distribution
 
-**Commit:** Commit 4 — Package the Windows bridge from source
+**Commit:** Commit 5 — Retain local release logs
 
 ### RED proof
 
-The release-package validation must reject the current 102-byte placeholder and a deliberate manifest-version mismatch before invoking Tauri.
+Release logging configuration must retain bounded local files in release builds without enabling external reporting or recording sensitive bridge payloads.
 
 ### Expected outcome
 
-The Windows-only command builds the locked bridge from the checked-out source, rejects an invalid or mismatched DLL, bundles one x64 NSIS installer, and writes its SHA-256 checksum without publishing anything.
+Release builds retain bounded local diagnostic files with app and schema identity, while debug builds preserve useful local development output.
 
 ### Explicit exclusions
 
-- GitHub release creation, signing, updater artifacts, MSI, macOS, or Linux bundles.
-- Changes to bridge runtime behavior or in-app BepInEx installation.
-- Committing the generated bridge DLL or installer.
+- Sentry or another external crash service, telemetry, analytics, or automatic uploads.
+- A diagnostics UI, new Tauri capability, or WebView-native privilege.
+- Routine logging of player rows, dump contents, memory addresses, or full sensitive paths.
 
 ## Discoveries and replanning
 
@@ -633,6 +633,7 @@ The Windows-only command builds the locked bridge from the checked-out source, r
 - Repowise was synchronized to `0c9c10e41b59941d08b90a5f493283836d149830`. It identifies `src-tauri/src/db/migrations.rs` and `scripts/dev` as high-churn/high-impact surfaces; deterministic migration and Windows packaging evidence remains authoritative.
 - NuGet serializes an exact `Version="[x]"` constraint in `packages.lock.json` as the canonical requested range `[x, x]`. Commit 2 uses those exact constraints for both validated BepInEx packages; the bridge test first rejected the prior open-ended locks, then passed after regeneration with locked restore enabled.
 - The local Windows host has only the .NET 9 SDK, while `bridge/global.json` pins .NET 6. The existing Windows CI job installs .NET 6 before its locked bridge test; that clean-Windows proof remains for the first push of this commit.
+- Sol High review of Commit 4 required the root `app` lock entry to be part of release identity validation and the Tauri Cargo invocation to use `--locked`. The package command now isolates and clears version-scoped ignored build and artifact directories; the first native Windows package run remains required evidence.
 - No planned feature spec existed to promote. This ledger is the sole active source of feature intent.
 
 ## Completed work
@@ -642,6 +643,7 @@ The Windows-only command builds the locked bridge from the checked-out source, r
 | PR 1 | Commit 1 — Remove the template health scaffold | Pending record | Completed | Passed — no blocking findings | None |
 | PR 1 | Commit 2 — Lock release build inputs | Pending record | Completed | Passed — no retained findings | Clean Windows CI restore awaits the first push |
 | PR 1 | Commit 3 — Automate guarded dependency patches | Pending record | Completed | Passed — no retained findings after two corrective review rounds | Live GitHub settings and fixture validation await the first push |
+| PR 1 | Commit 4 — Package the Windows bridge from source | Pending record | Completed | Passed — no retained findings after corrective review | Native Windows package and extraction evidence await the first push |
 
 ## Final validation
 

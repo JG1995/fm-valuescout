@@ -7,7 +7,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install|dependency-automerge-policy} [args...]
+Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install|package-windows|dependency-automerge-policy} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
@@ -24,6 +24,8 @@ Commands:
   bridge-install    Build bridge/ with dotnet and copy FmDataBridge.dll into FM BepInEx/plugins.
                     Path: FM_BRIDGE_PLUGINS, or FM_STEAM_ROOT/BepInEx/plugins, or the default
                     Steam FM26 path under /mnt/c (WSL).
+  package-windows   Build the locked bridge and one unsigned Windows x64 NSIS installer locally.
+                    Write the installer and SHA-256 sidecar under .release/windows/ without publishing.
   dependency-automerge-policy
                     Evaluate trusted Dependabot metadata and emit the auto-merge decision.
 
@@ -306,6 +308,119 @@ run_bridge_install() {
   printf 'Installed %s\n' "$plugins_dir/FmDataBridge.dll"
 }
 
+require_windows_host() {
+  case "${OS:-}:$(uname -s)" in
+    Windows_NT:* | *:MINGW* | *:MSYS* | *:CYGWIN*) ;;
+    *)
+      printf 'package-windows runs only on a Windows host.\n' >&2
+      exit 66
+      ;;
+  esac
+}
+
+resolve_powershell() {
+  if command -v powershell.exe >/dev/null 2>&1; then
+    command -v powershell.exe
+    return 0
+  fi
+
+  if command -v powershell >/dev/null 2>&1; then
+    command -v powershell
+    return 0
+  fi
+
+  printf 'PowerShell is required to validate the managed bridge DLL version.\n' >&2
+  exit 66
+}
+
+to_windows_path() {
+  local path="$1"
+
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$path"
+    return 0
+  fi
+
+  printf '%s\n' "$path"
+}
+
+verify_bridge_version() {
+  local dll_path="$1"
+  local expected_version="$2"
+  local powershell windows_dll_path
+  powershell="$(resolve_powershell)"
+  windows_dll_path="$(to_windows_path "$dll_path")"
+
+  BRIDGE_DLL="$windows_dll_path" EXPECTED_BRIDGE_VERSION="$expected_version" "$powershell" \
+    -NoProfile -NonInteractive -Command '
+      $dll = [Environment]::GetEnvironmentVariable("BRIDGE_DLL")
+      $expected = [Environment]::GetEnvironmentVariable("EXPECTED_BRIDGE_VERSION")
+      $assembly = [System.Reflection.AssemblyName]::GetAssemblyName($dll)
+      $productVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($dll).ProductVersion
+      if ($assembly.Name -ne "FmDataBridge" -or $productVersion -ne $expected) {
+        throw "Built bridge identity does not match $expected"
+      }
+    '
+}
+
+run_package_windows() {
+  require_no_arguments package-windows "$@"
+  require_windows_host
+
+  DEV_COMMAND_LABEL=package-windows
+  require_node_deps
+  ensure_dotnet
+
+  local version bridge_dll target_dir nsis_dir installer artifact_dir artifact_path checksum_path
+  version="$(cd "$repo_root" && node scripts/release-package-validation.mjs identity)"
+  (
+    cd "$repo_root"
+    node scripts/release-package-validation.mjs config
+  )
+
+  (
+    cd "$repo_root/bridge"
+    dotnet restore FmDataBridge.sln --locked-mode
+    dotnet build FmDataBridge.sln --configuration Release --no-restore
+  )
+
+  bridge_dll="$repo_root/bridge/bin/Release/net6.0/FmDataBridge.dll"
+  (
+    cd "$repo_root"
+    node scripts/release-package-validation.mjs bridge "$bridge_dll"
+  )
+  verify_bridge_version "$bridge_dll" "$version"
+
+  target_dir="$repo_root/.release/tauri-target/$version"
+  rm -rf -- "$target_dir"
+  (
+    cd "$repo_root"
+    CARGO_TARGET_DIR="$target_dir" pnpm tauri build \
+      --config src-tauri/tauri.release.conf.json \
+      --target x86_64-pc-windows-msvc \
+      --no-sign \
+      -- --locked
+  )
+
+  nsis_dir="$target_dir/x86_64-pc-windows-msvc/release/bundle/nsis"
+  mapfile -t installers < <(find "$nsis_dir" -maxdepth 1 -type f -name '*.exe' -print)
+  if [[ "${#installers[@]}" -ne 1 ]]; then
+    printf 'Expected one NSIS installer under %s, found %s.\n' "$nsis_dir" "${#installers[@]}" >&2
+    exit 66
+  fi
+
+  installer="${installers[0]}"
+  artifact_dir="$repo_root/.release/windows/$version"
+  artifact_path="$artifact_dir/FM-ValueScout_${version}_x64-setup.exe"
+  rm -rf -- "$artifact_dir"
+  mkdir -p -- "$artifact_dir"
+  cp -- "$installer" "$artifact_path"
+  checksum_path="$(cd "$repo_root" && node scripts/release-package-validation.mjs checksum "$artifact_path")"
+
+  printf 'Packaged %s\n' "$artifact_path"
+  printf 'Wrote %s\n' "$checksum_path"
+}
+
 command="${1:-}"
 if [[ -z "$command" ]]; then
   usage
@@ -351,6 +466,9 @@ case "$command" in
     ;;
   bridge-install)
     run_bridge_install "$@"
+    ;;
+  package-windows)
+    run_package_windows "$@"
     ;;
   dependency-automerge-policy)
     run_dependency_automerge_policy "$@"

@@ -274,6 +274,7 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 | `./scripts/dev bridge-test` | C# bridge unit tests; requires the .NET 6 SDK |
 | `./scripts/dev smoke` | Playwright (`e2e/smoke.spec.ts`); starts Vite via `playwright.config.ts` when needed |
 | `./scripts/dev bridge-install` | Build `bridge/` and copy `FmDataBridge.dll` into Steam `BepInEx/plugins` (Windows path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL default) |
+| `./scripts/dev package-windows` | Windows-only non-publishing release candidate: build the locked bridge from source, bundle one unsigned x64 NSIS installer, and write its SHA-256 sidecar under `.release/windows/<version>/` |
 
 ### 3.2 Validation gate
 
