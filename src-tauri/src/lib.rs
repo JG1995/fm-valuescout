@@ -23,9 +23,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            features::health::commands::get_status,
-            features::health::commands::get_demo_value,
-            features::health::commands::set_demo_value,
             features::memory_read::commands::get_bridge_status,
             features::memory_read::commands::request_player_dump,
             features::memory_read::commands::get_bridge_install_status,

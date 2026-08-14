@@ -238,7 +238,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 #### Commit 1 — Remove the template health scaffold
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `fix(health): remove template health scaffold`
 
@@ -283,7 +283,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 #### Commit 2 — Lock release build inputs
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `chore(deps): lock release build inputs`
 
@@ -603,21 +603,21 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 **PR:** PR 1 — Prepare Windows early alpha distribution
 
-**Commit:** Commit 1 — Remove the template health scaffold
+**Commit:** Commit 2 — Lock release build inputs
 
 ### RED proof
 
-Add a focused populated-v21 migration test that establishes the current `demo_value` table and existing product rows, applies pending migrations, and expects only the demo table to disappear. Before v22 exists, the table remains and the assertion fails for the intended missing behavior. The existing Dashboard route and Rust registration then provide compile-time and route-test proof that every removed health import and command has been disconnected.
+Current wildcard BepInEx references and missing NuGet lock files cannot prove a repeatable release restore. Before changing the files, capture the existing resolved graph and run the bridge test suite so the locked configuration can preserve the same bridge behavior.
 
 ### Expected outcome
 
-The Dashboard renders its product panels without any health/demo loader or controls; no health command is registered; no health feature module remains; a fresh or populated database ends at migration v22 without `demo_value`; all product data and tests remain intact; architecture documentation no longer calls the template walking skeleton current behavior.
+The bridge and its tests use committed exact package versions and lock files; release-relevant restores run in locked mode; the pnpm lock excludes the known vulnerable build-tool resolutions without adding a product dependency; bridge behavior remains unchanged.
 
 ### Explicit exclusions
 
-- Release packaging, dependency locks, diagnostics, public documentation, or GitHub workflow changes.
-- Changes to bridge status or product error handling.
-- Any schema cleanup other than `demo_value`.
+- Moving the bridge off .NET 6 or changing its BepInEx, IL2CPP, memory-layout, or protocol behavior.
+- Adding package sources, credentials, product dependencies, or broad unrelated upgrades.
+- Release packaging, diagnostics, public documentation, or GitHub workflow changes.
 
 ## Discoveries and replanning
 
@@ -634,7 +634,7 @@ The Dashboard renders its product panels without any health/demo loader or contr
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | Commit 1 — Remove the template health scaffold | Pending record | Active | Pending | None |
+| PR 1 | Commit 1 — Remove the template health scaffold | Pending record | Completed | Passed — no blocking findings | None |
 
 ## Final validation
 

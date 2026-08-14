@@ -8,7 +8,6 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
-import { setHealthSimulateError } from "@/features/health/api/health-simulate-error";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import { renderWithProviders } from "@/testing/render-with-providers";
@@ -16,7 +15,6 @@ import { renderWithProviders } from "@/testing/render-with-providers";
 describe("app shell routing", () => {
   beforeEach(() => {
     useLayoutStore.setState({ railExpanded: false });
-    setHealthSimulateError(false);
   });
 
   it("renders the layout shell on the index route", async () => {
