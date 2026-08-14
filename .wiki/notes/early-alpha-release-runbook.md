@@ -12,7 +12,7 @@ The Windows candidate command exists now:
 
 Run it on a native Windows host. It builds the locked bridge from the checked-out source, produces one unsigned Windows x64 NSIS installer and its SHA-256 sidecar under `.release/windows/<version>/`, and never publishes anything.
 
-The universal pull-request release-preparation procedure and its read-only metadata validation exist now. Verified-`main` publication automation is delivered by a later commit in this active feature. Until then, there is no released installer and no automatic publication. Do not create a tag or GitHub release manually as a substitute.
+The universal pull-request release-preparation procedure, read-only metadata validation, and verified-`main` publication automation exist now. Until the initial release-bearing pull request completes its acceptance evidence and merges, there is no released installer. Do not create a tag or GitHub release manually as a substitute.
 
 ## Candidate acceptance checklist
 
@@ -43,13 +43,15 @@ Every human-authored pull request uses the repository-local [`create-pr` skill](
 
 Use `./scripts/dev release-metadata [latest-tag|none] [release-intent]` to validate version owners and the exact dated changelog section. For a pull-request intent, always pass both arguments; `none` by itself means that no prior tag exists. It is deterministic and read-only. The release workflow will call it without an intent after it discovers the latest tag.
 
-## Planned verified-main publication
+## Verified-main publication
 
-After release automation is delivered, every successful required `Check` run caused by a push to `main` evaluates release metadata for that exact SHA:
+Every successful required `Check` run caused by a push to `main` evaluates release metadata for that exact SHA:
 
 - An unchanged version is a successful no-op.
 - A newer validated prerelease builds the same Windows candidate command, stages the installer and checksum in a matching temporary draft, uses the exact dated changelog section as the complete release body, verifies the assembled release, then publishes it as a prerelease.
 - A mismatch among the SHA, version, tag, changelog, existing draft, or published release fails closed. A retry for the same release identity is idempotent.
+
+The `Release` workflow has read-only defaults. Only its final Windows package-and-publish job receives `contents: write`; it checks out the successful `Check` run's exact `head_sha`, rather than a later `main` commit. The required `check` also validates release metadata and, when release inputs change, stores the same Windows candidate and checksum for the installed-app acceptance checklist.
 
 If staging fails, keep the release unpublished, inspect the failed workflow and temporary draft only for the same SHA and version, correct the source through the normal PR process, and let a new verified `main` evaluation run. Do not retarget a draft to a different commit or overwrite a published release.
 

@@ -552,7 +552,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 #### Commit 8 — Publish prereleases from verified main
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `ci(release): publish prereleases from verified main`
 
@@ -604,7 +604,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 **PR:** PR 1 — Prepare Windows early alpha distribution
 
-**Commit:** Commit 8 — Publish prereleases from verified main
+**Commit:** Final validation and first hosted-run acceptance
 
 ### RED proof
 
@@ -630,6 +630,7 @@ Only a successful required `Check` run from a push to `main` can evaluate the ex
 - The pinned `dependabot/fetch-metadata` v3.1.0 source reports pnpm projects as `npm_and_yarn` in its metadata, while Dependabot configuration still requires `npm`. Commit 3 preserves that boundary so eligible pnpm patches are classified rather than accidentally rejected.
 - Sol High review found that GitHub retains auto-merge after a maintainer with write permission pushes to an eligible Dependabot pull request. Commit 3 therefore re-evaluates later events and revokes an existing auto-merge request when metadata verification or policy eligibility fails; its read-only policy job is part of the strict `check` aggregate so an ineligible changed revision cannot win a workflow scheduling race.
 - Official Codex documentation reviewed on 2026-08-14 confirms that `.agents/skills` is the repository-scoped skill location. The existing template-based PR behavior is not currently repository-owned, so this feature will formalize it as `.agents/skills/create-pr/SKILL.md` and make release intent one field in that universal procedure. Deterministic metadata validation and release publication remain in repository scripts and GitHub Actions.
+- Commit 8’s Sol High review required Windows PowerShell to invoke the Bash `scripts/dev` surface explicitly, candidate artifact upload to include the dot-prefixed release directory, immutable release-path action pins, and a runnable publication-state policy. The resulting policy rejects mismatched drafts, published releases, and orphaned tags before packaging or mutation; hosted Windows and GitHub API behavior remain final acceptance evidence.
 - Repowise was synchronized to `0c9c10e41b59941d08b90a5f493283836d149830`. It identifies `src-tauri/src/db/migrations.rs` and `scripts/dev` as high-churn/high-impact surfaces; deterministic migration and Windows packaging evidence remains authoritative.
 - NuGet serializes an exact `Version="[x]"` constraint in `packages.lock.json` as the canonical requested range `[x, x]`. Commit 2 uses those exact constraints for both validated BepInEx packages; the bridge test first rejected the prior open-ended locks, then passed after regeneration with locked restore enabled.
 - The local Windows host has only the .NET 9 SDK, while `bridge/global.json` pins .NET 6. The existing Windows CI job installs .NET 6 before its locked bridge test; that clean-Windows proof remains for the first push of this commit.
@@ -648,6 +649,7 @@ Only a successful required `Check` run from a push to `main` can evaluate the ex
 | PR 1 | Commit 5 — Retain local release logs | Pending record | Completed | Passed — no retained findings | Packaged Windows log creation, rotation, and privacy inspection await the first push |
 | PR 1 | Commit 6 — Define the early alpha operating contract | Pending record | Completed | Passed — no retained findings after corrective review | Native Windows install, recovery, and live-FM acceptance await the first push |
 | PR 1 | Commit 7 — Prepare every pull request for release evaluation | Pending record | Completed | Passed — no retained findings after corrective review | Native Windows candidate and first-push release evidence await the first push |
+| PR 1 | Commit 8 — Publish prereleases from verified main | Pending record | Completed | Passed — no retained findings after corrective review | Hosted Windows candidate and first-push release evidence await the first push |
 
 ## Final validation
 

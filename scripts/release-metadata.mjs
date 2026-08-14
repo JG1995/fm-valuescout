@@ -211,7 +211,7 @@ export function validateReleaseIdentity(rootDir) {
   return version;
 }
 
-function extractDatedSection(changelog, version) {
+export function extractDatedSection(changelog, version) {
   const headings = [...changelog.matchAll(/^## .+$/gm)];
   const unreleased = headings.filter(
     (heading) => heading[0].trimEnd() === "## [Unreleased]",

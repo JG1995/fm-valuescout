@@ -12,6 +12,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - Initial Windows super-early-alpha release with a local FM26 BepInEx bridge, snapshot-backed player search and profiles, Squad, Planner, Academy, configurable tables, CSV enrichment, and guarded player-boost actions.
 - A bundled bridge build, checksum, bounded local diagnostics, and a manual recovery path for the unsigned Windows installer.
+- Automatic prerelease publication only after a successful required `Check` push run on `main`, with the exact dated section as its GitHub release notes.
 
 ### Security
 

@@ -327,8 +327,8 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `src-tauri/tauri.conf.json` | Product identity, CSP, build hooks |
 | `src-tauri/capabilities/default.json` | Main-window capability ACL |
 | `src-tauri/Cargo.toml` | Rust crate dependencies and features |
-| `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, and bridge checks from changed paths; required `check` aggregates applicable results |
-| `.github/workflows/release.yml` | Tag-triggered multi-OS installer build via `tauri-action` |
+| `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, bridge, and release-candidate checks from changed paths; required `check` aggregates applicable results |
+| `.github/workflows/release.yml` | Verified-`main` Windows prerelease publication after a successful required `Check` run |
 | `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` surface |
 | `.codex/config.toml` | Context7 MCP and shell-environment configuration |
 | `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML, and Repowise extensions |
@@ -733,8 +733,8 @@ Green smoke does **not** prove SQLite persistence works in production. Rust unit
 ## 7. Deployable Artifacts
 
 - **Development** — Install Node 24, pnpm, and the Rust toolchain, then `pnpm install`, `pnpm exec playwright install chromium` (once), then `pnpm tauri dev`. On Linux/WSL, install WebKitGTK and related system packages (see §11). WSLg or an X server is required for the native window on WSL.
-- **Release candidate (Windows)** — `./scripts/dev package-windows` runs only on Windows. It restores the locked bridge, validates its managed DLL and shared version, bundles one unsigned x64 NSIS installer from that source-built DLL, and writes the installer plus SHA-256 sidecar under `.release/windows/<version>/`. It never publishes anything. The tag-triggered multi-platform workflow remains legacy until the active early-alpha feature replaces it.
-- **Legacy production build** — `pnpm tauri build` can produce platform-specific installers in `src-tauri/target/release/bundle/`. The repository's current tag workflow still targets that legacy matrix; it does not yet define the released early-alpha contract.
+- **Release candidate (Windows)** — `./scripts/dev package-windows` runs only on Windows. It restores the locked bridge, validates its managed DLL and shared version, bundles one unsigned x64 NSIS installer from that source-built DLL, and writes the installer plus SHA-256 sidecar under `.release/windows/<version>/`. It never publishes anything. The required Check workflow runs this same candidate path when release inputs change and stores it for acceptance.
+- **Published prerelease (Windows)** — `.github/workflows/release.yml` follows only a successful required `Check` run caused by a push to `main`, checks out that run's exact SHA, and makes unchanged metadata a no-op. A newer validated version uses the same package command, stages and verifies one matching draft release with the exact dated changelog section and checksum, then publishes the Windows x64 asset as a prerelease. Only the final job has `contents: write`.
 - **WebView bundle only** — `pnpm build` produces static files in `dist/` for frontend-only checks; this is not the shipped desktop artifact.
 - **Source maps** — default `build.sourcemap: "hidden"` for plain Vite builds (maps on disk, not linked from the public bundle). Tauri production builds use platform-conditional settings when `TAURI_ENV_PLATFORM` is set.
 - **Signing** — not configured in the template. Unsigned installers trigger OS security warnings on first run. Add platform signing secrets before shipping a real product.
@@ -879,4 +879,4 @@ Husky runs `./scripts/dev check-fast` on every commit (and `check-rust` when `sr
 
 GitHub Actions selects product checks from changed paths. Frontend changes run `./scripts/dev check-app` and `./scripts/dev test`, then browser smoke. Rust changes install the Rust toolchain and Tauri Linux dependencies before `./scripts/dev check-rust`. Bridge changes run `./scripts/dev bridge-test` on Windows. The required `check` status aggregates every applicable job. Match local Node major version for fewer surprises.
 
-Release builds run on `v*` tag push via `.github/workflows/release.yml` — Windows, Ubuntu, and both macOS architectures. Installers are unsigned draft assets until signing secrets are configured.
+Release evaluation follows each successful required Check run caused by a `main` push. Metadata and candidate jobs are read-only; a newer validated version receives one unsigned Windows x64 prerelease only after the final job stages and verifies its checksum and exact changelog body.

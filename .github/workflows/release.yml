@@ -1,70 +1,471 @@
 name: Release
 
-# Builds unsigned installers for Windows, Linux, and both macOS architectures.
-# Code signing and notarization secrets are not configured — draft assets are unsigned.
-# Add platform signing secrets before shipping a real product.
-
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_run:
+    workflows: ["Check"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
-          - platform: ubuntu-latest
-            args: ""
-          - platform: windows-latest
-            args: ""
-    runs-on: ${{ matrix.platform }}
+  prepare:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: windows-latest
+    outputs:
+      release_required: ${{ steps.metadata.outputs.release_required }}
+      version: ${{ steps.metadata.outputs.version }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      notes_base64: ${{ steps.metadata.outputs.notes_base64 }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Tauri Linux dependencies
-        if: matrix.platform == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
+      - name: Check out verified main commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: "24"
           cache: pnpm
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            src-tauri -> target
-
       - run: pnpm install --frozen-lockfile
-
-      - uses: tauri-apps/tauri-action@v1
+      - name: Validate exact release metadata
+        id: metadata
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          function Invoke-Gh {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            $output = & gh @Arguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "GitHub CLI failed: gh $($Arguments -join ' ')"
+            }
+            return $output
+          }
+
+          function Get-Releases {
+            $response = Invoke-Gh api --paginate --slurp "repos/$env:GITHUB_REPOSITORY/releases?per_page=100"
+            $pages = (($response -join "`n") | ConvertFrom-Json -NoEnumerate)
+            $releases = @()
+            foreach ($page in $pages) {
+              foreach ($release in $page) {
+                $releases += $release
+              }
+            }
+            return $releases
+          }
+
+          function Get-ReleaseByTag {
+            param([object[]]$Releases, [string]$Tag)
+            $matches = @($Releases | Where-Object { $_.tag_name -ceq $Tag })
+            if ($matches.Count -gt 1) {
+              throw "Multiple releases use $Tag"
+            }
+            if ($matches.Count -eq 0) {
+              return $null
+            }
+            return $matches[0]
+          }
+
+          function Get-TagCommit {
+            param([string]$Tag)
+            $response = Invoke-Gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/$Tag"
+            $references = @(($response -join "`n") | ConvertFrom-Json)
+            $matches = @($references | Where-Object { $_.ref -ceq "refs/tags/$Tag" })
+            if ($matches.Count -ne 1) {
+              throw "Expected one Git tag for $Tag"
+            }
+            $reference = $matches[0]
+            if ($reference.object.type -eq "commit") {
+              return $reference.object.sha
+            }
+            if ($reference.object.type -ne "tag") {
+              throw "Git tag $Tag does not resolve to a commit"
+            }
+            $tagObject = (Invoke-Gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$($reference.object.sha)") -join "`n" | ConvertFrom-Json
+            if ($tagObject.object.type -ne "commit") {
+              throw "Annotated Git tag $Tag does not resolve to a commit"
+            }
+            return $tagObject.object.sha
+          }
+
+          function Get-ExactReleaseNotes {
+            param([string]$Version)
+            $notes = & node --input-type=module -e 'import { readFileSync } from "node:fs"; import { extractDatedSection } from "./scripts/release-metadata.mjs"; process.stdout.write(extractDatedSection(readFileSync("CHANGELOG.md", "utf8"), process.argv[1]));' $Version
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not extract exact changelog notes"
+            }
+            return $notes -join "`n"
+          }
+
+          function Get-PublicationDecision {
+            param($Metadata, $ExistingRelease, [AllowNull()][string]$TagSha, [AllowNull()][string]$VerifiedSha)
+            $inputPath = Join-Path $env:RUNNER_TEMP "release-policy-$([guid]::NewGuid()).json"
+            $input = @{
+              expected = @{
+                version = $metadata.version
+                tag = $metadata.tag
+                title = "FM ValueScout $($metadata.tag)"
+                notes = $notes
+                verifiedSha = $VerifiedSha
+              }
+              metadata = $Metadata
+              existingRelease = $ExistingRelease
+              tagSha = $TagSha
+            }
+            [IO.File]::WriteAllText($inputPath, ($input | ConvertTo-Json -Depth 10 -Compress), [Text.UTF8Encoding]::new($false))
+            $output = & node scripts/release-publication-policy.mjs $inputPath
+            if ($LASTEXITCODE -ne 0) {
+              throw "Release publication state is invalid"
+            }
+            return ($output | ConvertFrom-Json)
+          }
+
+          function Assert-PublishedRelease {
+            param($Release, [string]$Tag, [string]$Title, [string]$Notes)
+            if ($Release.draft -or -not $Release.prerelease) {
+              throw "Existing $Tag is not a published prerelease"
+            }
+            if ($Release.name -cne $Title -or $Release.body -cne $Notes) {
+              throw "Existing $Tag metadata does not match this checked source"
+            }
+            if ($Release.target_commitish -cne (Get-TagCommit $Tag)) {
+              throw "Existing $Tag release and Git tag target different commits"
+            }
+            $installerName = "FM-ValueScout_$($Tag.Substring(1))_x64-setup.exe"
+            $checksumName = "$installerName.sha256"
+            $assets = @($Release.assets)
+            if ($assets.Count -ne 2 -or @($assets.name | Sort-Object) -join "|" -cne "$installerName|$checksumName") {
+              throw "Existing $Tag assets are incomplete"
+            }
+            $installer = @($assets | Where-Object { $_.name -ceq $installerName })[0]
+            if ($installer.digest -notmatch '^sha256:[0-9a-f]{64}$') {
+              throw "Existing $Tag installer has no SHA-256 digest"
+            }
+            $verificationDirectory = Join-Path $env:RUNNER_TEMP "release-verify-$([guid]::NewGuid())"
+            New-Item -ItemType Directory -Path $verificationDirectory | Out-Null
+            Invoke-Gh release download $Tag --pattern $checksumName --dir $verificationDirectory | Out-Null
+            $checksum = (Get-Content -Raw (Join-Path $verificationDirectory $checksumName)).Trim()
+            if ($checksum -cne "$($installer.digest.Substring(7)) *$installerName") {
+              throw "Existing $Tag checksum does not match its installer"
+            }
+          }
+
+          $releases = @(Get-Releases)
+          $latest = $releases |
+            Where-Object { -not $_.draft } |
+            Sort-Object published_at -Descending |
+            Select-Object -First 1
+          $latestTag = if ($null -eq $latest) { "none" } else { $latest.tag_name }
+          $metadataOutput = & bash ./scripts/dev release-metadata $latestTag
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release metadata validation failed"
+          }
+          $metadata = $metadataOutput | ConvertFrom-Json
+          $notes = Get-ExactReleaseNotes $metadata.version
+          if ($metadata.releaseRequired -and $metadata.releaseNotes -cne $notes) {
+            throw "Release metadata notes differ from the dated changelog section"
+          }
+          if (-not $metadata.releaseRequired) {
+            $existing = Get-ReleaseByTag $releases $metadata.tag
+            $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommit $metadata.tag) -VerifiedSha $null
+            if ($decision.mode -ne "no-op") {
+              throw "Unchanged release did not resolve to a no-op"
+            }
+            Assert-PublishedRelease $existing $metadata.tag "FM ValueScout $($metadata.tag)" $notes
+          }
+          "release_required=$($metadata.releaseRequired.ToString().ToLowerInvariant())" |
+            Add-Content -Path $env:GITHUB_OUTPUT
+          "version=$($metadata.version)" | Add-Content -Path $env:GITHUB_OUTPUT
+          "tag=$($metadata.tag)" | Add-Content -Path $env:GITHUB_OUTPUT
+          "notes_base64=$([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($notes)))" |
+            Add-Content -Path $env:GITHUB_OUTPUT
+
+  publish:
+    needs: prepare
+    if: needs.prepare.outputs.release_required == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out verified main commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          tagName: v__VERSION__
-          releaseName: "FM ValueScout v__VERSION__"
-          releaseBody: "Draft release with unsigned installers. Code signing and notarization are not configured."
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+          cache: pnpm
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: "6.0.x"
+      - run: pnpm install --frozen-lockfile
+      - name: Package, stage, verify, and publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
+          EXPECTED_TAG: ${{ needs.prepare.outputs.tag }}
+          NOTES_BASE64: ${{ needs.prepare.outputs.notes_base64 }}
+        run: |
+          function Invoke-Gh {
+            param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+            $output = & gh @Arguments
+            if ($LASTEXITCODE -ne 0) {
+              throw "GitHub CLI failed: gh $($Arguments -join ' ')"
+            }
+            return $output
+          }
+
+          function Get-Releases {
+            $response = Invoke-Gh api --paginate --slurp "repos/$env:GITHUB_REPOSITORY/releases?per_page=100"
+            $pages = (($response -join "`n") | ConvertFrom-Json -NoEnumerate)
+            $releases = @()
+            foreach ($page in $pages) {
+              foreach ($release in $page) {
+                $releases += $release
+              }
+            }
+            return $releases
+          }
+
+          function Get-ReleaseByTag {
+            param([object[]]$Releases, [string]$Tag)
+            $matches = @($Releases | Where-Object { $_.tag_name -ceq $Tag })
+            if ($matches.Count -gt 1) {
+              throw "Multiple releases use $Tag"
+            }
+            if ($matches.Count -eq 0) {
+              return $null
+            }
+            return $matches[0]
+          }
+
+          function Get-TagCommitIfPresent {
+            param([string]$Tag)
+            $response = Invoke-Gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/$Tag"
+            $references = @(($response -join "`n") | ConvertFrom-Json)
+            $matches = @($references | Where-Object { $_.ref -ceq "refs/tags/$Tag" })
+            if ($matches.Count -eq 0) {
+              return $null
+            }
+            if ($matches.Count -ne 1) {
+              throw "Multiple Git tags match $Tag"
+            }
+            $reference = $matches[0]
+            if ($reference.object.type -eq "commit") {
+              return $reference.object.sha
+            }
+            if ($reference.object.type -ne "tag") {
+              throw "Git tag $Tag does not resolve to a commit"
+            }
+            $tagObject = (Invoke-Gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$($reference.object.sha)") -join "`n" | ConvertFrom-Json
+            if ($tagObject.object.type -ne "commit") {
+              throw "Annotated Git tag $Tag does not resolve to a commit"
+            }
+            return $tagObject.object.sha
+          }
+
+          function Get-PublicationDecision {
+            param($Metadata, $ExistingRelease, [AllowNull()][string]$TagSha, [AllowNull()][string]$VerifiedSha)
+            $inputPath = Join-Path $env:RUNNER_TEMP "release-policy-$([guid]::NewGuid()).json"
+            $input = @{
+              expected = @{
+                version = $env:EXPECTED_VERSION
+                tag = $env:EXPECTED_TAG
+                title = "FM ValueScout $env:EXPECTED_TAG"
+                notes = $expectedNotes
+                verifiedSha = $VerifiedSha
+              }
+              metadata = $Metadata
+              existingRelease = $ExistingRelease
+              tagSha = $TagSha
+            }
+            [IO.File]::WriteAllText($inputPath, ($input | ConvertTo-Json -Depth 10 -Compress), [Text.UTF8Encoding]::new($false))
+            $output = & node scripts/release-publication-policy.mjs $inputPath
+            if ($LASTEXITCODE -ne 0) {
+              throw "Release publication state is invalid"
+            }
+            return ($output | ConvertFrom-Json)
+          }
+
+          function Invoke-ReleaseWrite {
+            param([string]$Method, [string]$Path, $Payload)
+            $payloadPath = Join-Path $env:RUNNER_TEMP "release-request-$([guid]::NewGuid()).json"
+            [IO.File]::WriteAllText($payloadPath, ($Payload | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+            $response = Invoke-Gh api --method $Method $Path --input $payloadPath
+            return (($response -join "`n") | ConvertFrom-Json)
+          }
+
+          function Assert-DraftIdentity {
+            param($Release, [string]$Tag, [string]$Sha)
+            if (-not $Release.draft -or $Release.tag_name -cne $Tag) {
+              throw "Existing release cannot be repaired as draft $Tag"
+            }
+            if ($Release.target_commitish -cne $Sha) {
+              throw "Draft $Tag targets $($Release.target_commitish), not $Sha"
+            }
+            $tagCommit = Get-TagCommitIfPresent $Tag
+            if ($null -ne $tagCommit -and $tagCommit -cne $Sha) {
+              throw "Draft $Tag Git tag targets $tagCommit, not $Sha"
+            }
+          }
+
+          function Assert-ReleaseAssets {
+            param($Release, [string]$Version, [string]$ExpectedHash)
+            $installerName = "FM-ValueScout_${Version}_x64-setup.exe"
+            $checksumName = "$installerName.sha256"
+            $assets = @($Release.assets)
+            if ($assets.Count -ne 2 -or @($assets.name | Sort-Object) -join "|" -cne "$installerName|$checksumName") {
+              throw "Release assets are incomplete"
+            }
+            $installer = @($assets | Where-Object { $_.name -ceq $installerName })[0]
+            if ($installer.digest -cne "sha256:$ExpectedHash") {
+              throw "Uploaded installer digest does not match the local checksum"
+            }
+            $verificationDirectory = Join-Path $env:RUNNER_TEMP "release-verify-$([guid]::NewGuid())"
+            New-Item -ItemType Directory -Path $verificationDirectory | Out-Null
+            Invoke-Gh release download $Release.tag_name --pattern $checksumName --dir $verificationDirectory | Out-Null
+            $checksum = (Get-Content -Raw (Join-Path $verificationDirectory $checksumName)).Trim()
+            if ($checksum -cne "$ExpectedHash *$installerName") {
+              throw "Uploaded checksum does not match the local installer"
+            }
+          }
+
+          function Assert-StagedRelease {
+            param($Release, [string]$Version, [string]$Tag, [string]$Sha, [string]$Title, [string]$Notes, [string]$Hash)
+            if (-not $Release.draft -or -not $Release.prerelease) {
+              throw "Release $Tag was not staged as a prerelease draft"
+            }
+            if ($Release.tag_name -cne $Tag -or $Release.target_commitish -cne $Sha) {
+              throw "Staged release identity does not match the verified commit"
+            }
+            if ($Release.name -cne $Title -or $Release.body -cne $Notes) {
+              throw "Staged release metadata does not match the checked source"
+            }
+            Assert-ReleaseAssets $Release $Version $Hash
+          }
+
+          function Assert-PublishedRelease {
+            param($Release, [string]$Version, [string]$Tag, [string]$Sha, [string]$Title, [string]$Notes, [string]$Hash)
+            if ($Release.draft -or -not $Release.prerelease) {
+              throw "Release $Tag was not published as a prerelease"
+            }
+            if ((Get-TagCommitIfPresent $Tag) -cne $Sha) {
+              throw "Published Git tag does not target the verified commit"
+            }
+            if ($Release.tag_name -cne $Tag -or $Release.target_commitish -cne $Sha) {
+              throw "Published release identity does not match the verified commit"
+            }
+            if ($Release.name -cne $Title -or $Release.body -cne $Notes) {
+              throw "Published release metadata does not match the checked source"
+            }
+            Assert-ReleaseAssets $Release $Version $Hash
+          }
+
+          $expectedVersion = $env:EXPECTED_VERSION
+          $expectedTag = $env:EXPECTED_TAG
+          $expectedNotes = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:NOTES_BASE64))
+          $title = "FM ValueScout $expectedTag"
+          if ($expectedTag -cne "v$expectedVersion" -or [string]::IsNullOrWhiteSpace($expectedNotes)) {
+            throw "Prepared release output is malformed"
+          }
+
+          $releases = @(Get-Releases)
+          $latest = $releases |
+            Where-Object { -not $_.draft } |
+            Sort-Object published_at -Descending |
+            Select-Object -First 1
+          $latestTag = if ($null -eq $latest) { "none" } else { $latest.tag_name }
+          $metadataOutput = & bash ./scripts/dev release-metadata $latestTag
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release metadata validation failed"
+          }
+          $metadata = $metadataOutput | ConvertFrom-Json
+          $existing = Get-ReleaseByTag $releases $expectedTag
+          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $expectedTag) -VerifiedSha $env:VERIFIED_SHA
+          if ($decision.mode -eq "no-op") {
+            $asset = @($existing.assets | Where-Object { $_.name -ceq "FM-ValueScout_${expectedVersion}_x64-setup.exe" })[0]
+            if ($null -eq $asset -or $asset.digest -notmatch '^sha256:([0-9a-f]{64})$') {
+              throw "Published retry has no verifiable installer"
+            }
+            Assert-PublishedRelease $existing $expectedVersion $expectedTag $env:VERIFIED_SHA $title $expectedNotes $asset.digest.Substring(7)
+            return
+          }
+          if ($decision.mode -notin @("create", "repair")) {
+            throw "Release publication did not resolve to a mutable state"
+          }
+
+          & bash ./scripts/dev package-windows
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows release package failed"
+          }
+          $artifactDirectory = Join-Path $PWD ".release/windows/$expectedVersion"
+          $installerName = "FM-ValueScout_${expectedVersion}_x64-setup.exe"
+          $installerPath = Join-Path $artifactDirectory $installerName
+          $checksumPath = "$installerPath.sha256"
+          if (-not (Test-Path -Path $installerPath) -or -not (Test-Path -Path $checksumPath)) {
+            throw "Windows release package did not create the expected assets"
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $installerPath).Hash.ToLowerInvariant()
+          if ((Get-Content -Raw $checksumPath).Trim() -cne "$hash *$installerName") {
+            throw "Local package checksum does not match its installer"
+          }
+
+          $releases = @(Get-Releases)
+          $existing = Get-ReleaseByTag $releases $expectedTag
+          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $expectedTag) -VerifiedSha $env:VERIFIED_SHA
+          $draftPayload = @{
+            name = $title
+            body = $expectedNotes
+            draft = $true
+            prerelease = $true
+            make_latest = "false"
+          }
+          if ($decision.mode -eq "create") {
+            $draftPayload.tag_name = $expectedTag
+            $draftPayload.target_commitish = $env:VERIFIED_SHA
+            $release = Invoke-ReleaseWrite POST "repos/$env:GITHUB_REPOSITORY/releases" $draftPayload
+          } elseif ($decision.mode -eq "repair") {
+            Assert-DraftIdentity $existing $expectedTag $env:VERIFIED_SHA
+            foreach ($asset in @($existing.assets)) {
+              Invoke-Gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/releases/assets/$($asset.id)" | Out-Null
+            }
+            $release = Invoke-ReleaseWrite PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($existing.id)" $draftPayload
+          } else {
+            throw "Release publication changed after packaging"
+          }
+          Assert-DraftIdentity $release $expectedTag $env:VERIFIED_SHA
+          Invoke-Gh release upload $expectedTag $installerPath $checksumPath --clobber | Out-Null
+
+          $staged = Get-ReleaseByTag @(Get-Releases) $expectedTag
+          if ($null -eq $staged) {
+            throw "Draft release disappeared before verification"
+          }
+          Assert-StagedRelease $staged $expectedVersion $expectedTag $env:VERIFIED_SHA $title $expectedNotes $hash
+
+          $publishPayload = @{
+            name = $title
+            body = $expectedNotes
+            draft = $false
+            prerelease = $true
+            make_latest = "false"
+          }
+          $published = Invoke-ReleaseWrite PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($staged.id)" $publishPayload
+          Assert-PublishedRelease $published $expectedVersion $expectedTag $env:VERIFIED_SHA $title $expectedNotes $hash

@@ -19,12 +19,13 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       rust: ${{ steps.filter.outputs.rust }}
       bridge: ${{ steps.filter.outputs.bridge }}
+      release: ${{ steps.filter.outputs.release }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d
         id: filter
         with:
           filters: |
@@ -46,6 +47,20 @@ jobs:
               - 'src-tauri/Cargo.lock'
             bridge:
               - 'bridge/**'
+            release:
+              - 'CHANGELOG.md'
+              - 'package.json'
+              - 'src-tauri/Cargo.toml'
+              - 'src-tauri/Cargo.lock'
+              - 'src-tauri/tauri.conf.json'
+              - 'src-tauri/tauri.release.conf.json'
+              - 'bridge/**'
+              - 'scripts/dev'
+              - 'scripts/release-metadata.mjs'
+              - 'scripts/release-package-validation.mjs'
+              - 'scripts/release-publication-policy.mjs'
+              - '.github/workflows/check.yml'
+              - '.github/workflows/release.yml'
             ci:
               - '.github/workflows/**'
               - '.github/actions/**'
@@ -164,9 +179,71 @@ jobs:
         shell: bash
         run: ./scripts/dev bridge-test
 
+  release-candidate:
+    needs: changes
+    if: needs.changes.outputs.release == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+          cache: pnpm
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: "6.0.x"
+      - run: pnpm install --frozen-lockfile
+      - name: Validate release metadata
+        id: metadata
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $response = & gh api --paginate --slurp "repos/$env:GITHUB_REPOSITORY/releases?per_page=100"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not read published releases"
+          }
+          $pages = (($response -join "`n") | ConvertFrom-Json -NoEnumerate)
+          $releases = @()
+          foreach ($page in $pages) {
+            foreach ($release in $page) {
+              $releases += $release
+            }
+          }
+          $latest = $releases |
+            Where-Object { -not $_.draft } |
+            Sort-Object published_at -Descending |
+            Select-Object -First 1
+          $latestTag = if ($null -eq $latest) { "none" } else { $latest.tag_name }
+          $metadataOutput = & bash ./scripts/dev release-metadata $latestTag
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release metadata validation failed"
+          }
+          $metadata = $metadataOutput | ConvertFrom-Json
+          "release_required=$($metadata.releaseRequired.ToString().ToLowerInvariant())" |
+            Add-Content -Path $env:GITHUB_OUTPUT
+      - name: Package Windows release candidate
+        if: steps.metadata.outputs.release_required == 'true'
+        shell: bash
+        run: ./scripts/dev package-windows
+      - name: Store Windows release candidate
+        if: steps.metadata.outputs.release_required == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-release-candidate-${{ github.sha }}
+          path: .release/windows/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
   check:
     if: always()
-    needs: [changes, frontend-tests, browser-smoke, rust, bridge-tests, dependabot-policy]
+    needs: [changes, frontend-tests, browser-smoke, rust, bridge-tests, release-candidate, dependabot-policy]
     runs-on: ubuntu-latest
     steps:
       - name: Confirm applicable product checks passed
@@ -176,9 +253,10 @@ jobs:
           BROWSER_SMOKE: ${{ needs.browser-smoke.result }}
           RUST: ${{ needs.rust.result }}
           BRIDGE_TESTS: ${{ needs.bridge-tests.result }}
+          RELEASE_CANDIDATE: ${{ needs.release-candidate.result }}
           DEPENDABOT_POLICY: ${{ needs.dependabot-policy.result }}
         run: |
-          for result in "$CHANGES" "$FRONTEND_TESTS" "$BROWSER_SMOKE" "$RUST" "$BRIDGE_TESTS" "$DEPENDABOT_POLICY"; do
+          for result in "$CHANGES" "$FRONTEND_TESTS" "$BROWSER_SMOKE" "$RUST" "$BRIDGE_TESTS" "$RELEASE_CANDIDATE" "$DEPENDABOT_POLICY"; do
             case "$result" in
               success|skipped) ;;
               *) exit 1 ;;
