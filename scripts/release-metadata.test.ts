@@ -29,6 +29,11 @@ function createFixture(overrides: Record<string, string> = {}) {
     "src-tauri/Cargo.lock": `version = 3\n\n[[package]]\nname = "app"\nversion = "${initialVersion}"\n`,
     "src-tauri/tauri.conf.json": JSON.stringify({ version: initialVersion }),
     "bridge/FmDataBridge.csproj": `<Project><PropertyGroup><Version>${initialVersion}</Version></PropertyGroup></Project>`,
+    "release-preparation.json": JSON.stringify({
+      intent: "minor",
+      sequence: 1,
+      version: initialVersion,
+    }),
     "CHANGELOG.md": `# Changelog
 
 All notable changes to this project are documented in this file.
@@ -112,6 +117,28 @@ describe("release metadata", () => {
     });
   });
 
+  it("requires the prepared release record to match the release identity", () => {
+    const rootDir = createFixture({
+      "release-preparation.json": JSON.stringify({
+        intent: "minor",
+        sequence: 1,
+        version: "0.1.0-alpha.2",
+      }),
+    });
+
+    expect(() => readReleaseMetadata(rootDir, null, "minor")).toThrow(
+      "Release preparation version does not match",
+    );
+  });
+
+  it("requires the prepared release record to match the selected intent", () => {
+    const rootDir = createFixture();
+
+    expect(() => readReleaseMetadata(rootDir, null, "patch")).toThrow(
+      "Release preparation intent does not match",
+    );
+  });
+
   it("treats a one-argument none as the no-tag sentinel, not an intent", () => {
     const rootDir = createFixture();
     const result = spawnSync(
@@ -172,7 +199,13 @@ describe("release metadata", () => {
     ],
     [
       "a non-increasing patch release",
-      {},
+      {
+        "release-preparation.json": JSON.stringify({
+          intent: "patch",
+          sequence: 1,
+          version: initialVersion,
+        }),
+      },
       `v${initialVersion}`,
       "patch",
       "does not match expected",

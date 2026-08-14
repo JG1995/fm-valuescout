@@ -51,6 +51,8 @@ Every human-authored pull request uses the repository-local [`create-pr` skill](
 
 `none` is a normal answer for an ordinary pull request; it is not a different PR type. The first prerelease uses `minor` with no prior release tag and prepares `0.1.0-alpha.1`. A patch after an alpha release advances the alpha counter. A minor release advances the minor version and begins a new `alpha.1` sequence. The procedure validates prepared release metadata before it pushes and opens the normal template-complete draft PR. It never merges, tags, or publishes.
 
+A release-bearing pull request also updates `release-preparation.json` with the matching version and intent, and increments its sequence. A `none` pull request leaves that file unchanged. The Release workflow packages and publishes only when that record changed in the exact successful Check SHA. If a release attempt fails before its draft exists, prepare a new release-bearing pull request to create a new accepted candidate; do not rely on a later `none` or Dependabot push to retry it.
+
 Use `./scripts/dev release-metadata [latest-tag|none] [release-intent]` to validate version owners and the exact dated changelog section. For a pull-request intent, always pass both arguments; `none` by itself means that no prior tag exists. It is deterministic and read-only. The release workflow will call it without an intent after it discovers the latest tag.
 
 ## Verified-main publication
@@ -63,7 +65,7 @@ Every successful required `Check` run caused by a push to `main` evaluates relea
 
 The `Release` workflow has read-only defaults. Only its final Windows package-and-publish job receives `contents: write`; it checks out the successful `Check` run's exact `head_sha`, rather than a later `main` commit. The required `check` also validates release metadata and, when release inputs change, stores the same Windows candidate and checksum for the installed-app acceptance checklist.
 
-If staging fails, keep the release unpublished, inspect the failed workflow and temporary draft only for the same SHA and version, correct the source through the normal PR process, and let a new verified `main` evaluation run. Do not retarget a draft to a different commit or overwrite a published release.
+If staging fails after a temporary draft exists, keep it unpublished. Re-run the exact failed Release workflow only when the source SHA is unchanged; it can repair that matching draft. If source correction is required, remove the unpublished temporary draft and its matching tag before a new release-bearing PR produces a different SHA. Do not retarget a draft to a different commit or delete or overwrite a published release.
 
 ## Emergency withdrawal
 

@@ -22,6 +22,7 @@ jobs:
     runs-on: windows-latest
     outputs:
       release_required: ${{ steps.metadata.outputs.release_required }}
+      release_source_prepared: ${{ steps.metadata.outputs.release_source_prepared }}
       version: ${{ steps.metadata.outputs.version }}
       tag: ${{ steps.metadata.outputs.tag }}
       notes_base64: ${{ steps.metadata.outputs.notes_base64 }}
@@ -44,6 +45,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           function Invoke-Gh {
             param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
@@ -100,6 +102,31 @@ jobs:
             return $tagObject.object.sha
           }
 
+          function Get-TagCommitIfPresent {
+            param([string]$Tag)
+            $response = Invoke-Gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/$Tag"
+            $references = @(($response -join "`n") | ConvertFrom-Json)
+            $matches = @($references | Where-Object { $_.ref -ceq "refs/tags/$Tag" })
+            if ($matches.Count -eq 0) {
+              return $null
+            }
+            if ($matches.Count -ne 1) {
+              throw "Multiple Git tags match $Tag"
+            }
+            $reference = $matches[0]
+            if ($reference.object.type -eq "commit") {
+              return $reference.object.sha
+            }
+            if ($reference.object.type -ne "tag") {
+              throw "Git tag $Tag does not resolve to a commit"
+            }
+            $tagObject = (Invoke-Gh api "repos/$env:GITHUB_REPOSITORY/git/tags/$($reference.object.sha)") -join "`n" | ConvertFrom-Json
+            if ($tagObject.object.type -ne "commit") {
+              throw "Annotated Git tag $Tag does not resolve to a commit"
+            }
+            return $tagObject.object.sha
+          }
+
           function Get-ExactReleaseNotes {
             param([string]$Version)
             $notes = & node --input-type=module -e 'import { readFileSync } from "node:fs"; import { extractDatedSection } from "./scripts/release-metadata.mjs"; process.stdout.write(extractDatedSection(readFileSync("CHANGELOG.md", "utf8"), process.argv[1]));' $Version
@@ -110,7 +137,7 @@ jobs:
           }
 
           function Get-PublicationDecision {
-            param($Metadata, $ExistingRelease, [AllowNull()][string]$TagSha, [AllowNull()][string]$VerifiedSha)
+            param($Metadata, $ExistingRelease, [AllowNull()][string]$TagSha, [AllowNull()][string]$VerifiedSha, [bool]$ReleaseSourcePrepared)
             $inputPath = Join-Path $env:RUNNER_TEMP "release-policy-$([guid]::NewGuid()).json"
             $input = @{
               expected = @{
@@ -123,6 +150,7 @@ jobs:
               metadata = $Metadata
               existingRelease = $ExistingRelease
               tagSha = $TagSha
+              releaseSourcePrepared = $ReleaseSourcePrepared
             }
             [IO.File]::WriteAllText($inputPath, ($input | ConvertTo-Json -Depth 10 -Compress), [Text.UTF8Encoding]::new($false))
             $output = & node scripts/release-publication-policy.mjs $inputPath
@@ -162,6 +190,17 @@ jobs:
             }
           }
 
+          function Test-ReleasePreparationChange {
+            git diff --quiet "$env:VERIFIED_SHA^" $env:VERIFIED_SHA -- release-preparation.json
+            if ($LASTEXITCODE -eq 0) {
+              return $false
+            }
+            if ($LASTEXITCODE -eq 1) {
+              return $true
+            }
+            throw "Could not compare release preparation for the verified commit"
+          }
+
           $releases = @(Get-Releases)
           $latest = $releases |
             Where-Object { -not $_.draft } |
@@ -177,15 +216,22 @@ jobs:
           if ($metadata.releaseRequired -and $metadata.releaseNotes -cne $notes) {
             throw "Release metadata notes differ from the dated changelog section"
           }
+          $existing = Get-ReleaseByTag $releases $metadata.tag
+          $releaseSourcePrepared = $metadata.releaseRequired -and (Test-ReleasePreparationChange)
+          $verifiedSha = if ($metadata.releaseRequired) { $env:VERIFIED_SHA } else { $null }
+          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $metadata.tag) -VerifiedSha $verifiedSha -ReleaseSourcePrepared $releaseSourcePrepared
           if (-not $metadata.releaseRequired) {
-            $existing = Get-ReleaseByTag $releases $metadata.tag
-            $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommit $metadata.tag) -VerifiedSha $null
             if ($decision.mode -ne "no-op") {
               throw "Unchanged release did not resolve to a no-op"
             }
             Assert-PublishedRelease $existing $metadata.tag "FM ValueScout $($metadata.tag)" $notes
           }
-          "release_required=$($metadata.releaseRequired.ToString().ToLowerInvariant())" |
+          if ($metadata.releaseRequired -and -not $releaseSourcePrepared) {
+            Write-Host "Release version is prepared by an earlier main commit; publication is deferred"
+          }
+          "release_required=$($releaseSourcePrepared.ToString().ToLowerInvariant())" |
+            Add-Content -Path $env:GITHUB_OUTPUT
+          "release_source_prepared=$($releaseSourcePrepared.ToString().ToLowerInvariant())" |
             Add-Content -Path $env:GITHUB_OUTPUT
           "version=$($metadata.version)" | Add-Content -Path $env:GITHUB_OUTPUT
           "tag=$($metadata.tag)" | Add-Content -Path $env:GITHUB_OUTPUT
@@ -223,6 +269,7 @@ jobs:
           EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
           EXPECTED_TAG: ${{ needs.prepare.outputs.tag }}
           NOTES_BASE64: ${{ needs.prepare.outputs.notes_base64 }}
+          RELEASE_SOURCE_PREPARED: ${{ needs.prepare.outputs.release_source_prepared }}
         run: |
           function Invoke-Gh {
             param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
@@ -283,7 +330,7 @@ jobs:
           }
 
           function Get-PublicationDecision {
-            param($Metadata, $ExistingRelease, [AllowNull()][string]$TagSha, [AllowNull()][string]$VerifiedSha)
+            param($Metadata, $ExistingRelease, [AllowNull()][string]$TagSha, [AllowNull()][string]$VerifiedSha, [bool]$ReleaseSourcePrepared)
             $inputPath = Join-Path $env:RUNNER_TEMP "release-policy-$([guid]::NewGuid()).json"
             $input = @{
               expected = @{
@@ -296,6 +343,7 @@ jobs:
               metadata = $Metadata
               existingRelease = $ExistingRelease
               tagSha = $TagSha
+              releaseSourcePrepared = $ReleaseSourcePrepared
             }
             [IO.File]::WriteAllText($inputPath, ($input | ConvertTo-Json -Depth 10 -Compress), [Text.UTF8Encoding]::new($false))
             $output = & node scripts/release-publication-policy.mjs $inputPath
@@ -382,9 +430,13 @@ jobs:
           $expectedVersion = $env:EXPECTED_VERSION
           $expectedTag = $env:EXPECTED_TAG
           $expectedNotes = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:NOTES_BASE64))
+          $releaseSourcePrepared = $env:RELEASE_SOURCE_PREPARED -eq "true"
           $title = "FM ValueScout $expectedTag"
           if ($expectedTag -cne "v$expectedVersion" -or [string]::IsNullOrWhiteSpace($expectedNotes)) {
             throw "Prepared release output is malformed"
+          }
+          if (-not $releaseSourcePrepared) {
+            throw "Release publication is missing exact-SHA preparation"
           }
 
           $releases = @(Get-Releases)
@@ -399,7 +451,7 @@ jobs:
           }
           $metadata = $metadataOutput | ConvertFrom-Json
           $existing = Get-ReleaseByTag $releases $expectedTag
-          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $expectedTag) -VerifiedSha $env:VERIFIED_SHA
+          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $expectedTag) -VerifiedSha $env:VERIFIED_SHA -ReleaseSourcePrepared $releaseSourcePrepared
           if ($decision.mode -eq "no-op") {
             $asset = @($existing.assets | Where-Object { $_.name -ceq "FM-ValueScout_${expectedVersion}_x64-setup.exe" })[0]
             if ($null -eq $asset -or $asset.digest -notmatch '^sha256:([0-9a-f]{64})$') {
@@ -430,7 +482,7 @@ jobs:
 
           $releases = @(Get-Releases)
           $existing = Get-ReleaseByTag $releases $expectedTag
-          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $expectedTag) -VerifiedSha $env:VERIFIED_SHA
+          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $expectedTag) -VerifiedSha $env:VERIFIED_SHA -ReleaseSourcePrepared $releaseSourcePrepared
           $draftPayload = @{
             name = $title
             body = $expectedNotes

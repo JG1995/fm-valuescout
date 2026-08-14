@@ -47,6 +47,12 @@ function requireReleaseIdentity(expected, release) {
   }
 }
 
+function requireReleaseSourcePrepared(value) {
+  if (typeof value !== "boolean") {
+    throw new Error("Release source preparation state is missing");
+  }
+}
+
 /**
  * Chooses the only allowed publication action from read-only GitHub state.
  * The workflow must call this before it packages, removes draft assets, or
@@ -57,6 +63,7 @@ export function evaluatePublicationState({
   metadata,
   existingRelease,
   tagSha,
+  releaseSourcePrepared,
 }) {
   requireExpected(expected);
   requireMetadata(expected, metadata);
@@ -74,6 +81,15 @@ export function evaluatePublicationState({
       throw new Error("Published retry does not target the verified commit");
     }
     return { mode: "no-op" };
+  }
+
+  requireReleaseSourcePrepared(releaseSourcePrepared);
+
+  if (!releaseSourcePrepared) {
+    if (existingRelease !== null || tagSha !== null) {
+      throw new Error("Deferred release has existing publication state");
+    }
+    return { mode: "defer" };
   }
 
   requireString(expected.verifiedSha, "verified SHA");

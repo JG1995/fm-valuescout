@@ -57,6 +57,22 @@ describe("verified-main release workflow", () => {
     expect(releaseWorkflow).toContain("./scripts/dev package-windows");
   });
 
+  it("requires an exact-SHA release preparation before packaging a new version", () => {
+    const prepareWorkflow = releaseWorkflow.slice(
+      releaseWorkflow.indexOf("  prepare:"),
+      releaseWorkflow.indexOf("  publish:"),
+    );
+
+    expect(releaseWorkflow).toContain("release-preparation.json");
+    expect(releaseWorkflow).toContain("release_source_prepared");
+    expect(prepareWorkflow).toContain(
+      "VERIFIED_SHA: $" + "{{ github.event.workflow_run.head_sha }}",
+    );
+    expect(prepareWorkflow).toContain(
+      "Release version is prepared by an earlier main commit; publication is deferred",
+    );
+  });
+
   it("requires metadata validation and the same Windows candidate command in Check", () => {
     expect(checkWorkflow).toContain("release:");
     expect(checkWorkflow).toContain("release-candidate:");

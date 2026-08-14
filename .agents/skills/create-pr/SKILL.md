@@ -38,6 +38,8 @@ For `patch` or `minor`, propose the version, date, complete dated changelog sect
 
 Preserve `## [Unreleased]`. Add exactly one dated Keep a Changelog section that covers the complete unreleased user-visible range. Do not regenerate the Cargo lockfile. Confirm only the root `app` lock entry changes.
 
+For a release-bearing intent, update `release-preparation.json` with the matching version and intent, then increment its positive `sequence`. The verified-main workflow treats that changed record as the explicit authorization for this exact SHA. For `none`, leave the record unchanged.
+
 Run:
 
 ```bash

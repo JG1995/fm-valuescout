@@ -24,6 +24,26 @@ function readJsonVersion(path) {
   return version;
 }
 
+function readReleasePreparation(rootDir) {
+  const preparation = JSON.parse(
+    readFile(join(rootDir, "release-preparation.json")),
+  );
+
+  if (
+    !preparation ||
+    typeof preparation !== "object" ||
+    typeof preparation.version !== "string" ||
+    !releaseIntents.has(preparation.intent) ||
+    preparation.intent === "none" ||
+    !Number.isSafeInteger(preparation.sequence) ||
+    preparation.sequence < 1
+  ) {
+    throw new Error("Release preparation record is invalid");
+  }
+
+  return preparation;
+}
+
 function readTomlVersion(path) {
   const match = readFile(path).match(/^version\s*=\s*"([^"]+)"\s*$/m);
 
@@ -261,10 +281,25 @@ function normalizeLatestTag(latestTag) {
 
 export function readReleaseMetadata(rootDir, latestTag = null, intent) {
   const version = validateReleaseIdentity(rootDir);
+  const preparation = readReleasePreparation(rootDir);
   const latestVersion = normalizeLatestTag(latestTag);
+
+  if (preparation.version !== version) {
+    throw new Error(
+      "Release preparation version does not match release identity",
+    );
+  }
 
   if (intent !== undefined && !releaseIntents.has(intent)) {
     throw new Error(`Release intent is invalid: ${intent}`);
+  }
+
+  if (
+    intent !== undefined &&
+    intent !== "none" &&
+    preparation.intent !== intent
+  ) {
+    throw new Error("Release preparation intent does not match release intent");
   }
 
   if (intent === "none") {

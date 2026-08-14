@@ -91,9 +91,40 @@ describe("release publication policy", () => {
         metadata: metadata(true),
         existingRelease: null,
         tagSha: null,
+        releaseSourcePrepared: true,
       }),
     ).toEqual({ mode: "create" });
   });
+
+  it("defers a later same-version SHA without a new release preparation", () => {
+    expect(
+      evaluatePublicationState({
+        expected: { ...expected, verifiedSha: "b".repeat(40) },
+        metadata: metadata(true),
+        existingRelease: null,
+        tagSha: null,
+        releaseSourcePrepared: false,
+      }),
+    ).toEqual({ mode: "defer" });
+  });
+
+  it.each([
+    ["orphaned tag", null, sha],
+    ["temporary draft", release({ draft: true }), null],
+  ])(
+    "rejects a deferred release with a %s",
+    (_name, existingRelease, tagSha) => {
+      expect(() =>
+        evaluatePublicationState({
+          expected: { ...expected, verifiedSha: "b".repeat(40) },
+          metadata: metadata(true),
+          existingRelease,
+          tagSha,
+          releaseSourcePrepared: false,
+        }),
+      ).toThrow();
+    },
+  );
 
   it("repairs only a temporary draft for the same version and SHA", () => {
     expect(
@@ -102,6 +133,7 @@ describe("release publication policy", () => {
         metadata: metadata(true),
         existingRelease: release({ draft: true, body: "failed attempt" }),
         tagSha: null,
+        releaseSourcePrepared: true,
       }),
     ).toEqual({ mode: "repair" });
   });
@@ -121,6 +153,7 @@ describe("release publication policy", () => {
         metadata: metadata(true),
         existingRelease,
         tagSha,
+        releaseSourcePrepared: true,
       }),
     ).toThrow();
   });
