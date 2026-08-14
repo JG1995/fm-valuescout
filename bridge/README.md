@@ -2,6 +2,8 @@
 
 C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2CPP. It owns memory layouts and dump files. The Tauri Rust backend talks to it through a LocalAppData file protocol ([ADR-0016](../.wiki/decisions/0016-csharp-bepinex-fm26-bridge.md)).
 
+This is early-alpha bridge and maintainer documentation. Start with the root [README](../README.md) for supported-environment, installer, backup, and public-reporting guidance. Do not share `dump.json`, bridge diagnostics, or the app database in a public issue: those files can contain local FM data.
+
 ## Bridge data directory (locked)
 
 ```text

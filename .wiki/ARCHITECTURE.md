@@ -733,7 +733,8 @@ Green smoke does **not** prove SQLite persistence works in production. Rust unit
 ## 7. Deployable Artifacts
 
 - **Development** — Install Node 24, pnpm, and the Rust toolchain, then `pnpm install`, `pnpm exec playwright install chromium` (once), then `pnpm tauri dev`. On Linux/WSL, install WebKitGTK and related system packages (see §11). WSLg or an X server is required for the native window on WSL.
-- **Production build** — `pnpm tauri build` produces OS-specific installers (`.deb`, `.msi`, `.dmg`, etc.) in `src-tauri/target/release/bundle/`. CI builds unsigned installers on `v*` tag push via `.github/workflows/release.yml`.
+- **Release candidate (Windows)** — `./scripts/dev package-windows` runs only on Windows. It restores the locked bridge, validates its managed DLL and shared version, bundles one unsigned x64 NSIS installer from that source-built DLL, and writes the installer plus SHA-256 sidecar under `.release/windows/<version>/`. It never publishes anything. The tag-triggered multi-platform workflow remains legacy until the active early-alpha feature replaces it.
+- **Legacy production build** — `pnpm tauri build` can produce platform-specific installers in `src-tauri/target/release/bundle/`. The repository's current tag workflow still targets that legacy matrix; it does not yet define the released early-alpha contract.
 - **WebView bundle only** — `pnpm build` produces static files in `dist/` for frontend-only checks; this is not the shipped desktop artifact.
 - **Source maps** — default `build.sourcemap: "hidden"` for plain Vite builds (maps on disk, not linked from the public bundle). Tauri production builds use platform-conditional settings when `TAURI_ENV_PLATFORM` is set.
 - **Signing** — not configured in the template. Unsigned installers trigger OS security warnings on first run. Add platform signing secrets before shipping a real product.

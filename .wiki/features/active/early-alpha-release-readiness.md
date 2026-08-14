@@ -460,7 +460,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 #### Commit 6 — Define the early alpha operating contract
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `docs(release): define the early alpha contract`
 
@@ -604,21 +604,21 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 **PR:** PR 1 — Prepare Windows early alpha distribution
 
-**Commit:** Commit 6 — Define the early alpha operating contract
+**Commit:** Commit 7 — Prepare every pull request for release evaluation
 
 ### RED proof
 
-The README must replace the template-fork framing with executable early-alpha operating guidance without promising unimplemented support, recovery, or legal conclusions.
+Release metadata validation must reject mismatched version owners, missing or duplicate dated changelog sections, invalid prerelease identities, and non-increasing release-bearing versions.
 
 ### Expected outcome
 
-The README, security route, and maintainer runbook accurately describe the supported Windows early-alpha install, update, recovery, diagnostics, and release operations.
+One repository-local `create-pr` procedure and the existing pull-request template record one release intent for every human-authored pull request. The read-only metadata command validates the initial `0.1.0-alpha.1` identity, matching durable version owners, and its exact dated changelog notes.
 
 ### Explicit exclusions
 
-- Legal advice, personal contact details, or a support-level promise.
-- Claims for untested platforms, game builds, database scopes, automatic updates, or recovery behavior.
-- Implementing capabilities only because they are documented.
+- Inferring release intent from a conventional-commit title or file-path heuristic.
+- A separate release-only pull-request procedure or command.
+- Metadata-command writes, Git/GitHub side effects, tags, or publication.
 
 ## Discoveries and replanning
 
@@ -645,6 +645,7 @@ The README, security route, and maintainer runbook accurately describe the suppo
 | PR 1 | Commit 3 — Automate guarded dependency patches | Pending record | Completed | Passed — no retained findings after two corrective review rounds | Live GitHub settings and fixture validation await the first push |
 | PR 1 | Commit 4 — Package the Windows bridge from source | Pending record | Completed | Passed — no retained findings after corrective review | Native Windows package and extraction evidence await the first push |
 | PR 1 | Commit 5 — Retain local release logs | Pending record | Completed | Passed — no retained findings | Packaged Windows log creation, rotation, and privacy inspection await the first push |
+| PR 1 | Commit 6 — Define the early alpha operating contract | Pending record | Completed | Passed — no retained findings after corrective review | Native Windows install, recovery, and live-FM acceptance await the first push |
 
 ## Final validation
 

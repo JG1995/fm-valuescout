@@ -36,7 +36,7 @@ The workflow overview is in [.codex/README.md](.codex/README.md). [AGENTS.md](AG
 
 ### New project bootstrap
 
-See [README — Forking this template](README.md#forking-this-template) for setup details. In brief:
+See [README — Develop from source](README.md#develop-from-source) for setup details. In brief:
 
 1. Run `./scripts/dev check` and `./scripts/dev test` before feature work.
 2. Fill `.wiki/CONCEPT.md` with MVP scope.
