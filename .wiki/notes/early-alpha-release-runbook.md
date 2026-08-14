@@ -16,7 +16,7 @@ The universal pull-request release-preparation procedure, read-only metadata val
 
 ## Candidate acceptance checklist
 
-Complete this before merging the first release-bearing pull request and after any change to packaging, the bridge, persistent data, diagnostics, or release automation:
+Complete this before merging the first release-bearing pull request. Repeat the full checklist after a change to packaging, the bridge, diagnostics, or release automation. Use the data and migration checks below for data changes.
 
 1. On Windows, run `./scripts/dev package-windows` from the exact commit under review.
 2. Verify exactly one installer and its `.sha256` sidecar. Verify the checksum from a separate command.
@@ -27,6 +27,16 @@ Complete this before merging the first release-bearing pull request and after an
 7. Exercise Search, profiles, configurable tables, CSV enrichment, Planner, Academy, snapshot persistence, and the two guarded boost actions only after backing up the FM save.
 
 Do not merge the initial release-bearing pull request if a required installed-app or FM validation is missing. Its successful merge will eventually publish automatically.
+
+## Data and migration checks
+
+Do not repeat the full candidate acceptance checklist for routine data work.
+
+- For feature work that reads or writes existing data without a schema migration, add focused behavior tests and run the normal feature validation.
+- For additive or routine SQLite migrations, add representative old-schema fixtures and assert the required upgrade, preservation, rollback, and idempotency behavior.
+- For a migration that deletes, transforms, reinterprets, or reassigns existing data, also run a small installed-app upgrade smoke from a closed-app backup. Confirm the affected data after the migration. This does not require the FM, bridge, or boost checks unless the change affects them.
+
+Run the full candidate checklist only when the data change also affects packaging, the bridge, diagnostics, or release automation.
 
 ## Pull-request procedure
 
