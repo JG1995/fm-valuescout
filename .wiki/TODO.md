@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-No feature is currently active.
+- [Early Alpha Release Readiness](./features/active/early-alpha-release-readiness.md) — remove template health scaffolding, package a source-built bridge in one unsigned Windows candidate, add local diagnostics and recovery guidance, and automatically publish prepared SemVer/changelog prereleases after verified `main` pushes
 
 ## Next
 
