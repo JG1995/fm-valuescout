@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -204,7 +204,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 ### PR 1 — Prepare Windows early alpha distribution
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -374,7 +374,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 #### Commit 4 — Package the Windows bridge from source
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `build(release): package the bridge from source`
 
@@ -418,7 +418,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 #### Commit 5 — Retain local release logs
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(diagnostics): retain local release logs`
 
@@ -604,7 +604,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 **PR:** PR 1 — Prepare Windows early alpha distribution
 
-**Commit:** Final validation and first hosted-run acceptance
+**Commit:** Publication boundary — no active implementation commit
 
 ### RED proof
 
