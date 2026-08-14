@@ -7,7 +7,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install} [args...]
+Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install|dependency-automerge-policy} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
@@ -24,6 +24,8 @@ Commands:
   bridge-install    Build bridge/ with dotnet and copy FmDataBridge.dll into FM BepInEx/plugins.
                     Path: FM_BRIDGE_PLUGINS, or FM_STEAM_ROOT/BepInEx/plugins, or the default
                     Steam FM26 path under /mnt/c (WSL).
+  dependency-automerge-policy
+                    Evaluate trusted Dependabot metadata and emit the auto-merge decision.
 
 Unsupported mutation checks exit with status 69.
 EOF
@@ -232,6 +234,15 @@ run_test() {
   )
 }
 
+run_dependency_automerge_policy() {
+  require_no_arguments dependency-automerge-policy "$@"
+
+  (
+    cd "$repo_root"
+    node scripts/dependency-automerge-policy.mjs
+  )
+}
+
 ensure_dotnet() {
   if command -v dotnet >/dev/null 2>&1; then
     return 0
@@ -340,6 +351,9 @@ case "$command" in
     ;;
   bridge-install)
     run_bridge_install "$@"
+    ;;
+  dependency-automerge-policy)
+    run_dependency_automerge_policy "$@"
     ;;
   *)
     printf 'Unknown command: %s\n' "$command" >&2

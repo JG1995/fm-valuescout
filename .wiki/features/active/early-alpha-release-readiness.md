@@ -126,7 +126,7 @@ The feature uses one release-metadata seam, one local release-build seam, and on
 
 The required Check workflow will validate release metadata and exercise the Windows package command when release inputs change, then upload the candidate as a workflow artifact. The Release workflow will follow every successful `Check` run caused by a push to `main`, check out its exact verified SHA, and run the same metadata and package commands. An unchanged current version is a successful no-op. For a newer version, the only job with `contents: write` creates or repairs a matching temporary draft targeted at that SHA, uploads the installer and checksum, sets the title and exact extracted changelog section, verifies the assembled release, and publishes it as a prerelease before succeeding. An exact retry is idempotent; a different SHA or identity must never retarget or overwrite an existing draft, tag, or published release.
 
-Dependency maintenance uses a separate privileged metadata workflow. It can enable native auto-merge for verified Dependabot-only pnpm and Cargo patch updates where every old and new dependency version is stable and at least `1.0.0`. The workflow runs from the trusted default branch with `pull_request_target`, never checks out or executes pull-request code, and does not bypass the strict up-to-date `check`. GitHub Actions, NuGet, pre-`1.0.0`, prerelease, minor, major, mixed, malformed, and maintainer-modified updates remain unmerged. An eligible merge has application release intent `none`; the verified-main release evaluator sees the unchanged app version and exits without publishing.
+Dependency maintenance uses a separate privileged metadata workflow. It can enable native auto-merge for verified Dependabot-only pnpm and Cargo patch updates where every old and new dependency version is stable and at least `1.0.0`; if a later event makes metadata ineligible, it revokes an existing auto-merge request. The strict required `check` runs the same evaluator read-only for matching Dependabot pull requests, so an ineligible changed revision cannot become mergeable before revocation runs. The privileged workflow runs from the trusted default branch with `pull_request_target`, never checks out or executes pull-request code, and does not bypass `check`. GitHub Actions, NuGet, pre-`1.0.0`, prerelease, minor, major, mixed, malformed, and maintainer-modified updates remain unmerged. An eligible merge has application release intent `none`; the verified-main release evaluator sees the unchanged app version and exits without publishing.
 
 The health scaffold is removed across React, Rust, IPC registration, tests, and current-state documentation. Migration v1 remains historical; a new migration drops `demo_value` for both existing and fresh databases. No replacement health endpoint or dashboard status panel is added.
 
@@ -325,7 +325,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 #### Commit 3 — Automate guarded dependency patches
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `ci(deps): automate guarded dependency patches`
 
@@ -342,7 +342,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 - Owners and files: `.github/dependabot.yml`, `.github/workflows/dependabot-automerge.yml`, a small tested policy evaluator under `scripts/`, `scripts/dev` for its command route, and the active ledger discovery record if GitHub rejects or limits an ecosystem.
 - Existing patterns to verify: package-manager directories, Cargo manifest location, NuGet solution directory, current GitHub Actions paths, strict `check` branch protection, squash-only merges, GitHub native auto-merge, and verified outputs from `dependabot/fetch-metadata`.
-- Constraints and invariants: use `cooldown.default-days: 14` for pnpm and Cargo routine version updates; run weekly with a low open-PR limit and patch-only compatible grouping; set GitHub Actions and NuGet `open-pull-requests-limit: 0`; preserve security-update pull requests; use the highest update type and inspect every entry in `updated-dependencies-json`; require normal SemVer with both versions at major `1` or newer; reject maintainer changes. Use `pull_request_target` only for a workflow stored on the trusted default branch. Check the Dependabot author, repository, base branch, and verified metadata. Pin the metadata action to a reviewed commit SHA. Never check out, install, build, or execute pull-request code in the privileged job. Grant only `contents: write` and `pull-requests: write`, and call `gh pr merge --auto --squash` so native auto-merge waits for branch protection.
+- Constraints and invariants: use `cooldown.default-days: 14` for pnpm and Cargo routine version updates; run weekly with a low open-PR limit and patch-only compatible grouping; set GitHub Actions and NuGet `open-pull-requests-limit: 0`; preserve security-update pull requests; use the highest update type and inspect every entry in `updated-dependencies-json`; require normal SemVer with both versions at major `1` or newer; reject maintainer changes. The strict `check` must fail closed using the same evaluator for an ineligible Dependabot pull request. Use `pull_request_target` only for a workflow stored on the trusted default branch. Check the Dependabot author, repository, base branch, and verified metadata. Pin the metadata action to a reviewed commit SHA. Never check out, install, build, or execute pull-request code in the privileged job. Grant only `contents: write` and `pull-requests: write`; enable with `gh pr merge --auto --squash` so native auto-merge waits for branch protection, and revoke a previously enabled request when later metadata is ineligible.
 - Dependencies and ordering: follows locked inputs so monitoring starts from a reproducible baseline. Commit 8 must treat the resulting same-version `main` push as a release no-op; the dependency state ships with the next prepared application release.
 
 **Implementation profile:** Terra xhigh — the policy is narrow, but safe automation crosses untrusted pull-request metadata, SemVer classification, action pinning, token permissions, strict branch protection, and release no-op behavior.
@@ -368,12 +368,13 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 - Confirm the policy rejects every update outside the stable `1.x`-or-newer pnpm/Cargo patch boundary and rejects any non-Dependabot or maintainer-modified pull request.
 - Confirm `pull_request_target` never consumes or executes pull-request-controlled files, commands, expressions, or artifacts.
 - Confirm native auto-merge cannot complete until the strict, up-to-date `check` passes and uses the repository's squash-only merge method.
+- Confirm a later maintainer push or metadata-verification failure revokes any earlier native auto-merge request before the changed revision can merge.
 - Confirm eligible dependency merges have release intent `none`, do not edit application versions or `CHANGELOG.md`, and cannot create a GitHub release.
 - Confirm no credential, local path, or private package source is committed.
 
 #### Commit 4 — Package the Windows bridge from source
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `build(release): package the bridge from source`
 
@@ -603,21 +604,21 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 **PR:** PR 1 — Prepare Windows early alpha distribution
 
-**Commit:** Commit 3 — Automate guarded dependency patches
+**Commit:** Commit 4 — Package the Windows bridge from source
 
 ### RED proof
 
-The policy evaluator must reject every ineligible update before the workflow can enable native auto-merge. Start with fixtures for minor, major, pre-`1.0.0`, prerelease, malformed, mixed, Actions, NuGet, non-Dependabot, wrong-repository, wrong-base, and maintainer-modified metadata.
+The release-package validation must reject the current 102-byte placeholder and a deliberate manifest-version mismatch before invoking Tauri.
 
 ### Expected outcome
 
-Only verified stable `1.x`-or-newer pnpm or Cargo patch pull requests can enable native squash auto-merge after the strict up-to-date `check`; eligible security patches can merge without the routine-update cooldown. Every other dependency pull request remains unmerged.
+The Windows-only command builds the locked bridge from the checked-out source, rejects an invalid or mismatched DLL, bundles one x64 NSIS installer, and writes its SHA-256 checksum without publishing anything.
 
 ### Explicit exclusions
 
-- Automatic approval, bypass of branch protection, a personal access token, or a GitHub App credential.
-- Routine GitHub Actions or NuGet version-update pull requests.
-- Automatic merge of minor, major, pre-`1.0.0`, prerelease, mixed-policy, unverifiable, or maintainer-modified updates.
+- GitHub release creation, signing, updater artifacts, MSI, macOS, or Linux bundles.
+- Changes to bridge runtime behavior or in-app BepInEx installation.
+- Committing the generated bridge DLL or installer.
 
 ## Discoveries and replanning
 
@@ -626,6 +627,8 @@ Only verified stable `1.x`-or-newer pnpm or Cargo patch pull requests can enable
 - Inspection of `JG1995/fm-youth-tracker/.pi/prompts/create-pr.md`, its release-metadata validator and tests, changelog, and verified-main Release workflow on 2026-08-14 confirmed a reusable split between pre-merge release intent and post-Check release creation. This ledger adapts that split for prerelease SemVer, one Windows artifact, exact changelog notes, and automatic publication after verified `main`.
 - The reference workflow publishes automatically and supports stable SemVer only. This feature keeps its automatic-publication boundary, adds `0.1.0-alpha.1` ordering, and moves installed-candidate acceptance before the initial release-bearing PR merges.
 - GitHub documentation reviewed on 2026-08-14 confirms that `cooldown.default-days` can delay routine version updates by 14 days, cooldown does not apply to security updates, Dependabot metadata reports the highest grouped SemVer change and every updated dependency, and native auto-merge waits for required branch protection. The revised plan automatically squash-merges only verified stable pnpm/Cargo patches after `check`, disables routine Actions and NuGet updates, and leaves every other dependency pull request unmerged.
+- The pinned `dependabot/fetch-metadata` v3.1.0 source reports pnpm projects as `npm_and_yarn` in its metadata, while Dependabot configuration still requires `npm`. Commit 3 preserves that boundary so eligible pnpm patches are classified rather than accidentally rejected.
+- Sol High review found that GitHub retains auto-merge after a maintainer with write permission pushes to an eligible Dependabot pull request. Commit 3 therefore re-evaluates later events and revokes an existing auto-merge request when metadata verification or policy eligibility fails; its read-only policy job is part of the strict `check` aggregate so an ineligible changed revision cannot win a workflow scheduling race.
 - Official Codex documentation reviewed on 2026-08-14 confirms that `.agents/skills` is the repository-scoped skill location. The existing template-based PR behavior is not currently repository-owned, so this feature will formalize it as `.agents/skills/create-pr/SKILL.md` and make release intent one field in that universal procedure. Deterministic metadata validation and release publication remain in repository scripts and GitHub Actions.
 - Repowise was synchronized to `0c9c10e41b59941d08b90a5f493283836d149830`. It identifies `src-tauri/src/db/migrations.rs` and `scripts/dev` as high-churn/high-impact surfaces; deterministic migration and Windows packaging evidence remains authoritative.
 - NuGet serializes an exact `Version="[x]"` constraint in `packages.lock.json` as the canonical requested range `[x, x]`. Commit 2 uses those exact constraints for both validated BepInEx packages; the bridge test first rejected the prior open-ended locks, then passed after regeneration with locked restore enabled.
@@ -638,6 +641,7 @@ Only verified stable `1.x`-or-newer pnpm or Cargo patch pull requests can enable
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Remove the template health scaffold | Pending record | Completed | Passed — no blocking findings | None |
 | PR 1 | Commit 2 — Lock release build inputs | Pending record | Completed | Passed — no retained findings | Clean Windows CI restore awaits the first push |
+| PR 1 | Commit 3 — Automate guarded dependency patches | Pending record | Completed | Passed — no retained findings after two corrective review rounds | Live GitHub settings and fixture validation await the first push |
 
 ## Final validation
 

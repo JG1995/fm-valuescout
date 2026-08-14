@@ -49,7 +49,48 @@ jobs:
             ci:
               - '.github/workflows/**'
               - '.github/actions/**'
-              - 'scripts/dev'
+              - 'scripts/**'
+
+  dependabot-policy:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.repository == 'JG1995/fm-valuescout' &&
+      github.event.pull_request.base.repo.full_name == 'JG1995/fm-valuescout' &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Verify Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Check out trusted policy
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Require eligible Dependabot metadata
+        run: ./scripts/dev dependency-automerge-policy
+        env:
+          DEPENDABOT_REQUIRE_ELIGIBLE: true
+          DEPENDABOT_ACTOR: ${{ github.actor }}
+          DEPENDABOT_PULL_REQUEST_AUTHOR: ${{ github.event.pull_request.user.login }}
+          DEPENDABOT_REPOSITORY: ${{ github.repository }}
+          DEPENDABOT_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          DEPENDABOT_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEPENDABOT_EXPECTED_REPOSITORY: JG1995/fm-valuescout
+          DEPENDABOT_EXPECTED_BASE_REF: main
+          DEPENDABOT_PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          DEPENDABOT_TARGET_BRANCH: ${{ steps.metadata.outputs.target-branch }}
+          DEPENDABOT_UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDABOT_MAINTAINER_CHANGES: ${{ steps.metadata.outputs.maintainer-changes }}
+          DEPENDABOT_UPDATED_DEPENDENCIES: ${{ steps.metadata.outputs.updated-dependencies-json }}
 
   frontend-tests:
     needs: changes
@@ -125,7 +166,7 @@ jobs:
 
   check:
     if: always()
-    needs: [changes, frontend-tests, browser-smoke, rust, bridge-tests]
+    needs: [changes, frontend-tests, browser-smoke, rust, bridge-tests, dependabot-policy]
     runs-on: ubuntu-latest
     steps:
       - name: Confirm applicable product checks passed
@@ -135,8 +176,9 @@ jobs:
           BROWSER_SMOKE: ${{ needs.browser-smoke.result }}
           RUST: ${{ needs.rust.result }}
           BRIDGE_TESTS: ${{ needs.bridge-tests.result }}
+          DEPENDABOT_POLICY: ${{ needs.dependabot-policy.result }}
         run: |
-          for result in "$CHANGES" "$FRONTEND_TESTS" "$BROWSER_SMOKE" "$RUST" "$BRIDGE_TESTS"; do
+          for result in "$CHANGES" "$FRONTEND_TESTS" "$BROWSER_SMOKE" "$RUST" "$BRIDGE_TESTS" "$DEPENDABOT_POLICY"; do
             case "$result" in
               success|skipped) ;;
               *) exit 1 ;;
