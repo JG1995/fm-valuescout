@@ -283,7 +283,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 #### Commit 2 — Lock release build inputs
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `chore(deps): lock release build inputs`
 
@@ -325,7 +325,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 #### Commit 3 — Automate guarded dependency patches
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `ci(deps): automate guarded dependency patches`
 
@@ -603,21 +603,21 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 **PR:** PR 1 — Prepare Windows early alpha distribution
 
-**Commit:** Commit 2 — Lock release build inputs
+**Commit:** Commit 3 — Automate guarded dependency patches
 
 ### RED proof
 
-Current wildcard BepInEx references and missing NuGet lock files cannot prove a repeatable release restore. Before changing the files, capture the existing resolved graph and run the bridge test suite so the locked configuration can preserve the same bridge behavior.
+The policy evaluator must reject every ineligible update before the workflow can enable native auto-merge. Start with fixtures for minor, major, pre-`1.0.0`, prerelease, malformed, mixed, Actions, NuGet, non-Dependabot, wrong-repository, wrong-base, and maintainer-modified metadata.
 
 ### Expected outcome
 
-The bridge and its tests use committed exact package versions and lock files; release-relevant restores run in locked mode; the pnpm lock excludes the known vulnerable build-tool resolutions without adding a product dependency; bridge behavior remains unchanged.
+Only verified stable `1.x`-or-newer pnpm or Cargo patch pull requests can enable native squash auto-merge after the strict up-to-date `check`; eligible security patches can merge without the routine-update cooldown. Every other dependency pull request remains unmerged.
 
 ### Explicit exclusions
 
-- Moving the bridge off .NET 6 or changing its BepInEx, IL2CPP, memory-layout, or protocol behavior.
-- Adding package sources, credentials, product dependencies, or broad unrelated upgrades.
-- Release packaging, diagnostics, public documentation, or GitHub workflow changes.
+- Automatic approval, bypass of branch protection, a personal access token, or a GitHub App credential.
+- Routine GitHub Actions or NuGet version-update pull requests.
+- Automatic merge of minor, major, pre-`1.0.0`, prerelease, mixed-policy, unverifiable, or maintainer-modified updates.
 
 ## Discoveries and replanning
 
@@ -628,6 +628,8 @@ The bridge and its tests use committed exact package versions and lock files; re
 - GitHub documentation reviewed on 2026-08-14 confirms that `cooldown.default-days` can delay routine version updates by 14 days, cooldown does not apply to security updates, Dependabot metadata reports the highest grouped SemVer change and every updated dependency, and native auto-merge waits for required branch protection. The revised plan automatically squash-merges only verified stable pnpm/Cargo patches after `check`, disables routine Actions and NuGet updates, and leaves every other dependency pull request unmerged.
 - Official Codex documentation reviewed on 2026-08-14 confirms that `.agents/skills` is the repository-scoped skill location. The existing template-based PR behavior is not currently repository-owned, so this feature will formalize it as `.agents/skills/create-pr/SKILL.md` and make release intent one field in that universal procedure. Deterministic metadata validation and release publication remain in repository scripts and GitHub Actions.
 - Repowise was synchronized to `0c9c10e41b59941d08b90a5f493283836d149830`. It identifies `src-tauri/src/db/migrations.rs` and `scripts/dev` as high-churn/high-impact surfaces; deterministic migration and Windows packaging evidence remains authoritative.
+- NuGet serializes an exact `Version="[x]"` constraint in `packages.lock.json` as the canonical requested range `[x, x]`. Commit 2 uses those exact constraints for both validated BepInEx packages; the bridge test first rejected the prior open-ended locks, then passed after regeneration with locked restore enabled.
+- The local Windows host has only the .NET 9 SDK, while `bridge/global.json` pins .NET 6. The existing Windows CI job installs .NET 6 before its locked bridge test; that clean-Windows proof remains for the first push of this commit.
 - No planned feature spec existed to promote. This ledger is the sole active source of feature intent.
 
 ## Completed work
@@ -635,6 +637,7 @@ The bridge and its tests use committed exact package versions and lock files; re
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Remove the template health scaffold | Pending record | Completed | Passed — no blocking findings | None |
+| PR 1 | Commit 2 — Lock release build inputs | Pending record | Completed | Passed — no retained findings | Clean Windows CI restore awaits the first push |
 
 ## Final validation
 
