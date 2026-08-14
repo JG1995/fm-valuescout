@@ -793,10 +793,8 @@ pub fn wait_for_request_terminal(
                     && is_terminal_state(&status.state) =>
             {
                 let dump_present = dump_path(bridge_directory).is_file();
-                if dump_present {
-                    if let Err(error) = validate_dump_at_bridge_directory(bridge_directory) {
-                        log::warn!("dump.json failed ingestibility validation: {error}");
-                    }
+                if dump_present && validate_dump_at_bridge_directory(bridge_directory).is_err() {
+                    log::warn!("dump.json failed ingestibility validation");
                 }
                 return Ok(DumpRequestResult {
                     request_id: request_id.to_string(),

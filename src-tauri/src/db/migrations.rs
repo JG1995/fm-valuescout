@@ -736,9 +736,21 @@ pub fn all() -> &'static [Migration] {
     ]
 }
 
+pub fn latest_version() -> i32 {
+    all()
+        .last()
+        .expect("migration registry must not be empty")
+        .version
+}
+
 /// Apply pending migrations using `PRAGMA user_version`.
 pub fn apply(conn: &Connection) -> Result<(), rusqlite::Error> {
     let current: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+
+    log::info!(
+        "database schema migration state: current={current}, target={}",
+        latest_version()
+    );
 
     for migration in all() {
         if migration.version <= current {
@@ -751,11 +763,19 @@ pub fn apply(conn: &Connection) -> Result<(), rusqlite::Error> {
             migration.description
         );
 
-        let tx = conn.unchecked_transaction()?;
-        tx.execute_batch(migration.sql)?;
-        tx.pragma_update(None, "user_version", migration.version)?;
-        tx.commit()?;
+        let result = (|| {
+            let tx = conn.unchecked_transaction()?;
+            tx.execute_batch(migration.sql)?;
+            tx.pragma_update(None, "user_version", migration.version)?;
+            tx.commit()
+        })();
+        if let Err(error) = result {
+            log::error!("database migration {} failed", migration.version);
+            return Err(error);
+        }
     }
+
+    log::info!("database schema ready: version={}", latest_version());
 
     Ok(())
 }

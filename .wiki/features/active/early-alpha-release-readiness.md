@@ -604,21 +604,21 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 **PR:** PR 1 — Prepare Windows early alpha distribution
 
-**Commit:** Commit 5 — Retain local release logs
+**Commit:** Commit 6 — Define the early alpha operating contract
 
 ### RED proof
 
-Release logging configuration must retain bounded local files in release builds without enabling external reporting or recording sensitive bridge payloads.
+The README must replace the template-fork framing with executable early-alpha operating guidance without promising unimplemented support, recovery, or legal conclusions.
 
 ### Expected outcome
 
-Release builds retain bounded local diagnostic files with app and schema identity, while debug builds preserve useful local development output.
+The README, security route, and maintainer runbook accurately describe the supported Windows early-alpha install, update, recovery, diagnostics, and release operations.
 
 ### Explicit exclusions
 
-- Sentry or another external crash service, telemetry, analytics, or automatic uploads.
-- A diagnostics UI, new Tauri capability, or WebView-native privilege.
-- Routine logging of player rows, dump contents, memory addresses, or full sensitive paths.
+- Legal advice, personal contact details, or a support-level promise.
+- Claims for untested platforms, game builds, database scopes, automatic updates, or recovery behavior.
+- Implementing capabilities only because they are documented.
 
 ## Discoveries and replanning
 
@@ -644,6 +644,7 @@ Release builds retain bounded local diagnostic files with app and schema identit
 | PR 1 | Commit 2 — Lock release build inputs | Pending record | Completed | Passed — no retained findings | Clean Windows CI restore awaits the first push |
 | PR 1 | Commit 3 — Automate guarded dependency patches | Pending record | Completed | Passed — no retained findings after two corrective review rounds | Live GitHub settings and fixture validation await the first push |
 | PR 1 | Commit 4 — Package the Windows bridge from source | Pending record | Completed | Passed — no retained findings after corrective review | Native Windows package and extraction evidence await the first push |
+| PR 1 | Commit 5 — Retain local release logs | Pending record | Completed | Passed — no retained findings | Packaged Windows log creation, rotation, and privacy inspection await the first push |
 
 ## Final validation
 
