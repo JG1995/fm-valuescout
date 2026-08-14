@@ -12,3 +12,12 @@
 ## Notes
 
 <!-- Breaking changes, follow-ups, intentional deferrals. Write "None" when nothing applies. -->
+
+## Release intent
+
+<!-- Select exactly one. `none` is normal for a non-release PR. See .agents/skills/create-pr/SKILL.md. -->
+
+- [ ] none
+- [ ] patch
+- [ ] minor
+- [ ] major

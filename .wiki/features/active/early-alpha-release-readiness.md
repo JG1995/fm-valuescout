@@ -502,7 +502,7 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 #### Commit 7 — Prepare every pull request for release evaluation
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `build(release): prepare pull request release metadata`
 
@@ -604,21 +604,21 @@ Commit 4 is the thinnest release path: from one Windows command, build the curre
 
 **PR:** PR 1 — Prepare Windows early alpha distribution
 
-**Commit:** Commit 7 — Prepare every pull request for release evaluation
+**Commit:** Commit 8 — Publish prereleases from verified main
 
 ### RED proof
 
-Release metadata validation must reject mismatched version owners, missing or duplicate dated changelog sections, invalid prerelease identities, and non-increasing release-bearing versions.
+Release publication must reject failed, pull-request, non-`main`, stale, unchanged, malformed, or mismatched release input before it builds or mutates a GitHub release.
 
 ### Expected outcome
 
-One repository-local `create-pr` procedure and the existing pull-request template record one release intent for every human-authored pull request. The read-only metadata command validates the initial `0.1.0-alpha.1` identity, matching durable version owners, and its exact dated changelog notes.
+Only a successful required `Check` run from a push to `main` can evaluate the exact checked SHA. A newer validated prerelease builds the tested Windows candidate, stages and verifies one matching draft release with exact changelog notes and checksum, then publishes it automatically; unchanged versions are successful no-ops.
 
 ### Explicit exclusions
 
-- Inferring release intent from a conventional-commit title or file-path heuristic.
-- A separate release-only pull-request procedure or command.
-- Metadata-command writes, Git/GitHub side effects, tags, or publication.
+- CI-generated version or changelog changes, direct pushes to `main`, or release-intent inference.
+- Signing, updater metadata, stores, or unsupported-platform artifacts.
+- Write permission in a metadata, validation, or candidate-package job.
 
 ## Discoveries and replanning
 
@@ -634,6 +634,7 @@ One repository-local `create-pr` procedure and the existing pull-request templat
 - NuGet serializes an exact `Version="[x]"` constraint in `packages.lock.json` as the canonical requested range `[x, x]`. Commit 2 uses those exact constraints for both validated BepInEx packages; the bridge test first rejected the prior open-ended locks, then passed after regeneration with locked restore enabled.
 - The local Windows host has only the .NET 9 SDK, while `bridge/global.json` pins .NET 6. The existing Windows CI job installs .NET 6 before its locked bridge test; that clean-Windows proof remains for the first push of this commit.
 - Sol High review of Commit 4 required the root `app` lock entry to be part of release identity validation and the Tauri Cargo invocation to use `--locked`. The package command now isolates and clears version-scoped ignored build and artifact directories; the first native Windows package run remains required evidence.
+- Commit 7 review required two fail-closed metadata boundaries: `none` is only a no-tag sentinel when it is the sole CLI argument, and release intent is accepted only as the second argument; changelog extraction follows raw H2 boundaries so a malformed, stale, or duplicate section cannot be skipped between `Unreleased` and the target release.
 - No planned feature spec existed to promote. This ledger is the sole active source of feature intent.
 
 ## Completed work
@@ -646,6 +647,7 @@ One repository-local `create-pr` procedure and the existing pull-request templat
 | PR 1 | Commit 4 — Package the Windows bridge from source | Pending record | Completed | Passed — no retained findings after corrective review | Native Windows package and extraction evidence await the first push |
 | PR 1 | Commit 5 — Retain local release logs | Pending record | Completed | Passed — no retained findings | Packaged Windows log creation, rotation, and privacy inspection await the first push |
 | PR 1 | Commit 6 — Define the early alpha operating contract | Pending record | Completed | Passed — no retained findings after corrective review | Native Windows install, recovery, and live-FM acceptance await the first push |
+| PR 1 | Commit 7 — Prepare every pull request for release evaluation | Pending record | Completed | Passed — no retained findings after corrective review | Native Windows candidate and first-push release evidence await the first push |
 
 ## Final validation
 

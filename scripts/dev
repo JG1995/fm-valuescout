@@ -7,7 +7,7 @@ repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install|package-windows|dependency-automerge-policy} [args...]
+Usage: ./scripts/dev {test|check|check-app|check-fast|check-rust|bridge-test|format|secrets|smoke|mutate|bridge-install|package-windows|release-metadata|dependency-automerge-policy} [args...]
 
 Commands:
   test [args...]    Run vitest run (full suite or forwarded file patterns and flags).
@@ -26,6 +26,9 @@ Commands:
                     Steam FM26 path under /mnt/c (WSL).
   package-windows   Build the locked bridge and one unsigned Windows x64 NSIS installer locally.
                     Write the installer and SHA-256 sidecar under .release/windows/ without publishing.
+  release-metadata [latest-tag|none] [release-intent]
+                    Validate release identity and exact changelog notes without changing files.
+                    Pass both arguments to validate a release intent; `none` alone means no tag.
   dependency-automerge-policy
                     Evaluate trusted Dependabot metadata and emit the auto-merge decision.
 
@@ -242,6 +245,15 @@ run_dependency_automerge_policy() {
   (
     cd "$repo_root"
     node scripts/dependency-automerge-policy.mjs
+  )
+}
+
+run_release_metadata() {
+  DEV_COMMAND_LABEL=release-metadata
+  require_node_deps
+  (
+    cd "$repo_root"
+    node scripts/release-metadata.mjs "$@"
   )
 }
 
@@ -469,6 +481,9 @@ case "$command" in
     ;;
   package-windows)
     run_package_windows "$@"
+    ;;
+  release-metadata)
+    run_release_metadata "$@"
     ;;
   dependency-automerge-policy)
     run_dependency_automerge_policy "$@"

@@ -12,7 +12,7 @@ The Windows candidate command exists now:
 
 Run it on a native Windows host. It builds the locked bridge from the checked-out source, produces one unsigned Windows x64 NSIS installer and its SHA-256 sidecar under `.release/windows/<version>/`, and never publishes anything.
 
-The universal pull-request release-preparation procedure and verified-`main` publication automation are delivered by later commits in this active feature. Until they are implemented, there is no released installer and no automatic publication. Do not create a tag or GitHub release manually as a substitute.
+The universal pull-request release-preparation procedure and its read-only metadata validation exist now. Verified-`main` publication automation is delivered by a later commit in this active feature. Until then, there is no released installer and no automatic publication. Do not create a tag or GitHub release manually as a substitute.
 
 ## Candidate acceptance checklist
 
@@ -28,9 +28,9 @@ Complete this before merging the first release-bearing pull request and after an
 
 Do not merge the initial release-bearing pull request if a required installed-app or FM validation is missing. Its successful merge will eventually publish automatically.
 
-## Planned pull-request procedure
+## Pull-request procedure
 
-After the repository-local `create-pr` skill and release-metadata validator are delivered, every human-authored pull request uses the same repository template and records exactly one release intent:
+Every human-authored pull request uses the repository-local [`create-pr` skill](../../.agents/skills/create-pr/SKILL.md) and the repository template. Record exactly one release intent:
 
 | Intent | Effect |
 | --- | --- |
@@ -39,7 +39,9 @@ After the repository-local `create-pr` skill and release-metadata validator are 
 | `minor` | Prepare the next prerelease minor identity and a complete dated changelog section from all unreleased changes. |
 | `major` | Stop for a maintainer compatibility decision. |
 
-`none` is a normal answer for an ordinary pull request; it is not a different PR type. The procedure validates prepared release metadata before it pushes and opens the normal template-complete draft PR. It never merges, tags, or publishes.
+`none` is a normal answer for an ordinary pull request; it is not a different PR type. The first prerelease uses `minor` with no prior release tag and prepares `0.1.0-alpha.1`. A patch after an alpha release advances the alpha counter. A minor release advances the minor version and begins a new `alpha.1` sequence. The procedure validates prepared release metadata before it pushes and opens the normal template-complete draft PR. It never merges, tags, or publishes.
+
+Use `./scripts/dev release-metadata [latest-tag|none] [release-intent]` to validate version owners and the exact dated changelog section. For a pull-request intent, always pass both arguments; `none` by itself means that no prior tag exists. It is deterministic and read-only. The release workflow will call it without an intent after it discovers the latest tag.
 
 ## Planned verified-main publication
 
