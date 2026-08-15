@@ -48,11 +48,11 @@ The feature branch starts from `origin/main` at `cbfeaa53d0ce491475f0a4e64823e68
 ## Final publication
 
 ```yaml
-status: ready_for_publication
-pr_status: not_published
-merge_status: not_merged
-pr_ref: "Not published"
-merge_ref: "Not merged"
+status: merged; release_publication_pending
+pr_status: merged
+merge_status: merged
+pr_ref: "https://github.com/JG1995/fm-valuescout/pull/53"
+merge_ref: c2cb0be78eb0e3f849cea4d8bb61dfde3601f8ee
 branch: feature/squad-boost-progress
 base_branch: main
 base_ref: cbfeaa53d0ce491475f0a4e64823e68ce75b3b85
@@ -88,9 +88,9 @@ close_out_documentation_ref: Pending record
 
 ## Feature close-out
 
-**State:** Current. The exact implementation set passed validation and feature review. The PR is not published and the branch is not merged. The native Tauri/WebView and Repowise gaps remain recorded above. The parent workflow must record this documentation-only change before publication.
+**State:** Merged and release prepared. The exact implementation set passed validation and feature review, then merged as PR #53. Version `0.2.0` and its feature changelog are prepared on `feature/release-squad-boost-progress`; only verified-main publication remains. The native Tauri/WebView and Repowise gaps remain recorded above.
 
 ## Follow-up
 
-- Publish the branch only when it is intentionally handed to the GitHub publication workflow. Record a PR or merge ref only after repository evidence exists.
+- Publish `feature/release-squad-boost-progress` only when its `0.2.0` release preparation is intentionally handed to the GitHub publication workflow.
 - Run the assembled native Tauri/WebView channel path when a supported Windows environment is available.
