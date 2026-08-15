@@ -14,6 +14,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - A bundled bridge build, checksum, bounded local diagnostics, and a manual recovery path for the unsigned Windows installer.
 - Automatic prerelease publication only after a successful required `Check` push run on `main`, with the exact dated section as its GitHub release notes.
 
+### Fixed
+
+- Windows release validation now preserves the prepared changelog notes across line-ending conventions.
+
 ### Security
 
 - Local-only application data, with no accounts, cloud sync, telemetry, or automatic data upload.
