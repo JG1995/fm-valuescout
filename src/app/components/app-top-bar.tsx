@@ -128,6 +128,7 @@ export function AppTopBar() {
       <LoadDataOutcome
         error={stale ? null : load.error}
         result={stale ? undefined : load.data}
+        onDismiss={load.reset}
       />
     </header>
   );

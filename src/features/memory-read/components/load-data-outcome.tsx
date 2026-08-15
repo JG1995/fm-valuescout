@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
-import { CircleAlert, CircleCheck, TriangleAlert } from "lucide-react";
+import { CircleAlert, CircleCheck, TriangleAlert, X } from "lucide-react";
+import { Button } from "@/components/ui/button/button";
 import { cn } from "@/utils/cn";
 import { formatCount, formatMissable } from "@/utils/format";
 import type { LoadDataResult } from "../types/load-data";
@@ -23,6 +24,7 @@ type LoadDataOutcomeProps = {
   error: Error | null;
   /** Omitted when the load targeted a save the user has since switched away from. */
   result?: LoadDataResult;
+  onDismiss: () => void;
 };
 
 type Banner = {
@@ -95,7 +97,7 @@ export function LoadDataOutcome(props: LoadDataOutcomeProps) {
       {banner ? (
         <div
           className={cn(
-            "flex items-start gap-2 border-t px-4 py-2 text-body-sm",
+            "flex items-center gap-2 border-t px-4 py-2 text-body-sm",
             banner.tone,
           )}
         >
@@ -103,14 +105,22 @@ export function LoadDataOutcome(props: LoadDataOutcomeProps) {
             aria-hidden="true"
             size={16}
             strokeWidth={1.5}
-            className="mt-0.5 shrink-0"
+            className="shrink-0"
           />
-          <p>
+          <p className="min-w-0 flex-1">
             {banner.title ? (
               <span className="text-label-lg">{banner.title}. </span>
             ) : null}
             {banner.body}
           </p>
+          <Button
+            size="icon"
+            icon={X}
+            variant="ghost"
+            aria-label="Dismiss Load Data outcome"
+            className="-my-1 shrink-0"
+            onClick={props.onDismiss}
+          />
         </div>
       ) : null}
     </div>
