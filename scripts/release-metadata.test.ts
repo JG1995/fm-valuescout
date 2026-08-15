@@ -77,6 +77,20 @@ describe("release metadata", () => {
     });
   });
 
+  it("normalizes CRLF changelog notes for cross-platform publication", () => {
+    const rootDir = createFixture({
+      "CHANGELOG.md": `# Changelog
+
+## [Unreleased]
+
+${initialSection}`.replaceAll("\n", "\r\n"),
+    });
+
+    expect(readReleaseMetadata(rootDir, null, "minor").releaseNotes).toBe(
+      initialSection,
+    );
+  });
+
   it("orders alpha prereleases and calculates patch and minor identities", () => {
     expect(compareSemver("0.1.0-alpha.2", "0.1.0-alpha.1")).toBeGreaterThan(0);
     expect(calculateExpectedVersion("0.1.0-alpha.1", "patch")).toBe(

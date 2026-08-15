@@ -262,7 +262,7 @@ export function extractDatedSection(changelog, version) {
 
   const end = headings[unreleasedIndex + 2]?.index ?? changelog.length;
 
-  return changelog.slice(match.index, end).trimEnd();
+  return changelog.slice(match.index, end).trimEnd().replace(/\r\n?/g, "\n");
 }
 
 function normalizeLatestTag(latestTag) {
