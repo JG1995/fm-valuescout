@@ -12,9 +12,9 @@ function parseStableSemver(version) {
   }
 
   return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
+    major: BigInt(match[1]),
+    minor: BigInt(match[2]),
+    patch: BigInt(match[3]),
   };
 }
 
@@ -37,11 +37,19 @@ function isEligibleDependency(dependency, expectedEcosystem, expectedBaseRef) {
   const previous = parseStableSemver(dependency.prevVersion);
   const next = parseStableSemver(dependency.newVersion);
 
+  if (previous === null || next === null) {
+    return false;
+  }
+
+  // Cargo treats the leftmost non-zero component as its compatibility boundary.
+  const hasCompatiblePatchLine =
+    previous.major >= 1n ||
+    (expectedEcosystem === "cargo" &&
+      previous.major === 0n &&
+      previous.minor > 0n);
+
   return (
-    previous !== null &&
-    next !== null &&
-    previous.major >= 1 &&
-    next.major >= 1 &&
+    hasCompatiblePatchLine &&
     previous.major === next.major &&
     previous.minor === next.minor &&
     next.patch > previous.patch

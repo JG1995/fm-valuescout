@@ -32,6 +32,20 @@ function evaluate(overrides: Record<string, unknown> = {}) {
   return evaluateDependencyAutomergePolicy({ ...eligibleInput, ...overrides });
 }
 
+function cargoDependency(
+  dependencyName: string,
+  prevVersion: string,
+  newVersion: string,
+) {
+  return {
+    ...dependency,
+    dependencyName,
+    packageEcosystem: "cargo",
+    prevVersion,
+    newVersion,
+  };
+}
+
 describe("evaluateDependencyAutomergePolicy", () => {
   it("accepts stable patch-only pnpm and Cargo updates", () => {
     expect(evaluate()).toEqual({ eligible: true, reason: "eligible" });
@@ -45,14 +59,63 @@ describe("evaluateDependencyAutomergePolicy", () => {
     ).toEqual({ eligible: true, reason: "eligible" });
   });
 
+  it("accepts grouped Cargo patches on compatible zero-major lines", () => {
+    expect(
+      evaluate({
+        packageEcosystem: "cargo",
+        updatedDependenciesJson: JSON.stringify([
+          cargoDependency("camino", "1.2.4", "1.2.5"),
+          cargoDependency("displaydoc", "0.2.6", "0.2.7"),
+          cargoDependency("tao-macros", "0.1.3", "0.1.4"),
+          cargoDependency(
+            "toml_parser",
+            "1.1.2+spec-1.1.0",
+            "1.1.3+spec-1.1.0",
+          ),
+        ]),
+      }),
+    ).toEqual({ eligible: true, reason: "eligible" });
+  });
+
   it.each([
     ["minor", { updateType: "version-update:semver-minor" }],
     ["major", { updateType: "version-update:semver-major" }],
     [
-      "pre-1.0.0",
+      "pre-1.0.0 pnpm dependency",
       {
         updatedDependenciesJson: JSON.stringify([
           { ...dependency, prevVersion: "0.9.0", newVersion: "0.9.1" },
+        ]),
+      },
+    ],
+    [
+      "Cargo 0.0 patch",
+      {
+        packageEcosystem: "cargo",
+        updatedDependenciesJson: JSON.stringify([
+          cargoDependency("zerocopy", "0.0.3", "0.0.4"),
+        ]),
+      },
+    ],
+    [
+      "Cargo zero-major minor change disguised as a patch",
+      {
+        packageEcosystem: "cargo",
+        updatedDependenciesJson: JSON.stringify([
+          cargoDependency("tao-macros", "0.1.3", "0.2.0"),
+        ]),
+      },
+    ],
+    [
+      "Cargo oversized minor change disguised as a patch",
+      {
+        packageEcosystem: "cargo",
+        updatedDependenciesJson: JSON.stringify([
+          cargoDependency(
+            "tao-macros",
+            "0.9007199254740992.1",
+            "0.9007199254740993.2",
+          ),
         ]),
       },
     ],

@@ -84,5 +84,5 @@ Confirm these manually in GitHub before the first release-bearing merge:
 - Repository auto-merge, Dependabot alerts, Dependabot security updates, and private vulnerability reporting are enabled.
 - The maintainer watches repository security alerts.
 - Required `check` is strict and up to date; direct pushes, force pushes, and branch deletion remain restricted.
-- Only stable pnpm/Cargo patch Dependabot pull requests aged at least 14 days can receive auto-merge. Actions and NuGet routine updates remain disabled.
+- Only stable pnpm patches and Cargo patches within a compatible release line (`>=1.0.0`, or `0.y.z` where `y > 0`) can receive auto-merge after aging at least 14 days. Cargo `0.0.z`, Actions, and NuGet routine updates remain disabled.
 - The release path has no signing secret, updater token, or unreviewed write permission outside its final publication job.
