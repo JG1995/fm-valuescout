@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -108,7 +108,7 @@ One confirmed squad action captures its frozen cohort in Rust, sends `0 / total`
 
 ### PR 1 — Add squad boost progress feedback
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -140,7 +140,9 @@ One confirmed squad action captures its frozen cohort in Rust, sends `0 / total`
 
 #### Commit 1 — Stream squad boost progress
 
-**Status:** Active
+**Status:** Completed
+
+**Git ref:** `b656428` (`feat(squad): stream boost progress`)
 
 **Provisional commit:** `feat(squad): stream boost progress`
 
@@ -244,7 +246,9 @@ One confirmed squad action captures its frozen cohort in Rust, sends `0 / total`
 
 #### Commit 2 — Stabilize squad boost feedback
 
-**Status:** Pending
+**Status:** Completed
+
+**Git ref:** Pending checkpoint hash
 
 **Provisional commit:** `feat(squad): stabilize boost feedback`
 
@@ -344,19 +348,19 @@ One confirmed squad action captures its frozen cohort in Rust, sends `0 / total`
 
 **PR:** PR 1 — Add squad boost progress feedback
 
-**Commit:** Commit 1 — Stream squad boost progress
+**Commit:** Implementation complete; publication boundary reached
 
 ### RED proof
 
-Add a focused Rust progress collector assertion that expects `0 / total` and exact monotonic counter snapshots across updated, skipped, failed, and recovery-stop paths. Add a Planner route test that keeps the mocked command pending, delivers channel payloads, and expects the confirmation Modal to display the changing processed count. The current implementation returns only one final DTO and cannot satisfy either proof.
+Commit 2's focused Planner route assertions cover one shared latest-action status, exact normal and recovery copy, stable action placement after feedback, focus fallback when recovery disables both actions, Modal-only errors before dismissal, and current-snapshot replacement cleanup. The browser smoke proof compares action bounds before and after final feedback.
 
 ### Expected outcome
 
-Both squad commands expose the same typed, best-effort per-invocation progress contract, and both confirmation Modals visibly advance through the Rust-derived cohort while all existing mutation and recovery tests remain green.
+Both squad commands retain the Commit 1 progress contract while final feedback lives in one reserved Squad overview region that reports only the latest current-context action without moving the action header.
 
 ### Explicit exclusions
 
-Do not move final outcome feedback, change its copy, modify Load Data, touch the bridge or database, or begin Commit 2 layout work.
+Do not change progress transport or counting, modify Load Data, touch the bridge or database, or change shared `Panel`/`Modal` primitives.
 
 ## Discoveries and replanning
 
@@ -364,18 +368,22 @@ Do not move final outcome feedback, change its copy, modify Load Data, touch the
 - 2026-08-15: Load Data progress was removed from JAY-12 because the current request crosses the separate memory-reader/bridge execution boundary. The feature is limited to the already sequential squad boost loop.
 - 2026-08-15: JAY-13 became a child of JAY-12 and remains in the same PR because both issues share the same action, mutation, feedback, and validation surfaces.
 - 2026-08-15: Official Tauri 2 documentation confirms a command-scoped typed Channel is the native progressive-payload mechanism; no dependency or global event architecture is needed.
+- 2026-08-15: The first checkpoint was moved to `feature/squad-boost-progress` from `origin/main` to match the delivery plan; the unrelated `.wiki/TODO.md` edit remains outside the feature commits.
+- 2026-08-15: Commit 1 review required the frontend IPC fixtures to keep streamed progress and final result counters on the same two-player cohort; both pending action mocks now assert the aligned terminal payload.
+- 2026-08-15: Commit 2 review accepted the shared feedback slot, latest-action/context guards, Modal error boundary, recovery focus fallback, stable-layout browser proof, and current validation evidence.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | None | Pending record | Planning only | Not run | None |
+| PR 1 | Commit 1 — Stream squad boost progress | `b656428` | Typed Rust channel progress, frontend Modal progress, route/mocked IPC coverage, and current-state docs | Sol Medium re-review: Accept; focused route suite 71/71; repository check and smoke pass | Delivery branch corrected before commit; no scope deviation |
+| PR 1 | Commit 2 — Stabilize squad boost feedback | Pending checkpoint hash | Shared latest-action feedback slot, compact authoritative summaries, Modal error boundary, recovery focus fallback, snapshot cleanup, and stable-layout smoke proof | Fresh Sol Medium review: Accept; focused route suite 74/74; repository check and smoke pass | None |
 
 ## Final validation
 
-1. `./scripts/dev test` — full frontend suite passes, including both squad actions, progress, final feedback, recovery, focus, and snapshot replacement.
-2. `./scripts/dev check` — Biome verify, TypeScript, secretlint, Rust format/lint/tests, and other configured gate checks pass.
-3. `./scripts/dev smoke` — the browser suite proves intermediate progress, completion, one shared outcome region, and stable supported-desktop action layout.
+1. `./scripts/dev test src/app/routes/planner.test.tsx` — 74 focused Planner tests pass, including both squad actions, progress, final feedback, recovery, focus, errors, and snapshot replacement.
+2. `./scripts/dev check` — Biome verify, TypeScript, secretlint, Rust format/lint/tests, and other configured gate checks pass; 396 Rust tests passed and 2 remained ignored.
+3. `./scripts/dev smoke` — all 35 browser tests pass, including intermediate progress, completion, one shared outcome region, and stable supported-desktop action layout.
 4. Confirm no files under `bridge/`, no migrations, no version owners, and no Load Data execution files changed.
 5. Run the required fresh feature-complete review, resolve delegated findings, and complete documentation reconciliation before marking the PR ready for publication.
 

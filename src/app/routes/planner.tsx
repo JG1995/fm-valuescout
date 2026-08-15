@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { DatabaseZap, UsersRound } from "lucide-react";
-import { Suspense } from "react";
+import { Suspense, useRef, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
@@ -34,7 +34,9 @@ import { boostSquadWonderkidMentality } from "@/features/squad/api/boost-squad-w
 import { squadPlayersQueryOptions } from "@/features/squad/api/squad-players-query-options";
 import { SquadOverviewPanel } from "@/features/squad/components/squad-overview-panel";
 import {
+  SquadBoostOutcome,
   SquadCurrentAbilityBoost,
+  type SquadPlayerBoostAction,
   SquadWonderkidMentalityBoost,
 } from "@/features/squad/components/squad-player-boost";
 import type { SquadPlayerBoostProgress } from "@/features/squad/types/squad-player-boost";
@@ -105,6 +107,11 @@ export const Route = createFileRoute("/planner")({
 
 function PlannerPageContent() {
   const queryClient = useQueryClient();
+  const [latestSquadBoostAction, setLatestSquadBoostAction] =
+    useState<SquadPlayerBoostAction | null>(null);
+  const [openSquadBoostAction, setOpenSquadBoostAction] =
+    useState<SquadPlayerBoostAction | null>(null);
+  const squadBoostFeedbackRef = useRef<HTMLDivElement>(null);
   const { data: snapshot, isRefetchError: snapshotRefreshError } =
     useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: clubFamily } = useSuspenseQuery(plannerClubFamilyQueryOptions);
@@ -165,6 +172,30 @@ function PlannerPageContent() {
       squadCurrentAbilityBoost.data?.recoveryRequired === true) ||
     (squadWonderkidMentalityBoostContextIsCurrent &&
       squadWonderkidMentalityBoost.data?.recoveryRequired === true);
+  const latestSquadBoostContextIsCurrent =
+    latestSquadBoostAction === "currentAbility"
+      ? squadCurrentAbilityBoostContextIsCurrent
+      : latestSquadBoostAction === "wonderkidMentality"
+        ? squadWonderkidMentalityBoostContextIsCurrent
+        : false;
+  const squadBoostFeedback =
+    latestSquadBoostAction &&
+    latestSquadBoostContextIsCurrent &&
+    openSquadBoostAction === null ? (
+      <SquadBoostOutcome
+        action={latestSquadBoostAction}
+        result={
+          latestSquadBoostAction === "currentAbility"
+            ? squadCurrentAbilityBoost.data
+            : squadWonderkidMentalityBoost.data
+        }
+        error={
+          latestSquadBoostAction === "currentAbility"
+            ? (squadCurrentAbilityBoost.error ?? null)
+            : (squadWonderkidMentalityBoost.error ?? null)
+        }
+      />
+    ) : null;
   const onWorkspaceChange = (nextWorkspace: PlannerWorkspace) => {
     void navigate({
       search: (previous) => ({ ...previous, view: nextWorkspace }),
@@ -234,6 +265,8 @@ function PlannerPageContent() {
           >
             <SquadOverviewPanel
               key={`${squadSort}:${squadDir}`}
+              feedback={squadBoostFeedback}
+              feedbackRef={squadBoostFeedbackRef}
               actions={
                 <div className="flex flex-wrap justify-end gap-2">
                   <SquadCurrentAbilityBoost
@@ -243,14 +276,9 @@ function PlannerPageContent() {
                       squadCurrentAbilityBoost.isPending
                     }
                     disabled={squadBoostPending || squadBoostRecoveryRequired}
-                    result={
-                      squadCurrentAbilityBoostContextIsCurrent
-                        ? squadCurrentAbilityBoost.data
-                        : undefined
-                    }
                     error={
                       squadCurrentAbilityBoostContextIsCurrent
-                        ? squadCurrentAbilityBoost.error
+                        ? (squadCurrentAbilityBoost.error ?? null)
                         : null
                     }
                     onBoost={(onProgress) =>
@@ -259,7 +287,14 @@ function PlannerPageContent() {
                         onProgress,
                       })
                     }
-                    onOpenConfirmation={squadCurrentAbilityBoost.reset}
+                    onOpenConfirmation={() => {
+                      squadCurrentAbilityBoost.reset();
+                      setLatestSquadBoostAction("currentAbility");
+                    }}
+                    onConfirmationChange={(open) =>
+                      setOpenSquadBoostAction(open ? "currentAbility" : null)
+                    }
+                    fallbackFocusTo={() => squadBoostFeedbackRef.current}
                   />
                   <SquadWonderkidMentalityBoost
                     key={`wonderkid-mentality-${snapshot.id}`}
@@ -268,14 +303,9 @@ function PlannerPageContent() {
                       squadWonderkidMentalityBoost.isPending
                     }
                     disabled={squadBoostPending || squadBoostRecoveryRequired}
-                    result={
-                      squadWonderkidMentalityBoostContextIsCurrent
-                        ? squadWonderkidMentalityBoost.data
-                        : undefined
-                    }
                     error={
                       squadWonderkidMentalityBoostContextIsCurrent
-                        ? squadWonderkidMentalityBoost.error
+                        ? (squadWonderkidMentalityBoost.error ?? null)
                         : null
                     }
                     onBoost={(onProgress) =>
@@ -284,7 +314,16 @@ function PlannerPageContent() {
                         onProgress,
                       })
                     }
-                    onOpenConfirmation={squadWonderkidMentalityBoost.reset}
+                    onOpenConfirmation={() => {
+                      squadWonderkidMentalityBoost.reset();
+                      setLatestSquadBoostAction("wonderkidMentality");
+                    }}
+                    onConfirmationChange={(open) =>
+                      setOpenSquadBoostAction(
+                        open ? "wonderkidMentality" : null,
+                      )
+                    }
+                    fallbackFocusTo={() => squadBoostFeedbackRef.current}
                   />
                   <SquadCsvImportActions
                     activeSaveId={snapshot.saveId}

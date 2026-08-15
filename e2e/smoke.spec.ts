@@ -806,7 +806,16 @@ test.describe("application smoke", () => {
     await page.goto("/planner");
 
     const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Boost all CA" }).click();
+    const caButton = main.getByRole("button", { name: "Boost all CA" });
+    const wonderkidButton = main.getByRole("button", {
+      name: "Make all Wonderkids",
+    });
+    const caBefore = await caButton.boundingBox();
+    const wonderkidBefore = await wonderkidButton.boundingBox();
+    if (!caBefore || !wonderkidBefore) {
+      throw new Error("Expected Squad boost action bounds before submission.");
+    }
+    await caButton.click();
     const dialog = page.getByRole("dialog", { name: "Boost all CA?" });
     await expect(dialog).toContainText(
       "Players aged 20 or younger receive +5 CA.",
@@ -818,9 +827,16 @@ test.describe("application smoke", () => {
     await dialog.getByRole("button", { name: "Boost all CA" }).click();
 
     await expect(dialog).toContainText("1 of 2 players processed.");
-    await expect(main.getByRole("status")).toContainText(
-      "Updated 2 players. Skipped 0. Failed 0.",
-    );
+    await expect(
+      main.getByTestId("squad-boost-feedback").getByRole("status"),
+    ).toContainText("2 processed — 2 updated, 0 skipped, 0 failed.");
+    await expect(
+      main.getByTestId("squad-boost-feedback").getByRole("status"),
+    ).toHaveCount(1);
+    const caAfter = await caButton.boundingBox();
+    const wonderkidAfter = await wonderkidButton.boundingBox();
+    expect(caAfter).toEqual(caBefore);
+    expect(wonderkidAfter).toEqual(wonderkidBefore);
   });
 
   test("configured Squad confirms and reports a closed Wonderkid action", async ({
@@ -843,9 +859,9 @@ test.describe("application smoke", () => {
     );
     await dialog.getByRole("button", { name: "Make all Wonderkids" }).click();
 
-    await expect(main.getByRole("status")).toContainText(
-      "Updated 2 players. Skipped 0. Failed 0.",
-    );
+    await expect(
+      main.getByTestId("squad-boost-feedback").getByRole("status"),
+    ).toContainText("2 processed — 2 updated, 0 skipped, 0 failed.");
   });
 
   test("planner tactic editor saves a linked phase adjustment", async ({
