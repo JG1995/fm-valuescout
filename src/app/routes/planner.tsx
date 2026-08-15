@@ -37,6 +37,7 @@ import {
   SquadCurrentAbilityBoost,
   SquadWonderkidMentalityBoost,
 } from "@/features/squad/components/squad-player-boost";
+import type { SquadPlayerBoostProgress } from "@/features/squad/types/squad-player-boost";
 import type {
   SquadSortDir,
   SquadSortField,
@@ -69,6 +70,11 @@ function squadSortForSearch(search: PlannerSearch): {
       : DEFAULT_SQUAD_SORT_DIR;
   return { sort, dir };
 }
+
+type SquadBoostMutationVariables = {
+  snapshotId: number;
+  onProgress: (progress: SquadPlayerBoostProgress) => void;
+};
 
 export const Route = createFileRoute("/planner")({
   loaderDeps: ({ search }) => squadSortForSearch(search),
@@ -120,11 +126,13 @@ function PlannerPageContent() {
     ]);
   };
   const squadCurrentAbilityBoost = useMutation({
-    mutationFn: (_: { snapshotId: number }) => boostSquadCurrentAbility(),
+    mutationFn: ({ onProgress }: SquadBoostMutationVariables) =>
+      boostSquadCurrentAbility(onProgress),
     onSuccess: invalidateSquadBoostQueries,
   });
   const squadWonderkidMentalityBoost = useMutation({
-    mutationFn: (_: { snapshotId: number }) => boostSquadWonderkidMentality(),
+    mutationFn: ({ onProgress }: SquadBoostMutationVariables) =>
+      boostSquadWonderkidMentality(onProgress),
     onSuccess: invalidateSquadBoostQueries,
   });
   const isPlannerRefreshing = useIsFetching({ queryKey: plannerKeys.all }) > 0;
@@ -245,9 +253,10 @@ function PlannerPageContent() {
                         ? squadCurrentAbilityBoost.error
                         : null
                     }
-                    onBoost={() =>
+                    onBoost={(onProgress) =>
                       squadCurrentAbilityBoost.mutateAsync({
                         snapshotId: snapshot.id,
+                        onProgress,
                       })
                     }
                     onOpenConfirmation={squadCurrentAbilityBoost.reset}
@@ -269,9 +278,10 @@ function PlannerPageContent() {
                         ? squadWonderkidMentalityBoost.error
                         : null
                     }
-                    onBoost={() =>
+                    onBoost={(onProgress) =>
                       squadWonderkidMentalityBoost.mutateAsync({
                         snapshotId: snapshot.id,
+                        onProgress,
                       })
                     }
                     onOpenConfirmation={squadWonderkidMentalityBoost.reset}

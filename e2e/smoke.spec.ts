@@ -817,6 +817,7 @@ test.describe("application smoke", () => {
     await expect(dialog).toContainText("Players aged 29 or older are skipped.");
     await dialog.getByRole("button", { name: "Boost all CA" }).click();
 
+    await expect(dialog).toContainText("1 of 2 players processed.");
     await expect(main.getByRole("status")).toContainText(
       "Updated 2 players. Skipped 0. Failed 0.",
     );

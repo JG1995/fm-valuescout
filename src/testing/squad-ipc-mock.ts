@@ -2,7 +2,10 @@ import type {
   SquadPlayer,
   SquadPlayersPage,
 } from "@/features/squad/types/squad-player";
-import type { SquadPlayerBoostResult } from "@/features/squad/types/squad-player-boost";
+import type {
+  SquadPlayerBoostProgress,
+  SquadPlayerBoostResult,
+} from "@/features/squad/types/squad-player-boost";
 import type {
   SquadSortDir,
   SquadSortField,
@@ -27,21 +30,34 @@ let rejectedSecondPage = false;
 let squadCurrentAbilityBoostMode: SquadCurrentAbilityBoostIpcMockMode =
   "success";
 let squadCurrentAbilityBoostCalls: unknown[] = [];
+let lastSquadCurrentAbilityBoostProgress: SquadPlayerBoostProgress | null =
+  null;
 let pendingSquadCurrentAbilityBoost: {
+  args: unknown;
   promise: Promise<SquadPlayerBoostResult>;
   resolve: (result: SquadPlayerBoostResult) => void;
 } | null = null;
 let squadWonderkidMentalityBoostMode: SquadWonderkidMentalityBoostIpcMockMode =
   "success";
 let squadWonderkidMentalityBoostCalls: unknown[] = [];
+let lastSquadWonderkidMentalityBoostProgress: SquadPlayerBoostProgress | null =
+  null;
 let pendingSquadWonderkidMentalityBoost: {
+  args: unknown;
   promise: Promise<SquadPlayerBoostResult>;
   resolve: (result: SquadPlayerBoostResult) => void;
 } | null = null;
 
+type SquadBoostIpcArgs = {
+  onProgress?: {
+    onmessage?: (progress: SquadPlayerBoostProgress) => void;
+  };
+};
+
 export type SquadCurrentAbilityBoostIpcMockMode =
   | "success"
   | "pending"
+  | "pendingEmpty"
   | "recoveryRequired"
   | "error";
 
@@ -53,6 +69,7 @@ export type SquadPlayersPageIpcMockMode =
 export type SquadWonderkidMentalityBoostIpcMockMode =
   | "success"
   | "pending"
+  | "pendingEmpty"
   | "recoveryRequired"
   | "error";
 
@@ -69,9 +86,11 @@ export function resetSquadPlayersOverride() {
   rejectedSecondPage = false;
   squadCurrentAbilityBoostMode = "success";
   squadCurrentAbilityBoostCalls = [];
+  lastSquadCurrentAbilityBoostProgress = null;
   pendingSquadCurrentAbilityBoost = null;
   squadWonderkidMentalityBoostMode = "success";
   squadWonderkidMentalityBoostCalls = [];
+  lastSquadWonderkidMentalityBoostProgress = null;
   pendingSquadWonderkidMentalityBoost = null;
 }
 
@@ -105,7 +124,7 @@ export function setSquadCurrentAbilityBoostIpcMockMode(
   mode: SquadCurrentAbilityBoostIpcMockMode,
 ) {
   squadCurrentAbilityBoostMode = mode;
-  if (mode !== "pending") {
+  if (mode !== "pending" && mode !== "pendingEmpty") {
     pendingSquadCurrentAbilityBoost = null;
   }
 }
@@ -114,17 +133,50 @@ export function getSquadCurrentAbilityBoostIpcMockCalls() {
   return squadCurrentAbilityBoostCalls;
 }
 
+export function getLastSquadCurrentAbilityBoostProgress() {
+  return lastSquadCurrentAbilityBoostProgress;
+}
+
 export function resolvePendingSquadCurrentAbilityBoostIpcMock(
-  result = squadCurrentAbilityBoostResult(),
+  result?: SquadPlayerBoostResult,
 ) {
-  pendingSquadCurrentAbilityBoost?.resolve(result);
+  const pending = pendingSquadCurrentAbilityBoost;
+  if (!pending) {
+    return;
+  }
+  const total = squadCurrentAbilityBoostMode === "pendingEmpty" ? 0 : 2;
+  sendSquadCurrentAbilityBoostProgress(pending.args, {
+    processed: total,
+    total,
+    updated: total,
+    skipped: 0,
+    failed: 0,
+  });
+  pending.resolve(result ?? squadCurrentAbilityBoostResult(total));
   pendingSquadCurrentAbilityBoost = null;
 }
 
-function squadCurrentAbilityBoostResult(): SquadPlayerBoostResult {
+export function sendPendingSquadCurrentAbilityBoostProgressIpcMock(
+  progress: SquadPlayerBoostProgress = {
+    processed: 1,
+    total: 2,
+    updated: 1,
+    skipped: 0,
+    failed: 0,
+  },
+) {
+  if (pendingSquadCurrentAbilityBoost) {
+    sendSquadCurrentAbilityBoostProgress(
+      pendingSquadCurrentAbilityBoost.args,
+      progress,
+    );
+  }
+}
+
+function squadCurrentAbilityBoostResult(total = 2): SquadPlayerBoostResult {
   return {
-    updated: 2,
-    skipped: 1,
+    updated: total,
+    skipped: 0,
     failed: 0,
     recoveryRequired: false,
     recoveryMessage: null,
@@ -136,13 +188,24 @@ export function resolveSquadCurrentAbilityBoostIpcMock(
 ): Promise<SquadPlayerBoostResult> {
   squadCurrentAbilityBoostCalls = [...squadCurrentAbilityBoostCalls, args];
 
-  if (squadCurrentAbilityBoostMode === "pending") {
+  if (
+    squadCurrentAbilityBoostMode === "pending" ||
+    squadCurrentAbilityBoostMode === "pendingEmpty"
+  ) {
+    const total = squadCurrentAbilityBoostMode === "pendingEmpty" ? 0 : 2;
     if (!pendingSquadCurrentAbilityBoost) {
       let resolve!: (result: SquadPlayerBoostResult) => void;
       const promise = new Promise<SquadPlayerBoostResult>((next) => {
         resolve = next;
       });
-      pendingSquadCurrentAbilityBoost = { promise, resolve };
+      pendingSquadCurrentAbilityBoost = { args, promise, resolve };
+      sendSquadCurrentAbilityBoostProgress(args, {
+        processed: 0,
+        total,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+      });
     }
     return pendingSquadCurrentAbilityBoost.promise;
   }
@@ -173,7 +236,7 @@ export function setSquadWonderkidMentalityBoostIpcMockMode(
   mode: SquadWonderkidMentalityBoostIpcMockMode,
 ) {
   squadWonderkidMentalityBoostMode = mode;
-  if (mode !== "pending") {
+  if (mode !== "pending" && mode !== "pendingEmpty") {
     pendingSquadWonderkidMentalityBoost = null;
   }
 }
@@ -182,17 +245,50 @@ export function getSquadWonderkidMentalityBoostIpcMockCalls() {
   return squadWonderkidMentalityBoostCalls;
 }
 
+export function getLastSquadWonderkidMentalityBoostProgress() {
+  return lastSquadWonderkidMentalityBoostProgress;
+}
+
 export function resolvePendingSquadWonderkidMentalityBoostIpcMock(
-  result = squadWonderkidMentalityBoostResult(),
+  result?: SquadPlayerBoostResult,
 ) {
-  pendingSquadWonderkidMentalityBoost?.resolve(result);
+  const pending = pendingSquadWonderkidMentalityBoost;
+  if (!pending) {
+    return;
+  }
+  const total = squadWonderkidMentalityBoostMode === "pendingEmpty" ? 0 : 2;
+  sendSquadWonderkidMentalityBoostProgress(pending.args, {
+    processed: total,
+    total,
+    updated: total,
+    skipped: 0,
+    failed: 0,
+  });
+  pending.resolve(result ?? squadWonderkidMentalityBoostResult(total));
   pendingSquadWonderkidMentalityBoost = null;
 }
 
-function squadWonderkidMentalityBoostResult(): SquadPlayerBoostResult {
+export function sendPendingSquadWonderkidMentalityBoostProgressIpcMock(
+  progress: SquadPlayerBoostProgress = {
+    processed: 1,
+    total: 2,
+    updated: 1,
+    skipped: 0,
+    failed: 0,
+  },
+) {
+  if (pendingSquadWonderkidMentalityBoost) {
+    sendSquadWonderkidMentalityBoostProgress(
+      pendingSquadWonderkidMentalityBoost.args,
+      progress,
+    );
+  }
+}
+
+function squadWonderkidMentalityBoostResult(total = 2): SquadPlayerBoostResult {
   return {
-    updated: 2,
-    skipped: 1,
+    updated: total,
+    skipped: 0,
     failed: 0,
     recoveryRequired: false,
     recoveryMessage: null,
@@ -207,13 +303,24 @@ export function resolveSquadWonderkidMentalityBoostIpcMock(
     args,
   ];
 
-  if (squadWonderkidMentalityBoostMode === "pending") {
+  if (
+    squadWonderkidMentalityBoostMode === "pending" ||
+    squadWonderkidMentalityBoostMode === "pendingEmpty"
+  ) {
+    const total = squadWonderkidMentalityBoostMode === "pendingEmpty" ? 0 : 2;
     if (!pendingSquadWonderkidMentalityBoost) {
       let resolve!: (result: SquadPlayerBoostResult) => void;
       const promise = new Promise<SquadPlayerBoostResult>((next) => {
         resolve = next;
       });
-      pendingSquadWonderkidMentalityBoost = { promise, resolve };
+      pendingSquadWonderkidMentalityBoost = { args, promise, resolve };
+      sendSquadWonderkidMentalityBoostProgress(args, {
+        processed: 0,
+        total,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+      });
     }
     return pendingSquadWonderkidMentalityBoost.promise;
   }
@@ -238,6 +345,32 @@ export function resolveSquadWonderkidMentalityBoostIpcMock(
   }
 
   return Promise.resolve(squadWonderkidMentalityBoostResult());
+}
+
+function sendSquadBoostProgress(
+  args: unknown,
+  progress: SquadPlayerBoostProgress,
+) {
+  if (typeof args !== "object" || args === null) {
+    return;
+  }
+  (args as SquadBoostIpcArgs).onProgress?.onmessage?.(progress);
+}
+
+function sendSquadCurrentAbilityBoostProgress(
+  args: unknown,
+  progress: SquadPlayerBoostProgress,
+) {
+  lastSquadCurrentAbilityBoostProgress = progress;
+  sendSquadBoostProgress(args, progress);
+}
+
+function sendSquadWonderkidMentalityBoostProgress(
+  args: unknown,
+  progress: SquadPlayerBoostProgress,
+) {
+  lastSquadWonderkidMentalityBoostProgress = progress;
+  sendSquadBoostProgress(args, progress);
 }
 
 function parsePaging(args: unknown): {

@@ -2,7 +2,10 @@ import { Sparkles, Zap } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
-import type { SquadPlayerBoostResult } from "../types/squad-player-boost";
+import type {
+  SquadPlayerBoostProgress,
+  SquadPlayerBoostResult,
+} from "../types/squad-player-boost";
 
 type SquadPlayerBoostAction = "currentAbility" | "wonderkidMentality";
 
@@ -12,7 +15,9 @@ type SquadPlayerBoostProps = {
   disabled: boolean;
   result: SquadPlayerBoostResult | undefined;
   error: Error | null;
-  onBoost: () => Promise<unknown>;
+  onBoost: (
+    onProgress: (progress: SquadPlayerBoostProgress) => void,
+  ) => Promise<unknown>;
   onOpenConfirmation: () => void;
 };
 
@@ -61,6 +66,24 @@ function BoostOutcome({
   return null;
 }
 
+function BoostProgress({ progress }: { progress: SquadPlayerBoostProgress }) {
+  return (
+    <div className="space-y-2 text-body-sm text-on-surface-variant">
+      {progress.total > 0 ? (
+        <progress
+          aria-label="Squad boost progress"
+          className="h-2 w-full accent-primary"
+          max={progress.total}
+          value={progress.processed}
+        />
+      ) : null}
+      <p>
+        {progress.processed} of {progress.total} players processed.
+      </p>
+    </div>
+  );
+}
+
 export function SquadCurrentAbilityBoost(props: SquadCurrentAbilityBoostProps) {
   return <SquadPlayerBoost action="currentAbility" {...props} />;
 }
@@ -81,6 +104,9 @@ function SquadPlayerBoost({
   onOpenConfirmation,
 }: SquadPlayerBoostProps) {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [progress, setProgress] = useState<SquadPlayerBoostProgress | null>(
+    null,
+  );
   const outcomeRef = useRef<HTMLDivElement>(null);
   const isCurrentAbility = action === "currentAbility";
   const actionLabel = isCurrentAbility ? "Boost all CA" : "Make all Wonderkids";
@@ -90,9 +116,9 @@ function SquadPlayerBoost({
     : "Make all Wonderkids?";
 
   const confirm = () => {
-    void onBoost().then(
+    void onBoost(setProgress).then(
       () => setConfirmationOpen(false),
-      () => undefined,
+      () => setProgress(null),
     );
   };
 
@@ -107,6 +133,7 @@ function SquadPlayerBoost({
           loadingLabel={loadingLabel}
           onClick={() => {
             onOpenConfirmation();
+            setProgress(null);
             setConfirmationOpen(true);
           }}
         >
@@ -179,6 +206,17 @@ function SquadPlayerBoost({
           <p className="text-body-sm text-on-surface-variant">
             Changes already applied cannot be undone.
           </p>
+          {pending ? (
+            <div aria-live="polite">
+              {progress ? (
+                <BoostProgress progress={progress} />
+              ) : (
+                <p className="text-body-sm text-on-surface-variant">
+                  Preparing squad…
+                </p>
+              )}
+            </div>
+          ) : null}
           <div aria-live="polite">
             <BoostOutcome result={undefined} error={error} action={action} />
           </div>
