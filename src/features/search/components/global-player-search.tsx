@@ -79,7 +79,7 @@ export function GlobalPlayerSearch() {
     void navigate({
       to: "/players/$uid",
       params: { uid: String(uid) },
-      search: { tab: "outfield" },
+      search: {},
     });
   };
 

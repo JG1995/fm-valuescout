@@ -437,6 +437,7 @@ Implementation is complete for PR 1. Feature close-out has not run.
 - Inspection found that both existing development actions indirectly disclose concealed data: Boost CA reveals PA caps/eligibility and Wonderkid Mentality reveals personality values/eligibility. The plan therefore omits both actions while concealed.
 - The implementation registry is already v22 (`drop_demo_value_table`) although current architecture prose says v21. The feature uses v23 and the documentation reconciliation must correct the complete migration description instead of preserving the stale number.
 - Manual validation refined goalkeeper presentation: GK familiarity of 15 or higher now makes Goalkeeping the first and default tab, moves First Touch, Passing, and Technique into that alphabetized group, and keeps the remaining attributes under Outfield.
+- Combined review found that Global Search, Search results, and Squad still injected the former Outfield default into ordinary profile navigation. Those entry points now leave the tab unset so the loaded player selects the default; user-selected canonical tabs remain authoritative.
 
 ## Completed work
 

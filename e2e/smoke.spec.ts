@@ -280,7 +280,7 @@ test.describe("application smoke", () => {
     await expect(main.getByTestId("squad-overview-scroller")).toBeVisible();
     await expect(
       table.getByRole("link", { name: "Alex Scout" }),
-    ).toHaveAttribute("href", "/players/42?tab=outfield");
+    ).toHaveAttribute("href", "/players/42");
     await table.getByRole("button", { name: "Name", exact: true }).click();
     await expect(
       table.getByRole("columnheader", { name: "Name" }),
@@ -293,7 +293,7 @@ test.describe("application smoke", () => {
       .first()
       .getByText("Barcelona")
       .click();
-    await expect(page).toHaveURL(/\/players\/42\?tab=outfield$/);
+    await expect(page).toHaveURL(/\/players\/42$/);
   });
 
   test("configured Squad keeps its table inside desktop viewports", async ({
