@@ -19,7 +19,9 @@ import { PlayerAttributesPanel } from "@/features/player-profile/components/play
 import { PlayerDevelopmentActions } from "@/features/player-profile/components/player-development-boosts-panel";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
 import { PlayerRolesPanel } from "@/features/player-profile/components/player-roles-panel";
+import { isGoalkeeper } from "@/features/player-profile/utils/position-families";
 import {
+  defaultProfileTab,
   type ProfileTab,
   parseProfileTab,
 } from "@/features/player-profile/utils/profile-tab";
@@ -30,7 +32,7 @@ import { useLayoutStore } from "@/stores/use-layout-store";
 import { cn } from "@/utils/cn";
 
 export type PlayerProfileSearch = {
-  tab: ProfileTab;
+  tab?: ProfileTab;
 };
 
 type PlayerBoostAction = "currentAbility" | "wonderkidMentality";
@@ -166,7 +168,7 @@ function PlayerProfileContent({
   onTabChange,
 }: {
   uid: number;
-  tab: ProfileTab;
+  tab?: ProfileTab;
   onTabChange: (tab: ProfileTab) => void;
 }) {
   const railExpanded = useLayoutStore((state) => state.railExpanded);
@@ -217,6 +219,8 @@ function PlayerProfileContent({
     return <PlayerNotFound />;
   }
 
+  const activeTab = tab ?? defaultProfileTab(isGoalkeeper(player.positions));
+
   return (
     <div className="flex max-h-[calc(100dvh-var(--spacing-header-height)-2rem)] min-h-[calc(100dvh-var(--spacing-header-height)-2rem)] flex-col gap-gutter overflow-hidden">
       <PlayerOverviewPanel
@@ -263,7 +267,7 @@ function PlayerProfileContent({
       <div className={profileWorkspaceClassName(railExpanded)}>
         <PlayerAttributesPanel
           player={player}
-          tab={tab}
+          tab={activeTab}
           onTabChange={onTabChange}
           hiddenInformationRevealed={player.hiddenInformationRevealed}
         />

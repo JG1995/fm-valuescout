@@ -30,6 +30,12 @@ const DEFAULT_ROLE_SORT: RoleSort = {
 
 export const PLAYABLE_POSITION_FAMILIARITY = 15;
 
+export function isGoalkeeper(
+  positions: Readonly<Record<string, number>>,
+): boolean {
+  return positions.GK >= PLAYABLE_POSITION_FAMILIARITY;
+}
+
 /** Pick the player's strongest recorded position, then fall back to best-role fit. */
 export function defaultProfilePosition(
   positions: Readonly<Record<string, number>>,

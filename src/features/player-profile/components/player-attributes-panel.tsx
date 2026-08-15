@@ -7,12 +7,15 @@ import {
   attributeRows,
   attributeTierLabel,
   attributeValueTier,
+  GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS,
+  GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP,
   GOALKEEPING_ATTRIBUTE_GROUP,
   HIDDEN_ATTRIBUTE_KEYS,
   OUTFIELD_ATTRIBUTE_GROUPS,
   PERSONALITY_ATTRIBUTE_KEYS,
 } from "../utils/attribute-groups";
-import { PROFILE_TABS, type ProfileTab } from "../utils/profile-tab";
+import { isGoalkeeper } from "../utils/position-families";
+import { type ProfileTab, profileTabsForPlayer } from "../utils/profile-tab";
 import { PlayerProfileTabs, profileTabPanelProps } from "./player-profile-tabs";
 
 type AttributeSectionProps = {
@@ -134,6 +137,8 @@ export function PlayerAttributesPanel({
   onTabChange,
   hiddenInformationRevealed,
 }: PlayerAttributesPanelProps) {
+  const goalkeeper = isGoalkeeper(player.positions);
+  const tabs = profileTabsForPlayer(goalkeeper);
   const currentOnly =
     !hiddenInformationRevealed || tab === "hidden" || tab === "personality";
 
@@ -149,10 +154,10 @@ export function PlayerAttributesPanel({
     >
       <div className="flex h-full min-h-0 flex-col gap-4">
         <div className="overflow-x-auto pb-0.5">
-          <PlayerProfileTabs tab={tab} onTabChange={onTabChange} />
+          <PlayerProfileTabs tab={tab} tabs={tabs} onTabChange={onTabChange} />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          {PROFILE_TABS.map((id) => (
+          {tabs.map((id) => (
             <div key={id} {...profileTabPanelProps(id, tab)}>
               {!hiddenInformationRevealed &&
               (id === "hidden" || id === "personality") ? (
@@ -164,7 +169,10 @@ export function PlayerAttributesPanel({
                 </p>
               ) : id === "outfield" ? (
                 <div className="grid gap-5 lg:grid-cols-3">
-                  {OUTFIELD_ATTRIBUTE_GROUPS.map((group) => (
+                  {(goalkeeper
+                    ? GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS
+                    : OUTFIELD_ATTRIBUTE_GROUPS
+                  ).map((group) => (
                     <AttributeSection
                       key={group.id}
                       group={group}
@@ -177,7 +185,9 @@ export function PlayerAttributesPanel({
                 <AttributeSection
                   group={
                     id === "goalkeeping"
-                      ? GOALKEEPING_ATTRIBUTE_GROUP
+                      ? goalkeeper
+                        ? GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP
+                        : GOALKEEPING_ATTRIBUTE_GROUP
                       : {
                           id,
                           title: id === "hidden" ? "Hidden" : "Personality",

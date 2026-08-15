@@ -3,6 +3,8 @@ import {
   attributeRows,
   attributeTierLabel,
   attributeValueTier,
+  GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS,
+  GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP,
   HIDDEN_ATTRIBUTE_KEYS,
   labelFromPascal,
   PERSONALITY_ATTRIBUTE_KEYS,
@@ -35,6 +37,31 @@ describe("attribute-groups", () => {
     expect(
       technical.subgroups?.flatMap((subgroup) => [...subgroup.keys]),
     ).toContain("PenaltyTaking");
+  });
+
+  it("moves goalkeeper ball-playing attributes into the alphabetical Goalkeeping group", () => {
+    expect(GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP.keys).toEqual([
+      "AerialReach",
+      "CommandOfArea",
+      "Communication",
+      "Eccentricity",
+      "FirstTouch",
+      "Handling",
+      "Kicking",
+      "OneOnOnes",
+      "Passing",
+      "Punching",
+      "Reflexes",
+      "RushingOut",
+      "Technique",
+      "Throwing",
+    ]);
+    const goalkeeperOutfieldKeys = GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS.flatMap(
+      (group) => [...group.keys],
+    );
+    expect(goalkeeperOutfieldKeys).not.toContain("FirstTouch");
+    expect(goalkeeperOutfieldKeys).not.toContain("Passing");
+    expect(goalkeeperOutfieldKeys).not.toContain("Technique");
   });
 
   it("keeps null and missing values as null so display can show an em dash", () => {

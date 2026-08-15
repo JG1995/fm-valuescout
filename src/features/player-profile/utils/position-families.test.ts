@@ -4,6 +4,7 @@ import {
   bestPotentialRoleScore,
   bestRoleScore,
   defaultProfilePosition,
+  isGoalkeeper,
   rolesForPhase,
   rolesForPlayablePositions,
   rolesForProfilePosition,
@@ -144,6 +145,12 @@ describe("profile position selection", () => {
 
   it("starts from the strongest recorded familiarity", () => {
     expect(defaultProfilePosition({ MC: 20, ST: 15 }, scores)).toBe("MC");
+  });
+
+  it("recognizes goalkeeper profiles at the playable familiarity threshold", () => {
+    expect(isGoalkeeper({ GK: 15 })).toBe(true);
+    expect(isGoalkeeper({ GK: 14 })).toBe(false);
+    expect(isGoalkeeper({ MC: 20 })).toBe(false);
   });
 
   it("falls back to the best role position when familiarity is unavailable", () => {

@@ -15,8 +15,8 @@ Deliver Linear issues JAY-5, JAY-8, and JAY-9 as one cohesive player-profile PR:
 - When hidden information is revealed, the profile shows PA, projected potential attributes, potential role scores, potential IP/OOP header summaries, Hidden values, Personality values, and the existing Boost CA and Wonderkid Mentality actions.
 - When hidden information is concealed, the profile still shows CA, current visible attributes, current role scores, and current IP/OOP header summaries. PA and projected/potential values are not rendered, Hidden and Personality tabs show a clear concealed state, and both development actions are absent because their previews, availability, and results disclose PA or personality data.
 - The concealment preference is a presentation choice, not an authorization boundary: Rust may still load the complete player record needed by existing domain operations, but concealed values must not enter the rendered DOM, accessible names, tooltips, status copy, or disabled-state explanations.
-- Attributes have four tabs: Outfield, Goalkeeping, Hidden, and Personality. Outfield displays Technical, Mental, and Physical columns together; the Technical column separates its Set Pieces values. Goalkeeping remains its own tab.
-- Legacy `tab=technical`, `tab=mental`, and `tab=physical` profile URLs normalize to Outfield. Missing or invalid tab values also default to Outfield.
+- Attributes have four tabs. Outfield players see Outfield, Goalkeeping, Hidden, and Personality and default to Outfield. Players with GK familiarity of 15 or higher see Goalkeeping, Outfield, Hidden, and Personality and default to Goalkeeping. For those goalkeeper profiles, First Touch, Passing, and Technique join the alphabetized Goalkeeping list and are omitted from the Outfield Technical column.
+- Legacy `tab=technical`, `tab=mental`, and `tab=physical` profile URLs normalize to Outfield. An explicit canonical tab wins; missing or invalid tab values use the player-sensitive default.
 - The header contains four fixed role summaries: Current IP, Current OOP, Potential IP, and Potential OOP. Each selects the highest non-null score from roles attached to a position with familiarity 15 or higher; equal scores keep catalog order.
 - When hidden information is concealed, the Potential IP and Potential OOP summary slots remain visible as concealed placeholders so the header does not reflow or imply missing data.
 - The profile remains usable by keyboard and at the supported 1280×800 and 1600×900 desktop sizes without clipped labels, overlapping controls, or nested page scrolling.
@@ -63,7 +63,7 @@ The profile route owns the mutation because it already composes all profile pane
 
 React treats concealment as a render boundary. The overview keeps four role-summary slots but supplies concealed placeholders for the potential pair; the attribute and role panels receive the preference and omit potential or raw hidden values; the route omits `PlayerDevelopmentActions` while concealed. The complete DTO remains internal because this is a user-controlled presentation mode, not a security boundary.
 
-The attribute layout remains data-driven. `attribute-groups.ts` separates general Technical and Set Pieces keys while retaining the existing Mental, Physical, Goalkeeping, Hidden, and Personality key lists. The Outfield panel renders three semantic sections in one responsive row; narrower layouts stack before labels or values become unreadable. The outer profile grid gives the attribute panel enough width for the three-column view while preserving the pitch and role table.
+The attribute layout remains data-driven. `attribute-groups.ts` separates general Technical and Set Pieces keys while retaining the existing Mental, Physical, Goalkeeping, Hidden, and Personality key lists. The Outfield panel renders three semantic sections in one responsive row; narrower layouts stack before labels or values become unreadable. A goalkeeper-specific presentation moves First Touch, Passing, and Technique into the alphabetized Goalkeeping group without duplicating them in Outfield. The outer profile grid gives the attribute panel enough width for the three-column view while preserving the pitch and role table.
 
 The four header summaries reuse the existing playable-position filter and score selectors after partitioning roles by catalog phase. No new score computation or Rust response shape is needed for JAY-9.
 
@@ -93,6 +93,7 @@ The four header summaries reuse the existing playable-position filter and score 
 - Omit both development actions when information is concealed. Merely redacting their numeric copy is insufficient because eligibility, cap, and success states reveal PA or personality facts.
 - Keep all four attribute tabs available. Hidden and Personality use an explicit concealed panel so the control remains discoverable and navigation geometry is stable.
 - Normalize legacy visible-group tab values to Outfield instead of treating existing URLs as invalid.
+- Use the existing playable-position threshold to identify goalkeeper profiles. Reorder only their tabs and attribute presentation; explicit canonical URL tabs remain authoritative.
 - Deliver all three issues in one PR because they change the same profile route, header, responsive grid, DTO fixtures, and browser coverage; splitting them would create temporary layout contracts and duplicated regression work.
 
 ### Unknowns
@@ -267,7 +268,7 @@ Commit 1 is the walking skeleton: add migration v23, return the preference from 
 
 **Files and responsibilities:**
 
-- `src/features/player-profile/utils/profile-tab.ts` and its test — define four canonical tabs, default to Outfield, and normalize legacy visible-group search values.
+- `src/features/player-profile/utils/profile-tab.ts` and its test — define four canonical tabs, use the player-sensitive Outfield or Goalkeeping default, and normalize legacy visible-group search values.
 - `src/features/player-profile/utils/attribute-groups.ts` and its test — expose outfield category/subsection rows without duplicating or dropping keys; preserve null and potential mapping.
 - `src/features/player-profile/components/player-profile-tabs.tsx` — render Outfield, Goalkeeping, Hidden, and Personality with existing accessible tab semantics.
 - `src/features/player-profile/components/player-attributes-panel.tsx` — render three outfield columns, Technical Set Pieces subsection, single-category Goalkeeping, and concealment states.
@@ -276,7 +277,7 @@ Commit 1 is the walking skeleton: add migration v23, return the preference from 
 
 **Behavior and data flow:**
 
-- The validated `tab` search value selects one of four stable panels. Old Technical/Mental/Physical values resolve to Outfield and navigation replaces them with the canonical value on the next tab interaction.
+- A validated canonical `tab` search value selects one of four stable panels. Old Technical/Mental/Physical values resolve to Outfield; missing or invalid values resolve after player load to Outfield for outfield players and Goalkeeping for goalkeeper profiles.
 - Attribute maps remain unchanged. Utility functions select ordered keys and the panel renders the same current/potential values in a new hierarchy.
 - Revealed state controls whether projected values are passed to value rows; concealed state never creates hidden potential nodes.
 - Responsive layout keeps one scroll owner per panel and stacks category columns before their contents clip.
@@ -292,7 +293,7 @@ Commit 1 is the walking skeleton: add migration v23, return the preference from 
 **Tests and proof:**
 
 - Expected RED: `parseProfileTab` still returns six group tabs and the panel renders only one visible category.
-- GREEN assertions: exactly four tab labels; Outfield contains Technical, Set Pieces, Mental, and Physical in order; every visible key appears once; Goalkeeping remains separate; nulls stay `—`; reveal/conceal behavior from commit 1 is unchanged.
+- GREEN assertions: exactly four tab labels; outfield profiles start with Outfield; goalkeeper profiles start with Goalkeeping and move First Touch, Passing, and Technique there without duplication; Outfield contains Technical, Set Pieces, Mental, and Physical in order; nulls stay `—`; reveal/conceal behavior from commit 1 is unchanged.
 - Browser proof: supported desktop viewports have no clipped tab labels, overlapping values, unintended horizontal page scroll, or inaccessible tab panels.
 
 **Patterns to verify:**
@@ -435,6 +436,7 @@ Implementation is complete for PR 1. Feature close-out has not run.
 - The developer narrowed JAY-5 from its original global/per-session possibilities to one profile control backed by a per-save preference, with revealed as the default.
 - Inspection found that both existing development actions indirectly disclose concealed data: Boost CA reveals PA caps/eligibility and Wonderkid Mentality reveals personality values/eligibility. The plan therefore omits both actions while concealed.
 - The implementation registry is already v22 (`drop_demo_value_table`) although current architecture prose says v21. The feature uses v23 and the documentation reconciliation must correct the complete migration description instead of preserving the stale number.
+- Manual validation refined goalkeeper presentation: GK familiarity of 15 or higher now makes Goalkeeping the first and default tab, moves First Touch, Passing, and Technique into that alphabetized group, and keeps the remaining attributes under Outfield.
 
 ## Completed work
 
@@ -451,7 +453,7 @@ Implementation is complete for PR 1. Feature close-out has not run.
 - `./scripts/dev check` (401 Rust tests passed; 2 ignored)
 - `./scripts/dev smoke` (36 passed)
 - `git diff --check <feature-base>...HEAD`
-- Manual native Tauri/WebView check at 1280×800 and 1600×900: reveal/conceal with keyboard, navigate between players and saves, inspect all four tabs, confirm four summary slots, exercise mutation failure, and verify no clipping, overlap, nested page scrolling, or concealed-value disclosure.
+- Manual native Tauri/WebView check at 1280×800 and 1600×900: reveal/conceal with keyboard, navigate between players and saves, inspect both outfield and goalkeeper tab order/defaults, confirm the goalkeeper attribute split and four summary slots, exercise mutation failure, and verify no clipping, overlap, nested page scrolling, or concealed-value disclosure.
 - Fresh-context feature-complete review after all three commits, followed by documentation reconciliation through `$workflow-finish-feature`.
 - `./scripts/dev bridge-test` is not required unless implementation changes bridge code. `./scripts/dev mutate` remains unsupported and must not be reported as passed.
 

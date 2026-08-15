@@ -617,7 +617,8 @@ Profile reads the **active save's current snapshot** only. The WebView never ope
 ```text
 User opens /players/$uid (from Search row, Enter on focused row, or GlobalPlayerSearch hit)
   → Route loader: ensureQueryData(current snapshot + get_player)
-  → validateSearch normalizes tab (technical | mental | physical | goalkeeping | hidden | personality)
+  → validateSearch accepts canonical tabs and normalizes legacy technical | mental | physical to outfield;
+      missing or invalid values remain unset until the loaded player determines the default
   → Suspense fallback mirrors the summary plus two-panel workspace
   → summary remains visible; PlayerProfileTabs selects one attribute group
 
@@ -641,7 +642,11 @@ Summary
       snapshot previews and disabled reasons move to focusable action tooltips
 
 Attributes panel
-  → static attribute-groups.ts membership (Technical / Mental / Physical / Goalkeeping, Hidden, Personality)
+  → four canonical tabs; outfield players use Outfield first, while players with GK familiarity ≥ 15
+      use Goalkeeping first and default to it
+  → static attribute-groups.ts membership (Technical / Mental / Physical / Goalkeeping, Hidden, Personality);
+      goalkeeper profiles move First Touch, Passing, and Technique from Technical into the
+      alphabetized Goalkeeping group
   → visible rows show Current → Potential from the DTO; Hidden and Personality stay current-only
   → known 1–20 values map to four FM-style presentation bands; raw values remain unchanged
   → null → —

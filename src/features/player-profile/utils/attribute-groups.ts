@@ -106,6 +106,44 @@ export const VISIBLE_ATTRIBUTE_GROUPS: readonly AttributeGroup[] = [
 export const OUTFIELD_ATTRIBUTE_GROUPS = VISIBLE_ATTRIBUTE_GROUPS.slice(0, 3);
 export const GOALKEEPING_ATTRIBUTE_GROUP = VISIBLE_ATTRIBUTE_GROUPS[3];
 
+const GOALKEEPER_BALL_PLAYING_ATTRIBUTE_KEYS: readonly string[] = [
+  "FirstTouch",
+  "Passing",
+  "Technique",
+] as const;
+
+export const GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS =
+  OUTFIELD_ATTRIBUTE_GROUPS.map((group) =>
+    group.id === "technical"
+      ? {
+          ...group,
+          keys: group.keys.filter(
+            (key) => !GOALKEEPER_BALL_PLAYING_ATTRIBUTE_KEYS.includes(key),
+          ),
+        }
+      : group,
+  );
+
+export const GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP: AttributeGroup = {
+  ...GOALKEEPING_ATTRIBUTE_GROUP,
+  keys: [
+    "AerialReach",
+    "CommandOfArea",
+    "Communication",
+    "Eccentricity",
+    "FirstTouch",
+    "Handling",
+    "Kicking",
+    "OneOnOnes",
+    "Passing",
+    "Punching",
+    "Reflexes",
+    "RushingOut",
+    "Technique",
+    "Throwing",
+  ],
+};
+
 export const HIDDEN_ATTRIBUTE_KEYS = [
   "Dirtiness",
   "Consistency",

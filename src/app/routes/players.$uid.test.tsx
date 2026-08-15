@@ -75,6 +75,91 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
+  it("starts goalkeeper profiles with goalkeeper attributes before outfield attributes", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        positions: { GK: 20 },
+        attributes: {
+          AerialReach: 13,
+          CommandOfArea: 12,
+          Communication: 11,
+          Eccentricity: 10,
+          FirstTouch: 9,
+          Handling: 14,
+          Kicking: 15,
+          OneOnOnes: 16,
+          Passing: 8,
+          Punching: 7,
+          Reflexes: 17,
+          RushingOut: 13,
+          Technique: 6,
+          Throwing: 12,
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    const { router } = renderProfileRoute("/players/42");
+
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((item) => item.textContent)).toEqual([
+      "Goalkeeping",
+      "Outfield",
+      "Hidden",
+      "Personality",
+    ]);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+
+    const goalkeeping = screen.getByRole("region", { name: "Goalkeeping" });
+    expect(
+      within(goalkeeping)
+        .getAllByRole("term")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "Aerial Reach",
+      "Command Of Area",
+      "Communication",
+      "Eccentricity",
+      "First Touch",
+      "Handling",
+      "Kicking",
+      "One On Ones",
+      "Passing",
+      "Punching",
+      "Reflexes",
+      "Rushing Out",
+      "Technique",
+      "Throwing",
+    ]);
+
+    await user.click(screen.getByRole("tab", { name: "Outfield" }));
+
+    const technical = screen.getByRole("region", { name: "Technical" });
+    expect(
+      within(technical).queryByText("First Touch"),
+    ).not.toBeInTheDocument();
+    expect(within(technical).queryByText("Passing")).not.toBeInTheDocument();
+    expect(within(technical).queryByText("Technique")).not.toBeInTheDocument();
+    expect(router.state.location.search).toMatchObject({ tab: "outfield" });
+  });
+
+  it("honors an explicit outfield tab on goalkeeper profiles", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ positions: { GK: 20 } }));
+    renderProfileRoute("/players/42?tab=outfield");
+
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((item) => item.textContent)).toEqual([
+      "Goalkeeping",
+      "Outfield",
+      "Hidden",
+      "Personality",
+    ]);
+    expect(
+      screen.getByRole("tab", { name: "Outfield", selected: true }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the hidden-information control last in the action row", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
