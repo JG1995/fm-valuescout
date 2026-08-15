@@ -4,6 +4,7 @@ import {
   bestPotentialRoleScore,
   bestRoleScore,
   defaultProfilePosition,
+  rolesForPhase,
   rolesForPlayablePositions,
   rolesForProfilePosition,
 } from "./position-families";
@@ -229,5 +230,40 @@ describe("profile position selection", () => {
         direction: "ascending",
       }).map((item) => item.roleId),
     ).toEqual(["lower", "first-tie", "second-tie", "unavailable"]);
+  });
+});
+
+describe("profile role phases", () => {
+  it("partitions roles by the exact in-possession or out-of-possession phase", () => {
+    const scores = [
+      role({
+        roleId: "ip",
+        displayName: "In possession",
+        positionTags: ["MC"],
+        phase: "in_possession",
+        score: 80,
+      }),
+      role({
+        roleId: "oop",
+        displayName: "Out of possession",
+        positionTags: ["MC"],
+        phase: "out_of_possession",
+        score: 75,
+      }),
+      role({
+        roleId: "unknown",
+        displayName: "Unknown phase",
+        positionTags: ["MC"],
+        phase: "unknown",
+        score: 99,
+      }),
+    ];
+
+    expect(
+      rolesForPhase(scores, "in_possession").map((item) => item.roleId),
+    ).toEqual(["ip"]);
+    expect(
+      rolesForPhase(scores, "out_of_possession").map((item) => item.roleId),
+    ).toEqual(["oop"]);
   });
 });

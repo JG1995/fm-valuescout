@@ -17,6 +17,7 @@ const PROFILE_POSITION_TAG_SET = new Set(PROFILE_POSITION_TAGS);
 
 export type ScoredRole = PlayerRoleScore & { score: number };
 export type PotentialScoredRole = PlayerRoleScore & { potentialScore: number };
+export type RolePhase = "in_possession" | "out_of_possession";
 export type RoleSort = {
   basis: "current" | "potential";
   direction: "ascending" | "descending";
@@ -105,6 +106,14 @@ export function rolesForPlayablePositions(
       (position) => positions[position] >= PLAYABLE_POSITION_FAMILIARITY,
     ),
   );
+}
+
+/** Keep only roles from the requested catalog phase. */
+export function rolesForPhase(
+  roleScores: readonly PlayerRoleScore[],
+  phase: RolePhase,
+): PlayerRoleScore[] {
+  return roleScores.filter((role) => role.phase === phase);
 }
 
 /** Highest non-null score; ties keep the earlier catalog entry. */

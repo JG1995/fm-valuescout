@@ -1313,11 +1313,17 @@ test.describe("application smoke", () => {
       .locator("..")
       .locator("..");
     const roleFit = main.getByRole("region", { name: "Role fit for MC" });
-    const current = summary.getByRole("img", {
-      name: "Best role (Current): 82, Excellent",
+    const currentIp = summary.getByRole("img", {
+      name: "Current IP: 82, Excellent",
     });
-    const potential = summary.getByRole("img", {
-      name: "Best potential role (Potential): 94, Excellent",
+    const currentOop = summary.getByRole("img", {
+      name: "Current OOP: 60, Average",
+    });
+    const potentialIp = summary.getByRole("img", {
+      name: "Potential IP: 94, Excellent",
+    });
+    const potentialOop = summary.getByRole("img", {
+      name: "Potential OOP: 77, Good",
     });
 
     for (const [width, height] of [
@@ -1328,8 +1334,10 @@ test.describe("application smoke", () => {
       await expect(summary).toBeVisible();
       await expect(attributes).toBeVisible();
       await expect(roleFit).toBeVisible();
-      await expect(current).toBeVisible();
-      await expect(potential).toBeVisible();
+      await expect(currentIp).toBeVisible();
+      await expect(currentOop).toBeVisible();
+      await expect(potentialIp).toBeVisible();
+      await expect(potentialOop).toBeVisible();
 
       const [mainBox, attributesBox, roleFitBox] = await Promise.all([
         main.boundingBox(),
@@ -1349,31 +1357,31 @@ test.describe("application smoke", () => {
         mainBox.y + mainBox.height,
       );
 
-      const [currentBox, potentialBox] = await Promise.all([
-        current.boundingBox(),
-        potential.boundingBox(),
-      ]);
-      expect(currentBox).not.toBeNull();
-      expect(potentialBox).not.toBeNull();
-      if (!currentBox || !potentialBox) {
+      const summaryBadgeBoxes = await Promise.all(
+        [currentIp, currentOop, potentialIp, potentialOop].map((badge) =>
+          badge.boundingBox(),
+        ),
+      );
+      expect(summaryBadgeBoxes.every((box) => box !== null)).toBe(true);
+      const [currentIpBox, currentOopBox, potentialIpBox, potentialOopBox] =
+        summaryBadgeBoxes;
+      if (
+        !currentIpBox ||
+        !currentOopBox ||
+        !potentialIpBox ||
+        !potentialOopBox
+      ) {
         throw new Error("Expected visible best-role summary badges.");
       }
-      expect(currentBox.x + currentBox.width).toBeLessThanOrEqual(
-        potentialBox.x,
+      expect(currentIpBox.x + currentIpBox.width).toBeLessThanOrEqual(
+        currentOopBox.x,
+      );
+      expect(potentialIpBox.x + potentialIpBox.width).toBeLessThanOrEqual(
+        potentialOopBox.x,
       );
 
       const detailLabels = await Promise.all(
-        [
-          "Age / DOB",
-          "Nationality",
-          "Height",
-          "Foot",
-          "Best role (Current)",
-          "Best potential role (Potential)",
-          "CA",
-          "PA",
-          "Value",
-        ].map((label) =>
+        ["Age / DOB", "Nationality", "Height", "Foot"].map((label) =>
           summary.getByText(label, { exact: true }).boundingBox(),
         ),
       );
@@ -1386,6 +1394,14 @@ test.describe("application smoke", () => {
         expect(
           Math.abs((labelBox?.y ?? detailRowY) - detailRowY),
         ).toBeLessThanOrEqual(1);
+      }
+      for (const label of [
+        "Current IP",
+        "Current OOP",
+        "Potential IP",
+        "Potential OOP",
+      ]) {
+        await expect(summary.getByText(label, { exact: true })).toBeVisible();
       }
 
       const [boostBox, wonderkidBox, caLabelBox, abilityRowBox] =
@@ -1512,6 +1528,12 @@ test.describe("application smoke", () => {
     await expect(concealedToggle).toHaveAttribute("aria-pressed", "false");
     await expect(summary.getByText("PA", { exact: true })).toHaveCount(0);
     await expect(summary.getByText("160", { exact: true })).toHaveCount(0);
+    await expect(
+      summary.getByRole("img", { name: "Potential IP: concealed" }),
+    ).toBeVisible();
+    await expect(
+      summary.getByRole("img", { name: "Potential OOP: concealed" }),
+    ).toBeVisible();
     await expect(main.getByRole("button", { name: "Boost CA" })).toHaveCount(0);
 
     await page.goto("/players/99");

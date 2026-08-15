@@ -110,6 +110,12 @@ describe("player profile route", () => {
     expect(
       within(summary).queryByText("Wonderkid Mentality"),
     ).not.toBeInTheDocument();
+    expect(
+      within(summary).getByRole("img", { name: "Potential IP: concealed" }),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).getByRole("img", { name: "Potential OOP: concealed" }),
+    ).toBeInTheDocument();
 
     const technical = screen.getByRole("region", { name: "Technical" });
     expect(
@@ -358,27 +364,51 @@ describe("player profile route", () => {
     ).toHaveTextContent(/^Loyalty—$/);
   });
 
-  it("shows independent current and potential best-role summaries", async () => {
+  it("shows phase-specific current and potential best-role summaries", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
         positions: { MC: 15, AMC: 16, ST: 14 },
         roleScores: [
           {
-            roleId: "current-specialist",
-            displayName: "Current Specialist",
+            roleId: "current-ip-specialist",
+            displayName: "Current IP Specialist",
             phase: "in_possession",
             positionTags: ["MC"],
             score: 82,
             potentialScore: 88,
           },
           {
-            roleId: "potential-specialist",
-            displayName: "Potential Specialist",
+            roleId: "current-ip-tie",
+            displayName: "Current IP Tie",
+            phase: "in_possession",
+            positionTags: ["AMC"],
+            score: 82,
+            potentialScore: 80,
+          },
+          {
+            roleId: "potential-ip-specialist",
+            displayName: "Potential IP Specialist",
             phase: "in_possession",
             positionTags: ["AMC"],
             score: 70,
             potentialScore: 94,
+          },
+          {
+            roleId: "current-oop-specialist",
+            displayName: "Current OOP Specialist",
+            phase: "out_of_possession",
+            positionTags: ["MC"],
+            score: 79,
+            potentialScore: 90,
+          },
+          {
+            roleId: "potential-oop-specialist",
+            displayName: "Potential OOP Specialist",
+            phase: "out_of_possession",
+            positionTags: ["AMC"],
+            score: 74,
+            potentialScore: 93,
           },
           {
             roleId: "unplayable-specialist",
@@ -398,23 +428,36 @@ describe("player profile route", () => {
     });
 
     expect(
-      within(summary).getByLabelText("Best role (Current): 82, Excellent"),
+      within(summary).getByLabelText("Current IP: 82, Excellent"),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByLabelText(
-        "Best potential role (Potential): 94, Excellent",
-      ),
+      within(summary).getByLabelText("Current OOP: 79, Good"),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByText("Best role (Current)"),
+      within(summary).getByLabelText("Potential IP: 94, Excellent"),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByText("Best potential role (Potential)"),
+      within(summary).getByLabelText("Potential OOP: 93, Excellent"),
     ).toBeInTheDocument();
-    expect(within(summary).getByText("Current Specialist")).toBeInTheDocument();
+    expect(within(summary).getByText("Current IP")).toBeInTheDocument();
+    expect(within(summary).getByText("Current OOP")).toBeInTheDocument();
+    expect(within(summary).getByText("Potential IP")).toBeInTheDocument();
+    expect(within(summary).getByText("Potential OOP")).toBeInTheDocument();
     expect(
-      within(summary).getByText("Potential Specialist"),
+      within(summary).getByText("Current IP Specialist"),
     ).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Current OOP Specialist"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Potential IP Specialist"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Potential OOP Specialist"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).queryByText("Current IP Tie"),
+    ).not.toBeInTheDocument();
     expect(
       within(summary).queryByText("Unplayable Specialist"),
     ).not.toBeInTheDocument();
@@ -438,11 +481,16 @@ describe("player profile route", () => {
     );
     renderProfileRoute("/players/42");
 
-    const potential = await screen.findByRole("img", {
-      name: "Best potential role (Potential): unavailable",
+    const potentialIp = await screen.findByRole("img", {
+      name: "Potential IP: unavailable",
     });
-    expect(potential).toHaveTextContent("—");
-    expect(potential).not.toHaveAttribute("title");
+    const potentialOop = screen.getByRole("img", {
+      name: "Potential OOP: unavailable",
+    });
+    expect(potentialIp).toHaveTextContent("—");
+    expect(potentialOop).toHaveTextContent("—");
+    expect(potentialIp).not.toHaveAttribute("title");
+    expect(potentialOop).not.toHaveAttribute("title");
   });
 
   it("filters roles by pitch position with labelled current and potential badges", async () => {

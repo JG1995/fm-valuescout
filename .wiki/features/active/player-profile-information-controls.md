@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -50,7 +50,7 @@ Deliver Linear issues JAY-5, JAY-8, and JAY-9 as one cohesive player-profile PR:
 - Relevant components: `src/app/routes/players.$uid.tsx` composes the profile; `player-overview-panel.tsx`, `player-attributes-panel.tsx`, `player-roles-panel.tsx`, and `player-development-boosts-panel.tsx` own the visible sections; `profile-tab.ts`, `attribute-groups.ts`, and `position-families.ts` own bounded presentation logic.
 - Data model: `get_player(uid)` returns identity, current and projected attributes, hidden/personality maps, current and potential role scores, CA, and PA for one player in the active save's current snapshot.
 - Persistence and migrations: `saves` owns save-wide preferences and context; the migration registry is currently v22 in `src-tauri/src/db/migrations.rs`. `.wiki/ARCHITECTURE.md` still describes the registry as v21 and must be reconciled with the new migration after implementation.
-- Existing behavioral assumptions: profile attribute URL state now has four canonical tabs (legacy visible-group values normalize to Outfield); the overview still chooses one current and one potential role without phase separation; the role panel always renders both score bases; boost previews expose PA-derived caps and personality values.
+- Existing behavioral assumptions: profile attribute URL state now has four canonical tabs (legacy visible-group values normalize to Outfield); the overview now exposes phase-specific Current/Potential IP/OOP summaries; the role panel still renders both score bases; boost previews expose PA-derived caps and personality values.
 - Architectural seams: Rust `features/player` owns player query/mutation IPC; React `features/player-profile` owns profile state and presentation; TanStack Query `playerKeys.all` already provides the save/snapshot invalidation boundary.
 - Project validation commands: `./scripts/dev test [target...]`, `./scripts/dev check`, `./scripts/dev smoke`, and `./scripts/dev format [paths...]`.
 - Primary risks: leaking concealed values through secondary UI, corrupting save preference defaults during migration, phase summaries selecting an unfamiliar position, and compressing the desktop layout below readable widths.
@@ -115,7 +115,7 @@ Commit 1 is the walking skeleton: add migration v23, return the preference from 
 
 ### PR 1 — Player profile information controls and layout
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -337,7 +337,7 @@ Commit 1 is the walking skeleton: add migration v23, return the preference from 
 
 #### Commit 3 — Split best roles by phase
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): split best roles by phase`
 
@@ -425,21 +425,9 @@ Commit 1 is the walking skeleton: add migration v23, return the preference from 
 
 ## Active work
 
-**PR:** PR 1 — Player profile information controls and layout
+Implementation is complete for PR 1. Feature close-out has not run.
 
-**Commit:** Commit 3 — Split best roles by phase
-
-### RED proof
-
-Add the smallest position-family and route tests proving phase partitioning, familiarity filtering, score-basis selection, catalog-order ties, null handling, and concealed potential slots. These tests currently fail because the overview still exposes one mixed current winner and one mixed potential winner.
-
-### Expected outcome
-
-The profile header has four stable, accessible summaries: Current IP, Current OOP, Potential IP, and Potential OOP. Each summary selects a non-null winner only from roles attached to a position with familiarity at least 15, preserves catalog-order ties, renders `—` for null-only phases, and uses an explicit concealed placeholder for potential summaries when hidden information is concealed.
-
-### Explicit exclusions
-
-Do not change score formulas, projection, catalog membership, Planner behavior, pitch filtering, non-profile consumers, or publish the PR as part of this build packet.
+**Next action:** Run `$workflow-finish-feature` for feature-level validation, documentation reconciliation, and archival before publication.
 
 ## Discoveries and replanning
 
@@ -453,14 +441,15 @@ Do not change score formulas, projection, catalog membership, Planner behavior, 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Persist profile information visibility | `98ebc71` | Save-scoped revealed/concealed preference, active-save IPC, profile render boundaries, failure handling, and keyboard/browser coverage | Clean after 1 reviewer pass; two Medium accessibility/error-copy findings corrected and rechecked | None |
-| PR 1 | Commit 2 — Group attributes by FM category | `Pending record` | Four canonical tabs, Outfield Technical/Mental/Physical sections, Technical Set Pieces subsection, legacy URL normalization, and responsive profile workspace | Clean after 3 reviewer passes; expanded-rail stacking and label/role overflow checks added and rechecked | None |
+| PR 1 | Commit 2 — Group attributes by FM category | `dc76f97` | Four canonical tabs, Outfield Technical/Mental/Physical sections, Technical Set Pieces subsection, legacy URL normalization, and responsive profile workspace | Clean after 3 reviewer passes; expanded-rail stacking and label/role overflow checks added and rechecked | None |
+| PR 1 | Commit 3 — Split best roles by phase | `Pending record` | Exact IP/OOP phase partitioning after familiarity filtering, four Current/Potential summary slots, catalog-order ties, null placeholders, and concealed potential summaries | Clean; focused tests, full Vitest, repository check, and 36-test smoke suite pass | None |
 
 ## Final validation
 
-- `./scripts/dev format`
-- `./scripts/dev test`
-- `./scripts/dev check`
-- `./scripts/dev smoke`
+- `./scripts/dev format src e2e`
+- `./scripts/dev test` (420 passed)
+- `./scripts/dev check` (401 Rust tests passed; 2 ignored)
+- `./scripts/dev smoke` (36 passed)
 - `git diff --check <feature-base>...HEAD`
 - Manual native Tauri/WebView check at 1280×800 and 1600×900: reveal/conceal with keyboard, navigate between players and saves, inspect all four tabs, confirm four summary slots, exercise mutation failure, and verify no clipping, overlap, nested page scrolling, or concealed-value disclosure.
 - Fresh-context feature-complete review after all three commits, followed by documentation reconciliation through `$workflow-finish-feature`.

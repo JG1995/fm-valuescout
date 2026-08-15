@@ -12,6 +12,7 @@ import type { PlayerDetail } from "../types/player-detail";
 import {
   bestPotentialRoleScore,
   bestRoleScore,
+  rolesForPhase,
   rolesForPlayablePositions,
 } from "../utils/position-families";
 
@@ -47,7 +48,6 @@ function flagLabel(value: boolean | null | undefined, yes: string) {
 
 type BestRoleSummaryProps = {
   label: string;
-  basis: "Current" | "Potential";
   roleName: string | null;
   score: number | null;
   concealed?: boolean;
@@ -55,29 +55,26 @@ type BestRoleSummaryProps = {
 
 function BestRoleSummary({
   label,
-  basis,
   roleName,
   score,
   concealed = false,
 }: BestRoleSummaryProps) {
-  const accessibleLabel = `${label} (${basis})`;
-
   return (
     <div className="flex min-w-0 items-start gap-3">
       {score === null ? (
         <span
           role="img"
-          aria-label={`${accessibleLabel}: ${concealed ? "concealed" : "unavailable"}`}
+          aria-label={`${label}: ${concealed ? "concealed" : "unavailable"}`}
           className="inline-flex size-12 items-center justify-center font-mono text-mono-lg text-on-surface-variant tabular-nums"
         >
           {concealed ? "Concealed" : formatMissable(null)}
         </span>
       ) : (
-        <ScoreBadge score={score} roleName={accessibleLabel} variant="hero" />
+        <ScoreBadge score={score} roleName={label} variant="hero" />
       )}
       <div className="min-w-0">
         <p className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
-          {accessibleLabel}
+          {label}
         </p>
         <p
           className="truncate text-body-md text-on-surface"
@@ -118,9 +115,18 @@ export function PlayerOverviewPanel({
     player.roleScores,
     player.positions,
   );
-  const bestRole = bestRoleScore(playableRoles);
-  const bestPotentialRole = player.hiddenInformationRevealed
-    ? bestPotentialRoleScore(playableRoles)
+  const inPossessionRoles = rolesForPhase(playableRoles, "in_possession");
+  const outOfPossessionRoles = rolesForPhase(
+    playableRoles,
+    "out_of_possession",
+  );
+  const currentIpRole = bestRoleScore(inPossessionRoles);
+  const currentOopRole = bestRoleScore(outOfPossessionRoles);
+  const potentialIpRole = player.hiddenInformationRevealed
+    ? bestPotentialRoleScore(inPossessionRoles)
+    : null;
+  const potentialOopRole = player.hiddenInformationRevealed
+    ? bestPotentialRoleScore(outOfPossessionRoles)
     : null;
   const VisibilityIcon = player.hiddenInformationRevealed ? EyeOff : Eye;
 
@@ -201,16 +207,25 @@ export function PlayerOverviewPanel({
 
         <div className="grid min-w-0 grid-cols-2 gap-3 border-outline-variant lg:border-x lg:px-4">
           <BestRoleSummary
-            label="Best role"
-            basis="Current"
-            roleName={bestRole?.displayName ?? null}
-            score={bestRole?.score ?? null}
+            label="Current IP"
+            roleName={currentIpRole?.displayName ?? null}
+            score={currentIpRole?.score ?? null}
           />
           <BestRoleSummary
-            label="Best potential role"
-            basis="Potential"
-            roleName={bestPotentialRole?.displayName ?? null}
-            score={bestPotentialRole?.potentialScore ?? null}
+            label="Current OOP"
+            roleName={currentOopRole?.displayName ?? null}
+            score={currentOopRole?.score ?? null}
+          />
+          <BestRoleSummary
+            label="Potential IP"
+            roleName={potentialIpRole?.displayName ?? null}
+            score={potentialIpRole?.potentialScore ?? null}
+            concealed={!player.hiddenInformationRevealed}
+          />
+          <BestRoleSummary
+            label="Potential OOP"
+            roleName={potentialOopRole?.displayName ?? null}
+            score={potentialOopRole?.potentialScore ?? null}
             concealed={!player.hiddenInformationRevealed}
           />
         </div>
