@@ -198,6 +198,34 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           marketValueGbp: 16000000,
         }));
       }
+      const sendSquadBoostProgress = (args, progress) => {
+        args?.onProgress?.onmessage?.(progress);
+      };
+      const resolveSquadBoost = async (args) => {
+        sendSquadBoostProgress(args, {
+          processed: 0,
+          total: 2,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        sendSquadBoostProgress(args, {
+          processed: 1,
+          total: 2,
+          updated: 1,
+          skipped: 0,
+          failed: 0,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        sendSquadBoostProgress(args, {
+          processed: 2,
+          total: 2,
+          updated: 2,
+          skipped: 0,
+          failed: 0,
+        });
+      };
       if (squadPageFailure) {
         squadPlayers = Array.from({ length: 51 }, (_, index) => ({
           uid: index + 1,
@@ -560,6 +588,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "boost_squad_current_ability") {
+            await resolveSquadBoost(args);
             return {
               updated: 2,
               skipped: 0,
@@ -570,6 +599,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "boost_squad_wonderkid_mentality") {
+            await resolveSquadBoost(args);
             return {
               updated: 2,
               skipped: 0,

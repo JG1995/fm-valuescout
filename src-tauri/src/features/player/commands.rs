@@ -141,6 +141,16 @@ pub struct SquadPlayerBoostResultDto {
     pub recovery_message: Option<String>,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SquadPlayerBoostProgressDto {
+    pub processed: usize,
+    pub total: usize,
+    pub updated: usize,
+    pub skipped: usize,
+    pub failed: usize,
+}
+
 impl From<VerifiedPlayerBoost> for PlayerBoostResultDto {
     fn from(result: VerifiedPlayerBoost) -> Self {
         Self {
@@ -189,15 +199,37 @@ pub fn boost_wonderkid_mentality(
 #[tauri::command]
 pub fn boost_squad_current_ability(
     db: State<'_, Db>,
+    on_progress: tauri::ipc::Channel<SquadPlayerBoostProgressDto>,
 ) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
-    execute_squad_current_ability_boost(db.inner())
+    execute_squad_current_ability_boost_with_progress(
+        db.inner(),
+        request_local_player_boost,
+        move |progress| match on_progress.send(progress) {
+            Ok(()) => true,
+            Err(error) => {
+                log::debug!("squad boost progress delivery failed: {error}");
+                false
+            }
+        },
+    )
 }
 
 #[tauri::command]
 pub fn boost_squad_wonderkid_mentality(
     db: State<'_, Db>,
+    on_progress: tauri::ipc::Channel<SquadPlayerBoostProgressDto>,
 ) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
-    execute_squad_wonderkid_mentality_boost(db.inner())
+    execute_squad_wonderkid_mentality_boost_with_progress(
+        db.inner(),
+        request_local_player_boost,
+        move |progress| match on_progress.send(progress) {
+            Ok(()) => true,
+            Err(error) => {
+                log::debug!("squad boost progress delivery failed: {error}");
+                false
+            }
+        },
+    )
 }
 
 fn execute_player_boost(
@@ -229,18 +261,6 @@ where
     }
 }
 
-fn execute_squad_current_ability_boost(
-    db: &Db,
-) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
-    execute_squad_current_ability_boost_with(db, request_local_player_boost)
-}
-
-fn execute_squad_wonderkid_mentality_boost(
-    db: &Db,
-) -> Result<SquadPlayerBoostResultDto, PlayerBoostError> {
-    execute_squad_wonderkid_mentality_boost_with(db, request_local_player_boost)
-}
-
 fn request_local_player_boost(
     prepared: &PreparedPlayerBoost,
 ) -> Result<PlayerBoostResult, PlayerBoostError> {
@@ -255,6 +275,7 @@ fn request_local_player_boost(
     .map_err(service::map_bridge_error)
 }
 
+#[cfg(test)]
 fn execute_squad_current_ability_boost_with<F>(
     db: &Db,
     request_bridge_boost: F,
@@ -262,13 +283,27 @@ fn execute_squad_current_ability_boost_with<F>(
 where
     F: FnMut(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
 {
+    execute_squad_current_ability_boost_with_progress(db, request_bridge_boost, |_| true)
+}
+
+fn execute_squad_current_ability_boost_with_progress<F, R>(
+    db: &Db,
+    request_bridge_boost: F,
+    on_progress: R,
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError>
+where
+    F: FnMut(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
+    R: FnMut(SquadPlayerBoostProgressDto) -> bool,
+{
     execute_squad_player_boost_with(
         db,
         service::prepare_current_ability_boost,
         request_bridge_boost,
+        on_progress,
     )
 }
 
+#[cfg(test)]
 fn execute_squad_wonderkid_mentality_boost_with<F>(
     db: &Db,
     request_bridge_boost: F,
@@ -276,20 +311,35 @@ fn execute_squad_wonderkid_mentality_boost_with<F>(
 where
     F: FnMut(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
 {
+    execute_squad_wonderkid_mentality_boost_with_progress(db, request_bridge_boost, |_| true)
+}
+
+fn execute_squad_wonderkid_mentality_boost_with_progress<F, R>(
+    db: &Db,
+    request_bridge_boost: F,
+    on_progress: R,
+) -> Result<SquadPlayerBoostResultDto, PlayerBoostError>
+where
+    F: FnMut(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
+    R: FnMut(SquadPlayerBoostProgressDto) -> bool,
+{
     execute_squad_player_boost_with(
         db,
         service::prepare_wonderkid_mentality_boost,
         request_bridge_boost,
+        on_progress,
     )
 }
 
-fn execute_squad_player_boost_with<F>(
+fn execute_squad_player_boost_with<F, R>(
     db: &Db,
     prepare: fn(&rusqlite::Connection, i64) -> Result<PreparedPlayerBoost, PlayerBoostError>,
     mut request_bridge_boost: F,
+    mut on_progress: R,
 ) -> Result<SquadPlayerBoostResultDto, PlayerBoostError>
 where
     F: FnMut(&PreparedPlayerBoost) -> Result<PlayerBoostResult, PlayerBoostError>,
+    R: FnMut(SquadPlayerBoostProgressDto) -> bool,
 {
     let _boost_guard = acquire_player_boost_gate()?;
     let (context, player_uids) = {
@@ -306,12 +356,15 @@ where
         recovery_required: false,
         recovery_message: None,
     };
+    let total = player_uids.len();
+    report_squad_player_boost_progress(&mut on_progress, &result, total);
 
     for uid in player_uids {
         let prepared = match prepare_player_boost(uid, db, prepare, Some(&context)) {
             Ok(prepared) => prepared,
             Err(error) if is_skippable_squad_player_boost_eligibility(&error) => {
                 result.skipped += 1;
+                report_squad_player_boost_progress(&mut on_progress, &result, total);
                 continue;
             }
             Err(error) => return recovery_required_result(db, &context, result, error),
@@ -324,13 +377,36 @@ where
         match request_and_reconcile_player_boost(&prepared, db, |prepared| {
             request_bridge_boost(prepared)
         }) {
-            Ok(_) => result.updated += 1,
-            Err(PlayerBoostError::LiveValue { .. }) => result.failed += 1,
+            Ok(_) => {
+                result.updated += 1;
+                report_squad_player_boost_progress(&mut on_progress, &result, total);
+            }
+            Err(PlayerBoostError::LiveValue { .. }) => {
+                result.failed += 1;
+                report_squad_player_boost_progress(&mut on_progress, &result, total);
+            }
             Err(error) => return recovery_required_result(db, &context, result, error),
         }
     }
 
     Ok(result)
+}
+
+fn report_squad_player_boost_progress<R>(
+    on_progress: &mut R,
+    result: &SquadPlayerBoostResultDto,
+    total: usize,
+) where
+    R: FnMut(SquadPlayerBoostProgressDto) -> bool,
+{
+    let progress = SquadPlayerBoostProgressDto {
+        processed: result.updated + result.skipped + result.failed,
+        total,
+        updated: result.updated,
+        skipped: result.skipped,
+        failed: result.failed,
+    };
+    let _ = on_progress(progress);
 }
 
 fn acquire_player_boost_gate() -> Result<std::sync::MutexGuard<'static, ()>, PlayerBoostError> {
@@ -865,6 +941,116 @@ mod tests {
                 .expect("read squad CA");
             assert_eq!(ca, expected_ca, "unexpected CA for player {uid}");
         }
+    }
+
+    #[test]
+    fn squad_wonderkid_boost_reports_terminal_progress_without_counting_recovery() {
+        let _test_guard = PLAYER_BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp_dir, db) = seeded_squad_db();
+        set_squad_player_mentality(&db, 77, Some(10), Some(15), Some(8));
+        set_squad_player_mentality(&db, 78, Some(10), Some(15), Some(8));
+        set_squad_player_mentality(&db, 79, None, None, None);
+        set_squad_player_mentality(&db, 80, Some(10), Some(15), Some(8));
+        let progress = RefCell::new(Vec::new());
+
+        let result = execute_squad_wonderkid_mentality_boost_with_progress(
+            &db,
+            |prepared| match prepared.player_uid {
+                77 => Err(PlayerBoostError::LiveValue {
+                    message: "player values changed in FM; Load Data again".to_string(),
+                }),
+                78 => Ok(verified_wonderkid_result_for(prepared)),
+                80 => Err(PlayerBoostError::SnapshotSync {
+                    message: "FM may have changed before this result was verified".to_string(),
+                }),
+                uid => panic!("player {uid} must not reach the bridge"),
+            },
+            |snapshot| {
+                progress.borrow_mut().push(snapshot);
+                true
+            },
+        )
+        .expect("report the partial Wonderkid result");
+
+        let snapshots = progress.into_inner();
+        assert_eq!(
+            snapshots
+                .iter()
+                .map(|snapshot| (
+                    snapshot.processed,
+                    snapshot.total,
+                    snapshot.updated,
+                    snapshot.skipped,
+                    snapshot.failed,
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                (0, 5, 0, 0, 0),
+                (1, 5, 0, 0, 1),
+                (2, 5, 1, 0, 1),
+                (3, 5, 1, 1, 1)
+            ]
+        );
+        assert_eq!(result.updated, 1);
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.failed, 1);
+        assert!(result.recovery_required);
+    }
+
+    #[test]
+    fn squad_boost_progress_delivery_failure_does_not_change_the_result() {
+        let _test_guard = PLAYER_BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp_dir, db) = seeded_squad_db();
+
+        let result = execute_squad_current_ability_boost_with_progress(
+            &db,
+            |prepared| Ok(verified_ca_result_for(prepared)),
+            |_| false,
+        )
+        .expect("progress delivery is best effort");
+
+        assert_eq!(result.updated, 3);
+        assert_eq!(result.skipped, 2);
+        assert_eq!(result.failed, 0);
+        assert!(!result.recovery_required);
+    }
+
+    #[test]
+    fn empty_squad_boost_reports_zero_progress_without_a_bridge_call() {
+        let _test_guard = PLAYER_BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp_dir, db) = seeded_squad_db();
+        db.0.lock()
+            .expect("lock db")
+            .execute("DELETE FROM players", [])
+            .expect("remove squad players");
+        let progress = RefCell::new(Vec::new());
+
+        let result = execute_squad_current_ability_boost_with_progress(
+            &db,
+            |_| panic!("an empty cohort must not reach the bridge"),
+            |snapshot| {
+                progress.borrow_mut().push(snapshot);
+                true
+            },
+        )
+        .expect("report an empty cohort");
+
+        let snapshots = progress.into_inner();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].processed, 0);
+        assert_eq!(snapshots[0].total, 0);
+        assert_eq!(snapshots[0].updated, 0);
+        assert_eq!(snapshots[0].skipped, 0);
+        assert_eq!(snapshots[0].failed, 0);
+        assert_eq!(result.updated, 0);
+        assert_eq!(result.skipped, 0);
+        assert_eq!(result.failed, 0);
     }
 
     #[test]

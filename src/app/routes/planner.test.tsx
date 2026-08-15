@@ -25,6 +25,7 @@ import type { PlannerTactic } from "@/features/planner/types/tactic";
 import { phasePositionLabel } from "@/features/planner/utils/tactic-editor";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
+import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import type { SquadPlayer } from "@/features/squad/types/squad-player";
@@ -56,13 +57,17 @@ import {
 } from "@/testing/planner-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 import {
+  getLastSquadCurrentAbilityBoostProgress,
   getLastSquadPlayersArgs,
+  getLastSquadWonderkidMentalityBoostProgress,
   getSquadCurrentAbilityBoostIpcMockCalls,
   getSquadPlayersCallCount,
   getSquadWonderkidMentalityBoostIpcMockCalls,
   resolvePendingSquadCurrentAbilityBoostIpcMock,
   resolvePendingSquadPlayersPageIpcMock,
   resolvePendingSquadWonderkidMentalityBoostIpcMock,
+  sendPendingSquadCurrentAbilityBoostProgressIpcMock,
+  sendPendingSquadWonderkidMentalityBoostProgressIpcMock,
   setSquadCurrentAbilityBoostIpcMockMode,
   setSquadPlayersOverride,
   setSquadPlayersPageIpcMockMode,
@@ -515,13 +520,33 @@ describe("planner route", () => {
     expect(
       within(dialog).getByRole("button", { name: "Boosting…" }),
     ).toBeDisabled();
-    expect(getSquadCurrentAbilityBoostIpcMockCalls()).toEqual([{}]);
+    expect(dialog).toHaveTextContent("0 of 2 players processed.");
+    sendPendingSquadCurrentAbilityBoostProgressIpcMock();
+    await waitFor(() =>
+      expect(dialog).toHaveTextContent("1 of 2 players processed."),
+    );
+    const progressbar = within(dialog).getByRole("progressbar", {
+      name: "Squad boost progress",
+    });
+    expect(progressbar).toHaveAttribute("max", "2");
+    expect(progressbar).toHaveAttribute("value", "1");
+    expect(getSquadCurrentAbilityBoostIpcMockCalls()).toHaveLength(1);
+    expect(getSquadCurrentAbilityBoostIpcMockCalls()[0]).toHaveProperty(
+      "onProgress",
+    );
 
     resolvePendingSquadCurrentAbilityBoostIpcMock();
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Updated 2 players. Skipped 1. Failed 0.",
+      "2 processed — 2 updated, 0 skipped, 0 failed.",
     );
+    expect(getLastSquadCurrentAbilityBoostProgress()).toEqual({
+      processed: 2,
+      total: 2,
+      updated: 2,
+      skipped: 0,
+      failed: 0,
+    });
     await waitFor(() => {
       expect(invalidateQueries).toHaveBeenCalledTimes(5);
     });
@@ -539,6 +564,194 @@ describe("planner route", () => {
     });
     expect(invalidateQueries).toHaveBeenCalledWith({
       queryKey: academyKeys.all,
+    });
+  });
+
+  it("shows zero-total Squad boost progress without a progress bar", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    setSquadCurrentAbilityBoostIpcMockMode("pendingEmpty");
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(screen.getByRole("button", { name: "Boost all CA" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Boost all CA?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Boost all CA" }),
+    );
+
+    expect(dialog).toHaveTextContent("0 of 0 players processed.");
+    expect(
+      within(dialog).queryByRole("progressbar", {
+        name: "Squad boost progress",
+      }),
+    ).toBeNull();
+
+    resolvePendingSquadCurrentAbilityBoostIpcMock();
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "0 processed — 0 updated, 0 skipped, 0 failed.",
+    );
+  });
+
+  it("shows only the latest Squad boost outcome in the shared feedback region", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(screen.getByRole("button", { name: "Boost all CA" }));
+    await user.click(
+      within(
+        await screen.findByRole("dialog", { name: "Boost all CA?" }),
+      ).getByRole("button", { name: "Boost all CA" }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "2 processed — 2 updated, 0 skipped, 0 failed.",
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Make all Wonderkids" }),
+    );
+    const wonderkidDialog = await screen.findByRole("dialog", {
+      name: "Make all Wonderkids?",
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+    await user.click(
+      within(wonderkidDialog).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByRole("status")).toBeNull();
+
+    await user.click(
+      screen.getByRole("button", { name: "Make all Wonderkids" }),
+    );
+    await user.click(
+      within(
+        await screen.findByRole("dialog", { name: "Make all Wonderkids?" }),
+      ).getByRole("button", { name: "Make all Wonderkids" }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "2 processed — 2 updated, 0 skipped, 0 failed.",
+    );
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+  });
+
+  it("keeps a Squad boost error in the Modal before moving it to shared feedback", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    setSquadCurrentAbilityBoostIpcMockMode("error");
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(screen.getByRole("button", { name: "Boost all CA" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Boost all CA?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Boost all CA" }),
+    );
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "Could not boost the squad.",
+    );
+    expect(
+      within(screen.getByTestId("squad-boost-feedback")).queryByRole("alert"),
+    ).toBeNull();
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(
+      within(screen.getByTestId("squad-boost-feedback")).getByRole("alert"),
+    ).toHaveTextContent("Could not boost the squad.");
+  });
+
+  it("clears shared Squad feedback when the current snapshot is replaced", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    const { queryClient } = renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(screen.getByRole("button", { name: "Boost all CA" }));
+    await user.click(
+      within(
+        await screen.findByRole("dialog", { name: "Boost all CA?" }),
+      ).getByRole("button", { name: "Boost all CA" }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "2 processed — 2 updated, 0 skipped, 0 failed.",
+    );
+
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      currentSnapshotQueryOptions.queryKey,
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot in the planner query");
+    }
+    queryClient.setQueryData<SnapshotSummary>(
+      currentSnapshotQueryOptions.queryKey,
+      { ...snapshot, id: snapshot.id + 1 },
+    );
+
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("drops pending Squad progress when the current snapshot is replaced", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    setSquadCurrentAbilityBoostIpcMockMode("pending");
+    const { queryClient } = renderPlannerRoute({ initialEntry: "/planner" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    await user.click(screen.getByRole("button", { name: "Boost all CA" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Boost all CA?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Boost all CA" }),
+    );
+    expect(dialog).toHaveTextContent("0 of 2 players processed.");
+
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      currentSnapshotQueryOptions.queryKey,
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot in the planner query");
+    }
+    queryClient.setQueryData<SnapshotSummary>(
+      currentSnapshotQueryOptions.queryKey,
+      { ...snapshot, id: snapshot.id + 1 },
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Boost all CA?" }),
+      ).toBeNull();
+      expect(screen.queryByText("0 of 2 players processed.")).toBeNull();
     });
   });
 
@@ -562,18 +775,19 @@ describe("planner route", () => {
     );
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Updated 1 player. Skipped 2. Failed 1.",
+      "4 processed — 1 updated, 2 skipped, 1 failed.",
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Load Data is required before another boost.",
+      "Stopped before all players were processed. Load Data is required before another boost.",
     );
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+    expect(screen.getByTestId("squad-boost-feedback")).toHaveFocus();
     const action = screen.getByRole("button", { name: "Boost all CA" });
     expect(action).toBeDisabled();
     await user.click(action);
-    expect(getSquadCurrentAbilityBoostIpcMockCalls()).toEqual([{}]);
+    expect(getSquadCurrentAbilityBoostIpcMockCalls()).toHaveLength(1);
   });
 
   it("confirms the Squad Wonderkid action before applying it", async () => {
@@ -603,7 +817,10 @@ describe("planner route", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Make all Wonderkids" }),
     );
-    expect(getSquadWonderkidMentalityBoostIpcMockCalls()).toEqual([{}]);
+    expect(getSquadWonderkidMentalityBoostIpcMockCalls()).toHaveLength(1);
+    expect(getSquadWonderkidMentalityBoostIpcMockCalls()[0]).toHaveProperty(
+      "onProgress",
+    );
   });
 
   it("locks both Squad actions while Wonderkid Mentality is pending", async () => {
@@ -632,12 +849,24 @@ describe("planner route", () => {
     expect(
       within(dialog).getByRole("button", { name: "Applying…" }),
     ).toBeDisabled();
-    expect(getSquadWonderkidMentalityBoostIpcMockCalls()).toEqual([{}]);
+    expect(dialog).toHaveTextContent("0 of 2 players processed.");
+    sendPendingSquadWonderkidMentalityBoostProgressIpcMock();
+    await waitFor(() =>
+      expect(dialog).toHaveTextContent("1 of 2 players processed."),
+    );
+    expect(getSquadWonderkidMentalityBoostIpcMockCalls()).toHaveLength(1);
 
     resolvePendingSquadWonderkidMentalityBoostIpcMock();
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Updated 2 players. Skipped 1. Failed 0.",
+      "2 processed — 2 updated, 0 skipped, 0 failed.",
     );
+    expect(getLastSquadWonderkidMentalityBoostProgress()).toEqual({
+      processed: 2,
+      total: 2,
+      updated: 2,
+      skipped: 0,
+      failed: 0,
+    });
   });
 
   it("requires Load Data before either Squad action after Wonderkid recovery", async () => {
@@ -662,16 +891,20 @@ describe("planner route", () => {
     );
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Load Data is required before another boost.",
+      "4 processed — 1 updated, 2 skipped, 1 failed.",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Stopped before all players were processed. Load Data is required before another boost.",
     );
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+    expect(screen.getByTestId("squad-boost-feedback")).toHaveFocus();
     expect(
       screen.getByRole("button", { name: "Make all Wonderkids" }),
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Boost all CA" })).toBeDisabled();
-    expect(getSquadWonderkidMentalityBoostIpcMockCalls()).toEqual([{}]);
+    expect(getSquadWonderkidMentalityBoostIpcMockCalls()).toHaveLength(1);
     expect(getSquadCurrentAbilityBoostIpcMockCalls()).toEqual([]);
   });
 

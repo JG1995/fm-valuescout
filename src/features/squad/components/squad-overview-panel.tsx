@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { UsersRound } from "lucide-react";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, type RefObject, useMemo } from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
   type PlayerTableColumn,
@@ -39,10 +39,28 @@ type TableColumn = PlayerTableColumn;
 
 type SquadOverviewPanelProps = {
   actions?: ReactNode;
+  feedback?: ReactNode;
+  feedbackRef?: RefObject<HTMLDivElement | null>;
   sortBy: SquadSortField;
   sortDir: SquadSortDir;
   onSortChange: (sortBy: SquadSortField, sortDir: SquadSortDir) => void;
 };
+
+function SquadFeedbackSlot({
+  feedback,
+  feedbackRef,
+}: Pick<SquadOverviewPanelProps, "feedback" | "feedbackRef">) {
+  return (
+    <div
+      ref={feedbackRef}
+      data-testid="squad-boost-feedback"
+      tabIndex={-1}
+      className="flex min-h-16 items-center px-4 pb-3 text-body-sm focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+    >
+      {feedback}
+    </div>
+  );
+}
 
 function nextSort(
   currentBy: SquadSortField,
@@ -283,6 +301,8 @@ function SquadOverviewTable({
 
 export function SquadOverviewPanel({
   actions,
+  feedback,
+  feedbackRef,
   sortBy,
   sortDir,
   onSortChange,
@@ -324,6 +344,7 @@ export function SquadOverviewPanel({
   if (page.total === 0) {
     return (
       <Panel title="Squad overview" actions={actions} flush>
+        <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
         <EmptyState icon={UsersRound} title="No players in your club family">
           No current-snapshot players match the clubs configured for this save.
         </EmptyState>
@@ -369,6 +390,7 @@ export function SquadOverviewPanel({
         {page.total === 1 ? "player" : "players"} · sorted by {sortLabel} (
         {dirLabel})
       </p>
+      <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
       <SquadOverviewTable
         total={page.total}
         sortBy={sortBy}

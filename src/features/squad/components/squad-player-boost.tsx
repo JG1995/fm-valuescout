@@ -1,33 +1,42 @@
 import { Sparkles, Zap } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
-import type { SquadPlayerBoostResult } from "../types/squad-player-boost";
+import type {
+  SquadPlayerBoostProgress,
+  SquadPlayerBoostResult,
+} from "../types/squad-player-boost";
 
-type SquadPlayerBoostAction = "currentAbility" | "wonderkidMentality";
+export type SquadPlayerBoostAction = "currentAbility" | "wonderkidMentality";
 
 type SquadPlayerBoostProps = {
   action: SquadPlayerBoostAction;
   pending: boolean;
   disabled: boolean;
-  result: SquadPlayerBoostResult | undefined;
   error: Error | null;
-  onBoost: () => Promise<unknown>;
+  onBoost: (
+    onProgress: (progress: SquadPlayerBoostProgress) => void,
+  ) => Promise<unknown>;
   onOpenConfirmation: () => void;
+  onConfirmationChange: (open: boolean) => void;
+  fallbackFocusTo: () => HTMLElement | null;
 };
 
 type SquadCurrentAbilityBoostProps = Omit<SquadPlayerBoostProps, "action">;
 type SquadWonderkidMentalityBoostProps = Omit<SquadPlayerBoostProps, "action">;
 
 function resultSummary(result: SquadPlayerBoostResult) {
-  return `Updated ${result.updated} ${result.updated === 1 ? "player" : "players"}. Skipped ${result.skipped}. Failed ${result.failed}.`;
+  const processed = result.updated + result.skipped + result.failed;
+  return `${processed} processed — ${result.updated} updated, ${result.skipped} skipped, ${result.failed} failed.`;
 }
 
-function BoostOutcome({
+export function SquadBoostOutcome({
   result,
   error,
   action,
-}: Pick<SquadPlayerBoostProps, "result" | "error" | "action">) {
+}: Pick<SquadPlayerBoostProps, "error" | "action"> & {
+  result: SquadPlayerBoostResult | undefined;
+}) {
   if (result) {
     return (
       <div
@@ -41,8 +50,8 @@ function BoostOutcome({
         <p>{resultSummary(result)}</p>
         {result.recoveryRequired ? (
           <p>
-            Load Data is required before another boost.
-            {result.recoveryMessage ? ` ${result.recoveryMessage}` : ""}
+            Stopped before all players were processed. Load Data is required
+            before another boost.
           </p>
         ) : null}
       </div>
@@ -61,6 +70,24 @@ function BoostOutcome({
   return null;
 }
 
+function BoostProgress({ progress }: { progress: SquadPlayerBoostProgress }) {
+  return (
+    <div className="space-y-2 text-body-sm text-on-surface-variant">
+      {progress.total > 0 ? (
+        <progress
+          aria-label="Squad boost progress"
+          className="h-2 w-full accent-primary"
+          max={progress.total}
+          value={progress.processed}
+        />
+      ) : null}
+      <p>
+        {progress.processed} of {progress.total} players processed.
+      </p>
+    </div>
+  );
+}
+
 export function SquadCurrentAbilityBoost(props: SquadCurrentAbilityBoostProps) {
   return <SquadPlayerBoost action="currentAbility" {...props} />;
 }
@@ -75,13 +102,16 @@ function SquadPlayerBoost({
   action,
   pending,
   disabled,
-  result,
   error,
   onBoost,
   onOpenConfirmation,
+  onConfirmationChange,
+  fallbackFocusTo,
 }: SquadPlayerBoostProps) {
   const [confirmationOpen, setConfirmationOpen] = useState(false);
-  const outcomeRef = useRef<HTMLDivElement>(null);
+  const [progress, setProgress] = useState<SquadPlayerBoostProgress | null>(
+    null,
+  );
   const isCurrentAbility = action === "currentAbility";
   const actionLabel = isCurrentAbility ? "Boost all CA" : "Make all Wonderkids";
   const loadingLabel = isCurrentAbility ? "Boosting…" : "Applying…";
@@ -90,9 +120,12 @@ function SquadPlayerBoost({
     : "Make all Wonderkids?";
 
   const confirm = () => {
-    void onBoost().then(
-      () => setConfirmationOpen(false),
-      () => undefined,
+    void onBoost(setProgress).then(
+      () => {
+        setConfirmationOpen(false);
+        onConfirmationChange(false);
+      },
+      () => setProgress(null),
     );
   };
 
@@ -107,21 +140,13 @@ function SquadPlayerBoost({
           loadingLabel={loadingLabel}
           onClick={() => {
             onOpenConfirmation();
+            onConfirmationChange(true);
+            setProgress(null);
             setConfirmationOpen(true);
           }}
         >
           {actionLabel}
         </Button>
-        <div
-          ref={outcomeRef}
-          tabIndex={-1}
-          className="rounded-sm focus:outline-2 focus:outline-offset-2 focus:outline-primary"
-          aria-live="polite"
-        >
-          {!confirmationOpen ? (
-            <BoostOutcome result={result} error={error} action={action} />
-          ) : null}
-        </div>
       </div>
       <Modal
         open={confirmationOpen}
@@ -129,15 +154,19 @@ function SquadPlayerBoost({
         onClose={() => {
           if (!pending) {
             setConfirmationOpen(false);
+            onConfirmationChange(false);
           }
         }}
-        fallbackFocusTo={() => outcomeRef.current}
+        fallbackFocusTo={fallbackFocusTo}
         footer={
           <>
             <Button
               disabled={pending}
               variant="secondary"
-              onClick={() => setConfirmationOpen(false)}
+              onClick={() => {
+                setConfirmationOpen(false);
+                onConfirmationChange(false);
+              }}
             >
               Cancel
             </Button>
@@ -179,8 +208,23 @@ function SquadPlayerBoost({
           <p className="text-body-sm text-on-surface-variant">
             Changes already applied cannot be undone.
           </p>
+          {pending ? (
+            <div aria-live="polite">
+              {progress ? (
+                <BoostProgress progress={progress} />
+              ) : (
+                <p className="text-body-sm text-on-surface-variant">
+                  Preparing squad…
+                </p>
+              )}
+            </div>
+          ) : null}
           <div aria-live="polite">
-            <BoostOutcome result={undefined} error={error} action={action} />
+            <SquadBoostOutcome
+              result={undefined}
+              error={error}
+              action={action}
+            />
           </div>
         </div>
       </Modal>
