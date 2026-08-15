@@ -1404,34 +1404,53 @@ test.describe("application smoke", () => {
         await expect(summary.getByText(label, { exact: true })).toBeVisible();
       }
 
-      const [boostBox, wonderkidBox, caLabelBox, abilityRowBox] =
-        await Promise.all([
-          summary.getByRole("button", { name: "Boost CA" }).boundingBox(),
-          summary
-            .getByRole("button", { name: "Wonderkid Mentality" })
-            .boundingBox(),
-          summary.getByText("CA", { exact: true }).boundingBox(),
-          summary
-            .getByText("Value", { exact: true })
-            .locator("..")
-            .locator("..")
-            .boundingBox(),
-        ]);
+      const [
+        boostBox,
+        wonderkidBox,
+        hiddenInformationBox,
+        caLabelBox,
+        abilityRowBox,
+      ] = await Promise.all([
+        summary.getByRole("button", { name: "Boost CA" }).boundingBox(),
+        summary
+          .getByRole("button", { name: "Wonderkid Mentality" })
+          .boundingBox(),
+        summary
+          .getByRole("button", { name: "Reveal hidden information" })
+          .boundingBox(),
+        summary.getByText("CA", { exact: true }).boundingBox(),
+        summary
+          .getByText("Value", { exact: true })
+          .locator("..")
+          .locator("..")
+          .boundingBox(),
+      ]);
       expect(boostBox).not.toBeNull();
       expect(wonderkidBox).not.toBeNull();
+      expect(hiddenInformationBox).not.toBeNull();
       expect(caLabelBox).not.toBeNull();
       expect(abilityRowBox).not.toBeNull();
-      if (!boostBox || !wonderkidBox || !caLabelBox || !abilityRowBox) {
+      if (
+        !boostBox ||
+        !wonderkidBox ||
+        !hiddenInformationBox ||
+        !caLabelBox ||
+        !abilityRowBox
+      ) {
         throw new Error("Expected visible player-development actions.");
       }
+      expect(Math.abs(wonderkidBox.y - boostBox.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(hiddenInformationBox.y - boostBox.y)).toBeLessThanOrEqual(
+        1,
+      );
       expect(boostBox.y + boostBox.height).toBeLessThanOrEqual(caLabelBox.y);
       expect(caLabelBox.y - (boostBox.y + boostBox.height)).toBeLessThanOrEqual(
         24,
       );
       expect(
         Math.abs(
-          wonderkidBox.x +
-            wonderkidBox.width -
+          hiddenInformationBox.x +
+            hiddenInformationBox.width -
             (abilityRowBox.x + abilityRowBox.width),
         ),
       ).toBeLessThanOrEqual(1);
