@@ -280,7 +280,7 @@ test.describe("application smoke", () => {
     await expect(main.getByTestId("squad-overview-scroller")).toBeVisible();
     await expect(
       table.getByRole("link", { name: "Alex Scout" }),
-    ).toHaveAttribute("href", "/players/42?tab=technical");
+    ).toHaveAttribute("href", "/players/42?tab=outfield");
     await table.getByRole("button", { name: "Name", exact: true }).click();
     await expect(
       table.getByRole("columnheader", { name: "Name" }),
@@ -293,7 +293,7 @@ test.describe("application smoke", () => {
       .first()
       .getByText("Barcelona")
       .click();
-    await expect(page).toHaveURL(/\/players\/42\?tab=technical$/);
+    await expect(page).toHaveURL(/\/players\/42\?tab=outfield$/);
   });
 
   test("configured Squad keeps its table inside desktop viewports", async ({
@@ -1535,6 +1535,9 @@ test.describe("application smoke", () => {
     await page.goto("/players/42?tab=technical");
 
     const technical = page.getByRole("region", { name: "Technical" });
+    const mental = page.getByRole("region", { name: "Mental" });
+    const physical = page.getByRole("region", { name: "Physical" });
+    const roleFit = page.getByRole("region", { name: "Role fit for MC" });
     const passing = technical.locator("dd", {
       hasText: "Current 14, Potential 16",
     });
@@ -1560,6 +1563,86 @@ test.describe("application smoke", () => {
       expect(passingBox.x + passingBox.width).toBeLessThanOrEqual(
         technicalBox.x + technicalBox.width,
       );
+
+      for (const [region, label] of [
+        [technical, "Passing"],
+        [mental, "Off The Ball"],
+        [physical, "Natural Fitness"],
+      ] as const) {
+        const regionBox = await region.boundingBox();
+        const labelBox = await region
+          .getByText(label, { exact: true })
+          .boundingBox();
+        expect(regionBox).not.toBeNull();
+        expect(labelBox).not.toBeNull();
+        if (!regionBox || !labelBox) {
+          throw new Error(`Expected readable ${label} attribute label.`);
+        }
+        expect(labelBox.width).toBeGreaterThan(0);
+        expect(labelBox.x + labelBox.width).toBeLessThanOrEqual(
+          regionBox.x + regionBox.width,
+        );
+        const dimensions = await region.evaluate((element) => {
+          const htmlElement = element as unknown as {
+            clientWidth: number;
+            scrollWidth: number;
+          };
+          return {
+            clientWidth: htmlElement.clientWidth,
+            scrollWidth: htmlElement.scrollWidth,
+          };
+        });
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(
+          dimensions.clientWidth,
+        );
+        expect(
+          await region.getByText(label, { exact: true }).evaluate((element) => {
+            const htmlElement = element as unknown as {
+              clientWidth: number;
+              scrollWidth: number;
+            };
+            return htmlElement.scrollWidth <= htmlElement.clientWidth;
+          }),
+        ).toBe(true);
+      }
+    }
+
+    await page.getByRole("button", { name: "Toggle navigation" }).click();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const expandedRoleFitDimensions = await roleFit.evaluate((element) => {
+      const htmlElement = element as unknown as {
+        clientWidth: number;
+        scrollWidth: number;
+      };
+      return {
+        clientWidth: htmlElement.clientWidth,
+        scrollWidth: htmlElement.scrollWidth,
+      };
+    });
+    expect(expandedRoleFitDimensions.scrollWidth).toBeLessThanOrEqual(
+      expandedRoleFitDimensions.clientWidth,
+    );
+    for (const [region, label] of [
+      [technical, "Passing"],
+      [mental, "Off The Ball"],
+      [physical, "Natural Fitness"],
+    ] as const) {
+      const labelBox = await region
+        .getByText(label, { exact: true })
+        .boundingBox();
+      expect(labelBox).not.toBeNull();
+      if (!labelBox) {
+        throw new Error(`Expected readable ${label} attribute label.`);
+      }
+      expect(
+        await region.getByText(label, { exact: true }).evaluate((element) => {
+          const htmlElement = element as unknown as {
+            clientWidth: number;
+            scrollWidth: number;
+          };
+          return htmlElement.scrollWidth <= htmlElement.clientWidth;
+        }),
+      ).toBe(true);
     }
   });
 

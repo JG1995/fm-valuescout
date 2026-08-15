@@ -71,7 +71,7 @@ describe("player profile route", () => {
     expect(screen.getByText("Right")).toBeInTheDocument();
     expect(screen.getByText("ENG, WAL")).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: "Technical", selected: true }),
+      screen.getByRole("tab", { name: "Outfield", selected: true }),
     ).toBeInTheDocument();
   });
 
@@ -180,7 +180,7 @@ describe("player profile route", () => {
       await screen.findByRole("region", { name: "Alex Scout summary" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: "Technical", selected: true }),
+      screen.getByRole("tab", { name: "Outfield", selected: true }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "MC, familiarity 20", pressed: true }),
@@ -218,18 +218,24 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
-  it("selects attribute groups from the tab search param", async () => {
+  it("normalizes legacy visible tabs to the outfield panel", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
     const user = userEvent.setup();
     const { router } = renderProfileRoute("/players/42?tab=mental");
 
     expect(
-      await screen.findByRole("tab", { name: "Mental", selected: true }),
+      await screen.findByRole("tab", { name: "Outfield", selected: true }),
     ).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Mental" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("region", { name: "Technical" }),
+      screen.getByRole("region", { name: "Technical" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Physical" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Goalkeeping" }),
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Hidden" }));
@@ -247,23 +253,23 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     const { router } = renderProfileRoute("/players/42");
 
-    const technical = await screen.findByRole("tab", {
-      name: "Technical",
+    const outfield = await screen.findByRole("tab", {
+      name: "Outfield",
       selected: true,
     });
-    technical.focus();
+    outfield.focus();
     await user.keyboard("{ArrowRight}");
 
     expect(
-      await screen.findByRole("tab", { name: "Mental", selected: true }),
+      await screen.findByRole("tab", { name: "Goalkeeping", selected: true }),
     ).toBeInTheDocument();
-    expect(router.state.location.search).toMatchObject({ tab: "mental" });
+    expect(router.state.location.search).toMatchObject({ tab: "goalkeeping" });
 
     await user.keyboard("{ArrowRight}");
     expect(
-      await screen.findByRole("tab", { name: "Physical", selected: true }),
+      await screen.findByRole("tab", { name: "Hidden", selected: true }),
     ).toBeInTheDocument();
-    expect(router.state.location.search).toMatchObject({ tab: "physical" });
+    expect(router.state.location.search).toMatchObject({ tab: "hidden" });
   });
 
   it("shows Load Data empty state when no snapshot is loaded", async () => {
@@ -303,6 +309,13 @@ describe("player profile route", () => {
     renderProfileRoute("/players/42?tab=technical");
 
     const technical = await screen.findByRole("region", { name: "Technical" });
+    expect(screen.getByRole("region", { name: "Mental" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Physical" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Set Pieces" }),
+    ).toBeInTheDocument();
     const crossingTerm = within(technical).getByText("Crossing");
     expect(
       crossingTerm.parentElement?.querySelector('[aria-hidden="true"]'),
@@ -311,7 +324,6 @@ describe("player profile route", () => {
       crossingTerm.parentElement?.querySelector(".sr-only"),
     ).toHaveTextContent("Current —, Potential —");
 
-    await user.click(screen.getByRole("tab", { name: "Physical" }));
     const physical = screen.getByRole("region", { name: "Physical" });
     const accelerationTerm = within(physical).getByText("Acceleration");
     expect(
@@ -741,7 +753,7 @@ describe("player profile route", () => {
     await router.navigate({
       to: "/players/$uid",
       params: { uid: "99" },
-      search: { tab: "technical" },
+      search: { tab: "outfield" },
     });
 
     expect(
@@ -774,7 +786,7 @@ describe("player profile route", () => {
     await router.navigate({
       to: "/players/$uid",
       params: { uid: "99" },
-      search: { tab: "technical" },
+      search: { tab: "outfield" },
     });
     expect(
       await screen.findByRole("heading", { level: 1, name: "Jamie Scout" }),

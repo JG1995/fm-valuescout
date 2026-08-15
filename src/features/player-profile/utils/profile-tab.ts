@@ -1,7 +1,5 @@
 export const PROFILE_TABS = [
-  "technical",
-  "mental",
-  "physical",
+  "outfield",
   "goalkeeping",
   "hidden",
   "personality",
@@ -9,9 +7,18 @@ export const PROFILE_TABS = [
 
 export type ProfileTab = (typeof PROFILE_TABS)[number];
 
+const LEGACY_OUTFIELD_TABS = ["technical", "mental", "physical"] as const;
+
 export function parseProfileTab(value: unknown): ProfileTab {
+  if (
+    typeof value === "string" &&
+    (value === "outfield" ||
+      (LEGACY_OUTFIELD_TABS as readonly string[]).includes(value))
+  ) {
+    return "outfield";
+  }
   return typeof value === "string" &&
     (PROFILE_TABS as readonly string[]).includes(value)
     ? (value as ProfileTab)
-    : "technical";
+    : "outfield";
 }

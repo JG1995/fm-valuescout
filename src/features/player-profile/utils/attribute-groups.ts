@@ -4,33 +4,50 @@ export type AttributeGroupId =
   | "technical"
   | "mental"
   | "physical"
-  | "goalkeeping";
+  | "goalkeeping"
+  | "hidden"
+  | "personality";
 
 export type AttributeGroup = {
   id: AttributeGroupId;
   title: string;
   keys: readonly string[];
+  subgroups?: readonly AttributeSubgroup[];
 };
+
+export type AttributeSubgroup = {
+  title: string;
+  keys: readonly string[];
+};
+
+const TECHNICAL_SET_PIECE_KEYS = [
+  "Corners",
+  "FreeKicks",
+  "LongThrows",
+  "PenaltyTaking",
+] as const;
 
 export const VISIBLE_ATTRIBUTE_GROUPS: readonly AttributeGroup[] = [
   {
     id: "technical",
     title: "Technical",
     keys: [
-      "Corners",
       "Crossing",
       "Dribbling",
       "Finishing",
       "FirstTouch",
-      "FreeKicks",
       "Heading",
       "LongShots",
-      "LongThrows",
       "Marking",
       "Passing",
-      "PenaltyTaking",
       "Tackling",
       "Technique",
+    ],
+    subgroups: [
+      {
+        title: "Set Pieces",
+        keys: TECHNICAL_SET_PIECE_KEYS,
+      },
     ],
   },
   {
@@ -85,6 +102,9 @@ export const VISIBLE_ATTRIBUTE_GROUPS: readonly AttributeGroup[] = [
     ],
   },
 ] as const;
+
+export const OUTFIELD_ATTRIBUTE_GROUPS = VISIBLE_ATTRIBUTE_GROUPS.slice(0, 3);
+export const GOALKEEPING_ATTRIBUTE_GROUP = VISIBLE_ATTRIBUTE_GROUPS[3];
 
 export const HIDDEN_ATTRIBUTE_KEYS = [
   "Dirtiness",

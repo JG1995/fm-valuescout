@@ -258,7 +258,7 @@ function SquadOverviewTable({
                 <Link
                   to="/players/$uid"
                   params={{ uid: String(player.uid) }}
-                  search={{ tab: "technical" }}
+                  search={{ tab: "outfield" }}
                   tabIndex={-1}
                   className="block truncate text-on-surface underline decoration-outline-variant underline-offset-2 transition-colors duration-150 ease-out hover:text-primary"
                   title={player.name}
@@ -292,7 +292,7 @@ function SquadOverviewTable({
         void navigate({
           to: "/players/$uid",
           params: { uid: String(player.uid) },
-          search: { tab: "technical" },
+          search: { tab: "outfield" },
         });
       }}
     />

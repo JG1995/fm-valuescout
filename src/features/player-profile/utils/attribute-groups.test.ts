@@ -13,11 +13,28 @@ describe("attribute-groups", () => {
   it("exposes Technical Mental Physical and Goalkeeping with known dump keys", () => {
     const titles = VISIBLE_ATTRIBUTE_GROUPS.map((group) => group.title);
     expect(titles).toEqual(["Technical", "Mental", "Physical", "Goalkeeping"]);
+    const keys = VISIBLE_ATTRIBUTE_KEYS_FLAT();
     expect(VISIBLE_ATTRIBUTE_GROUPS[0].keys).toContain("Crossing");
-    expect(VISIBLE_ATTRIBUTE_KEYS_FLAT()).toContain("Acceleration");
-    expect(VISIBLE_ATTRIBUTE_KEYS_FLAT()).toContain("Handling");
+    expect(keys).toContain("Acceleration");
+    expect(keys).toContain("Handling");
+    expect(keys).toContain("Corners");
+    expect(new Set(keys).size).toBe(keys.length);
     expect(HIDDEN_ATTRIBUTE_KEYS).toContain("Consistency");
     expect(PERSONALITY_ATTRIBUTE_KEYS).toContain("Ambition");
+  });
+
+  it("keeps outfield groups together and separates technical set pieces", () => {
+    const technical = VISIBLE_ATTRIBUTE_GROUPS[0];
+    expect(technical.subgroups).toEqual([
+      {
+        title: "Set Pieces",
+        keys: ["Corners", "FreeKicks", "LongThrows", "PenaltyTaking"],
+      },
+    ]);
+    expect(technical.keys).not.toContain("Corners");
+    expect(
+      technical.subgroups?.flatMap((subgroup) => [...subgroup.keys]),
+    ).toContain("PenaltyTaking");
   });
 
   it("keeps null and missing values as null so display can show an em dash", () => {
@@ -76,5 +93,8 @@ describe("attribute-groups", () => {
 });
 
 function VISIBLE_ATTRIBUTE_KEYS_FLAT(): string[] {
-  return VISIBLE_ATTRIBUTE_GROUPS.flatMap((group) => [...group.keys]);
+  return VISIBLE_ATTRIBUTE_GROUPS.flatMap((group) => [
+    ...group.keys,
+    ...(group.subgroups?.flatMap((subgroup) => [...subgroup.keys]) ?? []),
+  ]);
 }

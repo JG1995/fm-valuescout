@@ -26,6 +26,7 @@ import {
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import { useLayoutStore } from "@/stores/use-layout-store";
 import { cn } from "@/utils/cn";
 
 export type PlayerProfileSearch = {
@@ -81,9 +82,11 @@ function SkeletonBar({ className }: { className?: string }) {
 const SKELETON_SLOTS = ["s1", "s2", "s3", "s4", "s5", "s6"] as const;
 
 function ProfileFallback() {
+  const railExpanded = useLayoutStore((state) => state.railExpanded);
+
   return (
     <div
-      className="flex min-h-[calc(100dvh-var(--spacing-header-height)-2rem)] flex-col gap-gutter"
+      className="flex max-h-[calc(100dvh-var(--spacing-header-height)-2rem)] min-h-[calc(100dvh-var(--spacing-header-height)-2rem)] flex-col gap-gutter overflow-hidden"
       aria-busy="true"
       aria-live="polite"
       data-testid="profile-loading"
@@ -97,10 +100,10 @@ function ProfileFallback() {
           </div>
         ))}
       </section>
-      <div className="grid min-h-[32rem] flex-1 gap-gutter lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+      <div className={profileWorkspaceClassName(railExpanded)}>
         <Panel title="Attributes">
           <SkeletonBar className="mb-4 h-8 w-full rounded-full" />
-          <div className="grid grid-cols-2 gap-x-5">
+          <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-3">
             {SKELETON_SLOTS.map((slot) => (
               <div
                 key={slot}
@@ -137,6 +140,15 @@ function ProfileFallback() {
   );
 }
 
+function profileWorkspaceClassName(railExpanded: boolean) {
+  return cn(
+    "grid h-0 min-h-0 flex-1 gap-gutter [&>*]:min-h-0",
+    railExpanded
+      ? "grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] 2xl:grid-rows-[minmax(0,1fr)]"
+      : "grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]",
+  );
+}
+
 function PlayerNotFound() {
   return (
     <Panel>
@@ -157,6 +169,7 @@ function PlayerProfileContent({
   tab: ProfileTab;
   onTabChange: (tab: ProfileTab) => void;
 }) {
+  const railExpanded = useLayoutStore((state) => state.railExpanded);
   const queryClient = useQueryClient();
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
@@ -205,7 +218,7 @@ function PlayerProfileContent({
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-var(--spacing-header-height)-2rem)] flex-col gap-gutter">
+    <div className="flex max-h-[calc(100dvh-var(--spacing-header-height)-2rem)] min-h-[calc(100dvh-var(--spacing-header-height)-2rem)] flex-col gap-gutter overflow-hidden">
       <PlayerOverviewPanel
         player={player}
         hiddenInformationPending={
@@ -247,7 +260,7 @@ function PlayerProfileContent({
           ) : null
         }
       />
-      <div className="grid min-h-[32rem] flex-1 gap-gutter lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+      <div className={profileWorkspaceClassName(railExpanded)}>
         <PlayerAttributesPanel
           player={player}
           tab={tab}

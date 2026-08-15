@@ -4,10 +4,8 @@ import type { ProfileTab } from "../utils/profile-tab";
 import { PROFILE_TABS } from "../utils/profile-tab";
 
 const TAB_LABELS: Record<ProfileTab, string> = {
-  technical: "Technical",
-  mental: "Mental",
-  physical: "Physical",
-  goalkeeping: "GK",
+  outfield: "Outfield",
+  goalkeeping: "Goalkeeping",
   hidden: "Hidden",
   personality: "Personality",
 };
