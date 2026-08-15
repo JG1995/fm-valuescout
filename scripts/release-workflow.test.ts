@@ -73,6 +73,15 @@ describe("verified-main release workflow", () => {
     );
   });
 
+  it("preserves absent GitHub SHAs as JSON null in both release jobs", () => {
+    expect(
+      releaseWorkflow.match(
+        /\[AllowNull\(\)\]\[object\]\$TagSha, \[AllowNull\(\)\]\[object\]\$VerifiedSha/g,
+      ),
+    ).toHaveLength(2);
+    expect(releaseWorkflow).not.toContain("[AllowNull()][string]$TagSha");
+  });
+
   it("requires metadata validation and the same Windows candidate command in Check", () => {
     expect(checkWorkflow).toContain("release:");
     expect(checkWorkflow).toContain("release-candidate:");

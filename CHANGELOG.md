@@ -17,6 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Fixed
 
 - Windows release validation now preserves the prepared changelog notes across line-ending conventions.
+- Release publication now preserves absent GitHub SHAs as null instead of treating them as orphaned tags.
 
 ### Security
 

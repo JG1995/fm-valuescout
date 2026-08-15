@@ -137,7 +137,7 @@ jobs:
           }
 
           function Get-PublicationDecision {
-            param($Metadata, $ExistingRelease, [AllowNull()][string]$TagSha, [AllowNull()][string]$VerifiedSha, [bool]$ReleaseSourcePrepared)
+            param($Metadata, $ExistingRelease, [AllowNull()][object]$TagSha, [AllowNull()][object]$VerifiedSha, [bool]$ReleaseSourcePrepared)
             $inputPath = Join-Path $env:RUNNER_TEMP "release-policy-$([guid]::NewGuid()).json"
             $input = @{
               expected = @{
@@ -330,7 +330,7 @@ jobs:
           }
 
           function Get-PublicationDecision {
-            param($Metadata, $ExistingRelease, [AllowNull()][string]$TagSha, [AllowNull()][string]$VerifiedSha, [bool]$ReleaseSourcePrepared)
+            param($Metadata, $ExistingRelease, [AllowNull()][object]$TagSha, [AllowNull()][object]$VerifiedSha, [bool]$ReleaseSourcePrepared)
             $inputPath = Join-Path $env:RUNNER_TEMP "release-policy-$([guid]::NewGuid()).json"
             $input = @{
               expected = @{
