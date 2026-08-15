@@ -2,30 +2,50 @@ mod db;
 mod features;
 
 use tauri::Manager;
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
+
+const RELEASE_LOG_MAX_FILE_SIZE_BYTES: u128 = 1_000_000;
+const RELEASE_LOG_RETAINED_FILE_COUNT: usize = 3;
+const RELEASE_LOG_FILE_NAME: &str = "fm-valuescout";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .max_file_size(RELEASE_LOG_MAX_FILE_SIZE_BYTES)
+                    .rotation_strategy(RotationStrategy::KeepSome(RELEASE_LOG_RETAINED_FILE_COUNT))
+                    .targets([
+                        Target::new(TargetKind::Stdout),
+                        Target::new(TargetKind::LogDir {
+                            file_name: Some(RELEASE_LOG_FILE_NAME.into()),
+                        }),
+                    ])
+                    .build(),
+            )?;
 
-            let db_path = db::resolve_db_path(app.handle())?;
-            let db = db::open(&db_path)?;
+            log::info!(
+                "FM ValueScout {} starting; database schema target={}",
+                env!("CARGO_PKG_VERSION"),
+                db::migrations::latest_version()
+            );
+
+            let db_path = db::resolve_db_path(app.handle()).inspect_err(|_error| {
+                log::error!("database path resolution failed during startup");
+            })?;
+            let db = db::open(&db_path).inspect_err(|_error| {
+                log::error!("database initialization failed during startup");
+            })?;
             app.manage(db);
+
+            log::info!("FM ValueScout startup complete");
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            features::health::commands::get_status,
-            features::health::commands::get_demo_value,
-            features::health::commands::set_demo_value,
             features::memory_read::commands::get_bridge_status,
             features::memory_read::commands::request_player_dump,
             features::memory_read::commands::get_bridge_install_status,
@@ -77,4 +97,16 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn release_logs_have_bounded_local_retention() {
+        assert_eq!(RELEASE_LOG_MAX_FILE_SIZE_BYTES, 1_000_000);
+        assert_eq!(RELEASE_LOG_RETAINED_FILE_COUNT, 3);
+        assert_eq!(RELEASE_LOG_FILE_NAME, "fm-valuescout");
+    }
 }

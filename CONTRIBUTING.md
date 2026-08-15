@@ -12,7 +12,7 @@ This template is designed to be forked, modified, and shipped. The workflow keep
 
 `format` applies Biome fixes and `cargo fmt` before you stage. `check-fast` runs full-tree Biome and TypeScript plus staged secretlint. `check` runs code-quality checks: Biome, TypeScript, secretlint, and Rust.
 
-CI selects frontend, browser, Rust, and bridge checks from the changed paths. Its required `check` status aggregates every applicable result. Desktop installer builds run only from the release workflow. Do not weaken tests to make a gate pass. Run `pnpm exec playwright install chromium` once after `pnpm install` so smoke can run.
+CI selects frontend, browser, Rust, bridge, and release-candidate checks from the changed paths. A release-bearing input validates metadata and packages the Windows candidate before `check` succeeds; only verified-`main` Release can publish it. Do not weaken tests to make a gate pass. Run `pnpm exec playwright install chromium` once after `pnpm install` so smoke can run.
 
 ## Pre-commit hook
 
@@ -36,7 +36,7 @@ The workflow overview is in [.codex/README.md](.codex/README.md). [AGENTS.md](AG
 
 ### New project bootstrap
 
-See [README — Forking this template](README.md#forking-this-template) for setup details. In brief:
+See [README — Develop from source](README.md#develop-from-source) for setup details. In brief:
 
 1. Run `./scripts/dev check` and `./scripts/dev test` before feature work.
 2. Fill `.wiki/CONCEPT.md` with MVP scope.

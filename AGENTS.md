@@ -88,11 +88,15 @@ Use the exact implementation and review profiles recorded in the active ledger. 
 ./scripts/dev smoke
 ./scripts/dev mutate <target...>
 ./scripts/dev bridge-install
+./scripts/dev package-windows
+./scripts/dev release-metadata [latest-tag|none] [release-intent]
 ```
 
 `check` is the commit gate: Biome verify (`biome check`), TypeScript, secretlint, and Rust format, lint, and tests. `check-app` runs its frontend part only for CI. `bridge-test` runs the C# bridge unit suite and requires the .NET 6 SDK. Run `pnpm exec playwright install chromium` once after install, then use `smoke` for the Playwright product suite (`e2e/smoke.spec.ts`). `format` applies Biome lint and format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/` — run before staging during `$workflow-build` and `$workflow-checkpoint`; it is not part of the gate. Optional path args forward to Biome only. `secrets` runs secretlint on the full tree, or on staged files with `--staged` (no lint-staged). `mutate` is unsupported until mutation tooling is wired into `scripts/dev`. Never report an unsupported command as passed. `bridge-install` builds the C# FM plugin and copies `FmDataBridge.dll` into BepInEx plugins (see `bridge/README.md`; path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL Steam default).
 
-`test` runs `vitest run` (full suite or forwarded args). CI selects frontend, browser, Rust, and bridge product checks from the changed paths. Its required `check` status aggregates the applicable results. Desktop installer builds run only from the release workflow.
+`test` runs `vitest run` (full suite or forwarded args). CI selects frontend, browser, Rust, bridge, and release-candidate checks from the changed paths. The release candidate validates metadata and, for release-bearing input, runs `package-windows` on Windows without publication. Its required `check` status aggregates the applicable results. Verified-`main` Release runs package and publish only after that Check succeeds. `package-windows` runs only on Windows, builds one unsigned x64 NSIS candidate from the locked source bridge, and writes its checksum under `.release/windows/<version>/`; it does not publish.
+
+For every human-authored pull request, use the repository-local `.agents/skills/create-pr` procedure with the repository template. Its explicit release intent is the only pre-merge release classification; `release-metadata` validates prepared version and changelog state without writing files or calling GitHub.
 
 Use stack-native commands only through the stable `scripts/dev` surface.
 

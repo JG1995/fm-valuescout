@@ -2,6 +2,8 @@
 
 C# plugin that runs inside Football Manager 26 (Windows Steam) via BepInEx 6 IL2CPP. It owns memory layouts and dump files. The Tauri Rust backend talks to it through a LocalAppData file protocol ([ADR-0016](../.wiki/decisions/0016-csharp-bepinex-fm26-bridge.md)).
 
+This is early-alpha bridge and maintainer documentation. Start with the root [README](../README.md) for supported-environment, installer, backup, and public-reporting guidance. Do not share `dump.json`, bridge diagnostics, or the app database in a public issue: those files can contain local FM data.
+
 ## Bridge data directory (locked)
 
 ```text
@@ -132,7 +134,7 @@ Copy-Item Directory.Build.props.example Directory.Build.user.props
 ```json
 {
   "protocolVersion": 1,
-  "pluginVersion": "0.1.0",
+  "pluginVersion": "0.1.0-alpha.1",
   "state": "idle",
   "updatedAtUtc": "2026-07-28T15:00:00+00:00",
   "gamePluginModulePresent": true,
@@ -159,15 +161,17 @@ Writing a DLL into `Program Files (x86)\Steam\…` may require administrator app
 
 ### Bundled DLL packaging
 
-Linux CI and local gates use a **placeholder** `src-tauri/resources/FmDataBridge.dll` so Tauri can bundle a file without a Windows `dotnet build`. Before Windows release builds or manual in-app install testing with a real plugin:
+Linux CI and local gates use a **placeholder** `src-tauri/resources/FmDataBridge.dll` so Tauri can bundle a file without a Windows `dotnet build`. Do not overwrite that tracked file for a release.
 
-```powershell
-cd bridge
-dotnet build -c Release
-Copy-Item bin/Release/net6.0/FmDataBridge.dll ../src-tauri/resources/FmDataBridge.dll
+On a Windows host, run:
+
+```bash
+./scripts/dev package-windows
 ```
 
-`./scripts/dev bridge-install` remains the developer path that builds from source and copies directly into the game folder (no Tauri resource step).
+The command restores and builds the bridge from the checked-out source, verifies its identity, bundles that generated DLL into one unsigned x64 NSIS installer, and writes the installer plus checksum under `.release/windows/<version>/`. It does not publish a release or change the tracked placeholder.
+
+`./scripts/dev bridge-install` remains the developer path that builds from source and copies directly into the game folder for manual in-app plugin testing.
 
 ## Interop assemblies (not in git)
 

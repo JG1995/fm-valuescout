@@ -19,12 +19,13 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       rust: ${{ steps.filter.outputs.rust }}
       bridge: ${{ steps.filter.outputs.bridge }}
+      release: ${{ steps.filter.outputs.release }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: dorny/paths-filter@v4
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d
         id: filter
         with:
           filters: |
@@ -46,10 +47,66 @@ jobs:
               - 'src-tauri/Cargo.lock'
             bridge:
               - 'bridge/**'
+            release:
+              - 'CHANGELOG.md'
+              - 'release-preparation.json'
+              - 'package.json'
+              - 'src-tauri/Cargo.toml'
+              - 'src-tauri/Cargo.lock'
+              - 'src-tauri/tauri.conf.json'
+              - 'src-tauri/tauri.release.conf.json'
+              - 'bridge/**'
+              - 'scripts/dev'
+              - 'scripts/release-metadata.mjs'
+              - 'scripts/release-package-validation.mjs'
+              - 'scripts/release-publication-policy.mjs'
+              - '.github/workflows/check.yml'
+              - '.github/workflows/release.yml'
             ci:
               - '.github/workflows/**'
               - '.github/actions/**'
-              - 'scripts/dev'
+              - 'scripts/**'
+
+  dependabot-policy:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.repository == 'JG1995/fm-valuescout' &&
+      github.event.pull_request.base.repo.full_name == 'JG1995/fm-valuescout' &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Verify Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Check out trusted policy
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Require eligible Dependabot metadata
+        run: ./scripts/dev dependency-automerge-policy
+        env:
+          DEPENDABOT_REQUIRE_ELIGIBLE: true
+          DEPENDABOT_ACTOR: ${{ github.actor }}
+          DEPENDABOT_PULL_REQUEST_AUTHOR: ${{ github.event.pull_request.user.login }}
+          DEPENDABOT_REPOSITORY: ${{ github.repository }}
+          DEPENDABOT_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          DEPENDABOT_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEPENDABOT_EXPECTED_REPOSITORY: JG1995/fm-valuescout
+          DEPENDABOT_EXPECTED_BASE_REF: main
+          DEPENDABOT_PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          DEPENDABOT_TARGET_BRANCH: ${{ steps.metadata.outputs.target-branch }}
+          DEPENDABOT_UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDABOT_MAINTAINER_CHANGES: ${{ steps.metadata.outputs.maintainer-changes }}
+          DEPENDABOT_UPDATED_DEPENDENCIES: ${{ steps.metadata.outputs.updated-dependencies-json }}
 
   frontend-tests:
     needs: changes
@@ -123,9 +180,71 @@ jobs:
         shell: bash
         run: ./scripts/dev bridge-test
 
+  release-candidate:
+    needs: changes
+    if: needs.changes.outputs.release == 'true'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+          cache: pnpm
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: "6.0.x"
+      - run: pnpm install --frozen-lockfile
+      - name: Validate release metadata
+        id: metadata
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $response = & gh api --paginate --slurp "repos/$env:GITHUB_REPOSITORY/releases?per_page=100"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not read published releases"
+          }
+          $pages = (($response -join "`n") | ConvertFrom-Json -NoEnumerate)
+          $releases = @()
+          foreach ($page in $pages) {
+            foreach ($release in $page) {
+              $releases += $release
+            }
+          }
+          $latest = $releases |
+            Where-Object { -not $_.draft } |
+            Sort-Object published_at -Descending |
+            Select-Object -First 1
+          $latestTag = if ($null -eq $latest) { "none" } else { $latest.tag_name }
+          $metadataOutput = & bash ./scripts/dev release-metadata $latestTag
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release metadata validation failed"
+          }
+          $metadata = $metadataOutput | ConvertFrom-Json
+          "release_required=$($metadata.releaseRequired.ToString().ToLowerInvariant())" |
+            Add-Content -Path $env:GITHUB_OUTPUT
+      - name: Package Windows release candidate
+        if: steps.metadata.outputs.release_required == 'true'
+        shell: bash
+        run: ./scripts/dev package-windows
+      - name: Store Windows release candidate
+        if: steps.metadata.outputs.release_required == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-release-candidate-${{ github.sha }}
+          path: .release/windows/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
   check:
     if: always()
-    needs: [changes, frontend-tests, browser-smoke, rust, bridge-tests]
+    needs: [changes, frontend-tests, browser-smoke, rust, bridge-tests, release-candidate, dependabot-policy]
     runs-on: ubuntu-latest
     steps:
       - name: Confirm applicable product checks passed
@@ -135,8 +254,10 @@ jobs:
           BROWSER_SMOKE: ${{ needs.browser-smoke.result }}
           RUST: ${{ needs.rust.result }}
           BRIDGE_TESTS: ${{ needs.bridge-tests.result }}
+          RELEASE_CANDIDATE: ${{ needs.release-candidate.result }}
+          DEPENDABOT_POLICY: ${{ needs.dependabot-policy.result }}
         run: |
-          for result in "$CHANGES" "$FRONTEND_TESTS" "$BROWSER_SMOKE" "$RUST" "$BRIDGE_TESTS"; do
+          for result in "$CHANGES" "$FRONTEND_TESTS" "$BROWSER_SMOKE" "$RUST" "$BRIDGE_TESTS" "$RELEASE_CANDIDATE" "$DEPENDABOT_POLICY"; do
             case "$result" in
               success|skipped) ;;
               *) exit 1 ;;

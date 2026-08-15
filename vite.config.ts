@@ -57,6 +57,7 @@ export default defineConfig(({ command }) => ({
             sourcemap: "hidden",
           },
   test: {
+    include: ["src/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
     environment: "jsdom",
     setupFiles: ["src/testing/setup.ts"],
     globals: false,

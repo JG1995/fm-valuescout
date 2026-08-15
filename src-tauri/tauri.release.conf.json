@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "targets": ["nsis"],
+    "resources": {
+      "../bridge/bin/Release/net6.0/FmDataBridge.dll": "resources/FmDataBridge.dll"
+    }
+  }
+}

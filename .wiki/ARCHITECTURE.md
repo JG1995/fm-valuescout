@@ -12,7 +12,7 @@ For product purpose, see [CONCEPT.md](./CONCEPT.md). For rationale behind each d
 
 ## 1. Top-Level Shape
 
-**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Codex workflow (skills, specialist agents, wiki, `./scripts/dev`), a **walking skeleton** (health IPC demo, SQLite persistence), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest and history management** (multi-save slots, retained Load Data snapshots, date-selected current reads, and Dashboard save/snapshot management — [history record](./features/completed/snapshot-history.md)), a **CSV enrichment import** (bounded Youth Tracker and Moneyball parsing, exact current-snapshot UID matching, snapshot-owned Moneyball persistence, and save-owned Youth persistence — [completed record](./features/completed/csv-enrichment-persistence.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)), **configurable player tables** (shared full-height virtual paging, validated dynamic metrics, lazy potential-role cache, persisted per-table layouts, and offline nationality flags — [completed record](./features/completed/configurable-player-tables.md)), and the **Squad workspace and Planner tools** (Dashboard Club Setup, bounded club-family overview, dual-phase tactic, depth matrix, and exact automatic allocation at `/planner`).
+**FM ValueScout** is a Tauri desktop application built on the React + Tauri v2 stack below, with a Codex workflow (skills, specialist agents, wiki, `./scripts/dev`), an implemented **FM26 memory-read bridge** (C# BepInEx plugin + Rust file protocol — [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [completed record](./features/completed/fm26-memory-read.md)), **snapshot ingest and history management** (multi-save slots, retained Load Data snapshots, date-selected current reads, and Dashboard save/snapshot management — [history record](./features/completed/snapshot-history.md)), a **CSV enrichment import** (bounded Youth Tracker and Moneyball parsing, exact current-snapshot UID matching, snapshot-owned Moneyball persistence, and save-owned Youth persistence — [completed record](./features/completed/csv-enrichment-persistence.md)), **role scoring** (FM26 IP/OOP scores computed and persisted on ingest — [completed record](./features/completed/role-scoring-engine.md)), **player search** (virtualized Search page, operator filters, global Ctrl+K name suggest — [completed record](./features/completed/player-search.md)), **configurable player tables** (shared full-height virtual paging, validated dynamic metrics, lazy potential-role cache, persisted per-table layouts, and offline nationality flags — [completed record](./features/completed/configurable-player-tables.md)), and the **Squad workspace and Planner tools** (Dashboard Club Setup, bounded club-family overview, dual-phase tactic, depth matrix, and exact automatic allocation at `/planner`).
 
 **Client / UI:** React 19 in a Tauri WebView — presentation layer only
 
@@ -206,7 +206,7 @@ src-tauri/
 
 **Dependency direction (frontend):** shared (`components`, `config`, `hooks`, `lib`, `types`, `utils`, `stores`) → `features` → `app`. No reverse imports.
 
-**Naming:** kebab-case files and folders; PascalCase component exports. Frontend feature names match backend feature folders when both sides exist (`health` ↔ `health`).
+**Naming:** kebab-case files and folders; PascalCase component exports. Frontend feature names match backend feature folders when both sides exist (`snapshot` ↔ `snapshot`).
 
 ### 2.1 Source layout rules
 
@@ -274,6 +274,7 @@ The template ships IPC commands as the frontend/backend contract. Forked project
 | `./scripts/dev bridge-test` | C# bridge unit tests; requires the .NET 6 SDK |
 | `./scripts/dev smoke` | Playwright (`e2e/smoke.spec.ts`); starts Vite via `playwright.config.ts` when needed |
 | `./scripts/dev bridge-install` | Build `bridge/` and copy `FmDataBridge.dll` into Steam `BepInEx/plugins` (Windows path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL default) |
+| `./scripts/dev package-windows` | Windows-only non-publishing release candidate: build the locked bridge from source, bundle one unsigned x64 NSIS installer, and write its SHA-256 sidecar under `.release/windows/<version>/` |
 
 ### 3.2 Validation gate
 
@@ -326,8 +327,8 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `src-tauri/tauri.conf.json` | Product identity, CSP, build hooks |
 | `src-tauri/capabilities/default.json` | Main-window capability ACL |
 | `src-tauri/Cargo.toml` | Rust crate dependencies and features |
-| `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, and bridge checks from changed paths; required `check` aggregates applicable results |
-| `.github/workflows/release.yml` | Tag-triggered multi-OS installer build via `tauri-action` |
+| `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, bridge, and release-candidate checks from changed paths; required `check` aggregates applicable results |
+| `.github/workflows/release.yml` | Verified-`main` Windows prerelease publication after a successful required `Check` run |
 | `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` surface |
 | `.codex/config.toml` | Context7 MCP and shell-environment configuration |
 | `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML, and Repowise extensions |
@@ -339,7 +340,7 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 
 ## 5. Data Flow
 
-Examples use the scaffold **health** demo feature. Forked apps follow the same patterns with real commands and services.
+The Dashboard uses product-specific query and command paths. Each path follows the same React → IPC → Rust → SQLite boundary.
 
 ### 5.0 App shell (layout chrome)
 
@@ -354,33 +355,26 @@ AppShellLayout (all routes via __root)
 
 Presentation formatters (`formatRelativeAge`, `formatAbsoluteUtc`, `formatCount`, `formatMissable`) live in `src/utils/format.ts` per [DESIGN.md](./DESIGN.md).
 
-### 5.1 Read path (IPC + SQLite)
+### 5.1 Dashboard read path (IPC + SQLite)
 
 ```text
 User navigates to /
-  → TanStack Router matches route in app/routes/, runs loader
-  → loader: queryClient.ensureQueryData(healthQueryOptions)
-  → Query fetcher: invokeCommand("get_status") via lib/tauri-client
-  → Rust: features/health/commands.rs → returns HealthStatus DTO
-  → Route component: useSuspenseQuery(healthQueryOptions)
-  → Feature component renders status; Tailwind + DESIGN tokens style UI
-
-Demo value persistence:
-  → invokeCommand("get_demo_value") / invokeCommand("set_demo_value", { value })
-  → commands.rs → service.rs → rusqlite query on demo_value table
-  → SQLite file under app_data_dir
+  → TanStack Router matches the Dashboard route and runs its loader
+  → loader prefetches saves, current snapshot, and sanity players through query options
+  → Query fetcher invokes a bounded snapshot command through lib/tauri-client
+  → Rust command reads SQLite and returns a typed DTO
+  → Dashboard panels render the query results with Tailwind and DESIGN tokens
 ```
 
-### 5.2 Write path
+### 5.2 Dashboard write path
 
 ```text
-User clicks Save
-  → useMutation(setDemoValue)
-  → invokeCommand("set_demo_value", { value })
-  → Rust service validates input, writes with parameterized rusqlite statement
-  → onSuccess: queryClient.setQueryData or invalidateQueries
-  → UI updates from Query cache
-  → onError: show error state (inline or toast — per DESIGN.md)
+User changes a save, snapshot, Planner, Academy, or CSV-import value
+  → feature mutation invokes its typed Tauri command
+  → Rust validates the request and writes through a parameterized SQLite operation
+  → on success, the feature invalidates or replaces the affected query data
+  → the Dashboard updates from the Query cache
+  → on failure, the feature shows safe inline error feedback
 ```
 
 ### 5.3 Database bootstrap
@@ -495,7 +489,7 @@ Dashboard snapshot history
   → delete_snapshot(snapshot_id, context_token) → atomic snapshot cascade and current promotion when needed
   → delete_save(save_id, context_token) → atomic save cascade, deterministic fallback activation, or blank active `Default save` recreation
 
-Route loader prefetches saves, current snapshot, sanity list, and active-save history alongside health/demo queries. Snapshot/save mutations invalidate the local snapshot tree; the route-owned context callback invalidates Search, Player, Planner, Academy, and CSV consumers only when the active save or effective current snapshot changes.
+Route loader prefetches saves, current snapshot, and the sanity list. Snapshot/save mutations invalidate the local snapshot tree; the route-owned context callback invalidates Search, Player, Planner, Academy, and CSV consumers only when the active save or effective current snapshot changes.
 
 ```
 
@@ -696,7 +690,7 @@ Non-Windows hosts return `unsupportedPlatform` for bridge install commands. Full
 - **Component and hook tests** — colocated `*.test.tsx` or `*.test.ts` beside source; Vitest + jsdom.
 - **Integration tests** — feature flows under `features/<feature>/` or `app/routes/`; preferred over shallow unit tests for confidence.
 - **IPC mocks** — `mockIPC` in `src/testing/setup.ts`; prefer over ad-hoc invoke stubs.
-- **E2E / smoke** — Playwright in `e2e/` with `tauri-ipc-stub.ts`; `./scripts/dev smoke` runs walking-skeleton checks. Vitest excludes `e2e/**`.
+- **E2E / smoke** — Playwright in `e2e/` with `tauri-ipc-stub.ts`; `./scripts/dev smoke` runs application smoke checks. Vitest excludes `e2e/**`.
 - **Rust unit tests** — `#[cfg(test)]` modules in `src-tauri/src/`; run via `cargo test` in the gate. CSV parser and import tests use checked-in Youth Tracker and Moneyball fixtures plus temporary files and SQLite databases; they cover dialect/header detection, null and malformed values, UID validation, file limits, stale context, and unchanged database state.
 - **Bridge unit tests** — `bridge/Tests/` run through `./scripts/dev bridge-test` in Windows CI.
 
@@ -714,14 +708,14 @@ Test behaviour the user sees, not implementation details. Do not assert on Zusta
 
 ### 6.4 Playwright smoke scope
 
-`./scripts/dev smoke` runs Playwright against the **Vite dev server** in Chromium, not `pnpm tauri dev`. `e2e/tauri-ipc-stub.ts` injects `window.__TAURI_INTERNALS__` before the app loads so IPC calls never reach Rust. Demo value "persistence" in smoke is **in-page JavaScript memory** in the stub — not SQLite.
+`./scripts/dev smoke` runs Playwright against the **Vite dev server** in Chromium, not `pnpm tauri dev`. `e2e/tauri-ipc-stub.ts` injects `window.__TAURI_INTERNALS__` before the app loads so IPC calls never reach Rust.
 
 | Playwright smoke covers | Playwright smoke does not cover |
 | --- | --- |
 | Vite shell loads; TanStack Router renders home, 404, and layout chrome | Real Tauri WebView runtime or platform WebView differences |
-| Walking-skeleton UI with stubbed IPC: app shell (nav rail with Search and Squad, top bar with global search), status panels, demo-value form flow, Search route, Dashboard Club Setup and CSV import cancel and bounded-result states, and Squad no-snapshot, first-use, tactic, and three-team string-add paths | Real `#[tauri::command]` handlers in Rust |
+| Application UI with stubbed IPC: app shell (nav rail with Search and Squad, top bar with global search), bridge status, Search route, Dashboard Club Setup and CSV import cancel and bounded-result states, and Squad no-snapshot, first-use, tactic, and three-team string-add paths | Real `#[tauri::command]` handlers in Rust |
 | User-visible navigation and form interaction in Chromium | SQLite persistence, migrations, or `app_data_dir` file I/O |
-| Stub IPC for `get_status`, `get_demo_value`, `set_demo_value`, `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `request_player_dump`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `list_snapshots`, `rename_snapshot`, `delete_snapshot`, `delete_save`, `get_current_snapshot`, `list_sanity_players`, `import_csv`, `search_players`, `suggest_players`, `get_player`, Planner club-family and tactic commands, `get_planner_depth`, `add_planner_string`, `remove_planner_string`, `optimize_planner_depth`, and `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, native OS file dialogs, or menu/tray integration |
+| Stub IPC for `get_bridge_status`, `get_bridge_install_status`, `install_bridge_plugin`, `remove_bridge_plugin`, `request_player_dump`, `list_saves`, `create_save`, `rename_save`, `set_active_save`, `list_snapshots`, `rename_snapshot`, `delete_snapshot`, `delete_save`, `get_current_snapshot`, `list_sanity_players`, `import_csv`, `search_players`, `suggest_players`, `get_player`, Planner club-family and tactic commands, `get_planner_depth`, `add_planner_string`, `remove_planner_string`, `optimize_planner_depth`, and `load_data` (sanity rows include `proofRoleScore`) | Capabilities ACL, plugin permissions, native OS file dialogs, or menu/tray integration |
 | Bridge panel, save switcher, snapshot overview/history, CSV import panel, plugin install section, top-bar save selector, and Load Data button render with stubbed IPC | Real BepInEx plugin, FM attach, LocalAppData file protocol, SQLite ingest, native CSV dialog/file read, or Steam-folder DLL install |
 
 | Concern | Owner in this template |
@@ -739,7 +733,8 @@ Green smoke does **not** prove SQLite persistence works in production. Rust unit
 ## 7. Deployable Artifacts
 
 - **Development** — Install Node 24, pnpm, and the Rust toolchain, then `pnpm install`, `pnpm exec playwright install chromium` (once), then `pnpm tauri dev`. On Linux/WSL, install WebKitGTK and related system packages (see §11). WSLg or an X server is required for the native window on WSL.
-- **Production build** — `pnpm tauri build` produces OS-specific installers (`.deb`, `.msi`, `.dmg`, etc.) in `src-tauri/target/release/bundle/`. CI builds unsigned installers on `v*` tag push via `.github/workflows/release.yml`.
+- **Release candidate (Windows)** — `./scripts/dev package-windows` runs only on Windows. It restores the locked bridge, validates its managed DLL and shared version, bundles one unsigned x64 NSIS installer from that source-built DLL, and writes the installer plus SHA-256 sidecar under `.release/windows/<version>/`. It never publishes anything. The required Check workflow runs this same candidate path when release inputs change and stores it for acceptance.
+- **Published prerelease (Windows)** — `.github/workflows/release.yml` follows only a successful required `Check` run caused by a push to `main`, checks out that run's exact SHA, and makes unchanged metadata a no-op. A newer version also needs a changed `release-preparation.json` record that matches its version and explicit intent; later `none` or Dependabot pushes defer publication. The same package command stages and verifies one matching draft release with the exact dated changelog section and checksum, then publishes the Windows x64 asset as a prerelease. Only the final job has `contents: write`.
 - **WebView bundle only** — `pnpm build` produces static files in `dist/` for frontend-only checks; this is not the shipped desktop artifact.
 - **Source maps** — default `build.sourcemap: "hidden"` for plain Vite builds (maps on disk, not linked from the public bundle). Tauri production builds use platform-conditional settings when `TAURI_ENV_PLATFORM` is set.
 - **Signing** — not configured in the template. Unsigned installers trigger OS security warnings on first run. Add platform signing secrets before shipping a real product.
@@ -884,4 +879,4 @@ Husky runs `./scripts/dev check-fast` on every commit (and `check-rust` when `sr
 
 GitHub Actions selects product checks from changed paths. Frontend changes run `./scripts/dev check-app` and `./scripts/dev test`, then browser smoke. Rust changes install the Rust toolchain and Tauri Linux dependencies before `./scripts/dev check-rust`. Bridge changes run `./scripts/dev bridge-test` on Windows. The required `check` status aggregates every applicable job. Match local Node major version for fewer surprises.
 
-Release builds run on `v*` tag push via `.github/workflows/release.yml` — Windows, Ubuntu, and both macOS architectures. Installers are unsigned draft assets until signing secrets are configured.
+Release evaluation follows each successful required Check run caused by a `main` push. Metadata and candidate jobs are read-only; a newer validated version receives one unsigned Windows x64 prerelease only after the final job stages and verifies its checksum and exact changelog body.

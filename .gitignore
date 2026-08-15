@@ -1,6 +1,7 @@
 # Disposable agent scratch
 .work/
 .repowise/
+.release/
 
 # Dependencies (pnpm)
 node_modules/

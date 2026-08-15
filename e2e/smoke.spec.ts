@@ -3,12 +3,14 @@
 import { expect, test } from "@playwright/test";
 import { stubTauriIpc } from "./tauri-ipc-stub";
 
-test.describe("walking skeleton smoke", () => {
+test.describe("application smoke", () => {
   test.beforeEach(async ({ page }) => {
     await stubTauriIpc(page);
   });
 
-  test("home route shows health status from stubbed IPC", async ({ page }) => {
+  test("home route shows Dashboard product panels without template health controls", async ({
+    page,
+  }) => {
     await page.goto("/");
 
     const main = page.getByRole("main");
@@ -28,19 +30,8 @@ test.describe("walking skeleton smoke", () => {
       header.getByRole("button", { name: "Load Data" }),
     ).toBeVisible();
     await expect(main.getByText(/^Bridge:/i)).toContainText("ready");
-    await expect(main.getByText("Status:")).toContainText("ok");
-    await expect(main.getByText("Stored value:")).toBeVisible();
-  });
-
-  test("home route saves demo value through stubbed IPC", async ({ page }) => {
-    await page.goto("/");
-
-    await page.getByLabel("Demo value (SQLite):").fill("smoke-value");
-    await page.getByRole("button", { name: "Save demo value" }).click();
-
-    await expect(
-      page.getByRole("main").getByText("Stored value:"),
-    ).toContainText("smoke-value");
+    await expect(main.getByText("Status:")).toHaveCount(0);
+    await expect(main.getByText("Stored value:")).toHaveCount(0);
   });
 
   test("Dashboard renames and removes a historical snapshot", async ({

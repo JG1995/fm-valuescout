@@ -1,0 +1,70 @@
+name: Dependabot auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    if: >-
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.repository == 'JG1995/fm-valuescout' &&
+      github.event.pull_request.base.repo.full_name == 'JG1995/fm-valuescout' &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ github.token }}
+        continue-on-error: true
+
+      # pull_request_target loads this workflow from main. The checkout is pinned to main,
+      # never the pull request head, so the privileged job executes only trusted policy code.
+      - name: Check out trusted policy
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Evaluate auto-merge policy
+        id: policy
+        if: always()
+        run: ./scripts/dev dependency-automerge-policy
+        env:
+          DEPENDABOT_ACTOR: ${{ github.actor }}
+          DEPENDABOT_PULL_REQUEST_AUTHOR: ${{ github.event.pull_request.user.login }}
+          DEPENDABOT_REPOSITORY: ${{ github.repository }}
+          DEPENDABOT_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          DEPENDABOT_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          DEPENDABOT_EXPECTED_REPOSITORY: JG1995/fm-valuescout
+          DEPENDABOT_EXPECTED_BASE_REF: main
+          DEPENDABOT_PACKAGE_ECOSYSTEM: ${{ steps.metadata.outputs.package-ecosystem }}
+          DEPENDABOT_TARGET_BRANCH: ${{ steps.metadata.outputs.target-branch }}
+          DEPENDABOT_UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDABOT_MAINTAINER_CHANGES: ${{ steps.metadata.outputs.maintainer-changes }}
+          DEPENDABOT_UPDATED_DEPENDENCIES: ${{ steps.metadata.outputs.updated-dependencies-json }}
+
+      - name: Revoke auto-merge when metadata is ineligible
+        if: ${{ always() && (steps.metadata.outcome != 'success' || steps.policy.outputs.eligible != 'true') }}
+        run: |
+          auto_merge_enabled="$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+          if [[ "$auto_merge_enabled" == "true" ]]; then
+            gh pr merge --disable-auto "$PR_URL"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+
+      - name: Enable native squash auto-merge
+        if: steps.metadata.outcome == 'success' && steps.policy.outputs.eligible == 'true'
+        run: gh pr merge --auto --squash --match-head-commit "$PR_HEAD_SHA" "$PR_URL"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_URL: ${{ github.event.pull_request.html_url }}

@@ -22,7 +22,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const snapshotHistory = options.snapshotHistory ?? false;
   await page.addInitScript({
     content: `
-      let demoValue = "";
       let playerProfileMentalityUpdated = false;
       const csvImportFormat = ${JSON.stringify(csvImportFormat)};
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
@@ -220,19 +219,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         invoke: async (cmd, args) => {
           if (cmd === "plugin:dialog|open") {
             return csvImportFormat ? "/tmp/smoke-import.csv" : null;
-          }
-
-          if (cmd === "get_status") {
-            return { status: "ok" };
-          }
-
-          if (cmd === "get_demo_value") {
-            return { value: demoValue };
-          }
-
-          if (cmd === "set_demo_value") {
-            demoValue = args?.value ?? "";
-            return { value: demoValue };
           }
 
           if (cmd === "get_bridge_status") {

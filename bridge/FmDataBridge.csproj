@@ -4,13 +4,15 @@
     <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>FmDataBridge</AssemblyName>
     <Product>FM ValueScout Data Bridge</Product>
-    <Version>0.1.0</Version>
+    <Version>0.1.0-alpha.1</Version>
     <BepInExPluginGuid>com.fmvaluescout.databridge</BepInExPluginGuid>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>FmDataBridge</RootNamespace>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RestoreLockedMode>true</RestoreLockedMode>
     <RestoreAdditionalProjectSources>
       https://api.nuget.org/v3/index.json;
       https://nuget.bepinex.dev/v3/index.json;
@@ -19,8 +21,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.*" IncludeAssets="compile" />
-    <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" />
+    <PackageReference Include="BepInEx.Unity.IL2CPP" Version="[6.0.0-be.785]" IncludeAssets="compile" />
+    <PackageReference Include="BepInEx.PluginInfoProps" Version="[2.1.0]" />
   </ItemGroup>
 
   <ItemGroup>

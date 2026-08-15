@@ -3,9 +3,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { CsvImportPanel } from "@/features/csv-import/components/csv-import-panel";
-import { demoValueQueryOptions } from "@/features/health/api/demo-value-query-options";
-import { healthQueryOptions } from "@/features/health/api/health-query-options";
-import { HealthStatusPanelWithErrorBoundary } from "@/features/health/components/health-status-panel-with-error-boundary";
 import { BridgeStatusPanelWithErrorBoundary } from "@/features/memory-read/components/bridge-status-panel-with-error-boundary";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { PlannerClubFamilyPanel } from "@/features/planner/components/planner-club-family-panel";
@@ -19,8 +16,6 @@ import { SnapshotPanelsWithErrorBoundary } from "@/features/snapshot/components/
 export const Route = createFileRoute("/")({
   loader: ({ context: { queryClient } }) =>
     Promise.all([
-      queryClient.ensureQueryData(healthQueryOptions),
-      queryClient.ensureQueryData(demoValueQueryOptions),
       queryClient.ensureQueryData(savesQueryOptions),
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(sanityPlayersQueryOptions),
@@ -74,9 +69,6 @@ function IndexPage() {
       </Suspense>
       <Suspense fallback={<PanelFallback label="Loading bridge status…" />}>
         <BridgeStatusPanelWithErrorBoundary />
-      </Suspense>
-      <Suspense fallback={<PanelFallback label="Loading health status…" />}>
-        <HealthStatusPanelWithErrorBoundary />
       </Suspense>
     </div>
   );
