@@ -33,13 +33,17 @@ function requireMetadata(expected, metadata) {
   }
 }
 
+function expectedPrerelease(expected) {
+  return expected.version.includes("-");
+}
+
 function requireReleaseIdentity(expected, release) {
   if (
     !release ||
     release.tag_name !== expected.tag ||
     release.name !== expected.title ||
     release.body !== expected.notes ||
-    release.prerelease !== true
+    release.prerelease !== expectedPrerelease(expected)
   ) {
     throw new Error(
       "Existing release metadata does not match the checked source",

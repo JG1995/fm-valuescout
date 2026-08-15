@@ -134,7 +134,7 @@ Copy-Item Directory.Build.props.example Directory.Build.user.props
 ```json
 {
   "protocolVersion": 1,
-  "pluginVersion": "0.1.0-alpha.1",
+  "pluginVersion": "0.2.0",
   "state": "idle",
   "updatedAtUtc": "2026-07-28T15:00:00+00:00",
   "gamePluginModulePresent": true,

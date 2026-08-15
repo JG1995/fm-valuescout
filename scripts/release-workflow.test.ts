@@ -23,7 +23,7 @@ describe("verified-main release workflow", () => {
     );
   });
 
-  it("keeps release validation and candidate packaging read-only", () => {
+  it("keeps release validation and packaging read-only", () => {
     expect(releaseWorkflow).toContain("permissions:\n  contents: read");
     expect(releaseWorkflow.match(/contents: write/g)).toHaveLength(1);
     expect(releaseWorkflow).toContain("publish:");
@@ -82,9 +82,9 @@ describe("verified-main release workflow", () => {
     expect(releaseWorkflow).not.toContain("[AllowNull()][string]$TagSha");
   });
 
-  it("requires metadata validation and the same Windows candidate command in Check", () => {
+  it("requires metadata validation and the same Windows validation command in Check", () => {
     expect(checkWorkflow).toContain("release:");
-    expect(checkWorkflow).toContain("release-candidate:");
+    expect(checkWorkflow).toContain("release-validation:");
     expect(checkWorkflow).toContain(
       "& bash ./scripts/dev release-metadata $latestTag",
     );
@@ -94,16 +94,29 @@ describe("verified-main release workflow", () => {
       ),
     ).toHaveLength(1);
     expect(checkWorkflow).toContain("./scripts/dev package-windows");
-    expect(checkWorkflow).toContain("RELEASE_CANDIDATE:");
+    expect(checkWorkflow).toContain("RELEASE_VALIDATION:");
     expect(checkWorkflow).toContain("include-hidden-files: true");
     expect(checkWorkflow).toContain(
       "dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d",
     );
   });
 
-  it("stages a checked release before publishing one Windows prerelease", () => {
+  it("stages a checked release before publishing one Windows release", () => {
     expect(releaseWorkflow).toContain("draft = $true");
-    expect(releaseWorkflow).toContain("prerelease = $true");
+    expect(releaseWorkflow).toContain(
+      '$expectedPrerelease = $expectedVersion.Contains("-")',
+    );
+    expect(releaseWorkflow).toContain(
+      '$makeLatest = if ($expectedPrerelease) { "false" } else { "true" }',
+    );
+    expect(releaseWorkflow).toContain("prerelease = $expectedPrerelease");
+    expect(releaseWorkflow).not.toContain("prerelease = $true");
+    expect(releaseWorkflow).toContain(
+      'draft = $true\n            prerelease = $expectedPrerelease\n            make_latest = "false"',
+    );
+    expect(releaseWorkflow).toContain(
+      "draft = $false\n            prerelease = $expectedPrerelease\n            make_latest = $makeLatest",
+    );
     expect(releaseWorkflow).toContain("draft = $false");
     expect(releaseWorkflow).toContain("Get-FileHash");
     expect(releaseWorkflow).toContain("Invoke-Gh release download");

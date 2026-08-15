@@ -8,7 +8,7 @@ This is a solo-developer, super-early alpha intended first for the author's own 
 
 FM ValueScout is an unofficial independent project. It is not affiliated with, endorsed by, or supported by Sports Interactive or SEGA.
 
-There is no published installer yet. When the first GitHub prerelease is available, it will be an unsigned Windows x64 installer with a matching SHA-256 file in the release assets. Do not download executables from forks, pull-request artifacts, or third-party mirrors.
+Published GitHub releases provide an unsigned Windows x64 installer with a matching SHA-256 file in the release assets. The historical `0.1.0-alpha.1` release remains available, and future releases use plain `0.x.y` versions. Do not download executables from forks, pull-request artifacts, or third-party mirrors.
 
 ## Supported environment and limits
 
@@ -29,7 +29,7 @@ The app does not support macOS, Linux, non-Steam FM26, other Football Manager ed
 
 1. Install BepInEx 6 IL2CPP into the Steam FM26 folder and launch FM once. ValueScout does not install BepInEx for you.
 2. Back up your FM save. The boost features can write only their specific guarded values, but they are still experimental.
-3. Download the installer and its `.sha256` asset from the matching GitHub prerelease.
+3. Download the installer and its `.sha256` asset from the matching GitHub release.
 4. Verify the checksum before running the installer. In PowerShell:
 
    ```powershell
@@ -42,7 +42,7 @@ Windows SmartScreen or antivirus software may warn because the installer is unsi
 
 ## Install and first use
 
-Once a prerelease is available:
+Once a release is available:
 
 1. Run its verified Windows x64 installer.
 2. Start FM26, load the save you want to inspect, then start FM ValueScout.
@@ -59,7 +59,7 @@ Updates are manual in this alpha:
 
 1. Close FM ValueScout.
 2. Copy `%APPDATA%\app.fmvaluescout\` to a safe location before installing the update.
-3. Verify and run the newer installer from its GitHub prerelease.
+3. Verify and run the newer installer from its GitHub release.
 4. Open the app and let its forward-only local database migrations finish.
 5. If the bundled bridge changes, use **Update plugin** and restart FM26.
 
@@ -102,7 +102,7 @@ For a security problem, follow [SECURITY.md](SECURITY.md) and do not open a publ
 
 ## Develop from source
 
-For development rather than use of a prerelease, install Node 24, pnpm, Rust, and the platform prerequisites in [Architecture §11](.wiki/ARCHITECTURE.md#11-operational-notes). Then run:
+For development rather than use of a published release, install Node 24, pnpm, Rust, and the platform prerequisites in [Architecture §11](.wiki/ARCHITECTURE.md#11-operational-notes). Then run:
 
 ```bash
 pnpm install
@@ -111,11 +111,11 @@ pnpm exec playwright install chromium
 pnpm tauri dev
 ```
 
-Bridge development requires the .NET 6 SDK; attaching it to FM still requires a Windows host, Steam FM26, and BepInEx 6 IL2CPP. Run `./scripts/dev bridge-test` for bridge unit tests, and run `./scripts/dev package-windows` on native Windows for an unsigned x64 release candidate. See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository workflow and [bridge/README.md](bridge/README.md) for the bridge contract.
+Bridge development requires the .NET 6 SDK; attaching it to FM still requires a Windows host, Steam FM26, and BepInEx 6 IL2CPP. Run `./scripts/dev bridge-test` for bridge unit tests, and run `./scripts/dev package-windows` on native Windows for an unsigned x64 release validation artifact. See [CONTRIBUTING.md](CONTRIBUTING.md) for the repository workflow and [bridge/README.md](bridge/README.md) for the bridge contract.
 
 ## Maintainers and contributors
 
-The release procedure and the boundary between a local Windows candidate and an automatically published prerelease live in the [early-alpha release runbook](.wiki/notes/early-alpha-release-runbook.md). Repository development commands, tests, and architecture are documented in [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the [project wiki](.wiki/INDEX.md).
+The release procedure and the boundary between a local Windows validation artifact and an automatically published release live in the [early-alpha release runbook](.wiki/notes/early-alpha-release-runbook.md). Repository development commands, tests, and architecture are documented in [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the [project wiki](.wiki/INDEX.md).
 
 ## License
 

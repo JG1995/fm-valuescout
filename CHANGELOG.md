@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-15
+
+### Added
+
+- **Boost all CA** and **Make all Wonderkids** now show determinate `processed / total` progress in the confirmation modal.
+- Squad overview feedback now keeps the final boost result stable with updated, skipped, and failed counts, and explains when **Load Data** is required before another action.
+
 ## [0.1.0-alpha.1] - 2026-08-14
 
 ### Added

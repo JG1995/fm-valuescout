@@ -57,7 +57,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 ## Completed
 
 - [Squad Boost Progress and Feedback](./features/completed/squad-boost-progress.md) — determinate per-player squad boost progress in the confirmation Modal and layout-stable final feedback in the Squad overview
-- [Early Alpha Release Readiness](./features/completed/early-alpha-release-readiness.md) — source-built unsigned Windows candidate, local diagnostics, guarded dependency automation, and exact-SHA prepared prerelease publication; hosted/native acceptance remains before the first publication
+- [Early Alpha Release Readiness](./features/completed/early-alpha-release-readiness.md) — source-built unsigned Windows validation, local diagnostics, guarded dependency automation, and exact-SHA prepared release publication; the historical alpha release remains documented in the completed record
 - [Squad Workspace](./features/completed/squad-workspace.md) — club-scoped overview, Squad / Planner / Tactic navigation, Dashboard Club Setup, explicit CSV imports, and sequential squad-wide development actions
 - [Snapshot history and management](./features/completed/snapshot-history.md) — retained snapshots selected by greatest valid in-game date, snapshot-owned Moneyball enrichment, immutable management context, and Dashboard save/snapshot controls while product reads remain current-only
 - [CSV enrichment persistence and derived statistics](./features/completed/csv-enrichment-persistence.md) — save-scoped Youth career and snapshot-versioned Moneyball enrichment for current memory-backed player UIDs, canonical 138-key statistics, and Academy career projections while keeping memory authoritative

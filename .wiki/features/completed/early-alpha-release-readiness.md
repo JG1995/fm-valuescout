@@ -4,6 +4,8 @@
 
 Completed — documentation reconciled; ready for publication
 
+> This record describes the original early-alpha publication path. The historical `0.1.0-alpha.1` release remains immutable, while the current workflow publishes future compatible releases as plain `0.x.y` SemVer versions. Current versioning and publication rules live in the [early-alpha release runbook](../../notes/early-alpha-release-runbook.md), [architecture guide](../../ARCHITECTURE.md), and [`create-pr` skill](../../../.agents/skills/create-pr/SKILL.md).
+
 ## Intent
 
 Prepare FM ValueScout for a narrow, unsigned Windows early-alpha release that the author can dogfood and a public-repository visitor can understand and install at their own risk. The release path must build the bridge from the same source revision as the desktop app, fail closed when release identity or artifacts are wrong, preserve the local-data contract, and publish only a prepared prerelease from a verified `main` revision.
