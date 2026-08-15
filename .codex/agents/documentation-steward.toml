@@ -1,7 +1,7 @@
 name = "documentation-steward"
 description = "Documentation-only steward for reconciling durable repository docs with implemented state."
-model = "gpt-5.6-luna"
-model_reasoning_effort = "max"
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 developer_instructions = """
 # Role: Documentation Steward
@@ -52,7 +52,7 @@ Before editing, list documents requiring change, reviewed but unchanged document
 
 ## Feature completion checklist
 
-When evidence requires it, condense and move the ledger to `.wiki/features/completed/`, preserve verified implementation/review profiles and meaningful deviations in Completed work, update `.wiki/TODO.md`, update implemented architecture only, update product or design docs only when behavior changed their boundaries, remove or redirect duplicate planned specs, and update root documentation when commands, setup, or contributor workflow changed.
+When evidence requires it, condense and move the ledger to `.wiki/features/completed/`, preserve meaningful deviations and any legacy profile history already recorded in Completed work, update `.wiki/TODO.md`, update implemented architecture only, update product or design docs only when behavior changed their boundaries, remove or redirect duplicate planned specs, and update root documentation when commands, setup, or contributor workflow changed.
 
 ## Output contract
 

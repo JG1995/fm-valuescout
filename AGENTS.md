@@ -61,12 +61,12 @@ Do not treat `.work/` as project truth. Do not document proposed behaviour as im
 
 The development cycle follows a repeating loop. Invoke a `workflow-*` skill explicitly through `/skills` or by mentioning `$workflow-<name>`. Never select a workflow skill from an ordinary natural-language request.
 
-1. **Feature plan** (`$workflow-plan-feature`) — plan one feature with PR and commit breakpoints, implementation packets, validation contracts, and separate implementation and review profiles.
+1. **Feature plan** (`$workflow-plan-feature`) — plan one feature with PR and commit breakpoints, detailed implementation packets, and validation contracts.
 2. **Build** (`$workflow-build`) — implement the active commit test-first (RED → GREEN → REFACTOR).
 3. **Checkpoint** (`$workflow-checkpoint`) — stage exact changes, run the gate, present evidence and review, wait for approval, and commit locally.
 4. **Fix** (`$workflow-fix`) — address only the findings the developer delegates, then checkpoint again.
 5. **Reassess** — update the delivery plan and select the next commit; repeat from build until the plan is done.
-6. **Finish feature** (`$workflow-finish-feature`) — when every planned commit is done, run full tests, the ledger-selected feature-complete review (Sol High for a legacy ledger), and documentation reconciliation.
+6. **Finish feature** (`$workflow-finish-feature`) — when every planned commit is done, run full tests, a Sol xhigh feature-complete review, and Terra Medium documentation reconciliation.
 
 For a trivial change, the user can describe the fix without invoking a workflow skill. Follow the applicable standing rules internally.
 
@@ -74,7 +74,7 @@ The loop variants are manual opt-ins only. Never suggest or run them automatical
 
 For broad features, `$workflow-plan-feature` produces a delivery plan before the first `$workflow-build` cycle. `$workflow-stack` and `$workflow-roadmap` precede it for new projects.
 
-Use the exact implementation and review profiles recorded in the active ledger. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. Follow the installed `workflow-core` skill and the relevant user-facing workflow skill for routing, hard floors, evidence requirements, and escalation.
+Use the fixed execution roles defined by the installed `workflow-core` skill; do not record them in active ledgers. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. Follow `workflow-core` and the relevant user-facing workflow skill for routing, hard floors, evidence requirements, and escalation.
 
 ## Commands and validation
 
@@ -111,7 +111,20 @@ For non-trivial behaviour:
 
 Prompts guide the workflow. Deterministic commands and tests provide evidence. Do not weaken, delete, skip, or broadly rewrite tests merely to make a change pass.
 
-Increase reasoning effort when the model has the right architecture but incomplete execution. After two failed correction attempts on the same bounded defect, stop and request a profile change or replan. Replan sooner when a known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes. Use `$workflow-spike` only for a genuine runtime unknown and only when the developer explicitly invokes it. Every non-trivial staged change requires a separate fresh-context read-only reviewer pass with the ledger-assigned review profile, or the default Sol Medium reviewer when no ledger exists. Feature-complete review uses the ledger's feature review profile, or Sol High for a legacy ledger without that field.
+After two failed correction attempts on the same bounded defect, stop and replan. Replan sooner when a known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes. Use `$workflow-spike` only for a genuine runtime unknown and only when the developer explicitly invokes it. Every non-trivial staged change requires a separate fresh-context read-only Sol Medium reviewer pass. Every feature-complete review uses a fresh Sol xhigh reviewer.
+
+## Host execution and attachments
+
+When the developer attaches a screenshot or image to the chat, access it through its `/mnt/...` filesystem path. Do not use the default attachment path from chat metadata when it points outside the mounted filesystem. Translate a supplied Windows drive path to its WSL mount when possible, for example `C:\path\image.png` to `/mnt/c/path/image.png`. If no mounted path is available, ask the developer to attach the file again.
+
+After an action has the required developer authorization, request escalated execution on the first attempt when the command is known to need host access. Do not run a sandbox probe that is expected to fail. This rule applies to:
+
+- Git metadata writes such as `git add`, `git commit`, and approved branch operations;
+- Git remote operations such as `git fetch`, `git pull`, and `git push`;
+- GitHub CLI commands that call the API or change remote state;
+- commands that require host credentials, network access, or host port binding.
+
+Keep read-only local Git commands such as `git status`, `git diff`, `git log`, `git show`, and `git rev-parse` inside the sandbox. First-attempt escalation changes where an authorized command runs; it does not grant approval to commit, push, rebase, merge, delete, or perform another restricted action.
 
 ## Design and execution
 
@@ -218,6 +231,6 @@ Follow `.wiki/INDEX.md` and the installed `project-context` skill for documentat
 
 The Documentation Steward may change documentation and feature-ledger state, but must not change implementation, tests, executable scripts, CI, Codex configuration, agent definitions, command templates, or Git state.
 
-The main session plans established feature work and implements all build and fix work. Delegate planning only when the developer explicitly requests it. Dispatch the `reviewer` and `documentation-steward` specialists explicitly. Every initial review of non-trivial work uses a separate fresh reviewer context with the assigned review profile. After a fix, reuse that reviewer context when available unless the correction materially changes the review scope or architecture; otherwise dispatch a fresh reviewer. See `.codex/README.md` for role selection and MCP details.
+The main session plans established feature work and implements all build and fix work. Delegate planning only when the developer explicitly requests it. Dispatch the `reviewer` and `documentation-steward` specialists explicitly. Every initial review of non-trivial work uses a separate fresh Sol Medium reviewer context. Every feature-complete review uses a fresh generic Sol xhigh reviewer with the same contract. After a fix, reuse the same reviewer context when available unless the correction materially changes the review scope or architecture; otherwise dispatch a fresh reviewer at the fixed profile for that review mode. See `.codex/README.md` for role selection and MCP details.
 
 When you need current library API or configuration details, use Context7 MCP (`resolve-library-id`, then `query-docs`). Use web search and fetch for bounded external research. Never put credentials in repository files.

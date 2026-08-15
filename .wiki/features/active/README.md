@@ -14,6 +14,8 @@ Create a ledger with `$workflow-plan-feature`. When a planned spec exists, absor
 
 The content commit can mark its own plan item `Completed`, but it cannot contain its own hash. Record the hash in the next normal ledger-bearing commit or during feature reconciliation. Do not create a ledger-only commit only to record a hash.
 
+Do not record execution model profiles in an active ledger. The workflow fixes implementation at Luna Max, commit review at Sol Medium, feature review at Sol xhigh, and documentation reconciliation at Terra Medium.
+
 At feature completion, reconcile documentation, condense the ledger, and move it to [completed features](../completed/README.md).
 
 ## Ledger template
@@ -111,14 +113,39 @@ The thinnest path through this feature.
 
 **Implementation packet:**
 
-- Owners and files:
-- Existing patterns to verify:
-- Constraints and invariants:
-- Dependencies and ordering:
+- A complete handoff for Luna Max. Resolve repository-known design choices here instead of leaving them implicit.
 
-**Implementation profile:** <model and effort> — <short repository-specific reason>
+**Files and responsibilities:**
 
-**Review profile:** <model and effort> — <short consequence and validation reason>
+- `<path or symbol>` — exact ownership and change.
+
+**Behavior and data flow:**
+
+- Entry point, state or data transformation, boundary calls, persistence or side effects, and observable result.
+- Required success, empty, error, stale, replacement, or partial-failure paths that apply.
+
+**Ordered implementation steps:**
+
+1. Add the RED proof at the observable seam.
+2. Make the smallest production change that turns it GREEN.
+3. Refactor only while the focused proof stays green.
+4. Run the affected and commit-level validation in the recorded order.
+
+**Tests and proof:**
+
+- Test files or runtime probes, expected RED failure, GREEN assertion, and important negative or boundary coverage.
+
+**Patterns to verify:**
+
+- Closest current repository analogues and the specific choices to copy or deliberately diverge from.
+
+**Constraints and non-goals:**
+
+- Governing invariants, architectural boundaries, compatibility limits, and explicit exclusions.
+
+**Dependencies and sequencing:**
+
+- Earlier commits, merged PRs, generated artifacts, migrations, or external prerequisites required before this work.
 
 **Validation:** Exact project commands and expected evidence.
 
@@ -171,8 +198,6 @@ Record material deviations, blockers, and decisions that change remaining work. 
 Resolve `Pending record` from Git in the next normal ledger update or during feature reconciliation.
 
 ## Final validation
-
-**Feature review profile:** <Sol High | Sol xhigh | Sol Max> — <short cross-commit risk and consequence reason>
 
 List the exact project commands and manual evidence required before feature review.
 
