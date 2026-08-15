@@ -161,9 +161,9 @@ jobs:
           }
 
           function Assert-PublishedRelease {
-            param($Release, [string]$Tag, [string]$Title, [string]$Notes)
-            if ($Release.draft -or -not $Release.prerelease) {
-              throw "Existing $Tag is not a published prerelease"
+            param($Release, [string]$Tag, [string]$Title, [string]$Notes, [bool]$ExpectedPrerelease)
+            if ($Release.draft -or $Release.prerelease -ne $ExpectedPrerelease) {
+              throw "Existing $Tag has the wrong published release type"
             }
             if ($Release.name -cne $Title -or $Release.body -cne $Notes) {
               throw "Existing $Tag metadata does not match this checked source"
@@ -212,6 +212,7 @@ jobs:
             throw "Release metadata validation failed"
           }
           $metadata = $metadataOutput | ConvertFrom-Json
+          $expectedPrerelease = $metadata.version.Contains("-")
           $notes = Get-ExactReleaseNotes $metadata.version
           if ($metadata.releaseRequired -and $metadata.releaseNotes -cne $notes) {
             throw "Release metadata notes differ from the dated changelog section"
@@ -224,7 +225,7 @@ jobs:
             if ($decision.mode -ne "no-op") {
               throw "Unchanged release did not resolve to a no-op"
             }
-            Assert-PublishedRelease $existing $metadata.tag "FM ValueScout $($metadata.tag)" $notes
+            Assert-PublishedRelease $existing $metadata.tag "FM ValueScout $($metadata.tag)" $notes $expectedPrerelease
           }
           if ($metadata.releaseRequired -and -not $releaseSourcePrepared) {
             Write-Host "Release version is prepared by an earlier main commit; publication is deferred"
@@ -397,9 +398,9 @@ jobs:
           }
 
           function Assert-StagedRelease {
-            param($Release, [string]$Version, [string]$Tag, [string]$Sha, [string]$Title, [string]$Notes, [string]$Hash)
-            if (-not $Release.draft -or -not $Release.prerelease) {
-              throw "Release $Tag was not staged as a prerelease draft"
+            param($Release, [string]$Version, [string]$Tag, [string]$Sha, [string]$Title, [string]$Notes, [string]$Hash, [bool]$ExpectedPrerelease)
+            if (-not $Release.draft -or $Release.prerelease -ne $ExpectedPrerelease) {
+              throw "Release $Tag was staged with the wrong release type"
             }
             if ($Release.tag_name -cne $Tag -or $Release.target_commitish -cne $Sha) {
               throw "Staged release identity does not match the verified commit"
@@ -411,9 +412,9 @@ jobs:
           }
 
           function Assert-PublishedRelease {
-            param($Release, [string]$Version, [string]$Tag, [string]$Sha, [string]$Title, [string]$Notes, [string]$Hash)
-            if ($Release.draft -or -not $Release.prerelease) {
-              throw "Release $Tag was not published as a prerelease"
+            param($Release, [string]$Version, [string]$Tag, [string]$Sha, [string]$Title, [string]$Notes, [string]$Hash, [bool]$ExpectedPrerelease)
+            if ($Release.draft -or $Release.prerelease -ne $ExpectedPrerelease) {
+              throw "Release $Tag was published with the wrong release type"
             }
             if ((Get-TagCommitIfPresent $Tag) -cne $Sha) {
               throw "Published Git tag does not target the verified commit"
@@ -428,6 +429,8 @@ jobs:
           }
 
           $expectedVersion = $env:EXPECTED_VERSION
+          $expectedPrerelease = $expectedVersion.Contains("-")
+          $makeLatest = if ($expectedPrerelease) { "false" } else { "true" }
           $expectedTag = $env:EXPECTED_TAG
           $expectedNotes = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:NOTES_BASE64))
           $releaseSourcePrepared = $env:RELEASE_SOURCE_PREPARED -eq "true"
@@ -457,7 +460,7 @@ jobs:
             if ($null -eq $asset -or $asset.digest -notmatch '^sha256:([0-9a-f]{64})$') {
               throw "Published retry has no verifiable installer"
             }
-            Assert-PublishedRelease $existing $expectedVersion $expectedTag $env:VERIFIED_SHA $title $expectedNotes $asset.digest.Substring(7)
+            Assert-PublishedRelease $existing $expectedVersion $expectedTag $env:VERIFIED_SHA $title $expectedNotes $asset.digest.Substring(7) $expectedPrerelease
             return
           }
           if ($decision.mode -notin @("create", "repair")) {
@@ -487,7 +490,7 @@ jobs:
             name = $title
             body = $expectedNotes
             draft = $true
-            prerelease = $true
+            prerelease = $expectedPrerelease
             make_latest = "false"
           }
           if ($decision.mode -eq "create") {
@@ -510,14 +513,14 @@ jobs:
           if ($null -eq $staged) {
             throw "Draft release disappeared before verification"
           }
-          Assert-StagedRelease $staged $expectedVersion $expectedTag $env:VERIFIED_SHA $title $expectedNotes $hash
+          Assert-StagedRelease $staged $expectedVersion $expectedTag $env:VERIFIED_SHA $title $expectedNotes $hash $expectedPrerelease
 
           $publishPayload = @{
             name = $title
             body = $expectedNotes
             draft = $false
-            prerelease = $true
-            make_latest = "false"
+            prerelease = $expectedPrerelease
+            make_latest = $makeLatest
           }
           $published = Invoke-ReleaseWrite PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($staged.id)" $publishPayload
-          Assert-PublishedRelease $published $expectedVersion $expectedTag $env:VERIFIED_SHA $title $expectedNotes $hash
+          Assert-PublishedRelease $published $expectedVersion $expectedTag $env:VERIFIED_SHA $title $expectedNotes $hash $expectedPrerelease

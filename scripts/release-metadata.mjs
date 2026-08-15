@@ -175,29 +175,23 @@ export function calculateExpectedVersion(latestVersion, intent) {
 
   if (latestVersion === null) {
     if (intent !== "minor") {
-      throw new Error("The initial prerelease requires the minor intent");
+      throw new Error("The initial release requires the minor intent");
     }
 
-    return "0.1.0-alpha.1";
+    return "0.1.0";
   }
 
   const latest = parseSemver(latestVersion);
 
   if (intent === "minor") {
-    return `${latest.major}.${increment(latest.minor)}.0-alpha.1`;
+    return `${latest.major}.${increment(latest.minor)}.0`;
   }
 
-  if (
-    latest.prerelease.length === 2 &&
-    latest.prerelease[0] === "alpha" &&
-    /^\d+$/.test(latest.prerelease[1])
-  ) {
-    return `${latest.major}.${latest.minor}.${latest.patch}-alpha.${increment(
-      latest.prerelease[1],
-    )}`;
+  if (latest.prerelease.length > 0) {
+    return `${latest.major}.${latest.minor}.${latest.patch}`;
   }
 
-  return `${latest.major}.${latest.minor}.${increment(latest.patch)}-alpha.1`;
+  return `${latest.major}.${latest.minor}.${increment(latest.patch)}`;
 }
 
 export function validateReleaseIdentity(rootDir) {

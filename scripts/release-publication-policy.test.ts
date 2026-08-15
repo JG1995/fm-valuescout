@@ -84,6 +84,39 @@ describe("release publication policy", () => {
     ).toEqual({ mode: "no-op" });
   });
 
+  it("accepts a published normal release identity", () => {
+    const directVersion = "0.2.0";
+    const directTag = `v${directVersion}`;
+    const directNotes = "## [0.2.0] - 2026-08-15\n\n- Squad progress.";
+    const directExpected = {
+      version: directVersion,
+      tag: directTag,
+      title: `FM ValueScout ${directTag}`,
+      notes: directNotes,
+      verifiedSha: sha,
+    };
+
+    expect(
+      evaluatePublicationState({
+        expected: directExpected,
+        metadata: {
+          version: directVersion,
+          tag: directTag,
+          releaseRequired: false,
+          releaseNotes: "",
+        },
+        existingRelease: {
+          ...release(),
+          tag_name: directTag,
+          name: directExpected.title,
+          body: directNotes,
+          prerelease: false,
+        },
+        tagSha: sha,
+      }),
+    ).toEqual({ mode: "no-op" });
+  });
+
   it("creates a newer version only when its tag is absent", () => {
     expect(
       evaluatePublicationState({

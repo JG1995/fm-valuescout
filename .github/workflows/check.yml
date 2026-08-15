@@ -180,7 +180,7 @@ jobs:
         shell: bash
         run: ./scripts/dev bridge-test
 
-  release-candidate:
+  release-validation:
     needs: changes
     if: needs.changes.outputs.release == 'true'
     runs-on: windows-latest
@@ -228,15 +228,15 @@ jobs:
           $metadata = $metadataOutput | ConvertFrom-Json
           "release_required=$($metadata.releaseRequired.ToString().ToLowerInvariant())" |
             Add-Content -Path $env:GITHUB_OUTPUT
-      - name: Package Windows release candidate
+      - name: Package Windows release validation artifact
         if: steps.metadata.outputs.release_required == 'true'
         shell: bash
         run: ./scripts/dev package-windows
-      - name: Store Windows release candidate
+      - name: Store Windows release validation artifact
         if: steps.metadata.outputs.release_required == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: windows-release-candidate-${{ github.sha }}
+          name: windows-release-validation-${{ github.sha }}
           path: .release/windows/
           if-no-files-found: error
           include-hidden-files: true
@@ -244,7 +244,7 @@ jobs:
 
   check:
     if: always()
-    needs: [changes, frontend-tests, browser-smoke, rust, bridge-tests, release-candidate, dependabot-policy]
+    needs: [changes, frontend-tests, browser-smoke, rust, bridge-tests, release-validation, dependabot-policy]
     runs-on: ubuntu-latest
     steps:
       - name: Confirm applicable product checks passed
@@ -254,10 +254,10 @@ jobs:
           BROWSER_SMOKE: ${{ needs.browser-smoke.result }}
           RUST: ${{ needs.rust.result }}
           BRIDGE_TESTS: ${{ needs.bridge-tests.result }}
-          RELEASE_CANDIDATE: ${{ needs.release-candidate.result }}
+          RELEASE_VALIDATION: ${{ needs.release-validation.result }}
           DEPENDABOT_POLICY: ${{ needs.dependabot-policy.result }}
         run: |
-          for result in "$CHANGES" "$FRONTEND_TESTS" "$BROWSER_SMOKE" "$RUST" "$BRIDGE_TESTS" "$RELEASE_CANDIDATE" "$DEPENDABOT_POLICY"; do
+          for result in "$CHANGES" "$FRONTEND_TESTS" "$BROWSER_SMOKE" "$RUST" "$BRIDGE_TESTS" "$RELEASE_VALIDATION" "$DEPENDABOT_POLICY"; do
             case "$result" in
               success|skipped) ;;
               *) exit 1 ;;

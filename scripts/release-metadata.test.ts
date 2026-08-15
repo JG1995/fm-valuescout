@@ -10,29 +10,42 @@ import {
 } from "./release-metadata.mjs";
 
 const temporaryDirectories: string[] = [];
-const initialVersion = "0.1.0-alpha.1";
+const initialVersion = "0.1.0";
+const historicalAlphaVersion = "0.1.0-alpha.1";
 const initialSection = `## [${initialVersion}] - 2026-08-14
 
 ### Added
 
-- Initial super-early alpha release.`;
+- Initial release.`;
+const historicalAlphaSection = `## [${historicalAlphaVersion}] - 2026-08-14
 
-function createFixture(overrides: Record<string, string> = {}) {
+### Added
+
+- Initial alpha release.`;
+
+function createFixture(
+  overrides: Record<string, string> = {},
+  version = initialVersion,
+) {
   const rootDir = mkdtempSync(
     join(tmpdir(), "fm-valuescout-release-metadata-"),
   );
   temporaryDirectories.push(rootDir);
 
+  const section =
+    version === historicalAlphaVersion
+      ? historicalAlphaSection
+      : initialSection;
   const files = {
-    "package.json": JSON.stringify({ version: initialVersion }),
-    "src-tauri/Cargo.toml": `[package]\nversion = "${initialVersion}"\n`,
-    "src-tauri/Cargo.lock": `version = 3\n\n[[package]]\nname = "app"\nversion = "${initialVersion}"\n`,
-    "src-tauri/tauri.conf.json": JSON.stringify({ version: initialVersion }),
-    "bridge/FmDataBridge.csproj": `<Project><PropertyGroup><Version>${initialVersion}</Version></PropertyGroup></Project>`,
+    "package.json": JSON.stringify({ version }),
+    "src-tauri/Cargo.toml": `[package]\nversion = "${version}"\n`,
+    "src-tauri/Cargo.lock": `version = 3\n\n[[package]]\nname = "app"\nversion = "${version}"\n`,
+    "src-tauri/tauri.conf.json": JSON.stringify({ version }),
+    "bridge/FmDataBridge.csproj": `<Project><PropertyGroup><Version>${version}</Version></PropertyGroup></Project>`,
     "release-preparation.json": JSON.stringify({
       intent: "minor",
       sequence: 1,
-      version: initialVersion,
+      version,
     }),
     "CHANGELOG.md": `# Changelog
 
@@ -40,7 +53,7 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-${initialSection}
+${section}
 
 ## [0.0.1] - 2026-08-01
 
@@ -66,7 +79,7 @@ afterEach(() => {
 });
 
 describe("release metadata", () => {
-  it("accepts the initial alpha identity and emits its exact dated section", () => {
+  it("accepts the initial identity and emits its exact dated section", () => {
     const rootDir = createFixture();
 
     expect(readReleaseMetadata(rootDir, null, "minor")).toEqual({
@@ -91,14 +104,11 @@ ${initialSection}`.replaceAll("\n", "\r\n"),
     );
   });
 
-  it("orders alpha prereleases and calculates patch and minor identities", () => {
+  it("orders historical prereleases and calculates direct identities", () => {
     expect(compareSemver("0.1.0-alpha.2", "0.1.0-alpha.1")).toBeGreaterThan(0);
-    expect(calculateExpectedVersion("0.1.0-alpha.1", "patch")).toBe(
-      "0.1.0-alpha.2",
-    );
-    expect(calculateExpectedVersion("0.1.0-alpha.1", "minor")).toBe(
-      "0.2.0-alpha.1",
-    );
+    expect(calculateExpectedVersion("0.1.0-alpha.1", "patch")).toBe("0.1.0");
+    expect(calculateExpectedVersion("0.1.0-alpha.1", "minor")).toBe("0.2.0");
+    expect(calculateExpectedVersion("0.2.0", "patch")).toBe("0.2.1");
   });
 
   it("follows the SemVer prerelease precedence sequence", () => {
@@ -131,12 +141,25 @@ ${initialSection}`.replaceAll("\n", "\r\n"),
     });
   });
 
+  it("accepts the historical alpha identity as an unchanged release", () => {
+    const rootDir = createFixture({}, historicalAlphaVersion);
+
+    expect(
+      readReleaseMetadata(rootDir, `v${historicalAlphaVersion}`, "none"),
+    ).toEqual({
+      version: historicalAlphaVersion,
+      tag: `v${historicalAlphaVersion}`,
+      releaseRequired: false,
+      releaseNotes: "",
+    });
+  });
+
   it("requires the prepared release record to match the release identity", () => {
     const rootDir = createFixture({
       "release-preparation.json": JSON.stringify({
         intent: "minor",
         sequence: 1,
-        version: "0.1.0-alpha.2",
+        version: "0.2.0",
       }),
     });
 
@@ -172,7 +195,7 @@ ${initialSection}`.replaceAll("\n", "\r\n"),
   it.each([
     [
       "mismatched version owners",
-      { "src-tauri/Cargo.toml": '[package]\nversion = "0.1.0-alpha.2"\n' },
+      { "src-tauri/Cargo.toml": '[package]\nversion = "0.2.0"\n' },
       null,
       "minor",
       "Release version mismatch",
@@ -241,7 +264,7 @@ ${initialSection}`.replaceAll("\n", "\r\n"),
   it("rejects a version lower than the latest tag without an intent", () => {
     const rootDir = createFixture();
 
-    expect(() => readReleaseMetadata(rootDir, "v0.1.0-alpha.2")).toThrow(
+    expect(() => readReleaseMetadata(rootDir, "v0.2.0")).toThrow(
       "must be greater",
     );
   });
@@ -252,7 +275,7 @@ ${initialSection}`.replaceAll("\n", "\r\n"),
 
 ## [Unreleased]
 
-## [0.1.0-alpha.2] - 2026-08-15
+## [0.2.0] - 2026-08-15
 
 ### Added
 
@@ -272,7 +295,7 @@ ${initialSection}`,
 
 ## [Unreleased]
 
-## [0.1.0-alpha.2] - invalid-date
+## [0.2.0] - invalid-date
 
 ### Added
 

@@ -20,9 +20,11 @@ Use one procedure for every human-authored pull request. Release intent is one t
 Inspect the latest reachable `v*` release tag and the complete user-visible change set since that boundary, including relevant changes already on `main` and the complete pull-request diff. Record exactly one template checkbox:
 
 - `none` for documentation, tests, agent configuration, internal tooling, or an eligible Dependabot-only patch. Do not change durable version owners or create a dated changelog section.
-- `patch` for an unambiguous compatible user-visible fix. For an `alpha.N` release, advance to `alpha.N+1`.
-- `minor` for an unambiguous compatible capability. Advance the minor version and use `alpha.1`. With no previous tag, use `minor` to prepare the initial `0.1.0-alpha.1` release.
+- `patch` for an unambiguous compatible user-visible fix. Increment the patch number (for example, `0.2.0` → `0.2.1`). If the latest published tag is the historical `0.1.0-alpha.1`, the patch release normalizes it to `0.1.0`.
+- `minor` for an unambiguous compatible capability. Increment the minor number and reset the patch number (for example, `0.1.0` → `0.2.0`). With no previous tag, use `minor` to prepare the initial `0.1.0` release.
 - `major` for a breaking behavior or durable contract. Stop and request a maintainer decision.
+
+New releases are published as normal SemVer releases. The repository's historical `0.1.0-alpha.1` remains immutable for its original release, but future compatible fixes and capabilities use plain `0.x.y` versions rather than public `alpha.N` iterations or release candidates.
 
 Do not decide intent from one Conventional Commit title or file path. Stop and request a decision when compatibility is ambiguous.
 
@@ -38,7 +40,7 @@ For `patch` or `minor`, propose the version, date, complete dated changelog sect
 
 Preserve `## [Unreleased]`. Add exactly one dated Keep a Changelog section that covers the complete unreleased user-visible range. Do not regenerate the Cargo lockfile. Confirm only the root `app` lock entry changes.
 
-For a release-bearing intent, update `release-preparation.json` with the matching version and intent, then increment its positive `sequence`. The verified-main workflow treats that changed record as the explicit authorization for this exact SHA. For `none`, leave the record unchanged.
+For a release-bearing intent, update `release-preparation.json` with the matching version and intent, then increment its positive `sequence`. The verified-main workflow treats that changed record as the explicit authorization for this exact SHA and publishes a normal GitHub release. For `none`, leave the record unchanged.
 
 Run:
 
