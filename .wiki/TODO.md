@@ -52,11 +52,11 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Next
 
-- **[Squad Boost Progress and Feedback](./features/active/squad-boost-progress.md)** — stream determinate per-player squad boost progress and keep final outcome feedback layout-stable.
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
 
 ## Completed
 
+- [Squad Boost Progress and Feedback](./features/completed/squad-boost-progress.md) — determinate per-player squad boost progress in the confirmation Modal and layout-stable final feedback in the Squad overview
 - [Early Alpha Release Readiness](./features/completed/early-alpha-release-readiness.md) — source-built unsigned Windows candidate, local diagnostics, guarded dependency automation, and exact-SHA prepared prerelease publication; hosted/native acceptance remains before the first publication
 - [Squad Workspace](./features/completed/squad-workspace.md) — club-scoped overview, Squad / Planner / Tactic navigation, Dashboard Club Setup, explicit CSV imports, and sequential squad-wide development actions
 - [Snapshot history and management](./features/completed/snapshot-history.md) — retained snapshots selected by greatest valid in-game date, snapshot-owned Moneyball enrichment, immutable management context, and Dashboard save/snapshot controls while product reads remain current-only
