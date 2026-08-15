@@ -159,7 +159,8 @@ export function PlayerOverviewPanel({
 
         <div className="min-w-0 lg:col-span-2 lg:flex lg:self-end lg:justify-end">
           <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-wrap items-start justify-end gap-2">
+              {actions}
               <Button
                 icon={VisibilityIcon}
                 variant="secondary"
@@ -174,7 +175,6 @@ export function PlayerOverviewPanel({
                   ? "Hide hidden info"
                   : "Reveal hidden info"}
               </Button>
-              {actions}
             </div>
             {hiddenInformationError ? (
               <p className="text-right text-body-sm text-error" role="alert">
