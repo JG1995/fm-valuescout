@@ -52,6 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Next
 
+- **[Squad Boost Progress and Feedback](./features/active/squad-boost-progress.md)** — stream determinate per-player squad boost progress and keep final outcome feedback layout-stable.
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
 
 ## Completed
