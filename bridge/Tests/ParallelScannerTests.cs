@@ -41,20 +41,14 @@ public sealed class ParallelScannerTests
         PlacePlayer(inner, layout, SecondRegionBase, uid: 102, slot: 2);
         var reader = new BlockingMemoryReader(inner, FirstRegionBase, SecondRegionBase);
 
-        var scanTask = Task.Run(() =>
-            PersonScanner.Scan(
-                reader,
-                layout,
-                new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
-                gamePlugin: null,
-                new[] { CandidateRegion(FirstRegionBase), CandidateRegion(SecondRegionBase) },
-                new ScanDiagnostics()));
+        var scan = PersonScanner.Scan(
+            reader,
+            layout,
+            new ModuleBounds("GameAssembly.dll", GameAssemblyBase, GameAssemblyEnd),
+            gamePlugin: null,
+            new[] { CandidateRegion(FirstRegionBase), CandidateRegion(SecondRegionBase) },
+            new ScanDiagnostics());
 
-        var overlapped = reader.WaitForBothRegionReads(TimeSpan.FromSeconds(1));
-        reader.ReleaseBlockedReads();
-        var scan = scanTask.GetAwaiter().GetResult();
-
-        Assert.True(overlapped);
         Assert.Equal(new uint[] { 101, 102 }, scan.Players.Select(candidate => candidate.Uid));
     }
 
@@ -226,26 +220,23 @@ public sealed class ParallelScannerTests
         var inner = new FakeMemoryReader();
         PlacePlayer(inner, layout, FirstRegionBase, uid: 101, slot: 1);
         PlacePlayer(inner, layout, SecondRegionBase, uid: 102, slot: 2);
-        var reader = new BlockingMemoryReader(inner, FirstRegionBase, SecondRegionBase);
         using var cancellation = new CancellationTokenSource();
+        var reader = new BlockingMemoryReader(
+            inner,
+            FirstRegionBase,
+            SecondRegionBase,
+            cancellation.Cancel);
         var diagnostics = new ScanDiagnostics();
 
-        var scanTask = Task.Run(() =>
-            PersonScanner.Scan(
-                reader,
-                layout,
-                GameAssembly(),
-                gamePlugin: null,
-                new[] { CandidateRegion(FirstRegionBase), CandidateRegion(SecondRegionBase) },
-                diagnostics,
-                cancellationToken: cancellation.Token));
+        var result = PersonScanner.Scan(
+            reader,
+            layout,
+            GameAssembly(),
+            gamePlugin: null,
+            new[] { CandidateRegion(FirstRegionBase), CandidateRegion(SecondRegionBase) },
+            diagnostics,
+            cancellationToken: cancellation.Token);
 
-        var overlapped = reader.WaitForBothRegionReads(TimeSpan.FromSeconds(1));
-        cancellation.Cancel();
-        reader.ReleaseBlockedReads();
-        var result = scanTask.GetAwaiter().GetResult();
-
-        Assert.True(overlapped);
         Assert.True(result.Cancelled);
         Assert.True(diagnostics.Cancelled);
         Assert.Empty(result.Players);
@@ -406,15 +397,20 @@ public sealed class ParallelScannerTests
         private readonly IMemoryReader _inner;
         private readonly ulong _firstRegionBase;
         private readonly ulong _secondRegionBase;
-        private readonly ManualResetEventSlim _bothRegionReads = new();
+        private readonly Action? _onBothRegionReads;
         private readonly ManualResetEventSlim _release = new();
         private int _blockedReads;
 
-        public BlockingMemoryReader(IMemoryReader inner, ulong firstRegionBase, ulong secondRegionBase)
+        public BlockingMemoryReader(
+            IMemoryReader inner,
+            ulong firstRegionBase,
+            ulong secondRegionBase,
+            Action? onBothRegionReads = null)
         {
             _inner = inner;
             _firstRegionBase = firstRegionBase;
             _secondRegionBase = secondRegionBase;
+            _onBothRegionReads = onBothRegionReads;
         }
 
         public bool SupportsConcurrentReads => true;
@@ -440,18 +436,18 @@ public sealed class ParallelScannerTests
             {
                 if (Interlocked.Increment(ref _blockedReads) == 2)
                 {
-                    _bothRegionReads.Set();
+                    _onBothRegionReads?.Invoke();
+                    _release.Set();
                 }
 
-                _release.Wait();
+                if (!_release.Wait(TimeSpan.FromSeconds(10)))
+                {
+                    throw new TimeoutException("Parallel scanner did not overlap the expected region reads.");
+                }
             }
 
             return _inner.TryReadBlockWithCoverage(address, buffer, offset, length, out result);
         }
-
-        public bool WaitForBothRegionReads(TimeSpan timeout) => _bothRegionReads.Wait(timeout);
-
-        public void ReleaseBlockedReads() => _release.Set();
     }
 
     private static MemoryRegion CandidateRegion(ulong baseAddress) =>
