@@ -23,6 +23,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   await page.addInitScript({
     content: `
       let playerProfileMentalityUpdated = false;
+      let playerProfileHiddenInformationRevealed =
+        window.localStorage.getItem("player-profile-hidden-information") !==
+        "false";
       const csvImportFormat = ${JSON.stringify(csvImportFormat)};
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
       const plannerPotentialScores = ${plannerPotentialScores ? "true" : "false"};
@@ -440,9 +443,10 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_player") {
+            const profileUid = Number.isInteger(args?.uid) ? args.uid : 42;
             return playerProfile ? {
-              uid: 42,
-              name: "Potential Scout",
+              uid: profileUid,
+              name: profileUid === 99 ? "Other Scout" : "Potential Scout",
               age: 22,
               birthYear: 2004,
               birthDayOfYear: 80,
@@ -477,6 +481,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               teamLevel: "First",
               ca: 140,
               pa: 160,
+              hiddenInformationRevealed: playerProfileHiddenInformationRevealed,
               roleScores: [
                 {
                   roleId: "current-specialist",
@@ -568,6 +573,18 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 },
               ],
             } : null;
+          }
+
+          if (cmd === "set_player_hidden_information_revealed") {
+            if (typeof args?.revealed !== "boolean") {
+              throw new Error("Missing revealed state");
+            }
+            playerProfileHiddenInformationRevealed = args.revealed;
+            window.localStorage.setItem(
+              "player-profile-hidden-information",
+              String(playerProfileHiddenInformationRevealed),
+            );
+            return playerProfileHiddenInformationRevealed;
           }
 
           if (cmd === "boost_wonderkid_mentality") {

@@ -15,6 +15,7 @@ import { rolePhaseLabel } from "../utils/role-phase";
 
 type PlayerRolesPanelProps = {
   player: PlayerDetail;
+  hiddenInformationRevealed: boolean;
 };
 
 type RoleScoreProps = {
@@ -153,7 +154,10 @@ function PositionPitch({
   );
 }
 
-export function PlayerRolesPanel({ player }: PlayerRolesPanelProps) {
+export function PlayerRolesPanel({
+  player,
+  hiddenInformationRevealed,
+}: PlayerRolesPanelProps) {
   const [selectedPosition, setSelectedPosition] = useState(() =>
     defaultProfilePosition(player.positions, player.roleScores),
   );
@@ -161,10 +165,14 @@ export function PlayerRolesPanel({ player }: PlayerRolesPanelProps) {
     basis: "current",
     direction: "descending",
   });
+  const effectiveSort = {
+    ...sort,
+    basis: hiddenInformationRevealed ? sort.basis : "current",
+  } satisfies RoleSort;
   const roles = rolesForProfilePosition(
     player.roleScores,
     selectedPosition,
-    sort,
+    effectiveSort,
   );
   const familiarity = player.positions[selectedPosition];
   const onSort = (basis: RoleSort["basis"]) => {
@@ -205,7 +213,9 @@ export function PlayerRolesPanel({ player }: PlayerRolesPanelProps) {
               <colgroup>
                 <col />
                 <col className="w-[72px]" />
-                <col className="w-[80px]" />
+                {hiddenInformationRevealed ? (
+                  <col className="w-[80px]" />
+                ) : null}
               </colgroup>
               <thead className="sticky top-0 z-10 bg-surface-container">
                 <tr className="border-b border-outline-variant">
@@ -224,24 +234,26 @@ export function PlayerRolesPanel({ player }: PlayerRolesPanelProps) {
                   <RoleSortHeader
                     label="Current"
                     basis="current"
-                    sort={sort}
+                    sort={effectiveSort}
                     onSort={onSort}
                     className="w-[72px] pb-1 text-center align-bottom"
                   />
-                  <RoleSortHeader
-                    label="Potential"
-                    basis="potential"
-                    sort={sort}
-                    onSort={onSort}
-                    className="w-[80px] pb-1 text-center align-bottom"
-                  />
+                  {hiddenInformationRevealed ? (
+                    <RoleSortHeader
+                      label="Potential"
+                      basis="potential"
+                      sort={effectiveSort}
+                      onSort={onSort}
+                      className="w-[80px] pb-1 text-center align-bottom"
+                    />
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
                 {roles.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={3}
+                      colSpan={hiddenInformationRevealed ? 3 : 2}
                       className="h-24 text-center text-body-sm text-on-surface-variant"
                     >
                       No catalog roles use this position.
@@ -268,13 +280,15 @@ export function PlayerRolesPanel({ player }: PlayerRolesPanelProps) {
                         score={role.score}
                       />
                     </td>
-                    <td className="text-center">
-                      <RoleScore
-                        roleName={role.displayName}
-                        basis="Potential"
-                        score={role.potentialScore}
-                      />
-                    </td>
+                    {hiddenInformationRevealed ? (
+                      <td className="text-center">
+                        <RoleScore
+                          roleName={role.displayName}
+                          basis="Potential"
+                          score={role.potentialScore}
+                        />
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

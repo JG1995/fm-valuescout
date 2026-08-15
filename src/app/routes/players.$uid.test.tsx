@@ -13,11 +13,13 @@ import { useLayoutStore } from "@/stores/use-layout-store";
 import {
   fixturePlayerDetail,
   getCurrentAbilityBoostIpcMockCalls,
+  getSetPlayerHiddenInformationRevealedIpcMockCalls,
   getWonderkidMentalityBoostIpcMockCalls,
   resolvePendingCurrentAbilityBoostIpcMock,
   resolvePendingWonderkidMentalityBoostIpcMock,
   setCurrentAbilityBoostIpcMockMode,
   setGetPlayerOverride,
+  setPlayerHiddenInformationRevealedIpcMockMode,
   setWonderkidMentalityBoostIpcMockMode,
 } from "@/testing/player-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
@@ -71,6 +73,95 @@ describe("player profile route", () => {
     expect(
       screen.getByRole("tab", { name: "Technical", selected: true }),
     ).toBeInTheDocument();
+  });
+
+  it("conceals hidden information without leaving direct or indirect values in the profile", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        hiddenInformationRevealed: true,
+        attributes: { Acceleration: 14 },
+        potentialAttributes: { Acceleration: 16 },
+        hiddenAttributes: { Consistency: 12 },
+        personality: { Ambition: 10 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const toggle = within(summary).getByRole("button", {
+      name: "Reveal hidden information",
+    });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(within(summary).getByText("160")).toBeInTheDocument();
+
+    await user.click(toggle);
+
+    const reveal = await within(summary).findByRole("button", {
+      name: "Reveal hidden information",
+    });
+    expect(reveal).toHaveAttribute("aria-pressed", "false");
+    expect(within(summary).queryByText("PA")).not.toBeInTheDocument();
+    expect(within(summary).queryByText("160")).not.toBeInTheDocument();
+    expect(within(summary).queryByText("Boost CA")).not.toBeInTheDocument();
+    expect(
+      within(summary).queryByText("Wonderkid Mentality"),
+    ).not.toBeInTheDocument();
+
+    const technical = screen.getByRole("region", { name: "Technical" });
+    expect(
+      within(technical).queryByText("Current 14, Potential 16"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Consistency")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ambition")).not.toBeInTheDocument();
+
+    const roleFit = screen.getByRole("region", { name: "Role fit for MC" });
+    expect(
+      within(roleFit).queryByRole("columnheader", { name: "Potential" }),
+    ).not.toBeInTheDocument();
+    expect(getSetPlayerHiddenInformationRevealedIpcMockCalls()).toEqual([
+      { revealed: false },
+    ]);
+
+    await user.click(reveal);
+    expect(
+      await within(summary).findByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(within(summary).getByText("160")).toBeInTheDocument();
+    expect(screen.getByText("Current 14, Potential 16")).toBeInTheDocument();
+  });
+
+  it("keeps the server-backed visibility state and reports setter failures", async () => {
+    await resolveLoadDataIpcMock();
+    setPlayerHiddenInformationRevealedIpcMockMode("error");
+    setGetPlayerOverride(
+      fixturePlayerDetail({ hiddenInformationRevealed: true }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    await user.click(
+      within(summary).getByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    );
+
+    expect(await within(summary).findByRole("alert")).toHaveTextContent(
+      /^Could not update hidden information\.$/,
+    );
+    expect(
+      within(summary).getByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 
   it("keeps player context beside tabbed attributes and position-filtered roles", async () => {

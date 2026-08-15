@@ -81,19 +81,30 @@ type PlayerAttributesPanelProps = {
   player: PlayerDetail;
   tab: ProfileTab;
   onTabChange: (tab: ProfileTab) => void;
+  hiddenInformationRevealed: boolean;
 };
 
-function rowsForTab(player: PlayerDetail, tab: ProfileTab): AttributeRow[] {
+function rowsForTab(
+  player: PlayerDetail,
+  tab: ProfileTab,
+  hiddenInformationRevealed: boolean,
+): AttributeRow[] {
   if (tab === "hidden") {
+    if (!hiddenInformationRevealed) return [];
     return attributeRows(HIDDEN_ATTRIBUTE_KEYS, player.hiddenAttributes);
   }
   if (tab === "personality") {
+    if (!hiddenInformationRevealed) return [];
     return attributeRows(PERSONALITY_ATTRIBUTE_KEYS, player.personality);
   }
 
   const group = VISIBLE_ATTRIBUTE_GROUPS.find(({ id }) => id === tab);
   return group
-    ? attributeRows(group.keys, player.attributes, player.potentialAttributes)
+    ? attributeRows(
+        group.keys,
+        player.attributes,
+        hiddenInformationRevealed ? player.potentialAttributes : undefined,
+      )
     : [];
 }
 
@@ -107,8 +118,10 @@ export function PlayerAttributesPanel({
   player,
   tab,
   onTabChange,
+  hiddenInformationRevealed,
 }: PlayerAttributesPanelProps) {
-  const currentOnly = tab === "hidden" || tab === "personality";
+  const currentOnly =
+    !hiddenInformationRevealed || tab === "hidden" || tab === "personality";
 
   return (
     <Panel
@@ -127,10 +140,20 @@ export function PlayerAttributesPanel({
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           {PROFILE_TABS.map((id) => (
             <div key={id} {...profileTabPanelProps(id, tab)}>
-              <AttributeSection
-                title={titleForTab(id)}
-                rows={rowsForTab(player, id)}
-              />
+              {!hiddenInformationRevealed &&
+              (id === "hidden" || id === "personality") ? (
+                <p
+                  className="text-body-md text-on-surface-variant"
+                  role="status"
+                >
+                  Hidden information is concealed.
+                </p>
+              ) : (
+                <AttributeSection
+                  title={titleForTab(id)}
+                  rows={rowsForTab(player, id, hiddenInformationRevealed)}
+                />
+              )}
             </div>
           ))}
         </div>

@@ -1490,6 +1490,44 @@ test.describe("application smoke", () => {
     await expect(action).toBeDisabled();
   });
 
+  test("player profile hides sensitive information across profiles and restores it", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { playerProfile: true });
+    await page.goto("/players/42");
+
+    const main = page.getByRole("main");
+    const summary = main.getByRole("region", {
+      name: "Potential Scout summary",
+    });
+    const toggle = summary.getByRole("button", {
+      name: "Reveal hidden information",
+    });
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+
+    const concealedToggle = summary.getByRole("button", {
+      name: "Reveal hidden information",
+    });
+    await expect(concealedToggle).toHaveAttribute("aria-pressed", "false");
+    await expect(summary.getByText("PA", { exact: true })).toHaveCount(0);
+    await expect(summary.getByText("160", { exact: true })).toHaveCount(0);
+    await expect(main.getByRole("button", { name: "Boost CA" })).toHaveCount(0);
+
+    await page.goto("/players/99");
+    const otherSummary = main.getByRole("region", {
+      name: "Other Scout summary",
+    });
+    const otherToggle = otherSummary.getByRole("button", {
+      name: "Reveal hidden information",
+    });
+    await expect(otherToggle).toHaveAttribute("aria-pressed", "false");
+
+    await otherToggle.click();
+    await expect(otherToggle).toHaveAttribute("aria-pressed", "true");
+    await expect(otherSummary.getByText("PA", { exact: true })).toBeVisible();
+  });
+
   test("player profile Attributes keeps visible potential pairs within desktop widths", async ({
     page,
   }) => {

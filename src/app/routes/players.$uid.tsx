@@ -14,6 +14,7 @@ import { boostCurrentAbility } from "@/features/player-profile/api/boost-current
 import { boostWonderkidMentality } from "@/features/player-profile/api/boost-wonderkid-mentality";
 import { getPlayerQueryOptions } from "@/features/player-profile/api/get-player-query-options";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
+import { setPlayerHiddenInformationRevealed } from "@/features/player-profile/api/set-player-hidden-information-revealed";
 import { PlayerAttributesPanel } from "@/features/player-profile/components/player-attributes-panel";
 import { PlayerDevelopmentActions } from "@/features/player-profile/components/player-development-boosts-panel";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
@@ -37,6 +38,11 @@ type PlayerBoostMutation = {
   action: PlayerBoostAction;
   uid: number;
   snapshotId: number;
+};
+
+type PlayerHiddenInformationMutation = {
+  uid: number;
+  revealed: boolean;
 };
 
 function parseUid(raw: string): number | null {
@@ -154,6 +160,13 @@ function PlayerProfileContent({
   const queryClient = useQueryClient();
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
+  const hiddenInformation = useMutation({
+    mutationFn: ({ revealed }: PlayerHiddenInformationMutation) =>
+      setPlayerHiddenInformationRevealed(revealed),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: playerKeys.all });
+    },
+  });
   const boost = useMutation({
     mutationFn: ({ action, uid }: PlayerBoostMutation) =>
       action === "currentAbility"
@@ -173,6 +186,8 @@ function PlayerProfileContent({
     boost.variables?.uid === uid &&
     boost.variables.snapshotId === snapshot?.id &&
     (boost.data === undefined || boost.data.snapshotId === snapshot?.id);
+  const hiddenInformationContextIsCurrent =
+    hiddenInformation.variables?.uid === uid;
 
   if (!snapshot) {
     return (
@@ -193,29 +208,43 @@ function PlayerProfileContent({
     <div className="flex min-h-[calc(100dvh-var(--spacing-header-height)-2rem)] flex-col gap-gutter">
       <PlayerOverviewPanel
         player={player}
+        hiddenInformationPending={
+          hiddenInformationContextIsCurrent && hiddenInformation.isPending
+        }
+        hiddenInformationError={
+          hiddenInformationContextIsCurrent ? hiddenInformation.error : null
+        }
+        onToggleHiddenInformation={() =>
+          hiddenInformation.mutate({
+            uid,
+            revealed: !player.hiddenInformationRevealed,
+          })
+        }
         actions={
-          <PlayerDevelopmentActions
-            key={`${snapshot.id}:${uid}`}
-            player={player}
-            pending={boostContextIsCurrent && boost.isPending}
-            result={boostContextIsCurrent ? boost.data : undefined}
-            error={boostContextIsCurrent ? boost.error : null}
-            onBoostCurrentAbility={() =>
-              boost.mutateAsync({
-                action: "currentAbility",
-                uid,
-                snapshotId: snapshot.id,
-              })
-            }
-            onBoostWonderkidMentality={() =>
-              boost.mutateAsync({
-                action: "wonderkidMentality",
-                uid,
-                snapshotId: snapshot.id,
-              })
-            }
-            onOpenConfirmation={boost.reset}
-          />
+          player.hiddenInformationRevealed ? (
+            <PlayerDevelopmentActions
+              key={`${snapshot.id}:${uid}`}
+              player={player}
+              pending={boostContextIsCurrent && boost.isPending}
+              result={boostContextIsCurrent ? boost.data : undefined}
+              error={boostContextIsCurrent ? boost.error : null}
+              onBoostCurrentAbility={() =>
+                boost.mutateAsync({
+                  action: "currentAbility",
+                  uid,
+                  snapshotId: snapshot.id,
+                })
+              }
+              onBoostWonderkidMentality={() =>
+                boost.mutateAsync({
+                  action: "wonderkidMentality",
+                  uid,
+                  snapshotId: snapshot.id,
+                })
+              }
+              onOpenConfirmation={boost.reset}
+            />
+          ) : null
         }
       />
       <div className="grid min-h-[32rem] flex-1 gap-gutter lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
@@ -223,8 +252,13 @@ function PlayerProfileContent({
           player={player}
           tab={tab}
           onTabChange={onTabChange}
+          hiddenInformationRevealed={player.hiddenInformationRevealed}
         />
-        <PlayerRolesPanel key={player.uid} player={player} />
+        <PlayerRolesPanel
+          key={player.uid}
+          player={player}
+          hiddenInformationRevealed={player.hiddenInformationRevealed}
+        />
       </div>
     </div>
   );

@@ -145,7 +145,7 @@ Commit 1 is the walking skeleton: add migration v23, return the preference from 
 
 #### Commit 1 — Persist profile information visibility
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): persist hidden information visibility`
 
@@ -248,7 +248,7 @@ Commit 1 is the walking skeleton: add migration v23, return the preference from 
 
 #### Commit 2 — Group attributes by FM category
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): group attributes by FM category`
 
@@ -427,19 +427,19 @@ Commit 1 is the walking skeleton: add migration v23, return the preference from 
 
 **PR:** PR 1 — Player profile information controls and layout
 
-**Commit:** Commit 1 — Persist profile information visibility
+**Commit:** Commit 2 — Group attributes by FM category
 
 ### RED proof
 
-Add the smallest Rust tests proving a fresh/existing save defaults to revealed and two saves retain independent explicit states, then add a route test whose fixture is revealed and whose toggle mutation must remove every PA-derived, hidden/personality, potential-role, and boost-action disclosure. These tests currently fail because migration v23, the DTO field, the command, the control, and conditional render boundaries do not exist.
+Add the smallest profile-tab and attribute-group tests proving the four canonical tabs, legacy visible-group normalization, ordered Outfield categories, Set Pieces separation, and concealment-compatible current/potential rows. These tests currently fail because the profile still exposes six independent visible-group tabs and renders one category at a time.
 
 ### Expected outcome
 
-The repository has one tested save-scoped preference exposed through player IPC. The profile defaults to revealed, changes the active save explicitly, shares the state across player profiles, survives refetch/restart, reports mutation failure, and renders no direct or indirect hidden information while concealed.
+The profile has four accessible tabs: Outfield, Goalkeeping, Hidden, and Personality. Outfield renders Technical, Mental, and Physical sections together with Set Pieces separated inside Technical; Goalkeeping remains independent; legacy and invalid tab values normalize to Outfield; and the Commit 1 concealment contract remains intact for every category.
 
 ### Explicit exclusions
 
-Do not restructure attribute tabs, add the three-column Outfield layout, split header roles by phase, change any score formula, update non-profile consumers, or publish/commit as part of this build packet.
+Do not split header roles by phase, change any score formula or projection, alter non-profile consumers, redesign role scoring, or publish the PR as part of this build packet.
 
 ## Discoveries and replanning
 
@@ -452,7 +452,7 @@ Do not restructure attribute tabs, add the three-column Outfield layout, split h
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | None | Pending record | Planning only | Not run | None |
+| PR 1 | Commit 1 — Persist profile information visibility | Pending record | Save-scoped revealed/concealed preference, active-save IPC, profile render boundaries, failure handling, and keyboard/browser coverage | Clean after 1 reviewer pass; two Medium accessibility/error-copy findings corrected and rechecked | None |
 
 ## Final validation
 
