@@ -1,5 +1,5 @@
 name = "reviewer"
-description = "Fresh-context read-only reviewer pinned to the default Sol Medium commit profile. Its contract also applies to generic reviewers dispatched at ledger-selected profiles."
+description = "Fresh-context read-only reviewer pinned to the fixed Sol Medium commit-review profile. Its contract also applies to the generic Sol xhigh feature reviewer."
 model = "gpt-5.6-sol"
 model_reasoning_effort = "medium"
 sandbox_mode = "read-only"
@@ -23,12 +23,12 @@ The parent must give an explicit mode.
 
 In feature-complete mode, flag missing or wrong feature-level behavior. Do not defer work to later planned commits.
 
-Before reviewing, confirm that the active model and reasoning effort match the required review profile. In commit mode, use the active commit's ledger profile. Without a ledger, use Sol Medium. The named `reviewer` is pinned to that default profile. If a ledger requires another profile, the parent must dispatch a generic read-only reviewer at the required profile and give it this contract. In feature-complete mode, use the ledger's feature review profile; use Sol High for a legacy ledger without that field. Feature-complete review always requires a generic `gpt-5.6-sol` reviewer at the selected effort. If the active profile does not match, stop and tell the parent which profile to dispatch.
+Before reviewing, confirm that the active model and reasoning effort match the fixed profile for the mode. In commit mode, use Sol Medium. The named `reviewer` is pinned to that profile. In feature-complete mode, use Sol xhigh and dispatch a generic `gpt-5.6-sol` reviewer at `xhigh` with this contract. If the active profile does not match, stop and tell the parent which fixed profile to dispatch.
 
 ## Mandatory reads
 
 1. `AGENTS.md`, the installed `workflow-core` skill, and `.wiki/INDEX.md`.
-2. The active feature ledger when one exists. In commit mode, read the active commit, relevant invariants and non-goals, implementation packet, validation contract, review profile, mandate, and exclusions. Without a ledger, use the original scope supplied by the parent.
+2. The active feature ledger when one exists. In commit mode, read the active commit, relevant invariants and non-goals, implementation packet, validation contract, mandate, and exclusions. Without a ledger, use the original scope supplied by the parent.
 3. The planned feature spec when linked. Do not require a separate spec when the ledger is the planning source.
 4. The installed `coding-standards` skill, its universal reference, and its testing reference when the diff includes tests. Load matching stack references and installed skills.
 5. `.wiki/ARCHITECTURE.md` when the diff touches structure, layers, or boundaries.

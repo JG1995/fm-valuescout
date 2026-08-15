@@ -22,7 +22,7 @@ Workflow skills never activate from task similarity. Select one through `/skills
 | --- | --- | --- |
 | Choose a stack | `$workflow-stack` | Proposed stack and target architecture |
 | Order work | `$workflow-roadmap` | Dependency-aware project sequence |
-| Plan a feature | `$workflow-plan-feature` | Active ledger with PRs, commit packets, profiles, and validation |
+| Plan a feature | `$workflow-plan-feature` | Active ledger with PRs, detailed commit packets, and validation |
 | Build one commit | `$workflow-build` | Active commit implemented through RED, GREEN, and REFACTOR |
 | Checkpoint | `$workflow-checkpoint` | Exact staging, validation, independent review, and approved local commit |
 | Address findings | `$workflow-fix` | Focused remediation followed by another checkpoint |
@@ -43,11 +43,11 @@ Keep commits atomic and stage exact paths or hunks. Follow the approval rules in
 Dispatch specialists explicitly:
 
 - `reviewer` performs the default fresh-context read-only commit review at Sol Medium.
-- `documentation-steward` changes documentation and feature-ledger state only at Luna Max.
+- `documentation-steward` changes documentation and feature-ledger state only at Terra Medium.
 
-The main session plans established feature work. Delegate planning only when the developer explicitly requests it. Use a generic reviewer when the required profile differs from the named agent's pinned profile. If independent review is required but unavailable, report the missing capability instead of replacing it with self-review.
+The main session plans established feature work. Delegate planning only when the developer explicitly requests it. Use the named Sol Medium reviewer for commits and a generic Sol xhigh reviewer with the same contract for feature-complete review. If independent review is required but unavailable, report the missing capability instead of replacing it with self-review.
 
-Live workflow routing uses only Luna Max, Terra xhigh, Terra Max, Sol Medium, Sol High, Sol xhigh, or Sol Max. The active ledger records per-commit implementation and review profiles plus the feature review profile. Completed feature history keeps the profiles that were actually used.
+Planning uses Sol Medium, Sol High, Sol xhigh, or Sol Max according to uncertainty. Execution is fixed: Luna Max implements every commit and loop, every commit-level review uses Sol Medium, every feature-complete review uses Sol xhigh, and Terra Medium reconciles documentation. Active ledgers do not repeat these fixed profiles. Completed feature history keeps any profiles already recorded.
 
 ## Optional MCP tools
 
