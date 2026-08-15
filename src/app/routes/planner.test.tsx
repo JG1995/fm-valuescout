@@ -474,9 +474,11 @@ describe("planner route", () => {
         screen.queryByRole("dialog", { name: "Upload Moneyball CSV" }),
       ).not.toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
-    ).toHaveFocus();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Upload Moneyball CSV" }),
+      ).toHaveFocus();
+    });
 
     await user.click(
       screen.getByRole("button", { name: "Upload Youth Academy CSV" }),
