@@ -645,8 +645,9 @@ Attributes panel
   → four canonical tabs; outfield players use Outfield first, while players with GK familiarity ≥ 15
       use Goalkeeping first and default to it
   → static attribute-groups.ts membership (Technical / Mental / Physical / Goalkeeping, Hidden, Personality);
-      goalkeeper profiles move First Touch, Passing, and Technique from Technical into the
-      alphabetized Goalkeeping group
+      goalkeeper profiles show Goalkeeping with Mental and Physical, move First Touch, Passing,
+      and Technique into the alphabetized goalkeeper list, and keep only the remaining Technical
+      attributes and Set Pieces under Outfield
   → visible rows show Current → Potential from the DTO; Hidden and Personality stay current-only
   → known 1–20 values map to four FM-style presentation bands; raw values remain unchanged
   → null → —

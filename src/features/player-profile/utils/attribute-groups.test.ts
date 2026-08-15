@@ -4,7 +4,7 @@ import {
   attributeTierLabel,
   attributeValueTier,
   GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS,
-  GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP,
+  GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS,
   HIDDEN_ATTRIBUTE_KEYS,
   labelFromPascal,
   PERSONALITY_ATTRIBUTE_KEYS,
@@ -39,8 +39,11 @@ describe("attribute-groups", () => {
     ).toContain("PenaltyTaking");
   });
 
-  it("moves goalkeeper ball-playing attributes into the alphabetical Goalkeeping group", () => {
-    expect(GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP.keys).toEqual([
+  it("keeps goalkeeper technicals separate from their primary mental and physical groups", () => {
+    expect(
+      GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS.map((group) => group.title),
+    ).toEqual(["Goalkeeping", "Mental", "Physical"]);
+    expect(GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS[0].keys).toEqual([
       "AerialReach",
       "CommandOfArea",
       "Communication",
@@ -56,12 +59,23 @@ describe("attribute-groups", () => {
       "Technique",
       "Throwing",
     ]);
-    const goalkeeperOutfieldKeys = GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS.flatMap(
-      (group) => [...group.keys],
+    expect(
+      GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS.map((group) => group.title),
+    ).toEqual(["Technical"]);
+    const goalkeeperOutfieldKeys = flattenAttributeGroups(
+      GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS,
     );
     expect(goalkeeperOutfieldKeys).not.toContain("FirstTouch");
     expect(goalkeeperOutfieldKeys).not.toContain("Passing");
     expect(goalkeeperOutfieldKeys).not.toContain("Technique");
+    const goalkeeperKeys = [
+      ...goalkeeperOutfieldKeys,
+      ...flattenAttributeGroups(GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS),
+    ];
+    expect(new Set(goalkeeperKeys)).toEqual(
+      new Set(VISIBLE_ATTRIBUTE_KEYS_FLAT()),
+    );
+    expect(new Set(goalkeeperKeys).size).toBe(goalkeeperKeys.length);
   });
 
   it("keeps null and missing values as null so display can show an em dash", () => {
@@ -120,7 +134,16 @@ describe("attribute-groups", () => {
 });
 
 function VISIBLE_ATTRIBUTE_KEYS_FLAT(): string[] {
-  return VISIBLE_ATTRIBUTE_GROUPS.flatMap((group) => [
+  return flattenAttributeGroups(VISIBLE_ATTRIBUTE_GROUPS);
+}
+
+function flattenAttributeGroups(
+  groups: readonly {
+    keys: readonly string[];
+    subgroups?: readonly { keys: readonly string[] }[];
+  }[],
+): string[] {
+  return groups.flatMap((group) => [
     ...group.keys,
     ...(group.subgroups?.flatMap((subgroup) => [...subgroup.keys]) ?? []),
   ]);

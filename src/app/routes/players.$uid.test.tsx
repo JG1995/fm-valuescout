@@ -75,7 +75,7 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
-  it("starts goalkeeper profiles with goalkeeper attributes before outfield attributes", async () => {
+  it("starts goalkeeper profiles with goalkeeper mental and physical attributes", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -110,7 +110,12 @@ describe("player profile route", () => {
     ]);
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
 
-    const goalkeeping = screen.getByRole("region", { name: "Goalkeeping" });
+    const goalkeeping = screen.getByRole("tabpanel", { name: "Goalkeeping" });
+    expect(
+      within(goalkeeping)
+        .getAllByRole("heading", { level: 3 })
+        .map((item) => item.textContent),
+    ).toEqual(["Goalkeeping", "Mental", "Physical"]);
     expect(
       within(goalkeeping)
         .getAllByRole("term")
@@ -130,11 +135,41 @@ describe("player profile route", () => {
       "Rushing Out",
       "Technique",
       "Throwing",
+      "Aggression",
+      "Anticipation",
+      "Bravery",
+      "Composure",
+      "Concentration",
+      "Decisions",
+      "Determination",
+      "Flair",
+      "Leadership",
+      "Off The Ball",
+      "Positioning",
+      "Teamwork",
+      "Vision",
+      "Work Rate",
+      "Acceleration",
+      "Agility",
+      "Balance",
+      "Jumping Reach",
+      "Natural Fitness",
+      "Pace",
+      "Stamina",
+      "Strength",
     ]);
 
     await user.click(screen.getByRole("tab", { name: "Outfield" }));
 
-    const technical = screen.getByRole("region", { name: "Technical" });
+    const outfield = screen.getByRole("tabpanel", { name: "Outfield" });
+    expect(
+      within(outfield)
+        .getAllByRole("heading", { level: 3 })
+        .map((item) => item.textContent),
+    ).toEqual(["Technical"]);
+    const technical = within(outfield).getByRole("region", {
+      name: "Technical",
+    });
     expect(
       within(technical).queryByText("First Touch"),
     ).not.toBeInTheDocument();

@@ -8,7 +8,7 @@ import {
   attributeTierLabel,
   attributeValueTier,
   GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS,
-  GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP,
+  GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS,
   GOALKEEPING_ATTRIBUTE_GROUP,
   HIDDEN_ATTRIBUTE_KEYS,
   OUTFIELD_ATTRIBUTE_GROUPS,
@@ -167,11 +167,13 @@ export function PlayerAttributesPanel({
                 >
                   Hidden information is concealed.
                 </p>
-              ) : id === "outfield" ? (
+              ) : id === "outfield" || (id === "goalkeeping" && goalkeeper) ? (
                 <div className="grid gap-5 lg:grid-cols-3">
-                  {(goalkeeper
-                    ? GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS
-                    : OUTFIELD_ATTRIBUTE_GROUPS
+                  {(id === "goalkeeping"
+                    ? GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS
+                    : goalkeeper
+                      ? GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS
+                      : OUTFIELD_ATTRIBUTE_GROUPS
                   ).map((group) => (
                     <AttributeSection
                       key={group.id}
@@ -185,9 +187,7 @@ export function PlayerAttributesPanel({
                 <AttributeSection
                   group={
                     id === "goalkeeping"
-                      ? goalkeeper
-                        ? GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP
-                        : GOALKEEPING_ATTRIBUTE_GROUP
+                      ? GOALKEEPING_ATTRIBUTE_GROUP
                       : {
                           id,
                           title: id === "hidden" ? "Hidden" : "Personality",
