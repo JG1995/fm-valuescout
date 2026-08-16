@@ -65,6 +65,8 @@ pub fn run() {
             features::csv_import::commands::import_csv,
             features::search::commands::search_players,
             features::search::commands::suggest_players,
+            features::staff::commands::search_staff,
+            features::staff::commands::list_my_staff,
             features::player::commands::get_player,
             features::player::commands::set_player_hidden_information_revealed,
             features::player::commands::boost_current_ability,

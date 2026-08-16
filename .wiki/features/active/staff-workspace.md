@@ -278,7 +278,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 3 — Query scored staff pages
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): query scored staff pages`
 
@@ -324,7 +324,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 4 — Add the closed staff CA bridge operation
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(memory-read): support staff CA boosts`
 
@@ -732,19 +732,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 1 — Staff data foundation
 
-**Commit:** Query scored staff pages
+**Commit:** Add the closed staff CA bridge operation
 
 ### RED proof
 
-Add staff query tests for all-current Search and configured-family My Staff, requested dynamic attributes and scores, flat AND/OR filters, allow-listed sorting, stable pagination, and explicit no-snapshot/no-family states. They fail today because no staff list query or filter compiler exists.
+Add bridge tests for a staff-only mutation candidate, fixed +10 and PA-capped targets, non-staff and stale-source rejection, expected-value mismatches, verified readback, rollback, and truthful uncertain outcomes. They fail today because scans index only player mutation candidates and the protocol has no closed staff CA operation.
 
 ### Expected outcome
 
-Rust returns bounded current-snapshot staff pages for Search and My Staff. Search includes all current staff; My Staff derives membership from every configured `planner_club_sources` row. Requested metrics, filters, and sorts are allow-listed and parameterized, with score lookups using the persisted index.
+The bridge resolves one staff candidate from the producing live scan, revalidates its UID and expected CA/PA, computes `min(CA + 10, PA, 200)` internally, performs a typed staff CA write with readback and rollback classification, and exposes support only for an exact FM build after controlled live proof.
 
 ### Explicit exclusions
 
-No frontend, profile detail, boost command, query-time score calculation, arbitrary SQL field, or React-owned club scope belongs in the active commit.
+No Tauri command, SQLite reconciliation, UI, arbitrary increment or target, batch mutation, player fallback, or address-bearing protocol belongs in the active commit.
 
 ## Discoveries and replanning
 
@@ -758,8 +758,9 @@ No frontend, profile detail, boost command, query-time score calculation, arbitr
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | Extract complete staff scoring attributes | Pending record | Schema v8 publishes nullable Authority from accepted staff offset `0x30` and person-level Adaptability; Rust validates the fixed 24-key staff contract | Sol Medium accepted after one fix round added full bridge serialization proof | Live FM comparison not run; accepted Authority pin remains empirically unverified |
-| PR 1 | Persist staff job-fit scores | Pending record | Migration 24 adds snapshot-scoped staff score rows; one 20-role Rust catalog calculates and transactionally persists only complete current-ability scores | Sol Medium accepted after one fix round added successful replacement and 2,000-staff ingest proof | Repowise advisory index was stale; direct source and 423-test gate used |
+| PR 1 | Extract complete staff scoring attributes | `009c21f` | Schema v8 publishes nullable Authority from accepted staff offset `0x30` and person-level Adaptability; Rust validates the fixed 24-key staff contract | Sol Medium accepted after one fix round added full bridge serialization proof | Live FM comparison not run; accepted Authority pin remains empirically unverified |
+| PR 1 | Persist staff job-fit scores | `94bc921` | Migration 24 adds snapshot-scoped staff score rows; one 20-role Rust catalog calculates and transactionally persists only complete current-ability scores | Sol Medium accepted after one fix round added successful replacement and 2,000-staff ingest proof | Repowise advisory index was stale; direct source and 423-test gate used |
+| PR 1 | Query scored staff pages | Pending record | Bounded current-snapshot Staff Search and unfiltered configured-family My Staff APIs expose allow-listed identity, employment, 24 attribute, and 20 score fields with parameterized filters and stable pagination | Sol Medium accepted after one fix round removed My Staff filters and bounded raw requested-field input | Representative score lookup uses its composite primary key; Repowise advisory index was stale |
 | None | Planning only | Pending record | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation
