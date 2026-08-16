@@ -193,6 +193,14 @@ pub(super) fn prepare_current_ability_boost(
     })
 }
 
+#[cfg(test)]
+pub(crate) fn prepare_current_ability_boost_for_test(
+    conn: &Connection,
+    uid: i64,
+) -> Result<(), PlayerBoostError> {
+    prepare_current_ability_boost(conn, uid).map(|_| ())
+}
+
 pub(super) fn prepare_wonderkid_mentality_boost(
     conn: &Connection,
     uid: i64,
@@ -316,7 +324,7 @@ pub(super) fn capture_active_player_boost_context(
                 s.context_token,
                 sv.context_token,
                 s.bridge_source_request_id,
-                s.player_boost_recovery_required
+                s.boost_recovery_required
              FROM snapshots s
              INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
              WHERE s.is_current = 1
@@ -384,7 +392,7 @@ pub(super) fn require_load_data_for_player_boost(
     let changed = conn
         .execute(
             "UPDATE snapshots
-             SET player_boost_recovery_required = 1
+             SET boost_recovery_required = 1
              WHERE id = ?1 AND context_token = ?2",
             params![context.snapshot_id, &context.snapshot_context_token],
         )

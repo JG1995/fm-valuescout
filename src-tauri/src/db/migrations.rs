@@ -641,6 +641,11 @@ CREATE INDEX idx_staff_role_scores_snapshot_role
     ON staff_role_scores(snapshot_id, role_id);
 ";
 
+pub const SHARED_BOOST_RECOVERY_SQL: &str = "
+ALTER TABLE snapshots
+    RENAME COLUMN player_boost_recovery_required TO boost_recovery_required;
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -762,6 +767,11 @@ pub fn all() -> &'static [Migration] {
             version: 24,
             description: "create_staff_role_scores",
             sql: STAFF_ROLE_SCORES_SQL,
+        },
+        Migration {
+            version: 25,
+            description: "share_boost_recovery_requirement",
+            sql: SHARED_BOOST_RECOVERY_SQL,
         },
     ]
 }
@@ -888,7 +898,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
 
         let demo_value_exists: bool = conn
             .query_row(
@@ -986,7 +996,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
         let existing: i64 = conn
             .query_row(
                 "SELECT reveal_hidden_player_information FROM saves",
@@ -1057,7 +1067,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -1138,7 +1148,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
         assert_eq!(
             table_columns(&conn, "player_potential_role_scores"),
             [
@@ -1324,7 +1334,7 @@ mod tests {
 
         let recovery_required: i64 = conn
             .query_row(
-                "SELECT player_boost_recovery_required FROM snapshots WHERE id = ?1",
+                "SELECT boost_recovery_required FROM snapshots WHERE id = ?1",
                 [snapshot_id],
                 |row| row.get(0),
             )
@@ -1332,7 +1342,7 @@ mod tests {
         assert_eq!(recovery_required, 0);
         let error = conn
             .execute(
-                "UPDATE snapshots SET player_boost_recovery_required = 2 WHERE id = ?1",
+                "UPDATE snapshots SET boost_recovery_required = 2 WHERE id = ?1",
                 [snapshot_id],
             )
             .expect_err("reject an invalid recovery requirement");
@@ -1340,6 +1350,63 @@ mod tests {
             error.sqlite_error_code(),
             Some(rusqlite::ErrorCode::ConstraintViolation)
         );
+    }
+
+    #[test]
+    fn migrates_v24_player_recovery_to_shared_boost_recovery_without_changing_values() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("shared-boost-recovery-v24.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 24) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v24");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Existing save', 1)",
+            [],
+        )
+        .expect("insert existing save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert existing snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+        conn.execute(
+            "UPDATE snapshots SET player_boost_recovery_required = 1 WHERE id = ?1",
+            [snapshot_id],
+        )
+        .expect("set existing recovery requirement");
+
+        apply(&conn).expect("apply shared boost recovery migration");
+
+        assert_eq!(
+            table_columns(&conn, "snapshots")
+                .into_iter()
+                .filter(|column| column.contains("boost_recovery"))
+                .collect::<Vec<_>>(),
+            ["boost_recovery_required"]
+        );
+        let recovery_required: i64 = conn
+            .query_row(
+                "SELECT boost_recovery_required FROM snapshots WHERE id = ?1",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("read preserved recovery requirement");
+        assert_eq!(recovery_required, 1);
+        assert!(conn
+            .execute(
+                "UPDATE snapshots SET boost_recovery_required = 2 WHERE id = ?1",
+                [snapshot_id],
+            )
+            .is_err());
     }
 
     #[test]
@@ -1633,7 +1700,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, planner_club_settings.primary_club
@@ -1713,7 +1780,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -1900,7 +1967,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -1948,7 +2015,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -2189,7 +2256,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -2295,7 +2362,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
 
         let table_name: String = conn
             .query_row(
@@ -2418,7 +2485,7 @@ mod tests {
                 row.get(0)
             })
             .expect("count absent backfill");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
         assert_eq!(staff_count, 1);
         assert_eq!(score_count, 0);
     }
@@ -2469,7 +2536,7 @@ mod tests {
                 "bridge_source_request_id",
                 "context_token",
                 "custom_name",
-                "player_boost_recovery_required",
+                "boost_recovery_required",
             ]
         );
         assert_eq!(
@@ -2662,7 +2729,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
     }
 
     #[test]
@@ -2696,7 +2763,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 24);
+        assert_eq!(version, 25);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -2736,7 +2803,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 24, "legacy version {legacy_version}");
+            assert_eq!(version, 25, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -2749,7 +2816,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 24);
+        assert_eq!(migrations.len(), 25);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -2850,6 +2917,12 @@ mod tests {
         assert_eq!(migrations[23].version, 24);
         assert_eq!(migrations[23].description, "create_staff_role_scores");
         assert_eq!(migrations[23].sql, STAFF_ROLE_SCORES_SQL);
+        assert_eq!(migrations[24].version, 25);
+        assert_eq!(
+            migrations[24].description,
+            "share_boost_recovery_requirement"
+        );
+        assert_eq!(migrations[24].sql, SHARED_BOOST_RECOVERY_SQL);
     }
 
     #[test]

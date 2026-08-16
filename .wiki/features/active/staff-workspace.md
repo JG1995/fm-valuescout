@@ -370,7 +370,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 5 — Reconcile verified staff boosts
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): reconcile verified staff boosts`
 
@@ -761,8 +761,9 @@ No React control, batch action, staff score recomputation, arbitrary target/incr
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Extract complete staff scoring attributes | `009c21f` | Schema v8 publishes nullable Authority from accepted staff offset `0x30` and person-level Adaptability; Rust validates the fixed 24-key staff contract | Sol Medium accepted after one fix round added full bridge serialization proof | Live FM comparison not run; accepted Authority pin remains empirically unverified |
 | PR 1 | Persist staff job-fit scores | `94bc921` | Migration 24 adds snapshot-scoped staff score rows; one 20-role Rust catalog calculates and transactionally persists only complete current-ability scores | Sol Medium accepted after one fix round added successful replacement and 2,000-staff ingest proof | Repowise advisory index was stale; direct source and 423-test gate used |
-| PR 1 | Query scored staff pages | Pending record | Bounded current-snapshot Staff Search and unfiltered configured-family My Staff APIs expose allow-listed identity, employment, 24 attribute, and 20 score fields with parameterized filters and stable pagination | Sol Medium accepted after one fix round removed My Staff filters and bounded raw requested-field input | Representative score lookup uses its composite primary key; Repowise advisory index was stale |
-| PR 1 | Add the closed staff CA bridge operation | Pending record | Separate live staff candidates feed one fixed +10, PA/200-capped protocol operation with source/UID/CA/PA revalidation, verified readback, rollback classification, and exact FM 26.3.2 capability | Sol Medium accepted after one fix round updated protocol docs and closed deterministic boundary-test gaps | Controlled live proof passed with +10 and PA-capped results plus independent rescan readback |
+| PR 1 | Query scored staff pages | `98cf8c5` | Bounded current-snapshot Staff Search and unfiltered configured-family My Staff APIs expose allow-listed identity, employment, 24 attribute, and 20 score fields with parameterized filters and stable pagination | Sol Medium accepted after one fix round removed My Staff filters and bounded raw requested-field input | Representative score lookup uses its composite primary key; Repowise advisory index was stale |
+| PR 1 | Add the closed staff CA bridge operation | `1932350` | Separate live staff candidates feed one fixed +10, PA/200-capped protocol operation with source/UID/CA/PA revalidation, verified readback, rollback classification, and exact FM 26.3.2 capability | Sol Medium accepted after one fix round updated protocol docs and closed deterministic boundary-test gaps | Controlled live proof passed with +10 and PA-capped results plus independent rescan readback |
+| PR 1 | Reconcile verified staff boosts | Pending record | UID-only Rust command derives fixed/capped values, serializes player/staff writes through one gate, reconciles only verified current staff CA, and shares the preserved snapshot recovery latch | Sol Medium accepted after one fix round added command-level recovery classification proof | No role-score recomputation; proven pre-write failures do not latch recovery |
 | None | Planning only | Pending record | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation
