@@ -67,7 +67,7 @@ function BestRoleSummary({
           aria-label={`${label}: ${concealed ? "concealed" : "unavailable"}`}
           className="inline-flex size-12 items-center justify-center font-mono text-mono-lg text-on-surface-variant tabular-nums"
         >
-          {concealed ? "Concealed" : formatMissable(null)}
+          {formatMissable(null)}
         </span>
       ) : (
         <ScoreBadge score={score} roleName={label} variant="hero" />

@@ -253,12 +253,15 @@ describe("player profile route", () => {
     expect(
       within(summary).queryByText("Wonderkid Mentality"),
     ).not.toBeInTheDocument();
-    expect(
-      within(summary).getByRole("img", { name: "Potential IP: concealed" }),
-    ).toBeInTheDocument();
-    expect(
-      within(summary).getByRole("img", { name: "Potential OOP: concealed" }),
-    ).toBeInTheDocument();
+    const concealedPotentialIp = within(summary).getByRole("img", {
+      name: "Potential IP: concealed",
+    });
+    const concealedPotentialOop = within(summary).getByRole("img", {
+      name: "Potential OOP: concealed",
+    });
+    expect(concealedPotentialIp).toHaveTextContent("—");
+    expect(concealedPotentialOop).toHaveTextContent("—");
+    expect(within(summary).getAllByText("Concealed")).toHaveLength(2);
 
     const technical = screen.getByRole("region", { name: "Technical" });
     expect(

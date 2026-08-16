@@ -1538,6 +1538,8 @@ test.describe("application smoke", () => {
     const toggle = summary.getByRole("button", {
       name: "Reveal hidden information",
     });
+    const revealedToggleBox = await toggle.boundingBox();
+    expect(revealedToggleBox).not.toBeNull();
     await toggle.focus();
     await page.keyboard.press("Enter");
 
@@ -1545,6 +1547,12 @@ test.describe("application smoke", () => {
       name: "Reveal hidden information",
     });
     await expect(concealedToggle).toHaveAttribute("aria-pressed", "false");
+    const concealedToggleBox = await concealedToggle.boundingBox();
+    expect(concealedToggleBox).not.toBeNull();
+    if (!revealedToggleBox || !concealedToggleBox) {
+      throw new Error("Expected the hidden-information toggle in both states.");
+    }
+    expect(concealedToggleBox.y).toBe(revealedToggleBox.y);
     await expect(summary.getByText("PA", { exact: true })).toHaveCount(0);
     await expect(summary.getByText("160", { exact: true })).toHaveCount(0);
     await expect(
