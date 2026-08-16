@@ -121,6 +121,70 @@ describe("staff profile route", () => {
     ).toBeInTheDocument();
   });
 
+  it("uses the player-profile tier and row presentation for staff attributes", async () => {
+    await resolveLoadDataIpcMock();
+    const staff = fixtureStaffDetail();
+    setStaffDetailOverride({
+      ...staff,
+      attributes: {
+        ...staff.attributes,
+        Attacking: 3,
+        Defending: 8,
+        Fitness: 13,
+        Possession: 18,
+        Technical: null,
+      },
+    });
+    renderStaffProfileRoute("/staff/101");
+
+    const coaching = await screen.findByRole("region", { name: "Coaching" });
+    for (const [value, tier, tierLabel] of [
+      [3, 1, "Weak"],
+      [8, 2, "Average"],
+      [13, 3, "Good"],
+      [18, 4, "Excellent"],
+    ] as const) {
+      const attribute = within(coaching).getByText(String(value));
+      expect(attribute).toHaveAttribute("data-tier", String(tier));
+      expect(attribute).toHaveAttribute("title", tierLabel);
+      expect(attribute).toHaveClass(
+        "inline-flex",
+        "min-w-7",
+        "justify-center",
+        "rounded-sm",
+        "bg-surface-container-high",
+        `data-[tier=${tier}]:bg-score-${tier}/10`,
+        `data-[tier=${tier}]:text-score-${tier}`,
+      );
+    }
+    const missingValue = within(coaching).getByText("—");
+    expect(missingValue).toHaveClass("text-on-surface-variant");
+    expect(missingValue).not.toHaveAttribute("data-tier");
+    expect(missingValue).not.toHaveClass("bg-surface-container-high");
+    const attackingRow = within(coaching).getByText("Attacking").parentElement;
+    expect(attackingRow).toHaveClass(
+      "flex",
+      "min-h-9",
+      "min-w-0",
+      "items-center",
+      "justify-between",
+      "gap-3",
+      "border-b",
+      "border-outline-variant/70",
+    );
+    expect(within(coaching).getByText("Attacking")).toHaveClass(
+      "truncate",
+      "text-body-md",
+      "text-on-surface-variant",
+    );
+    expect(within(coaching).getByText("3").parentElement).toHaveClass(
+      "shrink-0",
+      "font-mono",
+      "text-mono-sm",
+      "tabular-nums",
+    );
+  });
+
   it("summarizes the highest available role score", async () => {
     await resolveLoadDataIpcMock();
     setStaffDetailOverride(

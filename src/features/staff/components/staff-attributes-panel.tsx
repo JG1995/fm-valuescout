@@ -1,5 +1,6 @@
+import { AttributeRow } from "@/components/ui/attribute-row/attribute-row";
+import { AttributeValue } from "@/components/ui/attribute-value/attribute-value";
 import { Panel } from "@/components/ui/panel/panel";
-import { formatMissable } from "@/utils/format";
 import type { StaffDetail } from "../types/staff-detail";
 import {
   STAFF_PROFILE_ATTRIBUTE_GROUPS,
@@ -24,19 +25,14 @@ function AttributeSection({
       >
         {group.title}
       </h3>
-      <dl className="grid min-w-0 grid-cols-[minmax(0,max-content)_auto] gap-x-2">
+      <dl className="grid min-w-0 grid-cols-1 gap-x-5">
         {group.keys.map((key) => (
-          <div
+          <AttributeRow
             key={key}
-            className="col-span-2 grid min-h-9 min-w-0 grid-cols-subgrid items-center border-b border-outline-variant/70"
+            label={key.replaceAll(/([a-z])([A-Z])/g, "$1 $2")}
           >
-            <dt className="truncate text-body-md text-on-surface-variant">
-              {key.replaceAll(/([a-z])([A-Z])/g, "$1 $2")}
-            </dt>
-            <dd className="shrink-0 font-mono text-mono-sm tabular-nums">
-              {formatMissable(staff.attributes[key])}
-            </dd>
-          </div>
+            <AttributeValue value={staff.attributes[key]} />
+          </AttributeRow>
         ))}
       </dl>
     </section>

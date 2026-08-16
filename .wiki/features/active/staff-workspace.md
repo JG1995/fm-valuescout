@@ -24,6 +24,7 @@ Turn the already extracted staff population into a first-class Staff workspace: 
 - Activating a staff row opens `/staff/$uid` for that staff member in the effective current snapshot.
 - A Staff Profile follows the player-profile frame with a compact staff summary above **Attributes** and **Role fit** panels. It has no pitch, position suitability, potential projections, or wonderkid action.
 - The Staff Profile presents all 24 extracted staff attributes together in compact **Coaching**, **Mental**, and **Knowledge** columns. Role fit is an internally scrollable virtual list of all 20 current job-fit scores without a position filter, ordered by score descending with unavailable scores last and catalog order breaking ties.
+- Staff Profile attributes use the same row alignment and shared FM-scale four-tier value treatment as Player Profile attributes. Missing values remain neutral.
 - The Staff Profile offers only **Boost CA**. The fixed +10 policy, cap, confirmation, feedback, and recovery behavior match the My Staff action.
 - The save-scoped **Hide hidden info** preference is shared by player and staff profiles. When concealed, a Staff Profile omits PA and Boost CA because its availability and preview disclose PA; CA, current staff attributes, and current job-fit scores remain visible. Staff Adaptability remains visible because it is a normal current staff attribute in this profile, even though the bridge reads it from the shared person personality block.
 - A successful boost updates FM and the effective current snapshot. An uncertain or unreconciled outcome requires Load Data before another player or staff boost.
@@ -782,6 +783,16 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **Validation:** Focused Search table tests; `./scripts/dev check`; fresh Sol Medium review.
 
+#### Commit 11 — Color staff profile attributes
+
+**Status:** Completed
+
+**Provisional commit:** `fix(staff): align profile attribute styling`
+
+**Work:** Reuse the Player Profile attribute row alignment and FM attribute tier treatment for Staff Profile values.
+
+**Validation:** Focused Staff and Player Profile tests; `./scripts/dev check`; fresh Sol Medium review.
+
 ## Active work
 
 **PR:** PR 2 — Staff workspace UI
@@ -790,7 +801,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 ### Completion entry condition
 
-All ten planned PR 2 checkpoints have passed their required focused validation, commit gate, and fresh Sol Medium review.
+All eleven planned PR 2 checkpoints have passed their required focused validation, commit gate, and fresh Sol Medium review.
 
 ### Expected outcome
 
@@ -830,7 +841,8 @@ Feature-complete review, documentation reconciliation, PR creation, push, and me
 | PR 2 | Combine Staff Profile attribute groups | `b1d33dc` | Staff Profile presents all 24 current attributes together in compact Coaching, Mental, and Knowledge columns, removes obsolete tab URL state, and keeps values close to their labels | Sol Medium accepted after one correction round kept the owning ledger commit active through review and updated the browser contract | Native-window layout remains manual |
 | PR 2 | Virtualize Staff Profile Role fit | `6d86e13` | Role fit owns a bounded semantic scrollport, virtualizes its fixed-height ranked rows, retains the sticky header, and leaves the profile page stationary at 1280×800 | Sol Medium accepted after one correction round hid virtual spacers from assistive navigation and added logical row metadata plus shuffled-order proof | Native-window verification remains manual; browser proof covers the supported viewport |
 | PR 2 | Color staff role scores | `70c27f4` | Available role scores in Staff Search, My Staff, and Staff Profile use the shared four-tier score ramp with numeric values and accessible labels; missing values stay neutral | Sol Medium accepted without findings | None |
-| PR 2 | Color player search role scores | `Pending record` | Available current and potential role-score cells in Player Search use the shared four-tier score ramp while missing scores and other dynamic metrics remain neutral | Sol Medium accepted without findings | None |
+| PR 2 | Color player search role scores | `1df2c58` | Available current and potential role-score cells in Player Search use the shared four-tier score ramp while missing scores and other dynamic metrics remain neutral | Sol Medium accepted without findings | None |
+| PR 2 | Color Staff Profile attributes | `Pending record` | Staff and Player Profiles share one attribute row and value presentation with identical spacing, typography, borders, FM-scale tier colors and labels, and neutral missing values | Sol Medium accepted after one correction round strengthened shared row ownership and visual regression proof | None |
 | None | Planning only | `7857e27` | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation

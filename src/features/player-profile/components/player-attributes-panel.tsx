@@ -1,18 +1,18 @@
+import { AttributeRow } from "@/components/ui/attribute-row/attribute-row";
+import { AttributeValue } from "@/components/ui/attribute-value/attribute-value";
 import { Panel } from "@/components/ui/panel/panel";
 import { formatMissable } from "@/utils/format";
 import type { PlayerDetail } from "../types/player-detail";
 import {
   type AttributeGroup,
-  type AttributeRow,
   attributeRows,
-  attributeTierLabel,
-  attributeValueTier,
   GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS,
   GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS,
   GOALKEEPING_ATTRIBUTE_GROUP,
   HIDDEN_ATTRIBUTE_KEYS,
   OUTFIELD_ATTRIBUTE_GROUPS,
   PERSONALITY_ATTRIBUTE_KEYS,
+  type AttributeRow as PlayerAttributeRow,
 } from "../utils/attribute-groups";
 import { isGoalkeeper } from "../utils/position-families";
 import { type ProfileTab, profileTabsForPlayer } from "../utils/profile-tab";
@@ -24,53 +24,26 @@ type AttributeSectionProps = {
   hiddenInformationRevealed: boolean;
 };
 
-function AttributeValue({ value }: { value: number | null | undefined }) {
-  if (value === null || value === undefined) {
-    return (
-      <span className="text-on-surface-variant">{formatMissable(value)}</span>
-    );
-  }
-
-  const tier = attributeValueTier(value);
-  return (
-    <span
-      data-tier={tier}
-      title={attributeTierLabel(tier)}
-      className="inline-flex min-w-7 justify-center rounded-sm bg-surface-container-high px-1.5 py-0.5 data-[tier=1]:bg-score-1/10 data-[tier=1]:text-score-1 data-[tier=2]:bg-score-2/10 data-[tier=2]:text-score-2 data-[tier=3]:bg-score-3/10 data-[tier=3]:text-score-3 data-[tier=4]:bg-score-4/10 data-[tier=4]:text-score-4"
-    >
-      {value}
-    </span>
-  );
-}
-
-function AttributeRows({ rows }: { rows: AttributeRow[] }) {
+function AttributeRows({ rows }: { rows: PlayerAttributeRow[] }) {
   return (
     <dl className="grid min-w-0 grid-cols-1 gap-x-5">
       {rows.map((row) => (
-        <div
-          key={row.key}
-          className="flex min-h-9 min-w-0 items-center justify-between gap-3 border-b border-outline-variant/70"
-        >
-          <dt className="truncate text-body-md text-on-surface-variant">
-            {row.label}
-          </dt>
-          <dd className="shrink-0 font-mono text-mono-sm tabular-nums">
-            {row.potentialValue === undefined ? (
-              <AttributeValue value={row.value} />
-            ) : (
-              <>
-                <span aria-hidden="true">
-                  <AttributeValue value={row.value} />
-                  <span className="px-1.5 text-on-surface-variant">→</span>
-                  <AttributeValue value={row.potentialValue} />
-                </span>
-                <span className="sr-only">
-                  {`Current ${formatMissable(row.value)}, Potential ${formatMissable(row.potentialValue)}`}
-                </span>
-              </>
-            )}
-          </dd>
-        </div>
+        <AttributeRow key={row.key} label={row.label}>
+          {row.potentialValue === undefined ? (
+            <AttributeValue value={row.value} />
+          ) : (
+            <>
+              <span aria-hidden="true">
+                <AttributeValue value={row.value} />
+                <span className="px-1.5 text-on-surface-variant">→</span>
+                <AttributeValue value={row.potentialValue} />
+              </span>
+              <span className="sr-only">
+                {`Current ${formatMissable(row.value)}, Potential ${formatMissable(row.potentialValue)}`}
+              </span>
+            </>
+          )}
+        </AttributeRow>
       ))}
     </dl>
   );
