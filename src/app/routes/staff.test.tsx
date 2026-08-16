@@ -26,6 +26,7 @@ import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 import {
   fixtureStaff,
   getMyStaffBoostIpcMockCalls,
+  rejectPendingMyStaffBoostIpcMock,
   resolvePendingMyStaffBoostIpcMock,
   sendPendingMyStaffBoostProgressIpcMock,
   setMyStaffBoostIpcMockMode,
@@ -480,7 +481,7 @@ describe("staff route", () => {
 
   it("keeps a global bulk bridge error in the confirmation", async () => {
     await resolveLoadDataIpcMock();
-    setMyStaffBoostIpcMockMode("error");
+    setMyStaffBoostIpcMockMode("pending");
     const user = userEvent.setup();
     renderStaffRoute("/staff?view=my-staff");
 
@@ -490,10 +491,40 @@ describe("staff route", () => {
     await user.click(
       within(dialog).getByRole("button", { name: "Boost all CA" }),
     );
+    sendPendingMyStaffBoostProgressIpcMock();
+    await waitFor(() =>
+      expect(dialog).toHaveTextContent("1 of 2 staff processed."),
+    );
+    rejectPendingMyStaffBoostIpcMock(new Error("Bridge is unavailable."));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
       "Could not boost My Staff. Bridge is unavailable.",
     );
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(
+      "1 processed — 1 updated, 0 skipped, 0 failed.",
+    );
     expect(dialog).toBeInTheDocument();
+  });
+
+  it("formats Staff wage and labels the internal job value explicitly", async () => {
+    await resolveLoadDataIpcMock();
+    usePlayerTableStore.setState({
+      layouts: {
+        ...defaultPlayerTableLayouts(),
+        "staff-search": {
+          columnIds: ["name", "wage", "job_id"],
+          widths: {},
+        },
+      },
+    });
+    renderStaffRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Staff search results",
+    });
+    expect(
+      within(table).getByRole("columnheader", { name: "Job ID" }),
+    ).toBeInTheDocument();
+    expect(within(table).getAllByText("€15k")).toHaveLength(2);
   });
 });

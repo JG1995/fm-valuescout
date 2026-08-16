@@ -6,7 +6,7 @@
 
 ## The Idea
 
-FM ValueScout is a desktop companion for Football Manager 26 that reads live game data and turns it into a searchable player database with role-aware scoring and squad planning tools. It bridges the gap between in-game scouting and structured analysis: you load a snapshot while FM is running, explore players by position and role fit, plan your squad around your tactic, and optimize lineups against a combined team score.
+FM ValueScout is a desktop companion for Football Manager 26 that reads live game data and turns it into searchable player and staff databases with role-aware scoring and squad planning tools. It bridges the gap between in-game scouting and structured analysis: you load a snapshot while FM is running, explore players by position and role fit, compare staff by job fit, plan your squad around your tactic, and optimize lineups against a combined team score.
 
 The central insight is that FM's default interface supports scouting and squad building, but not always in one workflow. ValueScout unifies traditional scouting (browse profiles, compare candidates) with moneyball-style scouting (rank by quantified role fit) and tactical squad planning (see gaps, optimize the XI). The app stays beside the game—you make decisions in FM; ValueScout gives you the lens.
 
@@ -30,9 +30,9 @@ An optional Dashboard import supplements the current snapshot with supported You
 
 The app supports multiple **save slots** (separate scouting databases—for example, different FM careers). Exactly one slot is active; **Load Data** stores a new snapshot in that slot, while Search, profiles, Planner, Academy, and CSV matching use the slot's current snapshot. Slots are app-side labels, not FM save files.
 
-### 2. Searchable database with role scores
+### 2. Searchable databases with role scores
 
-Every loaded player lives in a searchable database with scores per position and per role (e.g. defensive midfielder / deep-lying playmaker). Sort and filter transfer targets by the role you need, not only by raw attributes. Detailed player profiles support the traditional scouting path; ranked lists support the moneyball path.
+Every loaded player lives in a searchable database with scores per position and per role (e.g. defensive midfielder / deep-lying playmaker). Staff have current-ability job-fit scores derived from the attributes required by each job. Sort and filter by the fit you need, inspect detailed player or staff profiles, and review the complete configured club-family staff group in My Staff.
 
 ### 3. Squad planner
 
@@ -89,6 +89,9 @@ A week later in-game, the signing completes. You click **Load Data** again. The 
 - Position and role scores per player
 - Detailed player profile view
 - Transfer search with sort/filter by role scores
+- Staff Search with sort/filter by current job-fit scores
+- My Staff overview for the configured Senior, Reserves, and Youth club family
+- Detailed Staff Profile with current attributes and job fit
 - Squad planner aligned to the user's tactic
 - Squad optimizer that maximizes combined team score for the tactic
 - Optional supported Youth Tracker and Moneyball CSV enrichment import matched to the current memory snapshot; imported career data can feed Youth Academy views

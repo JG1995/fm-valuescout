@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-FM ValueScout reads staff from FM26 but does not currently expose staff in the UI or mutate them. The Staff workspace needs one development action: increase one staff member's current ability by 10, capped at potential ability.
+The Staff workspace needs one development action: increase one staff member's current ability by 10, capped at potential ability. Before this decision, FM ValueScout read staff from FM26 but did not expose staff in the UI or mutate them.
 
 [ADR-0017](./0017-action-specific-fm26-player-boosts.md) permits only two closed player operations and requires another product and architecture decision before adding an edit action. Staff use different live-object candidates and CA offsets from players, so accepting a staff UID through a player operation would blur the validated target boundary.
 
@@ -55,8 +55,7 @@ Apply the action to all staff in My Staff. The original request was for a per-st
 
 ### Follow-up
 
-- Deliver and validate the operation through the [Staff Workspace feature plan](../features/active/staff-workspace.md).
-- Reconcile ADR-0016, CONCEPT, and ARCHITECTURE when the implementation becomes current behavior.
+- Preserve deterministic and live validation evidence in the [Staff Workspace feature record](../features/active/staff-workspace.md).
 - Require another decision for arbitrary staff values or another staff field. ADR-0021 owns family-wide orchestration.
 
 ## Related work
@@ -64,5 +63,5 @@ Apply the action to all staff in My Staff. The original request was for a per-st
 - Feature plan: [Staff Workspace](../features/active/staff-workspace.md)
 - Existing write boundary: [ADR-0017](./0017-action-specific-fm26-player-boosts.md)
 - Existing sequential mutation policy: [ADR-0018](./0018-squad-wide-player-boosts.md)
-- Commits: not implemented
+- Commits: `1932350`, `48e5c5a`, `18c28ce`
 - Supersedes: none; extends ADR-0017 with one staff-specific operation

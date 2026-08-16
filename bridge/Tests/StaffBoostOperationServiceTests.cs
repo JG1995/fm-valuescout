@@ -186,6 +186,21 @@ public sealed class StaffBoostOperationServiceTests
         Assert.Equal(140, second.BoostResult!.CurrentAbility);
     }
 
+    [Theory]
+    [InlineData((int)StaffBoostFailure.ExpectedValuesMismatch, true)]
+    [InlineData((int)StaffBoostFailure.CurrentAbilityAtLimit, true)]
+    [InlineData((int)StaffBoostFailure.MutationFailed, false)]
+    [InlineData((int)StaffBoostFailure.PartialRollbackUnverified, false)]
+    public void Plugin_preserves_live_indexes_only_for_proven_staff_no_write_failures(
+        int failure,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            StaffBoostOperationService.PreservesLiveIndexOnFailure(
+                (StaffBoostFailure)failure));
+    }
+
     private static StaffBoostOperationService CreateService(PersonCandidate candidate)
     {
         var index = new StaffMutationIndex();

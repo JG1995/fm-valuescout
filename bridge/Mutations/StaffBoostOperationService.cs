@@ -56,6 +56,10 @@ internal sealed class StaffBoostOperationService
         SupportsExactGameBuild(gameVersion)
         && _index.HasCandidatesForGameVersion(gameVersion);
 
+    internal static bool PreservesLiveIndexOnFailure(StaffBoostFailure failure) =>
+        failure is StaffBoostFailure.ExpectedValuesMismatch
+            or StaffBoostFailure.CurrentAbilityAtLimit;
+
     public StaffBoostExecutionResult Execute(
         BridgeRequest request,
         string gameVersion,

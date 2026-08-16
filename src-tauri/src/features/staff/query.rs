@@ -48,7 +48,11 @@ impl SortDir {
 pub enum SortField {
     Name,
     Age,
+    BirthYear,
+    BirthDayOfYear,
     Nationality,
+    NationUid,
+    Gender,
     Club,
     Division,
     Ca,
@@ -56,6 +60,7 @@ pub enum SortField {
     JobId,
     Wage,
     ContractYear,
+    ContractDayOfYear,
     Dynamic(MetricField),
 }
 impl SortField {
@@ -64,7 +69,11 @@ impl SortField {
         match value {
             "name" => Ok(Self::Name),
             "age" => Ok(Self::Age),
+            "birth_year" => Ok(Self::BirthYear),
+            "birth_day_of_year" => Ok(Self::BirthDayOfYear),
             "nationality" => Ok(Self::Nationality),
+            "nation_uid" => Ok(Self::NationUid),
+            "gender" => Ok(Self::Gender),
             "club" => Ok(Self::Club),
             "division" => Ok(Self::Division),
             "ca" => Ok(Self::Ca),
@@ -72,6 +81,7 @@ impl SortField {
             "job_id" => Ok(Self::JobId),
             "wage" => Ok(Self::Wage),
             "contract_year" => Ok(Self::ContractYear),
+            "contract_day" => Ok(Self::ContractDayOfYear),
             other => Ok(Self::Dynamic(MetricField::parse(other)?)),
         }
     }
@@ -79,7 +89,11 @@ impl SortField {
         match self {
             Self::Name => "staff.name COLLATE NOCASE".into(),
             Self::Age => "staff.age".into(),
+            Self::BirthYear => "staff.birth_year".into(),
+            Self::BirthDayOfYear => "staff.birth_day_of_year".into(),
             Self::Nationality => "staff.nationalities_json COLLATE NOCASE".into(),
+            Self::NationUid => "staff.nation_uid".into(),
+            Self::Gender => "staff.gender COLLATE NOCASE".into(),
             Self::Club => "staff.club COLLATE NOCASE".into(),
             Self::Division => "staff.division COLLATE NOCASE".into(),
             Self::Ca => "staff.ca".into(),
@@ -87,6 +101,7 @@ impl SortField {
             Self::JobId => "staff.job_id".into(),
             Self::Wage => "staff.weekly_wage_gbp".into(),
             Self::ContractYear => "staff.contract_expiry_year".into(),
+            Self::ContractDayOfYear => "staff.contract_expiry_day_of_year".into(),
             Self::Dynamic(field) => field.sql_expression("staff"),
         }
     }
@@ -706,6 +721,29 @@ mod tests {
                 .collect::<Vec<_>>(),
             [1, 2, 3]
         );
+    }
+
+    #[test]
+    fn accepts_every_configurable_basic_staff_sort_field() {
+        for field in [
+            "name",
+            "age",
+            "birth_year",
+            "birth_day_of_year",
+            "nationality",
+            "nation_uid",
+            "gender",
+            "club",
+            "division",
+            "ca",
+            "pa",
+            "wage",
+            "contract_year",
+            "contract_day",
+            "job_id",
+        ] {
+            assert!(SortField::parse(field).is_ok(), "rejected {field}");
+        }
     }
     #[test]
     fn reports_setup_states_and_bounds_stable_pages() {

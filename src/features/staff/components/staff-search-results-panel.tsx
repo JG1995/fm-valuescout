@@ -16,7 +16,12 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
-import { formatCount, formatMissable, formatPlayerDob } from "@/utils/format";
+import {
+  formatCount,
+  formatMissable,
+  formatMoney,
+  formatPlayerDob,
+} from "@/utils/format";
 import { boostMyStaffCurrentAbility } from "../api/boost-my-staff-current-ability";
 import { staffKeys } from "../api/staff-keys";
 import {
@@ -114,7 +119,8 @@ function basicCell(
       return { text: String(staff.pa), numeric: true };
     case "wage":
       return {
-        text: String(formatMissable(staff.weeklyWageGbp)),
+        text:
+          staff.weeklyWageGbp === null ? "—" : formatMoney(staff.weeklyWageGbp),
         numeric: true,
       };
     case "contract_year":

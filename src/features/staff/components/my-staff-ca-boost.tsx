@@ -21,9 +21,11 @@ type MyStaffCaBoostProps = {
 export function MyStaffBoostOutcome({
   result,
   error,
+  progress,
 }: {
   result: MyStaffBoostResult | undefined;
   error: Error | null;
+  progress?: MyStaffBoostProgress | null;
 }) {
   if (result) {
     const processed = result.updated + result.skipped + result.failed;
@@ -50,9 +52,16 @@ export function MyStaffBoostOutcome({
     );
   }
   return error ? (
-    <p className="text-body-sm text-error" role="alert">
-      Could not boost My Staff. {error.message}
-    </p>
+    <div className="space-y-1 text-body-sm text-error" role="alert">
+      <p>Could not boost My Staff. {error.message}</p>
+      {progress && progress.processed > 0 ? (
+        <p>
+          {progress.processed} processed — {progress.updated} updated,{" "}
+          {progress.skipped} skipped, {progress.failed} failed. Changes already
+          applied remain in FM.
+        </p>
+      ) : null}
+    </div>
   ) : null;
 }
 
@@ -104,7 +113,7 @@ export function MyStaffCaBoost({
               onClick={() => {
                 void onBoost(setProgress).then(
                   () => setConfirmationOpen(false),
-                  () => setProgress(null),
+                  () => undefined,
                 );
               }}
             >
@@ -143,7 +152,11 @@ export function MyStaffCaBoost({
             </div>
           ) : null}
           <div aria-live="polite">
-            <MyStaffBoostOutcome result={undefined} error={error} />
+            <MyStaffBoostOutcome
+              result={undefined}
+              error={error}
+              progress={progress}
+            />
           </div>
         </div>
       </Modal>

@@ -61,6 +61,10 @@ internal sealed class PlayerBoostOperationService
         SupportsExactGameBuild(gameVersion)
         && _index.HasCandidatesForGameVersion(gameVersion);
 
+    internal static bool PreservesLiveIndexOnFailure(PlayerBoostFailure failure) =>
+        failure is PlayerBoostFailure.ExpectedValuesMismatch
+            or PlayerBoostFailure.CurrentAbilityAtLimit;
+
     public PlayerBoostExecutionResult Execute(
         BridgeRequest request,
         string gameVersion,

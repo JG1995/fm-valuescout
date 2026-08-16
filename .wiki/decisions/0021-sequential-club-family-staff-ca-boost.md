@@ -63,5 +63,5 @@ Parallel submission conflicts with the shared mutation gate and adds ordering an
 - Feature plan: [Staff Workspace](../features/active/staff-workspace.md)
 - Closed staff operation: [ADR-0020](./0020-action-specific-fm26-staff-ca-boost.md)
 - Existing sequential player policy: [ADR-0018](./0018-squad-wide-player-boosts.md)
-- Commits: not implemented
+- Commit: `cba1bdf`
 - Supersedes: ADR-0020's rejection and follow-up requirement for family-wide staff orchestration; preserves its single-staff bridge boundary

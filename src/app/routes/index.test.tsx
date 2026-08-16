@@ -551,6 +551,7 @@ describe("Dashboard", () => {
     queryClient.setQueryData(searchKeys.all, []);
     queryClient.setQueryData(playerKeys.all, []);
     queryClient.setQueryData(plannerKeys.all, []);
+    queryClient.setQueryData(staffKeys.all, []);
     queryClient.setQueryData(academyKeys.classes(), []);
 
     expect(await screen.findByText("Snapshot 12 player")).toBeInTheDocument();
@@ -588,6 +589,9 @@ describe("Dashboard", () => {
       expect(queryClient.getQueryState(plannerKeys.all)?.isInvalidated).toBe(
         true,
       );
+      expect(queryClient.getQueryState(staffKeys.all)?.isInvalidated).toBe(
+        true,
+      );
       expect(queryClient.getQueryData(academyKeys.classes())).toBeUndefined();
     });
   });
@@ -613,6 +617,7 @@ describe("Dashboard", () => {
     queryClient.setQueryData(searchKeys.all, []);
     queryClient.setQueryData(playerKeys.all, []);
     queryClient.setQueryData(plannerKeys.all, []);
+    queryClient.setQueryData(staffKeys.all, []);
     queryClient.setQueryData(academyKeys.classes(), []);
     await user.click(
       within(dialog).getByRole("button", { name: "Delete save" }),
@@ -629,6 +634,9 @@ describe("Dashboard", () => {
         true,
       );
       expect(queryClient.getQueryState(plannerKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryState(staffKeys.all)?.isInvalidated).toBe(
         true,
       );
       expect(queryClient.getQueryData(academyKeys.classes())).toBeUndefined();

@@ -350,6 +350,21 @@ public sealed class PlayerBoostOperationServiceTests
             index.TryGet("scan-2", PlayerUid, out _));
     }
 
+    [Theory]
+    [InlineData((int)PlayerBoostFailure.ExpectedValuesMismatch, true)]
+    [InlineData((int)PlayerBoostFailure.CurrentAbilityAtLimit, true)]
+    [InlineData((int)PlayerBoostFailure.MutationFailed, false)]
+    [InlineData((int)PlayerBoostFailure.PartialRollbackUnverified, false)]
+    public void Plugin_preserves_live_indexes_only_for_proven_player_no_write_failures(
+        int failure,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            PlayerBoostOperationService.PreservesLiveIndexOnFailure(
+                (PlayerBoostFailure)failure));
+    }
+
     private static PlayerBoostOperationService CreateService(
         PersonCandidate candidate,
         Func<int, int, int>? nextRandom = null)

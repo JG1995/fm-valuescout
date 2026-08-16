@@ -142,7 +142,7 @@ const STAFF_BASIC_METRICS: readonly StaffMetric[] = [
   integerMetric("wage", "Wage", "club-contract", 128),
   integerMetric("contract_year", "Contract expiry", "club-contract", 128),
   integerMetric("contract_day", "Contract day", "club-contract", 112),
-  integerMetric("job_id", "Job", "identity", 96),
+  integerMetric("job_id", "Job ID", "identity", 96),
 ];
 
 export const STAFF_BASIC_METRIC_IDS = STAFF_BASIC_METRICS.map(

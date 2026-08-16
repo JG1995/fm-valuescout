@@ -35,6 +35,7 @@ let pendingMyStaffBoost: {
   args: unknown;
   promise: Promise<MyStaffBoostResult>;
   resolve: (result: MyStaffBoostResult) => void;
+  reject: (error: Error) => void;
 } | null = null;
 
 export type MyStaffBoostIpcMockMode = "pending" | "recoveryRequired" | "error";
@@ -487,6 +488,13 @@ export function resolvePendingMyStaffBoostIpcMock() {
   pendingMyStaffBoost = null;
 }
 
+export function rejectPendingMyStaffBoostIpcMock(error: Error) {
+  const pending = pendingMyStaffBoost;
+  if (!pending) return;
+  pending.reject(error);
+  pendingMyStaffBoost = null;
+}
+
 export function sendPendingMyStaffBoostProgressIpcMock(
   progress: MyStaffBoostProgress = {
     processed: 1,
@@ -522,10 +530,12 @@ export function resolveBoostMyStaffCurrentAbilityIpcMock(
   }
   if (!pendingMyStaffBoost) {
     let resolve!: (result: MyStaffBoostResult) => void;
-    const promise = new Promise<MyStaffBoostResult>((next) => {
+    let reject!: (error: Error) => void;
+    const promise = new Promise<MyStaffBoostResult>((next, fail) => {
       resolve = next;
+      reject = fail;
     });
-    pendingMyStaffBoost = { args, promise, resolve };
+    pendingMyStaffBoost = { args, promise, resolve, reject };
     const total = (overrideStaff ?? defaultStaff()).length;
     sendMyStaffBoostProgress(args, {
       processed: 0,

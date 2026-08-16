@@ -49,6 +49,7 @@ function IndexPage() {
             void queryClient.invalidateQueries({ queryKey: playerKeys.all });
             void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
             void queryClient.resetQueries({ queryKey: academyKeys.all });
+            void queryClient.invalidateQueries({ queryKey: staffKeys.all });
           }}
         />
       </Suspense>
