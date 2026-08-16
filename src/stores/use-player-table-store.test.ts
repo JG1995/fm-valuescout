@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_PLAYER_TABLE_COLUMN_IDS } from "@/utils/player-metrics";
 import {
+  defaultPlayerTableLayouts,
   PLAYER_TABLE_LAYOUT_STORAGE_KEY,
   usePlayerTableStore,
 } from "./use-player-table-store";
@@ -8,18 +9,7 @@ import {
 describe("usePlayerTableStore", () => {
   beforeEach(() => {
     localStorage.clear();
-    usePlayerTableStore.setState({
-      layouts: {
-        search: {
-          columnIds: [...DEFAULT_PLAYER_TABLE_COLUMN_IDS],
-          widths: {},
-        },
-        squad: {
-          columnIds: [...DEFAULT_PLAYER_TABLE_COLUMN_IDS],
-          widths: {},
-        },
-      },
-    });
+    usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
   });
 
   it("hydrates safe independent layouts from malformed saved preferences", async () => {
@@ -75,6 +65,25 @@ describe("usePlayerTableStore", () => {
       columnIds: [...DEFAULT_PLAYER_TABLE_COLUMN_IDS],
       widths: {},
     });
+  });
+
+  it("adds independent staff layout slots without changing player layouts", () => {
+    const store = usePlayerTableStore.getState();
+    store.addColumns("staff-search", ["role.scout", "attr.Adaptability"]);
+    store.setColumnWidth("staff-search", "role.scout", 184);
+    store.moveColumn("staff-search", "role.scout", 1);
+
+    expect(usePlayerTableStore.getState().layouts["staff-search"]).toEqual({
+      columnIds: ["attr.Adaptability", "role.scout"],
+      widths: { "role.scout": 184 },
+    });
+    expect(usePlayerTableStore.getState().layouts["my-staff"]).toEqual({
+      columnIds: [],
+      widths: {},
+    });
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
+      ...DEFAULT_PLAYER_TABLE_COLUMN_IDS,
+    ]);
   });
 
   it("moves a visible column to either edge without changing its width or the other table", () => {
@@ -143,6 +152,8 @@ describe("usePlayerTableStore", () => {
           columnIds: [...DEFAULT_PLAYER_TABLE_COLUMN_IDS],
           widths: {},
         },
+        "staff-search": { columnIds: [], widths: {} },
+        "my-staff": { columnIds: [], widths: {} },
       },
     });
 

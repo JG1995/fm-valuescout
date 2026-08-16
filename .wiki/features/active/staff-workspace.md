@@ -489,7 +489,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 1 — Share configurable table controls
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(tables): share configurable table controls`
 
@@ -536,7 +536,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 2 — Add Staff Search
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): add staff search workspace`
 
@@ -732,19 +732,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 2 — Staff workspace UI
 
-**Commit:** Share configurable table controls
+**Commit:** Add Staff Search
 
 ### RED proof
 
-Add focused component and store tests that exercise caller-supplied metric catalogs, row identities, cell rendering, and optional activation while preserving the existing Search and Squad layouts. They fail today because the shared player table controls remain coupled to player metrics and rows.
+Add RED route/nav/tab and URL parser tests, then add registry, filter, default-layout, and results-state tests. They fail today because no Staff workspace exists.
 
 ### Expected outcome
 
-Existing player tables keep their behavior and stored layout IDs while narrow configurable table primitives can serve later Staff callers without introducing a universal data-grid abstraction.
+The Staff route defaults to Search, normalizes its URL state, and renders the staff filters and default score columns through the shared configurable table.
 
 ### Explicit exclusions
 
-No Staff route, Staff query binding, Staff layout, navigation change, or visual redesign belongs in this commit.
+My Staff data, staff boosts, staff profiles, and global quick search remain outside this commit.
 
 ## Discoveries and replanning
 
@@ -767,6 +767,7 @@ No Staff route, Staff query binding, Staff layout, navigation change, or visual 
 | PR 1 | Add the closed staff CA bridge operation | `1932350` | Separate live staff candidates feed one fixed +10, PA/200-capped protocol operation with source/UID/CA/PA revalidation, verified readback, rollback classification, and exact FM 26.3.2 capability | Sol Medium accepted after one fix round updated protocol docs and closed deterministic boundary-test gaps | Controlled live proof passed with +10 and PA-capped results plus independent rescan readback |
 | PR 1 | Reconcile verified staff boosts | `48e5c5a` | UID-only Rust command derives fixed/capped values, serializes player/staff writes through one gate, reconciles only verified current staff CA, and shares the preserved snapshot recovery latch | Sol Medium accepted after one fix round added command-level recovery classification proof | No role-score recomputation; proven pre-write failures do not latch recovery |
 | PR 1 | Query staff profiles with shared concealment | `a8a35cd` | Migration 26 preserves one generic save preference; current-only Staff Detail returns complete current data and 20 catalog-ordered scores; player and staff reads observe the same setter | Sol Medium accepted after one fix round corrected ledger lifecycle state and the browser smoke IPC stub | React change is limited to the existing player call-site rename; Staff UI remains in PR 2 |
+| PR 2 | Share configurable table controls | `Pending record` | Shared configurable header, metric picker, and virtual table accept caller-owned metrics and rows, optional activation, generic keys, fixed non-configurable cells, and independent versioned Staff layout slots while preserving Search/Squad behavior | Sol Medium accepted after one fix round added the coordinated fixed-column seam and focused contract proof | Repowise index remained stale; direct source and deterministic validation used |
 | None | Planning only | `7857e27` | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation

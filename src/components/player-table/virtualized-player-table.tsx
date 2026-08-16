@@ -6,11 +6,40 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
+import type { ConfigurableTableFixedColumn } from "./player-table-header";
 
 /** Must match `--spacing-table-row-height-two-line` / `h-table-row-height-two-line`. */
 const ROW_HEIGHT = 40;
 /** Must match `--spacing-table-header-height` / sticky `<thead>` height. */
 const HEADER_HEIGHT = 32;
+
+type TablePage = {
+  total: number;
+};
+
+export type ConfigurableVirtualizedTableProps<
+  TPage extends TablePage,
+  TRow,
+  TQueryKey extends QueryKey,
+> = {
+  caption: string;
+  columnCount: number;
+  columns: ReadonlyArray<{ id: string; width: number }>;
+  fixedColumns?: readonly ConfigurableTableFixedColumn[];
+  getPageRows: (page: TPage) => readonly TRow[];
+  header: ReactNode;
+  pageQueryOptions: (
+    offset: number,
+    limit: number,
+  ) => UseQueryOptions<TPage, Error, TPage, TQueryKey>;
+  pageSize: number;
+  renderCells: (row: TRow | undefined) => ReactNode;
+  testId: string;
+  total: number;
+  getRowKey?: (row: TRow, index: number) => string | number;
+  renderFixedCells?: (row: TRow | undefined) => ReactNode;
+  onRowActivate?: (row: TRow) => void;
+};
 
 type PlayerPage<TPlayer> = {
   players: TPlayer[];
@@ -22,19 +51,11 @@ type PlayerOf<TPage extends PlayerPage<unknown>> = TPage["players"][number];
 type VirtualizedPlayerTableProps<
   TPage extends PlayerPage<unknown>,
   TQueryKey extends QueryKey,
-> = {
-  caption: string;
-  columnCount: number;
-  columns: ReadonlyArray<{ id: string; width: number }>;
-  header: ReactNode;
-  pageQueryOptions: (
-    offset: number,
-    limit: number,
-  ) => UseQueryOptions<TPage, Error, TPage, TQueryKey>;
-  pageSize: number;
+> = Omit<
+  ConfigurableVirtualizedTableProps<TPage, PlayerOf<TPage>, TQueryKey>,
+  "getPageRows" | "getRowKey" | "onRowActivate" | "renderCells"
+> & {
   renderCells: (player: PlayerOf<TPage> | undefined) => ReactNode;
-  testId: string;
-  total: number;
   onPlayerActivate: (player: PlayerOf<TPage>) => void;
 };
 
@@ -52,31 +73,36 @@ function pageIndexesForRange(
   return pages;
 }
 
-function playerAtIndex<TPlayer>(
-  pages: Array<{ page: number; players: TPlayer[] | undefined }>,
+function rowAtIndex<TRow>(
+  pages: Array<{ page: number; rows: readonly TRow[] | undefined }>,
   pageSize: number,
   index: number,
-): TPlayer | undefined {
+): TRow | undefined {
   const page = Math.floor(index / pageSize);
   const entry = pages.find((item) => item.page === page);
-  return entry?.players?.[index % pageSize];
+  return entry?.rows?.[index % pageSize];
 }
 
-export function VirtualizedPlayerTable<
-  TPage extends PlayerPage<unknown>,
+export function ConfigurableVirtualizedTable<
+  TPage extends TablePage,
+  TRow,
   TQueryKey extends QueryKey,
 >({
   caption,
   columnCount,
   columns,
+  fixedColumns = [],
+  getPageRows,
   header,
-  onPlayerActivate,
+  onRowActivate,
   pageQueryOptions,
   pageSize,
   renderCells,
   testId,
   total,
-}: VirtualizedPlayerTableProps<TPage, TQueryKey>) {
+  getRowKey,
+  renderFixedCells,
+}: ConfigurableVirtualizedTableProps<TPage, TRow, TQueryKey>) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [keyboardFocusIndex, setKeyboardFocusIndex] = useState(0);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
@@ -164,14 +190,16 @@ export function VirtualizedPlayerTable<
   });
   const pageData = pages.map((page, index) => ({
     page,
-    players: pageQueries[index]?.data?.players,
+    rows: pageQueries[index]?.data
+      ? getPageRows(pageQueries[index].data)
+      : undefined,
   }));
 
   useEffect(() => {
     if (pendingFocusIndex === null) {
       return;
     }
-    if (!playerAtIndex(pageData, pageSize, pendingFocusIndex)) {
+    if (!rowAtIndex(pageData, pageSize, pendingFocusIndex)) {
       return;
     }
     const row = parentRef.current?.querySelector<HTMLElement>(
@@ -188,7 +216,7 @@ export function VirtualizedPlayerTable<
 
   const visibleLoadedIndexes = virtualRows
     .map((row) => row.index)
-    .filter((index) => playerAtIndex(pageData, pageSize, index) !== undefined);
+    .filter((index) => rowAtIndex(pageData, pageSize, index) !== undefined);
   const tabStopIndex = visibleLoadedIndexes.includes(keyboardFocusIndex)
     ? keyboardFocusIndex
     : (visibleLoadedIndexes[0] ?? 0);
@@ -198,8 +226,9 @@ export function VirtualizedPlayerTable<
       ? virtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
       : 0;
   const failedPageQuery = pageQueries.find((query) => query.isError);
-  const minimumTableWidth = columns.reduce(
-    (total, column) => total + column.width,
+  const allColumns = [...columns, ...fixedColumns];
+  const minimumTableWidth = allColumns.reduce(
+    (sum, column) => sum + column.width,
     0,
   );
 
@@ -219,7 +248,7 @@ export function VirtualizedPlayerTable<
         >
           <caption className="sr-only">{caption}</caption>
           <colgroup>
-            {columns.map((column) => (
+            {allColumns.map((column) => (
               <col
                 key={column.id}
                 style={{
@@ -232,64 +261,82 @@ export function VirtualizedPlayerTable<
           <tbody>
             {paddingTop > 0 ? (
               <tr>
-                <td colSpan={columnCount} style={{ height: paddingTop }} />
+                <td
+                  colSpan={columnCount + fixedColumns.length}
+                  style={{ height: paddingTop }}
+                />
               </tr>
             ) : null}
             {virtualRows.map((virtualRow) => {
-              const player = playerAtIndex(
-                pageData,
-                pageSize,
-                virtualRow.index,
-              );
+              const row = rowAtIndex(pageData, pageSize, virtualRow.index);
+              const isInteractive = row !== undefined && onRowActivate;
               const isTabStop = virtualRow.index === tabStopIndex;
 
               return (
                 <tr
-                  key={virtualRow.key}
+                  key={
+                    row && getRowKey
+                      ? getRowKey(row, virtualRow.index)
+                      : virtualRow.key
+                  }
                   data-index={virtualRow.index}
-                  tabIndex={player ? (isTabStop ? 0 : -1) : undefined}
+                  tabIndex={isInteractive ? (isTabStop ? 0 : -1) : undefined}
                   className={
-                    player
+                    isInteractive
                       ? "cursor-pointer border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
                       : "border-t border-outline-variant transition-colors duration-150 ease-out hover:bg-surface-container-high"
                   }
                   style={{ height: `${virtualRow.size}px` }}
-                  onFocus={() => {
-                    setPendingFocusIndex(null);
-                    setKeyboardFocusIndex(virtualRow.index);
-                  }}
-                  onBlur={() => {
-                    setPendingFocusIndex(null);
-                  }}
-                  onClick={() => {
-                    if (player) {
-                      onPlayerActivate(player);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowDown") {
-                      event.preventDefault();
-                      focusRow(virtualRow.index + 1);
-                      return;
-                    }
-                    if (event.key === "ArrowUp") {
-                      event.preventDefault();
-                      focusRow(virtualRow.index - 1);
-                      return;
-                    }
-                    if (event.key === "Enter" && player) {
-                      event.preventDefault();
-                      onPlayerActivate(player);
-                    }
-                  }}
+                  onFocus={
+                    isInteractive
+                      ? () => {
+                          setPendingFocusIndex(null);
+                          setKeyboardFocusIndex(virtualRow.index);
+                        }
+                      : undefined
+                  }
+                  onBlur={
+                    isInteractive
+                      ? () => {
+                          setPendingFocusIndex(null);
+                        }
+                      : undefined
+                  }
+                  onClick={
+                    isInteractive && row ? () => onRowActivate(row) : undefined
+                  }
+                  onKeyDown={
+                    isInteractive
+                      ? (event) => {
+                          if (event.key === "ArrowDown") {
+                            event.preventDefault();
+                            focusRow(virtualRow.index + 1);
+                            return;
+                          }
+                          if (event.key === "ArrowUp") {
+                            event.preventDefault();
+                            focusRow(virtualRow.index - 1);
+                            return;
+                          }
+                          if (event.key === "Enter" && row) {
+                            event.preventDefault();
+                            onRowActivate(row);
+                          }
+                        }
+                      : undefined
+                  }
                 >
-                  {renderCells(player)}
+                  {renderCells(row)}
+                  {renderFixedCells?.(row)}
                 </tr>
               );
             })}
             {paddingBottom > 0 ? (
               <tr>
-                <td colSpan={columnCount} style={{ height: paddingBottom }} />
+                <td
+                  colSpan={columnCount + fixedColumns.length}
+                  style={{ height: paddingBottom }}
+                />
               </tr>
             ) : null}
           </tbody>
@@ -313,5 +360,19 @@ export function VirtualizedPlayerTable<
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Compatibility wrapper for existing player Search and Squad callers. */
+export function VirtualizedPlayerTable<
+  TPage extends PlayerPage<unknown>,
+  TQueryKey extends QueryKey,
+>(props: VirtualizedPlayerTableProps<TPage, TQueryKey>) {
+  return (
+    <ConfigurableVirtualizedTable<TPage, PlayerOf<TPage>, TQueryKey>
+      {...props}
+      getPageRows={(page) => page.players}
+      onRowActivate={props.onPlayerActivate}
+    />
   );
 }
