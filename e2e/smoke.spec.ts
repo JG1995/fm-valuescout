@@ -225,6 +225,72 @@ test.describe("application smoke", () => {
     );
   });
 
+  test("Staff opens its Search workspace with the default role-fit columns", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { staffWorkspace: true });
+    await page.goto("/staff");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("heading", { level: 1, name: "Staff" }),
+    ).toBeVisible();
+    await expect(main.getByRole("tab", { name: "Search" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const table = main.getByRole("table", { name: "Staff search results" });
+    await expect(table).toBeVisible();
+    await expect(table.getByRole("columnheader")).toHaveCount(25);
+    await expect(
+      table.getByRole("columnheader", { name: "Coach — Goalkeeping" }),
+    ).toBeVisible();
+    await expect(table.getByText("Alex Coach")).toBeVisible();
+    await main.getByRole("tab", { name: "My Staff" }).click();
+    await expect(
+      main.getByText("My Staff overview is coming next"),
+    ).toBeVisible();
+  });
+
+  test("Staff keeps a long Search result set inside the main table scroller", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      staffWorkspace: true,
+      playerTableRowCount: 101,
+    });
+    await page.goto("/staff");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("table", { name: "Staff search results" }),
+    ).toBeVisible();
+    const dimensions = await main.evaluate((element) => {
+      const mainElement = element as unknown as {
+        clientHeight: number;
+        scrollHeight: number;
+        querySelector: (
+          selector: string,
+        ) => { clientHeight: number; scrollHeight: number } | null;
+      };
+      const scroller = mainElement.querySelector(
+        '[data-testid="staff-search-results-scroller"]',
+      );
+      return {
+        mainClientHeight: mainElement.clientHeight,
+        mainScrollHeight: mainElement.scrollHeight,
+        scrollerClientHeight: scroller?.clientHeight ?? 0,
+        scrollerScrollHeight: scroller?.scrollHeight ?? 0,
+      };
+    });
+    expect(dimensions.mainScrollHeight).toBeLessThanOrEqual(
+      dimensions.mainClientHeight + 1,
+    );
+    expect(dimensions.scrollerScrollHeight).toBeGreaterThan(
+      dimensions.scrollerClientHeight,
+    );
+  });
+
   test("planner route shows no-snapshot Load Data guidance", async ({
     page,
   }) => {

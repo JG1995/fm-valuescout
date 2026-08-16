@@ -12,7 +12,15 @@ const STAFF_METRICS = [
   {
     id: "role.scout",
     label: "Scout",
-    category: "staff-roles",
+    category: "current-role-scores",
+    align: "right" as const,
+    defaultWidth: 96,
+    sortable: true,
+  },
+  {
+    id: "role.assistant_manager",
+    label: "Assistant Manager",
+    category: "current-role-scores",
     align: "right" as const,
     defaultWidth: 96,
     sortable: true,
@@ -70,9 +78,13 @@ describe("configurable table contracts", () => {
     await user.click(
       screen.getByRole("button", { name: "Column: Choose a metric" }),
     );
-    await user.click(screen.getByRole("option", { name: "Adaptability" }));
+    await user.type(
+      screen.getByRole("combobox", { name: "Search columns" }),
+      "assistant manager",
+    );
+    await user.click(screen.getByRole("option", { name: "Assistant Manager" }));
 
-    expect(onAddColumn).toHaveBeenCalledWith("attr.Adaptability");
+    expect(onAddColumn).toHaveBeenCalledWith("role.assistant_manager");
   });
 
   it("renders a caller-owned row shape without making rows interactive by default", async () => {

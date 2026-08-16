@@ -68,6 +68,13 @@ describe("usePlayerTableStore", () => {
   });
 
   it("adds independent staff layout slots without changing player layouts", () => {
+    usePlayerTableStore.setState({
+      layouts: {
+        ...defaultPlayerTableLayouts(),
+        "staff-search": { columnIds: [], widths: {} },
+        "my-staff": { columnIds: [], widths: {} },
+      },
+    });
     const store = usePlayerTableStore.getState();
     store.addColumns("staff-search", ["role.scout", "attr.Adaptability"]);
     store.setColumnWidth("staff-search", "role.scout", 184);

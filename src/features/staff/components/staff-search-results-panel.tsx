@@ -1,0 +1,399 @@
+import { useSuspenseQuery } from "@tanstack/react-query";
+import { DatabaseZap, SearchX } from "lucide-react";
+import { useMemo } from "react";
+import { NationalityCell } from "@/components/player-table/nationality-cell";
+import {
+  type ConfigurableTableColumn,
+  ConfigurableTableHeader,
+} from "@/components/player-table/player-table-header";
+import { ConfigurableVirtualizedTable } from "@/components/player-table/virtualized-player-table";
+import { EmptyState } from "@/components/ui/empty-state/empty-state";
+import { Panel } from "@/components/ui/panel/panel";
+import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import { formatCount, formatMissable, formatPlayerDob } from "@/utils/format";
+import type { staffKeys } from "../api/staff-keys";
+import {
+  STAFF_PAGE_SIZE,
+  staffSearchQueryOptions,
+} from "../api/staff-query-options";
+import type { StaffFilterRule } from "../types/staff-filter-rule";
+import type { StaffSortDir, StaffSortField } from "../types/staff-sort";
+import type { StaffPage, StaffSummary } from "../types/staff-summary";
+import { completeStaffFilterRules } from "../utils/staff-filter-registry";
+import {
+  defaultDirForStaffSortField,
+  getStaffMetric,
+  STAFF_BASIC_METRIC_IDS,
+  STAFF_METRICS,
+} from "../utils/staff-metrics";
+
+const TEXT_CELL =
+  "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
+const NUM_CELL =
+  "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
+
+function nextSort(
+  currentBy: StaffSortField,
+  currentDir: StaffSortDir,
+  clicked: StaffSortField,
+) {
+  if (clicked === currentBy) {
+    return {
+      sortBy: currentBy,
+      sortDir: currentDir === "asc" ? "desc" : "asc",
+    } as const;
+  }
+  return {
+    sortBy: clicked,
+    sortDir: defaultDirForStaffSortField(clicked),
+  } as const;
+}
+
+function dynamicCell(staff: StaffSummary | undefined, fieldId: string) {
+  if (!staff) {
+    return "…";
+  }
+  const value = staff.dynamicValues?.[fieldId];
+  return value === null || value === undefined ? "—" : String(value);
+}
+
+function basicCell(
+  staff: StaffSummary | undefined,
+  fieldId: string,
+): { text: string; title?: string; numeric: boolean } {
+  if (!staff) {
+    return {
+      text: "…",
+      numeric: fieldId !== "name" && fieldId !== "nationality",
+    };
+  }
+  switch (fieldId) {
+    case "name": {
+      const text = String(formatMissable(staff.name));
+      return { text, title: text !== "—" ? text : undefined, numeric: false };
+    }
+    case "age": {
+      const text =
+        staff.birthYear !== null && staff.birthDayOfYear !== null
+          ? formatPlayerDob(staff.birthYear, staff.birthDayOfYear, staff.age)
+          : String(formatMissable(staff.age));
+      return { text, title: text !== "—" ? text : undefined, numeric: false };
+    }
+    case "birth_year":
+      return { text: String(formatMissable(staff.birthYear)), numeric: true };
+    case "birth_day_of_year":
+      return {
+        text: String(formatMissable(staff.birthDayOfYear)),
+        numeric: true,
+      };
+    case "nationality": {
+      const text = String(formatMissable(staff.nationalities.join(", ")));
+      return { text, title: text !== "—" ? text : undefined, numeric: false };
+    }
+    case "club":
+    case "division": {
+      const value = fieldId === "club" ? staff.club : staff.division;
+      const text = String(formatMissable(value));
+      return { text, title: text !== "—" ? text : undefined, numeric: false };
+    }
+    case "ca":
+      return { text: String(staff.ca), numeric: true };
+    case "pa":
+      return { text: String(staff.pa), numeric: true };
+    case "wage":
+      return {
+        text: String(formatMissable(staff.weeklyWageGbp)),
+        numeric: true,
+      };
+    case "contract_year":
+      return {
+        text: String(formatMissable(staff.contractExpiryYear)),
+        numeric: true,
+      };
+    case "contract_day":
+      return {
+        text: String(formatMissable(staff.contractExpiryDayOfYear)),
+        numeric: true,
+      };
+    case "nation_uid":
+      return { text: String(formatMissable(staff.nationUid)), numeric: true };
+    case "gender":
+      return { text: staff.gender || "—", numeric: false };
+    case "job_id":
+      return { text: String(formatMissable(staff.jobId)), numeric: true };
+    default:
+      return { text: "—", numeric: false };
+  }
+}
+
+function columnForMetric(
+  metricId: string,
+  width: number | undefined,
+): ConfigurableTableColumn | undefined {
+  const metric = getStaffMetric(metricId);
+  return metric
+    ? {
+        id: metric.id,
+        label: metric.label,
+        align: metric.align,
+        width: width ?? metric.defaultWidth,
+      }
+    : undefined;
+}
+
+function StaffSearchTable({
+  total,
+  sortBy,
+  sortDir,
+  filters,
+  filterCombine,
+  columns,
+  requestedFields,
+  onSortChange,
+  onAddColumn,
+  onRemoveColumn,
+  onMoveColumn,
+  onResizeColumn,
+}: {
+  total: number;
+  sortBy: StaffSortField;
+  sortDir: StaffSortDir;
+  filters: StaffFilterRule[];
+  filterCombine: "and" | "or";
+  columns: ConfigurableTableColumn[];
+  requestedFields: string[];
+  onSortChange: (sort: StaffSortField, dir: StaffSortDir) => void;
+  onAddColumn: (id: string) => void;
+  onRemoveColumn: (id: string) => void;
+  onMoveColumn: (id: string, target: number) => void;
+  onResizeColumn: (id: string, width: number) => void;
+}) {
+  return (
+    <ConfigurableVirtualizedTable<
+      StaffPage,
+      StaffSummary,
+      ReturnType<typeof staffKeys.list>
+    >
+      caption="Staff search results"
+      columnCount={columns.length}
+      columns={columns}
+      getPageRows={(page) => page.staff}
+      getRowKey={(staff) => staff.uid}
+      header={
+        <ConfigurableTableHeader
+          columns={columns}
+          metrics={STAFF_METRICS}
+          sortBy={sortBy}
+          sortDir={sortDir}
+          onSortChange={(metricId) => {
+            const next = nextSort(sortBy, sortDir, metricId);
+            onSortChange(next.sortBy, next.sortDir);
+          }}
+          onAddColumn={onAddColumn}
+          onRemoveColumn={onRemoveColumn}
+          onMoveColumn={onMoveColumn}
+          onResizeColumn={onResizeColumn}
+        />
+      }
+      pageQueryOptions={(offset, limit) =>
+        staffSearchQueryOptions(
+          offset,
+          limit,
+          sortBy,
+          sortDir,
+          filters,
+          filterCombine,
+          requestedFields,
+        )
+      }
+      pageSize={STAFF_PAGE_SIZE}
+      renderCells={(staff) =>
+        columns.map((column) => {
+          if (!STAFF_BASIC_METRIC_IDS.includes(column.id)) {
+            const text = dynamicCell(staff, column.id);
+            return (
+              <td
+                key={column.id}
+                className={
+                  column.align === "right"
+                    ? NUM_CELL
+                    : `${TEXT_CELL} text-on-surface`
+                }
+                title={text !== "—" && text !== "…" ? text : undefined}
+              >
+                {text}
+              </td>
+            );
+          }
+          if (column.id === "nationality" && staff) {
+            return (
+              <td
+                key={column.id}
+                className="h-table-row-height-two-line px-2 align-middle text-on-surface"
+              >
+                <NationalityCell nationalities={staff.nationalities} />
+              </td>
+            );
+          }
+          const cell = basicCell(staff, column.id);
+          return (
+            <td
+              key={column.id}
+              className={
+                cell.numeric
+                  ? NUM_CELL
+                  : `${TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
+              }
+              title={cell.title}
+            >
+              {cell.text}
+            </td>
+          );
+        })
+      }
+      testId="staff-search-results-scroller"
+      total={total}
+    />
+  );
+}
+
+export function StaffSearchResultsPanel({
+  sortBy,
+  sortDir,
+  filters,
+  filterCombine,
+  onSortChange,
+}: {
+  sortBy: StaffSortField;
+  sortDir: StaffSortDir;
+  filters: StaffFilterRule[];
+  filterCombine: "and" | "or";
+  onSortChange: (sort: StaffSortField, dir: StaffSortDir) => void;
+}) {
+  const layout = usePlayerTableStore((state) => state.layouts["staff-search"]);
+  const addColumns = usePlayerTableStore((state) => state.addColumns);
+  const removeColumn = usePlayerTableStore((state) => state.removeColumn);
+  const moveColumn = usePlayerTableStore((state) => state.moveColumn);
+  const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
+  const columns = useMemo(
+    () =>
+      layout.columnIds.flatMap((id) => {
+        const column = columnForMetric(id, layout.widths[id]);
+        return column ? [column] : [];
+      }),
+    [layout],
+  );
+  const requestedFields = useMemo(
+    () =>
+      columns
+        .filter((column) => !STAFF_BASIC_METRIC_IDS.includes(column.id))
+        .map((column) => column.id)
+        .sort(),
+    [columns],
+  );
+  const { data: page } = useSuspenseQuery(
+    staffSearchQueryOptions(
+      0,
+      STAFF_PAGE_SIZE,
+      sortBy,
+      sortDir,
+      filters,
+      filterCombine,
+      requestedFields,
+    ),
+  );
+
+  if (page.state === "no_current_snapshot") {
+    return (
+      <Panel title="Results" flush>
+        <EmptyState icon={DatabaseZap} title="No data loaded for this save">
+          Use Load Data to scan Football Manager and ingest staff into the
+          database.
+        </EmptyState>
+      </Panel>
+    );
+  }
+  if (page.total === 0) {
+    return (
+      <Panel title="Results" flush>
+        <EmptyState
+          icon={SearchX}
+          title={
+            completeStaffFilterRules(filters).length > 0
+              ? "No staff match these filters"
+              : "No staff in snapshot"
+          }
+        >
+          {completeStaffFilterRules(filters).length > 0
+            ? "Adjust or clear filters to widen the result set."
+            : "The snapshot exists but contains no staff rows."}
+        </EmptyState>
+      </Panel>
+    );
+  }
+
+  const sortMetric = getStaffMetric(sortBy);
+  const sortLabel = sortMetric?.label ?? sortBy;
+  const requestedRoleFields = requestedFields.filter((field) =>
+    field.startsWith("role."),
+  );
+  const allScoresUnavailable =
+    requestedRoleFields.length > 0 &&
+    page.staff.length > 0 &&
+    page.staff.every((staff) =>
+      requestedRoleFields.every(
+        (field) =>
+          staff.dynamicValues?.[field] === null ||
+          staff.dynamicValues?.[field] === undefined,
+      ),
+    );
+  const removeStoredColumn = (metricId: string) => {
+    if (columns.length <= 1) return;
+    removeColumn("staff-search", metricId);
+    if (sortBy === metricId) {
+      const next =
+        columns.find((column) => column.id !== metricId) ?? columns[0];
+      onSortChange(next.id, defaultDirForStaffSortField(next.id));
+    }
+  };
+
+  return (
+    <Panel
+      title="Results"
+      flush
+      className="flex min-h-0 flex-1 flex-col"
+      contentClassName="flex min-h-0 flex-1 flex-col"
+    >
+      <p className="shrink-0 px-4 pb-3 text-body-md text-on-surface-variant">
+        <span className="text-on-surface">{formatCount(page.total)}</span> staff
+        · sorted by {sortLabel} (
+        {sortDir === "asc" ? "ascending" : "descending"})
+      </p>
+      {allScoresUnavailable ? (
+        <p
+          role="status"
+          className="shrink-0 px-4 pb-3 text-body-sm text-warning"
+        >
+          Staff role scores are unavailable for this snapshot. Update the Bridge
+          and run Load Data to calculate them.
+        </p>
+      ) : null}
+      <StaffSearchTable
+        total={page.total}
+        sortBy={sortBy}
+        sortDir={sortDir}
+        filters={filters}
+        filterCombine={filterCombine}
+        columns={columns}
+        requestedFields={requestedFields}
+        onSortChange={onSortChange}
+        onAddColumn={(id) => addColumns("staff-search", [id])}
+        onRemoveColumn={removeStoredColumn}
+        onMoveColumn={(id, target) => moveColumn("staff-search", id, target)}
+        onResizeColumn={(id, width) =>
+          setColumnWidth("staff-search", id, width)
+        }
+      />
+    </Panel>
+  );
+}

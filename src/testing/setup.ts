@@ -88,6 +88,10 @@ import {
   resolveSquadPlayersIpcMock,
   resolveSquadWonderkidMentalityBoostIpcMock,
 } from "@/testing/squad-ipc-mock";
+import {
+  resetStaffIpcMock,
+  resolveSearchStaffIpcMock,
+} from "@/testing/staff-ipc-mock";
 
 function registerIpcMocks() {
   mockIPC((cmd, args) => {
@@ -145,6 +149,10 @@ function registerIpcMocks() {
 
     if (cmd === "search_players") {
       return resolveSearchPlayersIpcMock(args);
+    }
+
+    if (cmd === "search_staff") {
+      return resolveSearchStaffIpcMock(args);
     }
 
     if (cmd === "suggest_players") {
@@ -307,6 +315,7 @@ afterEach(() => {
   resetSnapshotIpcMock();
   resetCsvImportIpcMock();
   resetSearchPlayersOverride();
+  resetStaffIpcMock();
   resetSquadPlayersOverride();
   resetGetPlayerOverride();
   resetPlannerIpcMock();

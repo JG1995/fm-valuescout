@@ -6,6 +6,7 @@ import {
   PLAYER_TABLE_MAX_COLUMN_WIDTH,
   PLAYER_TABLE_MIN_COLUMN_WIDTH,
 } from "@/utils/player-metrics";
+import { DEFAULT_STAFF_TABLE_COLUMN_IDS } from "@/utils/staff-table-layout";
 
 export const PLAYER_TABLE_LAYOUT_STORAGE_KEY =
   "fm-valuescout-player-table-layouts";
@@ -53,7 +54,7 @@ function defaultLayout(table: PlayerTableId): PlayerTableLayout {
     columnIds:
       table === "search" || table === "squad"
         ? [...DEFAULT_PLAYER_TABLE_COLUMN_IDS]
-        : [],
+        : [...DEFAULT_STAFF_TABLE_COLUMN_IDS],
     widths: {},
   };
 }
@@ -87,7 +88,7 @@ function sanitizeLayout(
       ? columnIds
       : table === "search" || table === "squad"
         ? [...DEFAULT_PLAYER_TABLE_COLUMN_IDS]
-        : [];
+        : [...DEFAULT_STAFF_TABLE_COLUMN_IDS];
   const rawWidths = isRecord(record.widths) ? record.widths : {};
   const widths = Object.fromEntries(
     visibleColumnIds.flatMap((metricId) => {

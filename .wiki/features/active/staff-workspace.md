@@ -55,7 +55,7 @@ Turn the already extracted staff population into a first-class Staff workspace: 
 ## Current-state map
 
 - Relevant components: `src/app/components/app-nav-rail.tsx`; `src/app/routes/search.tsx`; `src/app/routes/planner.tsx`; `src/app/routes/players.$uid.tsx`; `src/features/search/`; `src/features/squad/`; `src/features/player-profile/`; `src/components/player-table/`; `src/components/ui/player-metric-picker.tsx`; `src/stores/use-player-table-store.ts`.
-- Data model: snapshot-owned `staff` rows contain identity, nationality, gender, CA/PA, employment fields, and `staff_attributes_json`; `staff_role_scores` stores current job-fit scores, and Rust exposes bounded list, detail, and CA-boost commands. No staff UI exists yet.
+- Data model: snapshot-owned `staff` rows contain identity, nationality, gender, CA/PA, employment fields, and `staff_attributes_json`; `staff_role_scores` stores current job-fit scores, Rust exposes bounded list, detail, and CA-boost commands, and the Staff Search route now presents the current population through a configurable table.
 - Persistence and migrations: SQLite schema version 26 is current. `staff_role_scores` owns current staff scores, `planner_club_sources` owns the configured family, `snapshots.boost_recovery_required` covers both mutation families, and `saves.reveal_hidden_information` is the shared save-scoped profile preference.
 - Existing behavioral assumptions: Search uses URL-backed flat AND/OR filters with a 32-rule limit and bounded pages; configurable player tables persist separate Search and Squad layouts; Squad family reads match `planner_club_sources.club_name` against snapshot clubs. Player profiles read only the effective current snapshot and conceal PA, projected and potential values, hidden/personality values, and development actions when the save preference is off.
 - Architectural seams: React invokes typed Tauri commands; Rust validates and queries SQLite; C# produces dump schema v8 and is the only process-memory reader/writer. The bridge maintains separate player and staff indexes and exposes only the accepted closed mutations.
@@ -536,7 +536,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 2 — Add Staff Search
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): add staff search workspace`
 
@@ -584,7 +584,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 3 — Add the club-family staff overview
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): add club-family staff overview`
 
@@ -732,19 +732,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 2 — Staff workspace UI
 
-**Commit:** Add Staff Search
+**Commit:** Add the club-family staff overview
 
 ### RED proof
 
-Add RED route/nav/tab and URL parser tests, then add registry, filter, default-layout, and results-state tests. They fail today because no Staff workspace exists.
+Add RED UI tests for multi-club results and no-family recovery, then add a bounded later-page test whose second page contains a staff member from another configured family club. They fail today because My Staff is still a placeholder.
 
 ### Expected outcome
 
-The Staff route defaults to Search, normalizes its URL state, and renders the staff filters and default score columns through the shared configurable table.
+My Staff uses the Rust-owned full configured club family, a separate configurable layout, bounded later-page fetching, and distinct setup, empty, loading, and error states while Search remains unchanged.
 
 ### Explicit exclusions
 
-My Staff data, staff boosts, staff profiles, and global quick search remain outside this commit.
+Filters, boost actions, family editing, team grouping, exact-manager-club fallback, staff profiles, and global quick search remain outside this commit.
 
 ## Discoveries and replanning
 
@@ -768,6 +768,7 @@ My Staff data, staff boosts, staff profiles, and global quick search remain outs
 | PR 1 | Reconcile verified staff boosts | `48e5c5a` | UID-only Rust command derives fixed/capped values, serializes player/staff writes through one gate, reconciles only verified current staff CA, and shares the preserved snapshot recovery latch | Sol Medium accepted after one fix round added command-level recovery classification proof | No role-score recomputation; proven pre-write failures do not latch recovery |
 | PR 1 | Query staff profiles with shared concealment | `a8a35cd` | Migration 26 preserves one generic save preference; current-only Staff Detail returns complete current data and 20 catalog-ordered scores; player and staff reads observe the same setter | Sol Medium accepted after one fix round corrected ledger lifecycle state and the browser smoke IPC stub | React change is limited to the existing player call-site rename; Staff UI remains in PR 2 |
 | PR 2 | Share configurable table controls | `Pending record` | Shared configurable header, metric picker, and virtual table accept caller-owned metrics and rows, optional activation, generic keys, fixed non-configurable cells, and independent versioned Staff layout slots while preserving Search/Squad behavior | Sol Medium accepted after one fix round added the coordinated fixed-column seam and focused contract proof | Repowise index remained stale; direct source and deterministic validation used |
+| PR 2 | Add Staff Search | `Pending record` | Staff navigation and `/staff` Search/My Staff shell, URL-backed staff filters and sorting, 25 default columns with all 20 role scores, configurable table controls, missing-score guidance, and bounded Staff Search rendering | Sol Medium accepted after one correction round restored ungrouped staff-role picker discovery, bounded tabpanel geometry, requested-role score guidance, and current-state architecture wording | Native 1280×800/1600×900 checks remain manual; staff-specific first-page error and query-key assertions remain for later hardening |
 | None | Planning only | `7857e27` | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation

@@ -29,6 +29,7 @@ const CATEGORY_ORDER = [
   "identity",
   "club-contract",
   "ability-reputation",
+  "staff-attributes",
   "visible-attributes",
   "hidden-attributes",
   "personality",
@@ -41,6 +42,7 @@ const CATEGORY_LABELS: Record<(typeof CATEGORY_ORDER)[number], string> = {
   identity: "Identity",
   "club-contract": "Club and contract",
   "ability-reputation": "Ability and reputation",
+  "staff-attributes": "Staff attributes",
   "visible-attributes": "Visible attributes",
   "hidden-attributes": "Hidden attributes",
   personality: "Personality",
@@ -109,6 +111,17 @@ function groupsForMetrics(
           metrics: familyMetrics,
         });
       }
+    }
+
+    const knownFamilies = new Set<string>(ROLE_FAMILY_ORDER);
+    const ungroupedMetrics = categoryMetrics.filter(
+      (metric) => !metric.roleFamily || !knownFamilies.has(metric.roleFamily),
+    );
+    if (ungroupedMetrics.length > 0) {
+      groups.push({
+        label: CATEGORY_LABELS[category],
+        metrics: ungroupedMetrics,
+      });
     }
   }
   const knownCategories = new Set(CATEGORY_ORDER);
