@@ -18,15 +18,8 @@ import { staffKeys } from "@/features/staff/api/staff-keys";
 import { StaffAttributesPanel } from "@/features/staff/components/staff-attributes-panel";
 import { StaffOverviewPanel } from "@/features/staff/components/staff-overview-panel";
 import { StaffRoleFitPanel } from "@/features/staff/components/staff-role-fit-panel";
-import {
-  defaultStaffProfileTab,
-  parseStaffProfileTab,
-  type StaffProfileTab,
-} from "@/features/staff/utils/staff-profile-tab";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import { cn } from "@/utils/cn";
-
-export type StaffProfileSearch = { tab?: StaffProfileTab };
 
 function parseUid(raw: string): number | null {
   const uid = Number(raw);
@@ -34,9 +27,6 @@ function parseUid(raw: string): number | null {
 }
 
 export const Route = createFileRoute("/staff/$uid")({
-  validateSearch: (search: Record<string, unknown>): StaffProfileSearch => ({
-    tab: parseStaffProfileTab(search.tab),
-  }),
   loader: ({ context: { queryClient }, params }) => {
     const uid = parseUid(params.uid);
     if (uid === null)
@@ -80,15 +70,7 @@ function StaffNotFound() {
   );
 }
 
-function StaffProfileContent({
-  uid,
-  tab,
-  onTabChange,
-}: {
-  uid: number;
-  tab?: StaffProfileTab;
-  onTabChange: (tab: StaffProfileTab) => void;
-}) {
+function StaffProfileContent({ uid }: { uid: number }) {
   const railExpanded = useLayoutStore((state) => state.railExpanded);
   const queryClient = useQueryClient();
   const outcomeRef = useRef<HTMLDivElement>(null);
@@ -125,8 +107,6 @@ function StaffProfileContent({
     );
   }
   if (!staff) return <StaffNotFound />;
-
-  const activeTab = tab ?? defaultStaffProfileTab();
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-gutter overflow-hidden">
@@ -165,11 +145,7 @@ function StaffProfileContent({
         ) : null}
       </div>
       <div className={profileWorkspaceClassName(railExpanded)}>
-        <StaffAttributesPanel
-          staff={staff}
-          tab={activeTab}
-          onTabChange={onTabChange}
-        />
+        <StaffAttributesPanel staff={staff} />
         <StaffRoleFitPanel staff={staff} />
       </div>
     </div>
@@ -178,21 +154,12 @@ function StaffProfileContent({
 
 function StaffProfileRoute() {
   const { uid: uidParam } = Route.useParams();
-  const { tab } = Route.useSearch();
-  const navigate = Route.useNavigate();
   const uid = parseUid(uidParam);
   if (uid === null) return <StaffNotFound />;
 
-  const onTabChange = (next: StaffProfileTab) => {
-    void navigate({
-      search: (previous) => ({ ...previous, tab: next }),
-      replace: true,
-    });
-  };
-
   return (
     <Suspense fallback={<StaffProfileFallback />}>
-      <StaffProfileContent uid={uid} tab={tab} onTabChange={onTabChange} />
+      <StaffProfileContent uid={uid} />
     </Suspense>
   );
 }

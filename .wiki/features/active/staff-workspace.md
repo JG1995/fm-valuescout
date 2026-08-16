@@ -21,7 +21,7 @@ Turn the already extracted staff population into a first-class Staff workspace: 
 - My Staff offers one **Boost all CA** action for the configured club family. It processes eligible staff one at a time, always requests +10, caps at PA and 200, and skips staff already at the cap.
 - Activating a staff row opens `/staff/$uid` for that staff member in the effective current snapshot.
 - A Staff Profile follows the player-profile frame with a compact staff summary above **Attributes** and **Role fit** panels. It has no pitch, position suitability, potential projections, or wonderkid action.
-- The Staff Profile groups the 24 extracted staff attributes into **Coaching**, **Mental**, and **Knowledge** tabs. Role fit lists all 20 current job-fit scores without a position filter, ordered by score descending with unavailable scores last and catalog order breaking ties.
+- The Staff Profile presents all 24 extracted staff attributes together in compact **Coaching**, **Mental**, and **Knowledge** columns. Role fit lists all 20 current job-fit scores without a position filter, ordered by score descending with unavailable scores last and catalog order breaking ties.
 - The Staff Profile offers only **Boost CA**. The fixed +10 policy, cap, confirmation, feedback, and recovery behavior match the My Staff action.
 - The save-scoped **Hide hidden info** preference is shared by player and staff profiles. When concealed, a Staff Profile omits PA and Boost CA because its availability and preview disclose PA; CA, current staff attributes, and current job-fit scores remain visible. Staff Adaptability remains visible because it is a normal current staff attribute in this profile, even though the bridge reads it from the shared person personality block.
 - A successful boost updates FM and the effective current snapshot. An uncertain or unreconciled outcome requires Load Data before another player or staff boost.
@@ -132,7 +132,7 @@ Boost CA follows ADR-0020: a staff-specific bridge operation and candidate index
 - Search and My Staff use distinct layouts; My Staff does not duplicate the filter editor.
 - Staff CA boost is fixed at +10 and capped by PA and 200, with no player age rule.
 - One recovery flag and mutation gate cover both player and staff writes.
-- Staff profiles use Coaching, Mental, and Knowledge attribute tabs plus one current-score-ranked Role fit list with catalog-order ties. They have no pitch or potential-score controls.
+- Staff profiles use simultaneous Coaching, Mental, and Knowledge attribute columns plus one current-score-ranked Role fit list with catalog-order ties. They have no pitch or potential-score controls.
 - The hidden-information preference is one save-scoped profile preference shared by players and staff. Staff concealment hides PA and the profile Boost CA action but keeps all current staff attributes and scores, including Adaptability and Scout, and does not alter either staff table. This is a staff-specific visibility classification, not a claim that the shared person-block storage location makes Adaptability hidden on staff profiles.
 - Staff Search and My Staff rows open Staff Profiles by click or Enter after the profile route is delivered.
 - Keep two PRs. Staff Profile backend contracts belong to the risky data foundation, while its route reuses the same staff types, table activation, concealment, and boost UI already reviewed in the workspace PR. A third PR would split one shared UI surface without an independent merge or risk boundary.
@@ -742,7 +742,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 7 — Combine staff profile attribute groups
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(staff): combine profile attributes`
 
@@ -752,7 +752,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 8 — Virtualize staff role fit
 
-**Status:** Planned
+**Status:** Active
 
 **Provisional commit:** `feat(staff): virtualize profile role fit`
 
@@ -784,19 +784,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 2 — Staff workspace UI
 
-**Commit:** Combine staff profile attribute groups
+**Commit:** Virtualize staff role fit
 
 ### Initial RED proof
 
-Add RED Staff Profile tests that require Coaching, Mental, and Knowledge to appear together as three columns without a tablist, while preserving all 24 attributes exactly once.
+Add RED component and browser tests that require a bounded, internally scrollable Role fit viewport with virtual rows and no profile-page scrolling.
 
 ### Expected outcome
 
-The Staff Profile shows all three current-attribute groups at once in a compact three-column panel and reduces the visual distance between each attribute name and value.
+The Staff Profile Role fit panel owns its scroll position and renders only the visible slice of the 20-score catalog while the profile workspace remains fixed.
 
 ### Explicit exclusions
 
-Role-fit virtualization, score colors, summary actions, attribute membership, and non-profile surfaces remain outside this commit.
+Score colors, score order, summary actions, attribute membership, and non-profile surfaces remain outside this commit.
 
 ## Discoveries and replanning
 
@@ -824,7 +824,8 @@ Role-fit virtualization, score colors, summary actions, attribute membership, an
 | PR 2 | Add club-family staff overview | `Pending record` | My Staff now reads the entire configured Senior/Reserves/Youth family through its own query key, supports bounded later pages, distinguishes setup/empty/error states, and retains independent table layouts and sort state | Sol Medium accepted after two correction rounds added Dashboard staff-cache invalidation, independent Search/My Staff sorting, and a focused cache-invalidation regression | Native three-club family validation remains manual; Repowise index was stale; direct source and deterministic validation used |
 | PR 2 | Add per-staff CA boost | `Pending record` | My Staff exposes a fixed Actions column with UID-only +10/PA/200-capped Boost CA confirmation, pending lock, stable recovery feedback/focus, and staff/snapshot invalidation; Search remains action-free | Sol Medium accepted after one correction round moved success feedback and fallback focus outside the virtualized row and added a sorted-row reordering regression | Native-window layout, supported-build UI proof, and recovery-repeat UX remain manual or deferred to Staff Profile integration |
 | PR 2 | Add Staff Profiles | `18c28ce` | `/staff/$uid` presents the staff summary, Coaching/Mental/Knowledge current attributes, catalog-ranked Role fit list, shared concealment, and fixed +10 Boost CA; Search and My Staff rows navigate by path only and the profile loader skips table queries | Sol Medium accepted after one correction round isolated child profile loading, corrected highest-role selection, and one documentation reconciliation | Native-window and supported-build profile checks remain manual; frontend fixtures do not independently prove all 20 role rows |
-| PR 2 | Replace row boosts with My Staff bulk boost | `Pending record` | My Staff exposes one Rust-owned sequential configured-family CA boost with progress, cap skipping, aggregate outcomes, snapshot-bound recovery reset, and no row action column; the bridge keeps its closed one-staff operation | Sol Medium accepted after one correction round fixed recovery reset, global bridge errors, and ADR authorization | Assembled multi-staff FM validation remains manual |
+| PR 2 | Replace row boosts with My Staff bulk boost | `cba1bdf` | My Staff exposes one Rust-owned sequential configured-family CA boost with progress, cap skipping, aggregate outcomes, snapshot-bound recovery reset, and no row action column; the bridge keeps its closed one-staff operation | Sol Medium accepted after one correction round fixed recovery reset, global bridge errors, and ADR authorization | Assembled multi-staff FM validation remains manual |
+| PR 2 | Combine Staff Profile attribute groups | `Pending record` | Staff Profile presents all 24 current attributes together in compact Coaching, Mental, and Knowledge columns, removes obsolete tab URL state, and keeps values close to their labels | Sol Medium accepted after one correction round kept the owning ledger commit active through review and updated the browser contract | Native-window layout remains manual |
 | None | Planning only | `7857e27` | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation

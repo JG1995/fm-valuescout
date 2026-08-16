@@ -5,11 +5,6 @@ import {
   STAFF_PROFILE_ATTRIBUTE_GROUPS,
   type StaffProfileAttributeGroup,
 } from "../utils/staff-profile-attributes";
-import type { StaffProfileTab } from "../utils/staff-profile-tab";
-import {
-  StaffProfileTabs,
-  staffProfileTabPanelProps,
-} from "./staff-profile-tabs";
 
 function AttributeSection({
   group,
@@ -29,11 +24,11 @@ function AttributeSection({
       >
         {group.title}
       </h3>
-      <dl className="grid min-w-0 grid-cols-1 gap-x-5">
+      <dl className="grid min-w-0 grid-cols-[minmax(0,max-content)_auto] gap-x-2">
         {group.keys.map((key) => (
           <div
             key={key}
-            className="flex min-h-9 min-w-0 items-center justify-between gap-3 border-b border-outline-variant/70"
+            className="col-span-2 grid min-h-9 min-w-0 grid-cols-subgrid items-center border-b border-outline-variant/70"
           >
             <dt className="truncate text-body-md text-on-surface-variant">
               {key.replaceAll(/([a-z])([A-Z])/g, "$1 $2")}
@@ -48,15 +43,7 @@ function AttributeSection({
   );
 }
 
-export function StaffAttributesPanel({
-  staff,
-  tab,
-  onTabChange,
-}: {
-  staff: StaffDetail;
-  tab: StaffProfileTab;
-  onTabChange: (tab: StaffProfileTab) => void;
-}) {
+export function StaffAttributesPanel({ staff }: { staff: StaffDetail }) {
   return (
     <Panel
       title="Attributes"
@@ -67,19 +54,10 @@ export function StaffAttributesPanel({
       }
       className="flex min-h-0 flex-col [&>div:last-child]:min-h-0 [&>div:last-child]:flex-1"
     >
-      <div className="flex h-full min-h-0 flex-col gap-4">
-        <div className="overflow-x-auto pb-0.5">
-          <StaffProfileTabs tab={tab} onTabChange={onTabChange} />
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-          {STAFF_PROFILE_ATTRIBUTE_GROUPS.map((group) => (
-            <div key={group.id} {...staffProfileTabPanelProps(group.id, tab)}>
-              <div className="grid gap-5 lg:grid-cols-2">
-                <AttributeSection group={group} staff={staff} />
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="grid h-full min-h-0 grid-cols-3 gap-5 overflow-y-auto pr-1">
+        {STAFF_PROFILE_ATTRIBUTE_GROUPS.map((group) => (
+          <AttributeSection key={group.id} group={group} staff={staff} />
+        ))}
       </div>
     </Panel>
   );

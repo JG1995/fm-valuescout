@@ -265,8 +265,12 @@ test.describe("application smoke", () => {
       main.getByRole("heading", { name: "Alex Coach" }),
     ).toBeVisible();
     await expect(main.getByRole("heading", { name: "Role fit" })).toBeVisible();
-    await expect(main.getByRole("tab", { name: "Mental" })).toBeVisible();
-    await main.getByRole("tab", { name: "Mental" }).click();
+    await expect(main.getByRole("region", { name: "Coaching" })).toBeVisible();
+    await expect(main.getByRole("region", { name: "Mental" })).toBeVisible();
+    await expect(main.getByRole("region", { name: "Knowledge" })).toBeVisible();
+    await expect(
+      main.getByRole("tablist", { name: "Staff attribute groups" }),
+    ).toHaveCount(0);
     await expect(main.getByText("Authority")).toBeVisible();
     await expect(main.getByText("Wonderkid Mentality")).toHaveCount(0);
     await expect(main.getByText("Pitch")).toHaveCount(0);

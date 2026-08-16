@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { staffKeys } from "@/features/staff/api/staff-keys";
+import { STAFF_PROFILE_ATTRIBUTE_GROUPS } from "@/features/staff/utils/staff-profile-attributes";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
@@ -58,15 +59,24 @@ describe("staff profile route", () => {
     expect(screen.getAllByText("15").length).toBeGreaterThan(0);
     expect(screen.getByText("160")).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: "Coaching", selected: true }),
-    ).toBeInTheDocument();
+      screen.queryByRole("tablist", { name: "Staff attribute groups" }),
+    ).not.toBeInTheDocument();
+    for (const group of STAFF_PROFILE_ATTRIBUTE_GROUPS) {
+      expect(
+        screen.getByRole("region", { name: group.title }),
+      ).toBeInTheDocument();
+      for (const key of group.keys) {
+        const label = key.replaceAll(/([a-z])([A-Z])/g, "$1 $2");
+        expect(screen.getAllByText(label, { exact: true })).toHaveLength(1);
+      }
+    }
     expect(screen.getAllByText("Coach — Fitness").length).toBeGreaterThan(0);
     expect(screen.getByText("Scout")).toBeInTheDocument();
     expect(screen.queryByText("Wonderkid Mentality")).toBeNull();
     expect(screen.queryByText("Select a pitch position")).toBeNull();
   });
 
-  it("uses canonical tabs and retains current staff attributes when hidden info is concealed", async () => {
+  it("retains every current staff attribute when hidden info is concealed", async () => {
     await resolveLoadDataIpcMock();
     setStaffDetailOverride(fixtureStaffDetail());
     const user = userEvent.setup();
@@ -75,9 +85,14 @@ describe("staff profile route", () => {
     queryClient.setQueryData([...staffKeys.all, "probe"], []);
 
     expect(
-      await screen.findByRole("tab", { name: "Mental", selected: true }),
+      await screen.findByRole("region", { name: "Mental" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Adaptability")).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Coaching" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Knowledge" }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Hide hidden info" }));
 
     await waitFor(() => {
@@ -94,9 +109,8 @@ describe("staff profile route", () => {
     expect(
       queryClient.getQueryState([...staffKeys.all, "probe"])?.isInvalidated,
     ).toBe(true);
-    await user.click(screen.getByRole("tab", { name: "Mental" }));
     expect(
-      within(screen.getByRole("tabpanel", { name: "Mental" })).getByText(
+      within(screen.getByRole("region", { name: "Mental" })).getByText(
         "Authority",
       ),
     ).toBeInTheDocument();
