@@ -797,28 +797,30 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "load_data") {
+            const loadedSnapshot = {
+              id: 1,
+              saveId: 1,
+              schemaVersion: 6,
+              generatedAtUtc: "2026-07-28T15:00:00.000Z",
+              gameVersion: "26.0.0",
+              supportedGameVersion: "26.0.0",
+              bridgeVersion: "0.1.0",
+              protocolVersion: 1,
+              gameDate: null,
+              gameDateSource: "unknown",
+              scanTruncated: false,
+              maxAccepted: null,
+              playerCount: 0,
+              loadedAtUtc: "2026-07-28T15:05:00.000Z",
+            };
             return {
               requestId: "req-smoke",
               playersFound: 0,
               scanTruncated: false,
               maxAccepted: null,
               timings: { scanMs: 0, ingestMs: 0, totalMs: 0 },
-              snapshot: {
-                id: 1,
-                saveId: 1,
-                schemaVersion: 6,
-                generatedAtUtc: "2026-07-28T15:00:00.000Z",
-                gameVersion: "26.0.0",
-                supportedGameVersion: "26.0.0",
-                bridgeVersion: "0.1.0",
-                protocolVersion: 1,
-                gameDate: null,
-                gameDateSource: "unknown",
-                scanTruncated: false,
-                maxAccepted: null,
-                playerCount: 0,
-                loadedAtUtc: "2026-07-28T15:05:00.000Z",
-              },
+              storedSnapshot: loadedSnapshot,
+              effectiveSnapshot: loadedSnapshot,
             };
           }
 

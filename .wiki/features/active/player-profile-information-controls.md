@@ -438,6 +438,8 @@ Implementation is complete for PR 1. Feature close-out has not run.
 - The implementation registry is already v22 (`drop_demo_value_table`) although current architecture prose says v21. The feature uses v23 and the documentation reconciliation must correct the complete migration description instead of preserving the stale number.
 - Manual validation first made Goalkeeping the default for GK familiarity of 15 or higher and moved First Touch, Passing, and Technique there. A follow-up clarified the intended split: Goalkeeping also owns Mental and Physical for those profiles, while Outfield owns only the remaining Technical attributes and Set Pieces.
 - Combined review found that Global Search, Search results, and Squad still injected the former Outfield default into ordinary profile navigation. Those entry points now leave the tab unset so the loaded player selects the default; user-selected canonical tabs remain authoritative.
+- Feature-complete review found that the profile's viewport-derived fixed height did not account for the global Load Data outcome row. The profile now consumes the shell main area's actual height, and browser coverage keeps panel-owned scrolling intact while the outcome is visible.
+- Feature-complete review found that concealment mutation feedback was keyed only by player UID. The mutation context now also captures the active save ID so a same-UID player in another save cannot inherit stale pending or error state.
 
 ## Completed work
 

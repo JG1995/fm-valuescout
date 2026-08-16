@@ -44,6 +44,7 @@ type PlayerBoostMutation = {
 };
 
 type PlayerHiddenInformationMutation = {
+  saveId: number;
   uid: number;
   revealed: boolean;
 };
@@ -88,7 +89,7 @@ function ProfileFallback() {
 
   return (
     <div
-      className="flex max-h-[calc(100dvh-var(--spacing-header-height)-2rem)] min-h-[calc(100dvh-var(--spacing-header-height)-2rem)] flex-col gap-gutter overflow-hidden"
+      className="flex h-full min-h-0 flex-col gap-gutter overflow-hidden"
       aria-busy="true"
       aria-live="polite"
       data-testid="profile-loading"
@@ -202,7 +203,8 @@ function PlayerProfileContent({
     boost.variables.snapshotId === snapshot?.id &&
     (boost.data === undefined || boost.data.snapshotId === snapshot?.id);
   const hiddenInformationContextIsCurrent =
-    hiddenInformation.variables?.uid === uid;
+    hiddenInformation.variables?.uid === uid &&
+    hiddenInformation.variables.saveId === snapshot?.saveId;
 
   if (!snapshot) {
     return (
@@ -222,7 +224,7 @@ function PlayerProfileContent({
   const activeTab = tab ?? defaultProfileTab(isGoalkeeper(player.positions));
 
   return (
-    <div className="flex max-h-[calc(100dvh-var(--spacing-header-height)-2rem)] min-h-[calc(100dvh-var(--spacing-header-height)-2rem)] flex-col gap-gutter overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col gap-gutter overflow-hidden">
       <PlayerOverviewPanel
         player={player}
         hiddenInformationPending={
@@ -233,6 +235,7 @@ function PlayerProfileContent({
         }
         onToggleHiddenInformation={() =>
           hiddenInformation.mutate({
+            saveId: snapshot.saveId,
             uid,
             revealed: !player.hiddenInformationRevealed,
           })

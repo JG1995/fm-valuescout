@@ -1454,6 +1454,41 @@ test.describe("application smoke", () => {
             (abilityRowBox.x + abilityRowBox.width),
         ),
       ).toBeLessThanOrEqual(1);
+
+      if (width === 1280) {
+        await page
+          .getByTestId("app-header")
+          .getByRole("button", { name: "Load Data" })
+          .click();
+        await expect(
+          page.getByText("Loaded 0 players into the database."),
+        ).toBeVisible();
+        const mainDimensions = await main.evaluate((element) => {
+          const htmlElement = element as unknown as {
+            clientHeight: number;
+            scrollHeight: number;
+          };
+          return {
+            clientHeight: htmlElement.clientHeight,
+            scrollHeight: htmlElement.scrollHeight,
+          };
+        });
+        expect(mainDimensions.scrollHeight).toBeLessThanOrEqual(
+          mainDimensions.clientHeight + 1,
+        );
+        const [bannerMainBox, bannerRoleFitBox] = await Promise.all([
+          main.boundingBox(),
+          roleFitPanel.boundingBox(),
+        ]);
+        expect(bannerMainBox).not.toBeNull();
+        expect(bannerRoleFitBox).not.toBeNull();
+        if (!bannerMainBox || !bannerRoleFitBox) {
+          throw new Error("Expected the profile workspace below the banner.");
+        }
+        expect(
+          bannerRoleFitBox.y + bannerRoleFitBox.height,
+        ).toBeLessThanOrEqual(bannerMainBox.y + bannerMainBox.height);
+      }
     }
 
     const currentHeader = roleFit.getByRole("columnheader", {

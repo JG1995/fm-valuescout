@@ -8,6 +8,8 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import {
@@ -314,6 +316,46 @@ describe("player profile route", () => {
         name: "Reveal hidden information",
       }),
     ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("drops visibility mutation feedback when the active save changes", async () => {
+    await resolveLoadDataIpcMock();
+    setPlayerHiddenInformationRevealedIpcMockMode("error");
+    setGetPlayerOverride(
+      fixturePlayerDetail({ hiddenInformationRevealed: true }),
+    );
+    const user = userEvent.setup();
+    const { queryClient } = renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    await user.click(
+      within(summary).getByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    );
+    expect(await within(summary).findByRole("alert")).toBeInTheDocument();
+
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      snapshotKeys.current(),
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot in the profile query");
+    }
+    queryClient.setQueryData(snapshotKeys.current(), {
+      ...snapshot,
+      saveId: snapshot.saveId + 1,
+    });
+
+    await waitFor(() =>
+      expect(within(summary).queryByRole("alert")).not.toBeInTheDocument(),
+    );
+    expect(
+      within(summary).getByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    ).toBeEnabled();
   });
 
   it("keeps player context beside tabbed attributes and position-filtered roles", async () => {
