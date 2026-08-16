@@ -794,11 +794,14 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               contractExpiryDayOfYear: 220,
               attributes,
               hiddenInformationRevealed: playerProfileHiddenInformationRevealed,
-              roleScores: [
-                { roleId: "coach_fitness", displayName: "Coach — Fitness", score: 85 },
-                { roleId: "scout", displayName: "Scout", score: 80 },
-                { roleId: "physio", displayName: "Physio", score: null },
-              ],
+              roleScores: staffRoleIds.map((roleId, index) => ({
+                roleId,
+                displayName: roleId
+                  .split("_")
+                  .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                  .join(" "),
+                score: 100 - index,
+              })),
             };
           }
 

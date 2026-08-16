@@ -140,6 +140,39 @@ describe("staff profile route", () => {
     expect(within(summary).getByText("90")).toBeInTheDocument();
   });
 
+  it("virtualizes role fit inside its own scrollport", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffDetailOverride(
+      fixtureStaffDetail({
+        roleScores: [
+          { roleId: "low", displayName: "Low role", score: 10 },
+          { roleId: "tie_first", displayName: "First tied role", score: 95 },
+          { roleId: "missing", displayName: "Unavailable role", score: null },
+          { roleId: "tie_second", displayName: "Second tied role", score: 95 },
+          ...Array.from({ length: 16 }, (_, index) => ({
+            roleId: `middle_${index + 1}`,
+            displayName: `Middle role ${index + 1}`,
+            score: 90 - index,
+          })),
+        ],
+      }),
+    );
+    renderStaffProfileRoute("/staff/101");
+
+    const scrollport = await screen.findByTestId("staff-role-fit-scroller");
+    expect(scrollport).toHaveAccessibleName("Staff role fit scores");
+    const table = within(scrollport).getByRole("table");
+    expect(table).toHaveAttribute("aria-rowcount", "21");
+    const rows = within(table).getAllByRole("row");
+    expect(rows.length).toBeLessThan(21);
+    expect(rows[1]).toHaveTextContent("First tied role");
+    expect(rows[2]).toHaveTextContent("Second tied role");
+    for (const row of rows.slice(1)) {
+      const index = Number(row.dataset.index);
+      expect(row).toHaveAttribute("aria-rowindex", String(index + 2));
+    }
+  });
+
   it("renders an empty state for an unknown staff UID", async () => {
     await resolveLoadDataIpcMock();
     renderStaffProfileRoute("/staff/999");

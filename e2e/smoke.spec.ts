@@ -280,6 +280,61 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
+  test("Staff Profile keeps role fit inside a virtual scrollport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, { staffWorkspace: true });
+    await page.goto("/staff/101");
+
+    const main = page.getByRole("main");
+    const scrollport = main.getByTestId("staff-role-fit-scroller");
+    await expect(scrollport).toBeVisible();
+    const before = await main.evaluate((element) => {
+      const scrollable = element as unknown as {
+        clientHeight: number;
+        scrollHeight: number;
+        scrollTop: number;
+      };
+      return {
+        clientHeight: scrollable.clientHeight,
+        scrollHeight: scrollable.scrollHeight,
+        scrollTop: scrollable.scrollTop,
+      };
+    });
+    const roleFit = await scrollport.evaluate((element) => {
+      const scrollable = element as unknown as {
+        clientHeight: number;
+        scrollHeight: number;
+      };
+      return {
+        clientHeight: scrollable.clientHeight,
+        scrollHeight: scrollable.scrollHeight,
+      };
+    });
+    expect(before.scrollHeight).toBeLessThanOrEqual(before.clientHeight + 1);
+    expect(roleFit.scrollHeight).toBeGreaterThan(roleFit.clientHeight);
+    expect(
+      await scrollport.locator("tbody tr[data-index]").count(),
+    ).toBeLessThan(20);
+
+    await scrollport.evaluate((element) => {
+      const scrollable = element as unknown as {
+        dispatchEvent: (event: Event) => boolean;
+        scrollHeight: number;
+        scrollTop: number;
+      };
+      scrollable.scrollTop = scrollable.scrollHeight;
+      scrollable.dispatchEvent(new Event("scroll"));
+    });
+    await expect(scrollport.getByText("Sports Scientist")).toBeVisible();
+    expect(
+      await main.evaluate(
+        (element) => (element as unknown as { scrollTop: number }).scrollTop,
+      ),
+    ).toBe(before.scrollTop);
+  });
+
   test("Staff keeps a long Search result set inside the main table scroller", async ({
     page,
   }) => {
