@@ -303,7 +303,7 @@ fn returns_requested_metrics_with_the_shared_search_value_contract() {
              personality_json = ?4
          WHERE snapshot_id = ?5 AND uid = 77",
         params![
-            json!({ "MC": 16, "AMC": 20 }).to_string(),
+            json!({ "MC": 16, "AMC": 20, "AMR": 14, "GK": 0, "SW": null }).to_string(),
             json!({ "Acceleration": 16 }).to_string(),
             json!({ "Consistency": 12 }).to_string(),
             json!({ "Ambition": 14 }).to_string(),
@@ -316,6 +316,9 @@ fn returns_requested_metrics_with_the_shared_search_value_contract() {
     let requested_fields = vec![
         "parent_club".to_string(),
         "position".to_string(),
+        "pos.AMR".to_string(),
+        "pos.GK".to_string(),
+        "pos.SW".to_string(),
         "attr.Acceleration".to_string(),
         "hidden.Consistency".to_string(),
         "personality.Ambition".to_string(),
@@ -344,8 +347,17 @@ fn returns_requested_metrics_with_the_shared_search_value_contract() {
     );
     assert_eq!(
         player.dynamic_values.get("position"),
-        Some(&Some(DynamicValue::Text("AMC, MC".to_string())))
+        Some(&Some(DynamicValue::Text("AMC, MC, AMR".to_string())))
     );
+    assert_eq!(
+        player.dynamic_values.get("pos.AMR"),
+        Some(&Some(DynamicValue::Integer(14)))
+    );
+    assert_eq!(
+        player.dynamic_values.get("pos.GK"),
+        Some(&Some(DynamicValue::Integer(0)))
+    );
+    assert_eq!(player.dynamic_values.get("pos.SW"), Some(&None));
     assert_eq!(
         player.dynamic_values.get("attr.Acceleration"),
         Some(&Some(DynamicValue::Integer(16)))

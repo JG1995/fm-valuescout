@@ -336,7 +336,7 @@ Expected evidence: Rust unit/integration tests pass, all four projection call si
 
 #### Commit 2 — Make Search and Squad use positive familiarity
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(search): filter recorded position familiarity`
 
@@ -425,7 +425,7 @@ Expected evidence: Search and Squad Rust tests prove complete-map behavior, raw 
 
 #### Commit 3 — Display complete familiarity without changing playability
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): display complete position familiarity`
 
@@ -657,22 +657,22 @@ Expected evidence: bridge tests prove coverage/value fidelity, all schema-v7 fix
 
 **PR:** PR 1 — Preserve complete position familiarity
 
-**Commit:** Commit 2 — Make Search and Squad use positive familiarity
+**Commit:** Commit 3 — Display complete familiarity without changing playability
 
 ### RED proof
 
-Add Search query fixtures with `AMR=20`, `MR=17`, `AMC=14`, one zero, and one null. The current resolver lists every canonical key and the current position-presence SQL treats key presence as relevance. The failing observable assertions are positive-only labels and exact filters that include `AMC=14` but exclude zero and null.
+Add profile utility and route fixtures with a complete 15-slot map containing `AMR=20`, `MR=17`, `AMC=14`, `SW`, one zero, and one null. The current sparse pitch layout omits `SW`, and key-driven selection/display either cannot represent null or treats every canonical key as a recorded position.
 
-Add a dynamic metric assertion for `pos.AMC=14`, a read zero, and an unread null. Keep the proof at the shared Search/Squad resolver seam so Squad does not gain a second formatting path.
+Add Academy fixtures showing that the current `Object.keys` rendering leaks zero, null, and legacy-missing entries. Add route assertions covering strongest-position selection, the four profile summaries, and explicit `>= 15` playable/GK boundaries.
 
 ### Expected outcome
 
-Search and Squad use positive recorded familiarity for position labels and exact presence filters, while dynamic `pos.*` metrics retain exact raw values. Complete maps no longer make zero or unread canonical slots appear as positions.
+Player and Academy DTOs preserve nullable familiarity; the profile pitch exposes all 15 canonical slots including `SW`; and positive ratings render strongest-first. Best-position selection, current/potential summaries, role-fit modes, and Academy labels keep their explicit positive or `>= 15` semantics, while zero/null/missing values remain non-positive.
 
 ### Explicit exclusions
 
-- No UI redesign, new filter operators, playable/natural threshold changes, bridge/schema, profile, Academy, projection, documentation, Git publication, version, or changelog changes.
-- Do not threshold or booleanize dynamic `pos.*` metrics.
+- No new `SW` role definitions, pitch redesign, configurable thresholds, Search SQL, projection, bridge/schema activation, version, changelog, Git publication, or migration changes.
+- Do not collapse null to zero or make any positive below-15 value playable/current/potential.
 
 ## Discoveries and replanning
 
@@ -688,6 +688,7 @@ Search and Squad use positive recorded familiarity for position labels and exact
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Derive natural projection positions from familiarity | Pending record | Nullable familiarity feeds the shared natural-position projection rule; player detail, potential cache, Planner depth, and optimizer callers no longer pass key presence | Clean; no CRITICAL/HIGH/MEDIUM/NITPICK findings | None |
+| PR 1 | Commit 2 — Make Search and Squad use positive familiarity | Pending record | Search and Squad position summaries and exact presence filters use positive integer familiarity; raw `pos.*` values preserve zero/null/missing | Clean after JSON-boolean follow-up; no CRITICAL/HIGH/MEDIUM/NITPICK findings | One MEDIUM finding corrected before commit: resolver now checks JSON1 `entry.type = 'integer'` |
 
 ## Final validation
 
