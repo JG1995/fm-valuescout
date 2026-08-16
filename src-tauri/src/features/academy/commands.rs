@@ -37,7 +37,7 @@ pub struct AcademyCandidateDto {
     pub player_uid: i64,
     pub name: String,
     pub age: Option<i64>,
-    pub positions: BTreeMap<String, i64>,
+    pub positions: BTreeMap<String, Option<i64>>,
     pub current_club: String,
 }
 
@@ -62,7 +62,7 @@ pub struct AcademyMemberDto {
     pub state: String,
     pub age: Option<i64>,
     pub nationalities: Vec<String>,
-    pub positions: BTreeMap<String, i64>,
+    pub positions: BTreeMap<String, Option<i64>>,
     pub current_club: Option<String>,
     pub parent_club: Option<String>,
     pub team_level: Option<String>,

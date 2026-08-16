@@ -402,6 +402,48 @@ describe("player profile route", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders complete nullable familiarity with SW without lowering playable thresholds", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        positions: {
+          AMR: 20,
+          MR: 17,
+          AMC: 14,
+          SW: 18,
+          GK: 14,
+          ST: 0,
+          WBL: null,
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByRole("tab", { name: "Outfield", selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "AMR, familiarity 20" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "MR, familiarity 17" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "AMC, familiarity 14" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "SW, familiarity 18" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "SW, familiarity 18" }),
+    );
+    expect(
+      screen.getByRole("region", { name: "Role fit for SW" }),
+    ).toHaveTextContent("No catalog roles use this position.");
+  });
+
   it("shows not-found empty state for an unknown uid", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(null);

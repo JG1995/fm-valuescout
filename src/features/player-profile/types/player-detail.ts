@@ -16,7 +16,7 @@ export type PlayerDetail = {
   nationalities: string[];
   heightCm: number | null;
   preferredFoot: string;
-  positions: Record<string, number>;
+  positions: Record<string, number | null>;
   attributes: Record<string, number | null>;
   potentialAttributes: Record<string, number | null>;
   hiddenAttributes: Record<string, number | null>;

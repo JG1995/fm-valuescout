@@ -28,7 +28,7 @@ pub struct AcademyCandidate {
     pub player_uid: i64,
     pub name: String,
     pub age: Option<i64>,
-    pub positions: BTreeMap<String, i64>,
+    pub positions: BTreeMap<String, Option<i64>>,
     pub current_club: String,
 }
 
@@ -86,7 +86,7 @@ pub struct AcademyMember {
     pub state: AcademyMemberState,
     pub age: Option<i64>,
     pub nationalities: Vec<String>,
-    pub positions: BTreeMap<String, i64>,
+    pub positions: BTreeMap<String, Option<i64>>,
     pub current_club: Option<String>,
     pub parent_club: Option<String>,
     pub team_level: Option<String>,
@@ -106,7 +106,7 @@ struct CurrentAcademyPlayer {
     name: String,
     age: Option<i64>,
     nationalities: Vec<String>,
-    positions: BTreeMap<String, i64>,
+    positions: BTreeMap<String, Option<i64>>,
     current_club: Option<String>,
     parent_club: Option<String>,
     team_level: Option<String>,
@@ -844,7 +844,7 @@ fn parse_string_array(json: &str) -> Result<Vec<String>, String> {
         .collect()
 }
 
-fn parse_positions(json: &str) -> Result<BTreeMap<String, i64>, String> {
+fn parse_positions(json: &str) -> Result<BTreeMap<String, Option<i64>>, String> {
     let value: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
     let object = value
         .as_object()
@@ -852,10 +852,16 @@ fn parse_positions(json: &str) -> Result<BTreeMap<String, i64>, String> {
     object
         .iter()
         .map(|(key, value)| {
-            value
-                .as_i64()
-                .map(|value| (key.clone(), value))
-                .ok_or_else(|| format!("position `{key}` must be an integer"))
+            let familiarity = match value {
+                Value::Null => None,
+                Value::Number(number) => Some(
+                    number
+                        .as_i64()
+                        .ok_or_else(|| format!("position `{key}` must be an integer or null"))?,
+                ),
+                _ => return Err(format!("position `{key}` must be an integer or null")),
+            };
+            Ok((key.clone(), familiarity))
         })
         .collect()
 }
@@ -883,6 +889,7 @@ fn validate_class_year(class_year: i64) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::fs;
     use std::path::Path;
 
@@ -961,6 +968,18 @@ mod tests {
         )
         .expect("write dump");
         ingest::ingest_dump_file_for_save(conn, save_id, &dump_path).map(|_| ())
+    }
+
+    #[test]
+    fn position_parser_preserves_zero_and_unread_values() {
+        assert_eq!(
+            super::parse_positions(r#"{"AMR":20,"GK":0,"SW":null}"#).expect("positions"),
+            BTreeMap::from([
+                ("AMR".to_string(), Some(20)),
+                ("GK".to_string(), Some(0)),
+                ("SW".to_string(), None),
+            ])
+        );
     }
 
     fn configure_club_family(conn: &Connection, save_id: i64) {

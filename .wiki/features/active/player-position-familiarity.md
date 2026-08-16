@@ -657,22 +657,20 @@ Expected evidence: bridge tests prove coverage/value fidelity, all schema-v7 fix
 
 **PR:** PR 1 — Preserve complete position familiarity
 
-**Commit:** Commit 3 — Display complete familiarity without changing playability
+**Commit:** Commit 4 — Activate and persist dump schema v7
 
 ### RED proof
 
-Add profile utility and route fixtures with a complete 15-slot map containing `AMR=20`, `MR=17`, `AMC=14`, `SW`, one zero, and one null. The current sparse pitch layout omits `SW`, and key-driven selection/display either cannot represent null or treats every canonical key as a recorded position.
-
-Add Academy fixtures showing that the current `Object.keys` rendering leaks zero, null, and legacy-missing entries. Add route assertions covering strongest-position selection, the four profile summaries, and explicit `>= 15` playable/GK boundaries.
+Add bridge extraction tests showing that the current natural-position filter drops `MR=17` and `AMC=14` from a representative `AMR=20` map, then add read-zero and unread-coverage assertions. Add Rust validator tests for the exact v7 key set, nullable integer range, malformed values, and stale-v6 rejection.
 
 ### Expected outcome
 
-Player and Academy DTOs preserve nullable familiarity; the profile pitch exposes all 15 canonical slots including `SW`; and positive ratings render strongest-first. Best-position selection, current/potential summaries, role-fit modes, and Academy labels keep their explicit positive or `>= 15` semantics, while zero/null/missing values remain non-positive.
+The bridge emits an exact schema-v7 map of all 15 canonical slots, preserving read integers (including zero) and representing unread or invalid bytes as `null`. Rust validates the shape and range before mutation, snapshot ingest stores the object unchanged, and schema-v6 dumps are rejected with a truthful rescan boundary. The v7 fixture and docs make the protocol contract executable and current.
 
 ### Explicit exclusions
 
-- No new `SW` role definitions, pitch redesign, configurable thresholds, Search SQL, projection, bridge/schema activation, version, changelog, Git publication, or migration changes.
-- Do not collapse null to zero or make any positive below-15 value playable/current/potential.
+- No backfill, database migration, configurable thresholds, consumer redesign, release metadata, Git publication, or memory-layout changes.
+- Do not omit a canonical key, collapse null to zero, accept stale v6 as v7, or mutate persisted state before validation succeeds.
 
 ## Discoveries and replanning
 
@@ -681,7 +679,7 @@ Player and Academy DTOs preserve nullable familiarity; the profile pitch exposes
 - Planning inspection found no persistence migration requirement because snapshot ingest already stores raw JSON. The schema work is limited to versioned validation, fixtures, exact persistence proof, and documentation.
 - Planning inspection found the Repowise index behind the current working-tree HEAD. Its hotspot signals were used only as advisory routing and were verified against current files.
 - Before the planning checkpoint, `feature/player-position-familiarity` was created from fetched `origin/main` at `3e77e7864c0ed980630cbc0948f512c1dfd19f95`; the old profile-controls branch was not reused.
-- No implementation deviations have been recorded.
+- Commit 3 changed the profile and Academy presentation surfaces only as planned; its review found no actionable findings. Full Vitest still reports two unrelated release-policy CLI failures caused by empty subprocess stdout; the scoped frontend tests, commit gate, and smoke suite are green.
 
 ## Completed work
 
@@ -689,6 +687,7 @@ Player and Academy DTOs preserve nullable familiarity; the profile pitch exposes
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Derive natural projection positions from familiarity | Pending record | Nullable familiarity feeds the shared natural-position projection rule; player detail, potential cache, Planner depth, and optimizer callers no longer pass key presence | Clean; no CRITICAL/HIGH/MEDIUM/NITPICK findings | None |
 | PR 1 | Commit 2 — Make Search and Squad use positive familiarity | Pending record | Search and Squad position summaries and exact presence filters use positive integer familiarity; raw `pos.*` values preserve zero/null/missing | Clean after JSON-boolean follow-up; no CRITICAL/HIGH/MEDIUM/NITPICK findings | One MEDIUM finding corrected before commit: resolver now checks JSON1 `entry.type = 'integer'` |
+| PR 1 | Commit 3 — Display complete familiarity without changing playability | Pending record | Profile and Academy preserve nullable complete maps, expose all 15 profile slots including SW, display positive values strongest-first, and retain explicit >=15 playable/GK behavior | Clean; no CRITICAL/HIGH/MEDIUM/NITPICK findings | None |
 
 ## Final validation
 
