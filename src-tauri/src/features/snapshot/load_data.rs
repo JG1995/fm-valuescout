@@ -217,7 +217,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v7.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -281,6 +281,8 @@ mod tests {
             max_accepted,
             player_boosts_supported: None,
             player_boost: None,
+            staff_boosts_supported: None,
+            staff_boost: None,
         };
         let json = serde_json::to_string_pretty(&status).expect("serialize");
         let path = status_path(bridge_dir);

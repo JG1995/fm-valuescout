@@ -29,6 +29,9 @@ public sealed class BridgeRequest
     /// <summary>Player identity for an action-specific boost.</summary>
     public uint? PlayerUid { get; init; }
 
+    /// <summary>Staff identity for the closed staff CA boost.</summary>
+    public uint? StaffUid { get; init; }
+
     /// <summary>CA observed by the source dump; used only as a stale-value precondition.</summary>
     public int? ExpectedCurrentAbility { get; init; }
 

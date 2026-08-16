@@ -183,14 +183,11 @@ pub fn get_player(uid: i64, db: State<'_, Db>) -> Result<Option<PlayerDetailDto>
 }
 
 #[tauri::command]
-pub fn set_player_hidden_information_revealed(
-    revealed: bool,
-    db: State<'_, Db>,
-) -> Result<bool, String> {
+pub fn set_hidden_information_revealed(revealed: bool, db: State<'_, Db>) -> Result<bool, String> {
     let conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
-    service::set_player_hidden_information_revealed(&conn, revealed)
+    service::set_hidden_information_revealed(&conn, revealed)
 }
 
 #[tauri::command]
@@ -266,11 +263,11 @@ where
     let prepared = prepare_player_boost(uid, db, prepare, None)?;
     match request_and_reconcile_player_boost(&prepared, db, request_bridge_boost) {
         Ok(result) => Ok(result),
-        Err(error @ PlayerBoostError::LiveValue { .. }) => Err(error),
-        Err(error) => {
+        Err(error @ PlayerBoostError::SnapshotSync { .. }) => {
             mark_player_boost_recovery_required(db, &prepared.context())?;
             Err(error)
         }
+        Err(error) => Err(error),
     }
 }
 
@@ -423,7 +420,7 @@ fn report_squad_player_boost_progress<R>(
 }
 
 fn acquire_player_boost_gate() -> Result<std::sync::MutexGuard<'static, ()>, PlayerBoostError> {
-    boost_gate::acquire_player_boost_gate().map_err(|message| PlayerBoostError::Bridge {
+    boost_gate::acquire_boost_gate().map_err(|message| PlayerBoostError::Bridge {
         kind: "inProgress".to_string(),
         message,
     })
@@ -575,13 +572,12 @@ mod tests {
         PlayerBoostRequestError, PlayerBoostResult, OPERATION_BOOST_CURRENT_ABILITY,
     };
     use crate::features::planner::service as planner_service;
+    use crate::features::player::boost_gate::BOOST_TEST_GATE as PLAYER_BOOST_TEST_GATE;
     use crate::features::snapshot::commands as snapshot_commands;
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service as snapshot_service;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v7.json");
-    static PLAYER_BOOST_TEST_GATE: Mutex<()> = Mutex::new(());
-
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
     fn seeded_db() -> (tempfile::TempDir, Db) {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("player-boost-command.db");
@@ -782,7 +778,7 @@ mod tests {
                     "the database lock must not cover the bridge request"
                 );
                 assert!(
-                    super::boost_gate::acquire_player_boost_gate().is_err(),
+                    super::boost_gate::acquire_boost_gate().is_err(),
                     "a second player boost must not overwrite the in-flight bridge request"
                 );
                 Ok(verified_ca_result())
@@ -1265,7 +1261,7 @@ mod tests {
 
             assert_eq!(
                 error,
-                "a player boost is already in progress; wait for it to finish"
+                "a player or staff boost is already in progress; wait for it to finish"
             );
             Err(PlayerBoostError::SnapshotSync {
                 message: "FM may have changed before this result was verified".to_string(),
@@ -1450,7 +1446,7 @@ mod tests {
             db.0.lock()
                 .expect("lock db")
                 .query_row(
-                    "SELECT player_boost_recovery_required FROM snapshots WHERE is_current = 1",
+                    "SELECT boost_recovery_required FROM snapshots WHERE is_current = 1",
                     [],
                     |row| row.get(0),
                 )

@@ -173,6 +173,7 @@ public static class RequestAcceptance
         {
             BridgeProtocol.OperationFullDump => TryValidateFullDump(request, out rejectReason),
             BridgeProtocol.OperationBoostCurrentAbility => TryValidateBoostCurrentAbility(request, out rejectReason),
+            BridgeProtocol.OperationBoostStaffCurrentAbility => TryValidateBoostStaffCurrentAbility(request, out rejectReason),
             BridgeProtocol.OperationWonderkidMentality => TryValidateWonderkidMentality(request, out rejectReason),
             _ => RejectUnsupportedOperation(request.Operation, out rejectReason),
         };
@@ -195,6 +196,7 @@ public static class RequestAcceptance
 
         if (request.SourceRequestId is not null
             || request.PlayerUid is not null
+            || request.StaffUid is not null
             || request.ExpectedCurrentAbility is not null
             || request.ExpectedPotentialAbility is not null
             || request.CurrentAbilityIncrement is not null
@@ -203,6 +205,59 @@ public static class RequestAcceptance
             || request.ExpectedDetermination is not null)
         {
             rejectReason = "full-dump does not accept player boost fields";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateBoostStaffCurrentAbility(
+        BridgeRequest request,
+        out string? rejectReason)
+    {
+        rejectReason = null;
+        if (request.MaxAccepted is not null)
+        {
+            rejectReason = "staff boost requests do not accept maxAccepted";
+            return false;
+        }
+
+        if (!string.Equals(
+                request.PlayerDatabaseScope,
+                PlayerDatabaseScopes.Men,
+                StringComparison.Ordinal))
+        {
+            rejectReason = "playerDatabaseScope is supported only by full-dump";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(request.SourceRequestId))
+        {
+            rejectReason = "sourceRequestId is required for staff boosts";
+            return false;
+        }
+
+        if (request.StaffUid is not { } staffUid || staffUid == 0)
+        {
+            rejectReason = "staffUid is required for staff boosts";
+            return false;
+        }
+
+        if (request.PlayerUid is not null
+            || request.CurrentAbilityIncrement is not null
+            || request.ExpectedAmbition is not null
+            || request.ExpectedProfessionalism is not null
+            || request.ExpectedDetermination is not null)
+        {
+            rejectReason = "staff CA boost does not accept player boost fields";
+            return false;
+        }
+
+        if (!IsAbility(request.ExpectedCurrentAbility)
+            || !IsAbility(request.ExpectedPotentialAbility)
+            || request.ExpectedCurrentAbility > request.ExpectedPotentialAbility)
+        {
+            rejectReason = "staff expected CA and PA must be 1 through 200 with CA not above PA";
             return false;
         }
 
@@ -274,6 +329,12 @@ public static class RequestAcceptance
             return false;
         }
 
+        if (request.StaffUid is not null)
+        {
+            rejectReason = "player boosts do not accept staffUid";
+            return false;
+        }
+
         if (!string.Equals(
                 request.PlayerDatabaseScope,
                 PlayerDatabaseScopes.Men,
@@ -328,6 +389,7 @@ public static class RequestAcceptance
             PlayerDatabaseScope = request.PlayerDatabaseScope,
             SourceRequestId = request.SourceRequestId,
             PlayerUid = request.PlayerUid,
+            StaffUid = request.StaffUid,
             ExpectedCurrentAbility = request.ExpectedCurrentAbility,
             ExpectedPotentialAbility = request.ExpectedPotentialAbility,
             CurrentAbilityIncrement = request.CurrentAbilityIncrement,

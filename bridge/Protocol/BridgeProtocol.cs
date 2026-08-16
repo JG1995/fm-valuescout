@@ -3,7 +3,7 @@ namespace FmDataBridge.Protocol;
 public static class BridgeProtocol
 {
     public const int ProtocolVersion = 1;
-    public const int DumpSchemaVersion = 7;
+    public const int DumpSchemaVersion = 8;
 
     /// <summary>Ignore request.json older than this many seconds (SuperScout-class stale fix).</summary>
     public const int RequestTtlSeconds = 30;
@@ -14,6 +14,7 @@ public static class BridgeProtocol
     public const string StateFailed = "failed";
     public const string OperationFullDump = "full-dump";
     public const string OperationBoostCurrentAbility = "boost-current-ability";
+    public const string OperationBoostStaffCurrentAbility = "boost-staff-current-ability";
     public const string OperationWonderkidMentality = "wonderkid-mentality";
     public const string AppFolderName = "fm-valuescout";
     public const string BridgeFolderName = "fm-bridge";

@@ -72,6 +72,41 @@ public sealed class BridgeStatusSerializationTests
     }
 
     [Fact]
+    public void Serialize_staff_boost_status_exposes_only_sanitized_verified_values()
+    {
+        var json = StatusWriter.Serialize(
+            new BridgeStatus
+            {
+                ProtocolVersion = BridgeProtocol.ProtocolVersion,
+                PluginVersion = "0.1.0",
+                State = BridgeProtocol.StateReady,
+                UpdatedAtUtc = new DateTimeOffset(2026, 8, 16, 12, 0, 0, TimeSpan.Zero),
+                GamePluginModulePresent = true,
+                GameAssemblyModulePresent = true,
+                RequestId = "staff-boost-1",
+                StaffBoostsSupported = true,
+                StaffBoost = new StaffBoostResult
+                {
+                    Operation = BridgeProtocol.OperationBoostStaffCurrentAbility,
+                    Outcome = "verified",
+                    Rollback = "not-needed",
+                    PreviousCurrentAbility = 120,
+                    CurrentAbility = 130,
+                    PotentialAbility = 150,
+                },
+            });
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.True(root.GetProperty("staffBoostsSupported").GetBoolean());
+        var result = root.GetProperty("staffBoost");
+        Assert.Equal(BridgeProtocol.OperationBoostStaffCurrentAbility, result.GetProperty("operation").GetString());
+        Assert.Equal(130, result.GetProperty("currentAbility").GetInt32());
+        Assert.DoesNotContain("address", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("uid", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Write_creates_status_json_under_bridge_directory()
     {
         var bridgeDir = Path.Combine(Path.GetTempPath(), "fm-valuescout-tests", Guid.NewGuid().ToString("N"));
@@ -124,6 +159,15 @@ public sealed class BridgeStatusSerializationTests
                     UpdatedAtUtc = DateTimeOffset.UtcNow,
                     GamePluginModulePresent = true,
                     GameAssemblyModulePresent = true,
+                    StaffBoostsSupported = true,
+                    StaffBoost = new StaffBoostResult
+                    {
+                        Operation = BridgeProtocol.OperationBoostStaffCurrentAbility,
+                        Outcome = "failed",
+                        Rollback = "restored",
+                        PreviousCurrentAbility = 120,
+                        PotentialAbility = 150,
+                    },
                     Error = "Could not create C:\\Users\\player\\AppData\\Local\\fm-valuescout\\fm-bridge\\dump.json",
                 });
 
@@ -131,6 +175,8 @@ public sealed class BridgeStatusSerializationTests
             Assert.DoesNotContain("C:\\Users\\player", serialized, StringComparison.Ordinal);
             Assert.True(StatusWriter.TryRead(bridgeDir, out var status));
             Assert.Equal("scan failed unexpectedly", status!.Error);
+            Assert.True(status.StaffBoostsSupported);
+            Assert.Equal("restored", status.StaffBoost!.Rollback);
         }
         finally
         {

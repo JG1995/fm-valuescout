@@ -33,6 +33,7 @@ Use a short, numbered filename such as `0001-decision-title.md`.
 | [0017](./0017-action-specific-fm26-player-boosts.md) | Action-specific FM26 player boosts |
 | [0018](./0018-squad-wide-player-boosts.md) | Squad-wide action-specific player boosts |
 | [0019](./0019-lazy-potential-role-score-cache.md) | Lazy persistent potential role-score cache |
+| [0020](./0020-action-specific-fm26-staff-ca-boost.md) | Action-specific FM26 staff CA boost |
 
 ## ADR format
 

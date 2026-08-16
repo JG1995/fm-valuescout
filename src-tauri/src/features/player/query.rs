@@ -58,7 +58,7 @@ pub struct PlayerDetail {
 pub fn get_player(conn: &Connection, uid: i64) -> Result<Option<PlayerDetail>, String> {
     let snapshot: Option<(i64, i64)> = conn
         .query_row(
-            "SELECT s.id, sv.reveal_hidden_player_information
+            "SELECT s.id, sv.reveal_hidden_information
              FROM snapshots s
              INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
              WHERE s.is_current = 1
@@ -371,7 +371,7 @@ mod tests {
 
     fn ingest_players(conn: &mut Connection, players: Vec<Value>) {
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v8.json"))
                 .expect("parse golden fixture");
         let mut players = players;
         for player in &mut players {
@@ -475,7 +475,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("known-uid.db"));
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v7.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v8.json");
         ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
         set_role_score(&conn, 77, "goalkeeper_ip", Some(42));
 
@@ -521,7 +521,7 @@ mod tests {
             vec![player_template(2, "Second save player", 150)],
         );
         conn.execute(
-            "UPDATE saves SET reveal_hidden_player_information = 0 WHERE id = ?1",
+            "UPDATE saves SET reveal_hidden_information = 0 WHERE id = ?1",
             [first_save.id],
         )
         .expect("conceal second save");

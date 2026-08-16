@@ -1,7 +1,7 @@
 namespace FmDataBridge.Protocol;
 
 /// <summary>
-/// Serializes full dumps and the two bounded player-boost actions inside the bridge process.
+/// Serializes full dumps and every bounded player or staff mutation inside the bridge process.
 /// </summary>
 internal sealed class BridgeWorkGate
 {

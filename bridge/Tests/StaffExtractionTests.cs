@@ -39,6 +39,7 @@ public sealed class StaffExtractionTests
         ("TacticalKnowledge", 0x21, 15),
         ("Physiotherapy", 0x20, 16),
         ("SportsScience", 0x2F, 17),
+        ("Authority", 0x30, 19),
         ("DataAnalysis", 0x2C, null),
         ("WorkingWithYoungsters", 0x0C, 18),
         ("GoalkeepingDistribution", 0x2A, 19),
@@ -59,6 +60,7 @@ public sealed class StaffExtractionTests
         var reader = new FakeMemoryReader();
 
         PlaceIdentity(reader, layout, person, "Staff Reader", 1984, 200, nationUid: 208);
+        reader.AddBytes(person + 0x70, new byte[] { 20 });
         reader.AddBytes(person + (ulong)layout.GenderOffset, new byte[] { 0x12 });
         PlaceStaffAttributes(reader, layout, staffBlock);
         PlaceTeamAndClub(
@@ -93,6 +95,7 @@ public sealed class StaffExtractionTests
         {
             Assert.Equal(attribute.Value, record.Attributes[attribute.Key]);
         }
+        Assert.Equal(20, record.Attributes["Adaptability"]);
         Assert.Equal(16, record.JobId);
         Assert.Equal(75_000, record.WeeklyWageGbp);
         Assert.Equal(2029, record.ContractExpiryYear);
@@ -133,7 +136,7 @@ public sealed class StaffExtractionTests
             staffBlock + (ulong)layout.StaffAttrsOffset + 0x22,
             new[] { byte.MaxValue });
 
-        var attributes = StaffAttributeReader.Read(corruptAttributes, staffBlock, layout);
+        var attributes = StaffAttributeReader.Read(corruptAttributes, 0, staffBlock, layout);
 
         Assert.Null(attributes["Attacking"]);
     }
@@ -176,6 +179,15 @@ public sealed class StaffExtractionTests
             Assert.True(result.Success);
             Assert.Equal(1, result.PlayerCount);
             Assert.Equal(new uint[] { 200, 201, 300 }, result.Staff.Select(record => record.Uid));
+            Assert.Equal(
+                new uint[] { 200, 201, 300 },
+                result.LiveStaffCandidates.Select(candidate => candidate.Uid));
+            Assert.All(
+                result.LiveStaffCandidates,
+                candidate => Assert.NotEqual(PersonFacet.Player, candidate.Facet));
+            Assert.Equal(
+                new[] { PersonFacet.Staff, PersonFacet.HumanManager, PersonFacet.HumanManager },
+                result.LiveStaffCandidates.Select(candidate => candidate.Facet));
             Assert.DoesNotContain(result.Staff, record => record.Uid == 10);
             Assert.NotNull(result.Manager);
             Assert.Equal(300u, result.Manager!.Uid);
@@ -195,6 +207,10 @@ public sealed class StaffExtractionTests
                 new uint[] { 200, 201, 300 },
                 dump.RootElement.GetProperty("staff").EnumerateArray()
                     .Select(record => record.GetProperty("uid").GetUInt32()));
+            var serializedAttributes = dump.RootElement.GetProperty("staff")[0].GetProperty("attributes");
+            Assert.Equal(24, serializedAttributes.EnumerateObject().Count());
+            Assert.Equal(19, serializedAttributes.GetProperty("Authority").GetInt32());
+            Assert.Equal(20, serializedAttributes.GetProperty("Adaptability").GetInt32());
             Assert.Equal("First Manager", dump.RootElement.GetProperty("manager").GetProperty("name").GetString());
             Assert.Equal("First FC", dump.RootElement.GetProperty("manager").GetProperty("club").GetString());
             Assert.Equal(7100, dump.RootElement.GetProperty("manager").GetProperty("clubReputation").GetInt32());
@@ -342,11 +358,13 @@ public sealed class StaffExtractionTests
     {
         var person = block + (ulong)classOffset;
         PlaceScannableObject(reader, layout, person, classOffset, uid, slot);
+        PlaceStaffAttributes(reader, layout, block);
         var data = new byte[layout.StaffPotentialAbilityOffset + sizeof(ushort)];
         BitConverter.TryWriteBytes(data.AsSpan(layout.StaffCurrentAbilityOffset), (ushort)100);
         BitConverter.TryWriteBytes(data.AsSpan(layout.StaffPotentialAbilityOffset), (ushort)140);
         reader.AddBytes(block, data);
         PlaceIdentity(reader, layout, person, name, 1980, 1, nationUid: 208);
+        reader.AddBytes(person + 0x70, new byte[] { 20 });
     }
 
     private static void PlaceScannableObject(

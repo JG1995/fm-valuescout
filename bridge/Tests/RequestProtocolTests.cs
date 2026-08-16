@@ -443,6 +443,93 @@ public sealed class RequestProtocolTests
     }
 
     [Fact]
+    public void Accept_preserves_only_the_closed_staff_boost_preconditions()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-08-16T12:00:00Z");
+            WriteBoostRequest(
+                path,
+                new BridgeRequest
+                {
+                    ProtocolVersion = BridgeProtocol.ProtocolVersion,
+                    RequestId = "staff-boost-1",
+                    CreatedAtUtc = now,
+                    Operation = BridgeProtocol.OperationBoostStaffCurrentAbility,
+                    SourceRequestId = "scan-1",
+                    StaffUid = 42,
+                    ExpectedCurrentAbility = 120,
+                    ExpectedPotentialAbility = 150,
+                });
+
+            Assert.True(
+                RequestAcceptance.TryAccept(
+                    path,
+                    now,
+                    Ttl,
+                    out var request,
+                    out _,
+                    out _));
+            Assert.Equal(BridgeProtocol.OperationBoostStaffCurrentAbility, request.Operation);
+            Assert.Equal("scan-1", request.SourceRequestId);
+            Assert.Equal(42u, request.StaffUid);
+            Assert.Null(request.PlayerUid);
+            Assert.Null(request.CurrentAbilityIncrement);
+            Assert.Equal(120, request.ExpectedCurrentAbility);
+            Assert.Equal(150, request.ExpectedPotentialAbility);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Accept_rejects_player_fields_or_missing_staff_identity_for_staff_boosts(
+        bool includePlayerUid,
+        bool omitStaffUid)
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-08-16T12:00:00Z");
+            WriteBoostRequest(
+                path,
+                new BridgeRequest
+                {
+                    ProtocolVersion = BridgeProtocol.ProtocolVersion,
+                    RequestId = "staff-boost-invalid",
+                    CreatedAtUtc = now,
+                    Operation = BridgeProtocol.OperationBoostStaffCurrentAbility,
+                    SourceRequestId = "scan-1",
+                    StaffUid = omitStaffUid ? null : 42,
+                    PlayerUid = includePlayerUid ? 42u : null,
+                    ExpectedCurrentAbility = 120,
+                    ExpectedPotentialAbility = 150,
+                });
+
+            Assert.False(
+                RequestAcceptance.TryAccept(
+                    path,
+                    now,
+                    Ttl,
+                    out _,
+                    out var reason,
+                    out _));
+            Assert.Contains(includePlayerUid ? "player boost fields" : "staffUid", reason, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Accept_rejects_an_arbitrary_current_ability_increment()
     {
         var dir = CreateTempDir();
@@ -476,6 +563,46 @@ public sealed class RequestProtocolTests
             Assert.Contains("currentAbilityIncrement", reason, StringComparison.Ordinal);
             Assert.Equal("boost-ca-invalid", observedRequestId);
             Assert.False(File.Exists(path));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Accept_rejects_staff_identity_on_a_player_boost_operation()
+    {
+        var dir = CreateTempDir();
+        try
+        {
+            var path = BridgePaths.GetRequestPath(dir);
+            var now = DateTimeOffset.Parse("2026-08-16T12:00:00Z");
+            WriteBoostRequest(
+                path,
+                new BridgeRequest
+                {
+                    ProtocolVersion = BridgeProtocol.ProtocolVersion,
+                    RequestId = "player-boost-with-staff",
+                    CreatedAtUtc = now,
+                    Operation = BridgeProtocol.OperationBoostCurrentAbility,
+                    SourceRequestId = "scan-1",
+                    PlayerUid = 42,
+                    StaffUid = 84,
+                    ExpectedCurrentAbility = 120,
+                    ExpectedPotentialAbility = 150,
+                    CurrentAbilityIncrement = 5,
+                });
+
+            Assert.False(
+                RequestAcceptance.TryAccept(
+                    path,
+                    now,
+                    Ttl,
+                    out _,
+                    out var reason,
+                    out _));
+            Assert.Contains("staffUid", reason, StringComparison.Ordinal);
         }
         finally
         {

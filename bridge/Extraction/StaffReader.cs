@@ -34,7 +34,7 @@ public static class StaffReader
             Gender = PlayerGenderReader.Read(reader, personAddress, layout),
             Ca = ca,
             Pa = pa,
-            Attributes = StaffAttributeReader.Read(reader, staffBlockBase, layout),
+            Attributes = StaffAttributeReader.Read(reader, personAddress, staffBlockBase, layout),
             JobId = contract.JobId,
             WeeklyWageGbp = contract.WeeklyWageGbp,
             ContractExpiryYear = contract.ContractExpiryYear,

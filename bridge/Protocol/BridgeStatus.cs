@@ -32,6 +32,12 @@ public sealed class BridgeStatus
     /// <summary>Whether this loaded exact FM build has a live candidate index for the two boost actions.</summary>
     public bool? PlayerBoostsSupported { get; init; }
 
+    /// <summary>Whether this exact FM build has proved staff CA writes and a live staff candidate index.</summary>
+    public bool? StaffBoostsSupported { get; init; }
+
     /// <summary>Sanitized verified result for the last player-boost request, when applicable.</summary>
     public PlayerBoostResult? PlayerBoost { get; init; }
+
+    /// <summary>Sanitized verified result for the last staff CA boost, when applicable.</summary>
+    public StaffBoostResult? StaffBoost { get; init; }
 }

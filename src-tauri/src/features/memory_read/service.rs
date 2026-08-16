@@ -16,6 +16,7 @@ pub const REQUEST_FILE_NAME: &str = "request.json";
 pub const DUMP_FILE_NAME: &str = "dump.json";
 pub const OPERATION_FULL_DUMP: &str = "full-dump";
 pub const OPERATION_BOOST_CURRENT_ABILITY: &str = "boost-current-ability";
+pub const OPERATION_BOOST_STAFF_CURRENT_ABILITY: &str = "boost-staff-current-ability";
 pub const OPERATION_WONDERKID_MENTALITY: &str = "wonderkid-mentality";
 pub const PLAYER_DATABASE_SCOPE_MEN: &str = "men";
 
@@ -67,6 +68,10 @@ pub struct BridgeStatus {
     pub player_boosts_supported: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub player_boost: Option<PlayerBoostResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staff_boosts_supported: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staff_boost: Option<StaffBoostResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,6 +127,20 @@ pub struct PlayerBoostResult {
     pub determination: Option<i32>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffBoostResult {
+    pub operation: String,
+    pub outcome: String,
+    pub rollback: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_current_ability: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_ability: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub potential_ability: Option<i32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlayerBoostOperation {
     CurrentAbility {
@@ -154,6 +173,20 @@ struct PlayerBoostRequest {
     expected_professionalism: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     expected_determination: Option<i32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StaffBoostRequest {
+    protocol_version: u32,
+    request_id: String,
+    created_at_utc: String,
+    operation: String,
+    player_database_scope: String,
+    source_request_id: String,
+    staff_uid: u32,
+    expected_current_ability: i32,
+    expected_potential_ability: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -231,6 +264,8 @@ impl std::fmt::Display for PlayerBoostRequestError {
 }
 
 impl std::error::Error for PlayerBoostRequestError {}
+
+pub type StaffBoostRequestError = PlayerBoostRequestError;
 
 impl From<BridgeStatusError> for DumpRequestError {
     fn from(value: BridgeStatusError) -> Self {
@@ -513,6 +548,66 @@ pub fn request_player_boost(
     }
 }
 
+pub fn request_staff_boost_from_local_app_data(
+    source_request_id: &str,
+    staff_uid: u32,
+    expected_current_ability: i32,
+    expected_potential_ability: i32,
+    wait: DumpWaitConfig,
+) -> Result<StaffBoostResult, StaffBoostRequestError> {
+    let bridge_directory = resolve_bridge_directory().map_err(PlayerBoostRequestError::from)?;
+    request_staff_boost(
+        &bridge_directory,
+        source_request_id,
+        staff_uid,
+        expected_current_ability,
+        expected_potential_ability,
+        wait,
+    )
+}
+
+pub fn request_staff_boost(
+    bridge_directory: &Path,
+    source_request_id: &str,
+    staff_uid: u32,
+    expected_current_ability: i32,
+    expected_potential_ability: i32,
+    wait: DumpWaitConfig,
+) -> Result<StaffBoostResult, StaffBoostRequestError> {
+    validate_staff_boost_request(
+        source_request_id,
+        staff_uid,
+        expected_current_ability,
+        expected_potential_ability,
+    )?;
+    let _bridge_request_guard = acquire_bridge_request_guard(bridge_directory)
+        .map_err(PlayerBoostRequestError::Unavailable)?;
+    ensure_staff_boost_is_available(bridge_directory)?;
+
+    let request_id = new_request_id();
+    let request = StaffBoostRequest {
+        protocol_version: PROTOCOL_VERSION,
+        request_id: request_id.clone(),
+        created_at_utc: utc_now_rfc3339(),
+        operation: OPERATION_BOOST_STAFF_CURRENT_ABILITY.to_string(),
+        player_database_scope: PLAYER_DATABASE_SCOPE_MEN.to_string(),
+        source_request_id: source_request_id.to_string(),
+        staff_uid,
+        expected_current_ability,
+        expected_potential_ability,
+    };
+    write_staff_boost_request(bridge_directory, &request)?;
+
+    match wait_for_staff_boost_terminal(bridge_directory, &request_id, wait) {
+        Ok(result) => Ok(result),
+        Err(error @ PlayerBoostRequestError::Failed(_))
+        | Err(error @ PlayerBoostRequestError::Unconfirmed(_)) => Err(error),
+        Err(error) => Err(PlayerBoostRequestError::Unconfirmed(format!(
+            "could not confirm the staff boost result; Load Data again before retrying ({error})"
+        ))),
+    }
+}
+
 impl PlayerBoostRequest {
     fn from_operation(
         request_id: String,
@@ -633,6 +728,35 @@ fn validate_player_boost_request(
     Ok(())
 }
 
+fn validate_staff_boost_request(
+    source_request_id: &str,
+    staff_uid: u32,
+    expected_current_ability: i32,
+    expected_potential_ability: i32,
+) -> Result<(), StaffBoostRequestError> {
+    if source_request_id.trim().is_empty() {
+        return Err(PlayerBoostRequestError::WriteFailed(
+            "source request ID is required for staff boosts".to_string(),
+        ));
+    }
+    if staff_uid == 0 {
+        return Err(PlayerBoostRequestError::WriteFailed(
+            "staff UID is required for staff boosts".to_string(),
+        ));
+    }
+    if !is_ability(expected_current_ability)
+        || !is_ability(expected_potential_ability)
+        || expected_current_ability > expected_potential_ability
+    {
+        return Err(PlayerBoostRequestError::WriteFailed(
+            "expected current ability and potential ability must be 1 through 200 with CA not above PA"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
 fn ensure_player_boost_is_available(
     bridge_directory: &Path,
 ) -> Result<(), PlayerBoostRequestError> {
@@ -640,6 +764,17 @@ fn ensure_player_boost_is_available(
     if status.player_boosts_supported != Some(true) {
         return Err(PlayerBoostRequestError::Unavailable(
             "Load Data again before using player boosts".to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn ensure_staff_boost_is_available(bridge_directory: &Path) -> Result<(), StaffBoostRequestError> {
+    let status = read_bridge_status(bridge_directory).map_err(PlayerBoostRequestError::from)?;
+    if status.staff_boosts_supported != Some(true) {
+        return Err(PlayerBoostRequestError::Unavailable(
+            "Load Data again before using staff boosts".to_string(),
         ));
     }
 
@@ -671,6 +806,37 @@ fn write_player_boost_request(
     fs::rename(&temp_path, &path).map_err(|error| {
         PlayerBoostRequestError::WriteFailed(format!(
             "could not replace player boost request: {error}"
+        ))
+    })?;
+
+    Ok(path)
+}
+
+fn write_staff_boost_request(
+    bridge_directory: &Path,
+    request: &StaffBoostRequest,
+) -> Result<PathBuf, StaffBoostRequestError> {
+    fs::create_dir_all(bridge_directory).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!(
+            "could not create bridge directory for staff boost: {error}"
+        ))
+    })?;
+
+    let path = request_path(bridge_directory);
+    let temp_path = path.with_extension("json.tmp");
+    let json = serde_json::to_string_pretty(request).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!(
+            "could not serialize staff boost request: {error}"
+        ))
+    })?;
+    fs::write(&temp_path, json).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!(
+            "could not write staff boost request temp file: {error}"
+        ))
+    })?;
+    fs::rename(&temp_path, &path).map_err(|error| {
+        PlayerBoostRequestError::WriteFailed(format!(
+            "could not replace staff boost request: {error}"
         ))
     })?;
 
@@ -740,6 +906,66 @@ pub fn wait_for_player_boost_terminal(
     }
 }
 
+pub fn wait_for_staff_boost_terminal(
+    bridge_directory: &Path,
+    request_id: &str,
+    wait: DumpWaitConfig,
+) -> Result<StaffBoostResult, StaffBoostRequestError> {
+    let deadline = Instant::now() + wait.timeout;
+
+    loop {
+        match read_bridge_status(bridge_directory) {
+            Ok(status)
+                if status.request_id.as_deref() == Some(request_id)
+                    && is_terminal_state(&status.state) =>
+            {
+                if status.state == "failed" {
+                    let message = status
+                        .error
+                        .unwrap_or_else(|| "staff boost failed without a bridge error".to_string());
+                    if status
+                        .staff_boost
+                        .as_ref()
+                        .is_some_and(|boost| boost.rollback == "unverified")
+                        || (status.staff_boost.is_none()
+                            && !is_known_pre_write_staff_boost_failure(&message))
+                    {
+                        return Err(PlayerBoostRequestError::Unconfirmed(format!(
+                            "staff boost may have changed FM before its result could be verified; Load Data again before retrying ({message})"
+                        )));
+                    }
+                    return Err(PlayerBoostRequestError::Failed(message));
+                }
+
+                let boost = status.staff_boost.ok_or_else(|| {
+                    PlayerBoostRequestError::Corrupt(
+                        "bridge reported a ready staff boost without a verified result".to_string(),
+                    )
+                })?;
+                if boost.outcome != "verified" || boost.rollback != "not-needed" {
+                    return Err(PlayerBoostRequestError::Unconfirmed(
+                        status
+                            .error
+                            .unwrap_or_else(|| "staff boost was not verified".to_string()),
+                    ));
+                }
+                return Ok(boost);
+            }
+            Ok(_) => {}
+            Err(BridgeStatusError::Missing(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        if Instant::now() >= deadline {
+            return Err(PlayerBoostRequestError::Timeout(format!(
+                "timed out waiting for staff boost request {request_id}"
+            )));
+        }
+
+        thread::sleep(wait.poll_interval);
+    }
+}
+
 fn is_ability(value: i32) -> bool {
     (1..=200).contains(&value)
 }
@@ -762,6 +988,24 @@ fn is_known_pre_write_player_boost_failure(message: &str) -> bool {
             | "current ability is already at its potential limit"
             | "player boost cancelled before it started"
             | "could not detect FM game_plugin.dll version; refusing player boost (fail closed)"
+            | "bridge work is already in progress; retry the request"
+    )
+}
+
+fn is_known_pre_write_staff_boost_failure(message: &str) -> bool {
+    matches!(
+        message,
+        "invalid staff boost request; update the app and retry"
+            | "this FM build is not approved for staff boosts; update the bridge plugin and Load Data"
+            | "Load Data again before using staff boosts"
+            | "staff member was not found in the latest live scan; Load Data again"
+            | "staff values changed in FM; Load Data again"
+            | "staff identity changed in FM; Load Data again"
+            | "could not safely read the staff member; Load Data again"
+            | "staff values are not valid for this boost; Load Data again"
+            | "current ability is already at its potential limit"
+            | "staff boost cancelled before it started"
+            | "could not detect FM game_plugin.dll version; refusing staff boost (fail closed)"
             | "bridge work is already in progress; retry the request"
     )
 }
@@ -845,7 +1089,7 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Barrier};
 
-    const INGESTIBLE_DUMP_FIXTURE: &str = include_str!("fixtures/golden_dump_v7.json");
+    const INGESTIBLE_DUMP_FIXTURE: &str = include_str!("fixtures/golden_dump_v8.json");
 
     const HAPPY_STATUS_JSON: &str = r#"{
   "protocolVersion": 1,
@@ -1292,6 +1536,93 @@ mod tests {
     }
 
     #[test]
+    fn staff_boost_request_serializes_uid_and_expected_values_without_an_increment() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let request = StaffBoostRequest {
+            protocol_version: PROTOCOL_VERSION,
+            request_id: "staff-boost-1".to_string(),
+            created_at_utc: "2026-08-16T10:00:00.000Z".to_string(),
+            operation: OPERATION_BOOST_STAFF_CURRENT_ABILITY.to_string(),
+            player_database_scope: PLAYER_DATABASE_SCOPE_MEN.to_string(),
+            source_request_id: "scan-1".to_string(),
+            staff_uid: 88,
+            expected_current_ability: 115,
+            expected_potential_ability: 140,
+        };
+        write_staff_boost_request(temp_dir.path(), &request).expect("write staff boost request");
+
+        let value: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(request_path(temp_dir.path())).expect("read request"),
+        )
+        .expect("parse request");
+        assert_eq!(value["operation"], OPERATION_BOOST_STAFF_CURRENT_ABILITY);
+        assert_eq!(value["staffUid"], 88);
+        assert_eq!(value["expectedCurrentAbility"], 115);
+        assert_eq!(value["expectedPotentialAbility"], 140);
+        assert!(value.get("playerUid").is_none());
+        assert!(value.get("currentAbilityIncrement").is_none());
+    }
+
+    #[test]
+    fn staff_boost_requires_advertised_support_before_writing_a_request() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        write_staff_boost_status_fixture(
+            temp_dir.path(),
+            "ready",
+            Some("scan-1"),
+            None,
+            false,
+            None,
+        );
+
+        let error = request_staff_boost(
+            temp_dir.path(),
+            "scan-1",
+            88,
+            115,
+            140,
+            DumpWaitConfig {
+                timeout: Duration::from_millis(100),
+                poll_interval: Duration::from_millis(10),
+            },
+        )
+        .expect_err("bridge without staff boost support must be rejected");
+        assert!(matches!(error, PlayerBoostRequestError::Unavailable(_)));
+        assert!(!request_path(temp_dir.path()).exists());
+    }
+
+    #[test]
+    fn staff_boost_accepts_only_a_verified_terminal_result() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        write_staff_boost_status_fixture(
+            temp_dir.path(),
+            "ready",
+            Some("staff-boost-1"),
+            None,
+            true,
+            Some(StaffBoostResult {
+                operation: OPERATION_BOOST_STAFF_CURRENT_ABILITY.to_string(),
+                outcome: "verified".to_string(),
+                rollback: "not-needed".to_string(),
+                previous_current_ability: Some(115),
+                current_ability: Some(125),
+                potential_ability: Some(140),
+            }),
+        );
+
+        let result = wait_for_staff_boost_terminal(
+            temp_dir.path(),
+            "staff-boost-1",
+            DumpWaitConfig {
+                timeout: Duration::from_millis(100),
+                poll_interval: Duration::from_millis(10),
+            },
+        )
+        .expect("verified staff boost");
+        assert_eq!(result.current_ability, Some(125));
+    }
+
+    #[test]
     fn player_boost_requires_advertised_support_before_writing_a_request() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         write_player_boost_status_fixture(
@@ -1665,6 +1996,8 @@ mod tests {
             max_accepted,
             player_boosts_supported: None,
             player_boost: None,
+            staff_boosts_supported: None,
+            staff_boost: None,
         };
         write_status(bridge_dir, &status);
     }
@@ -1691,6 +2024,36 @@ mod tests {
             max_accepted: None,
             player_boosts_supported: Some(player_boosts_supported),
             player_boost,
+            staff_boosts_supported: None,
+            staff_boost: None,
+        };
+        write_status(bridge_dir, &status);
+    }
+
+    fn write_staff_boost_status_fixture(
+        bridge_dir: &Path,
+        state: &str,
+        request_id: Option<&str>,
+        error: Option<&str>,
+        staff_boosts_supported: bool,
+        staff_boost: Option<StaffBoostResult>,
+    ) {
+        let status = BridgeStatus {
+            protocol_version: 1,
+            plugin_version: "0.1.0".to_string(),
+            state: state.to_string(),
+            updated_at_utc: "2026-08-16T10:00:00+00:00".to_string(),
+            game_plugin_module_present: true,
+            game_assembly_module_present: true,
+            request_id: request_id.map(str::to_string),
+            players_found: None,
+            error: error.map(str::to_string),
+            scan_truncated: None,
+            max_accepted: None,
+            player_boosts_supported: None,
+            player_boost: None,
+            staff_boosts_supported: Some(staff_boosts_supported),
+            staff_boost,
         };
         write_status(bridge_dir, &status);
     }

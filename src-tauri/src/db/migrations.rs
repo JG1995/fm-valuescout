@@ -627,6 +627,30 @@ ALTER TABLE saves
     CHECK (reveal_hidden_player_information IN (0, 1));
 ";
 
+pub const STAFF_ROLE_SCORES_SQL: &str = "
+CREATE TABLE staff_role_scores (
+    snapshot_id INTEGER NOT NULL,
+    uid INTEGER NOT NULL,
+    role_id TEXT NOT NULL,
+    score INTEGER CHECK (score IS NULL OR (score >= 0 AND score <= 100)),
+    PRIMARY KEY (snapshot_id, uid, role_id),
+    FOREIGN KEY (snapshot_id, uid) REFERENCES staff(snapshot_id, uid) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_staff_role_scores_snapshot_role
+    ON staff_role_scores(snapshot_id, role_id);
+";
+
+pub const SHARED_BOOST_RECOVERY_SQL: &str = "
+ALTER TABLE snapshots
+    RENAME COLUMN player_boost_recovery_required TO boost_recovery_required;
+";
+
+pub const SHARED_INFORMATION_VISIBILITY_SQL: &str = "
+ALTER TABLE saves
+    RENAME COLUMN reveal_hidden_player_information TO reveal_hidden_information;
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -743,6 +767,21 @@ pub fn all() -> &'static [Migration] {
             version: 23,
             description: "add_player_information_visibility",
             sql: PLAYER_INFORMATION_VISIBILITY_SQL,
+        },
+        Migration {
+            version: 24,
+            description: "create_staff_role_scores",
+            sql: STAFF_ROLE_SCORES_SQL,
+        },
+        Migration {
+            version: 25,
+            description: "share_boost_recovery_requirement",
+            sql: SHARED_BOOST_RECOVERY_SQL,
+        },
+        Migration {
+            version: 26,
+            description: "share_hidden_information_visibility",
+            sql: SHARED_INFORMATION_VISIBILITY_SQL,
         },
     ]
 }
@@ -869,7 +908,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
 
         let demo_value_exists: bool = conn
             .query_row(
@@ -890,7 +929,7 @@ mod tests {
 
         assert_eq!(
             table_columns(&conn, "saves").last().map(String::as_str),
-            Some("reveal_hidden_player_information")
+            Some("reveal_hidden_information")
         );
         conn.execute(
             "INSERT INTO saves (name, is_active) VALUES ('First save', 1)",
@@ -904,7 +943,7 @@ mod tests {
 
         let defaults: Vec<i64> = conn
             .prepare(
-                "SELECT reveal_hidden_player_information
+                "SELECT reveal_hidden_information
                  FROM saves ORDER BY id",
             )
             .expect("prepare visibility query")
@@ -915,13 +954,13 @@ mod tests {
         assert_eq!(defaults, vec![1, 1]);
 
         conn.execute(
-            "UPDATE saves SET reveal_hidden_player_information = 0 WHERE id = ?1",
+            "UPDATE saves SET reveal_hidden_information = 0 WHERE id = ?1",
             [first_save_id],
         )
         .expect("conceal first save");
         let states: Vec<(i64, i64)> = conn
             .prepare(
-                "SELECT id, reveal_hidden_player_information
+                "SELECT id, reveal_hidden_information
                  FROM saves ORDER BY id",
             )
             .expect("prepare save visibility query")
@@ -933,7 +972,7 @@ mod tests {
 
         let error = conn
             .execute(
-                "UPDATE saves SET reveal_hidden_player_information = 2 WHERE id = ?1",
+                "UPDATE saves SET reveal_hidden_information = 2 WHERE id = ?1",
                 [first_save_id],
             )
             .expect_err("reject invalid visibility state");
@@ -967,15 +1006,47 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
         let existing: i64 = conn
-            .query_row(
-                "SELECT reveal_hidden_player_information FROM saves",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT reveal_hidden_information FROM saves", [], |row| {
+                row.get(0)
+            })
             .expect("read existing save visibility");
         assert_eq!(existing, 1);
+    }
+
+    #[test]
+    fn migrates_v25_visibility_to_one_shared_preference_without_changing_values() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("shared-information-v25.db"))
+            .expect("open test db");
+        for migration in all().iter().filter(|migration| migration.version <= 25) {
+            conn.execute_batch(migration.sql)
+                .expect("apply through v25");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set v25 version");
+        }
+        conn.execute(
+            "INSERT INTO saves (name, is_active, reveal_hidden_player_information)
+             VALUES ('Revealed', 1, 1), ('Concealed', 0, 0)",
+            [],
+        )
+        .expect("insert visibility states");
+
+        apply(&conn).expect("apply shared visibility migration");
+
+        assert_eq!(
+            table_columns(&conn, "saves").last(),
+            Some(&"reveal_hidden_information".to_string())
+        );
+        let states: Vec<i64> = conn
+            .prepare("SELECT reveal_hidden_information FROM saves ORDER BY id")
+            .expect("prepare shared visibility")
+            .query_map([], |row| row.get(0))
+            .expect("query shared visibility")
+            .collect::<Result<_, _>>()
+            .expect("read shared visibility");
+        assert_eq!(states, vec![1, 0]);
     }
 
     #[test]
@@ -1038,7 +1109,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -1119,7 +1190,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
         assert_eq!(
             table_columns(&conn, "player_potential_role_scores"),
             [
@@ -1305,7 +1376,7 @@ mod tests {
 
         let recovery_required: i64 = conn
             .query_row(
-                "SELECT player_boost_recovery_required FROM snapshots WHERE id = ?1",
+                "SELECT boost_recovery_required FROM snapshots WHERE id = ?1",
                 [snapshot_id],
                 |row| row.get(0),
             )
@@ -1313,7 +1384,7 @@ mod tests {
         assert_eq!(recovery_required, 0);
         let error = conn
             .execute(
-                "UPDATE snapshots SET player_boost_recovery_required = 2 WHERE id = ?1",
+                "UPDATE snapshots SET boost_recovery_required = 2 WHERE id = ?1",
                 [snapshot_id],
             )
             .expect_err("reject an invalid recovery requirement");
@@ -1321,6 +1392,63 @@ mod tests {
             error.sqlite_error_code(),
             Some(rusqlite::ErrorCode::ConstraintViolation)
         );
+    }
+
+    #[test]
+    fn migrates_v24_player_recovery_to_shared_boost_recovery_without_changing_values() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("shared-boost-recovery-v24.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 24) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v24");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set migration version");
+        }
+
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Existing save', 1)",
+            [],
+        )
+        .expect("insert existing save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert existing snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+        conn.execute(
+            "UPDATE snapshots SET player_boost_recovery_required = 1 WHERE id = ?1",
+            [snapshot_id],
+        )
+        .expect("set existing recovery requirement");
+
+        apply(&conn).expect("apply shared boost recovery migration");
+
+        assert_eq!(
+            table_columns(&conn, "snapshots")
+                .into_iter()
+                .filter(|column| column.contains("boost_recovery"))
+                .collect::<Vec<_>>(),
+            ["boost_recovery_required"]
+        );
+        let recovery_required: i64 = conn
+            .query_row(
+                "SELECT boost_recovery_required FROM snapshots WHERE id = ?1",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("read preserved recovery requirement");
+        assert_eq!(recovery_required, 1);
+        assert!(conn
+            .execute(
+                "UPDATE snapshots SET boost_recovery_required = 2 WHERE id = ?1",
+                [snapshot_id],
+            )
+            .is_err());
     }
 
     #[test]
@@ -1614,7 +1742,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, planner_club_settings.primary_club
@@ -1694,7 +1822,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -1881,7 +2009,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -1929,7 +2057,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -2170,7 +2298,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -2276,7 +2404,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
 
         let table_name: String = conn
             .query_row(
@@ -2294,6 +2422,117 @@ mod tests {
     }
 
     #[test]
+    fn staff_role_scores_are_snapshot_scoped_constrained_and_cascade_with_staff() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("staff-role-scores.db"));
+
+        conn.execute_batch(
+            "INSERT INTO saves (id, name, is_active) VALUES (1, 'Save', 1);
+             INSERT INTO snapshots (
+                 id, save_id, is_current, schema_version, generated_at_utc, game_version,
+                 supported_game_version, bridge_version, protocol_version, game_date,
+                 game_date_source, scan_truncated, max_accepted, player_count
+             ) VALUES (
+                 1, 1, 1, 8, '2026-08-16T00:00:00Z', '26.3', '26.3', '0.4.0', 1,
+                 NULL, 'unavailable', 0, NULL, 0
+             );
+             INSERT INTO staff (
+                 snapshot_id, uid, name, birth_year, birth_day_of_year, age,
+                 nationalities_json, nation_uid, gender, ca, pa, staff_attributes_json,
+                 job_id, weekly_wage_gbp, contract_expiry_year, contract_expiry_day_of_year,
+                 club, division
+             ) VALUES (
+                 1, 88, 'Staff', 1980, 1, 46, '[\"DEN\"]', 208, 'male', 120, 150,
+                 '{}', 1, NULL, NULL, NULL, 'Club', 'Division'
+             );",
+        )
+        .expect("seed staff owner");
+
+        conn.execute(
+            "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
+             VALUES (1, 88, 'physio', 85)",
+            [],
+        )
+        .expect("insert valid staff score");
+        conn.execute(
+            "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
+             VALUES (1, 88, 'unavailable', NULL)",
+            [],
+        )
+        .expect("insert nullable staff score");
+        assert!(conn
+            .execute(
+                "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
+                 VALUES (1, 88, 'invalid', 101)",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
+                 VALUES (1, 999, 'physio', 50)",
+                [],
+            )
+            .is_err());
+
+        conn.execute("DELETE FROM staff WHERE snapshot_id = 1 AND uid = 88", [])
+            .expect("delete staff owner");
+        let score_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM staff_role_scores", [], |row| {
+                row.get(0)
+            })
+            .expect("count cascaded staff scores");
+        assert_eq!(score_count, 0);
+    }
+
+    #[test]
+    fn migrates_populated_v23_without_backfilling_staff_scores() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("populated-v23.db"))
+            .expect("open legacy database");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 23) {
+            conn.execute_batch(migration.sql).expect("apply v23 schema");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set legacy version");
+        }
+        conn.execute_batch(
+            "INSERT INTO saves (id, name, is_active) VALUES (1, 'Save', 1);
+             INSERT INTO snapshots (
+                 id, save_id, is_current, schema_version, generated_at_utc, game_version,
+                 supported_game_version, bridge_version, protocol_version, game_date,
+                 game_date_source, scan_truncated, max_accepted, player_count
+             ) VALUES (
+                 1, 1, 1, 8, '2026-08-16T00:00:00Z', '26.3', '26.3', '0.4.0', 1,
+                 NULL, 'unavailable', 0, NULL, 0
+             );
+             INSERT INTO staff (
+                 snapshot_id, uid, name, nationalities_json, gender, ca, pa,
+                 staff_attributes_json
+             ) VALUES (1, 88, 'Existing Staff', '[]', 'unknown', 100, 120, '{}');",
+        )
+        .expect("seed v23 staff");
+
+        apply(&conn).expect("apply staff score migration");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read migrated version");
+        let staff_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM staff", [], |row| row.get(0))
+            .expect("count retained staff");
+        let score_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM staff_role_scores", [], |row| {
+                row.get(0)
+            })
+            .expect("count absent backfill");
+        assert_eq!(version, 26);
+        assert_eq!(staff_count, 1);
+        assert_eq!(score_count, 0);
+    }
+
+    #[test]
     fn snapshot_tables_contain_dump_and_query_fields() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("snapshot-columns-test.db");
@@ -2308,7 +2547,7 @@ mod tests {
                 "created_at_utc",
                 "updated_at_utc",
                 "context_token",
-                "reveal_hidden_player_information",
+                "reveal_hidden_information",
             ]
         );
         assert_eq!(
@@ -2339,7 +2578,7 @@ mod tests {
                 "bridge_source_request_id",
                 "context_token",
                 "custom_name",
-                "player_boost_recovery_required",
+                "boost_recovery_required",
             ]
         );
         assert_eq!(
@@ -2444,6 +2683,7 @@ mod tests {
                 "idx_saves_one_active",
                 "idx_snapshots_context_token",
                 "idx_snapshots_one_current_per_save",
+                "idx_staff_role_scores_snapshot_role",
             ]
         );
     }
@@ -2531,7 +2771,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
     }
 
     #[test]
@@ -2565,7 +2805,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 23);
+        assert_eq!(version, 26);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -2581,7 +2821,7 @@ mod tests {
     fn migrates_snapshot_schema_from_every_prior_version() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
 
-        for legacy_version in 1..23 {
+        for legacy_version in 1..24 {
             let conn = Connection::open(
                 temp_dir
                     .path()
@@ -2605,7 +2845,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 23, "legacy version {legacy_version}");
+            assert_eq!(version, 26, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -2618,7 +2858,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 23);
+        assert_eq!(migrations.len(), 26);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -2716,6 +2956,21 @@ mod tests {
             "add_player_information_visibility"
         );
         assert_eq!(migrations[22].sql, PLAYER_INFORMATION_VISIBILITY_SQL);
+        assert_eq!(migrations[23].version, 24);
+        assert_eq!(migrations[23].description, "create_staff_role_scores");
+        assert_eq!(migrations[23].sql, STAFF_ROLE_SCORES_SQL);
+        assert_eq!(migrations[24].version, 25);
+        assert_eq!(
+            migrations[24].description,
+            "share_boost_recovery_requirement"
+        );
+        assert_eq!(migrations[24].sql, SHARED_BOOST_RECOVERY_SQL);
+        assert_eq!(migrations[25].version, 26);
+        assert_eq!(
+            migrations[25].description,
+            "share_hidden_information_visibility"
+        );
+        assert_eq!(migrations[25].sql, SHARED_INFORMATION_VISIBILITY_SQL);
     }
 
     #[test]

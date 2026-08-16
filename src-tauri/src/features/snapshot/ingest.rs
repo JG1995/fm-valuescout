@@ -11,6 +11,7 @@ use crate::features::academy::service as academy_service;
 use crate::features::memory_read::dump_validation::parse_and_validate_dump;
 use crate::features::scoring::catalog::all_roles;
 use crate::features::scoring::score::score_role;
+use crate::features::staff::scoring::{all_staff_roles, score_staff_role};
 
 use super::service::{self, SaveContext};
 
@@ -349,7 +350,7 @@ fn insert_staff(
         .and_then(Value::as_array)
         .ok_or_else(|| "dump staff must be an array".to_string())?;
 
-    let mut stmt = tx
+    let mut staff_stmt = tx
         .prepare(
             "INSERT INTO staff (
                 snapshot_id,
@@ -376,33 +377,51 @@ fn insert_staff(
             )",
         )
         .map_err(|error| error.to_string())?;
+    let mut score_stmt = tx
+        .prepare(
+            "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
+             VALUES (?1, ?2, ?3, ?4)",
+        )
+        .map_err(|error| error.to_string())?;
 
     for staff_record in staff {
         let staff_record = staff_record
             .as_object()
             .ok_or_else(|| "each staff record must be a JSON object".to_string())?;
+        let uid = require_u64(staff_record, "uid")? as i64;
+        let raw_attributes = required_value(staff_record, "attributes")?;
+        let attributes = attributes_map(raw_attributes)?;
 
-        stmt.execute(params![
-            snapshot_id,
-            require_u64(staff_record, "uid")? as i64,
-            optional_string(staff_record.get("name"))?,
-            optional_i64(staff_record.get("birthYear"))?,
-            optional_i64(staff_record.get("birthDayOfYear"))?,
-            optional_i64(staff_record.get("age"))?,
-            json_string(required_value(staff_record, "nationalities")?)?,
-            optional_i64(staff_record.get("nationUid"))?,
-            require_string(staff_record, "gender")?,
-            require_i64(staff_record, "ca")?,
-            require_i64(staff_record, "pa")?,
-            json_string(required_value(staff_record, "attributes")?)?,
-            optional_i64(staff_record.get("jobId"))?,
-            optional_i64(staff_record.get("weeklyWageGbp"))?,
-            optional_i64(staff_record.get("contractExpiryYear"))?,
-            optional_i64(staff_record.get("contractExpiryDayOfYear"))?,
-            optional_string(staff_record.get("club"))?,
-            optional_string(staff_record.get("division"))?,
-        ])
-        .map_err(|error| error.to_string())?;
+        staff_stmt
+            .execute(params![
+                snapshot_id,
+                uid,
+                optional_string(staff_record.get("name"))?,
+                optional_i64(staff_record.get("birthYear"))?,
+                optional_i64(staff_record.get("birthDayOfYear"))?,
+                optional_i64(staff_record.get("age"))?,
+                json_string(required_value(staff_record, "nationalities")?)?,
+                optional_i64(staff_record.get("nationUid"))?,
+                require_string(staff_record, "gender")?,
+                require_i64(staff_record, "ca")?,
+                require_i64(staff_record, "pa")?,
+                json_string(raw_attributes)?,
+                optional_i64(staff_record.get("jobId"))?,
+                optional_i64(staff_record.get("weeklyWageGbp"))?,
+                optional_i64(staff_record.get("contractExpiryYear"))?,
+                optional_i64(staff_record.get("contractExpiryDayOfYear"))?,
+                optional_string(staff_record.get("club"))?,
+                optional_string(staff_record.get("division"))?,
+            ])
+            .map_err(|error| error.to_string())?;
+
+        for role in all_staff_roles() {
+            if let Some(score) = score_staff_role(&attributes, role) {
+                score_stmt
+                    .execute(params![snapshot_id, uid, role.role_id, i64::from(score)])
+                    .map_err(|error| error.to_string())?;
+            }
+        }
     }
 
     Ok(())
@@ -612,7 +631,7 @@ mod tests {
     use rusqlite::OptionalExtension;
     use std::path::Path;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v7.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -697,6 +716,24 @@ mod tests {
             .expect("query role scores")
             .collect::<Result<Vec<_>, _>>()
             .expect("read role scores")
+    }
+
+    fn staff_role_scores(conn: &Connection, snapshot_id: i64, uid: i64) -> Vec<(String, i64)> {
+        let mut statement = conn
+            .prepare(
+                "SELECT role_id, score
+                 FROM staff_role_scores
+                 WHERE snapshot_id = ?1 AND uid = ?2
+                 ORDER BY role_id",
+            )
+            .expect("prepare staff role score query");
+        statement
+            .query_map(params![snapshot_id, uid], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .expect("query staff role scores")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read staff role scores")
     }
 
     fn dump_with_uniform_attributes(value: u8) -> String {
@@ -805,6 +842,102 @@ mod tests {
     }
 
     #[test]
+    fn ingest_persists_only_calculable_staff_role_scores() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-staff-role-scores.db"));
+        list_saves(&conn).expect("seed default save");
+
+        let dump_path = write_dump(&temp_dir, "staff-scores.json", GOLDEN_FIXTURE);
+        let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest staff scores");
+        let scores = staff_role_scores(&conn, snapshot.id, 88);
+
+        assert_eq!(scores.len(), 14, "six roles have unavailable dependencies");
+        assert_eq!(
+            scores
+                .iter()
+                .find(|(role_id, _)| role_id == "physio")
+                .map(|(_, score)| *score),
+            Some(60)
+        );
+        assert!(scores
+            .iter()
+            .all(|(role_id, _)| role_id != "performance_analyst"));
+    }
+
+    #[test]
+    fn failed_staff_score_insert_rolls_back_the_new_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("staff-score-rollback.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
+        let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
+        let prior_scores = staff_role_scores(&conn, first.id, 88);
+        assert!(!prior_scores.is_empty());
+
+        conn.execute_batch(
+            "CREATE TRIGGER reject_staff_score
+             BEFORE INSERT ON staff_role_scores
+             BEGIN
+                 SELECT RAISE(FAIL, 'staff score failure');
+             END;",
+        )
+        .expect("create staff score failure trigger");
+        let rejected_path = write_dump(&temp_dir, "rejected.json", GOLDEN_FIXTURE);
+        let error = ingest_dump_file(&mut conn, &rejected_path).expect_err("reject score insert");
+
+        assert!(error.contains("staff score failure"));
+        assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
+        assert_eq!(staff_role_scores(&conn, first.id, 88), prior_scores);
+        assert_eq!(snapshot_count(&conn, active_save.id), 1);
+    }
+
+    #[test]
+    fn second_ingest_retains_each_snapshots_staff_role_scores() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("staff-score-replacement.db"));
+        list_saves(&conn).expect("seed default save");
+
+        let first_path = write_dump(&temp_dir, "first.json", GOLDEN_FIXTURE);
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+
+        let mut second_root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
+        for key in [
+            "DataAnalysis",
+            "Fitness",
+            "JudgingStaffAbility",
+            "SetPieces",
+        ] {
+            second_root["staff"][0]["attributes"][key] = Value::from(20);
+        }
+        second_root["staff"][0]["attributes"]["Physiotherapy"] = Value::from(20);
+        let second_path = write_dump(&temp_dir, "second.json", &second_root.to_string());
+        let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
+
+        let first_scores = staff_role_scores(&conn, first.id, 88);
+        let second_scores = staff_role_scores(&conn, second.id, 88);
+        assert_eq!(first_scores.len(), 14);
+        assert_eq!(second_scores.len(), 20);
+        assert_eq!(
+            first_scores
+                .iter()
+                .find(|(role_id, _)| role_id == "physio")
+                .map(|(_, score)| *score),
+            Some(60)
+        );
+        assert_eq!(
+            second_scores
+                .iter()
+                .find(|(role_id, _)| role_id == "physio")
+                .map(|(_, score)| *score),
+            Some(100)
+        );
+    }
+
+    #[test]
     fn second_ingest_retains_prior_role_scores_with_its_snapshot() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("ingest-role-scores-replace.db"));
@@ -840,7 +973,7 @@ mod tests {
         let prior_count = role_score_count_for_snapshot(&conn, first.id);
         assert!(prior_count > 0);
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 7", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 8", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let _ = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -866,7 +999,7 @@ mod tests {
             "\"attributes\": { \"Acceleration\": 14, \"Pace\": 15, \"Dribbling\": null }",
         );
         let expected_positions = serde_json::from_str::<Value>(&json_with_null_attribute)
-            .expect("parse v7 fixture")
+            .expect("parse v8 fixture")
             .get("players")
             .and_then(Value::as_array)
             .and_then(|players| players.first())
@@ -877,7 +1010,7 @@ mod tests {
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
 
         assert_eq!(snapshot.save_id, active_save.id);
-        assert_eq!(snapshot.schema_version, 7);
+        assert_eq!(snapshot.schema_version, 8);
         assert_eq!(snapshot.generated_at_utc, "2026-08-08T10:00:00.000Z");
         assert_eq!(snapshot.game_version, "26.3.2.2329565");
         assert_eq!(snapshot.supported_game_version, "26.3");
@@ -1027,9 +1160,11 @@ mod tests {
                 .as_object()
                 .expect("staff attributes")
                 .len(),
-            22
+            24
         );
         assert_eq!(staff_attributes["Attacking"], 15);
+        assert_eq!(staff_attributes["Authority"], 18);
+        assert_eq!(staff_attributes["Adaptability"], 17);
         assert_eq!(staff_attributes.get("DataAnalysis"), Some(&Value::Null));
     }
 
@@ -1295,7 +1430,7 @@ mod tests {
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 7", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 8", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let error = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -1421,7 +1556,7 @@ mod tests {
         write!(
             file,
             concat!(
-                r#"{{"schemaVersion":7,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
+                r#"{{"schemaVersion":8,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
                 r#""gameVersion":"26.3.2","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","#,
                 r#""protocolVersion":1,"gameDate":null,"gameDateSource":"unknown","gameDateBasis":"unknown","#,
                 r#""playerDatabaseScope":"men","#,
@@ -1488,6 +1623,59 @@ mod tests {
     #[test]
     fn ingest_completes_generated_2k_players_with_role_scores_and_timings() {
         run_generated_large_ingest(2_000);
+    }
+
+    #[test]
+    fn ingest_completes_generated_2k_staff_with_role_scores_and_timings() {
+        use crate::features::staff::scoring::all_staff_roles;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-2000-staff.db"));
+        let active_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
+        let template = root["staff"][0].clone();
+        let staff = (0..2_000)
+            .map(|index| {
+                let mut record = template.clone();
+                record["uid"] = Value::from(1_000 + index);
+                record["name"] = Value::from(format!("Staff {index}"));
+                for value in record["attributes"]
+                    .as_object_mut()
+                    .expect("staff attributes")
+                    .values_mut()
+                {
+                    *value = Value::from(10);
+                }
+                record
+            })
+            .collect();
+        root["staff"] = Value::Array(staff);
+        root["staffCount"] = Value::from(2_000);
+        root["manager"] = Value::Null;
+        let dump_path = write_dump(&temp_dir, "staff.json", &root.to_string());
+
+        let (snapshot, timings) =
+            ingest_dump_file_for_save_timed(&mut conn, active_save.id, &dump_path)
+                .expect("large staff ingest");
+        let score_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM staff_role_scores WHERE snapshot_id = ?1",
+                [snapshot.id],
+                |row| row.get(0),
+            )
+            .expect("count generated staff scores");
+
+        assert_eq!(staff_count_for_snapshot(&conn, snapshot.id), 2_000);
+        assert_eq!(score_count, (2_000 * all_staff_roles().len()) as i64);
+        assert_ingest_timings(&timings);
+        eprintln!(
+            "generated staff ingest staff_count=2000 validation_ms={} insert_ms={} total_ms={}",
+            timings.validation_ms, timings.insert_ms, timings.total_ms
+        );
     }
 
     /// Scale check — role-score matrix (~68 rows/player) is too heavy for the default gate.

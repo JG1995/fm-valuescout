@@ -14,6 +14,9 @@ public interface IFmMemoryLayout
     /// </summary>
     bool SupportsPlayerBoosts(string gameVersion);
 
+    /// <summary>True only after this exact FM build passes the controlled staff CA write proof.</summary>
+    bool SupportsStaffBoosts(string gameVersion);
+
     string DisplayName { get; }
 
     /// <summary>Unique ID on the person/object header.</summary>

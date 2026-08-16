@@ -12,12 +12,17 @@ public sealed class Fm263Layout : IFmMemoryLayout
 {
     private const string PlayerBoostBuild = "26.3.2";
 
+    private const string StaffBoostBuild = "26.3.2";
+
     public static Fm263Layout Instance { get; } = new();
 
     public string VersionKey => "26.3";
 
     public bool SupportsPlayerBoosts(string gameVersion) =>
         string.Equals(gameVersion?.Trim(), PlayerBoostBuild, StringComparison.Ordinal);
+
+    public bool SupportsStaffBoosts(string gameVersion) =>
+        string.Equals(gameVersion?.Trim(), StaffBoostBuild, StringComparison.Ordinal);
 
     public string DisplayName => "FM 26.3";
 
@@ -69,6 +74,9 @@ public sealed class Fm263Layout : IFmMemoryLayout
         new("TacticalKnowledge", 0x21),
         new("Physiotherapy", 0x20),
         new("SportsScience", 0x2F),
+        // ponytail: Authority uses the accepted only-unmapped-byte pin for FM26.3.
+        // Upgrade to a corrected offset if a live FM comparison disproves 0x30.
+        new("Authority", 0x30),
         new("DataAnalysis", 0x2C),
         new("WorkingWithYoungsters", 0x0C),
         new("GoalkeepingDistribution", 0x2A),

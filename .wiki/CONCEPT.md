@@ -101,7 +101,7 @@ A week later in-game, the signing completes. You click **Load Data** again. The 
 - Historical Moneyball seasons, season selection, trends, comparisons, historical player views, and analytics beyond the supported current-snapshot contract
 - Automatic or background sync while FM runs (refresh is manual)
 - Accounts, cloud sync, or multi-user collaboration
-- Executing transfers or general edits inside FM from the app. The only accepted exception is the two action-specific player boosts in [ADR-0017](./decisions/0017-action-specific-fm26-player-boosts.md). Those two fixed actions are implemented; transfers and general editing remain out of scope.
+- Executing transfers or general edits inside FM from the app. The only accepted exceptions are the two action-specific player boosts in [ADR-0017](./decisions/0017-action-specific-fm26-player-boosts.md) and the fixed staff CA boost in [ADR-0020](./decisions/0020-action-specific-fm26-staff-ca-boost.md). Those three fixed actions are implemented; transfers and general editing remain out of scope.
 - Mobile or web clients
 - Community databases, facepacks, or mod management
 - Advanced moneyball analytics beyond defined position/role scores (e.g. xG models, custom ML pipelines)

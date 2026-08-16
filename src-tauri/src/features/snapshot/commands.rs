@@ -139,7 +139,7 @@ pub fn set_active_save(save_id: i64, db: State<'_, Db>) -> Result<SaveSummaryDto
 }
 
 pub(crate) fn set_active_save_for_command(db: &Db, save_id: i64) -> Result<SaveSummary, String> {
-    let _boost_guard = boost_gate::acquire_player_boost_gate()?;
+    let _boost_guard = boost_gate::acquire_boost_gate()?;
     let mut conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
@@ -182,7 +182,7 @@ pub fn delete_snapshot(
     context_token: String,
     db: State<'_, Db>,
 ) -> Result<SnapshotDeleteResultDto, String> {
-    let _boost_guard = boost_gate::acquire_player_boost_gate()?;
+    let _boost_guard = boost_gate::acquire_boost_gate()?;
     let mut conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
@@ -196,7 +196,7 @@ pub fn delete_save(
     context_token: String,
     db: State<'_, Db>,
 ) -> Result<SaveDeleteResultDto, String> {
-    let _boost_guard = boost_gate::acquire_player_boost_gate()?;
+    let _boost_guard = boost_gate::acquire_boost_gate()?;
     let mut conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
@@ -338,11 +338,10 @@ pub fn load_data(
     max_accepted: Option<i32>,
     db: State<'_, Db>,
 ) -> Result<LoadDataResultDto, LoadDataError> {
-    let _boost_guard =
-        boost_gate::acquire_player_boost_gate().map_err(|message| LoadDataError::Scan {
-            kind: "inProgress".to_string(),
-            message,
-        })?;
+    let _boost_guard = boost_gate::acquire_boost_gate().map_err(|message| LoadDataError::Scan {
+        kind: "inProgress".to_string(),
+        message,
+    })?;
     let total_started = Instant::now();
     let save_context = {
         let conn = db.0.lock().map_err(|_| LoadDataError::Scan {

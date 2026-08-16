@@ -110,17 +110,14 @@ impl std::fmt::Display for PlayerBoostError {
 
 impl std::error::Error for PlayerBoostError {}
 
-pub fn set_player_hidden_information_revealed(
-    conn: &Connection,
-    revealed: bool,
-) -> Result<bool, String> {
+pub fn set_hidden_information_revealed(conn: &Connection, revealed: bool) -> Result<bool, String> {
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
     let changed = tx
         .execute(
             "UPDATE saves
-             SET reveal_hidden_player_information = ?1,
+             SET reveal_hidden_information = ?1,
                  updated_at_utc = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
              WHERE is_active = 1",
             [i64::from(revealed)],
@@ -132,7 +129,7 @@ pub fn set_player_hidden_information_revealed(
 
     let persisted: i64 = tx
         .query_row(
-            "SELECT reveal_hidden_player_information
+            "SELECT reveal_hidden_information
              FROM saves
              WHERE is_active = 1",
             [],
@@ -191,6 +188,14 @@ pub(super) fn prepare_current_ability_boost(
         expected_professionalism: None,
         expected_determination: None,
     })
+}
+
+#[cfg(test)]
+pub(crate) fn prepare_current_ability_boost_for_test(
+    conn: &Connection,
+    uid: i64,
+) -> Result<(), PlayerBoostError> {
+    prepare_current_ability_boost(conn, uid).map(|_| ())
 }
 
 pub(super) fn prepare_wonderkid_mentality_boost(
@@ -316,7 +321,7 @@ pub(super) fn capture_active_player_boost_context(
                 s.context_token,
                 sv.context_token,
                 s.bridge_source_request_id,
-                s.player_boost_recovery_required
+                s.boost_recovery_required
              FROM snapshots s
              INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
              WHERE s.is_current = 1
@@ -384,7 +389,7 @@ pub(super) fn require_load_data_for_player_boost(
     let changed = conn
         .execute(
             "UPDATE snapshots
-             SET player_boost_recovery_required = 1
+             SET boost_recovery_required = 1
              WHERE id = ?1 AND context_token = ?2",
             params![context.snapshot_id, &context.snapshot_context_token],
         )
@@ -866,7 +871,7 @@ mod tests {
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service::{create_save, set_active_save};
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v7.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
     const PLAYER_UID: i64 = 77;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -950,18 +955,18 @@ mod tests {
         );
 
         assert!(
-            !super::set_player_hidden_information_revealed(&fixture.conn, false)
+            !super::set_hidden_information_revealed(&fixture.conn, false)
                 .expect("conceal active save")
         );
         assert!(
-            !super::set_player_hidden_information_revealed(&fixture.conn, false)
+            !super::set_hidden_information_revealed(&fixture.conn, false)
                 .expect("repeat concealment")
         );
 
         let first_state: i64 = fixture
             .conn
             .query_row(
-                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                "SELECT reveal_hidden_information FROM saves WHERE id = ?1",
                 [fixture.save_id],
                 |row| row.get(0),
             )
@@ -970,15 +975,13 @@ mod tests {
 
         let second_save = create_save(&fixture.conn, "Second save").expect("create second save");
         set_active_save(&mut fixture.conn, second_save.id).expect("switch to second save");
-        assert!(
-            super::set_player_hidden_information_revealed(&fixture.conn, true)
-                .expect("reveal second save")
-        );
+        assert!(super::set_hidden_information_revealed(&fixture.conn, true)
+            .expect("reveal second save"));
 
         let second_state: i64 = fixture
             .conn
             .query_row(
-                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                "SELECT reveal_hidden_information FROM saves WHERE id = ?1",
                 [second_save.id],
                 |row| row.get(0),
             )
@@ -989,7 +992,7 @@ mod tests {
         let first_state_after_switch: i64 = fixture
             .conn
             .query_row(
-                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                "SELECT reveal_hidden_information FROM saves WHERE id = ?1",
                 [fixture.save_id],
                 |row| row.get(0),
             )
@@ -1014,14 +1017,14 @@ mod tests {
             .execute("UPDATE saves SET is_active = 0", [])
             .expect("clear active save");
 
-        let error = super::set_player_hidden_information_revealed(&fixture.conn, false)
+        let error = super::set_hidden_information_revealed(&fixture.conn, false)
             .expect_err("reject missing active save");
         assert_eq!(error, "No active save");
 
         let state: i64 = fixture
             .conn
             .query_row(
-                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                "SELECT reveal_hidden_information FROM saves WHERE id = ?1",
                 [fixture.save_id],
                 |row| row.get(0),
             )

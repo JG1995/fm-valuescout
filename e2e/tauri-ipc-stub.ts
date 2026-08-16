@@ -591,7 +591,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             } : null;
           }
 
-          if (cmd === "set_player_hidden_information_revealed") {
+          if (cmd === "set_hidden_information_revealed") {
             if (typeof args?.revealed !== "boolean") {
               throw new Error("Missing revealed state");
             }
