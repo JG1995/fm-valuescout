@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -467,7 +467,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 ### PR 2 — Staff workspace UI
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
