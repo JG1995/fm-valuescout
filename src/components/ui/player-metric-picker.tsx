@@ -4,41 +4,45 @@ import {
   fieldClasses,
   fieldLabelClasses,
 } from "@/components/ui/field/field-styles";
-import type {
-  PlayerMetric,
-  PlayerMetricCategory,
-  PlayerMetricRoleFamily,
-} from "@/utils/player-metrics";
 
-type PlayerMetricPickerProps = {
+export type MetricPickerMetric = {
+  id: string;
   label: string;
-  metrics: readonly PlayerMetric[];
+  category?: string;
+  roleFamily?: string;
+};
+
+export type MetricPickerGroup = {
+  label: string;
+  metrics: MetricPickerMetric[];
+};
+
+export type MetricPickerProps = {
+  label: string;
+  metrics: readonly MetricPickerMetric[];
   value: string;
   onChange: (metricId: string) => void;
   disabled?: boolean;
 };
 
-type MetricGroup = {
-  label: string;
-  metrics: PlayerMetric[];
-};
-
-const CATEGORY_ORDER: readonly PlayerMetricCategory[] = [
+const CATEGORY_ORDER = [
   "identity",
   "club-contract",
   "ability-reputation",
+  "staff-attributes",
   "visible-attributes",
   "hidden-attributes",
   "personality",
   "position-suitability",
   "current-role-scores",
   "potential-role-scores",
-];
+] as const;
 
-const CATEGORY_LABELS: Record<PlayerMetricCategory, string> = {
+const CATEGORY_LABELS: Record<(typeof CATEGORY_ORDER)[number], string> = {
   identity: "Identity",
   "club-contract": "Club and contract",
   "ability-reputation": "Ability and reputation",
+  "staff-attributes": "Staff attributes",
   "visible-attributes": "Visible attributes",
   "hidden-attributes": "Hidden attributes",
   personality: "Personality",
@@ -47,7 +51,7 @@ const CATEGORY_LABELS: Record<PlayerMetricCategory, string> = {
   "potential-role-scores": "Potential role scores",
 };
 
-const ROLE_FAMILY_ORDER: readonly PlayerMetricRoleFamily[] = [
+const ROLE_FAMILY_ORDER = [
   "Goalkeepers",
   "Central defense",
   "Full-back and wing-back",
@@ -56,7 +60,7 @@ const ROLE_FAMILY_ORDER: readonly PlayerMetricRoleFamily[] = [
   "Wide midfield and wings",
   "Attacking midfield",
   "Forwards",
-];
+] as const;
 
 const POPUP_GAP = 4;
 const POPUP_MAX_HEIGHT = 320;
@@ -64,9 +68,9 @@ const POPUP_MIN_WIDTH = 288;
 const VIEWPORT_PADDING = 8;
 
 function groupsForMetrics(
-  metrics: readonly PlayerMetric[],
+  metrics: readonly MetricPickerMetric[],
   search: string,
-): MetricGroup[] {
+): MetricPickerGroup[] {
   const term = search.trim().toLowerCase();
   const matches = metrics.filter((metric) => {
     if (!term) {
@@ -77,7 +81,7 @@ function groupsForMetrics(
       .includes(term);
   });
 
-  const groups: MetricGroup[] = [];
+  const groups: MetricPickerGroup[] = [];
   for (const category of CATEGORY_ORDER) {
     const categoryMetrics = matches.filter(
       (metric) => metric.category === category,
@@ -108,17 +112,52 @@ function groupsForMetrics(
         });
       }
     }
+
+    const knownFamilies = new Set<string>(ROLE_FAMILY_ORDER);
+    const ungroupedMetrics = categoryMetrics.filter(
+      (metric) => !metric.roleFamily || !knownFamilies.has(metric.roleFamily),
+    );
+    if (ungroupedMetrics.length > 0) {
+      groups.push({
+        label: CATEGORY_LABELS[category],
+        metrics: ungroupedMetrics,
+      });
+    }
+  }
+  const knownCategories = new Set(CATEGORY_ORDER);
+  const extraCategories = Array.from(
+    new Set(
+      matches
+        .map((metric) => metric.category)
+        .filter(
+          (category): category is string =>
+            category !== undefined && !knownCategories.has(category as never),
+        ),
+    ),
+  );
+  for (const category of extraCategories) {
+    const categoryMetrics = matches.filter(
+      (metric) => metric.category === category,
+    );
+    groups.push({ label: category, metrics: categoryMetrics });
+  }
+
+  const uncategorized = matches.filter(
+    (metric) => metric.category === undefined,
+  );
+  if (uncategorized.length > 0) {
+    groups.push({ label: "Metrics", metrics: uncategorized });
   }
   return groups;
 }
 
-export function PlayerMetricPicker({
+export function MetricPicker({
   label,
   metrics,
   value,
   onChange,
   disabled = false,
-}: PlayerMetricPickerProps) {
+}: MetricPickerProps) {
   const searchInputId = useId();
   const listboxId = useId();
   const optionIdPrefix = useId();
@@ -210,7 +249,7 @@ export function PlayerMetricPicker({
     activeOptionRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [activeMetric]);
 
-  const selectMetric = (metric: PlayerMetric) => {
+  const selectMetric = (metric: MetricPickerMetric) => {
     onChange(metric.id);
     closePicker();
   };
@@ -346,3 +385,6 @@ export function PlayerMetricPicker({
     </div>
   );
 }
+
+/** Compatibility export for the existing player Search and filter callers. */
+export const PlayerMetricPicker = MetricPicker;

@@ -1,10 +1,10 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useState } from "react";
+import { attributeValueTier } from "@/components/ui/attribute-value/attribute-value";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { formatMissable } from "@/utils/format";
 import type { PlayerDetail } from "../types/player-detail";
-import { attributeValueTier } from "../utils/attribute-groups";
 import {
   defaultProfilePosition,
   PROFILE_POSITION_ROWS,

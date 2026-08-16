@@ -94,7 +94,7 @@ public static class PlayerAttributeReader
         var map = new Dictionary<string, int?>(entries.Count, StringComparer.Ordinal);
         foreach (var entry in entries)
         {
-            map[entry.Key] = AttributeScale.TryPersonality(buffer[entry.Offset - spanStart]);
+            map[entry.Key] = AttributeScale.TryDecodeRawStrict(buffer[entry.Offset - spanStart]);
         }
 
         return map;

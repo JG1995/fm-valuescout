@@ -232,7 +232,8 @@ describe("player profile route", () => {
       }),
     );
     const user = userEvent.setup();
-    renderProfileRoute("/players/42");
+    const { queryClient } = renderProfileRoute("/players/42");
+    queryClient.setQueryData(["staff", "probe"], []);
 
     const summary = await screen.findByRole("region", {
       name: "Alex Scout summary",
@@ -279,6 +280,9 @@ describe("player profile route", () => {
     expect(getSetPlayerHiddenInformationRevealedIpcMockCalls()).toEqual([
       { revealed: false },
     ]);
+    expect(queryClient.getQueryState(["staff", "probe"])?.isInvalidated).toBe(
+      true,
+    );
 
     await user.click(reveal);
     expect(

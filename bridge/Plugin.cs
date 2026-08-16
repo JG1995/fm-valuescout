@@ -443,8 +443,13 @@ public class Plugin : BasePlugin
                 return;
             }
 
-            PlayerMutationIndex.Clear();
-            StaffMutationIndex.Clear();
+            var preservesIndexes =
+                PlayerBoostOperationService.PreservesLiveIndexOnFailure(result.Failure);
+            if (!preservesIndexes)
+            {
+                PlayerMutationIndex.Clear();
+                StaffMutationIndex.Clear();
+            }
 
             WriteStatus(
                 bridgeDirectory,
@@ -453,8 +458,10 @@ public class Plugin : BasePlugin
                 requestId: request.RequestId,
                 playersFound: null,
                 error: PlayerBoostFailureMessage(result.Failure),
-                playerBoostsSupported: false,
-                staffBoostsSupported: false,
+                playerBoostsSupported: preservesIndexes
+                    && PlayerBoosts.HasSupportedLiveIndex(gameVersion),
+                staffBoostsSupported: preservesIndexes
+                    && StaffBoosts.HasSupportedLiveIndex(gameVersion),
                 playerBoost: result.BoostResult);
         }
         catch (Exception ex)
@@ -566,8 +573,13 @@ public class Plugin : BasePlugin
                 return;
             }
 
-            StaffMutationIndex.Clear();
-            PlayerMutationIndex.Clear();
+            var preservesIndexes =
+                StaffBoostOperationService.PreservesLiveIndexOnFailure(result.Failure);
+            if (!preservesIndexes)
+            {
+                StaffMutationIndex.Clear();
+                PlayerMutationIndex.Clear();
+            }
             WriteStatus(
                 bridgeDirectory,
                 BridgeProtocol.StateFailed,
@@ -575,8 +587,10 @@ public class Plugin : BasePlugin
                 requestId: request.RequestId,
                 playersFound: null,
                 error: StaffBoostFailureMessage(result.Failure),
-                playerBoostsSupported: false,
-                staffBoostsSupported: false,
+                playerBoostsSupported: preservesIndexes
+                    && PlayerBoosts.HasSupportedLiveIndex(gameVersion),
+                staffBoostsSupported: preservesIndexes
+                    && StaffBoosts.HasSupportedLiveIndex(gameVersion),
                 staffBoost: result.BoostResult);
         }
         catch (Exception ex)
@@ -622,6 +636,7 @@ public class Plugin : BasePlugin
                 "staff boost could not verify rollback; Load Data again before making another change",
             _ => "staff boost failed; Load Data again",
         };
+
 
     /// <summary>
     /// game_plugin.dll may appear after plugin Load; rewrite status module flags without changing state.

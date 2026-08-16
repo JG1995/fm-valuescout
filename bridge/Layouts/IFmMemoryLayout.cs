@@ -43,7 +43,7 @@ public interface IFmMemoryLayout
     /// <summary>Potential ability (u16) relative to staff block base.</summary>
     int StaffPotentialAbilityOffset { get; }
 
-    /// <summary>Base of staff attribute bytes (stored ×5) relative to staff block.</summary>
+    /// <summary>Base of staff attribute bytes relative to staff block.</summary>
     int StaffAttrsOffset { get; }
 
     /// <summary>Stable staff attribute key → byte offset from <see cref="StaffAttrsOffset"/>.</summary>

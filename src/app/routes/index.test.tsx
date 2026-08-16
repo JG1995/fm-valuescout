@@ -6,6 +6,7 @@ import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import { staffKeys } from "@/features/staff/api/staff-keys";
 import {
   getLastCsvImportIpcArgs,
   resolveBusyCsvImportRequest,
@@ -106,6 +107,27 @@ describe("Dashboard", () => {
     expect(
       within(screen.getByRole("main")).getByText(/Associated clubs/),
     ).toBeInTheDocument();
+  });
+
+  it("invalidates Staff after saving the club family", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const { queryClient } = renderWithProviders();
+    queryClient.setQueryData(staffKeys.all, []);
+
+    const primaryClub = await screen.findByRole("combobox", {
+      name: "Primary club",
+    });
+    await user.type(primaryClub, "Barcelona");
+    await user.click(await screen.findByRole("option", { name: "Barcelona" }));
+    await user.click(screen.getByRole("button", { name: "Save club family" }));
+
+    await waitFor(() => {
+      expect(queryClient.getQueryState(staffKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+    });
   });
 
   it("filters Dashboard club setup primary-club suggestions", async () => {
@@ -529,6 +551,7 @@ describe("Dashboard", () => {
     queryClient.setQueryData(searchKeys.all, []);
     queryClient.setQueryData(playerKeys.all, []);
     queryClient.setQueryData(plannerKeys.all, []);
+    queryClient.setQueryData(staffKeys.all, []);
     queryClient.setQueryData(academyKeys.classes(), []);
 
     expect(await screen.findByText("Snapshot 12 player")).toBeInTheDocument();
@@ -566,6 +589,9 @@ describe("Dashboard", () => {
       expect(queryClient.getQueryState(plannerKeys.all)?.isInvalidated).toBe(
         true,
       );
+      expect(queryClient.getQueryState(staffKeys.all)?.isInvalidated).toBe(
+        true,
+      );
       expect(queryClient.getQueryData(academyKeys.classes())).toBeUndefined();
     });
   });
@@ -591,6 +617,7 @@ describe("Dashboard", () => {
     queryClient.setQueryData(searchKeys.all, []);
     queryClient.setQueryData(playerKeys.all, []);
     queryClient.setQueryData(plannerKeys.all, []);
+    queryClient.setQueryData(staffKeys.all, []);
     queryClient.setQueryData(academyKeys.classes(), []);
     await user.click(
       within(dialog).getByRole("button", { name: "Delete save" }),
@@ -607,6 +634,9 @@ describe("Dashboard", () => {
         true,
       );
       expect(queryClient.getQueryState(plannerKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryState(staffKeys.all)?.isInvalidated).toBe(
         true,
       );
       expect(queryClient.getQueryData(academyKeys.classes())).toBeUndefined();

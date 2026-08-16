@@ -7,7 +7,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PlayerMetricPicker } from "@/components/ui/player-metric-picker";
+import {
+  MetricPicker,
+  type MetricPickerMetric,
+} from "@/components/ui/player-metric-picker";
 import {
   PLAYER_METRICS,
   PLAYER_TABLE_MAX_COLUMN_WIDTH,
@@ -17,15 +20,25 @@ import {
 
 const KEYBOARD_RESIZE_STEP = 16;
 
-export type PlayerTableColumn = {
+export type ConfigurableTableColumn = {
   id: string;
   label: string;
   align: PlayerMetricAlignment;
   width: number;
 };
 
-type PlayerTableHeaderProps = {
-  columns: readonly PlayerTableColumn[];
+export type ConfigurableTableFixedColumn = ConfigurableTableColumn;
+
+export type ConfigurableTableMetric = MetricPickerMetric & {
+  align: PlayerMetricAlignment;
+  defaultWidth: number;
+  sortable: boolean;
+};
+
+export type ConfigurableTableHeaderProps = {
+  columns: readonly ConfigurableTableColumn[];
+  fixedColumns?: readonly ConfigurableTableFixedColumn[];
+  metrics: readonly ConfigurableTableMetric[];
   sortBy: string;
   sortDir: "asc" | "desc";
   onSortChange: (metricId: string) => void;
@@ -34,6 +47,9 @@ type PlayerTableHeaderProps = {
   onMoveColumn: (metricId: string, targetIndex: number) => void;
   onResizeColumn: (metricId: string, width: number) => void;
 };
+
+export type PlayerTableColumn = ConfigurableTableColumn;
+type PlayerTableHeaderProps = Omit<ConfigurableTableHeaderProps, "metrics">;
 
 function ColumnResizeHandle({
   label,
@@ -129,8 +145,10 @@ function ColumnResizeHandle({
   );
 }
 
-export function PlayerTableHeader({
+export function ConfigurableTableHeader({
   columns,
+  fixedColumns = [],
+  metrics,
   sortBy,
   sortDir,
   onSortChange,
@@ -138,18 +156,18 @@ export function PlayerTableHeader({
   onRemoveColumn,
   onMoveColumn,
   onResizeColumn,
-}: PlayerTableHeaderProps) {
+}: ConfigurableTableHeaderProps) {
   const [openColumnId, setOpenColumnId] = useState<string | null>(null);
   const [pickingColumnId, setPickingColumnId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
   const availableMetrics = useMemo(
     () =>
-      PLAYER_METRICS.filter(
+      metrics.filter(
         (metric) =>
           metric.sortable && !columns.some((column) => column.id === metric.id),
       ),
-    [columns],
+    [columns, metrics],
   );
 
   useEffect(() => {
@@ -328,7 +346,7 @@ export function PlayerTableHeader({
                     }
                   }}
                 >
-                  <PlayerMetricPicker
+                  <MetricPicker
                     label="Column"
                     metrics={availableMetrics}
                     value=""
@@ -348,7 +366,26 @@ export function PlayerTableHeader({
             </th>
           );
         })}
+        {fixedColumns.map((column) => (
+          <th
+            key={column.id}
+            scope="col"
+            aria-label={column.label}
+            className={`h-table-header-height px-2 ${
+              column.align === "right" ? "text-right" : "text-left"
+            }`}
+          >
+            <span className="text-label-md text-on-surface-variant uppercase">
+              {column.label}
+            </span>
+          </th>
+        ))}
       </tr>
     </thead>
   );
+}
+
+/** Compatibility wrapper for existing player Search and Squad callers. */
+export function PlayerTableHeader(props: PlayerTableHeaderProps) {
+  return <ConfigurableTableHeader {...props} metrics={PLAYER_METRICS} />;
 }

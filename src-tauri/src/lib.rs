@@ -69,6 +69,7 @@ pub fn run() {
             features::staff::commands::list_my_staff,
             features::staff::commands::get_staff,
             features::staff::commands::boost_staff_current_ability,
+            features::staff::commands::boost_my_staff_current_ability,
             features::player::commands::get_player,
             features::player::commands::set_hidden_information_revealed,
             features::player::commands::boost_current_ability,

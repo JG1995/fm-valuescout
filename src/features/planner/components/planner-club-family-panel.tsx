@@ -201,7 +201,11 @@ function PrimaryClubPicker({
   );
 }
 
-export function PlannerClubFamilyPanel() {
+export function PlannerClubFamilyPanel({
+  onSaved,
+}: {
+  onSaved?: () => void;
+} = {}) {
   const queryClient = useQueryClient();
   const { data: family } = useSuspenseQuery(plannerClubFamilyQueryOptions);
   const { data: availableClubs } = useSuspenseQuery(plannerClubsQueryOptions);
@@ -232,6 +236,7 @@ export function PlannerClubFamilyPanel() {
     mutationFn: () => savePlannerClubFamily(primaryClub, sources),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
+      onSaved?.();
     },
   });
 

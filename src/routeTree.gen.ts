@@ -13,7 +13,9 @@ import { Route as IndexRouteImport } from './app/routes/index'
 import { Route as AcademyRouteImport } from './app/routes/academy'
 import { Route as PlannerRouteImport } from './app/routes/planner'
 import { Route as SearchRouteImport } from './app/routes/search'
+import { Route as StaffRouteImport } from './app/routes/staff'
 import { Route as PlayersUidRouteImport } from './app/routes/players.$uid'
+import { Route as StaffUidRouteImport } from './app/routes/staff.$uid'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -35,10 +37,20 @@ const SearchRoute = SearchRouteImport.update({
   path: '/search',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StaffRoute = StaffRouteImport.update({
+  id: '/staff',
+  path: '/staff',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlayersUidRoute = PlayersUidRouteImport.update({
   id: '/players/$uid',
   path: '/players/$uid',
   getParentRoute: () => rootRouteImport,
+} as any)
+const StaffUidRoute = StaffUidRouteImport.update({
+  id: '/$uid',
+  path: '/$uid',
+  getParentRoute: () => StaffRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -46,14 +58,18 @@ export interface FileRoutesByFullPath {
   '/academy': typeof AcademyRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
+  '/staff': typeof StaffRouteWithChildren
   '/players/$uid': typeof PlayersUidRoute
+  '/staff/$uid': typeof StaffUidRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/academy': typeof AcademyRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
+  '/staff': typeof StaffRouteWithChildren
   '/players/$uid': typeof PlayersUidRoute
+  '/staff/$uid': typeof StaffUidRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -61,14 +77,38 @@ export interface FileRoutesById {
   '/academy': typeof AcademyRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
+  '/staff': typeof StaffRouteWithChildren
   '/players/$uid': typeof PlayersUidRoute
+  '/staff/$uid': typeof StaffUidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/academy' | '/planner' | '/search' | '/players/$uid'
+  fullPaths:
+    | '/'
+    | '/academy'
+    | '/planner'
+    | '/search'
+    | '/staff'
+    | '/players/$uid'
+    | '/staff/$uid'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/academy' | '/planner' | '/search' | '/players/$uid'
-  id: '__root__' | '/' | '/academy' | '/planner' | '/search' | '/players/$uid'
+  to:
+    | '/'
+    | '/academy'
+    | '/planner'
+    | '/search'
+    | '/staff'
+    | '/players/$uid'
+    | '/staff/$uid'
+  id:
+    | '__root__'
+    | '/'
+    | '/academy'
+    | '/planner'
+    | '/search'
+    | '/staff'
+    | '/players/$uid'
+    | '/staff/$uid'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -76,6 +116,7 @@ export interface RootRouteChildren {
   AcademyRoute: typeof AcademyRoute
   PlannerRoute: typeof PlannerRoute
   SearchRoute: typeof SearchRoute
+  StaffRoute: typeof StaffRouteWithChildren
   PlayersUidRoute: typeof PlayersUidRoute
 }
 
@@ -109,6 +150,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SearchRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/staff': {
+      id: '/staff'
+      path: '/staff'
+      fullPath: '/staff'
+      preLoaderRoute: typeof StaffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/players/$uid': {
       id: '/players/$uid'
       path: '/players/$uid'
@@ -116,14 +164,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PlayersUidRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/staff/$uid': {
+      id: '/staff/$uid'
+      path: '/$uid'
+      fullPath: '/staff/$uid'
+      preLoaderRoute: typeof StaffUidRouteImport
+      parentRoute: typeof StaffRoute
+    }
   }
 }
+
+interface StaffRouteChildren {
+  StaffUidRoute: typeof StaffUidRoute
+}
+
+const StaffRouteChildren: StaffRouteChildren = {
+  StaffUidRoute: StaffUidRoute,
+}
+
+const StaffRouteWithChildren = StaffRoute._addFileChildren(StaffRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcademyRoute: AcademyRoute,
   PlannerRoute: PlannerRoute,
   SearchRoute: SearchRoute,
+  StaffRoute: StaffRouteWithChildren,
   PlayersUidRoute: PlayersUidRoute,
 }
 export const routeTree = rootRouteImport

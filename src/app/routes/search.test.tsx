@@ -174,6 +174,69 @@ describe("search route", () => {
     ]);
   });
 
+  it("colors current and potential role scores while leaving other dynamic metrics neutral", async () => {
+    await resolveLoadDataIpcMock();
+    usePlayerTableStore
+      .getState()
+      .addColumns("search", [
+        "role.goalkeeper_ip",
+        "potential_role.goalkeeper_ip",
+        "attr.Acceleration",
+      ]);
+    setSearchPlayersOverride([
+      ...[
+        ["Weak fit", 164, 20],
+        ["Average fit", 163, 50],
+        ["Good fit", 162, 70],
+        ["Excellent fit", 161, 90],
+      ].map(([name, ca, score]) => ({
+        ...playerNamed(String(name), Number(ca)),
+        dynamicValues: {
+          "role.goalkeeper_ip": Number(score),
+          "potential_role.goalkeeper_ip": Number(score),
+          "attr.Acceleration": 16,
+        },
+      })),
+      {
+        ...playerNamed("Missing fit", 160),
+        dynamicValues: { "attr.Acceleration": 16 },
+      },
+    ]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    for (const [score, tier, scoreClass] of [
+      [20, "Weak", "text-score-1"],
+      [50, "Average", "text-score-2"],
+      [70, "Good", "text-score-3"],
+      [90, "Excellent", "text-score-4"],
+    ] as const) {
+      expect(
+        within(table).getByRole("img", {
+          name: `Role · Goalkeeper (IP): ${score}, ${tier}`,
+        }),
+      ).toHaveClass(scoreClass);
+      expect(
+        within(table).getByRole("img", {
+          name: `Potential role · Goalkeeper (IP): ${score}, ${tier}`,
+        }),
+      ).toHaveClass(scoreClass);
+    }
+
+    const missingRow = within(table).getByText("Missing fit").closest("tr");
+    if (!missingRow) {
+      throw new Error("Expected the missing-score player row.");
+    }
+    expect(within(missingRow).queryAllByRole("img")).toHaveLength(0);
+    expect(within(missingRow).getAllByText("—")).toHaveLength(2);
+    expect(within(missingRow).getByText("16")).not.toHaveAttribute(
+      "role",
+      "img",
+    );
+  });
+
   it("adds a metric from a header menu without changing the active sort", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

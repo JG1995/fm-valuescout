@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  attributeRows,
   attributeTierLabel,
   attributeValueTier,
+} from "@/components/ui/attribute-value/attribute-value";
+import {
+  attributeRows,
   GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS,
   GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS,
   HIDDEN_ATTRIBUTE_KEYS,

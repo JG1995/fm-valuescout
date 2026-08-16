@@ -179,7 +179,7 @@ spacing:
 
 > **Authority:** This document owns the visual language, design tokens, and UI decisions. It does not own product purpose ([CONCEPT.md](./CONCEPT.md)) or implemented system shape ([ARCHITECTURE.md](./ARCHITECTURE.md)).
 
-> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Dashboard** save and snapshot management surfaces (including ordered history, rename/delete controls, accessible destructive confirmations, current-context refresh, and **Club Setup**), CSV enrichment on Dashboard and Squad, the **Search** surface (staged compact filter editor, categorized metric picker, full-height virtual table, persistent column layout, and offline nationality flags), the **Player profile workspace** (`/players/$uid` with a compact summary, attribute tabs, and pitch-filtered role fit), and the **Squad** workspace (`/planner`: Squad, Planner, and Tactic) with its dual-phase tactic editor, full-height configurable Squad table, compact three-team depth matrix, Current/Potential score treatment, two Optimize actions, and one confirmed Clear all action are implemented. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
+> **Status:** Tokens, shared primitives (`src/components/ui/`, including **Modal** and **ScoreBadge**), the app shell (nav rail, top bar with **GlobalPlayerSearch**), the **Dashboard** save and snapshot management surfaces (including ordered history, rename/delete controls, accessible destructive confirmations, current-context refresh, and **Club Setup**), CSV enrichment on Dashboard and Squad, the **Search** surface (staged compact filter editor, categorized metric picker, full-height virtual table, persistent column layout, and offline nationality flags), the **Staff** workspace (Staff Search, My Staff, and Staff Profile), the **Player profile workspace** (`/players/$uid` with a compact summary, attribute tabs, and pitch-filtered role fit), and the **Squad** workspace (`/planner`: Squad, Planner, and Tactic) with its dual-phase tactic editor, full-height configurable Squad table, compact three-team depth matrix, Current/Potential score treatment, two Optimize actions, and one confirmed Clear all action are implemented. `src/styles/global.css` bridges the full token set into Tailwind `@theme` ([ADR-0007](./decisions/0007-tailwind-css-v4.md)).
 
 ## Brand & Style
 
@@ -216,7 +216,7 @@ The neutrals carry a whisper of blue (hue 264, chroma 0.008–0.010). That is ba
 | `score-3` | 61–80  | Good      | `oklch(0.8 0.145 75)`    | Viable squad or starting option |
 | `score-4` | 81–100 | Excellent | `oklch(0.76 0.16 150)`   | High-confidence role fit        |
 
-Player-profile attributes use the same colours with FM-scale bands: 1–5 Weak, 6–10 Average, 11–15 Good, and 16–20 Excellent. The raw value remains visible, and the colour never replaces it. **`primary` never appears inside a data cell, and the score ramp never appears on chrome.**
+Player- and staff-profile attributes use the same colours with FM-scale bands: 1–5 Weak, 6–10 Average, 11–15 Good, and 16–20 Excellent. The raw value remains visible, and the colour never replaces it. **`primary` never appears inside a data cell, and the score ramp never appears on chrome.**
 
 **Semantic Colours:** Four fixed roles for status indicators.
 
@@ -419,7 +419,7 @@ Primary navigation between the app's main surfaces.
 - **Container:** `surface-container-lowest`, full height, `rail-width` 56px collapsed or `rail-width-expanded` 208px expanded, 1px `outline-variant` right border. Items are 40px tall, `md` radius, `stack-xs` apart.
 - **States:** default icon in `on-surface-variant`; hover fills `surface-container-high`; active item fills `primary-container` with a `primary` icon and label, plus a 2px `primary` left indicator; `:focus-visible` shows the gold ring inside the item bounds.
 - **Variants:** collapsed (icon only, label as tooltip after 400ms) and expanded (20px icon plus `label-lg`). One collapse toggle pinned at the bottom.
-- **Content / Anatomy:** app mark at top, then navigation items — Search, Profiles, Planner, Optimizer, Settings — then the collapse toggle. Four to six items maximum; new surfaces go inside an existing one, not beside it.
+- **Content / Anatomy:** app mark at top, then **Dashboard**, **Search**, **Staff**, **Squad**, and **Youth Academy**, followed by the collapse toggle. Four to six items maximum; new surfaces go inside an existing one, not beside it.
 - **Behaviour:** a `<nav>` containing a list of router links. The active item sets `aria-current="page"`. The collapsed state persists in the layout store across launches.
 
 ### Top Bar
@@ -441,7 +441,7 @@ The Dashboard keeps recurring data actions and infrequent history management in 
 - **Rename:** open a focused form Modal with a bounded snapshot name. Blank input clears the custom name and restores the in-game date label. Successful rename invalidates only the active-save history query; the row remains in the same position.
 - **Snapshot deletion:** open a destructive Modal whose title includes the exact snapshot date or custom name plus its internal snapshot identifier. Explain that players, staff, role scores, bridge provenance, and Moneyball data are removed, while Planner, Academy, and Youth data remain. Disable duplicate submission, keep errors inside the dialog, and return focus to the history panel. Deleting the current row refreshes every current-only view; deleting a non-current row does not.
 - **Save management:** list save names and the active marker below the save rename/create forms. Every save delete Modal names the save and states that all snapshots, player data, Moneyball data, Planner settings, Academy records, and Youth enrichment will be removed. State whether the active save stays unchanged, another save becomes active, or a blank `Default save` replaces the final save. Bind the confirmation to the immutable target context so a save switch or row-ID reuse cannot retarget the action.
-- **Context feedback:** Load Data success copy remains bound to the save that started the scan. If the final save is deleted and a new `Default save` receives the same numeric ID, stale feedback is cleared. Current/save-changing success invalidates Search, Player, Planner, Academy, and CSV state from the route composition layer.
+- **Context feedback:** Load Data success copy remains bound to the save that started the scan. If the final save is deleted and a new `Default save` receives the same numeric ID, stale feedback is cleared. Current/save-changing success invalidates Search, Player, Staff, Planner, Academy, and CSV state from the route composition layer.
 - **Accessibility:** destructive dialogs use `role="dialog"`, `aria-modal`, target-specific headings, keyboard focus trapping, Escape/Cancel protection while pending, and focus restoration. Duplicate targets include visible and assistive identifiers so two rows with the same date or name remain distinguishable.
 
 ### Dashboard CSV enrichment panel
@@ -459,7 +459,7 @@ The Dashboard places **CSV enrichment** below the snapshot panels as a secondary
 
 ### Data Table
 
-The core surface. Player search results, squad lists, comparison sets.
+The core surface. Player and staff search results, squad lists, and comparison sets.
 
 - **Container:** `surface-container` with `lg` radius and 1px `outline-variant` border; the table itself is full-bleed inside it with no inner padding. Search and Squad panels are `flex` columns with `min-h-0`; their route roots use `h-full` so the shared table owns the vertical scroll and the document does not grow with the virtual spacer. The table fills the available width until configured minimums require horizontal overflow. Header row is `surface-container-lowest`, `table-header-height` 32px, sticky at `z-10`. Body rows carry a 1px `outline-variant` bottom border. Cell padding is `stack-sm` horizontal.
 - **States:** row hover fills `surface-container-high`; row `:focus-visible` shows the gold ring inset; selected row fills `primary-container` with a 2px `primary` left indicator and `aria-selected`; sorted column header shows `primary` label text plus a direction caret. Transition `background-color 150ms ease-out`. Row height never changes on any state.
@@ -582,6 +582,16 @@ Dedicated route `/players/$uid` (not an inspector overlay). Comparison inspector
 - **Role fit:** a compact pitch offers all 15 canonical positions as 44px buttons, including the central `SW` slot. The strongest positive recorded familiarity is selected first; if none exists, the highest current role supplies the fallback position. Known positive familiarity shows its raw 1–20 value and the same attribute tier colour; zero, unread, and legacy-missing values remain `—` and cannot become the best position. Selecting a position shows only roles whose catalog `positionTags` contain that exact position, so `SW` truthfully shows no roles when the catalog has none. **Current** descending is the default sort. When information is revealed, the **Current** and **Potential** column headers switch the score basis and toggle ascending or descending order. When concealed, Role fit exposes only Current scores. Unavailable scores stay last and catalog order breaks ties. Rows retain the role name and IP/OOP phase. Missing scores render `—`.
 - **States:** no snapshot → EmptyState pointing at Load Data; unknown UID → “Player not in this snapshot”; one loading skeleton mirrors the summary and two-panel workspace.
 - **Out of this layout for now:** radar charts, history/trend blocks, compare inspector, and combined IP/OOP weight controls. The pitch is a role filter and familiarity display, not a new suitability calculation.
+
+### Staff workspace layout
+
+Dedicated route `/staff` with URL-backed **Search** and **My Staff** workspaces, plus `/staff/$uid` for a Staff Profile.
+
+- **Staff Search:** the primary workspace uses the shared configurable, virtualized table and filter editor across the current snapshot. Defaults are Name, Age / DOB, Nationality, CA, PA, and all 20 current job-fit scores. Users can add, remove, move, resize, filter, and sort supported staff fields. Available job-fit scores use the shared four-tier score ramp; missing values remain neutral.
+- **My Staff:** shows every staff member whose club belongs to the configured Senior, Reserves, or Youth family. It has independent table layout and sort state, no search filters, and one confirmed **Boost all CA** action. Progress and completion copy preserve truthful updated, skipped, and failed counts; a failure after partial success states that already-applied FM changes remain.
+- **Staff Profile:** one compact summary sits above side-by-side **Attributes** and **Role fit** panels. Attributes present all 24 current values in Coaching, Mental, and Knowledge columns with the same row alignment and FM-scale tier treatment as Player Profile. Role fit ranks all 20 current job scores in a bounded virtual list. There is no pitch, potential projection, Wonderkid content, or player-only attribute grouping.
+- **Information visibility and action:** the save-scoped concealment preference is shared with Player Profile. Concealment hides PA and the individual **Boost CA** action but leaves current attributes and current job-fit scores visible. The fixed action always previews +10 capped at PA and 200.
+- **Navigation and states:** activating a Search or My Staff row opens `/staff/$uid` and browser Back returns to the originating table URL. No snapshot, missing club setup, empty, unavailable-score, loading, and error states use the shared patterns without creating page-level nested scrolling.
 
 ### Squad workspace layout
 

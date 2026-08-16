@@ -28,6 +28,7 @@ import {
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import { staffKeys } from "@/features/staff/api/staff-keys";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import { cn } from "@/utils/cn";
 
@@ -181,6 +182,7 @@ function PlayerProfileContent({
       setHiddenInformationRevealed(revealed),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: playerKeys.all });
+      await queryClient.invalidateQueries({ queryKey: staffKeys.all });
     },
   });
   const boost = useMutation({

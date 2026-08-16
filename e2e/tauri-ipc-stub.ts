@@ -8,6 +8,8 @@ type SmokeStubOptions = {
   squadPageFailure?: boolean;
   squadOverview?: boolean;
   playerProfile?: boolean;
+  staffWorkspace?: boolean;
+  staffFamily?: "configured" | "none";
   snapshotHistory?: boolean;
 };
 
@@ -19,6 +21,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const squadPageFailure = options.squadPageFailure ?? false;
   const squadOverview = options.squadOverview ?? false;
   const playerProfile = options.playerProfile ?? false;
+  const staffWorkspace = options.staffWorkspace ?? false;
+  const staffFamilyConfigured = options.staffFamily !== "none";
   const snapshotHistory = options.snapshotHistory ?? false;
   await page.addInitScript({
     content: `
@@ -33,6 +37,8 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const squadPageFailure = ${squadPageFailure ? "true" : "false"};
       const squadOverview = ${squadOverview ? "true" : "false"};
       const playerProfile = ${playerProfile ? "true" : "false"};
+      const staffWorkspace = ${staffWorkspace ? "true" : "false"};
+      const staffFamilyConfigured = ${staffFamilyConfigured ? "true" : "false"};
       const snapshotHistoryEnabled = ${snapshotHistory ? "true" : "false"};
       let nextSaveId = 2;
       let saves = [{
@@ -186,6 +192,68 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           marketValueGbp: 12000000,
         },
       ] : [];
+      const staffRoleIds = [
+        "assistant_manager",
+        "coach_attacking_technical",
+        "coach_attacking_tactical",
+        "coach_defending_technical",
+        "coach_defending_tactical",
+        "coach_possession_technical",
+        "coach_possession_tactical",
+        "coach_fitness",
+        "coach_goalkeeping",
+        "set_piece_coach",
+        "loan_manager",
+        "head_of_youth_development",
+        "scout",
+        "director_of_football",
+        "technical_director",
+        "recruitment_analyst",
+        "head_performance_analyst",
+        "performance_analyst",
+        "physio",
+        "sports_scientist",
+      ];
+      let staffRows = staffWorkspace ? [{
+        uid: 101,
+        name: "Alex Coach",
+        age: 44,
+        birthYear: 1982,
+        birthDayOfYear: 120,
+        nationalities: ["Denmark"],
+        nationUid: null,
+        gender: "male",
+        club: "Barcelona",
+        division: "La Liga",
+        ca: 145,
+        pa: 160,
+        jobId: 1,
+        weeklyWageGbp: 15000,
+        contractExpiryYear: 2028,
+        contractExpiryDayOfYear: 220,
+        dynamicValues: Object.fromEntries(staffRoleIds.map((roleId) => ["role." + roleId, 72])),
+      }] : [];
+      if (staffWorkspace && playerTableRowCount !== null) {
+        staffRows = Array.from({ length: playerTableRowCount }, (_, index) => ({
+          uid: index + 101,
+          name: "Staff member " + String(index + 1).padStart(3, "0"),
+          age: 44,
+          birthYear: 1982,
+          birthDayOfYear: 120,
+          nationalities: ["Denmark"],
+          nationUid: null,
+          gender: "male",
+          club: index % 2 === 0 ? "Barcelona" : "Barcelona B",
+          division: "La Liga",
+          ca: 145,
+          pa: 160,
+          jobId: 1,
+          weeklyWageGbp: 15000,
+          contractExpiryYear: 2028,
+          contractExpiryDayOfYear: 220,
+          dynamicValues: Object.fromEntries(staffRoleIds.map((roleId) => ["role." + roleId, 72])),
+        }));
+      }
       if (squadOverview && playerTableRowCount !== null) {
         squadPlayers = Array.from({ length: playerTableRowCount }, (_, index) => ({
           uid: index + 1,
@@ -225,6 +293,28 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           processed: 2,
           total: 2,
           updated: 2,
+          skipped: 0,
+          failed: 0,
+        });
+      };
+      const resolveMyStaffBoost = async (args) => {
+        const total = staffRows.length;
+        sendSquadBoostProgress(args, {
+          processed: 0,
+          total,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        staffRows = staffRows.map((staff) => ({
+          ...staff,
+          ca: Math.min(staff.ca + 10, staff.pa, 200),
+        }));
+        sendSquadBoostProgress(args, {
+          processed: total,
+          total,
+          updated: total,
           skipped: 0,
           failed: 0,
         });
@@ -389,7 +479,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           if (cmd === "get_current_snapshot") {
             const snapshot = currentSnapshot();
             if (snapshot) return snapshotSummary(snapshot);
-            return plannerSnapshot || playerProfile
+            return plannerSnapshot || playerProfile || staffWorkspace
               ? {
                   id: 1,
                   saveId: 1,
@@ -436,6 +526,71 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   total: squadPlayers.length,
                 }
               : { players: [], total: 0 };
+          }
+
+          if (cmd === "search_staff") {
+            const offset = Number.isInteger(args?.offset)
+              ? Math.max(0, args.offset)
+              : 0;
+            const limit = Number.isInteger(args?.limit)
+              ? Math.min(200, Math.max(1, args.limit))
+              : 50;
+            return {
+              state: staffWorkspace ? "ready" : "no_current_snapshot",
+              staff: staffRows.slice(offset, offset + limit),
+              total: staffRows.length,
+            };
+          }
+
+          if (cmd === "list_my_staff") {
+            const offset = Number.isInteger(args?.offset)
+              ? Math.max(0, args.offset)
+              : 0;
+            const limit = Number.isInteger(args?.limit)
+              ? Math.min(200, Math.max(1, args.limit))
+              : 50;
+            return {
+              state: !staffWorkspace
+                ? "no_current_snapshot"
+                : staffFamilyConfigured
+                  ? "ready"
+                  : "no_club_family",
+              staff: staffFamilyConfigured
+                ? staffRows.slice(offset, offset + limit)
+                : [],
+              total: staffFamilyConfigured ? staffRows.length : 0,
+            };
+          }
+
+          if (cmd === "boost_staff_current_ability") {
+            const uid = Number.isInteger(args?.uid) ? args.uid : 0;
+            const staff = staffRows.find((row) => row.uid === uid);
+            if (!staff) {
+              throw new Error("Staff member not found");
+            }
+            const previousCurrentAbility = staff.ca;
+            const currentAbility = Math.min(staff.ca + 10, staff.pa, 200);
+            staffRows = staffRows.map((row) =>
+              row.uid === uid ? { ...row, ca: currentAbility } : row,
+            );
+            return {
+              snapshotId: 1,
+              operation: "boost-staff-current-ability",
+              previousCurrentAbility,
+              currentAbility,
+              potentialAbility: staff.pa,
+            };
+          }
+
+          if (cmd === "boost_my_staff_current_ability") {
+            await resolveMyStaffBoost(args);
+            return {
+              updated: staffRows.length,
+              skipped: 0,
+              failed: 0,
+              recoveryRequired: false,
+              recoveryMessage: null,
+            };
           }
 
           if (cmd === "suggest_players") {
@@ -589,6 +744,65 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 },
               ],
             } : null;
+          }
+
+          if (cmd === "get_staff") {
+            const staffUid = Number.isInteger(args?.uid) ? args.uid : 0;
+            if (!staffWorkspace || staffUid !== 101) return null;
+            const attributes = Object.fromEntries([
+              "Attacking",
+              "Defending",
+              "Fitness",
+              "GoalkeepingDistribution",
+              "GoalkeepingHandling",
+              "GoalkeepingReflexes",
+              "Possession",
+              "SetPieces",
+              "Tactical",
+              "Technical",
+              "Adaptability",
+              "Authority",
+              "Determination",
+              "ManManagement",
+              "Motivating",
+              "WorkingWithYoungsters",
+              "DataAnalysis",
+              "JudgingPlayerAbility",
+              "JudgingPlayerPotential",
+              "JudgingStaffAbility",
+              "Negotiating",
+              "Physiotherapy",
+              "SportsScience",
+              "TacticalKnowledge",
+            ].map((key) => [key, key === "Adaptability" ? 16 : 15]));
+            return {
+              uid: 101,
+              name: "Alex Coach",
+              age: 44,
+              birthYear: 1982,
+              birthDayOfYear: 120,
+              nationalities: ["Denmark"],
+              nationUid: null,
+              gender: "male",
+              club: "Barcelona",
+              division: "La Liga",
+              ca: 145,
+              pa: 160,
+              jobId: 1,
+              weeklyWageGbp: 15000,
+              contractExpiryYear: 2028,
+              contractExpiryDayOfYear: 220,
+              attributes,
+              hiddenInformationRevealed: playerProfileHiddenInformationRevealed,
+              roleScores: staffRoleIds.map((roleId, index) => ({
+                roleId,
+                displayName: roleId
+                  .split("_")
+                  .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                  .join(" "),
+                score: 100 - index,
+              })),
+            };
           }
 
           if (cmd === "set_hidden_information_revealed") {

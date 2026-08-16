@@ -6,11 +6,12 @@ import {
   PLAYER_TABLE_MAX_COLUMN_WIDTH,
   PLAYER_TABLE_MIN_COLUMN_WIDTH,
 } from "@/utils/player-metrics";
+import { DEFAULT_STAFF_TABLE_COLUMN_IDS } from "@/utils/staff-table-layout";
 
 export const PLAYER_TABLE_LAYOUT_STORAGE_KEY =
   "fm-valuescout-player-table-layouts";
 
-export type PlayerTableId = "search" | "squad";
+export type PlayerTableId = "search" | "squad" | "staff-search" | "my-staff";
 
 export type PlayerTableLayout = {
   columnIds: string[];
@@ -48,26 +49,46 @@ function clampWidth(width: number): number {
   );
 }
 
-function defaultLayout(): PlayerTableLayout {
-  return { columnIds: [...DEFAULT_PLAYER_TABLE_COLUMN_IDS], widths: {} };
+function defaultLayout(table: PlayerTableId): PlayerTableLayout {
+  return {
+    columnIds:
+      table === "search" || table === "squad"
+        ? [...DEFAULT_PLAYER_TABLE_COLUMN_IDS]
+        : [...DEFAULT_STAFF_TABLE_COLUMN_IDS],
+    widths: {},
+  };
 }
 
 export function defaultPlayerTableLayouts(): PlayerTableLayouts {
-  return { search: defaultLayout(), squad: defaultLayout() };
+  return {
+    search: defaultLayout("search"),
+    squad: defaultLayout("squad"),
+    "staff-search": defaultLayout("staff-search"),
+    "my-staff": defaultLayout("my-staff"),
+  };
 }
 
-function sanitizeLayout(value: unknown): PlayerTableLayout {
+function sanitizeLayout(
+  value: unknown,
+  table: PlayerTableId,
+): PlayerTableLayout {
   const record = isRecord(value) ? value : {};
   const columnIds = Array.isArray(record.columnIds)
-    ? record.columnIds.filter(
-        (metricId, index, all): metricId is string =>
-          typeof metricId === "string" &&
-          getPlayerMetric(metricId)?.sortable === true &&
-          all.indexOf(metricId) === index,
-      )
+    ? record.columnIds.filter((metricId, index, all): metricId is string => {
+        if (typeof metricId !== "string" || all.indexOf(metricId) !== index) {
+          return false;
+        }
+        return table === "search" || table === "squad"
+          ? getPlayerMetric(metricId)?.sortable === true
+          : metricId.length > 0;
+      })
     : [];
   const visibleColumnIds =
-    columnIds.length > 0 ? columnIds : [...DEFAULT_PLAYER_TABLE_COLUMN_IDS];
+    columnIds.length > 0
+      ? columnIds
+      : table === "search" || table === "squad"
+        ? [...DEFAULT_PLAYER_TABLE_COLUMN_IDS]
+        : [...DEFAULT_STAFF_TABLE_COLUMN_IDS];
   const rawWidths = isRecord(record.widths) ? record.widths : {};
   const widths = Object.fromEntries(
     visibleColumnIds.flatMap((metricId) => {
@@ -86,8 +107,10 @@ function sanitizePersistedState(value: unknown): PersistedPlayerTableState {
   const layouts = isRecord(record.layouts) ? record.layouts : {};
   return {
     layouts: {
-      search: sanitizeLayout(layouts.search),
-      squad: sanitizeLayout(layouts.squad),
+      search: sanitizeLayout(layouts.search, "search"),
+      squad: sanitizeLayout(layouts.squad, "squad"),
+      "staff-search": sanitizeLayout(layouts["staff-search"], "staff-search"),
+      "my-staff": sanitizeLayout(layouts["my-staff"], "my-staff"),
     },
   };
 }
@@ -101,7 +124,9 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
           const layout = state.layouts[table];
           const additions = metricIds.filter(
             (metricId, index) =>
-              getPlayerMetric(metricId)?.sortable === true &&
+              (table === "search" || table === "squad"
+                ? getPlayerMetric(metricId)?.sortable === true
+                : metricId.length > 0) &&
               !layout.columnIds.includes(metricId) &&
               metricIds.indexOf(metricId) === index,
           );
@@ -184,7 +209,7 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
     }),
     {
       name: PLAYER_TABLE_LAYOUT_STORAGE_KEY,
-      version: 1,
+      version: 2,
       partialize: (state) => ({ layouts: state.layouts }),
       migrate: (persistedState) => sanitizePersistedState(persistedState),
       merge: (persistedState, currentState) => ({

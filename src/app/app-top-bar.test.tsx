@@ -18,6 +18,7 @@ import {
   DEFAULT_PLAYER_CAP,
   useLoadDataPreferences,
 } from "@/features/memory-read/stores/use-load-data-preferences";
+import { staffKeys } from "@/features/staff/api/staff-keys";
 import { routeTree } from "@/routeTree.gen";
 import {
   deferAcademyClassesFetch,
@@ -179,7 +180,7 @@ describe("app top bar", () => {
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
     expect(await screen.findByText(/Scan failed/i)).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("New save"), "Youth intake");
+    await user.type(await screen.findByLabelText("New save"), "Youth intake");
     await user.click(screen.getByRole("button", { name: "Create save" }));
     await user.selectOptions(
       screen.getByRole("combobox", { name: "Active save" }),
@@ -221,6 +222,21 @@ describe("app top bar", () => {
     );
   });
 
+  it("invalidates cached Staff data after Load Data", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders();
+    const staffProbeKey = [...staffKeys.all, "probe"];
+    queryClient.setQueryData(staffProbeKey, []);
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+
+    await waitFor(() =>
+      expect(queryClient.getQueryState(staffProbeKey)?.isInvalidated).toBe(
+        true,
+      ),
+    );
+  });
+
   it("refetches an active Academy query after switching saves", async () => {
     const user = userEvent.setup();
     setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 0 }]);
@@ -252,6 +268,26 @@ describe("app top bar", () => {
     await waitFor(() =>
       expect(screen.getByTestId("academy-cache-value")).toHaveTextContent(
         "2027",
+      ),
+    );
+  });
+
+  it("invalidates cached Staff data after switching saves", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders();
+    const staffProbeKey = [...staffKeys.all, "probe"];
+    queryClient.setQueryData(staffProbeKey, []);
+
+    await user.type(await screen.findByLabelText("New save"), "Youth intake");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Active save" }),
+      "2",
+    );
+
+    await waitFor(() =>
+      expect(queryClient.getQueryState(staffProbeKey)?.isInvalidated).toBe(
+        true,
       ),
     );
   });

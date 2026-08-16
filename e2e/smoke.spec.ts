@@ -225,6 +225,212 @@ test.describe("application smoke", () => {
     );
   });
 
+  test("Staff opens its Search workspace with the default role-fit columns", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { staffWorkspace: true });
+    await page.goto("/staff");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("heading", { level: 1, name: "Staff" }),
+    ).toBeVisible();
+    await expect(main.getByRole("tab", { name: "Search" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const table = main.getByRole("table", { name: "Staff search results" });
+    await expect(table).toBeVisible();
+    await expect(table.getByRole("columnheader")).toHaveCount(25);
+    await expect(
+      table.getByRole("columnheader", { name: "Coach — Goalkeeping" }),
+    ).toBeVisible();
+    await expect(table.getByText("Alex Coach")).toBeVisible();
+    await main.getByRole("tab", { name: "My Staff" }).click();
+    const myStaffTable = main.getByRole("table", { name: "My Staff overview" });
+    await expect(myStaffTable).toBeVisible();
+    await expect(myStaffTable.getByText("Alex Coach")).toBeVisible();
+  });
+
+  test("Staff rows open profiles with staff-only surfaces", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { staffWorkspace: true });
+    await page.goto("/staff");
+
+    const main = page.getByRole("main");
+    const table = main.getByRole("table", { name: "Staff search results" });
+    await table.locator('tr[data-index="0"]').click();
+    await expect(
+      main.getByRole("heading", { name: "Alex Coach" }),
+    ).toBeVisible();
+    await expect(main.getByRole("heading", { name: "Role fit" })).toBeVisible();
+    await expect(main.getByRole("region", { name: "Coaching" })).toBeVisible();
+    await expect(main.getByRole("region", { name: "Mental" })).toBeVisible();
+    await expect(main.getByRole("region", { name: "Knowledge" })).toBeVisible();
+    await expect(
+      main.getByRole("tablist", { name: "Staff attribute groups" }),
+    ).toHaveCount(0);
+    await expect(main.getByText("Authority")).toBeVisible();
+    await expect(main.getByText("Wonderkid Mentality")).toHaveCount(0);
+    await expect(main.getByText("Pitch")).toHaveCount(0);
+    await main.getByRole("button", { name: "Hide hidden info" }).click();
+    await expect(
+      main.getByRole("button", { name: "Reveal hidden info" }),
+    ).toBeVisible();
+  });
+
+  test("Staff Profile keeps role fit inside a virtual scrollport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, { staffWorkspace: true });
+    await page.goto("/staff/101");
+
+    const main = page.getByRole("main");
+    const scrollport = main.getByTestId("staff-role-fit-scroller");
+    await expect(scrollport).toBeVisible();
+    const before = await main.evaluate((element) => {
+      const scrollable = element as unknown as {
+        clientHeight: number;
+        scrollHeight: number;
+        scrollTop: number;
+      };
+      return {
+        clientHeight: scrollable.clientHeight,
+        scrollHeight: scrollable.scrollHeight,
+        scrollTop: scrollable.scrollTop,
+      };
+    });
+    const roleFit = await scrollport.evaluate((element) => {
+      const scrollable = element as unknown as {
+        clientHeight: number;
+        scrollHeight: number;
+      };
+      return {
+        clientHeight: scrollable.clientHeight,
+        scrollHeight: scrollable.scrollHeight,
+      };
+    });
+    expect(before.scrollHeight).toBeLessThanOrEqual(before.clientHeight + 1);
+    expect(roleFit.scrollHeight).toBeGreaterThan(roleFit.clientHeight);
+    expect(
+      await scrollport.locator("tbody tr[data-index]").count(),
+    ).toBeLessThan(20);
+
+    await scrollport.evaluate((element) => {
+      const scrollable = element as unknown as {
+        dispatchEvent: (event: Event) => boolean;
+        scrollHeight: number;
+        scrollTop: number;
+      };
+      scrollable.scrollTop = scrollable.scrollHeight;
+      scrollable.dispatchEvent(new Event("scroll"));
+    });
+    await expect(scrollport.getByText("Sports Scientist")).toBeVisible();
+    expect(
+      await main.evaluate(
+        (element) => (element as unknown as { scrollTop: number }).scrollTop,
+      ),
+    ).toBe(before.scrollTop);
+  });
+
+  test("Staff keeps a long Search result set inside the main table scroller", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      staffWorkspace: true,
+      playerTableRowCount: 101,
+    });
+    await page.goto("/staff");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("table", { name: "Staff search results" }),
+    ).toBeVisible();
+    const dimensions = await main.evaluate((element) => {
+      const mainElement = element as unknown as {
+        clientHeight: number;
+        scrollHeight: number;
+        querySelector: (
+          selector: string,
+        ) => { clientHeight: number; scrollHeight: number } | null;
+      };
+      const scroller = mainElement.querySelector(
+        '[data-testid="staff-search-results-scroller"]',
+      );
+      return {
+        mainClientHeight: mainElement.clientHeight,
+        mainScrollHeight: mainElement.scrollHeight,
+        scrollerClientHeight: scroller?.clientHeight ?? 0,
+        scrollerScrollHeight: scroller?.scrollHeight ?? 0,
+      };
+    });
+    expect(dimensions.mainScrollHeight).toBeLessThanOrEqual(
+      dimensions.mainClientHeight + 1,
+    );
+    expect(dimensions.scrollerScrollHeight).toBeGreaterThan(
+      dimensions.scrollerClientHeight,
+    );
+  });
+
+  test("My Staff fetches a later page from the configured family", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      playerTableRowCount: 101,
+      staffWorkspace: true,
+    });
+    await page.goto("/staff?view=my-staff");
+
+    const main = page.getByRole("main");
+    const table = main.getByRole("table", { name: "My Staff overview" });
+    const scroller = main.getByTestId("my-staff-results-scroller");
+    await expect(table).toBeVisible();
+    await scroller.evaluate((element) => {
+      const scrollable = element as unknown as {
+        scrollHeight: number;
+        scrollTop: number;
+      };
+      scrollable.scrollTop = scrollable.scrollHeight;
+    });
+    await expect(table.getByText("Staff member 101")).toBeVisible();
+  });
+
+  test("My Staff confirms a configured-family CA boost", async ({ page }) => {
+    await stubTauriIpc(page, { staffWorkspace: true });
+    await page.goto("/staff?view=my-staff");
+
+    const main = page.getByRole("main");
+    const table = main.getByRole("table", { name: "My Staff overview" });
+    await expect(table.getByRole("button", { name: "Boost CA" })).toHaveCount(
+      0,
+    );
+    await main.getByRole("button", { name: "Boost all CA" }).click();
+    const dialog = page.getByRole("dialog", { name: "Boost all CA?" });
+    await expect(dialog).toContainText("configured club family");
+    await dialog.getByRole("button", { name: "Boost all CA" }).click();
+    await expect(dialog).toContainText("0 of 1 staff processed.");
+    await expect(main.getByTestId("staff-boost-outcome")).toContainText(
+      "1 processed — 1 updated, 0 skipped, 0 failed.",
+    );
+  });
+
+  test("My Staff points an unconfigured family to Dashboard Club Setup", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { staffFamily: "none", staffWorkspace: true });
+    await page.goto("/staff?view=my-staff");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByText("Set up your club family", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("link", { name: "Open Club Setup" }),
+    ).toHaveAttribute("href", "/#club-setup");
+  });
+
   test("planner route shows no-snapshot Load Data guidance", async ({
     page,
   }) => {
