@@ -522,9 +522,9 @@ fn load_current_optimizer_candidates(
         .filter(|(_, _, age, _, _)| is_age_eligible(team, *age))
         .map(
             |(player_uid, last_known_name, _, preferred_foot, positions_json)| {
-                let positions = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
-                    &positions_json,
-                )
+                let positions = serde_json::from_str::<
+                    std::collections::BTreeMap<String, Option<i64>>,
+                >(&positions_json)
                 .map_err(|error| error.to_string())?;
                 let lane_scores = tactic
                     .lanes
@@ -636,9 +636,9 @@ fn load_potential_optimizer_candidates(
                 ca,
                 pa,
             )| {
-                let positions = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
-                    &positions_json,
-                )
+                let positions = serde_json::from_str::<
+                    std::collections::BTreeMap<String, Option<i64>>,
+                >(&positions_json)
                 .map_err(|error| error.to_string())?;
                 let attributes =
                     serde_json::from_str::<HashMap<String, Option<u8>>>(&attributes_json)
@@ -648,7 +648,9 @@ fn load_potential_optimizer_candidates(
                     ca,
                     pa,
                     age,
-                    positions.keys().map(String::as_str),
+                    positions
+                        .iter()
+                        .map(|(position, familiarity)| (position.as_str(), *familiarity)),
                 );
                 let lane_scores = tactic
                     .lanes
@@ -710,13 +712,14 @@ fn is_age_eligible(team: PlannerTeam, age: Option<i64>) -> bool {
 }
 
 fn is_suitable_for_lane(
-    positions: &serde_json::Map<String, serde_json::Value>,
+    positions: &std::collections::BTreeMap<String, Option<i64>>,
     lane: &TacticLane,
 ) -> bool {
     let has_suitability = |position: &str| {
         positions
             .get(position)
-            .and_then(serde_json::Value::as_i64)
+            .copied()
+            .flatten()
             .is_some_and(|suitability| suitability >= 15)
     };
     has_suitability(&lane.ip_position)

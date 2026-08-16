@@ -236,7 +236,7 @@ There is no safe schema-first skeleton: turning on all 15 keys before steps 1 an
 
 #### Commit 1 — Derive natural projection positions from familiarity
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(scoring): derive natural positions from familiarity`
 
@@ -336,7 +336,7 @@ Expected evidence: Rust unit/integration tests pass, all four projection call si
 
 #### Commit 2 — Make Search and Squad use positive familiarity
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(search): filter recorded position familiarity`
 
@@ -657,22 +657,22 @@ Expected evidence: bridge tests prove coverage/value fidelity, all schema-v7 fix
 
 **PR:** PR 1 — Preserve complete position familiarity
 
-**Commit:** Commit 1 — Derive natural projection positions from familiarity
+**Commit:** Commit 2 — Make Search and Squad use positive familiarity
 
 ### RED proof
 
-Add a projection test that supplies `AMR=20`, `MR=17`, `AMC=14`, unrelated zero-valued canonical slots, and an unread null. The current key-only projection contract either cannot represent this input or, when callers pass all keys, selects unrelated position groups. The failing observable assertion is that this complete map must produce the same projected attributes as the legacy sparse `{AMR: 20}` map.
+Add Search query fixtures with `AMR=20`, `MR=17`, `AMC=14`, one zero, and one null. The current resolver lists every canonical key and the current position-presence SQL treats key presence as relevance. The failing observable assertions are positive-only labels and exact filters that include `AMC=14` but exclude zero and null.
 
-Add one caller-level RED assertion in the player-detail path and one Planner/optimizer path so a local helper that is not wired to production cannot satisfy the commit.
+Add a dynamic metric assertion for `pos.AMC=14`, a read zero, and an unread null. Keep the proof at the shared Search/Squad resolver seam so Squad does not gain a second formatting path.
 
 ### Expected outcome
 
-All potential attribute and role-score paths accept raw nullable familiarity, select natural positions once inside the shared projection module, and preserve exact outputs for equivalent sparse schema-v6 data. Planner/optimizer lane eligibility remains explicitly playable at 15.
+Search and Squad use positive recorded familiarity for position labels and exact presence filters, while dynamic `pos.*` metrics retain exact raw values. Complete maps no longer make zero or unread canonical slots appear as positions.
 
 ### Explicit exclusions
 
-- No bridge, dump schema, golden fixture, Search, profile pitch, Academy, documentation, Git publication, version, or changelog changes.
-- No projection curve, role catalog, scoring-weight, or cache-version change.
+- No UI redesign, new filter operators, playable/natural threshold changes, bridge/schema, profile, Academy, projection, documentation, Git publication, version, or changelog changes.
+- Do not threshold or booleanize dynamic `pos.*` metrics.
 
 ## Discoveries and replanning
 
@@ -687,7 +687,7 @@ All potential attribute and role-score paths accept raw nullable familiarity, se
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| None | None | Pending record | Planning only | Not run | None |
+| PR 1 | Commit 1 — Derive natural projection positions from familiarity | Pending record | Nullable familiarity feeds the shared natural-position projection rule; player detail, potential cache, Planner depth, and optimizer callers no longer pass key presence | Clean; no CRITICAL/HIGH/MEDIUM/NITPICK findings | None |
 
 ## Final validation
 

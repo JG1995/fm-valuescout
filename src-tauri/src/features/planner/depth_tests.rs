@@ -486,7 +486,7 @@ fn combines_selected_lane_potential_scores_for_resolved_and_outside_pool_players
          SET ca = 80,
              pa = 170,
              age = 20,
-             positions_json = '{\"GK\": 18}',
+             positions_json = '{\"GK\": 18, \"SW\": null, \"MC\": 14, \"DM\": 0}',
              attributes_json = ?1
          WHERE snapshot_id = ?2 AND uid = 77",
         params![
@@ -507,7 +507,8 @@ fn combines_selected_lane_potential_scores_for_resolved_and_outside_pool_players
     )
     .expect("set role scores");
 
-    let projected_attributes = project_attributes(&attributes, 80, 170, Some(20), ["GK"]);
+    let projected_attributes =
+        project_attributes(&attributes, 80, 170, Some(20), [("GK", Some(20))]);
     let ip_role = all_roles()
         .iter()
         .find(|role| role.role_id == "goalkeeper_ip")
