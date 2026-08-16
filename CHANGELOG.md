@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-16
+
+### Added
+
+- A Staff workspace now provides full-snapshot Staff Search with configurable columns, filters, sorting, and 20 current job-fit scores.
+- My Staff shows the complete configured Senior, Reserves, and Youth club family and can apply the guarded fixed +10 CA action across eligible staff.
+- Staff profiles now show current Coaching, Mental, and Knowledge attributes, ranked job fit, the shared hidden-information preference, and an individual fixed +10 CA action.
+
+### Changed
+
+- Staff and player role scores use the shared accessible four-tier score treatment, and staff attributes match the Player Profile presentation.
+- Load Data schema v8 persists the staff attributes and job-fit scores required by the Staff workspace while older snapshots remain readable.
+
+### Fixed
+
+- Working With Youngsters now preserves its raw 1–20 FM value instead of applying reputation scaling.
+- Staff data refreshes after save or snapshot context changes, and partial My Staff boost failures retain truthful progress and applied-change feedback.
+
 ## [0.4.0] - 2026-08-16
 
 ### Added
