@@ -54,7 +54,8 @@ public sealed class Fm263Layout : IFmMemoryLayout
 
     public int StaffAttrsOffset => 0x10;
 
-    // Stable English keys for the audited FMSuperScout StaffAttrs offsets; stored ×5.
+    // Stable English keys for the audited FMSuperScout StaffAttrs offsets.
+    // Most are stored ×5; WorkingWithYoungsters is a raw 1–20 byte.
     public IReadOnlyList<AttributeLayoutEntry> StaffAttributeEntries { get; } = new AttributeLayoutEntry[]
     {
         new("Attacking", 0x22),

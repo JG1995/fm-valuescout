@@ -420,7 +420,14 @@ public sealed class StaffExtractionTests
         var values = new byte[maxOffset + 1];
         foreach (var attribute in ExpectedStaffAttributes)
         {
-            values[attribute.Offset] = attribute.Value is { } value ? (byte)(value * 5) : (byte)0;
+            if (attribute.Value is not { } value)
+            {
+                continue;
+            }
+
+            values[attribute.Offset] = attribute.Key == "WorkingWithYoungsters"
+                ? (byte)value
+                : (byte)(value * 5);
         }
 
         reader.AddBytes(staffBlock + (ulong)layout.StaffAttrsOffset, values);

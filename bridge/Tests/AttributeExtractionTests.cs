@@ -51,9 +51,9 @@ public sealed class AttributeExtractionTests
     [InlineData(20, 20)]
     [InlineData(21, null)]
     [InlineData(255, null)]
-    public void Attribute_scale_personality_null_outside_one_through_twenty(byte raw, int? expected)
+    public void Attribute_scale_raw_null_outside_one_through_twenty(byte raw, int? expected)
     {
-        Assert.Equal(expected, AttributeScale.TryPersonality(raw));
+        Assert.Equal(expected, AttributeScale.TryDecodeRawStrict(raw));
     }
 
     [Fact]

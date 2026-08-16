@@ -1,7 +1,7 @@
 namespace FmDataBridge.Extraction;
 
 /// <summary>
-/// FM attribute encoding: player attrs stored ×5; personality bytes are already 1–20.
+/// FM attribute encoding: most attributes are stored ×5; some bytes are already 1–20.
 /// </summary>
 public static class AttributeScale
 {
@@ -33,8 +33,8 @@ public static class AttributeScale
         return value is >= 1 and <= 20 ? value : null;
     }
 
-    /// <summary>Personality bytes are raw 1–20; out of range is null (not zero).</summary>
-    public static int? TryPersonality(byte raw) => raw is >= 1 and <= 20 ? raw : null;
+    /// <summary>Decode a raw 1–20 attribute byte; out of range is null (not zero).</summary>
+    public static int? TryDecodeRawStrict(byte raw) => raw is >= 1 and <= 20 ? raw : null;
 
     private static int DecodeScaledUnclamped(byte raw) => (int)Math.Floor(raw / 5.0 + 0.5);
 }

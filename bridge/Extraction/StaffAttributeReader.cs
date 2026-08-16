@@ -32,7 +32,10 @@ public static class StaffAttributeReader
             var attributes = new Dictionary<string, int?>(entries.Count + 1, StringComparer.Ordinal);
             foreach (var entry in entries)
             {
-                attributes[entry.Key] = AttributeScale.TryDecodeScaledStrict(buffer[entry.Offset - min]);
+                var raw = buffer[entry.Offset - min];
+                attributes[entry.Key] = entry.Key == "WorkingWithYoungsters"
+                    ? AttributeScale.TryDecodeRawStrict(raw)
+                    : AttributeScale.TryDecodeScaledStrict(raw);
             }
 
             var adaptabilityOffset = layout.PersonalityEntries
@@ -41,7 +44,7 @@ public static class StaffAttributeReader
             attributes["Adaptability"] =
                 TryAdd(personAddress, adaptabilityOffset, out var adaptabilityAddress)
                 && reader.TryReadByte(adaptabilityAddress, out var adaptability)
-                    ? AttributeScale.TryPersonality(adaptability)
+                    ? AttributeScale.TryDecodeRawStrict(adaptability)
                     : null;
 
             return attributes;
