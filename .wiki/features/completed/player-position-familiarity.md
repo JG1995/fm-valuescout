@@ -40,7 +40,7 @@ The final PR starts from `origin/main` at `3e77e7864c0ed980630cbc0948f512c1dfd19
 | `f9ab62232dfecb48e0412349844a6626339bb868` | `refactor(search): filter recorded position familiarity` | Search and Squad use positive integer familiarity; a JSON-boolean filter issue was corrected before commit. |
 | `e04627f1dc6482167532cfc35c7e2a4bbc7308f1` | `feat(profile): display complete position familiarity` | Profile and Academy preserve nullable maps, show positive familiarity, and keep the playable threshold. |
 | `425d80fd4a7c2ca5679a934c02a39a95379e67c4` | `feat(memory-read): emit complete position familiarity` | Bridge extraction, schema-v7 validation, exact persistence, fixtures, and protocol documentation. |
-| Pending record | `docs(memory-read): close complete position familiarity feature` | Documentation reconciliation for this completed record. |
+| `ea82d2fea0dbc92769c7d60edf6f05a28bbb9113` | `docs(memory-read): close complete position familiarity feature` | Documentation reconciliation for this completed record. |
 
 ## Final publication
 
@@ -76,7 +76,7 @@ exact_implementation_refs:
   - f9ab62232dfecb48e0412349844a6626339bb868
   - e04627f1dc6482167532cfc35c7e2a4bbc7308f1
   - 425d80fd4a7c2ca5679a934c02a39a95379e67c4
-documentation_commit: "Pending record"
+documentation_commit: ea82d2fea0dbc92769c7d60edf6f05a28bbb9113
 ```
 
 ## Feature close-out
