@@ -12,12 +12,17 @@ public sealed class Fm263Layout : IFmMemoryLayout
 {
     private const string PlayerBoostBuild = "26.3.2";
 
+    private const string StaffBoostBuild = "26.3.2";
+
     public static Fm263Layout Instance { get; } = new();
 
     public string VersionKey => "26.3";
 
     public bool SupportsPlayerBoosts(string gameVersion) =>
         string.Equals(gameVersion?.Trim(), PlayerBoostBuild, StringComparison.Ordinal);
+
+    public bool SupportsStaffBoosts(string gameVersion) =>
+        string.Equals(gameVersion?.Trim(), StaffBoostBuild, StringComparison.Ordinal);
 
     public string DisplayName => "FM 26.3";
 

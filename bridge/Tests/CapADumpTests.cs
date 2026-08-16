@@ -852,6 +852,7 @@ public sealed class CapADumpTests
             Assert.Equal(1, factory.CaptureCount);
             Assert.Equal(1, snapshot.DisposeCount);
             Assert.Empty(result.LivePlayerCandidates);
+            Assert.Empty(result.LiveStaffCandidates);
 
             using var dump = JsonDocument.Parse(File.ReadAllText(BridgePaths.GetDumpPath(bridgeDir)));
             Assert.Equal(202u, dump.RootElement.GetProperty("players")[0].GetProperty("uid").GetUInt32());

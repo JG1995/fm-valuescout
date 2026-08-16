@@ -14,6 +14,7 @@ public static class BridgeProtocol
     public const string StateFailed = "failed";
     public const string OperationFullDump = "full-dump";
     public const string OperationBoostCurrentAbility = "boost-current-ability";
+    public const string OperationBoostStaffCurrentAbility = "boost-staff-current-ability";
     public const string OperationWonderkidMentality = "wonderkid-mentality";
     public const string AppFolderName = "fm-valuescout";
     public const string BridgeFolderName = "fm-bridge";

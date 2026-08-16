@@ -594,7 +594,11 @@ public sealed class CapADumpPipeline
                 staff: staff,
                 manager: manager);
         return string.Equals(reader.ReadSource, "live", StringComparison.Ordinal)
-            ? result with { LivePlayerCandidates = drafts.Select(draft => draft.Candidate).ToArray() }
+            ? result with
+            {
+                LivePlayerCandidates = drafts.Select(draft => draft.Candidate).ToArray(),
+                LiveStaffCandidates = staffDrafts.Select(draft => draft.Candidate).ToArray(),
+            }
             : result;
     }
 
@@ -720,6 +724,9 @@ public readonly record struct CapADumpResult(
     /// Candidate locations from a successful live read only. This remains internal and never enters a dump or status.
     /// </summary>
     internal IReadOnlyList<PersonCandidate> LivePlayerCandidates { get; init; } = Array.Empty<PersonCandidate>();
+
+    /// <summary>Staff candidate locations from a successful live read only.</summary>
+    internal IReadOnlyList<PersonCandidate> LiveStaffCandidates { get; init; } = Array.Empty<PersonCandidate>();
 
     public static CapADumpResult Succeeded(
         int playerCount,

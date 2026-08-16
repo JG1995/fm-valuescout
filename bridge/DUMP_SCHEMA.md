@@ -33,20 +33,21 @@ Rust accepts only a schema-v8, protocol-v1 object with valid count, enum, and fi
 
 The bridge never replaces a prior good dump with an empty player result. `emptySave` supports explicit tests and future handling only.
 
-## File-protocol player boosts
+## File-protocol boosts
 
-Dump schema v8 remains unchanged by the shared protocol-v1 request file, which also permits two optional closed operations after a successful live full dump:
+Dump schema v8 remains unchanged by the shared protocol-v1 request file, which also permits three optional closed operations after a successful live full dump:
 
 | Operation | Required action fields | Bridge rule |
 | --- | --- | --- |
 | `boost-current-ability` | `sourceRequestId`, `playerUid`, expected CA/PA, `currentAbilityIncrement` | Increment must be `5` or `10`; bridge caps live CA at live PA and `200` |
 | `wonderkid-mentality` | `sourceRequestId`, `playerUid`, expected CA/PA, nullable expected Ambition/Professionalism/Determination | At least one known field must be `1..10`; the bridge generates its `11..20` target itself |
+| `boost-staff-current-ability` | `sourceRequestId`, `staffUid`, expected CA/PA | Bridge adds exactly `10` and caps live CA at live PA and `200`; no increment or target is accepted |
 
 For Wonderkid Mentality, a `null` expected field means the source snapshot did not supply a writable value: the bridge neither reads nor changes that field. A known value above `10` is revalidated and remains unchanged.
 
-`sourceRequestId` binds the action to the plugin's in-memory live candidate index. The index is replaced only after a successful live dump and is absent after a snapshot-backed scan or plugin restart. Manual force scans receive a distinct source request ID each time. Requests never carry memory addresses, field selectors, or arbitrary target values.
+`sourceRequestId` binds the action to the plugin's separate in-memory player or staff candidate index. The indexes are replaced only after a successful live dump and are absent after a snapshot-backed scan or plugin restart. Manual force scans receive a distinct source request ID each time. Requests never carry memory addresses, field selectors, or arbitrary target values.
 
-`status.json` may add `playerBoostsSupported` and a `playerBoost` result object. The result reports only verified CA/PA and mentality values plus rollback state. It contains no player UID, address, raw bytes, or process path. Existing full-dump readers can ignore these optional fields.
+`status.json` may add `playerBoostsSupported` and `playerBoost`, plus `staffBoostsSupported` and `staffBoost`. Results report only verified CA/PA or mentality values plus rollback state. They contain no UID, address, raw bytes, or process path. `staffBoostsSupported` is true only for a live candidate index on the proved exact FM 26.3.2 build. Existing full-dump readers can ignore these optional fields.
 
 ## Player object
 
@@ -96,7 +97,7 @@ The fixed keys are `Attacking`, `Defending`, `Fitness`, `Possession`, `Technical
 
 `Authority` is the FM26 name for the former Level of Discipline concept. The FM26.3 layout reads its scaled byte from `StaffAttrsOffset + 0x30`. `Adaptability` is a raw 1–20 person personality byte at `person + 0x70`; staff extraction publishes it in the staff attribute map because staff scoring consumes it. Either value is `null` when the read fails or the decoded value is outside 1–20.
 
-Staff data is persisted for future features. It has no query API, UI, per-attribute SQL columns, or search indexes in this schema.
+The dump contract defines no query, UI, per-attribute SQL-column, or search-index semantics.
 
 ## Manager object
 
@@ -106,7 +107,7 @@ When present, `manager` contains `uid`, non-empty `name`, nullable `club`, and n
 
 | File | Writer | Purpose |
 | --- | --- | --- |
-| `request.json` | Tauri | Full-dump request or one closed player boost |
+| `request.json` | Tauri | Full-dump request or one closed player/staff boost |
 | `status.json` | Bridge | Idle, scanning, ready, or failed; optional cap and boost result signals |
 | `dump.json` | Bridge | This schema |
 | `diagnostics.txt` | Bridge | Scan diagnostics, never ingested |

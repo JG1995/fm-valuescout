@@ -41,6 +41,10 @@ public class Plugin : BasePlugin
 
     private static readonly PlayerBoostOperationService PlayerBoosts = new(Layouts, PlayerMutationIndex);
 
+    private static readonly StaffMutationIndex StaffMutationIndex = new();
+
+    private static readonly StaffBoostOperationService StaffBoosts = new(Layouts, StaffMutationIndex);
+
     public override void Load()
     {
         Log = base.Log;
@@ -49,6 +53,7 @@ public class Plugin : BasePlugin
         {
             var bridgeDirectory = BridgePaths.EnsureBridgeDirectory();
             PlayerMutationIndex.Clear();
+            StaffMutationIndex.Clear();
             WriteIdleStatus(bridgeDirectory, DetectModulesBestEffort());
             Log.LogInfo(
                 $"FM Data Bridge {MyPluginInfo.PLUGIN_VERSION} loaded; wrote {BridgePaths.GetStatusPath(bridgeDirectory)}");
@@ -96,6 +101,7 @@ public class Plugin : BasePlugin
         }
 
         PlayerMutationIndex.Clear();
+        StaffMutationIndex.Clear();
 
         return true;
     }
@@ -207,6 +213,10 @@ public class Plugin : BasePlugin
                         acceptedScope,
                         cancelToken);
                 }
+                else if (acceptedRequest.Operation == BridgeProtocol.OperationBoostStaffCurrentAbility)
+                {
+                    RunStaffBoost(bridgeDirectory, acceptedRequest, cancelToken);
+                }
                 else
                 {
                     RunPlayerBoost(bridgeDirectory, acceptedRequest, cancelToken);
@@ -305,7 +315,18 @@ public class Plugin : BasePlugin
                     PlayerMutationIndex.Clear();
                 }
 
+                if (result.LiveStaffCandidates.Count > 0
+                    && StaffBoosts.SupportsExactGameBuild(gameVersion))
+                {
+                    StaffMutationIndex.Replace(requestId, gameVersion, result.LiveStaffCandidates);
+                }
+                else
+                {
+                    StaffMutationIndex.Clear();
+                }
+
                 var playerBoostsSupported = PlayerBoosts.HasSupportedLiveIndex(gameVersion);
+                var staffBoostsSupported = StaffBoosts.HasSupportedLiveIndex(gameVersion);
 
                 WriteStatus(
                     bridgeDirectory,
@@ -316,7 +337,8 @@ public class Plugin : BasePlugin
                     error: null,
                     scanTruncated: result.ScanTruncated,
                     maxAccepted: result.MaxAccepted,
-                    playerBoostsSupported: playerBoostsSupported);
+                    playerBoostsSupported: playerBoostsSupported,
+                    staffBoostsSupported: staffBoostsSupported);
                 Log.LogInfo(
                     $"Dump request {requestId} wrote {result.PlayerCount} players"
                     + (result.ScanTruncated ? " (scan truncated)" : ""));
@@ -330,7 +352,8 @@ public class Plugin : BasePlugin
                     requestId: requestId,
                     playersFound: null,
                     error: result.Error,
-                    playerBoostsSupported: PlayerBoosts.HasSupportedLiveIndex(gameVersion));
+                    playerBoostsSupported: PlayerBoosts.HasSupportedLiveIndex(gameVersion),
+                    staffBoostsSupported: StaffBoosts.HasSupportedLiveIndex(gameVersion));
                 Log.LogWarning($"Dump request {requestId} failed: {result.Error}");
             }
         }
@@ -415,11 +438,13 @@ public class Plugin : BasePlugin
                     playersFound: null,
                     error: null,
                     playerBoostsSupported: PlayerBoosts.HasSupportedLiveIndex(gameVersion),
+                    staffBoostsSupported: StaffBoosts.HasSupportedLiveIndex(gameVersion),
                     playerBoost: result.BoostResult);
                 return;
             }
 
             PlayerMutationIndex.Clear();
+            StaffMutationIndex.Clear();
 
             WriteStatus(
                 bridgeDirectory,
@@ -429,11 +454,14 @@ public class Plugin : BasePlugin
                 playersFound: null,
                 error: PlayerBoostFailureMessage(result.Failure),
                 playerBoostsSupported: false,
+                staffBoostsSupported: false,
                 playerBoost: result.BoostResult);
         }
         catch (Exception ex)
         {
             Log.LogError($"Player boost crashed: {ex}");
+            PlayerMutationIndex.Clear();
+            StaffMutationIndex.Clear();
             try
             {
                 WriteStatus(
@@ -443,7 +471,8 @@ public class Plugin : BasePlugin
                     requestId: request.RequestId,
                     playersFound: null,
                     error: "player boost failed unexpectedly",
-                    playerBoostsSupported: false);
+                    playerBoostsSupported: false,
+                    staffBoostsSupported: false);
             }
             catch
             {
@@ -470,6 +499,128 @@ public class Plugin : BasePlugin
             PlayerBoostFailure.PartialRollbackUnverified =>
                 "player boost could not verify rollback; Load Data again before making another change",
             _ => "player boost failed; Load Data again",
+        };
+
+    private static void RunStaffBoost(
+        string bridgeDirectory,
+        BridgeRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reader = new WindowsMemoryReader();
+            var known = reader.LocateKnownModules();
+            var modules = ModulePresence.FromBounds(known);
+            WriteStatus(
+                bridgeDirectory,
+                BridgeProtocol.StateScanning,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: null,
+                staffBoostsSupported: false);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "staff boost cancelled before it started",
+                    staffBoostsSupported: false);
+                return;
+            }
+
+            if (!GameVersionDetector.TryDetectFromCurrentProcess(out var gameVersion)
+                || string.IsNullOrWhiteSpace(gameVersion))
+            {
+                const string message =
+                    "could not detect FM game_plugin.dll version; refusing staff boost (fail closed)";
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    modules,
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: message,
+                    staffBoostsSupported: false);
+                Log.LogWarning(message);
+                return;
+            }
+
+            var result = StaffBoosts.Execute(request, gameVersion, reader, reader);
+            if (result.Succeeded)
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateReady,
+                    modules,
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: null,
+                    playerBoostsSupported: PlayerBoosts.HasSupportedLiveIndex(gameVersion),
+                    staffBoostsSupported: StaffBoosts.HasSupportedLiveIndex(gameVersion),
+                    staffBoost: result.BoostResult);
+                return;
+            }
+
+            StaffMutationIndex.Clear();
+            PlayerMutationIndex.Clear();
+            WriteStatus(
+                bridgeDirectory,
+                BridgeProtocol.StateFailed,
+                modules,
+                requestId: request.RequestId,
+                playersFound: null,
+                error: StaffBoostFailureMessage(result.Failure),
+                playerBoostsSupported: false,
+                staffBoostsSupported: false,
+                staffBoost: result.BoostResult);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError($"Staff boost crashed: {ex}");
+            StaffMutationIndex.Clear();
+            PlayerMutationIndex.Clear();
+            try
+            {
+                WriteStatus(
+                    bridgeDirectory,
+                    BridgeProtocol.StateFailed,
+                    DetectModulesBestEffort(),
+                    requestId: request.RequestId,
+                    playersFound: null,
+                    error: "staff boost failed unexpectedly",
+                    playerBoostsSupported: false,
+                    staffBoostsSupported: false);
+            }
+            catch
+            {
+                // ignored — status best-effort
+            }
+        }
+    }
+
+    private static string StaffBoostFailureMessage(StaffBoostFailure failure) =>
+        failure switch
+        {
+            StaffBoostFailure.InvalidRequest => "invalid staff boost request; update the app and retry",
+            StaffBoostFailure.UnsupportedGameBuild =>
+                "this FM build is not approved for staff boosts; update the bridge plugin and Load Data",
+            StaffBoostFailure.NoLiveScan => "Load Data again before using staff boosts",
+            StaffBoostFailure.SourceRequestMismatch => "Load Data again before using staff boosts",
+            StaffBoostFailure.StaffNotFound => "staff member was not found in the latest live scan; Load Data again",
+            StaffBoostFailure.ExpectedValuesMismatch => "staff values changed in FM; Load Data again",
+            StaffBoostFailure.LiveIdentityMismatch => "staff identity changed in FM; Load Data again",
+            StaffBoostFailure.LiveReadFailed => "could not safely read the staff member; Load Data again",
+            StaffBoostFailure.InvalidLiveValue => "staff values are not valid for this boost; Load Data again",
+            StaffBoostFailure.CurrentAbilityAtLimit => "current ability is already at its potential limit",
+            StaffBoostFailure.MutationFailed => "staff boost could not be verified; Load Data again",
+            StaffBoostFailure.PartialRollbackUnverified =>
+                "staff boost could not verify rollback; Load Data again before making another change",
+            _ => "staff boost failed; Load Data again",
         };
 
     /// <summary>
@@ -509,7 +660,9 @@ public class Plugin : BasePlugin
             scanTruncated: current.ScanTruncated,
             maxAccepted: current.MaxAccepted,
             playerBoostsSupported: current.PlayerBoostsSupported,
-            playerBoost: current.PlayerBoost);
+            staffBoostsSupported: current.StaffBoostsSupported,
+            playerBoost: current.PlayerBoost,
+            staffBoost: current.StaffBoost);
     }
 
     private static void TryDeleteForceScanFlag(string bridgeDirectory)
@@ -536,7 +689,8 @@ public class Plugin : BasePlugin
             requestId: null,
             playersFound: null,
             error: null,
-            playerBoostsSupported: false);
+            playerBoostsSupported: false,
+            staffBoostsSupported: false);
 
     private static void WriteStatus(
         string bridgeDirectory,
@@ -548,7 +702,9 @@ public class Plugin : BasePlugin
         bool? scanTruncated = null,
         int? maxAccepted = null,
         bool? playerBoostsSupported = null,
-        PlayerBoostResult? playerBoost = null)
+        bool? staffBoostsSupported = null,
+        PlayerBoostResult? playerBoost = null,
+        StaffBoostResult? staffBoost = null)
     {
         var status = new BridgeStatus
         {
@@ -564,7 +720,9 @@ public class Plugin : BasePlugin
             ScanTruncated = scanTruncated,
             MaxAccepted = maxAccepted,
             PlayerBoostsSupported = playerBoostsSupported,
+            StaffBoostsSupported = staffBoostsSupported,
             PlayerBoost = playerBoost,
+            StaffBoost = staffBoost,
         };
         StatusWriter.Write(bridgeDirectory, status);
     }

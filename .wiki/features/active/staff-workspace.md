@@ -324,7 +324,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 4 — Add the closed staff CA bridge operation
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-read): support staff CA boosts`
 
@@ -370,7 +370,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 5 — Reconcile verified staff boosts
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): reconcile verified staff boosts`
 
@@ -732,19 +732,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 1 — Staff data foundation
 
-**Commit:** Add the closed staff CA bridge operation
+**Commit:** Reconcile verified staff boosts
 
 ### RED proof
 
-Add bridge tests for a staff-only mutation candidate, fixed +10 and PA-capped targets, non-staff and stale-source rejection, expected-value mismatches, verified readback, rollback, and truthful uncertain outcomes. They fail today because scans index only player mutation candidates and the protocol has no closed staff CA operation.
+Add Rust tests for UID-only staff boost preparation, fixed +10 and cap handling, stale/current-context rejection, shared player/staff mutation exclusion, verified bridge reconciliation, recovery-required outcomes, and migration preservation. They fail today because Rust has no typed staff bridge request/result or staff boost service, and the recovery column remains player-specific.
 
 ### Expected outcome
 
-The bridge resolves one staff candidate from the producing live scan, revalidates its UID and expected CA/PA, computes `min(CA + 10, PA, 200)` internally, performs a typed staff CA write with readback and rollback classification, and exposes support only for an exact FM build after controlled live proof.
+Rust accepts only a staff UID, derives the current snapshot and expected CA/PA under the shared mutation gate, sends the source-bound closed bridge request, and reconciles only a verified value into the matching current staff row. Migration 25 preserves and generalizes the recovery flag so any uncertain player or staff outcome blocks both action families until Load Data.
 
 ### Explicit exclusions
 
-No Tauri command, SQLite reconciliation, UI, arbitrary increment or target, batch mutation, player fallback, or address-bearing protocol belongs in the active commit.
+No React control, batch action, staff score recomputation, arbitrary target/increment, profile read contract, or unrelated player policy change belongs in the active commit.
 
 ## Discoveries and replanning
 
@@ -752,6 +752,7 @@ No Tauri command, SQLite reconciliation, UI, arbitrary increment or target, batc
 - Planning inspection found no current Authority/Level of Discipline entry in the local or audited upstream staff map. The developer accepted the only unmapped contiguous staff slot, `NPLO_ATTRS + 0x30`, as Authority and accepted the risk of correcting it later if direct evidence disproves the mapping. This removes the planned spike and proof stop condition.
 - The requested entire configured-family scope reuses Planner persistence and supersedes an exact-manager-club interpretation.
 - Staff Profile extends the same feature rather than adding PR 3. PR 1 now owns its detail/preference contract, and PR 2 owns table entry plus the profile UI because those changes share query keys, row activation, concealment, and the existing staff boost component.
+- The controlled exact-build proof on FM 26.3.2 verified one fixed `+10` result and one PA-capped result, then independently read both values back through a second full bridge scan. The durable bridge record keeps only aggregate CA/PA evidence, not identities or save contents.
 - Repowise's local index matched the current HEAD, but its context query did not return usable output within the bounded inspection; direct repository evidence owns this plan.
 
 ## Completed work
@@ -761,6 +762,7 @@ No Tauri command, SQLite reconciliation, UI, arbitrary increment or target, batc
 | PR 1 | Extract complete staff scoring attributes | `009c21f` | Schema v8 publishes nullable Authority from accepted staff offset `0x30` and person-level Adaptability; Rust validates the fixed 24-key staff contract | Sol Medium accepted after one fix round added full bridge serialization proof | Live FM comparison not run; accepted Authority pin remains empirically unverified |
 | PR 1 | Persist staff job-fit scores | `94bc921` | Migration 24 adds snapshot-scoped staff score rows; one 20-role Rust catalog calculates and transactionally persists only complete current-ability scores | Sol Medium accepted after one fix round added successful replacement and 2,000-staff ingest proof | Repowise advisory index was stale; direct source and 423-test gate used |
 | PR 1 | Query scored staff pages | Pending record | Bounded current-snapshot Staff Search and unfiltered configured-family My Staff APIs expose allow-listed identity, employment, 24 attribute, and 20 score fields with parameterized filters and stable pagination | Sol Medium accepted after one fix round removed My Staff filters and bounded raw requested-field input | Representative score lookup uses its composite primary key; Repowise advisory index was stale |
+| PR 1 | Add the closed staff CA bridge operation | Pending record | Separate live staff candidates feed one fixed +10, PA/200-capped protocol operation with source/UID/CA/PA revalidation, verified readback, rollback classification, and exact FM 26.3.2 capability | Sol Medium accepted after one fix round updated protocol docs and closed deterministic boundary-test gaps | Controlled live proof passed with +10 and PA-capped results plus independent rescan readback |
 | None | Planning only | Pending record | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation

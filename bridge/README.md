@@ -8,7 +8,7 @@ This is early-alpha bridge and maintainer documentation. Start with the root [RE
 
 ```text
 %LOCALAPPDATA%\fm-valuescout\fm-bridge\
-  ├── request.json      ← Tauri writes a dump or closed player-boost request (30s TTL)
+  ├── request.json      ← Tauri writes a dump or closed boost request (30s TTL)
   ├── status.json       ← plugin writes on load and bridge-work phases
   ├── dump.json         ← successful CA/PA candidate dump (replace-only-on-success)
   ├── diagnostics.txt   ← every scan attempt (including failures)
@@ -21,7 +21,7 @@ Exact folder names: `fm-valuescout` / `fm-bridge`.
 
 ### Memory access (`Memory/`)
 
-Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). The only write seam is internal `IMemoryWriter`, which exposes byte and `u16` writes for the two fixed player actions. Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
+Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessMemory` / `VirtualQuery`). The only write seam is internal `IMemoryWriter`, which exposes byte and `u16` writes for the two fixed player actions and the fixed staff CA action. Candidate heap regions are committed, private, writable pages under a size cap. `ModuleLocator` records `game_plugin.dll` / `GameAssembly.dll` base/end. Unit tests use `Tests/Fakes/FakeMemoryReader` — no FM required.
 
 ### Layouts, identity extraction, and dump
 
@@ -39,12 +39,17 @@ Safe in-process reads use `IMemoryReader` + `WindowsMemoryReader` (`ReadProcessM
 4. The plugin polls every ~2s, rejects requests older than **30 seconds**, runs the dump off the Unity main thread, and updates `status.json` (`idle` → `scanning` → `ready` / `failed`).
 5. The app waits for a terminal status matching the request id (default timeout 120s; unlimited reference save bridge dump measured ~26s on 2026-07-30). On success, Rust reads `dump.json` from disk, validates schema v8, and atomically ingests player, staff, manager, scope, date-basis, complete position data, and staff scoring attributes into SQLite for the active app save (`load_data` IPC). The dump body never crosses IPC. Schema-v7 files are rejected with an update-plugin/rescan message; existing persisted snapshots remain readable. Scan or ingest failure leaves the prior snapshot unchanged; failed status errors replace machine-local paths with generic failure text before publication; the UI shows a typed error or ingest summary (player count, truncated banner when `scanTruncated`).
 
-The same protocol v1 file supports two closed player actions after a successful **live** full dump:
+The same protocol v1 file supports two closed player actions and one closed staff action after a successful **live** full dump:
 
 - `boost-current-ability` requires the source dump request ID, player UID, expected CA and PA, and a fixed increment of `5` or `10`. The bridge caps the target at live PA and `200`.
 - `wonderkid-mentality` requires the same source and expected CA/PA preconditions plus a snapshot expectation for each known mentality field. A `null` field is neither read nor written; a known value above `10` is rechecked and left unchanged. The bridge generates independent inclusive `11..20` targets only for known values at `10` or below.
+- `boost-staff-current-ability` requires the source dump request ID, staff UID, and expected CA and PA. The bridge always adds `10` internally and caps the target at live PA and `200`; the request cannot supply an increment or target.
 
-The bridge retains candidate locations only in memory for the one successful live dump. A failed dump does not replace the previous live index; snapshot-retry candidates, restarts, source-request mismatches, changed UIDs, changed CA/PA, and failed boost operations all fail closed. `status.json` can contain optional `playerBoostsSupported` and `playerBoost` fields with verified scalar results and rollback state; it never contains a UID, address, raw memory, or an arbitrary target supplied by the app. Full-dump consumers remain protocol-v1 compatible because the new request and status fields are optional.
+The bridge retains separate player and staff candidate locations only in memory for the one successful live dump. A failed dump does not replace the previous live indexes; snapshot-retry candidates, restarts, source-request mismatches, changed UIDs, changed CA/PA, and failed boost operations all fail closed. `status.json` can contain optional `playerBoostsSupported`, `playerBoost`, `staffBoostsSupported`, and `staffBoost` fields with verified scalar results and rollback state; it never contains a UID, address, raw memory, or an arbitrary target supplied by the app. Staff support is enabled only for the live-proved exact FM 26.3.2 build. Full-dump consumers remain protocol-v1 compatible because the action fields are optional.
+
+### Staff CA write proof
+
+On 2026-08-16, the exact FM 26.3.2 build completed the controlled staff-write proof on an accepted save. One staff CA changed from `59` to `69`; another changed from `83` to its PA cap of `85`. Both operation responses reported verified readback with no rollback, and a separate full bridge scan independently returned `69/112` and `85/85`. No names, UIDs, addresses, or save contents are retained in this record.
 
 ### Manual force-scan fallback
 

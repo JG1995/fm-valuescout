@@ -67,7 +67,9 @@ public static class StatusWriter
             ScanTruncated = status.ScanTruncated,
             MaxAccepted = status.MaxAccepted,
             PlayerBoostsSupported = status.PlayerBoostsSupported,
+            StaffBoostsSupported = status.StaffBoostsSupported,
             PlayerBoost = status.PlayerBoost,
+            StaffBoost = status.StaffBoost,
         };
     }
 

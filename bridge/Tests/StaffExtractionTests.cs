@@ -179,6 +179,15 @@ public sealed class StaffExtractionTests
             Assert.True(result.Success);
             Assert.Equal(1, result.PlayerCount);
             Assert.Equal(new uint[] { 200, 201, 300 }, result.Staff.Select(record => record.Uid));
+            Assert.Equal(
+                new uint[] { 200, 201, 300 },
+                result.LiveStaffCandidates.Select(candidate => candidate.Uid));
+            Assert.All(
+                result.LiveStaffCandidates,
+                candidate => Assert.NotEqual(PersonFacet.Player, candidate.Facet));
+            Assert.Equal(
+                new[] { PersonFacet.Staff, PersonFacet.HumanManager, PersonFacet.HumanManager },
+                result.LiveStaffCandidates.Select(candidate => candidate.Facet));
             Assert.DoesNotContain(result.Staff, record => record.Uid == 10);
             Assert.NotNull(result.Manager);
             Assert.Equal(300u, result.Manager!.Uid);
