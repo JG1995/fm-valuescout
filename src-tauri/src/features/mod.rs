@@ -7,3 +7,4 @@ pub mod player_metrics;
 pub mod scoring;
 pub mod search;
 pub mod snapshot;
+pub mod staff;

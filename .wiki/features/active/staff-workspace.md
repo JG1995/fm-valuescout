@@ -232,7 +232,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 2 — Persist staff job-fit scores
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(scoring): persist staff job scores`
 
@@ -278,7 +278,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 3 — Query scored staff pages
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): query scored staff pages`
 
@@ -732,19 +732,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 1 — Staff data foundation
 
-**Commit:** Persist staff job-fit scores
+**Commit:** Query scored staff pages
 
 ### RED proof
 
-Add pure scoring tests for the 20 stable job IDs, representative one-, two-, and multi-attribute formulas, strict missing/invalid input handling, and rounding. Add migration and ingest tests for transactional score persistence, replacement, cascade deletion, and failed-ingest rollback. They fail today because neither the score catalog nor `staff_role_scores` exists.
+Add staff query tests for all-current Search and configured-family My Staff, requested dynamic attributes and scores, flat AND/OR filters, allow-listed sorting, stable pagination, and explicit no-snapshot/no-family states. They fail today because no staff list query or filter compiler exists.
 
 ### Expected outcome
 
-Schema-v8 staff rows generate only calculable current-ability job-fit scores through one Rust-owned 20-role catalog. Scores are persisted atomically with their snapshot, remain snapshot-scoped, and cascade with the owning staff row.
+Rust returns bounded current-snapshot staff pages for Search and My Staff. Search includes all current staff; My Staff derives membership from every configured `planner_club_sources` row. Requested metrics, filters, and sorts are allow-listed and parameterized, with score lookups using the persisted index.
 
 ### Explicit exclusions
 
-No query API, frontend, potential score, weighting, old-snapshot backfill, or memory write belongs in the active commit.
+No frontend, profile detail, boost command, query-time score calculation, arbitrary SQL field, or React-owned club scope belongs in the active commit.
 
 ## Discoveries and replanning
 
@@ -759,6 +759,7 @@ No query API, frontend, potential score, weighting, old-snapshot backfill, or me
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Extract complete staff scoring attributes | Pending record | Schema v8 publishes nullable Authority from accepted staff offset `0x30` and person-level Adaptability; Rust validates the fixed 24-key staff contract | Sol Medium accepted after one fix round added full bridge serialization proof | Live FM comparison not run; accepted Authority pin remains empirically unverified |
+| PR 1 | Persist staff job-fit scores | Pending record | Migration 24 adds snapshot-scoped staff score rows; one 20-role Rust catalog calculates and transactionally persists only complete current-ability scores | Sol Medium accepted after one fix round added successful replacement and 2,000-staff ingest proof | Repowise advisory index was stale; direct source and 423-test gate used |
 | None | Planning only | Pending record | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation
