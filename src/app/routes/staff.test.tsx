@@ -228,6 +228,62 @@ describe("staff route", () => {
       name: "Staff search results",
     });
     expect(within(table).getAllByText("—").length).toBeGreaterThan(0);
+    expect(
+      within(table).queryByRole("img", { name: /role score:/ }),
+    ).toBeNull();
+  });
+
+  it("uses the shared score ramp for role scores in Search and My Staff", async () => {
+    await resolveLoadDataIpcMock();
+    const staff = fixtureStaff();
+    setStaffOverride([
+      {
+        ...staff,
+        dynamicValues: {
+          ...staff.dynamicValues,
+          "role.assistant_manager": 20,
+          "role.coach_attacking_technical": 50,
+          "role.coach_attacking_tactical": 70,
+          "role.coach_defending_technical": 90,
+        },
+      },
+    ]);
+    const user = userEvent.setup();
+    renderStaffRoute();
+
+    const searchTable = await screen.findByRole("table", {
+      name: "Staff search results",
+    });
+    expect(
+      within(searchTable).getByRole("img", {
+        name: "Assistant Manager role score: 20, Weak",
+      }),
+    ).toHaveClass("text-score-1");
+    expect(
+      within(searchTable).getByRole("img", {
+        name: "Coach — Attacking Technical role score: 50, Average",
+      }),
+    ).toHaveClass("text-score-2");
+    expect(
+      within(searchTable).getByRole("img", {
+        name: "Coach — Attacking Tactical role score: 70, Good",
+      }),
+    ).toHaveClass("text-score-3");
+    expect(
+      within(searchTable).getByRole("img", {
+        name: "Coach — Defending Technical role score: 90, Excellent",
+      }),
+    ).toHaveClass("text-score-4");
+
+    await user.click(screen.getByRole("tab", { name: "My Staff" }));
+    const myStaffTable = await screen.findByRole("table", {
+      name: "My Staff overview",
+    });
+    expect(
+      within(myStaffTable).getByRole("img", {
+        name: "Coach — Defending Technical role score: 90, Excellent",
+      }),
+    ).toHaveClass("text-score-4");
   });
 
   it("can remove and re-add a staff role column through the shared picker", async () => {

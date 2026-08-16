@@ -16,6 +16,7 @@ Turn the already extracted staff population into a first-class Staff workspace: 
 - Search and My Staff retain separate configurable column layouts.
 - Default columns are Name, Age / DOB, Nation, CA, PA, and all 20 staff job-fit scores.
 - Job-fit scores are integer values from 0 through 100. Each is the rounded arithmetic mean of its required 1–20 staff attributes, scaled by five. A score is unavailable when any required attribute is unavailable.
+- Available job-fit scores in Staff Search, My Staff, and Staff Profile use the shared four-tier score ramp and retain their numeric value and accessible tier label. Missing scores remain neutral.
 - The workspace tabs are **Search** and **My Staff**. The selected tab is URL-backed and keyboard-operable.
 - My Staff lists staff whose club belongs to any Senior, Reserves, or Youth source in the active save's configured Planner club family. It is an overview with sortable and configurable columns, not a second filter workspace.
 - My Staff offers one **Boost all CA** action for the configured club family. It processes eligible staff one at a time, always requests +10, caps at PA and 200, and skips staff already at the cap.
@@ -762,7 +763,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 9 — Color staff role scores
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): color role scores`
 
@@ -772,7 +773,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 10 — Color player search role scores
 
-**Status:** Planned
+**Status:** Active
 
 **Provisional commit:** `feat(search): color role scores`
 
@@ -784,19 +785,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 2 — Staff workspace UI
 
-**Commit:** Color staff role scores
+**Commit:** Color player search role scores
 
 ### Initial RED proof
 
-Add RED Staff Search, My Staff, and Staff Profile tests that require each available role score to expose the shared score-ramp color and accessible tier label while missing values remain neutral.
+Add RED Player Search tests that require available current and potential role-score cells to expose the shared score-ramp color and accessible tier label while other dynamic metrics remain unchanged.
 
 ### Expected outcome
 
-Every available staff role score uses the same four-tier 0–100 score ramp in Search, My Staff, and Staff Profile without changing the numeric value.
+Available current and potential role scores in Player Search use the same four-tier 0–100 score ramp without changing numeric values, filters, sorting, or configurable columns.
 
 ### Explicit exclusions
 
-Player Search colors, staff attributes, score calculation, score order, and table layout remain outside this commit.
+Player Profile, Squad, attributes, other dynamic metrics, score calculation, filters, sorting, and table layout remain outside this commit.
 
 ## Discoveries and replanning
 
@@ -826,7 +827,8 @@ Player Search colors, staff attributes, score calculation, score order, and tabl
 | PR 2 | Add Staff Profiles | `18c28ce` | `/staff/$uid` presents the staff summary, Coaching/Mental/Knowledge current attributes, catalog-ranked Role fit list, shared concealment, and fixed +10 Boost CA; Search and My Staff rows navigate by path only and the profile loader skips table queries | Sol Medium accepted after one correction round isolated child profile loading, corrected highest-role selection, and one documentation reconciliation | Native-window and supported-build profile checks remain manual; frontend fixtures do not independently prove all 20 role rows |
 | PR 2 | Replace row boosts with My Staff bulk boost | `cba1bdf` | My Staff exposes one Rust-owned sequential configured-family CA boost with progress, cap skipping, aggregate outcomes, snapshot-bound recovery reset, and no row action column; the bridge keeps its closed one-staff operation | Sol Medium accepted after one correction round fixed recovery reset, global bridge errors, and ADR authorization | Assembled multi-staff FM validation remains manual |
 | PR 2 | Combine Staff Profile attribute groups | `b1d33dc` | Staff Profile presents all 24 current attributes together in compact Coaching, Mental, and Knowledge columns, removes obsolete tab URL state, and keeps values close to their labels | Sol Medium accepted after one correction round kept the owning ledger commit active through review and updated the browser contract | Native-window layout remains manual |
-| PR 2 | Virtualize Staff Profile Role fit | `Pending record` | Role fit owns a bounded semantic scrollport, virtualizes its fixed-height ranked rows, retains the sticky header, and leaves the profile page stationary at 1280×800 | Sol Medium accepted after one correction round hid virtual spacers from assistive navigation and added logical row metadata plus shuffled-order proof | Native-window verification remains manual; browser proof covers the supported viewport |
+| PR 2 | Virtualize Staff Profile Role fit | `6d86e13` | Role fit owns a bounded semantic scrollport, virtualizes its fixed-height ranked rows, retains the sticky header, and leaves the profile page stationary at 1280×800 | Sol Medium accepted after one correction round hid virtual spacers from assistive navigation and added logical row metadata plus shuffled-order proof | Native-window verification remains manual; browser proof covers the supported viewport |
+| PR 2 | Color staff role scores | `Pending record` | Available role scores in Staff Search, My Staff, and Staff Profile use the shared four-tier score ramp with numeric values and accessible labels; missing values stay neutral | Sol Medium accepted without findings | None |
 | None | Planning only | `7857e27` | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation

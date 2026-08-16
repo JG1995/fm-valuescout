@@ -14,6 +14,7 @@ import {
 import { ConfigurableVirtualizedTable } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { formatCount, formatMissable, formatPlayerDob } from "@/utils/format";
 import { boostMyStaffCurrentAbility } from "../api/boost-my-staff-current-ability";
@@ -217,6 +218,25 @@ function StaffSearchTable({
       renderCells={(staff) =>
         columns.map((column) => {
           if (!STAFF_BASIC_METRIC_IDS.includes(column.id)) {
+            if (column.id.startsWith("role.")) {
+              const score = staff?.dynamicValues?.[column.id];
+              return (
+                <td key={column.id} className={NUM_CELL}>
+                  {staff === undefined ||
+                  score === null ||
+                  score === undefined ? (
+                    <span className="text-on-surface-variant">
+                      {staff === undefined ? "…" : "—"}
+                    </span>
+                  ) : (
+                    <ScoreBadge
+                      score={score}
+                      roleName={`${column.label} role score`}
+                    />
+                  )}
+                </td>
+              );
+            }
             const text = dynamicCell(staff, column.id);
             return (
               <td

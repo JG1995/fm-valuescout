@@ -72,6 +72,11 @@ describe("staff profile route", () => {
     }
     expect(screen.getAllByText("Coach — Fitness").length).toBeGreaterThan(0);
     expect(screen.getByText("Scout")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", {
+        name: "Coach — Fitness current score: 85, Excellent",
+      }),
+    ).toHaveClass("text-score-4");
     expect(screen.queryByText("Wonderkid Mentality")).toBeNull();
     expect(screen.queryByText("Select a pitch position")).toBeNull();
   });
