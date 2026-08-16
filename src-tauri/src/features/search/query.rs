@@ -508,8 +508,12 @@ mod tests {
         game_date: &str,
     ) {
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v6.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
                 .expect("parse golden fixture");
+        let mut players = players;
+        for player in &mut players {
+            complete_position_map(player);
+        }
         root["players"] = Value::Array(players);
         root["playerCount"] = json!(root["players"].as_array().unwrap().len());
         root["gameDate"] = json!(game_date);
@@ -518,6 +522,24 @@ mod tests {
         let dump_path = temp_dir.path().join("search-dump.json");
         std::fs::write(&dump_path, root.to_string()).expect("write dump");
         ingest_dump_file(conn, &dump_path).expect("ingest dump");
+    }
+
+    fn complete_position_map(player: &mut Value) {
+        const POSITION_KEYS: [&str; 15] = [
+            "GK", "SW", "DL", "DC", "DR", "DM", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "WBL",
+            "WBR",
+        ];
+        let Some(positions) = player.get_mut("positions").and_then(Value::as_object_mut) else {
+            return;
+        };
+        let existing = positions.clone();
+        positions.clear();
+        for key in POSITION_KEYS {
+            positions.insert(
+                key.to_string(),
+                existing.get(key).cloned().unwrap_or(Value::Null),
+            );
+        }
     }
 
     #[test]
@@ -1768,7 +1790,7 @@ mod tests {
                     150,
                     DeepPlayerFields {
                         nationalities: json!(["ENG"]),
-                        positions: json!({ "MC": 16, "AMC": 20, "AML": 14, "AMR": 14, "WBL": 1, "GK": 0, "SW": null, "DL": true }),
+                        positions: json!({ "MC": 16, "AMC": 20, "AML": 14, "AMR": 14, "WBL": 1, "GK": 0, "SW": null, "DL": 0 }),
                         attributes: json!({ "Acceleration": 10 }),
                         hidden: json!({}),
                         personality: json!({}),

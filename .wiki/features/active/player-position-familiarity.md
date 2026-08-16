@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -190,6 +190,12 @@ The PR remains one atomic review boundary because producer completeness and cons
 - Profile-controls code can be overwritten or tests can regress if implementation starts from the currently diverged feature branch instead of its merged result.
 - The Repowise index inspected during planning was behind the working-tree HEAD; all advisory risk findings were verified against current source, and implementation must continue to treat the index as stale until refreshed.
 
+### Implemented state after Commits 1–4
+
+- The bridge now emits schema-v7 dumps with all 15 canonical position keys, preserving readable integers from 0 through 20 and using `null` for unread or invalid bytes.
+- Rust validates the exact v7 map before mutation, and snapshot ingest stores the validated object unchanged. Existing schema-v6 snapshots remain readable as sparse legacy data; new scans require the v7 bridge.
+- Projection, Search/Squad, profile, Academy, Planner, and optimizer consumers now apply explicit familiarity semantics rather than key presence. The profile chart includes `SW`, while playable and Planner thresholds remain `>= 15`.
+
 ## Walking skeleton
 
 The thinnest safe path is deliberately consumer-first:
@@ -204,7 +210,7 @@ There is no safe schema-first skeleton: turning on all 15 keys before steps 1 an
 
 ### PR 1 — Preserve complete position familiarity
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -425,7 +431,7 @@ Expected evidence: Search and Squad Rust tests prove complete-map behavior, raw 
 
 #### Commit 3 — Display complete familiarity without changing playability
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): display complete position familiarity`
 
@@ -536,7 +542,7 @@ Expected evidence: focused Vitest tests pass, the full gate passes, and Playwrig
 
 #### Commit 4 — Activate and persist dump schema v7
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-read): emit complete position familiarity`
 
@@ -657,20 +663,20 @@ Expected evidence: bridge tests prove coverage/value fidelity, all schema-v7 fix
 
 **PR:** PR 1 — Preserve complete position familiarity
 
-**Commit:** Commit 4 — Activate and persist dump schema v7
+**Workstream:** Feature-complete validation
 
-### RED proof
+All four planned implementation commits are complete. This build loop stops at the implementation-complete validation boundary; feature close-out, documentation archival, and publication remain separate workflow steps.
 
-Add bridge extraction tests showing that the current natural-position filter drops `MR=17` and `AMC=14` from a representative `AMR=20` map, then add read-zero and unread-coverage assertions. Add Rust validator tests for the exact v7 key set, nullable integer range, malformed values, and stale-v6 rejection.
+### Deterministic evidence
 
-### Expected outcome
+- Bridge tests pass (`204` total; `201` passed, `3` skipped) with complete-map, coverage, zero/null, and batching proofs.
+- Rust library tests pass (`411` passed, `2` ignored), including schema-v7 validation, stale-v6 rejection, exact snapshot persistence, and all affected consumer fixtures.
+- `./scripts/dev check` passes. `./scripts/dev smoke` passes all `36` scenarios at the existing viewport.
+- Full Vitest reports `431` passed and `2` unrelated release-policy subprocess failures caused by empty stdout; no release-policy files are part of this feature.
 
-The bridge emits an exact schema-v7 map of all 15 canonical slots, preserving read integers (including zero) and representing unread or invalid bytes as `null`. Rust validates the shape and range before mutation, snapshot ingest stores the object unchanged, and schema-v6 dumps are rejected with a truthful rescan boundary. The v7 fixture and docs make the protocol contract executable and current.
+### Remaining close-out evidence
 
-### Explicit exclusions
-
-- No backfill, database migration, configurable thresholds, consumer redesign, release metadata, Git publication, or memory-layout changes.
-- Do not omit a canonical key, collapse null to zero, accept stale v6 as v7, or mutate persisted state before validation succeeds.
+- Live FM bridge installation and a real Load Data scan are not available in this environment. The manual proof remains explicit: inspect a schema-v7 dump/database row, verify Search/Squad/profile/Planner/Academy behavior, and confirm a legacy v6 snapshot remains readable.
 
 ## Discoveries and replanning
 
@@ -685,9 +691,10 @@ The bridge emits an exact schema-v7 map of all 15 canonical slots, preserving re
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | Commit 1 — Derive natural projection positions from familiarity | Pending record | Nullable familiarity feeds the shared natural-position projection rule; player detail, potential cache, Planner depth, and optimizer callers no longer pass key presence | Clean; no CRITICAL/HIGH/MEDIUM/NITPICK findings | None |
-| PR 1 | Commit 2 — Make Search and Squad use positive familiarity | Pending record | Search and Squad position summaries and exact presence filters use positive integer familiarity; raw `pos.*` values preserve zero/null/missing | Clean after JSON-boolean follow-up; no CRITICAL/HIGH/MEDIUM/NITPICK findings | One MEDIUM finding corrected before commit: resolver now checks JSON1 `entry.type = 'integer'` |
-| PR 1 | Commit 3 — Display complete familiarity without changing playability | Pending record | Profile and Academy preserve nullable complete maps, expose all 15 profile slots including SW, display positive values strongest-first, and retain explicit >=15 playable/GK behavior | Clean; no CRITICAL/HIGH/MEDIUM/NITPICK findings | None |
+| PR 1 | Commit 1 — Derive natural projection positions from familiarity | `6706e07` | Nullable familiarity feeds the shared natural-position projection rule; player detail, potential cache, Planner depth, and optimizer callers no longer pass key presence | Clean; no CRITICAL/HIGH/MEDIUM/NITPICK findings | None |
+| PR 1 | Commit 2 — Make Search and Squad use positive familiarity | `f9ab622` | Search and Squad position summaries and exact presence filters use positive integer familiarity; raw `pos.*` values preserve zero/null/missing | Clean after JSON-boolean follow-up; no CRITICAL/HIGH/MEDIUM/NITPICK findings | One MEDIUM finding corrected before commit: resolver now checks JSON1 `entry.type = 'integer'` |
+| PR 1 | Commit 3 — Display complete familiarity without changing playability | `e04627f` | Profile and Academy preserve nullable complete maps, expose all 15 profile slots including SW, display positive values strongest-first, and retain explicit >=15 playable/GK behavior | Clean; no CRITICAL/HIGH/MEDIUM/NITPICK findings | None |
+| PR 1 | Commit 4 — Activate and persist dump schema v7 | Pending record | Bridge emits and Rust validates the complete nullable map; snapshot ingest persists it exactly; v6 dumps are rejected for new ingestion while legacy snapshots remain readable | Clean after historical StaffRecord comment correction; no CRITICAL/HIGH/MEDIUM/NITPICK findings | None |
 
 ## Final validation
 

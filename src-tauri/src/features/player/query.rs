@@ -371,8 +371,12 @@ mod tests {
 
     fn ingest_players(conn: &mut Connection, players: Vec<Value>) {
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v6.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
                 .expect("parse golden fixture");
+        let mut players = players;
+        for player in &mut players {
+            complete_position_map(player);
+        }
         root["players"] = Value::Array(players);
         root["playerCount"] = json!(root["players"].as_array().unwrap().len());
 
@@ -380,6 +384,24 @@ mod tests {
         let dump_path = temp_dir.path().join("player-dump.json");
         std::fs::write(&dump_path, root.to_string()).expect("write dump");
         ingest_dump_file(conn, &dump_path).expect("ingest dump");
+    }
+
+    fn complete_position_map(player: &mut Value) {
+        const POSITION_KEYS: [&str; 15] = [
+            "GK", "SW", "DL", "DC", "DR", "DM", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "WBL",
+            "WBR",
+        ];
+        let Some(positions) = player.get_mut("positions").and_then(Value::as_object_mut) else {
+            return;
+        };
+        let existing = positions.clone();
+        positions.clear();
+        for key in POSITION_KEYS {
+            positions.insert(
+                key.to_string(),
+                existing.get(key).cloned().unwrap_or(Value::Null),
+            );
+        }
     }
 
     fn player_template(uid: u64, name: &str, ca: i64) -> Value {
@@ -453,7 +475,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("known-uid.db"));
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v6.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v7.json");
         ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
         set_role_score(&conn, 77, "goalkeeper_ip", Some(42));
 

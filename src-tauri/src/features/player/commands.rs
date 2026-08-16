@@ -579,7 +579,7 @@ mod tests {
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service as snapshot_service;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v6.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v7.json");
     static PLAYER_BOOST_TEST_GATE: Mutex<()> = Mutex::new(());
 
     fn seeded_db() -> (tempfile::TempDir, Db) {

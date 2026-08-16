@@ -8,7 +8,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 > **Lifecycle:** Approved 2026-07-28 from [CONCEPT.md](./CONCEPT.md) MVP scope. Ordering is **provisional — revisit after speccing** individual features.
 >
-> **Gating context:** FM26 memory read is complete — C# BepInEx IL2CPP bridge + Rust file protocol ([completed record](./features/completed/fm26-memory-read.md), dump schema v6 in `bridge/DUMP_SCHEMA.md`). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm. Multi-save (thin) shipped with snapshot ingest; [snapshot history and management](./features/completed/snapshot-history.md) is complete.
+> **Gating context:** FM26 memory read is complete — C# BepInEx IL2CPP bridge + Rust file protocol ([completed record](./features/completed/fm26-memory-read.md), current dump schema v7 in `bridge/DUMP_SCHEMA.md`; v6 snapshots remain readable as legacy data). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm. Multi-save (thin) shipped with snapshot ingest; [snapshot history and management](./features/completed/snapshot-history.md) is complete.
 
 | Order | Feature | Spec | Confidence | Why this position |
 | --- | --- | --- | --- | --- |

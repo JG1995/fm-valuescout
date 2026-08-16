@@ -63,7 +63,8 @@ public sealed class ExtractionBatchingTests
         Assert.NotNull(identity);
         Assert.Equal(20, identity!.Positions["ST"]);
         Assert.Equal(18, identity.Positions["AMC"]);
-        Assert.False(identity.Positions.ContainsKey("MC"));
+        Assert.Equal(10, identity.Positions["MC"]);
+        Assert.Equal(15, identity.Positions.Count);
 
         var positionCalls = reader.CallCount - callsBefore;
         // Full identity also reads name pointers/strings, DOB, nation, height, feet —
