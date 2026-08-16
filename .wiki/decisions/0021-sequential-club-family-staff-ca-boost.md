@@ -55,12 +55,12 @@ Parallel submission conflicts with the shared mutation gate and adds ordering an
 
 ### Follow-up
 
-- Record deterministic orchestration, recovery, and browser evidence in the Staff Workspace feature ledger.
+- Record deterministic orchestration, recovery, and browser evidence in the [Staff Workspace feature record](../features/completed/staff-workspace.md).
 - Require another decision for new staff fields, custom values, a bridge batch payload, or parallel writes.
 
 ## Related work
 
-- Feature plan: [Staff Workspace](../features/active/staff-workspace.md)
+- Feature record: [Staff Workspace](../features/completed/staff-workspace.md)
 - Closed staff operation: [ADR-0020](./0020-action-specific-fm26-staff-ca-boost.md)
 - Existing sequential player policy: [ADR-0018](./0018-squad-wide-player-boosts.md)
 - Commit: `cba1bdf`

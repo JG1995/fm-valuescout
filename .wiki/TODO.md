@@ -50,16 +50,13 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 **Parallel tracks:** After player search (order 4), profiles (5) and squad planner shell (6, without optimizer) can overlap once tactic modeling is specced.
 
-## Active
-
-- [Staff Workspace](./features/active/staff-workspace.md) — scored Staff Search, configured club-family overview, staff-specific profiles with shared concealment, and a fixed +10 CA action
-
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
 
 ## Completed
 
+- [Staff Workspace](./features/completed/staff-workspace.md) — scored Staff Search, configured club-family overview, staff-specific profiles with shared concealment, and fixed individual and configured-family +10 CA actions
 - [Player Profile Information Controls and Layout](./features/completed/player-profile-information-controls.md) — save-scoped profile concealment, FM-style four-tab attributes, separate current/potential IP/OOP header summaries, and profile-shell containment (Linear JAY-5, JAY-8, JAY-9)
 - [Complete Player Position Familiarity](./features/completed/player-position-familiarity.md) — schema-v7 complete nullable familiarity maps with explicit recorded, playable, and natural-position rules across Search, profiles, Academy, Planner, and optimizer (Linear JAY-14)
 - [Squad Boost Progress and Feedback](./features/completed/squad-boost-progress.md) — determinate per-player squad boost progress in the confirmation Modal and layout-stable final feedback in the Squad overview

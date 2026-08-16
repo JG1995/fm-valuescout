@@ -55,12 +55,12 @@ Apply the action to all staff in My Staff. The original request was for a per-st
 
 ### Follow-up
 
-- Preserve deterministic and live validation evidence in the [Staff Workspace feature record](../features/active/staff-workspace.md).
+- Preserve deterministic and live validation evidence in the [Staff Workspace feature record](../features/completed/staff-workspace.md).
 - Require another decision for arbitrary staff values or another staff field. ADR-0021 owns family-wide orchestration.
 
 ## Related work
 
-- Feature plan: [Staff Workspace](../features/active/staff-workspace.md)
+- Feature record: [Staff Workspace](../features/completed/staff-workspace.md)
 - Existing write boundary: [ADR-0017](./0017-action-specific-fm26-player-boosts.md)
 - Existing sequential mutation policy: [ADR-0018](./0018-squad-wide-player-boosts.md)
 - Commits: `1932350`, `48e5c5a`, `18c28ce`
