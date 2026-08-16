@@ -158,11 +158,11 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 ### PR 1 — Staff data foundation
 
-**Status:** Ready for publication
+**Status:** Merged
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/57
 
-**Merge ref:** Not merged
+**Merge ref:** `2e192811a4501d7dfe4df7b1fc675252fc5e8564`
 
 **Provisional PR title:** `feat(staff): add scored staff data services`
 
@@ -467,7 +467,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 ### PR 2 — Staff workspace UI
 
-**Status:** Awaiting prior PR merge
+**Status:** Active
 
 **PR ref:** Not published
 
@@ -489,7 +489,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 1 — Share configurable table controls
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(tables): share configurable table controls`
 
@@ -730,21 +730,21 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 ## Active work
 
-**PR:** PR 1 — Staff data foundation
+**PR:** PR 2 — Staff workspace UI
 
-**Commit:** PR 1 publication handoff
+**Commit:** Share configurable table controls
 
 ### RED proof
 
-The six PR 1 implementation commits, their reviews, and the cross-stack validation are complete.
+Add focused component and store tests that exercise caller-supplied metric catalogs, row identities, cell rendering, and optional activation while preserving the existing Search and Squad layouts. They fail today because the shared player table controls remain coupled to player metrics and rows.
 
 ### Expected outcome
 
-The local branch is ready to push and open as a draft PR when explicitly requested. PR 2 remains pending and must start only after this PR boundary is published or otherwise advanced by the developer.
+Existing player tables keep their behavior and stored layout IDs while narrow configurable table primitives can serve later Staff callers without introducing a universal data-grid abstraction.
 
 ### Explicit exclusions
 
-No PR 2 implementation, push, PR creation, or merge is authorized by this checkpoint.
+No Staff route, Staff query binding, Staff layout, navigation change, or visual redesign belongs in this commit.
 
 ## Discoveries and replanning
 
@@ -755,6 +755,7 @@ No PR 2 implementation, push, PR creation, or merge is authorized by this checkp
 - The controlled exact-build proof on FM 26.3.2 verified one fixed `+10` result and one PA-capped result, then independently read both values back through a second full bridge scan. The durable bridge record keeps only aggregate CA/PA evidence, not identities or save contents.
 - Repowise's local index matched the current HEAD, but its context query did not return usable output within the bounded inspection; direct repository evidence owns this plan.
 - The PR 1 boundary audit found no Staff route, sidebar, table, profile UI, or action-control implementation. The final backend checkpoint passed 216 bridge tests with 3 platform skips, 448 Rust tests with 2 intentional scale ignores, and all 36 existing browser smoke tests.
+- PR #57 merged into `main` as `2e192811a4501d7dfe4df7b1fc675252fc5e8564`; PR 2 now owns the active delivery boundary on `feature/staff-workspace`.
 
 ## Completed work
 
