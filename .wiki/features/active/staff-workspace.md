@@ -158,7 +158,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 ### PR 1 — Staff data foundation
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -417,7 +417,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 6 — Query staff profiles with shared concealment
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): query staff profiles`
 
@@ -732,19 +732,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 1 — Staff data foundation
 
-**Commit:** Query staff profiles with shared concealment
+**Commit:** PR 1 publication handoff
 
 ### RED proof
 
-Add migration, query, and composed preference tests for the current Staff Profile read contract and one shared save-scoped concealment preference.
+The six PR 1 implementation commits, their reviews, and the cross-stack validation are complete.
 
 ### Expected outcome
 
-The active save's effective current snapshot exposes one complete staff detail DTO with all 20 catalog-ordered scores. Player and staff reads observe the same migrated preference without backend redaction.
+The local branch is ready to push and open as a draft PR when explicitly requested. PR 2 remains pending and must start only after this PR boundary is published or otherwise advanced by the developer.
 
 ### Explicit exclusions
 
-No Staff route, sidebar entry, table UI, profile UI, score recalculation, or new memory-write operation belongs in this commit.
+No PR 2 implementation, push, PR creation, or merge is authorized by this checkpoint.
 
 ## Discoveries and replanning
 
@@ -754,6 +754,7 @@ No Staff route, sidebar entry, table UI, profile UI, score recalculation, or new
 - Staff Profile extends the same feature rather than adding PR 3. PR 1 now owns its detail/preference contract, and PR 2 owns table entry plus the profile UI because those changes share query keys, row activation, concealment, and the existing staff boost component.
 - The controlled exact-build proof on FM 26.3.2 verified one fixed `+10` result and one PA-capped result, then independently read both values back through a second full bridge scan. The durable bridge record keeps only aggregate CA/PA evidence, not identities or save contents.
 - Repowise's local index matched the current HEAD, but its context query did not return usable output within the bounded inspection; direct repository evidence owns this plan.
+- The PR 1 boundary audit found no Staff route, sidebar, table, profile UI, or action-control implementation. The final backend checkpoint passed 216 bridge tests with 3 platform skips, 448 Rust tests with 2 intentional scale ignores, and all 36 existing browser smoke tests.
 
 ## Completed work
 
@@ -764,7 +765,8 @@ No Staff route, sidebar entry, table UI, profile UI, score recalculation, or new
 | PR 1 | Query scored staff pages | `98cf8c5` | Bounded current-snapshot Staff Search and unfiltered configured-family My Staff APIs expose allow-listed identity, employment, 24 attribute, and 20 score fields with parameterized filters and stable pagination | Sol Medium accepted after one fix round removed My Staff filters and bounded raw requested-field input | Representative score lookup uses its composite primary key; Repowise advisory index was stale |
 | PR 1 | Add the closed staff CA bridge operation | `1932350` | Separate live staff candidates feed one fixed +10, PA/200-capped protocol operation with source/UID/CA/PA revalidation, verified readback, rollback classification, and exact FM 26.3.2 capability | Sol Medium accepted after one fix round updated protocol docs and closed deterministic boundary-test gaps | Controlled live proof passed with +10 and PA-capped results plus independent rescan readback |
 | PR 1 | Reconcile verified staff boosts | `48e5c5a` | UID-only Rust command derives fixed/capped values, serializes player/staff writes through one gate, reconciles only verified current staff CA, and shares the preserved snapshot recovery latch | Sol Medium accepted after one fix round added command-level recovery classification proof | No role-score recomputation; proven pre-write failures do not latch recovery |
-| None | Planning only | Pending record | Ledger and ADR-0020 | Not applicable | None |
+| PR 1 | Query staff profiles with shared concealment | `a8a35cd` | Migration 26 preserves one generic save preference; current-only Staff Detail returns complete current data and 20 catalog-ordered scores; player and staff reads observe the same setter | Sol Medium accepted after one fix round corrected ledger lifecycle state and the browser smoke IPC stub | React change is limited to the existing player call-site rename; Staff UI remains in PR 2 |
+| None | Planning only | `7857e27` | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation
 
