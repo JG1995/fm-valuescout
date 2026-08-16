@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-16
+
+### Added
+
+- Player profiles can reveal or conceal potential and hidden information for the active save. The saved preference defaults to revealed and applies to every player in that save.
+- Player profiles now use Outfield, Goalkeeping, Hidden, and Personality attribute tabs with goalkeeper-specific defaults and grouping.
+- Player summaries now show the best Current IP, Current OOP, Potential IP, and Potential OOP roles.
+- The desktop app and Windows bundle now use the FM ValueScout icon assets.
+
+### Changed
+
+- **Load Data** outcome banners can be dismissed and now clear when their originating save context is no longer active.
+
+### Fixed
+
+- Player profile controls and panels remain layout-stable when information is concealed or a **Load Data** outcome reduces the available workspace height.
+
 ## [0.2.0] - 2026-08-15
 
 ### Added
