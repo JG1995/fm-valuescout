@@ -54,7 +54,7 @@ Turn the already extracted staff population into a first-class Staff workspace: 
 
 ## Current-state map
 
-- Relevant components: `src/app/components/app-nav-rail.tsx`; `src/app/routes/search.tsx`; `src/app/routes/planner.tsx`; `src/app/routes/players.$uid.tsx`; `src/features/search/`; `src/features/squad/`; `src/features/player-profile/`; `src/components/player-table/`; `src/components/ui/player-metric-picker.tsx`; `src/stores/use-player-table-store.ts`.
+- Relevant components: `src/app/components/app-nav-rail.tsx`; `src/app/routes/search.tsx`; `src/app/routes/planner.tsx`; `src/app/routes/players.$uid.tsx`; `src/app/routes/staff.tsx`; `src/app/routes/staff.$uid.tsx`; `src/features/search/`; `src/features/squad/`; `src/features/player-profile/`; `src/features/staff/`; `src/components/player-table/`; `src/components/ui/player-metric-picker.tsx`; `src/stores/use-player-table-store.ts`.
 - Data model: snapshot-owned `staff` rows contain identity, nationality, gender, CA/PA, employment fields, and `staff_attributes_json`; `staff_role_scores` stores current job-fit scores, Rust exposes bounded list, detail, and CA-boost commands, and the Staff Search and My Staff routes now present configurable current-snapshot tables.
 - Persistence and migrations: SQLite schema version 26 is current. `staff_role_scores` owns current staff scores, `planner_club_sources` owns the configured family, `snapshots.boost_recovery_required` covers both mutation families, and `saves.reveal_hidden_information` is the shared save-scoped profile preference.
 - Existing behavioral assumptions: Search uses URL-backed flat AND/OR filters with a 32-rule limit and bounded pages; configurable player tables persist separate Search and Squad layouts; Squad family reads match `planner_club_sources.club_name` against snapshot clubs. Player profiles read only the effective current snapshot and conceal PA, projected and potential values, hidden/personality values, and development actions when the save preference is off.
@@ -676,9 +676,11 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 5 — Add Staff Profiles
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): add staff profiles`
+
+**Git ref:** `18c28ce`
 
 **Work:** Add `/staff/$uid`, staff-specific summary, attribute tabs, current job-fit list, shared concealment control, the sole profile Boost CA action, and row entry from both staff tables.
 
@@ -732,11 +734,11 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 2 — Staff workspace UI
 
-**Commit:** Add Staff Profiles
+**Commit:** Add Staff Profiles — completed as `18c28ce`
 
-### RED proof
+### Initial RED proof
 
-Add RED route and component tests for table entry, valid and invalid UID/tab state, the staff summary and two-panel layout, exact current-attribute groups, all 20 role-fit scores, shared concealment, and the profile-only Boost CA action. They fail today because Staff rows are not activated and `/staff/$uid` has no Staff Profile presentation.
+Add RED route and component tests for table entry, valid and invalid UID/tab state, the staff summary and two-panel layout, exact current-attribute groups, all 20 role-fit scores, shared concealment, and the profile-only Boost CA action. The initial RED run failed because Staff rows were not activated and `/staff/$uid` had no Staff Profile presentation.
 
 ### Expected outcome
 
@@ -771,6 +773,7 @@ Potential staff scores, progression, pitch/position familiarity, Wonderkid Menta
 | PR 2 | Add Staff Search | `Pending record` | Staff navigation and `/staff` Search/My Staff shell, URL-backed staff filters and sorting, 25 default columns with all 20 role scores, configurable table controls, missing-score guidance, and bounded Staff Search rendering | Sol Medium accepted after one correction round restored ungrouped staff-role picker discovery, bounded tabpanel geometry, requested-role score guidance, and current-state architecture wording | Native 1280×800/1600×900 checks remain manual; staff-specific first-page error and query-key assertions remain for later hardening |
 | PR 2 | Add club-family staff overview | `Pending record` | My Staff now reads the entire configured Senior/Reserves/Youth family through its own query key, supports bounded later pages, distinguishes setup/empty/error states, and retains independent table layouts and sort state | Sol Medium accepted after two correction rounds added Dashboard staff-cache invalidation, independent Search/My Staff sorting, and a focused cache-invalidation regression | Native three-club family validation remains manual; Repowise index was stale; direct source and deterministic validation used |
 | PR 2 | Add per-staff CA boost | `Pending record` | My Staff exposes a fixed Actions column with UID-only +10/PA/200-capped Boost CA confirmation, pending lock, stable recovery feedback/focus, and staff/snapshot invalidation; Search remains action-free | Sol Medium accepted after one correction round moved success feedback and fallback focus outside the virtualized row and added a sorted-row reordering regression | Native-window layout, supported-build UI proof, and recovery-repeat UX remain manual or deferred to Staff Profile integration |
+| PR 2 | Add Staff Profiles | `18c28ce` | `/staff/$uid` presents the staff summary, Coaching/Mental/Knowledge current attributes, catalog-ranked Role fit list, shared concealment, and fixed +10 Boost CA; Search and My Staff rows navigate by path only and the profile loader skips table queries | Sol Medium accepted after one correction round isolated child profile loading, corrected highest-role selection, and one documentation reconciliation | Native-window and supported-build profile checks remain manual; frontend fixtures do not independently prove all 20 role rows |
 | None | Planning only | `7857e27` | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation
