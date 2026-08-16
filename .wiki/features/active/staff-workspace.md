@@ -2,7 +2,7 @@
 
 ## Status
 
-Development
+Validation
 
 ## Intent
 
@@ -17,6 +17,7 @@ Turn the already extracted staff population into a first-class Staff workspace: 
 - Default columns are Name, Age / DOB, Nation, CA, PA, and all 20 staff job-fit scores.
 - Job-fit scores are integer values from 0 through 100. Each is the rounded arithmetic mean of its required 1–20 staff attributes, scaled by five. A score is unavailable when any required attribute is unavailable.
 - Available job-fit scores in Staff Search, My Staff, and Staff Profile use the shared four-tier score ramp and retain their numeric value and accessible tier label. Missing scores remain neutral.
+- Available current and potential role scores in Player Search use the same shared score ramp; missing scores and other dynamic metrics remain neutral.
 - The workspace tabs are **Search** and **My Staff**. The selected tab is URL-backed and keyboard-operable.
 - My Staff lists staff whose club belongs to any Senior, Reserves, or Youth source in the active save's configured Planner club family. It is an overview with sortable and configurable columns, not a second filter workspace.
 - My Staff offers one **Boost all CA** action for the configured club family. It processes eligible staff one at a time, always requests +10, caps at PA and 200, and skips staff already at the cap.
@@ -41,7 +42,7 @@ Turn the already extracted staff population into a first-class Staff workspace: 
 - Rust owns query validation, club-family membership, boost policy, source binding, persistence, and recovery state. The bridge alone owns process-memory writes.
 - The bridge exposes only the closed fixed-increment staff action accepted by [ADR-0020](../../decisions/0020-action-specific-fm26-staff-ca-boost.md).
 - Player and staff profiles read and write one active-save hidden-information preference. The preference remains a presentation control, not an authorization boundary, and Staff Search and My Staff keep their requested columns when it is concealed.
-- Player Search, Squad, player boosts, and persisted player table layouts retain their current behavior.
+- Player Search filters, sorting, configurable layouts, and non-role metrics retain their current behavior. Squad, player boosts, and persisted player table layouts are unchanged.
 
 ## Non-goals
 
@@ -468,7 +469,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 ### PR 2 — Staff workspace UI
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -773,7 +774,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 10 — Color player search role scores
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(search): color role scores`
 
@@ -785,19 +786,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 2 — Staff workspace UI
 
-**Commit:** Color player search role scores
+**Commit:** None — all planned commits complete
 
-### Initial RED proof
+### Completion entry condition
 
-Add RED Player Search tests that require available current and potential role-score cells to expose the shared score-ramp color and accessible tier label while other dynamic metrics remain unchanged.
+All ten planned PR 2 checkpoints have passed their required focused validation, commit gate, and fresh Sol Medium review.
 
 ### Expected outcome
 
-Available current and potential role scores in Player Search use the same four-tier 0–100 score ramp without changing numeric values, filters, sorting, or configurable columns.
+The active ledger is ready for the separately invoked feature-complete review, final validation, documentation reconciliation, and publication workflow.
 
 ### Explicit exclusions
 
-Player Profile, Squad, attributes, other dynamic metrics, score calculation, filters, sorting, and table layout remain outside this commit.
+Feature-complete review, documentation reconciliation, PR creation, push, and merge are not performed by this checkpoint.
 
 ## Discoveries and replanning
 
@@ -828,7 +829,8 @@ Player Profile, Squad, attributes, other dynamic metrics, score calculation, fil
 | PR 2 | Replace row boosts with My Staff bulk boost | `cba1bdf` | My Staff exposes one Rust-owned sequential configured-family CA boost with progress, cap skipping, aggregate outcomes, snapshot-bound recovery reset, and no row action column; the bridge keeps its closed one-staff operation | Sol Medium accepted after one correction round fixed recovery reset, global bridge errors, and ADR authorization | Assembled multi-staff FM validation remains manual |
 | PR 2 | Combine Staff Profile attribute groups | `b1d33dc` | Staff Profile presents all 24 current attributes together in compact Coaching, Mental, and Knowledge columns, removes obsolete tab URL state, and keeps values close to their labels | Sol Medium accepted after one correction round kept the owning ledger commit active through review and updated the browser contract | Native-window layout remains manual |
 | PR 2 | Virtualize Staff Profile Role fit | `6d86e13` | Role fit owns a bounded semantic scrollport, virtualizes its fixed-height ranked rows, retains the sticky header, and leaves the profile page stationary at 1280×800 | Sol Medium accepted after one correction round hid virtual spacers from assistive navigation and added logical row metadata plus shuffled-order proof | Native-window verification remains manual; browser proof covers the supported viewport |
-| PR 2 | Color staff role scores | `Pending record` | Available role scores in Staff Search, My Staff, and Staff Profile use the shared four-tier score ramp with numeric values and accessible labels; missing values stay neutral | Sol Medium accepted without findings | None |
+| PR 2 | Color staff role scores | `70c27f4` | Available role scores in Staff Search, My Staff, and Staff Profile use the shared four-tier score ramp with numeric values and accessible labels; missing values stay neutral | Sol Medium accepted without findings | None |
+| PR 2 | Color player search role scores | `Pending record` | Available current and potential role-score cells in Player Search use the shared four-tier score ramp while missing scores and other dynamic metrics remain neutral | Sol Medium accepted without findings | None |
 | None | Planning only | `7857e27` | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation
