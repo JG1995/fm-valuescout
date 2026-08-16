@@ -45,10 +45,10 @@ The final PR starts from `origin/main` at `3e77e7864c0ed980630cbc0948f512c1dfd19
 ## Final publication
 
 ```yaml
-status: ready_for_publication
-pr_status: not_published
+status: published
+pr_status: draft
 merge_status: not_merged
-pr_ref: "Not published"
+pr_ref: "#56"
 merge_ref: "Not merged"
 branch: feature/player-position-familiarity
 base_branch: main
