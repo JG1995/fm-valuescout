@@ -540,6 +540,26 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
+          if (cmd === "boost_staff_current_ability") {
+            const uid = Number.isInteger(args?.uid) ? args.uid : 0;
+            const staff = staffRows.find((row) => row.uid === uid);
+            if (!staff) {
+              throw new Error("Staff member not found");
+            }
+            const previousCurrentAbility = staff.ca;
+            const currentAbility = Math.min(staff.ca + 10, staff.pa, 200);
+            staffRows = staffRows.map((row) =>
+              row.uid === uid ? { ...row, ca: currentAbility } : row,
+            );
+            return {
+              snapshotId: 1,
+              operation: "boost-staff-current-ability",
+              previousCurrentAbility,
+              currentAbility,
+              potentialAbility: staff.pa,
+            };
+          }
+
           if (cmd === "suggest_players") {
             return [];
           }

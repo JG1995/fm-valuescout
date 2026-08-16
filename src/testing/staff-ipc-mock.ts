@@ -1,3 +1,4 @@
+import type { StaffBoostResult } from "@/features/staff/types/staff-boost";
 import type { StaffFilterRuleIpc } from "@/features/staff/types/staff-filter-rule";
 import {
   DEFAULT_STAFF_SORT_DIR,
@@ -14,6 +15,19 @@ import { resolveGetCurrentSnapshotIpcMock } from "./snapshot-ipc-mock";
 let overrideStaff: StaffSummary[] | null = null;
 let lastStaffArgs: Record<string, unknown> | null = null;
 let staffFamilyConfigured = true;
+let staffBoostMode: StaffBoostIpcMockMode = "success";
+let staffBoostCalls: unknown[] = [];
+let pendingStaffBoost: {
+  promise: Promise<StaffBoostResult>;
+  resolve: (result: StaffBoostResult) => void;
+} | null = null;
+
+export type StaffBoostIpcMockMode =
+  | "success"
+  | "pending"
+  | "eligibilityError"
+  | "liveValueError"
+  | "snapshotSyncError";
 
 const ROLE_IDS = [
   "assistant_manager",
@@ -81,6 +95,25 @@ export function resetStaffIpcMock() {
   overrideStaff = null;
   lastStaffArgs = null;
   staffFamilyConfigured = true;
+  staffBoostMode = "success";
+  staffBoostCalls = [];
+  pendingStaffBoost = null;
+}
+
+export function setStaffBoostIpcMockMode(mode: StaffBoostIpcMockMode) {
+  staffBoostMode = mode;
+  if (mode !== "pending") pendingStaffBoost = null;
+}
+
+export function getStaffBoostIpcMockCalls() {
+  return staffBoostCalls;
+}
+
+export function resolvePendingStaffBoostIpcMock(
+  result = staffBoostResult(101),
+) {
+  pendingStaffBoost?.resolve(result);
+  pendingStaffBoost = null;
 }
 
 export function getLastStaffArgs() {
@@ -253,4 +286,71 @@ export function resolveListMyStaffIpcMock(args: unknown): StaffPage {
     return { state: "no_club_family", staff: [], total: 0 };
   }
   return resolveSearchStaffIpcMock(args);
+}
+
+function staffBoostResult(uid: number): StaffBoostResult {
+  const source = overrideStaff ?? [
+    fixtureStaff(),
+    fixtureStaff({
+      uid: 102,
+      name: "Jordan Analyst",
+      ca: 132,
+      club: "Riverside United",
+    }),
+  ];
+  const staff = source.find((candidate) => candidate.uid === uid);
+  if (!staff) throw new Error("Staff member not found");
+  const target = Math.min(staff.ca + 10, staff.pa, 200);
+  overrideStaff = source.map((candidate) =>
+    candidate.uid === uid ? { ...candidate, ca: target } : candidate,
+  );
+  return {
+    snapshotId: 1,
+    operation: "boost-staff-current-ability",
+    previousCurrentAbility: staff.ca,
+    currentAbility: target,
+    potentialAbility: staff.pa,
+  };
+}
+
+export function resolveBoostStaffCurrentAbilityIpcMock(
+  args: unknown,
+): Promise<StaffBoostResult> {
+  staffBoostCalls = [...staffBoostCalls, args];
+  const uid =
+    typeof args === "object" &&
+    args !== null &&
+    typeof (args as Record<string, unknown>).uid === "number"
+      ? ((args as Record<string, number>).uid ?? 0)
+      : 0;
+  if (staffBoostMode === "pending") {
+    if (!pendingStaffBoost) {
+      let resolve!: (result: StaffBoostResult) => void;
+      const promise = new Promise<StaffBoostResult>((next) => {
+        resolve = next;
+      });
+      pendingStaffBoost = { promise, resolve };
+    }
+    return pendingStaffBoost.promise;
+  }
+  if (staffBoostMode === "eligibilityError") {
+    return Promise.reject({
+      phase: "eligibility",
+      kind: "currentAbilityAtLimit",
+      message: "current ability has reached its potential limit",
+    });
+  }
+  if (staffBoostMode === "liveValueError") {
+    return Promise.reject({
+      phase: "liveValue",
+      message: "staff values changed in FM; Load Data again",
+    });
+  }
+  if (staffBoostMode === "snapshotSyncError") {
+    return Promise.reject({
+      phase: "snapshotSync",
+      message: "FM may have changed. Load Data again.",
+    });
+  }
+  return Promise.resolve(staffBoostResult(uid));
 }

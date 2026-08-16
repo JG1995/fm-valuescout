@@ -631,7 +631,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 4 — Add per-staff CA boost
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): add staff CA boost action`
 
@@ -676,7 +676,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 5 — Add Staff Profiles
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): add staff profiles`
 
@@ -732,19 +732,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 2 — Staff workspace UI
 
-**Commit:** Add per-staff CA boost
+**Commit:** Add Staff Profiles
 
 ### RED proof
 
-Add RED interaction tests for the fixed +10 preview, PA cap, UID-only payload, pending lock, feedback, focus restoration, and query invalidation. They fail today because My Staff has no mutation control.
+Add RED route and component tests for table entry, valid and invalid UID/tab state, the staff summary and two-panel layout, exact current-attribute groups, all 20 role-fit scores, shared concealment, and the profile-only Boost CA action. They fail today because Staff rows are not activated and `/staff/$uid` has no Staff Profile presentation.
 
 ### Expected outcome
 
-My Staff exposes one fixed Actions column with a capped +10 Boost CA flow, verified-result feedback, and staff-query invalidation while Search remains action-free.
+Staff Search and My Staff rows open a bounded `/staff/$uid` profile. The profile renders staff-specific summary, Coaching/Mental/Knowledge attributes, current Role fit scores, shared Hide hidden behavior, and the fixed +10 Boost CA action without player-only pitch, potential, or Wonderkid surfaces.
 
 ### Explicit exclusions
 
-Search-tab boosts, batch boosts, custom values, progress algorithms, family editing, team grouping, exact-manager-club fallback, staff profiles, and global quick search remain outside this commit.
+Potential staff scores, progression, pitch/position familiarity, Wonderkid Mentality, profile history/comparison, global quick search, new memory writes, family editing, team grouping, and exact-manager-club fallback remain outside this commit.
 
 ## Discoveries and replanning
 
@@ -770,6 +770,7 @@ Search-tab boosts, batch boosts, custom values, progress algorithms, family edit
 | PR 2 | Share configurable table controls | `Pending record` | Shared configurable header, metric picker, and virtual table accept caller-owned metrics and rows, optional activation, generic keys, fixed non-configurable cells, and independent versioned Staff layout slots while preserving Search/Squad behavior | Sol Medium accepted after one fix round added the coordinated fixed-column seam and focused contract proof | Repowise index remained stale; direct source and deterministic validation used |
 | PR 2 | Add Staff Search | `Pending record` | Staff navigation and `/staff` Search/My Staff shell, URL-backed staff filters and sorting, 25 default columns with all 20 role scores, configurable table controls, missing-score guidance, and bounded Staff Search rendering | Sol Medium accepted after one correction round restored ungrouped staff-role picker discovery, bounded tabpanel geometry, requested-role score guidance, and current-state architecture wording | Native 1280×800/1600×900 checks remain manual; staff-specific first-page error and query-key assertions remain for later hardening |
 | PR 2 | Add club-family staff overview | `Pending record` | My Staff now reads the entire configured Senior/Reserves/Youth family through its own query key, supports bounded later pages, distinguishes setup/empty/error states, and retains independent table layouts and sort state | Sol Medium accepted after two correction rounds added Dashboard staff-cache invalidation, independent Search/My Staff sorting, and a focused cache-invalidation regression | Native three-club family validation remains manual; Repowise index was stale; direct source and deterministic validation used |
+| PR 2 | Add per-staff CA boost | `Pending record` | My Staff exposes a fixed Actions column with UID-only +10/PA/200-capped Boost CA confirmation, pending lock, stable recovery feedback/focus, and staff/snapshot invalidation; Search remains action-free | Sol Medium accepted after one correction round moved success feedback and fallback focus outside the virtualized row and added a sorted-row reordering regression | Native-window layout, supported-build UI proof, and recovery-repeat UX remain manual or deferred to Staff Profile integration |
 | None | Planning only | `7857e27` | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation

@@ -314,6 +314,25 @@ test.describe("application smoke", () => {
     await expect(table.getByText("Staff member 101")).toBeVisible();
   });
 
+  test("My Staff confirms a fixed CA boost and refreshes the row", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { staffWorkspace: true });
+    await page.goto("/staff?view=my-staff");
+
+    const main = page.getByRole("main");
+    const table = main.getByRole("table", { name: "My Staff overview" });
+    const row = table.locator('tr[data-index="0"]');
+    await row.getByRole("button", { name: "Boost CA" }).click();
+    const dialog = page.getByRole("dialog", { name: "Boost CA?" });
+    await expect(dialog).toContainText("CA 145 → 155 (+10)");
+    await dialog.getByRole("button", { name: "Boost CA" }).click();
+    await expect(row).toContainText("155");
+    await expect(main.getByTestId("staff-boost-outcome")).toContainText(
+      "Staff CA boosted from 145 to 155.",
+    );
+  });
+
   test("My Staff points an unconfigured family to Dashboard Club Setup", async ({
     page,
   }) => {

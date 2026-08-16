@@ -1,6 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense, useMemo } from "react";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import {
   staffMyStaffQueryOptions,
   staffSearchQueryOptions,
@@ -130,8 +132,11 @@ function StaffFallback() {
 function StaffPageContent() {
   const { view, sort, dir, filters: filterUrls, combine } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const queryClient = useQueryClient();
   const filters = useMemo(() => parseStaffFilters(filterUrls), [filterUrls]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
+  const onBoostSuccess = () =>
+    queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
 
   const updateSearch = (
     patch: Partial<{
@@ -222,6 +227,7 @@ function StaffPageContent() {
                   onSortChange={(nextSort, nextDir) =>
                     updateSearch({ sort: nextSort, dir: nextDir })
                   }
+                  onBoostSuccess={onBoostSuccess}
                 />
               </Suspense>
             </div>
@@ -241,6 +247,7 @@ function StaffPageContent() {
                 onSortChange={(nextSort, nextDir) =>
                   updateSearch({ sort: nextSort, dir: nextDir })
                 }
+                onBoostSuccess={onBoostSuccess}
               />
             </Suspense>
           </div>

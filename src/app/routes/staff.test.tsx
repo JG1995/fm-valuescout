@@ -23,6 +23,9 @@ import {
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 import {
   fixtureStaff,
+  getStaffBoostIpcMockCalls,
+  resolvePendingStaffBoostIpcMock,
+  setStaffBoostIpcMockMode,
   setStaffFamilyConfigured,
   setStaffOverride,
 } from "@/testing/staff-ipc-mock";
@@ -39,6 +42,7 @@ function renderStaffRoute(initialEntry = "/staff") {
   });
   return {
     router,
+    queryClient,
     ...render(
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />
@@ -171,7 +175,7 @@ describe("staff route", () => {
     const myStaffTable = await screen.findByRole("table", {
       name: "My Staff overview",
     });
-    expect(within(myStaffTable).getAllByRole("columnheader")).toHaveLength(25);
+    expect(within(myStaffTable).getAllByRole("columnheader")).toHaveLength(26);
     expect(within(myStaffTable).getByText("Alex Coach")).toBeInTheDocument();
   });
 
@@ -277,5 +281,201 @@ describe("staff route", () => {
     expect(
       screen.getByRole("link", { name: "Open Club Setup" }),
     ).toHaveAttribute("href", "/#club-setup");
+  });
+
+  it("adds a fixed Boost CA action to My Staff only", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    renderStaffRoute("/staff?view=my-staff");
+
+    const myStaffTable = await screen.findByRole("table", {
+      name: "My Staff overview",
+    });
+    expect(
+      within(myStaffTable).getByRole("columnheader", { name: "Actions" }),
+    ).toBeInTheDocument();
+    const alexRow = within(myStaffTable)
+      .getAllByRole("row")
+      .find((row) => within(row).queryByText("Alex Coach"));
+    expect(alexRow).toBeDefined();
+    expect(
+      within(alexRow as HTMLElement).getByRole("button", { name: "Boost CA" }),
+    ).toBeEnabled();
+
+    await user.click(screen.getByRole("tab", { name: "Search" }));
+    const searchTable = await screen.findByRole("table", {
+      name: "Staff search results",
+    });
+    expect(
+      within(searchTable).queryByRole("columnheader", { name: "Actions" }),
+    ).toBeNull();
+  });
+
+  it("confirms a UID-only fixed +10 boost and refreshes the row", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    const { queryClient } = renderStaffRoute("/staff?view=my-staff");
+    queryClient.setQueryData(["staff", "probe"], []);
+    queryClient.setQueryData(["snapshot", "probe"], []);
+    const myStaffTable = await screen.findByRole("table", {
+      name: "My Staff overview",
+    });
+    const alexRow = within(myStaffTable)
+      .getAllByRole("row")
+      .find((row) => within(row).queryByText("Alex Coach"));
+    expect(alexRow).toBeDefined();
+
+    await user.click(
+      within(alexRow as HTMLElement).getByRole("button", { name: "Boost CA" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Boost CA?" });
+    expect(dialog).toHaveTextContent("CA 145 → 155 (+10)");
+    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+
+    await waitFor(() => {
+      expect(getStaffBoostIpcMockCalls()).toEqual([{ uid: 101 }]);
+      expect(within(myStaffTable).getByText("155")).toBeInTheDocument();
+    });
+    expect(queryClient.getQueryState(["staff", "probe"])?.isInvalidated).toBe(
+      true,
+    );
+    expect(
+      queryClient.getQueryState(["snapshot", "probe"])?.isInvalidated,
+    ).toBe(true);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Staff CA boosted from 145 to 155.",
+    );
+  });
+
+  it("keeps boost feedback and focus when a sorted row leaves the virtual window", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    const staff = Array.from({ length: 35 }, (_, index) =>
+      index === 20
+        ? fixtureStaff({ ca: 120, pa: 200 })
+        : fixtureStaff({
+            uid: 1000 + index,
+            name: `Staff ${index}`,
+            ca: 100 + index,
+            pa: 200,
+          }),
+    );
+    setStaffOverride(staff);
+    renderStaffRoute("/staff?view=my-staff&sort=ca&dir=asc");
+
+    const myStaffTable = await screen.findByRole("table", {
+      name: "My Staff overview",
+    });
+    const alexRow = within(myStaffTable)
+      .getAllByRole("row")
+      .find((row) => within(row).queryByText("Alex Coach"));
+    expect(alexRow).toBeDefined();
+    await user.click(
+      within(alexRow as HTMLElement).getByRole("button", { name: "Boost CA" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Boost CA?" });
+    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Staff CA boosted from 120 to 130."),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("staff-boost-outcome")).toHaveFocus();
+    });
+  });
+
+  it("previews a PA cap and disables the action at the limit", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    setStaffOverride([
+      fixtureStaff({ ca: 155, pa: 160 }),
+      fixtureStaff({ uid: 102, name: "Jordan Analyst", ca: 160, pa: 160 }),
+    ]);
+    renderStaffRoute("/staff?view=my-staff");
+
+    const myStaffTable = await screen.findByRole("table", {
+      name: "My Staff overview",
+    });
+    const rows = within(myStaffTable)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    const cappedRow = rows.find((row) => within(row).queryByText("Alex Coach"));
+    const limitRow = rows.find((row) =>
+      within(row).queryByText("Jordan Analyst"),
+    );
+    expect(cappedRow).toBeDefined();
+    expect(limitRow).toBeDefined();
+    const cappedButton = within(cappedRow as HTMLElement).getByRole("button", {
+      name: "Boost CA",
+    });
+    expect(cappedButton).toHaveAttribute(
+      "title",
+      "CA 155 → 160 (+5) · capped by PA",
+    );
+    await user.click(cappedButton);
+    expect(
+      await screen.findByRole("dialog", { name: "Boost CA?" }),
+    ).toHaveTextContent("CA 155 → 160 (+5)");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    const limitButton = within(limitRow as HTMLElement).getByRole("button", {
+      name: "Boost CA",
+    });
+    expect(limitButton).toBeDisabled();
+    expect(limitButton).toHaveAttribute(
+      "title",
+      "Current ability is already at this staff member’s potential ability.",
+    );
+  });
+
+  it("keeps the confirmation open and explains recovery-required failures", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffBoostIpcMockMode("snapshotSyncError");
+    const user = userEvent.setup();
+    renderStaffRoute("/staff?view=my-staff");
+    const myStaffTable = await screen.findByRole("table", {
+      name: "My Staff overview",
+    });
+    const alexRow = within(myStaffTable)
+      .getAllByRole("row")
+      .find((row) => within(row).queryByText("Alex Coach"));
+    await user.click(
+      within(alexRow as HTMLElement).getByRole("button", { name: "Boost CA" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Boost CA?" });
+    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Load Data required",
+    );
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it("locks the row while a staff boost is pending", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffBoostIpcMockMode("pending");
+    const user = userEvent.setup();
+    renderStaffRoute("/staff?view=my-staff");
+    const myStaffTable = await screen.findByRole("table", {
+      name: "My Staff overview",
+    });
+    const alexRow = within(myStaffTable)
+      .getAllByRole("row")
+      .find((row) => within(row).queryByText("Alex Coach"));
+    await user.click(
+      within(alexRow as HTMLElement).getByRole("button", { name: "Boost CA" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Boost CA?" });
+    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+    await waitFor(() => expect(getStaffBoostIpcMockCalls()).toHaveLength(1));
+    expect(
+      within(alexRow as HTMLElement).getByRole("button", {
+        name: "Boosting…",
+      }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Boosting…" }),
+    ).toBeDisabled();
+    resolvePendingStaffBoostIpcMock();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });
