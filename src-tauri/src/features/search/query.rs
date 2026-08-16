@@ -508,8 +508,12 @@ mod tests {
         game_date: &str,
     ) {
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v6.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
                 .expect("parse golden fixture");
+        let mut players = players;
+        for player in &mut players {
+            complete_position_map(player);
+        }
         root["players"] = Value::Array(players);
         root["playerCount"] = json!(root["players"].as_array().unwrap().len());
         root["gameDate"] = json!(game_date);
@@ -518,6 +522,24 @@ mod tests {
         let dump_path = temp_dir.path().join("search-dump.json");
         std::fs::write(&dump_path, root.to_string()).expect("write dump");
         ingest_dump_file(conn, &dump_path).expect("ingest dump");
+    }
+
+    fn complete_position_map(player: &mut Value) {
+        const POSITION_KEYS: [&str; 15] = [
+            "GK", "SW", "DL", "DC", "DR", "DM", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "WBL",
+            "WBR",
+        ];
+        let Some(positions) = player.get_mut("positions").and_then(Value::as_object_mut) else {
+            return;
+        };
+        let existing = positions.clone();
+        positions.clear();
+        for key in POSITION_KEYS {
+            positions.insert(
+                key.to_string(),
+                existing.get(key).cloned().unwrap_or(Value::Null),
+            );
+        }
     }
 
     #[test]
@@ -1098,6 +1120,30 @@ mod tests {
                         personality: json!({ "Ambition": 10 }),
                     },
                 ),
+                player_with_deep_fields(
+                    4,
+                    "Zero MC",
+                    130,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": 0, "ST": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
+                player_with_deep_fields(
+                    5,
+                    "Null MC",
+                    120,
+                    DeepPlayerFields {
+                        nationalities: json!(["ENG"]),
+                        positions: json!({ "MC": null, "ST": 18 }),
+                        attributes: json!({ "Acceleration": 10 }),
+                        hidden: json!({ "Consistency": 10 }),
+                        personality: json!({ "Ambition": 10 }),
+                    },
+                ),
             ],
         );
 
@@ -1123,6 +1169,30 @@ mod tests {
                 .map(|player| player.name.as_str())
                 .collect::<Vec<_>>(),
             vec!["Natural MC", "Fringe MC"]
+        );
+
+        let inverse = search_with_filters(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::DEFAULT,
+            SortDir::DEFAULT,
+            vec![filter_rule(
+                "position",
+                "is_not",
+                FilterValue::Text("MC".to_string()),
+            )],
+            None,
+        )
+        .expect("inverse position presence");
+        assert_eq!(inverse.total, 3);
+        assert_eq!(
+            inverse
+                .players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Striker Only", "Zero MC", "Null MC"]
         );
 
         let suitability = search_with_filters(
@@ -1608,7 +1678,7 @@ mod tests {
                 150,
                 DeepPlayerFields {
                     nationalities: json!(["ENG"]),
-                    positions: json!({ "MC": 16, "AMC": 20 }),
+                    positions: json!({ "MC": 16, "AMC": 20, "AMR": 14, "GK": 0, "SW": null }),
                     attributes: json!({ "Acceleration": 16 }),
                     hidden: json!({ "Consistency": 12 }),
                     personality: json!({ "Ambition": 14 }),
@@ -1640,6 +1710,9 @@ mod tests {
             "hidden.Consistency".to_string(),
             "personality.Ambition".to_string(),
             "pos.MC".to_string(),
+            "pos.AMR".to_string(),
+            "pos.GK".to_string(),
+            "pos.SW".to_string(),
             "position".to_string(),
             "role.deep_lying_playmaker_ip".to_string(),
             "attr.Acceleration".to_string(),
@@ -1657,7 +1730,7 @@ mod tests {
         .expect("query requested fields");
 
         let values = &page.players[0].dynamic_values;
-        assert_eq!(values.len(), 10, "duplicates and basic fields are omitted");
+        assert_eq!(values.len(), 13, "duplicates and basic fields are omitted");
         assert_eq!(
             values.get("parent_club"),
             Some(&Some(DynamicValue::Text("Parent FC".to_string())))
@@ -1688,8 +1761,14 @@ mod tests {
         );
         assert_eq!(values.get("pos.MC"), Some(&Some(DynamicValue::Integer(16))));
         assert_eq!(
+            values.get("pos.AMR"),
+            Some(&Some(DynamicValue::Integer(14)))
+        );
+        assert_eq!(values.get("pos.GK"), Some(&Some(DynamicValue::Integer(0))));
+        assert_eq!(values.get("pos.SW"), Some(&None));
+        assert_eq!(
             values.get("position"),
-            Some(&Some(DynamicValue::Text("AMC, MC".to_string())))
+            Some(&Some(DynamicValue::Text("AMC, MC, AMR".to_string())))
         );
         assert_eq!(
             values.get("role.deep_lying_playmaker_ip"),
@@ -1711,7 +1790,7 @@ mod tests {
                     150,
                     DeepPlayerFields {
                         nationalities: json!(["ENG"]),
-                        positions: json!({ "MC": 16, "AMC": 20 }),
+                        positions: json!({ "MC": 16, "AMC": 20, "AML": 14, "AMR": 14, "WBL": 1, "GK": 0, "SW": null, "DL": 0 }),
                         attributes: json!({ "Acceleration": 10 }),
                         hidden: json!({}),
                         personality: json!({}),
@@ -1753,7 +1832,9 @@ mod tests {
         );
         assert_eq!(
             page.players[0].dynamic_values.get("position"),
-            Some(&Some(DynamicValue::Text("AMC, MC".to_string())))
+            Some(&Some(DynamicValue::Text(
+                "AMC, MC, AML, AMR, WBL".to_string()
+            )))
         );
     }
 

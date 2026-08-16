@@ -158,7 +158,7 @@ impl MetricField {
                 format!("json_extract({player_alias}.{column}, '$.{key}')")
             }
             MetricSource::Position => format!(
-                "COALESCE((SELECT group_concat(position_key, ', ') FROM (SELECT entry.key AS position_key FROM json_each({player_alias}.positions_json) AS entry ORDER BY CAST(entry.value AS INTEGER) DESC, entry.key ASC)), '')"
+                "COALESCE((SELECT group_concat(position_key, ', ') FROM (SELECT entry.key AS position_key FROM json_each({player_alias}.positions_json) AS entry WHERE entry.type = 'integer' AND entry.value > 0 ORDER BY entry.value DESC, entry.key ASC)), '')"
             ),
             MetricSource::CurrentRole { role_id } => format!(
                 "(SELECT prs.score FROM player_role_scores prs WHERE prs.snapshot_id = {player_alias}.snapshot_id AND prs.uid = {player_alias}.uid AND prs.role_id = '{role_id}')"

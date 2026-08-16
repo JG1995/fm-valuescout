@@ -23,6 +23,7 @@ import { academyClassQueryOptions } from "../api/academy-class-query-options";
 import { academyKeys } from "../api/academy-keys";
 import { removeAcademyMember } from "../api/remove-academy-member";
 import type { AcademyClass, AcademyMember } from "../types/academy";
+import { recordedAcademyPositions } from "../utils/academy-positions";
 import {
   summarizeAcademyMembers,
   unavailableAcademyStatistics,
@@ -377,7 +378,7 @@ function AcademyRosterRow({
       : member.state === "unresolved"
         ? "Unavailable in the current snapshot"
         : null;
-  const positions = Object.keys(member.positions).join(", ");
+  const positions = recordedAcademyPositions(member.positions).join(", ");
   const rowTone =
     member.outcome?.status === "sold"
       ? "bg-success-container/20"

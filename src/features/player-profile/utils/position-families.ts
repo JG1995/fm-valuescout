@@ -6,6 +6,7 @@ export const PROFILE_POSITION_ROWS: readonly (readonly (string | null)[])[] = [
   ["ML", "MC", "MR"],
   ["WBL", "DM", "WBR"],
   ["DL", "DC", "DR"],
+  [null, "SW", null],
   [null, "GK", null],
 ] as const;
 
@@ -17,6 +18,10 @@ const PROFILE_POSITION_TAG_SET = new Set(PROFILE_POSITION_TAGS);
 
 export type ScoredRole = PlayerRoleScore & { score: number };
 export type PotentialScoredRole = PlayerRoleScore & { potentialScore: number };
+export type PositionFamiliarity = number | null;
+export type PositionFamiliarityMap = Readonly<
+  Record<string, PositionFamiliarity>
+>;
 export type RolePhase = "in_possession" | "out_of_possession";
 export type RoleSort = {
   basis: "current" | "potential";
@@ -30,15 +35,16 @@ const DEFAULT_ROLE_SORT: RoleSort = {
 
 export const PLAYABLE_POSITION_FAMILIARITY = 15;
 
-export function isGoalkeeper(
-  positions: Readonly<Record<string, number>>,
-): boolean {
-  return positions.GK >= PLAYABLE_POSITION_FAMILIARITY;
+export function isGoalkeeper(positions: PositionFamiliarityMap): boolean {
+  return (
+    typeof positions.GK === "number" &&
+    positions.GK >= PLAYABLE_POSITION_FAMILIARITY
+  );
 }
 
 /** Pick the player's strongest recorded position, then fall back to best-role fit. */
 export function defaultProfilePosition(
-  positions: Readonly<Record<string, number>>,
+  positions: PositionFamiliarityMap,
   roleScores: readonly PlayerRoleScore[],
 ): string {
   let selected: string | null = null;
@@ -46,7 +52,7 @@ export function defaultProfilePosition(
 
   for (const position of PROFILE_POSITION_TAGS) {
     const value = positions[position];
-    if (Number.isFinite(value) && value > familiarity) {
+    if (isPositiveFamiliarity(value) && value > familiarity) {
       selected = position;
       familiarity = value;
     }
@@ -105,13 +111,21 @@ export function rolesForProfilePosition(
 /** Keep roles attached to at least one position the player can play. */
 export function rolesForPlayablePositions(
   roleScores: readonly PlayerRoleScore[],
-  positions: Readonly<Record<string, number>>,
+  positions: PositionFamiliarityMap,
 ): PlayerRoleScore[] {
   return roleScores.filter((role) =>
     role.positionTags.some(
-      (position) => positions[position] >= PLAYABLE_POSITION_FAMILIARITY,
+      (position) =>
+        isPositiveFamiliarity(positions[position]) &&
+        positions[position] >= PLAYABLE_POSITION_FAMILIARITY,
     ),
   );
+}
+
+function isPositiveFamiliarity(
+  value: PositionFamiliarity | undefined,
+): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 /** Keep only roles from the requested catalog phase. */

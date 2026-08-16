@@ -48,7 +48,7 @@ pub struct PlayerDetailDto {
     pub nationalities: Vec<String>,
     pub height_cm: Option<i64>,
     pub preferred_foot: String,
-    pub positions: std::collections::BTreeMap<String, i64>,
+    pub positions: std::collections::BTreeMap<String, Option<i64>>,
     pub attributes: std::collections::BTreeMap<String, Option<i64>>,
     pub potential_attributes: std::collections::BTreeMap<String, Option<i64>>,
     pub hidden_attributes: std::collections::BTreeMap<String, Option<i64>>,
@@ -579,7 +579,7 @@ mod tests {
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service as snapshot_service;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v6.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v7.json");
     static PLAYER_BOOST_TEST_GATE: Mutex<()> = Mutex::new(());
 
     fn seeded_db() -> (tempfile::TempDir, Db) {

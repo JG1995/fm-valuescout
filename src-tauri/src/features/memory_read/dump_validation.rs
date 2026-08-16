@@ -4,8 +4,12 @@ use std::path::Path;
 
 use serde_json::Value;
 
-pub const DUMP_SCHEMA_VERSION: i64 = 6;
+pub const DUMP_SCHEMA_VERSION: i64 = 7;
 pub const DUMP_PROTOCOL_VERSION: i64 = 1;
+
+const POSITION_KEYS: &[&str] = &[
+    "GK", "SW", "DL", "DC", "DR", "DM", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "WBL", "WBR",
+];
 
 const REQUIRED_TOP_LEVEL_KEYS: &[&str] = &[
     "schemaVersion",
@@ -426,7 +430,10 @@ fn validate_player_object(player: &Value, index: usize) -> Result<u64, DumpValid
         &format!("players[{index}].preferredFoot"),
         "preferredFoot",
     )?;
-    require_object_at(object, &format!("players[{index}].positions"), "positions")?;
+    let positions = object
+        .get("positions")
+        .ok_or_else(|| DumpValidationError::MissingField(format!("players[{index}].positions")))?;
+    validate_positions_map(positions, &format!("players[{index}].positions"))?;
     require_object_at(
         object,
         &format!("players[{index}].attributes"),
@@ -973,6 +980,45 @@ fn validate_int_or_null_map(map: &Value, display_field: &str) -> Result<(), Dump
     Ok(())
 }
 
+fn validate_positions_map(map: &Value, display_field: &str) -> Result<(), DumpValidationError> {
+    let object = map
+        .as_object()
+        .ok_or_else(|| DumpValidationError::WrongType {
+            field: display_field.to_string(),
+            detail: "expected object".to_string(),
+        })?;
+
+    for key in POSITION_KEYS {
+        if !object.contains_key(*key) {
+            return Err(DumpValidationError::MissingField(format!(
+                "{display_field}.{key}"
+            )));
+        }
+    }
+
+    for (key, value) in object {
+        if !POSITION_KEYS.contains(&key.as_str()) {
+            return Err(DumpValidationError::WrongType {
+                field: format!("{display_field}.{key}"),
+                detail: "unexpected position key".to_string(),
+            });
+        }
+
+        if !value.is_null()
+            && !value
+                .as_i64()
+                .is_some_and(|value| (0..=20).contains(&value))
+        {
+            return Err(DumpValidationError::WrongType {
+                field: format!("{display_field}.{key}"),
+                detail: "expected integer from 0 to 20 or null".to_string(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
 fn validate_fixed_staff_attribute_map(
     map: &Value,
     display_field: &str,
@@ -1073,12 +1119,35 @@ fn require_object_at(
 mod tests {
     use super::*;
 
-    const GOLDEN_FIXTURE: &str = include_str!("fixtures/golden_dump_v6.json");
+    const GOLDEN_FIXTURE: &str = include_str!("fixtures/golden_dump_v7.json");
+    const STALE_V6_FIXTURE: &str = include_str!("fixtures/golden_dump_v6.json");
     const STALE_V5_FIXTURE: &str = include_str!("fixtures/golden_dump_v5.json");
+
+    fn fixture_with_positions(positions: Value) -> String {
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v7 fixture");
+        root["players"][0]["positions"] = positions;
+        root.to_string()
+    }
 
     #[test]
     fn golden_fixture_passes_ingestibility_validation() {
-        validate_dump_json(GOLDEN_FIXTURE).expect("golden dump v6 should be ingestible");
+        validate_dump_json(GOLDEN_FIXTURE).expect("golden dump v7 should be ingestible");
+    }
+
+    #[test]
+    fn rejects_stale_schema_v6_with_plugin_update_and_rescan_instruction() {
+        let error = validate_dump_json(STALE_V6_FIXTURE).expect_err("stale schema v6");
+
+        assert!(error
+            .to_string()
+            .contains("update the FM bridge plugin and rescan"));
+        assert!(matches!(
+            error,
+            DumpValidationError::UnsupportedSchemaVersion {
+                found: 6,
+                expected: 7
+            }
+        ));
     }
 
     #[test]
@@ -1092,14 +1161,14 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 5,
-                expected: 6
+                expected: 7
             }
         ));
     }
 
     #[test]
     fn rejects_unsupported_schema_version() {
-        let json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 6", "\"schemaVersion\": 4");
+        let json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 7", "\"schemaVersion\": 4");
 
         let error = validate_dump_json(&json).expect_err("schema v4");
 
@@ -1107,9 +1176,79 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 4,
-                expected: 6
+                expected: 7
             }
         ));
+    }
+
+    #[test]
+    fn rejects_positions_with_a_missing_canonical_key() {
+        let mut positions = serde_json::from_str::<Value>(
+            r#"{"GK":null,"SW":null,"DL":null,"DC":null,"DR":null,"DM":null,"ML":null,"MC":0,"MR":17,"AML":null,"AMC":14,"AMR":20,"ST":null,"WBL":null}"#,
+        )
+        .expect("positions");
+        let json = fixture_with_positions(positions.take());
+
+        let error = validate_dump_json(&json).expect_err("missing WBR");
+
+        assert!(matches!(
+            error,
+            DumpValidationError::MissingField(field) if field == "players[0].positions.WBR"
+        ));
+    }
+
+    #[test]
+    fn rejects_positions_with_an_extra_key() {
+        let mut positions = serde_json::from_str::<Value>(
+            r#"{"GK":null,"SW":null,"DL":null,"DC":null,"DR":null,"DM":null,"ML":null,"MC":0,"MR":17,"AML":null,"AMC":14,"AMR":20,"ST":null,"WBL":null,"WBR":null,"CB":15}"#,
+        )
+        .expect("positions");
+        let json = fixture_with_positions(positions.take());
+
+        let error = validate_dump_json(&json).expect_err("extra CB");
+
+        assert!(matches!(
+            error,
+            DumpValidationError::WrongType { field, .. } if field == "players[0].positions.CB"
+        ));
+    }
+
+    #[test]
+    fn rejects_positions_outside_the_inclusive_zero_to_twenty_range() {
+        for (key, value) in [("MC", -1), ("MR", 21)] {
+            let mut positions: Value = serde_json::from_str(
+                r#"{"GK":null,"SW":null,"DL":null,"DC":null,"DR":null,"DM":null,"ML":null,"MC":0,"MR":17,"AML":null,"AMC":14,"AMR":20,"ST":null,"WBL":null,"WBR":null}"#,
+            )
+            .expect("positions");
+            positions[key] = Value::from(value);
+
+            let error = validate_dump_json(&fixture_with_positions(positions))
+                .expect_err("out-of-range position");
+
+            assert!(matches!(
+                error,
+                DumpValidationError::WrongType { field, .. } if field == format!("players[0].positions.{key}")
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_fractional_and_string_position_values() {
+        for value in [Value::from(1.5), Value::from("20"), Value::Bool(true)] {
+            let mut positions: Value = serde_json::from_str(
+                r#"{"GK":null,"SW":null,"DL":null,"DC":null,"DR":null,"DM":null,"ML":null,"MC":0,"MR":17,"AML":null,"AMC":14,"AMR":20,"ST":null,"WBL":null,"WBR":null}"#,
+            )
+            .expect("positions");
+            positions["AMC"] = value;
+
+            let error = validate_dump_json(&fixture_with_positions(positions))
+                .expect_err("invalid position value");
+
+            assert!(matches!(
+                error,
+                DumpValidationError::WrongType { field, .. } if field == "players[0].positions.AMC"
+            ));
+        }
     }
 
     #[test]
@@ -1137,7 +1276,7 @@ mod tests {
     #[test]
     fn rejects_empty_players_without_empty_save_marker() {
         let json = r#"{
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "generatedAtUtc": "2026-07-29T10:00:00.000Z",
   "gameVersion": "26.3.2",
   "supportedGameVersion": "26.3",
@@ -1163,7 +1302,7 @@ mod tests {
     #[test]
     fn accepts_explicit_empty_save_marker() {
         let json = r#"{
-  "schemaVersion": 6,
+  "schemaVersion": 7,
   "generatedAtUtc": "2026-07-29T10:00:00.000Z",
   "gameVersion": "26.3.2",
   "supportedGameVersion": "26.3",

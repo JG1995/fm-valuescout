@@ -612,7 +612,7 @@ mod tests {
     use rusqlite::OptionalExtension;
     use std::path::Path;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v6.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v7.json");
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -840,7 +840,7 @@ mod tests {
         let prior_count = role_score_count_for_snapshot(&conn, first.id);
         assert!(prior_count > 0);
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 6", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 7", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let _ = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -865,11 +865,19 @@ mod tests {
             "\"attributes\": { \"Acceleration\": 14, \"Pace\": 15 }",
             "\"attributes\": { \"Acceleration\": 14, \"Pace\": 15, \"Dribbling\": null }",
         );
+        let expected_positions = serde_json::from_str::<Value>(&json_with_null_attribute)
+            .expect("parse v7 fixture")
+            .get("players")
+            .and_then(Value::as_array)
+            .and_then(|players| players.first())
+            .and_then(|player| player.get("positions"))
+            .cloned()
+            .expect("fixture positions");
         let dump_path = write_dump(&temp_dir, "dump.json", &json_with_null_attribute);
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
 
         assert_eq!(snapshot.save_id, active_save.id);
-        assert_eq!(snapshot.schema_version, 6);
+        assert_eq!(snapshot.schema_version, 7);
         assert_eq!(snapshot.generated_at_utc, "2026-08-08T10:00:00.000Z");
         assert_eq!(snapshot.game_version, "26.3.2.2329565");
         assert_eq!(snapshot.supported_game_version, "26.3");
@@ -940,6 +948,7 @@ mod tests {
         struct PlayerParity {
             ca: i64,
             current_club: Option<String>,
+            positions_json: String,
             attributes_json: String,
             nation_uid: Option<i64>,
             gender: String,
@@ -952,6 +961,7 @@ mod tests {
                 "SELECT
                     ca,
                     current_club,
+                    positions_json,
                     attributes_json,
                     nation_uid,
                     gender,
@@ -963,11 +973,12 @@ mod tests {
                     Ok(PlayerParity {
                         ca: row.get(0)?,
                         current_club: row.get(1)?,
-                        attributes_json: row.get(2)?,
-                        nation_uid: row.get(3)?,
-                        gender: row.get(4)?,
-                        club_reputation: row.get(5)?,
-                        team_type: row.get(6)?,
+                        positions_json: row.get(2)?,
+                        attributes_json: row.get(3)?,
+                        nation_uid: row.get(4)?,
+                        gender: row.get(5)?,
+                        club_reputation: row.get(6)?,
+                        team_type: row.get(7)?,
                     })
                 },
             )
@@ -978,6 +989,10 @@ mod tests {
         assert_eq!(player_parity.gender, "male");
         assert_eq!(player_parity.club_reputation, Some(6200));
         assert_eq!(player_parity.team_type, Some(0));
+
+        let positions: Value =
+            serde_json::from_str(&player_parity.positions_json).expect("parse positions_json");
+        assert_eq!(positions, expected_positions);
 
         let attributes: Value =
             serde_json::from_str(&player_parity.attributes_json).expect("parse attributes_json");
@@ -1280,7 +1295,7 @@ mod tests {
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 6", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 7", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let error = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -1406,7 +1421,7 @@ mod tests {
         write!(
             file,
             concat!(
-                r#"{{"schemaVersion":6,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
+                r#"{{"schemaVersion":7,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
                 r#""gameVersion":"26.3.2","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","#,
                 r#""protocolVersion":1,"gameDate":null,"gameDateSource":"unknown","gameDateBasis":"unknown","#,
                 r#""playerDatabaseScope":"men","#,
@@ -1425,7 +1440,7 @@ mod tests {
                 concat!(
                     r#"{{"uid":{uid},"ca":1,"pa":1,"name":"P{uid}","birthYear":2000,"birthDayOfYear":1,"#,
                     r#""age":null,"nationalities":[],"nationUid":null,"gender":"unknown","heightCm":null,"preferredFoot":"right","#,
-                    r#""positions":{{}},"attributes":{{}},"hiddenAttributes":{{}},"personality":{{}},"#,
+                    r#""positions":{{"GK":null,"SW":null,"DL":null,"DC":null,"DR":null,"DM":null,"ML":null,"MC":null,"MR":null,"AML":null,"AMC":null,"AMR":null,"ST":null,"WBL":null,"WBR":null}},"attributes":{{}},"hiddenAttributes":{{}},"personality":{{}},"#,
                     r#""weeklyWageGbp":null,"contractExpiryYear":null,"contractExpiryDayOfYear":null,"#,
                     r#""transferListed":null,"loanListed":null,"notForSale":null,"setForRelease":null,"#,
                     r#""marketValueGbp":null,"reputation":{{"current":null,"world":null}},"#,

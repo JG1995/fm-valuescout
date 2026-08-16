@@ -704,14 +704,16 @@ fn resolve_assignment(
     };
     let attributes = serde_json::from_str(&attributes_json).map_err(|error| error.to_string())?;
     let positions =
-        serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&positions_json)
+        serde_json::from_str::<std::collections::BTreeMap<String, Option<i64>>>(&positions_json)
             .map_err(|error| error.to_string())?;
     let projected_attributes = project_attributes(
         &attributes,
         ca,
         pa,
         age,
-        positions.keys().map(String::as_str),
+        positions
+            .iter()
+            .map(|(position, familiarity)| (position.as_str(), *familiarity)),
     );
     let ip_role = all_roles()
         .iter()

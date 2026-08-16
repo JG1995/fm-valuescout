@@ -620,6 +620,46 @@ describe("academy route", () => {
     ).toHaveTextContent("1");
   });
 
+  it("renders positive Academy positions from complete nullable maps", async () => {
+    const user = userEvent.setup();
+    await loadConfiguredSave();
+    setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 1 }]);
+    setAcademyClassMembers(7, [
+      academyMember({
+        playerUid: 77,
+        lastKnownName: "Complete prospect",
+        positions: { AMR: 20, MR: 17, AMC: 14, GK: 0, SW: null },
+      }),
+    ]);
+    setAcademyCandidates([
+      {
+        playerUid: 78,
+        name: "Candidate prospect",
+        age: 18,
+        positions: { AMR: 20, MR: 17, AMC: 14, GK: 0, SW: null },
+        currentClub: "Metro FC",
+      },
+    ]);
+    renderAcademyRoute("/academy?view=class&classId=7");
+
+    const row = await screen.findByRole("row", {
+      name: /^Complete prospect/,
+    });
+    expect(row).toHaveTextContent("AMR, MR, AMC");
+    expect(row).not.toHaveTextContent("GK");
+    expect(row).not.toHaveTextContent("SW");
+
+    await user.click(screen.getByRole("button", { name: "Add players" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Add players to Class of 2026",
+    });
+    expect(
+      await within(dialog).findByRole("option", {
+        name: /Candidate prospect/i,
+      }),
+    ).toHaveTextContent("AMR, MR, AMC");
+  });
+
   it("removes a member before making them available to another class", async () => {
     const user = userEvent.setup();
     await loadConfiguredSave();

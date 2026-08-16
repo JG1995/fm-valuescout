@@ -5,6 +5,7 @@ import {
   bestRoleScore,
   defaultProfilePosition,
   isGoalkeeper,
+  PROFILE_POSITION_TAGS,
   rolesForPhase,
   rolesForPlayablePositions,
   rolesForProfilePosition,
@@ -145,6 +146,23 @@ describe("profile position selection", () => {
 
   it("starts from the strongest recorded familiarity", () => {
     expect(defaultProfilePosition({ MC: 20, ST: 15 }, scores)).toBe("MC");
+  });
+
+  it("keeps complete nullable maps positive-only and includes SW in the pitch", () => {
+    const positions = {
+      AMR: 20,
+      MR: 17,
+      AMC: 14,
+      SW: null,
+      GK: 0,
+    };
+
+    expect(PROFILE_POSITION_TAGS).toContain("SW");
+    expect(defaultProfilePosition(positions, scores)).toBe("AMR");
+    expect(isGoalkeeper({ ...positions, GK: 14 })).toBe(false);
+    expect(defaultProfilePosition({ ...positions, SW: 18 }, scores)).toBe(
+      "AMR",
+    );
   });
 
   it("recognizes goalkeeper profiles at the playable familiarity threshold", () => {

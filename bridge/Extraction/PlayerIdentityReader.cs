@@ -27,16 +27,15 @@ public sealed class PlayerIdentity
 
     public string PreferredFoot { get; init; } = "";
 
-    public IReadOnlyDictionary<string, int> Positions { get; init; } =
-        new Dictionary<string, int>();
+    /// <summary>All canonical position familiarity bytes; null means unread or invalid.</summary>
+    public IReadOnlyDictionary<string, int?> Positions { get; init; } =
+        new Dictionary<string, int?>();
 }
 
 public static class PlayerIdentityReader
 {
     public const int MinHeightCm = 140;
     public const int MaxHeightCm = 220;
-    public const int NaturalPositionFloor = 15;
-
     public static PlayerIdentity? TryRead(
         IMemoryReader reader,
         ulong personAddress,
@@ -72,7 +71,7 @@ public static class PlayerIdentityReader
         var nationUid = NationReader.TryReadUid(reader, personAddress, layout);
         var heightCm = TryReadHeight(reader, playerBlockBase, layout);
         var preferredFoot = ReadPreferredFoot(reader, playerBlockBase, layout);
-        var positions = ReadNaturalPositions(reader, playerBlockBase, layout);
+        var positions = ReadPositions(reader, playerBlockBase, layout);
 
         return new PlayerIdentity
         {
@@ -123,7 +122,7 @@ public static class PlayerIdentityReader
         return right >= left ? "right" : "left";
     }
 
-    private static IReadOnlyDictionary<string, int> ReadNaturalPositions(
+    private static IReadOnlyDictionary<string, int?> ReadPositions(
         IMemoryReader reader,
         ulong playerBlockBase,
         IFmMemoryLayout layout)
@@ -148,45 +147,29 @@ public static class PlayerIdentityReader
         var buffer = ArrayPool<byte>.Shared.Rent(length);
         try
         {
-            reader.TryReadBlock(
+            _ = reader.TryReadBlockWithCoverage(
                 playerBlockBase + (ulong)layout.PositionsOffset + (ulong)min,
                 buffer,
                 0,
                 length,
-                out _);
+                out var coverage);
 
-            var rated = new List<(string Key, int Rating)>();
+            var positions = new Dictionary<string, int?>(entries.Count, StringComparer.Ordinal);
             foreach (var entry in entries)
             {
-                var raw = buffer[entry.Offset - min];
-                if (raw < 1)
+                var relativeOffset = entry.Offset - min;
+                if (!coverage.HasExactCoverage
+                    || coverage.CountReadableBytes(relativeOffset, 1) != 1)
                 {
+                    positions[entry.Key] = null;
                     continue;
                 }
 
-                rated.Add((entry.Key, raw));
+                var raw = buffer[relativeOffset];
+                positions[entry.Key] = raw <= 20 ? raw : null;
             }
 
-            if (rated.Count == 0)
-            {
-                return new Dictionary<string, int>();
-            }
-
-            var top = rated.Max(x => x.Rating);
-            var threshold = Math.Max(NaturalPositionFloor, top - 2);
-            var natural = rated
-                .Where(x => x.Rating >= threshold)
-                .OrderByDescending(x => x.Rating)
-                .ThenBy(x => x.Key, StringComparer.Ordinal)
-                .ToDictionary(x => x.Key, x => x.Rating, StringComparer.Ordinal);
-
-            if (natural.Count == 0)
-            {
-                var best = rated.OrderByDescending(x => x.Rating).First();
-                natural[best.Key] = best.Rating;
-            }
-
-            return natural;
+            return positions;
         }
         finally
         {

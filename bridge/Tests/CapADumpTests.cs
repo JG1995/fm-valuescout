@@ -204,7 +204,7 @@ public sealed class CapADumpTests
                     Gender = PlayerGenderValues.Male,
                     HeightCm = 180,
                     PreferredFoot = "right",
-                    Positions = new Dictionary<string, int> { ["ST"] = 20 },
+                    Positions = new Dictionary<string, int?> { ["ST"] = 20 },
                     Attributes = new Dictionary<string, int?> { ["Acceleration"] = 13 },
                     HiddenAttributes = new Dictionary<string, int?> { ["Consistency"] = 12 },
                     Personality = new Dictionary<string, int?> { ["Ambition"] = 16 },

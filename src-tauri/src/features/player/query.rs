@@ -27,7 +27,7 @@ pub struct PlayerDetail {
     pub nationalities: Vec<String>,
     pub height_cm: Option<i64>,
     pub preferred_foot: String,
-    pub positions: BTreeMap<String, i64>,
+    pub positions: BTreeMap<String, Option<i64>>,
     pub attributes: BTreeMap<String, Option<i64>>,
     pub potential_attributes: BTreeMap<String, Option<i64>>,
     pub hidden_attributes: BTreeMap<String, Option<i64>>,
@@ -124,7 +124,10 @@ pub fn get_player(conn: &Connection, uid: i64) -> Result<Option<PlayerDetail>, S
         player.ca,
         player.pa,
         player.age,
-        player.positions.keys().map(String::as_str),
+        player
+            .positions
+            .iter()
+            .map(|(position, familiarity)| (position.as_str(), *familiarity)),
     );
     let potential_attributes = projected_attributes
         .iter()
@@ -299,17 +302,23 @@ fn parse_string_array(json: &str) -> Result<Vec<String>, String> {
         .collect()
 }
 
-fn parse_positions(json: &str) -> Result<BTreeMap<String, i64>, String> {
+fn parse_positions(json: &str) -> Result<BTreeMap<String, Option<i64>>, String> {
     let value: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
     let object = value
         .as_object()
         .ok_or_else(|| "positions_json must be an object".to_string())?;
     let mut positions = BTreeMap::new();
     for (key, raw) in object {
-        let number = raw
-            .as_i64()
-            .ok_or_else(|| format!("position `{key}` must be an integer"))?;
-        positions.insert(key.clone(), number);
+        let familiarity = match raw {
+            Value::Null => None,
+            Value::Number(number) => Some(
+                number
+                    .as_i64()
+                    .ok_or_else(|| format!("position `{key}` must be an integer or null"))?,
+            ),
+            _ => return Err(format!("position `{key}` must be an integer or null")),
+        };
+        positions.insert(key.clone(), familiarity);
     }
     Ok(positions)
 }
@@ -362,8 +371,12 @@ mod tests {
 
     fn ingest_players(conn: &mut Connection, players: Vec<Value>) {
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v6.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
                 .expect("parse golden fixture");
+        let mut players = players;
+        for player in &mut players {
+            complete_position_map(player);
+        }
         root["players"] = Value::Array(players);
         root["playerCount"] = json!(root["players"].as_array().unwrap().len());
 
@@ -371,6 +384,24 @@ mod tests {
         let dump_path = temp_dir.path().join("player-dump.json");
         std::fs::write(&dump_path, root.to_string()).expect("write dump");
         ingest_dump_file(conn, &dump_path).expect("ingest dump");
+    }
+
+    fn complete_position_map(player: &mut Value) {
+        const POSITION_KEYS: [&str; 15] = [
+            "GK", "SW", "DL", "DC", "DR", "DM", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "WBL",
+            "WBR",
+        ];
+        let Some(positions) = player.get_mut("positions").and_then(Value::as_object_mut) else {
+            return;
+        };
+        let existing = positions.clone();
+        positions.clear();
+        for key in POSITION_KEYS {
+            positions.insert(
+                key.to_string(),
+                existing.get(key).cloned().unwrap_or(Value::Null),
+            );
+        }
     }
 
     fn player_template(uid: u64, name: &str, ca: i64) -> Value {
@@ -410,6 +441,18 @@ mod tests {
         })
     }
 
+    #[test]
+    fn position_parser_preserves_zero_and_unread_values() {
+        assert_eq!(
+            parse_positions(r#"{"AMR":20,"GK":0,"SW":null}"#).expect("positions"),
+            BTreeMap::from([
+                ("AMR".to_string(), Some(20)),
+                ("GK".to_string(), Some(0)),
+                ("SW".to_string(), None),
+            ])
+        );
+    }
+
     fn set_role_score(conn: &Connection, uid: i64, role_id: &str, score: Option<i64>) {
         let snapshot_id: i64 = conn
             .query_row(
@@ -432,7 +475,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("known-uid.db"));
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v6.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v7.json");
         ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
         set_role_score(&conn, 77, "goalkeeper_ip", Some(42));
 
@@ -509,7 +552,13 @@ mod tests {
         let mut player = player_template(1, "Potential Role", 80);
         player["pa"] = json!(170);
         player["age"] = json!(20);
-        player["positions"] = json!({ "ST": 18 });
+        player["positions"] = json!({
+            "AMR": 20,
+            "MR": 17,
+            "AMC": 14,
+            "GK": 0,
+            "SW": null
+        });
         player["attributes"] = Value::Object(
             DUMP_ATTRIBUTE_KEYS
                 .iter()
@@ -522,7 +571,8 @@ mod tests {
             .iter()
             .map(|key| ((*key).to_string(), Some(10)))
             .collect();
-        let projected_attributes = project_attributes(&attributes, 80, 170, Some(20), ["ST"]);
+        let projected_attributes =
+            project_attributes(&attributes, 80, 170, Some(20), [("AMR", Some(20))]);
         let expected_potential_attributes = projected_attributes
             .iter()
             .map(|(key, value)| (key.clone(), value.map(i64::from)))

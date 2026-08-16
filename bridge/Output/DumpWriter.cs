@@ -60,7 +60,7 @@ public static class DumpWriter
     }
 
     /// <summary>
-    /// Streams compact schema-v6 dump JSON to <paramref name="stream"/> without building a second full document string.
+    /// Streams compact schema-v7 dump JSON to <paramref name="stream"/> without building a second full document string.
     /// </summary>
     public static void WriteCompact(
         Stream stream,

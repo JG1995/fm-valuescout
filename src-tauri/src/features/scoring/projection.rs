@@ -13,13 +13,13 @@ pub fn project_attributes<'a>(
     ca: i64,
     pa: i64,
     age: Option<i64>,
-    natural_positions: impl IntoIterator<Item = &'a str>,
+    position_familiarity: impl IntoIterator<Item = (&'a str, Option<i64>)>,
 ) -> HashMap<String, Option<u8>> {
     if pa <= ca {
         return attributes.clone();
     }
 
-    let groups = position_groups(natural_positions);
+    let groups = position_groups(natural_position_keys(position_familiarity));
     attributes
         .iter()
         .map(|(key, value)| {
@@ -40,6 +40,49 @@ pub fn project_attributes<'a>(
             (key.clone(), projected)
         })
         .collect()
+}
+
+fn natural_position_keys<'a>(
+    position_familiarity: impl IntoIterator<Item = (&'a str, Option<i64>)>,
+) -> Vec<&'a str> {
+    let rated = position_familiarity
+        .into_iter()
+        .filter_map(|(position, familiarity)| {
+            familiarity
+                .filter(|familiarity| *familiarity > 0)
+                .map(|familiarity| (position, familiarity))
+        })
+        .collect::<Vec<_>>();
+    let Some(strongest) = rated.iter().map(|(_, familiarity)| *familiarity).max() else {
+        return Vec::new();
+    };
+
+    if strongest < 15 {
+        return rated
+            .into_iter()
+            .filter(|(_, familiarity)| *familiarity == strongest)
+            .min_by_key(|(position, _)| canonical_position_index(position))
+            .map(|(position, _)| position)
+            .into_iter()
+            .collect();
+    }
+
+    let threshold = 15.max(strongest - 2);
+    rated
+        .into_iter()
+        .filter(|(_, familiarity)| *familiarity >= threshold)
+        .map(|(position, _)| position)
+        .collect()
+}
+
+fn canonical_position_index(position: &str) -> usize {
+    [
+        "GK", "SW", "DL", "DC", "DR", "DM", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "WBL",
+        "WBR",
+    ]
+    .iter()
+    .position(|candidate| *candidate == position)
+    .unwrap_or(usize::MAX)
 }
 
 fn position_groups<'a>(natural_positions: impl IntoIterator<Item = &'a str>) -> Vec<&'static str> {
@@ -204,7 +247,7 @@ mod tests {
             110,
             140,
             Some(20),
-            ["ST"],
+            [("ST", Some(20))],
         );
 
         assert_eq!(projected["Finishing"], Some(12));
@@ -217,8 +260,9 @@ mod tests {
     fn physical_growth_drops_at_age_twenty_four() {
         let attributes = attributes(&[("Pace", Some(10))]);
 
-        let at_twenty_three = project_attributes(&attributes, 80, 170, Some(23), ["ST"]);
-        let at_twenty_four = project_attributes(&attributes, 80, 170, Some(24), ["ST"]);
+        let at_twenty_three =
+            project_attributes(&attributes, 80, 170, Some(23), [("ST", Some(20))]);
+        let at_twenty_four = project_attributes(&attributes, 80, 170, Some(24), [("ST", Some(20))]);
 
         assert_eq!(at_twenty_three["Pace"], Some(14));
         assert_eq!(at_twenty_four["Pace"], Some(12));
@@ -231,7 +275,7 @@ mod tests {
             110,
             140,
             Some(28),
-            ["ST"],
+            [("ST", Some(20))],
         );
 
         assert_eq!(projected["OffTheBall"], Some(12));
@@ -240,8 +284,10 @@ mod tests {
     #[test]
     fn mental_growth_factor_increases_again_at_age_thirty_two() {
         let attributes = attributes(&[("OffTheBall", Some(1))]);
-        let at_thirty_one = project_attributes(&attributes, 110, 140, Some(31), ["UNKNOWN"]);
-        let at_thirty_two = project_attributes(&attributes, 110, 140, Some(32), ["UNKNOWN"]);
+        let at_thirty_one =
+            project_attributes(&attributes, 110, 140, Some(31), [("UNKNOWN", Some(20))]);
+        let at_thirty_two =
+            project_attributes(&attributes, 110, 140, Some(32), [("UNKNOWN", Some(20))]);
 
         assert_eq!(at_thirty_one["OffTheBall"], Some(2));
         assert_eq!(at_thirty_two["OffTheBall"], Some(3));
@@ -254,10 +300,78 @@ mod tests {
             110,
             140,
             Some(20),
-            ["DM", "ST"],
+            [("DM", Some(20)), ("ST", Some(20))],
         );
 
         assert_eq!(projected["OffTheBall"], Some(12));
+    }
+
+    #[test]
+    fn complete_familiarity_map_matches_equivalent_sparse_natural_map() {
+        let attributes = attributes(&[("OffTheBall", Some(10))]);
+        let complete = project_attributes(
+            &attributes,
+            110,
+            140,
+            Some(20),
+            [
+                ("AMR", Some(20)),
+                ("MR", Some(17)),
+                ("AMC", Some(14)),
+                ("GK", Some(0)),
+                ("SW", None),
+            ],
+        );
+        let sparse = project_attributes(&attributes, 110, 140, Some(20), [("AMR", Some(20))]);
+
+        assert_eq!(complete, sparse);
+    }
+
+    #[test]
+    fn natural_threshold_keeps_only_positions_in_the_two_point_band() {
+        let attributes = attributes(&[("Handling", Some(10))]);
+        let strongest_only =
+            project_attributes(&attributes, 110, 140, Some(20), [("GK", Some(20))]);
+        let below_band = project_attributes(
+            &attributes,
+            110,
+            140,
+            Some(20),
+            [("GK", Some(20)), ("MC", Some(17))],
+        );
+        let in_band = project_attributes(
+            &attributes,
+            110,
+            140,
+            Some(20),
+            [("GK", Some(20)), ("MC", Some(18)), ("DM", Some(17))],
+        );
+        let expected_in_band = project_attributes(
+            &attributes,
+            110,
+            140,
+            Some(20),
+            [("GK", Some(20)), ("MC", Some(18))],
+        );
+
+        assert_eq!(below_band, strongest_only);
+        assert_eq!(in_band, expected_in_band);
+    }
+
+    #[test]
+    fn sub_playable_ties_use_canonical_position_order() {
+        let attributes = attributes(&[("Handling", Some(10))]);
+        let reversed = project_attributes(
+            &attributes,
+            110,
+            140,
+            Some(20),
+            [("MC", Some(14)), ("GK", Some(14))],
+        );
+        let canonical_first =
+            project_attributes(&attributes, 110, 140, Some(20), [("GK", Some(14))]);
+
+        assert_eq!(reversed, canonical_first);
     }
 
     #[test]
@@ -267,7 +381,7 @@ mod tests {
             110,
             140,
             Some(20),
-            ["UNKNOWN"],
+            [("UNKNOWN", Some(20))],
         );
 
         assert_eq!(projected["Passing"], Some(12));
@@ -280,7 +394,7 @@ mod tests {
             110,
             140,
             Some(20),
-            std::iter::empty(),
+            std::iter::empty::<(&str, Option<i64>)>(),
         );
 
         assert_eq!(projected["Passing"], Some(12));
@@ -293,7 +407,7 @@ mod tests {
             80,
             170,
             None,
-            ["ST"],
+            [("ST", Some(20))],
         );
 
         assert_eq!(projected["Pace"], Some(14));
@@ -323,7 +437,7 @@ mod tests {
         let attributes = attributes(&[("Finishing", Some(14)), ("Pace", None)]);
 
         assert_eq!(
-            project_attributes(&attributes, 130, 130, Some(19), ["ST"]),
+            project_attributes(&attributes, 130, 130, Some(19), [("ST", Some(20))]),
             attributes
         );
     }
@@ -335,7 +449,7 @@ mod tests {
             110,
             140,
             None,
-            ["ST"],
+            [("ST", Some(20))],
         );
 
         assert_eq!(projected["Finishing"], None);
@@ -349,7 +463,7 @@ mod tests {
             80,
             170,
             Some(20),
-            ["ST"],
+            [("ST", Some(20))],
         );
 
         assert_eq!(projected["Pace"], Some(20));
@@ -377,7 +491,7 @@ mod tests {
             140,
             170,
             Some(20),
-            ["ST"],
+            [("ST", Some(20))],
         );
 
         assert_eq!(projected["Heading"], Some(10));

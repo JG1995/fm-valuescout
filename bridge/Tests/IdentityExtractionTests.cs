@@ -171,7 +171,7 @@ public sealed class IdentityExtractionTests
     }
 
     [Fact]
-    public void Identity_reader_extracts_name_dob_nation_height_foot_and_natural_positions()
+    public void Identity_reader_extracts_name_dob_nation_height_foot_and_all_positions()
     {
         var layout = Fm263Layout.Instance;
         var reader = new FakeMemoryReader();
@@ -209,10 +209,56 @@ public sealed class IdentityExtractionTests
         Assert.Equal(208u, identity.NationUid);
         Assert.Equal(186, identity.HeightCm);
         Assert.Equal("right", identity.PreferredFoot);
+        Assert.Equal(15, identity.Positions.Count);
         Assert.Equal(20, identity.Positions["DC"]);
         Assert.Equal(18, identity.Positions["DM"]);
-        Assert.False(identity.Positions.ContainsKey("MC")); // below natural threshold
-        Assert.False(identity.Positions.ContainsKey("ST"));
+        Assert.Equal(12, identity.Positions["MC"]);
+        Assert.Equal(1, identity.Positions["ST"]);
+        Assert.Equal(0, identity.Positions["GK"]);
+    }
+
+    [Fact]
+    public void Identity_reader_preserves_zero_and_unread_positions_and_rejects_invalid_bytes()
+    {
+        var layout = Fm263Layout.Instance;
+        var reader = new FakeMemoryReader();
+        PlacePlayerIdentity(
+            reader,
+            layout,
+            name: "Complete Positions",
+            birthYear: 2005,
+            birthDoy: 142,
+            heightCm: 186,
+            footLeft: 8,
+            footRight: 18,
+            positions: new Dictionary<string, int>
+            {
+                ["AMR"] = 20,
+                ["MR"] = 17,
+                ["AMC"] = 14,
+                ["MC"] = 0,
+                ["WBR"] = 21,
+            });
+        reader.AddUnreadableRange(
+            PlayerBlockBase + (ulong)layout.PositionsOffset + (ulong)layout.PositionEntries.First(e => e.Key == "SW").Offset,
+            1);
+
+        var identity = PlayerIdentityReader.TryRead(
+            reader,
+            PersonAddress,
+            PlayerBlockBase,
+            layout,
+            out var rejectReason);
+
+        Assert.Null(rejectReason);
+        Assert.NotNull(identity);
+        Assert.Equal(15, identity!.Positions.Count);
+        Assert.Equal(20, identity.Positions["AMR"]);
+        Assert.Equal(17, identity.Positions["MR"]);
+        Assert.Equal(14, identity.Positions["AMC"]);
+        Assert.Equal(0, identity.Positions["MC"]);
+        Assert.Null(identity.Positions["SW"]);
+        Assert.Null(identity.Positions["WBR"]);
     }
 
     [Fact]

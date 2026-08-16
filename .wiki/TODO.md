@@ -8,7 +8,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 > **Lifecycle:** Approved 2026-07-28 from [CONCEPT.md](./CONCEPT.md) MVP scope. Ordering is **provisional — revisit after speccing** individual features.
 >
-> **Gating context:** FM26 memory read is complete — C# BepInEx IL2CPP bridge + Rust file protocol ([completed record](./features/completed/fm26-memory-read.md), dump schema v6 in `bridge/DUMP_SCHEMA.md`). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm. Multi-save (thin) shipped with snapshot ingest; [snapshot history and management](./features/completed/snapshot-history.md) is complete.
+> **Gating context:** FM26 memory read is complete — C# BepInEx IL2CPP bridge + Rust file protocol ([completed record](./features/completed/fm26-memory-read.md), current dump schema v7 in `bridge/DUMP_SCHEMA.md`; v6 snapshots remain readable as legacy data). Role scores use FM-designated important attributes per role with a simple custom weighting algorithm. Multi-save (thin) shipped with snapshot ingest; [snapshot history and management](./features/completed/snapshot-history.md) is complete.
 
 | Order | Feature | Spec | Confidence | Why this position |
 | --- | --- | --- | --- | --- |
@@ -57,6 +57,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 ## Completed
 
 - [Player Profile Information Controls and Layout](./features/completed/player-profile-information-controls.md) — save-scoped profile concealment, FM-style four-tab attributes, separate current/potential IP/OOP header summaries, and profile-shell containment (Linear JAY-5, JAY-8, JAY-9)
+- [Complete Player Position Familiarity](./features/completed/player-position-familiarity.md) — schema-v7 complete nullable familiarity maps with explicit recorded, playable, and natural-position rules across Search, profiles, Academy, Planner, and optimizer (Linear JAY-14)
 - [Squad Boost Progress and Feedback](./features/completed/squad-boost-progress.md) — determinate per-player squad boost progress in the confirmation Modal and layout-stable final feedback in the Squad overview
 - [Early Alpha Release Readiness](./features/completed/early-alpha-release-readiness.md) — source-built unsigned Windows validation, local diagnostics, guarded dependency automation, and exact-SHA prepared release publication; the historical alpha release remains documented in the completed record
 - [Squad Workspace](./features/completed/squad-workspace.md) — club-scoped overview, Squad / Planner / Tactic navigation, Dashboard Club Setup, explicit CSV imports, and sequential squad-wide development actions
@@ -76,7 +77,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 - [Planner module refactor](./features/completed/planner-module-refactor.md) — behavior-preserving Planner-private Rust and React component decomposition
 - [Player search](./features/completed/player-search.md) — `/search` route, virtualized table, operator filters (scalars through role scores), URL-persisted filter/sort state, global Ctrl+K name suggest
 - [Role scoring engine](./features/completed/role-scoring-engine.md) — FM26 IP/OOP catalog (68 roles), scores on ingest into `player_role_scores`, DLP IP sanity proof, `combine_role_scores` helper
-- [FM26 memory read](./features/completed/fm26-memory-read.md) — initial BepInEx bridge, file protocol, dump schema v5, Rust validation, bridge status + Load Data UI; current schema-v6 parity is recorded in [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md)
+- [FM26 memory read](./features/completed/fm26-memory-read.md) — initial BepInEx bridge, file protocol, dump schema v5, Rust validation, bridge status + Load Data UI; the historical schema-v6 parity baseline is recorded in [FM SuperScout reader parity](./features/completed/fm-superscout-parity.md), while the current schema-v7 familiarity contract is recorded in [Complete Player Position Familiarity](./features/completed/player-position-familiarity.md)
 - [In-app bridge plugin install](./features/completed/bridge-plugin-install.md) — install / update / remove `FmDataBridge.dll` for default Steam FM26 from the app
 - [Snapshot ingest + Load Data](./features/completed/snapshot-ingest.md) — app save slots, current snapshot ingest, Load Data scan+ingest, sanity list
 - [Bridge scan performance](./features/completed/bridge-scan-performance.md) — block heap scanning, streaming dump, optimized ingest, unlimited Load Data default, UI cap controls and timings

@@ -10,6 +10,7 @@ import { academyCandidatesQueryOptions } from "../api/academy-candidates-query-o
 import { academyKeys } from "../api/academy-keys";
 import { assignAcademyMember } from "../api/assign-academy-member";
 import type { AcademyCandidate } from "../types/academy";
+import { recordedAcademyPositions } from "../utils/academy-positions";
 
 type AcademyAddPlayersModalProps = {
   open: boolean;
@@ -202,7 +203,8 @@ export function AcademyAddPlayersModal({
                   </span>
                 </span>
                 <span className="font-mono text-mono-sm text-on-surface-variant">
-                  {Object.keys(candidate.positions).join(", ") || "—"}
+                  {recordedAcademyPositions(candidate.positions).join(", ") ||
+                    "—"}
                 </span>
               </button>
             ))}

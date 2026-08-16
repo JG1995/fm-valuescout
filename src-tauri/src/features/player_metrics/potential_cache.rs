@@ -334,7 +334,7 @@ fn score_missing_roles(
         }
         let attributes = serde_json::from_str(&player.attributes_json)
             .map_err(|error| format!("invalid player {} attributes JSON: {error}", player.uid))?;
-        let positions = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(
+        let positions = serde_json::from_str::<HashMap<String, Option<i64>>>(
             &player.positions_json,
         )
         .map_err(|error| format!("invalid player {} positions JSON: {error}", player.uid))?;
@@ -343,7 +343,9 @@ fn score_missing_roles(
             player.ca,
             player.pa,
             player.age,
-            positions.keys().map(String::as_str),
+            positions
+                .iter()
+                .map(|(position, familiarity)| (position.as_str(), *familiarity)),
         );
         for role in missing_roles {
             scores.push((

@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-16
+
+### Added
+
+- Player profiles now display complete FM position familiarity, including sweeper familiarity, from exact scanned values.
+
+### Changed
+
+- Search, Squad, Academy, Planner, optimizer, and role projection now apply explicit recorded, playable, and natural-position thresholds so position labels, best-position selection, and eligibility remain consistent with complete familiarity data.
+- New **Load Data** scans use the complete schema-v7 position map while existing schema-v6 snapshots remain readable.
+
 ## [0.3.0] - 2026-08-16
 
 ### Added

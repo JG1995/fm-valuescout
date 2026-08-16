@@ -9,7 +9,7 @@ export type AcademyCandidate = {
   playerUid: number;
   name: string;
   age: number | null;
-  positions: Record<string, number>;
+  positions: Record<string, number | null>;
   currentClub: string;
 };
 
@@ -30,7 +30,7 @@ export type AcademyMember = {
   state: AcademyMemberState;
   age: number | null;
   nationalities: string[];
-  positions: Record<string, number>;
+  positions: Record<string, number | null>;
   currentClub: string | null;
   parentClub: string | null;
   teamLevel: string | null;

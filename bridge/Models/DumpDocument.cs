@@ -26,8 +26,9 @@ public sealed class DumpPlayer
 
     public string PreferredFoot { get; init; } = "";
 
-    public IReadOnlyDictionary<string, int> Positions { get; init; } =
-        new Dictionary<string, int>();
+    /// <summary>All canonical position familiarity values; null means unread or invalid.</summary>
+    public IReadOnlyDictionary<string, int?> Positions { get; init; } =
+        new Dictionary<string, int?>();
 
     /// <summary>Visible technical/mental/physical attrs on the 1–20 scale; null = unread/invalid.</summary>
     public IReadOnlyDictionary<string, int?> Attributes { get; init; } =
