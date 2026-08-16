@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-pub const DUMP_SCHEMA_VERSION: i64 = 7;
+pub const DUMP_SCHEMA_VERSION: i64 = 8;
 pub const DUMP_PROTOCOL_VERSION: i64 = 1;
 
 const POSITION_KEYS: &[&str] = &[
@@ -103,6 +103,8 @@ const STAFF_ATTRIBUTE_KEYS: &[&str] = &[
     "TacticalKnowledge",
     "Physiotherapy",
     "SportsScience",
+    "Authority",
+    "Adaptability",
     "DataAnalysis",
     "WorkingWithYoungsters",
     "GoalkeepingDistribution",
@@ -1119,19 +1121,36 @@ fn require_object_at(
 mod tests {
     use super::*;
 
-    const GOLDEN_FIXTURE: &str = include_str!("fixtures/golden_dump_v7.json");
+    const GOLDEN_FIXTURE: &str = include_str!("fixtures/golden_dump_v8.json");
+    const STALE_V7_FIXTURE: &str = include_str!("fixtures/golden_dump_v7.json");
     const STALE_V6_FIXTURE: &str = include_str!("fixtures/golden_dump_v6.json");
     const STALE_V5_FIXTURE: &str = include_str!("fixtures/golden_dump_v5.json");
 
     fn fixture_with_positions(positions: Value) -> String {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v7 fixture");
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse v8 fixture");
         root["players"][0]["positions"] = positions;
         root.to_string()
     }
 
     #[test]
     fn golden_fixture_passes_ingestibility_validation() {
-        validate_dump_json(GOLDEN_FIXTURE).expect("golden dump v7 should be ingestible");
+        validate_dump_json(GOLDEN_FIXTURE).expect("golden dump v8 should be ingestible");
+    }
+
+    #[test]
+    fn rejects_stale_schema_v7_with_plugin_update_and_rescan_instruction() {
+        let error = validate_dump_json(STALE_V7_FIXTURE).expect_err("stale schema v7");
+
+        assert!(error
+            .to_string()
+            .contains("update the FM bridge plugin and rescan"));
+        assert!(matches!(
+            error,
+            DumpValidationError::UnsupportedSchemaVersion {
+                found: 7,
+                expected: 8
+            }
+        ));
     }
 
     #[test]
@@ -1145,7 +1164,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 6,
-                expected: 7
+                expected: 8
             }
         ));
     }
@@ -1161,14 +1180,14 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 5,
-                expected: 7
+                expected: 8
             }
         ));
     }
 
     #[test]
     fn rejects_unsupported_schema_version() {
-        let json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 7", "\"schemaVersion\": 4");
+        let json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 8", "\"schemaVersion\": 4");
 
         let error = validate_dump_json(&json).expect_err("schema v4");
 
@@ -1176,7 +1195,7 @@ mod tests {
             error,
             DumpValidationError::UnsupportedSchemaVersion {
                 found: 4,
-                expected: 7
+                expected: 8
             }
         ));
     }
@@ -1276,7 +1295,7 @@ mod tests {
     #[test]
     fn rejects_empty_players_without_empty_save_marker() {
         let json = r#"{
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "generatedAtUtc": "2026-07-29T10:00:00.000Z",
   "gameVersion": "26.3.2",
   "supportedGameVersion": "26.3",
@@ -1302,7 +1321,7 @@ mod tests {
     #[test]
     fn accepts_explicit_empty_save_marker() {
         let json = r#"{
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "generatedAtUtc": "2026-07-29T10:00:00.000Z",
   "gameVersion": "26.3.2",
   "supportedGameVersion": "26.3",
@@ -1458,18 +1477,34 @@ mod tests {
     }
 
     #[test]
-    fn rejects_staff_missing_fixed_attribute() {
-        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
-        root["staff"][0]["attributes"]
-            .as_object_mut()
-            .expect("staff attributes")
-            .remove("Attacking");
+    fn rejects_staff_missing_fixed_scoring_attributes() {
+        for key in ["Authority", "Adaptability"] {
+            let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
+            root["staff"][0]["attributes"]
+                .as_object_mut()
+                .expect("staff attributes")
+                .remove(key);
 
-        let error = validate_dump_json(&root.to_string()).expect_err("missing staff attribute");
+            let error = validate_dump_json(&root.to_string()).expect_err("missing staff attribute");
 
-        assert!(
-            matches!(error, DumpValidationError::MissingField(field) if field == "staff[0].attributes.Attacking")
-        );
+            assert!(
+                matches!(error, DumpValidationError::MissingField(field) if field == format!("staff[0].attributes.{key}"))
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_staff_scoring_attributes_outside_one_to_twenty() {
+        for (key, value) in [("Authority", 0), ("Adaptability", 21)] {
+            let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
+            root["staff"][0]["attributes"][key] = Value::from(value);
+
+            let error = validate_dump_json(&root.to_string()).expect_err("invalid staff attribute");
+
+            assert!(
+                matches!(error, DumpValidationError::WrongType { field, .. } if field == format!("staff[0].attributes.{key}"))
+            );
+        }
     }
 
     #[test]

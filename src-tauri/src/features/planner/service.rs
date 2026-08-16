@@ -300,7 +300,7 @@ mod tests {
 
         let dump_path = temp_dir.path().join("dump.json");
         let mut dump: serde_json::Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v8.json"))
                 .expect("parse golden dump");
         let mut attached_player = dump["players"][0].clone();
         attached_player["uid"] = serde_json::Value::Number(78.into());
@@ -413,7 +413,7 @@ mod tests {
         let dump_path = temp_dir.path().join("dump.json");
         std::fs::write(
             &dump_path,
-            include_str!("../memory_read/fixtures/golden_dump_v7.json"),
+            include_str!("../memory_read/fixtures/golden_dump_v8.json"),
         )
         .expect("write dump");
         crate::features::snapshot::ingest::ingest_dump_file(&mut conn, &dump_path)
@@ -442,7 +442,7 @@ mod tests {
         assert!(error.contains("No current snapshot"));
 
         let dump_path = temp_dir.path().join("dump.json");
-        let dump = include_str!("../memory_read/fixtures/golden_dump_v7.json");
+        let dump = include_str!("../memory_read/fixtures/golden_dump_v8.json");
         std::fs::write(&dump_path, dump).expect("write dump");
         crate::features::snapshot::ingest::ingest_dump_file(&mut conn, &dump_path)
             .expect("ingest dump");

@@ -400,7 +400,7 @@ User opens home route
   → Rust memory_read: resolve %LOCALAPPDATA%\fm-valuescout\fm-bridge\, parse status.json
   → Panel shows ready / missing / error / unsupported platform
 
-Dump contract: [bridge/DUMP_SCHEMA.md](../bridge/DUMP_SCHEMA.md) schema v7 (frozen). A dump contains players plus staff, optional human-manager metadata, player-database scope, date basis, and an exact nullable 15-slot position-familiarity map. Rust rejects stale schemas and malformed position maps before ingest. The scan writes `dump.json` on disk; ingest reads it in Rust (§5.5). Existing schema-v6 snapshots remain readable as sparse legacy data; a new scan is required for complete familiarity.
+Dump contract: [bridge/DUMP_SCHEMA.md](../bridge/DUMP_SCHEMA.md) schema v8 (frozen). A dump contains players plus staff, optional human-manager metadata, player-database scope, date basis, an exact nullable 15-slot position-familiarity map, and fixed nullable staff `Authority` and `Adaptability` attributes. Rust rejects stale schemas and malformed fixed maps before ingest. The scan writes `dump.json` on disk; ingest reads it in Rust (§5.5). Existing snapshots remain readable, but a new schema-v8 scan is required for complete staff scoring attributes.
 ```
 
 For an unlimited concurrent reader, `PersonScanner` uses at most `min(regionCount, clamp(processorCount - 1, 1, 8))` worker-local 32 MiB buffers. Available physical memory below 2 GiB reduces that bound to two; capped or non-concurrent readers remain serial. The bridge counts requested, readable, unread, and internal-failure bytes, and fails closed when unread bytes exceed ten percent. Only then may it take one Windows PSS VA clone, after a separate 2 GiB available-commit check; cancellation, failed retries, and incomplete retries leave the prior dump and snapshot intact. `diagnostics.txt` records the source, retry count, quality, worker bound, phase timings, and aggregate memory-read volume. It can also include save-derived samples, so durable documentation uses only aggregate fields; module addresses are never emitted. Failed status errors replace machine-local paths with generic failure text before they are written.
@@ -809,7 +809,7 @@ Each item links to an ADR with alternatives and consequences.
 | SQLite (Rust-owned) | [0015](./decisions/0015-sqlite-rust-owned.md) |
 | C# BepInEx FM26 bridge | [0016](./decisions/0016-csharp-bepinex-fm26-bridge.md) |
 
-**@tanstack/react-virtual** is in the stack for the player search results table. TanStack Table, Form, and TanStack Start remain intentionally **not** in the default stack — add per feature when needed. The FM26 bridge is implemented per [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [fm26-memory-read](./features/completed/fm26-memory-read.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md); dump schema v7 is frozen in [bridge/DUMP_SCHEMA.md](../bridge/DUMP_SCHEMA.md).
+**@tanstack/react-virtual** is in the stack for the player search results table. TanStack Table, Form, and TanStack Start remain intentionally **not** in the default stack — add per feature when needed. The FM26 bridge is implemented per [ADR-0016](./decisions/0016-csharp-bepinex-fm26-bridge.md), [fm26-memory-read](./features/completed/fm26-memory-read.md), and [bridge-plugin-install](./features/completed/bridge-plugin-install.md); dump schema v8 is frozen in [bridge/DUMP_SCHEMA.md](../bridge/DUMP_SCHEMA.md).
 
 ---
 

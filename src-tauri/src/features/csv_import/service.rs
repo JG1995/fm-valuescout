@@ -945,7 +945,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("save-lifecycle-import.db"));
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v7.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v8.json");
         let first_save_id = snapshot_service::active_save_id(&conn).expect("create default save");
         ingest_dump_file_for_save(&mut conn, first_save_id, &dump_path)
             .expect("ingest first snapshot");

@@ -612,7 +612,7 @@ mod tests {
     use rusqlite::OptionalExtension;
     use std::path::Path;
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v7.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -840,7 +840,7 @@ mod tests {
         let prior_count = role_score_count_for_snapshot(&conn, first.id);
         assert!(prior_count > 0);
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 7", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 8", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let _ = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -866,7 +866,7 @@ mod tests {
             "\"attributes\": { \"Acceleration\": 14, \"Pace\": 15, \"Dribbling\": null }",
         );
         let expected_positions = serde_json::from_str::<Value>(&json_with_null_attribute)
-            .expect("parse v7 fixture")
+            .expect("parse v8 fixture")
             .get("players")
             .and_then(Value::as_array)
             .and_then(|players| players.first())
@@ -877,7 +877,7 @@ mod tests {
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
 
         assert_eq!(snapshot.save_id, active_save.id);
-        assert_eq!(snapshot.schema_version, 7);
+        assert_eq!(snapshot.schema_version, 8);
         assert_eq!(snapshot.generated_at_utc, "2026-08-08T10:00:00.000Z");
         assert_eq!(snapshot.game_version, "26.3.2.2329565");
         assert_eq!(snapshot.supported_game_version, "26.3");
@@ -1027,9 +1027,11 @@ mod tests {
                 .as_object()
                 .expect("staff attributes")
                 .len(),
-            22
+            24
         );
         assert_eq!(staff_attributes["Attacking"], 15);
+        assert_eq!(staff_attributes["Authority"], 18);
+        assert_eq!(staff_attributes["Adaptability"], 17);
         assert_eq!(staff_attributes.get("DataAnalysis"), Some(&Value::Null));
     }
 
@@ -1295,7 +1297,7 @@ mod tests {
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
 
-        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 7", "\"schemaVersion\": 4");
+        let bad_json = GOLDEN_FIXTURE.replace("\"schemaVersion\": 8", "\"schemaVersion\": 4");
         let bad_path = write_dump(&temp_dir, "bad.json", &bad_json);
         let error = ingest_dump_file(&mut conn, &bad_path).expect_err("reject bad schema");
 
@@ -1421,7 +1423,7 @@ mod tests {
         write!(
             file,
             concat!(
-                r#"{{"schemaVersion":7,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
+                r#"{{"schemaVersion":8,"generatedAtUtc":"2026-07-30T12:00:00.000Z","#,
                 r#""gameVersion":"26.3.2","supportedGameVersion":"26.3","bridgeVersion":"0.1.0","#,
                 r#""protocolVersion":1,"gameDate":null,"gameDateSource":"unknown","gameDateBasis":"unknown","#,
                 r#""playerDatabaseScope":"men","#,

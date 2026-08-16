@@ -917,7 +917,7 @@ mod tests {
 
     fn fixture_player(uid: i64, name: &str, current_club: &str, team_level: &str) -> Value {
         let mut player: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v8.json"))
                 .expect("parse fixture");
         let player = player["players"].get_mut(0).expect("fixture player");
         player["uid"] = json!(uid);
@@ -935,7 +935,7 @@ mod tests {
         players: Vec<Value>,
     ) {
         let mut dump: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v8.json"))
                 .expect("parse fixture");
         dump["players"] = Value::Array(players);
         dump["playerCount"] = json!(dump["players"].as_array().expect("players").len());
@@ -957,7 +957,7 @@ mod tests {
         game_date_source: &str,
     ) -> Result<(), String> {
         let mut dump: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v8.json"))
                 .expect("parse fixture");
         dump["gameDate"] = game_date;
         dump["gameDateSource"] = json!(game_date_source);
@@ -1244,8 +1244,8 @@ mod tests {
             "memory",
         )
         .expect("ingest early date");
-        let failed_json = include_str!("../memory_read/fixtures/golden_dump_v7.json")
-            .replace("\"schemaVersion\": 7", "\"schemaVersion\": 4")
+        let failed_json = include_str!("../memory_read/fixtures/golden_dump_v8.json")
+            .replace("\"schemaVersion\": 8", "\"schemaVersion\": 4")
             .replace(
                 "\"gameDate\": \"2026-08-14\"",
                 "\"gameDate\": \"2027-01-01\"",

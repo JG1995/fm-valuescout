@@ -3,7 +3,7 @@ namespace FmDataBridge.Protocol;
 public static class BridgeProtocol
 {
     public const int ProtocolVersion = 1;
-    public const int DumpSchemaVersion = 7;
+    public const int DumpSchemaVersion = 8;
 
     /// <summary>Ignore request.json older than this many seconds (SuperScout-class stale fix).</summary>
     public const int RequestTtlSeconds = 30;

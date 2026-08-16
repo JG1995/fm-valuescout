@@ -8,6 +8,7 @@ public static class StaffAttributeReader
 {
     public static IReadOnlyDictionary<string, int?> Read(
         IMemoryReader reader,
+        ulong personAddress,
         ulong staffBlockBase,
         IFmMemoryLayout layout)
     {
@@ -28,11 +29,20 @@ public static class StaffAttributeReader
                 reader.TryReadBlock(attrsAddress, buffer, 0, length, out _);
             }
 
-            var attributes = new Dictionary<string, int?>(entries.Count, StringComparer.Ordinal);
+            var attributes = new Dictionary<string, int?>(entries.Count + 1, StringComparer.Ordinal);
             foreach (var entry in entries)
             {
                 attributes[entry.Key] = AttributeScale.TryDecodeScaledStrict(buffer[entry.Offset - min]);
             }
+
+            var adaptabilityOffset = layout.PersonalityEntries
+                .Single(entry => entry.Key == "Adaptability")
+                .Offset;
+            attributes["Adaptability"] =
+                TryAdd(personAddress, adaptabilityOffset, out var adaptabilityAddress)
+                && reader.TryReadByte(adaptabilityAddress, out var adaptability)
+                    ? AttributeScale.TryPersonality(adaptability)
+                    : null;
 
             return attributes;
         }

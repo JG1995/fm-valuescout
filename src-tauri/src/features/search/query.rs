@@ -508,7 +508,7 @@ mod tests {
         game_date: &str,
     ) {
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v8.json"))
                 .expect("parse golden fixture");
         let mut players = players;
         for player in &mut players {

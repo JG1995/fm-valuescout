@@ -251,7 +251,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("with-snapshot.db"));
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v7.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v8.json");
 
         ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
 
@@ -274,7 +274,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("proof-role-score.db"));
         let mut root: Value =
-            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v7.json"))
+            serde_json::from_str(include_str!("../memory_read/fixtures/golden_dump_v8.json"))
                 .expect("parse golden fixture");
         let attributes: serde_json::Map<String, Value> = DUMP_ATTRIBUTE_KEYS
             .iter()
@@ -297,7 +297,7 @@ mod tests {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("switch-save.db"));
         let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src/features/memory_read/fixtures/golden_dump_v7.json");
+            .join("src/features/memory_read/fixtures/golden_dump_v8.json");
 
         ingest_dump_file(&mut conn, &dump_path).expect("ingest into default save");
         let default_snapshot = get_current_snapshot(&conn)

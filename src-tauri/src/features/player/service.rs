@@ -866,7 +866,7 @@ mod tests {
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service::{create_save, set_active_save};
 
-    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v7.json");
+    const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
     const PLAYER_UID: i64 = 77;
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]

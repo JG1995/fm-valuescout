@@ -180,7 +180,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 1 — Extract complete staff scoring attributes
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(memory-read): extract staff scoring attributes`
 
@@ -232,7 +232,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 2 — Persist staff job-fit scores
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(scoring): persist staff job scores`
 
@@ -732,19 +732,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 1 — Staff data foundation
 
-**Commit:** Extract complete staff scoring attributes
+**Commit:** Persist staff job-fit scores
 
 ### RED proof
 
-Add bridge tests that place a known ×5 byte at `NPLO_ATTRS + 0x30` and expect the staff record and serialized schema-v8 dump to expose it as Authority. Add equivalent Adaptability and Rust golden-v8 validation tests. They fail today because staff extraction publishes neither key and both bridge and Rust require schema v7.
+Add pure scoring tests for the 20 stable job IDs, representative one-, two-, and multi-attribute formulas, strict missing/invalid input handling, and rounding. Add migration and ingest tests for transactional score persistence, replacement, cascade deletion, and failed-ingest rollback. They fail today because neither the score catalog nor `staff_role_scores` exists.
 
 ### Expected outcome
 
-The supported FM26.3 bridge emits schema v8 staff rows with nullable, validated Authority and Adaptability keys; Authority comes from `NPLO_ATTRS + 0x30`; Rust accepts that contract; and old or malformed dump attempts do not replace a good current snapshot.
+Schema-v8 staff rows generate only calculable current-ability job-fit scores through one Rust-owned 20-role catalog. Scores are persisted atomically with their snapshot, remain snapshot-scoped, and cascade with the owning staff row.
 
 ### Explicit exclusions
 
-No score table/formula, query API, frontend, or memory write belongs in the active commit.
+No query API, frontend, potential score, weighting, old-snapshot backfill, or memory write belongs in the active commit.
 
 ## Discoveries and replanning
 
@@ -758,6 +758,7 @@ No score table/formula, query API, frontend, or memory write belongs in the acti
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
+| PR 1 | Extract complete staff scoring attributes | Pending record | Schema v8 publishes nullable Authority from accepted staff offset `0x30` and person-level Adaptability; Rust validates the fixed 24-key staff contract | Sol Medium accepted after one fix round added full bridge serialization proof | Live FM comparison not run; accepted Authority pin remains empirically unverified |
 | None | Planning only | Pending record | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation

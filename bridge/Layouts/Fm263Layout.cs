@@ -69,6 +69,9 @@ public sealed class Fm263Layout : IFmMemoryLayout
         new("TacticalKnowledge", 0x21),
         new("Physiotherapy", 0x20),
         new("SportsScience", 0x2F),
+        // ponytail: Authority uses the accepted only-unmapped-byte pin for FM26.3.
+        // Upgrade to a corrected offset if a live FM comparison disproves 0x30.
+        new("Authority", 0x30),
         new("DataAnalysis", 0x2C),
         new("WorkingWithYoungsters", 0x0C),
         new("GoalkeepingDistribution", 0x2A),

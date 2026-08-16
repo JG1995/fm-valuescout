@@ -242,9 +242,7 @@ public sealed class CapADumpTests
                     Gender = PlayerGenderValues.Female,
                     Ca = 100,
                     Pa = 120,
-                    Attributes = Fm263Layout.Instance.StaffAttributeEntries.ToDictionary(
-                        entry => entry.Key,
-                        _ => (int?)15),
+                    Attributes = CompleteStaffAttributes(15),
                     JobId = 16,
                     WeeklyWageGbp = 20_000,
                     ContractExpiryYear = 2028,
@@ -298,9 +296,11 @@ public sealed class CapADumpTests
         Assert.Equal(8u, root.GetProperty("staff")[0].GetProperty("uid").GetUInt32());
         Assert.Equal("female", root.GetProperty("staff")[0].GetProperty("gender").GetString());
         Assert.Equal(
-            Fm263Layout.Instance.StaffAttributeEntries.Count,
+            Fm263Layout.Instance.StaffAttributeEntries.Count + 1,
             root.GetProperty("staff")[0].GetProperty("attributes").EnumerateObject().Count());
         Assert.Equal(15, root.GetProperty("staff")[0].GetProperty("attributes").GetProperty("Attacking").GetInt32());
+        Assert.Equal(15, root.GetProperty("staff")[0].GetProperty("attributes").GetProperty("Authority").GetInt32());
+        Assert.Equal(15, root.GetProperty("staff")[0].GetProperty("attributes").GetProperty("Adaptability").GetInt32());
         Assert.Equal(8u, root.GetProperty("manager").GetProperty("uid").GetUInt32());
         Assert.Equal("Example FC", root.GetProperty("manager").GetProperty("club").GetString());
         Assert.Equal("ENG", root.GetProperty("players")[0].GetProperty("nationalities")[0].GetString());
@@ -1758,6 +1758,15 @@ public sealed class CapADumpTests
     {
         var span = buffer.AsSpan(offset, sizeof(ulong));
         BitConverter.TryWriteBytes(span, value);
+    }
+
+    private static IReadOnlyDictionary<string, int?> CompleteStaffAttributes(int value)
+    {
+        var attributes = Fm263Layout.Instance.StaffAttributeEntries.ToDictionary(
+            entry => entry.Key,
+            _ => (int?)value);
+        attributes["Adaptability"] = value;
+        return attributes;
     }
 
     private static void WriteUInt32(byte[] buffer, int offset, uint value)
