@@ -4,6 +4,8 @@ import {
   bestPotentialRoleScore,
   bestRoleScore,
   defaultProfilePosition,
+  isGoalkeeper,
+  rolesForPhase,
   rolesForPlayablePositions,
   rolesForProfilePosition,
 } from "./position-families";
@@ -145,6 +147,12 @@ describe("profile position selection", () => {
     expect(defaultProfilePosition({ MC: 20, ST: 15 }, scores)).toBe("MC");
   });
 
+  it("recognizes goalkeeper profiles at the playable familiarity threshold", () => {
+    expect(isGoalkeeper({ GK: 15 })).toBe(true);
+    expect(isGoalkeeper({ GK: 14 })).toBe(false);
+    expect(isGoalkeeper({ MC: 20 })).toBe(false);
+  });
+
   it("falls back to the best role position when familiarity is unavailable", () => {
     expect(defaultProfilePosition({}, scores)).toBe("DM");
   });
@@ -229,5 +237,40 @@ describe("profile position selection", () => {
         direction: "ascending",
       }).map((item) => item.roleId),
     ).toEqual(["lower", "first-tie", "second-tie", "unavailable"]);
+  });
+});
+
+describe("profile role phases", () => {
+  it("partitions roles by the exact in-possession or out-of-possession phase", () => {
+    const scores = [
+      role({
+        roleId: "ip",
+        displayName: "In possession",
+        positionTags: ["MC"],
+        phase: "in_possession",
+        score: 80,
+      }),
+      role({
+        roleId: "oop",
+        displayName: "Out of possession",
+        positionTags: ["MC"],
+        phase: "out_of_possession",
+        score: 75,
+      }),
+      role({
+        roleId: "unknown",
+        displayName: "Unknown phase",
+        positionTags: ["MC"],
+        phase: "unknown",
+        score: 99,
+      }),
+    ];
+
+    expect(
+      rolesForPhase(scores, "in_possession").map((item) => item.roleId),
+    ).toEqual(["ip"]);
+    expect(
+      rolesForPhase(scores, "out_of_possession").map((item) => item.roleId),
+    ).toEqual(["oop"]);
   });
 });

@@ -38,5 +38,6 @@ export type PlayerDetail = {
   teamLevel: string | null;
   ca: number;
   pa: number | null;
+  hiddenInformationRevealed: boolean;
   roleScores: PlayerRoleScore[];
 };

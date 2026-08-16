@@ -280,7 +280,7 @@ test.describe("application smoke", () => {
     await expect(main.getByTestId("squad-overview-scroller")).toBeVisible();
     await expect(
       table.getByRole("link", { name: "Alex Scout" }),
-    ).toHaveAttribute("href", "/players/42?tab=technical");
+    ).toHaveAttribute("href", "/players/42");
     await table.getByRole("button", { name: "Name", exact: true }).click();
     await expect(
       table.getByRole("columnheader", { name: "Name" }),
@@ -293,7 +293,7 @@ test.describe("application smoke", () => {
       .first()
       .getByText("Barcelona")
       .click();
-    await expect(page).toHaveURL(/\/players\/42\?tab=technical$/);
+    await expect(page).toHaveURL(/\/players\/42$/);
   });
 
   test("configured Squad keeps its table inside desktop viewports", async ({
@@ -1313,11 +1313,17 @@ test.describe("application smoke", () => {
       .locator("..")
       .locator("..");
     const roleFit = main.getByRole("region", { name: "Role fit for MC" });
-    const current = summary.getByRole("img", {
-      name: "Best role (Current): 82, Excellent",
+    const currentIp = summary.getByRole("img", {
+      name: "Current IP: 82, Excellent",
     });
-    const potential = summary.getByRole("img", {
-      name: "Best potential role (Potential): 94, Excellent",
+    const currentOop = summary.getByRole("img", {
+      name: "Current OOP: 60, Average",
+    });
+    const potentialIp = summary.getByRole("img", {
+      name: "Potential IP: 94, Excellent",
+    });
+    const potentialOop = summary.getByRole("img", {
+      name: "Potential OOP: 77, Good",
     });
 
     for (const [width, height] of [
@@ -1328,8 +1334,10 @@ test.describe("application smoke", () => {
       await expect(summary).toBeVisible();
       await expect(attributes).toBeVisible();
       await expect(roleFit).toBeVisible();
-      await expect(current).toBeVisible();
-      await expect(potential).toBeVisible();
+      await expect(currentIp).toBeVisible();
+      await expect(currentOop).toBeVisible();
+      await expect(potentialIp).toBeVisible();
+      await expect(potentialOop).toBeVisible();
 
       const [mainBox, attributesBox, roleFitBox] = await Promise.all([
         main.boundingBox(),
@@ -1349,31 +1357,31 @@ test.describe("application smoke", () => {
         mainBox.y + mainBox.height,
       );
 
-      const [currentBox, potentialBox] = await Promise.all([
-        current.boundingBox(),
-        potential.boundingBox(),
-      ]);
-      expect(currentBox).not.toBeNull();
-      expect(potentialBox).not.toBeNull();
-      if (!currentBox || !potentialBox) {
+      const summaryBadgeBoxes = await Promise.all(
+        [currentIp, currentOop, potentialIp, potentialOop].map((badge) =>
+          badge.boundingBox(),
+        ),
+      );
+      expect(summaryBadgeBoxes.every((box) => box !== null)).toBe(true);
+      const [currentIpBox, currentOopBox, potentialIpBox, potentialOopBox] =
+        summaryBadgeBoxes;
+      if (
+        !currentIpBox ||
+        !currentOopBox ||
+        !potentialIpBox ||
+        !potentialOopBox
+      ) {
         throw new Error("Expected visible best-role summary badges.");
       }
-      expect(currentBox.x + currentBox.width).toBeLessThanOrEqual(
-        potentialBox.x,
+      expect(currentIpBox.x + currentIpBox.width).toBeLessThanOrEqual(
+        currentOopBox.x,
+      );
+      expect(potentialIpBox.x + potentialIpBox.width).toBeLessThanOrEqual(
+        potentialOopBox.x,
       );
 
       const detailLabels = await Promise.all(
-        [
-          "Age / DOB",
-          "Nationality",
-          "Height",
-          "Foot",
-          "Best role (Current)",
-          "Best potential role (Potential)",
-          "CA",
-          "PA",
-          "Value",
-        ].map((label) =>
+        ["Age / DOB", "Nationality", "Height", "Foot"].map((label) =>
           summary.getByText(label, { exact: true }).boundingBox(),
         ),
       );
@@ -1387,38 +1395,100 @@ test.describe("application smoke", () => {
           Math.abs((labelBox?.y ?? detailRowY) - detailRowY),
         ).toBeLessThanOrEqual(1);
       }
+      for (const label of [
+        "Current IP",
+        "Current OOP",
+        "Potential IP",
+        "Potential OOP",
+      ]) {
+        await expect(summary.getByText(label, { exact: true })).toBeVisible();
+      }
 
-      const [boostBox, wonderkidBox, caLabelBox, abilityRowBox] =
-        await Promise.all([
-          summary.getByRole("button", { name: "Boost CA" }).boundingBox(),
-          summary
-            .getByRole("button", { name: "Wonderkid Mentality" })
-            .boundingBox(),
-          summary.getByText("CA", { exact: true }).boundingBox(),
-          summary
-            .getByText("Value", { exact: true })
-            .locator("..")
-            .locator("..")
-            .boundingBox(),
-        ]);
+      const [
+        boostBox,
+        wonderkidBox,
+        hiddenInformationBox,
+        caLabelBox,
+        abilityRowBox,
+      ] = await Promise.all([
+        summary.getByRole("button", { name: "Boost CA" }).boundingBox(),
+        summary
+          .getByRole("button", { name: "Wonderkid Mentality" })
+          .boundingBox(),
+        summary
+          .getByRole("button", { name: "Reveal hidden information" })
+          .boundingBox(),
+        summary.getByText("CA", { exact: true }).boundingBox(),
+        summary
+          .getByText("Value", { exact: true })
+          .locator("..")
+          .locator("..")
+          .boundingBox(),
+      ]);
       expect(boostBox).not.toBeNull();
       expect(wonderkidBox).not.toBeNull();
+      expect(hiddenInformationBox).not.toBeNull();
       expect(caLabelBox).not.toBeNull();
       expect(abilityRowBox).not.toBeNull();
-      if (!boostBox || !wonderkidBox || !caLabelBox || !abilityRowBox) {
+      if (
+        !boostBox ||
+        !wonderkidBox ||
+        !hiddenInformationBox ||
+        !caLabelBox ||
+        !abilityRowBox
+      ) {
         throw new Error("Expected visible player-development actions.");
       }
+      expect(Math.abs(wonderkidBox.y - boostBox.y)).toBeLessThanOrEqual(1);
+      expect(Math.abs(hiddenInformationBox.y - boostBox.y)).toBeLessThanOrEqual(
+        1,
+      );
       expect(boostBox.y + boostBox.height).toBeLessThanOrEqual(caLabelBox.y);
       expect(caLabelBox.y - (boostBox.y + boostBox.height)).toBeLessThanOrEqual(
         24,
       );
       expect(
         Math.abs(
-          wonderkidBox.x +
-            wonderkidBox.width -
+          hiddenInformationBox.x +
+            hiddenInformationBox.width -
             (abilityRowBox.x + abilityRowBox.width),
         ),
       ).toBeLessThanOrEqual(1);
+
+      if (width === 1280) {
+        await page
+          .getByTestId("app-header")
+          .getByRole("button", { name: "Load Data" })
+          .click();
+        await expect(
+          page.getByText("Loaded 0 players into the database."),
+        ).toBeVisible();
+        const mainDimensions = await main.evaluate((element) => {
+          const htmlElement = element as unknown as {
+            clientHeight: number;
+            scrollHeight: number;
+          };
+          return {
+            clientHeight: htmlElement.clientHeight,
+            scrollHeight: htmlElement.scrollHeight,
+          };
+        });
+        expect(mainDimensions.scrollHeight).toBeLessThanOrEqual(
+          mainDimensions.clientHeight + 1,
+        );
+        const [bannerMainBox, bannerRoleFitBox] = await Promise.all([
+          main.boundingBox(),
+          roleFitPanel.boundingBox(),
+        ]);
+        expect(bannerMainBox).not.toBeNull();
+        expect(bannerRoleFitBox).not.toBeNull();
+        if (!bannerMainBox || !bannerRoleFitBox) {
+          throw new Error("Expected the profile workspace below the banner.");
+        }
+        expect(
+          bannerRoleFitBox.y + bannerRoleFitBox.height,
+        ).toBeLessThanOrEqual(bannerMainBox.y + bannerMainBox.height);
+      }
     }
 
     const currentHeader = roleFit.getByRole("columnheader", {
@@ -1490,6 +1560,58 @@ test.describe("application smoke", () => {
     await expect(action).toBeDisabled();
   });
 
+  test("player profile hides sensitive information across profiles and restores it", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { playerProfile: true });
+    await page.goto("/players/42");
+
+    const main = page.getByRole("main");
+    const summary = main.getByRole("region", {
+      name: "Potential Scout summary",
+    });
+    const toggle = summary.getByRole("button", {
+      name: "Reveal hidden information",
+    });
+    const revealedToggleBox = await toggle.boundingBox();
+    expect(revealedToggleBox).not.toBeNull();
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+
+    const concealedToggle = summary.getByRole("button", {
+      name: "Reveal hidden information",
+    });
+    await expect(concealedToggle).toHaveAttribute("aria-pressed", "false");
+    const concealedToggleBox = await concealedToggle.boundingBox();
+    expect(concealedToggleBox).not.toBeNull();
+    if (!revealedToggleBox || !concealedToggleBox) {
+      throw new Error("Expected the hidden-information toggle in both states.");
+    }
+    expect(concealedToggleBox.y).toBe(revealedToggleBox.y);
+    await expect(summary.getByText("PA", { exact: true })).toHaveCount(0);
+    await expect(summary.getByText("160", { exact: true })).toHaveCount(0);
+    await expect(
+      summary.getByRole("img", { name: "Potential IP: concealed" }),
+    ).toBeVisible();
+    await expect(
+      summary.getByRole("img", { name: "Potential OOP: concealed" }),
+    ).toBeVisible();
+    await expect(main.getByRole("button", { name: "Boost CA" })).toHaveCount(0);
+
+    await page.goto("/players/99");
+    const otherSummary = main.getByRole("region", {
+      name: "Other Scout summary",
+    });
+    const otherToggle = otherSummary.getByRole("button", {
+      name: "Reveal hidden information",
+    });
+    await expect(otherToggle).toHaveAttribute("aria-pressed", "false");
+
+    await otherToggle.click();
+    await expect(otherToggle).toHaveAttribute("aria-pressed", "true");
+    await expect(otherSummary.getByText("PA", { exact: true })).toBeVisible();
+  });
+
   test("player profile Attributes keeps visible potential pairs within desktop widths", async ({
     page,
   }) => {
@@ -1497,6 +1619,9 @@ test.describe("application smoke", () => {
     await page.goto("/players/42?tab=technical");
 
     const technical = page.getByRole("region", { name: "Technical" });
+    const mental = page.getByRole("region", { name: "Mental" });
+    const physical = page.getByRole("region", { name: "Physical" });
+    const roleFit = page.getByRole("region", { name: "Role fit for MC" });
     const passing = technical.locator("dd", {
       hasText: "Current 14, Potential 16",
     });
@@ -1522,6 +1647,86 @@ test.describe("application smoke", () => {
       expect(passingBox.x + passingBox.width).toBeLessThanOrEqual(
         technicalBox.x + technicalBox.width,
       );
+
+      for (const [region, label] of [
+        [technical, "Passing"],
+        [mental, "Off The Ball"],
+        [physical, "Natural Fitness"],
+      ] as const) {
+        const regionBox = await region.boundingBox();
+        const labelBox = await region
+          .getByText(label, { exact: true })
+          .boundingBox();
+        expect(regionBox).not.toBeNull();
+        expect(labelBox).not.toBeNull();
+        if (!regionBox || !labelBox) {
+          throw new Error(`Expected readable ${label} attribute label.`);
+        }
+        expect(labelBox.width).toBeGreaterThan(0);
+        expect(labelBox.x + labelBox.width).toBeLessThanOrEqual(
+          regionBox.x + regionBox.width,
+        );
+        const dimensions = await region.evaluate((element) => {
+          const htmlElement = element as unknown as {
+            clientWidth: number;
+            scrollWidth: number;
+          };
+          return {
+            clientWidth: htmlElement.clientWidth,
+            scrollWidth: htmlElement.scrollWidth,
+          };
+        });
+        expect(dimensions.scrollWidth).toBeLessThanOrEqual(
+          dimensions.clientWidth,
+        );
+        expect(
+          await region.getByText(label, { exact: true }).evaluate((element) => {
+            const htmlElement = element as unknown as {
+              clientWidth: number;
+              scrollWidth: number;
+            };
+            return htmlElement.scrollWidth <= htmlElement.clientWidth;
+          }),
+        ).toBe(true);
+      }
+    }
+
+    await page.getByRole("button", { name: "Toggle navigation" }).click();
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const expandedRoleFitDimensions = await roleFit.evaluate((element) => {
+      const htmlElement = element as unknown as {
+        clientWidth: number;
+        scrollWidth: number;
+      };
+      return {
+        clientWidth: htmlElement.clientWidth,
+        scrollWidth: htmlElement.scrollWidth,
+      };
+    });
+    expect(expandedRoleFitDimensions.scrollWidth).toBeLessThanOrEqual(
+      expandedRoleFitDimensions.clientWidth,
+    );
+    for (const [region, label] of [
+      [technical, "Passing"],
+      [mental, "Off The Ball"],
+      [physical, "Natural Fitness"],
+    ] as const) {
+      const labelBox = await region
+        .getByText(label, { exact: true })
+        .boundingBox();
+      expect(labelBox).not.toBeNull();
+      if (!labelBox) {
+        throw new Error(`Expected readable ${label} attribute label.`);
+      }
+      expect(
+        await region.getByText(label, { exact: true }).evaluate((element) => {
+          const htmlElement = element as unknown as {
+            clientWidth: number;
+            scrollWidth: number;
+          };
+          return htmlElement.scrollWidth <= htmlElement.clientWidth;
+        }),
+      ).toBe(true);
     }
   });
 

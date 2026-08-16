@@ -3,6 +3,8 @@ import {
   attributeRows,
   attributeTierLabel,
   attributeValueTier,
+  GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS,
+  GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS,
   HIDDEN_ATTRIBUTE_KEYS,
   labelFromPascal,
   PERSONALITY_ATTRIBUTE_KEYS,
@@ -13,11 +15,67 @@ describe("attribute-groups", () => {
   it("exposes Technical Mental Physical and Goalkeeping with known dump keys", () => {
     const titles = VISIBLE_ATTRIBUTE_GROUPS.map((group) => group.title);
     expect(titles).toEqual(["Technical", "Mental", "Physical", "Goalkeeping"]);
+    const keys = VISIBLE_ATTRIBUTE_KEYS_FLAT();
     expect(VISIBLE_ATTRIBUTE_GROUPS[0].keys).toContain("Crossing");
-    expect(VISIBLE_ATTRIBUTE_KEYS_FLAT()).toContain("Acceleration");
-    expect(VISIBLE_ATTRIBUTE_KEYS_FLAT()).toContain("Handling");
+    expect(keys).toContain("Acceleration");
+    expect(keys).toContain("Handling");
+    expect(keys).toContain("Corners");
+    expect(new Set(keys).size).toBe(keys.length);
     expect(HIDDEN_ATTRIBUTE_KEYS).toContain("Consistency");
     expect(PERSONALITY_ATTRIBUTE_KEYS).toContain("Ambition");
+  });
+
+  it("keeps outfield groups together and separates technical set pieces", () => {
+    const technical = VISIBLE_ATTRIBUTE_GROUPS[0];
+    expect(technical.subgroups).toEqual([
+      {
+        title: "Set Pieces",
+        keys: ["Corners", "FreeKicks", "LongThrows", "PenaltyTaking"],
+      },
+    ]);
+    expect(technical.keys).not.toContain("Corners");
+    expect(
+      technical.subgroups?.flatMap((subgroup) => [...subgroup.keys]),
+    ).toContain("PenaltyTaking");
+  });
+
+  it("keeps goalkeeper technicals separate from their primary mental and physical groups", () => {
+    expect(
+      GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS.map((group) => group.title),
+    ).toEqual(["Goalkeeping", "Mental", "Physical"]);
+    expect(GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS[0].keys).toEqual([
+      "AerialReach",
+      "CommandOfArea",
+      "Communication",
+      "Eccentricity",
+      "FirstTouch",
+      "Handling",
+      "Kicking",
+      "OneOnOnes",
+      "Passing",
+      "Punching",
+      "Reflexes",
+      "RushingOut",
+      "Technique",
+      "Throwing",
+    ]);
+    expect(
+      GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS.map((group) => group.title),
+    ).toEqual(["Technical"]);
+    const goalkeeperOutfieldKeys = flattenAttributeGroups(
+      GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS,
+    );
+    expect(goalkeeperOutfieldKeys).not.toContain("FirstTouch");
+    expect(goalkeeperOutfieldKeys).not.toContain("Passing");
+    expect(goalkeeperOutfieldKeys).not.toContain("Technique");
+    const goalkeeperKeys = [
+      ...goalkeeperOutfieldKeys,
+      ...flattenAttributeGroups(GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS),
+    ];
+    expect(new Set(goalkeeperKeys)).toEqual(
+      new Set(VISIBLE_ATTRIBUTE_KEYS_FLAT()),
+    );
+    expect(new Set(goalkeeperKeys).size).toBe(goalkeeperKeys.length);
   });
 
   it("keeps null and missing values as null so display can show an em dash", () => {
@@ -76,5 +134,17 @@ describe("attribute-groups", () => {
 });
 
 function VISIBLE_ATTRIBUTE_KEYS_FLAT(): string[] {
-  return VISIBLE_ATTRIBUTE_GROUPS.flatMap((group) => [...group.keys]);
+  return flattenAttributeGroups(VISIBLE_ATTRIBUTE_GROUPS);
+}
+
+function flattenAttributeGroups(
+  groups: readonly {
+    keys: readonly string[];
+    subgroups?: readonly { keys: readonly string[] }[];
+  }[],
+): string[] {
+  return groups.flatMap((group) => [
+    ...group.keys,
+    ...(group.subgroups?.flatMap((subgroup) => [...subgroup.keys]) ?? []),
+  ]);
 }

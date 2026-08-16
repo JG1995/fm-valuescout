@@ -8,16 +8,20 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import {
   fixturePlayerDetail,
   getCurrentAbilityBoostIpcMockCalls,
+  getSetPlayerHiddenInformationRevealedIpcMockCalls,
   getWonderkidMentalityBoostIpcMockCalls,
   resolvePendingCurrentAbilityBoostIpcMock,
   resolvePendingWonderkidMentalityBoostIpcMock,
   setCurrentAbilityBoostIpcMockMode,
   setGetPlayerOverride,
+  setPlayerHiddenInformationRevealedIpcMockMode,
   setWonderkidMentalityBoostIpcMockMode,
 } from "@/testing/player-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
@@ -69,8 +73,289 @@ describe("player profile route", () => {
     expect(screen.getByText("Right")).toBeInTheDocument();
     expect(screen.getByText("ENG, WAL")).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: "Technical", selected: true }),
+      screen.getByRole("tab", { name: "Outfield", selected: true }),
     ).toBeInTheDocument();
+  });
+
+  it("starts goalkeeper profiles with goalkeeper mental and physical attributes", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        positions: { GK: 20 },
+        attributes: {
+          AerialReach: 13,
+          CommandOfArea: 12,
+          Communication: 11,
+          Eccentricity: 10,
+          FirstTouch: 9,
+          Handling: 14,
+          Kicking: 15,
+          OneOnOnes: 16,
+          Passing: 8,
+          Punching: 7,
+          Reflexes: 17,
+          RushingOut: 13,
+          Technique: 6,
+          Throwing: 12,
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    const { router } = renderProfileRoute("/players/42");
+
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((item) => item.textContent)).toEqual([
+      "Goalkeeping",
+      "Outfield",
+      "Hidden",
+      "Personality",
+    ]);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+
+    const goalkeeping = screen.getByRole("tabpanel", { name: "Goalkeeping" });
+    expect(
+      within(goalkeeping)
+        .getAllByRole("heading", { level: 3 })
+        .map((item) => item.textContent),
+    ).toEqual(["Goalkeeping", "Mental", "Physical"]);
+    expect(
+      within(goalkeeping)
+        .getAllByRole("term")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "Aerial Reach",
+      "Command Of Area",
+      "Communication",
+      "Eccentricity",
+      "First Touch",
+      "Handling",
+      "Kicking",
+      "One On Ones",
+      "Passing",
+      "Punching",
+      "Reflexes",
+      "Rushing Out",
+      "Technique",
+      "Throwing",
+      "Aggression",
+      "Anticipation",
+      "Bravery",
+      "Composure",
+      "Concentration",
+      "Decisions",
+      "Determination",
+      "Flair",
+      "Leadership",
+      "Off The Ball",
+      "Positioning",
+      "Teamwork",
+      "Vision",
+      "Work Rate",
+      "Acceleration",
+      "Agility",
+      "Balance",
+      "Jumping Reach",
+      "Natural Fitness",
+      "Pace",
+      "Stamina",
+      "Strength",
+    ]);
+
+    await user.click(screen.getByRole("tab", { name: "Outfield" }));
+
+    const outfield = screen.getByRole("tabpanel", { name: "Outfield" });
+    expect(
+      within(outfield)
+        .getAllByRole("heading", { level: 3 })
+        .map((item) => item.textContent),
+    ).toEqual(["Technical"]);
+    const technical = within(outfield).getByRole("region", {
+      name: "Technical",
+    });
+    expect(
+      within(technical).queryByText("First Touch"),
+    ).not.toBeInTheDocument();
+    expect(within(technical).queryByText("Passing")).not.toBeInTheDocument();
+    expect(within(technical).queryByText("Technique")).not.toBeInTheDocument();
+    expect(router.state.location.search).toMatchObject({ tab: "outfield" });
+  });
+
+  it("honors an explicit outfield tab on goalkeeper profiles", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ positions: { GK: 20 } }));
+    renderProfileRoute("/players/42?tab=outfield");
+
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((item) => item.textContent)).toEqual([
+      "Goalkeeping",
+      "Outfield",
+      "Hidden",
+      "Personality",
+    ]);
+    expect(
+      screen.getByRole("tab", { name: "Outfield", selected: true }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the hidden-information control last in the action row", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const boostCa = within(summary).getByRole("button", { name: "Boost CA" });
+    const wonderkidMentality = within(summary).getByRole("button", {
+      name: "Wonderkid Mentality",
+    });
+    const hiddenInformation = within(summary).getByRole("button", {
+      name: "Reveal hidden information",
+    });
+
+    expect(within(summary).getAllByRole("button")).toEqual([
+      boostCa,
+      wonderkidMentality,
+      hiddenInformation,
+    ]);
+  });
+
+  it("conceals hidden information without leaving direct or indirect values in the profile", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        hiddenInformationRevealed: true,
+        attributes: { Acceleration: 14 },
+        potentialAttributes: { Acceleration: 16 },
+        hiddenAttributes: { Consistency: 12 },
+        personality: { Ambition: 10 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const toggle = within(summary).getByRole("button", {
+      name: "Reveal hidden information",
+    });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(within(summary).getByText("160")).toBeInTheDocument();
+
+    await user.click(toggle);
+
+    const reveal = await within(summary).findByRole("button", {
+      name: "Reveal hidden information",
+    });
+    expect(reveal).toHaveAttribute("aria-pressed", "false");
+    expect(within(summary).queryByText("PA")).not.toBeInTheDocument();
+    expect(within(summary).queryByText("160")).not.toBeInTheDocument();
+    expect(within(summary).queryByText("Boost CA")).not.toBeInTheDocument();
+    expect(
+      within(summary).queryByText("Wonderkid Mentality"),
+    ).not.toBeInTheDocument();
+    const concealedPotentialIp = within(summary).getByRole("img", {
+      name: "Potential IP: concealed",
+    });
+    const concealedPotentialOop = within(summary).getByRole("img", {
+      name: "Potential OOP: concealed",
+    });
+    expect(concealedPotentialIp).toHaveTextContent("—");
+    expect(concealedPotentialOop).toHaveTextContent("—");
+    expect(within(summary).getAllByText("Concealed")).toHaveLength(2);
+
+    const technical = screen.getByRole("region", { name: "Technical" });
+    expect(
+      within(technical).queryByText("Current 14, Potential 16"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Consistency")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ambition")).not.toBeInTheDocument();
+
+    const roleFit = screen.getByRole("region", { name: "Role fit for MC" });
+    expect(
+      within(roleFit).queryByRole("columnheader", { name: "Potential" }),
+    ).not.toBeInTheDocument();
+    expect(getSetPlayerHiddenInformationRevealedIpcMockCalls()).toEqual([
+      { revealed: false },
+    ]);
+
+    await user.click(reveal);
+    expect(
+      await within(summary).findByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(within(summary).getByText("160")).toBeInTheDocument();
+    expect(screen.getByText("Current 14, Potential 16")).toBeInTheDocument();
+  });
+
+  it("keeps the server-backed visibility state and reports setter failures", async () => {
+    await resolveLoadDataIpcMock();
+    setPlayerHiddenInformationRevealedIpcMockMode("error");
+    setGetPlayerOverride(
+      fixturePlayerDetail({ hiddenInformationRevealed: true }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    await user.click(
+      within(summary).getByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    );
+
+    expect(await within(summary).findByRole("alert")).toHaveTextContent(
+      /^Could not update hidden information\.$/,
+    );
+    expect(
+      within(summary).getByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("drops visibility mutation feedback when the active save changes", async () => {
+    await resolveLoadDataIpcMock();
+    setPlayerHiddenInformationRevealedIpcMockMode("error");
+    setGetPlayerOverride(
+      fixturePlayerDetail({ hiddenInformationRevealed: true }),
+    );
+    const user = userEvent.setup();
+    const { queryClient } = renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    await user.click(
+      within(summary).getByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    );
+    expect(await within(summary).findByRole("alert")).toBeInTheDocument();
+
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      snapshotKeys.current(),
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot in the profile query");
+    }
+    queryClient.setQueryData(snapshotKeys.current(), {
+      ...snapshot,
+      saveId: snapshot.saveId + 1,
+    });
+
+    await waitFor(() =>
+      expect(within(summary).queryByRole("alert")).not.toBeInTheDocument(),
+    );
+    expect(
+      within(summary).getByRole("button", {
+        name: "Reveal hidden information",
+      }),
+    ).toBeEnabled();
   });
 
   it("keeps player context beside tabbed attributes and position-filtered roles", async () => {
@@ -89,7 +374,7 @@ describe("player profile route", () => {
       await screen.findByRole("region", { name: "Alex Scout summary" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: "Technical", selected: true }),
+      screen.getByRole("tab", { name: "Outfield", selected: true }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "MC, familiarity 20", pressed: true }),
@@ -127,18 +412,24 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
   });
 
-  it("selects attribute groups from the tab search param", async () => {
+  it("normalizes legacy visible tabs to the outfield panel", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
     const user = userEvent.setup();
     const { router } = renderProfileRoute("/players/42?tab=mental");
 
     expect(
-      await screen.findByRole("tab", { name: "Mental", selected: true }),
+      await screen.findByRole("tab", { name: "Outfield", selected: true }),
     ).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Mental" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("region", { name: "Technical" }),
+      screen.getByRole("region", { name: "Technical" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Physical" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Goalkeeping" }),
     ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Hidden" }));
@@ -156,23 +447,23 @@ describe("player profile route", () => {
     const user = userEvent.setup();
     const { router } = renderProfileRoute("/players/42");
 
-    const technical = await screen.findByRole("tab", {
-      name: "Technical",
+    const outfield = await screen.findByRole("tab", {
+      name: "Outfield",
       selected: true,
     });
-    technical.focus();
+    outfield.focus();
     await user.keyboard("{ArrowRight}");
 
     expect(
-      await screen.findByRole("tab", { name: "Mental", selected: true }),
+      await screen.findByRole("tab", { name: "Goalkeeping", selected: true }),
     ).toBeInTheDocument();
-    expect(router.state.location.search).toMatchObject({ tab: "mental" });
+    expect(router.state.location.search).toMatchObject({ tab: "goalkeeping" });
 
     await user.keyboard("{ArrowRight}");
     expect(
-      await screen.findByRole("tab", { name: "Physical", selected: true }),
+      await screen.findByRole("tab", { name: "Hidden", selected: true }),
     ).toBeInTheDocument();
-    expect(router.state.location.search).toMatchObject({ tab: "physical" });
+    expect(router.state.location.search).toMatchObject({ tab: "hidden" });
   });
 
   it("shows Load Data empty state when no snapshot is loaded", async () => {
@@ -212,6 +503,13 @@ describe("player profile route", () => {
     renderProfileRoute("/players/42?tab=technical");
 
     const technical = await screen.findByRole("region", { name: "Technical" });
+    expect(screen.getByRole("region", { name: "Mental" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Physical" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Set Pieces" }),
+    ).toBeInTheDocument();
     const crossingTerm = within(technical).getByText("Crossing");
     expect(
       crossingTerm.parentElement?.querySelector('[aria-hidden="true"]'),
@@ -220,7 +518,6 @@ describe("player profile route", () => {
       crossingTerm.parentElement?.querySelector(".sr-only"),
     ).toHaveTextContent("Current —, Potential —");
 
-    await user.click(screen.getByRole("tab", { name: "Physical" }));
     const physical = screen.getByRole("region", { name: "Physical" });
     const accelerationTerm = within(physical).getByText("Acceleration");
     expect(
@@ -255,27 +552,51 @@ describe("player profile route", () => {
     ).toHaveTextContent(/^Loyalty—$/);
   });
 
-  it("shows independent current and potential best-role summaries", async () => {
+  it("shows phase-specific current and potential best-role summaries", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
         positions: { MC: 15, AMC: 16, ST: 14 },
         roleScores: [
           {
-            roleId: "current-specialist",
-            displayName: "Current Specialist",
+            roleId: "current-ip-specialist",
+            displayName: "Current IP Specialist",
             phase: "in_possession",
             positionTags: ["MC"],
             score: 82,
             potentialScore: 88,
           },
           {
-            roleId: "potential-specialist",
-            displayName: "Potential Specialist",
+            roleId: "current-ip-tie",
+            displayName: "Current IP Tie",
+            phase: "in_possession",
+            positionTags: ["AMC"],
+            score: 82,
+            potentialScore: 80,
+          },
+          {
+            roleId: "potential-ip-specialist",
+            displayName: "Potential IP Specialist",
             phase: "in_possession",
             positionTags: ["AMC"],
             score: 70,
             potentialScore: 94,
+          },
+          {
+            roleId: "current-oop-specialist",
+            displayName: "Current OOP Specialist",
+            phase: "out_of_possession",
+            positionTags: ["MC"],
+            score: 79,
+            potentialScore: 90,
+          },
+          {
+            roleId: "potential-oop-specialist",
+            displayName: "Potential OOP Specialist",
+            phase: "out_of_possession",
+            positionTags: ["AMC"],
+            score: 74,
+            potentialScore: 93,
           },
           {
             roleId: "unplayable-specialist",
@@ -295,23 +616,36 @@ describe("player profile route", () => {
     });
 
     expect(
-      within(summary).getByLabelText("Best role (Current): 82, Excellent"),
+      within(summary).getByLabelText("Current IP: 82, Excellent"),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByLabelText(
-        "Best potential role (Potential): 94, Excellent",
-      ),
+      within(summary).getByLabelText("Current OOP: 79, Good"),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByText("Best role (Current)"),
+      within(summary).getByLabelText("Potential IP: 94, Excellent"),
     ).toBeInTheDocument();
     expect(
-      within(summary).getByText("Best potential role (Potential)"),
+      within(summary).getByLabelText("Potential OOP: 93, Excellent"),
     ).toBeInTheDocument();
-    expect(within(summary).getByText("Current Specialist")).toBeInTheDocument();
+    expect(within(summary).getByText("Current IP")).toBeInTheDocument();
+    expect(within(summary).getByText("Current OOP")).toBeInTheDocument();
+    expect(within(summary).getByText("Potential IP")).toBeInTheDocument();
+    expect(within(summary).getByText("Potential OOP")).toBeInTheDocument();
     expect(
-      within(summary).getByText("Potential Specialist"),
+      within(summary).getByText("Current IP Specialist"),
     ).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Current OOP Specialist"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Potential IP Specialist"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Potential OOP Specialist"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).queryByText("Current IP Tie"),
+    ).not.toBeInTheDocument();
     expect(
       within(summary).queryByText("Unplayable Specialist"),
     ).not.toBeInTheDocument();
@@ -335,11 +669,16 @@ describe("player profile route", () => {
     );
     renderProfileRoute("/players/42");
 
-    const potential = await screen.findByRole("img", {
-      name: "Best potential role (Potential): unavailable",
+    const potentialIp = await screen.findByRole("img", {
+      name: "Potential IP: unavailable",
     });
-    expect(potential).toHaveTextContent("—");
-    expect(potential).not.toHaveAttribute("title");
+    const potentialOop = screen.getByRole("img", {
+      name: "Potential OOP: unavailable",
+    });
+    expect(potentialIp).toHaveTextContent("—");
+    expect(potentialOop).toHaveTextContent("—");
+    expect(potentialIp).not.toHaveAttribute("title");
+    expect(potentialOop).not.toHaveAttribute("title");
   });
 
   it("filters roles by pitch position with labelled current and potential badges", async () => {
@@ -650,7 +989,7 @@ describe("player profile route", () => {
     await router.navigate({
       to: "/players/$uid",
       params: { uid: "99" },
-      search: { tab: "technical" },
+      search: { tab: "outfield" },
     });
 
     expect(
@@ -683,7 +1022,7 @@ describe("player profile route", () => {
     await router.navigate({
       to: "/players/$uid",
       params: { uid: "99" },
-      search: { tab: "technical" },
+      search: { tab: "outfield" },
     });
     expect(
       await screen.findByRole("heading", { level: 1, name: "Jamie Scout" }),

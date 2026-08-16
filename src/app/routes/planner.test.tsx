@@ -291,7 +291,7 @@ describe("planner route", () => {
     ).toHaveAttribute("aria-sort", "descending");
     expect(
       within(table).getByRole("link", { name: "Alex Scout" }),
-    ).toHaveAttribute("href", "/players/42?tab=technical");
+    ).toHaveAttribute("href", "/players/42");
     expect(
       screen.getByText(
         (_, element) =>
@@ -1189,6 +1189,7 @@ describe("planner route", () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/players/42");
+      expect(router.state.location.search).toEqual({});
     });
   });
 

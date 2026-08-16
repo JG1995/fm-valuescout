@@ -49,26 +49,27 @@ pub struct PlayerDetail {
     pub team_level: Option<String>,
     pub ca: i64,
     pub pa: i64,
+    pub hidden_information_revealed: bool,
     pub role_scores: Vec<PlayerRoleScore>,
 }
 
 /// Load one player by `uid` from the active save's current snapshot.
 /// Returns `Ok(None)` when there is no current snapshot or the uid is absent.
 pub fn get_player(conn: &Connection, uid: i64) -> Result<Option<PlayerDetail>, String> {
-    let snapshot_id: Option<i64> = conn
+    let snapshot: Option<(i64, i64)> = conn
         .query_row(
-            "SELECT s.id
+            "SELECT s.id, sv.reveal_hidden_player_information
              FROM snapshots s
              INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
              WHERE s.is_current = 1
              LIMIT 1",
             [],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()
         .map_err(|error| error.to_string())?;
 
-    let Some(snapshot_id) = snapshot_id else {
+    let Some((snapshot_id, hidden_information_revealed)) = snapshot else {
         return Ok(None);
     };
 
@@ -115,6 +116,7 @@ pub fn get_player(conn: &Connection, uid: i64) -> Result<Option<PlayerDetail>, S
     let Some(mut player) = player else {
         return Ok(None);
     };
+    player.hidden_information_revealed = hidden_information_revealed == 1;
 
     let attributes = scoring_attributes(&player.attributes)?;
     let projected_attributes = project_attributes(
@@ -202,6 +204,7 @@ fn map_player_row(row: &Row<'_>) -> rusqlite::Result<PlayerDetail> {
         team_level: row.get(26)?,
         ca: row.get(27)?,
         pa: row.get(28)?,
+        hidden_information_revealed: false,
         role_scores: Vec::new(),
     })
 }
@@ -457,6 +460,46 @@ mod tests {
             "must round-trip score from player_role_scores"
         );
         assert_eq!(goalkeeper.potential_score, None);
+        assert!(player.hidden_information_revealed);
+    }
+
+    #[test]
+    fn returns_the_active_save_information_visibility_for_each_player() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("visibility-by-save.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_template(1, "First save player", 150)],
+        );
+        let first_save = create_save(&conn, "Second save").expect("create second save");
+        set_active_save(&mut conn, first_save.id).expect("switch to second save");
+        ingest_players(
+            &mut conn,
+            vec![player_template(2, "Second save player", 150)],
+        );
+        conn.execute(
+            "UPDATE saves SET reveal_hidden_player_information = 0 WHERE id = ?1",
+            [first_save.id],
+        )
+        .expect("conceal second save");
+
+        let second_player = get_player(&conn, 2)
+            .expect("get second-save player")
+            .expect("second-save player present");
+        assert!(!second_player.hidden_information_revealed);
+
+        let first_save_id: i64 = conn
+            .query_row(
+                "SELECT id FROM saves WHERE name = 'Default save'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("find first save");
+        set_active_save(&mut conn, first_save_id).expect("switch to first save");
+        let first_player = get_player(&conn, 1)
+            .expect("get first-save player")
+            .expect("first-save player present");
+        assert!(first_player.hidden_information_revealed);
     }
 
     #[test]

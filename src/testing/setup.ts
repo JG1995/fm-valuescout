@@ -58,6 +58,7 @@ import {
   resolveBoostCurrentAbilityIpcMock,
   resolveBoostWonderkidMentalityIpcMock,
   resolveGetPlayerIpcMock,
+  resolveSetPlayerHiddenInformationRevealedIpcMock,
 } from "@/testing/player-ipc-mock";
 import {
   resetSearchPlayersOverride,
@@ -152,6 +153,10 @@ function registerIpcMocks() {
 
     if (cmd === "get_player") {
       return resolveGetPlayerIpcMock(args);
+    }
+
+    if (cmd === "set_player_hidden_information_revealed") {
+      return resolveSetPlayerHiddenInformationRevealedIpcMock(args);
     }
 
     if (cmd === "boost_current_ability") {

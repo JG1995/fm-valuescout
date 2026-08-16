@@ -110,6 +110,39 @@ impl std::fmt::Display for PlayerBoostError {
 
 impl std::error::Error for PlayerBoostError {}
 
+pub fn set_player_hidden_information_revealed(
+    conn: &Connection,
+    revealed: bool,
+) -> Result<bool, String> {
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let changed = tx
+        .execute(
+            "UPDATE saves
+             SET reveal_hidden_player_information = ?1,
+                 updated_at_utc = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE is_active = 1",
+            [i64::from(revealed)],
+        )
+        .map_err(|error| error.to_string())?;
+    if changed == 0 {
+        return Err("No active save".to_string());
+    }
+
+    let persisted: i64 = tx
+        .query_row(
+            "SELECT reveal_hidden_player_information
+             FROM saves
+             WHERE is_active = 1",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(persisted == 1)
+}
+
 pub(super) fn prepare_current_ability_boost(
     conn: &Connection,
     uid: i64,
@@ -831,6 +864,7 @@ mod tests {
     };
     use crate::features::scoring::catalog::all_roles;
     use crate::features::snapshot::ingest::ingest_dump_file;
+    use crate::features::snapshot::service::{create_save, set_active_save};
 
     const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v6.json");
     const PLAYER_UID: i64 = 77;
@@ -900,6 +934,99 @@ mod tests {
 
     fn nullable_value(value: Option<i64>) -> Value {
         value.map(Value::from).unwrap_or(Value::Null)
+    }
+
+    #[test]
+    fn information_visibility_updates_only_the_active_save_and_is_idempotent() {
+        let mut fixture = seeded_player(
+            Some(21),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+
+        assert!(
+            !super::set_player_hidden_information_revealed(&fixture.conn, false)
+                .expect("conceal active save")
+        );
+        assert!(
+            !super::set_player_hidden_information_revealed(&fixture.conn, false)
+                .expect("repeat concealment")
+        );
+
+        let first_state: i64 = fixture
+            .conn
+            .query_row(
+                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                [fixture.save_id],
+                |row| row.get(0),
+            )
+            .expect("read first save visibility");
+        assert_eq!(first_state, 0);
+
+        let second_save = create_save(&fixture.conn, "Second save").expect("create second save");
+        set_active_save(&mut fixture.conn, second_save.id).expect("switch to second save");
+        assert!(
+            super::set_player_hidden_information_revealed(&fixture.conn, true)
+                .expect("reveal second save")
+        );
+
+        let second_state: i64 = fixture
+            .conn
+            .query_row(
+                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                [second_save.id],
+                |row| row.get(0),
+            )
+            .expect("read second save visibility");
+        assert_eq!(second_state, 1);
+
+        set_active_save(&mut fixture.conn, fixture.save_id).expect("switch to first save");
+        let first_state_after_switch: i64 = fixture
+            .conn
+            .query_row(
+                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                [fixture.save_id],
+                |row| row.get(0),
+            )
+            .expect("read first save visibility after switch");
+        assert_eq!(first_state_after_switch, 0);
+    }
+
+    #[test]
+    fn information_visibility_requires_an_active_save() {
+        let fixture = seeded_player(
+            Some(21),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+        fixture
+            .conn
+            .execute("UPDATE saves SET is_active = 0", [])
+            .expect("clear active save");
+
+        let error = super::set_player_hidden_information_revealed(&fixture.conn, false)
+            .expect_err("reject missing active save");
+        assert_eq!(error, "No active save");
+
+        let state: i64 = fixture
+            .conn
+            .query_row(
+                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                [fixture.save_id],
+                |row| row.get(0),
+            )
+            .expect("read unchanged visibility");
+        assert_eq!(state, 1);
     }
 
     fn verified_ca_result(previous: i64, current: i64, potential: i64) -> PlayerBoostResult {

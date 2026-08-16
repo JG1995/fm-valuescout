@@ -153,6 +153,24 @@ describe("app top bar", () => {
     expect(screen.getByText(/dump validation failed/i)).toBeInTheDocument();
   });
 
+  it.each([
+    ["success", /Loaded 3 players into the database/i],
+    ["scanFailed", /Scan failed/i],
+  ] as const)("dismisses a completed %s outcome", async (mode, message) => {
+    setLoadDataIpcMockMode(mode);
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Dismiss Load Data outcome" }),
+    );
+
+    expect(screen.queryByText(message)).not.toBeInTheDocument();
+  });
+
   it("drops a failure banner once the user switches save", async () => {
     setLoadDataIpcMockMode("scanFailed");
     const user = userEvent.setup();

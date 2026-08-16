@@ -1,19 +1,17 @@
 import type { KeyboardEvent } from "react";
 import { cn } from "@/utils/cn";
 import type { ProfileTab } from "../utils/profile-tab";
-import { PROFILE_TABS } from "../utils/profile-tab";
 
 const TAB_LABELS: Record<ProfileTab, string> = {
-  technical: "Technical",
-  mental: "Mental",
-  physical: "Physical",
-  goalkeeping: "GK",
+  outfield: "Outfield",
+  goalkeeping: "Goalkeeping",
   hidden: "Hidden",
   personality: "Personality",
 };
 
 type PlayerProfileTabsProps = {
   tab: ProfileTab;
+  tabs: readonly ProfileTab[];
   onTabChange: (tab: ProfileTab) => void;
 };
 
@@ -23,29 +21,30 @@ function focusTabButton(id: ProfileTab) {
 
 export function PlayerProfileTabs({
   tab,
+  tabs,
   onTabChange,
 }: PlayerProfileTabsProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const index = PROFILE_TABS.indexOf(tab);
+    const index = tabs.indexOf(tab);
     if (index < 0) {
       return;
     }
 
     let nextIndex = index;
     if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-      nextIndex = (index + 1) % PROFILE_TABS.length;
+      nextIndex = (index + 1) % tabs.length;
     } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-      nextIndex = (index - 1 + PROFILE_TABS.length) % PROFILE_TABS.length;
+      nextIndex = (index - 1 + tabs.length) % tabs.length;
     } else if (event.key === "Home") {
       nextIndex = 0;
     } else if (event.key === "End") {
-      nextIndex = PROFILE_TABS.length - 1;
+      nextIndex = tabs.length - 1;
     } else {
       return;
     }
 
     event.preventDefault();
-    const next = PROFILE_TABS[nextIndex];
+    const next = tabs[nextIndex];
     onTabChange(next);
     focusTabButton(next);
   };
@@ -57,7 +56,7 @@ export function PlayerProfileTabs({
       className="inline-flex max-w-full rounded-full bg-surface-container-high p-0.5"
       onKeyDown={onKeyDown}
     >
-      {PROFILE_TABS.map((id) => {
+      {tabs.map((id) => {
         const selected = id === tab;
         return (
           <button

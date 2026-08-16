@@ -23,6 +23,9 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   await page.addInitScript({
     content: `
       let playerProfileMentalityUpdated = false;
+      let playerProfileHiddenInformationRevealed =
+        window.localStorage.getItem("player-profile-hidden-information") !==
+        "false";
       const csvImportFormat = ${JSON.stringify(csvImportFormat)};
       const plannerSnapshot = ${plannerSnapshot ? "true" : "false"};
       const plannerPotentialScores = ${plannerPotentialScores ? "true" : "false"};
@@ -440,9 +443,10 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_player") {
+            const profileUid = Number.isInteger(args?.uid) ? args.uid : 42;
             return playerProfile ? {
-              uid: 42,
-              name: "Potential Scout",
+              uid: profileUid,
+              name: profileUid === 99 ? "Other Scout" : "Potential Scout",
               age: 22,
               birthYear: 2004,
               birthDayOfYear: 80,
@@ -477,6 +481,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               teamLevel: "First",
               ca: 140,
               pa: 160,
+              hiddenInformationRevealed: playerProfileHiddenInformationRevealed,
               roleScores: [
                 {
                   roleId: "current-specialist",
@@ -568,6 +573,18 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 },
               ],
             } : null;
+          }
+
+          if (cmd === "set_player_hidden_information_revealed") {
+            if (typeof args?.revealed !== "boolean") {
+              throw new Error("Missing revealed state");
+            }
+            playerProfileHiddenInformationRevealed = args.revealed;
+            window.localStorage.setItem(
+              "player-profile-hidden-information",
+              String(playerProfileHiddenInformationRevealed),
+            );
+            return playerProfileHiddenInformationRevealed;
           }
 
           if (cmd === "boost_wonderkid_mentality") {
@@ -780,28 +797,30 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "load_data") {
+            const loadedSnapshot = {
+              id: 1,
+              saveId: 1,
+              schemaVersion: 6,
+              generatedAtUtc: "2026-07-28T15:00:00.000Z",
+              gameVersion: "26.0.0",
+              supportedGameVersion: "26.0.0",
+              bridgeVersion: "0.1.0",
+              protocolVersion: 1,
+              gameDate: null,
+              gameDateSource: "unknown",
+              scanTruncated: false,
+              maxAccepted: null,
+              playerCount: 0,
+              loadedAtUtc: "2026-07-28T15:05:00.000Z",
+            };
             return {
               requestId: "req-smoke",
               playersFound: 0,
               scanTruncated: false,
               maxAccepted: null,
               timings: { scanMs: 0, ingestMs: 0, totalMs: 0 },
-              snapshot: {
-                id: 1,
-                saveId: 1,
-                schemaVersion: 6,
-                generatedAtUtc: "2026-07-28T15:00:00.000Z",
-                gameVersion: "26.0.0",
-                supportedGameVersion: "26.0.0",
-                bridgeVersion: "0.1.0",
-                protocolVersion: 1,
-                gameDate: null,
-                gameDateSource: "unknown",
-                scanTruncated: false,
-                maxAccepted: null,
-                playerCount: 0,
-                loadedAtUtc: "2026-07-28T15:05:00.000Z",
-              },
+              storedSnapshot: loadedSnapshot,
+              effectiveSnapshot: loadedSnapshot,
             };
           }
 

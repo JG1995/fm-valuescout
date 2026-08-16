@@ -70,6 +70,7 @@ pub struct PlayerDetailDto {
     pub team_level: Option<String>,
     pub ca: i64,
     pub pa: i64,
+    pub hidden_information_revealed: bool,
     pub role_scores: Vec<PlayerRoleScoreDto>,
 }
 
@@ -106,6 +107,7 @@ impl From<PlayerDetail> for PlayerDetailDto {
             team_level: player.team_level,
             ca: player.ca,
             pa: player.pa,
+            hidden_information_revealed: player.hidden_information_revealed,
             role_scores: player
                 .role_scores
                 .into_iter()
@@ -178,6 +180,17 @@ pub fn get_player(uid: i64, db: State<'_, Db>) -> Result<Option<PlayerDetailDto>
             .map_err(|_| "database lock poisoned".to_string())?;
     let player = query::get_player(&conn, uid)?;
     Ok(player.map(PlayerDetailDto::from))
+}
+
+#[tauri::command]
+pub fn set_player_hidden_information_revealed(
+    revealed: bool,
+    db: State<'_, Db>,
+) -> Result<bool, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    service::set_player_hidden_information_revealed(&conn, revealed)
 }
 
 #[tauri::command]

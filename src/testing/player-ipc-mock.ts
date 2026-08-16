@@ -2,6 +2,8 @@ import type { PlayerBoostResult } from "@/features/player-profile/types/player-b
 import type { PlayerDetail } from "@/features/player-profile/types/player-detail";
 
 let getPlayerOverride: PlayerDetail | null | undefined;
+let playerHiddenInformationMode: PlayerHiddenInformationIpcMockMode = "success";
+let playerHiddenInformationCalls: unknown[] = [];
 let currentAbilityBoostMode: CurrentAbilityBoostIpcMockMode = "success";
 let currentAbilityBoostCalls: unknown[] = [];
 let pendingCurrentAbilityBoost: {
@@ -22,6 +24,8 @@ export type CurrentAbilityBoostIpcMockMode =
   | "liveValueError"
   | "snapshotSyncError";
 
+export type PlayerHiddenInformationIpcMockMode = "success" | "error";
+
 export type WonderkidMentalityBoostIpcMockMode =
   | "success"
   | "pending"
@@ -35,12 +39,24 @@ export function setGetPlayerOverride(player: PlayerDetail | null | undefined) {
 
 export function resetGetPlayerOverride() {
   getPlayerOverride = undefined;
+  playerHiddenInformationMode = "success";
+  playerHiddenInformationCalls = [];
   currentAbilityBoostMode = "success";
   currentAbilityBoostCalls = [];
   pendingCurrentAbilityBoost = null;
   wonderkidMentalityBoostMode = "success";
   wonderkidMentalityBoostCalls = [];
   pendingWonderkidMentalityBoost = null;
+}
+
+export function setPlayerHiddenInformationRevealedIpcMockMode(
+  mode: PlayerHiddenInformationIpcMockMode,
+) {
+  playerHiddenInformationMode = mode;
+}
+
+export function getSetPlayerHiddenInformationRevealedIpcMockCalls() {
+  return playerHiddenInformationCalls;
 }
 
 export function setCurrentAbilityBoostIpcMockMode(
@@ -116,6 +132,7 @@ export function fixturePlayerDetail(
     teamLevel: "First",
     ca: 140,
     pa: 160,
+    hiddenInformationRevealed: true,
     roleScores: [
       {
         roleId: "goalkeeper_ip",
@@ -180,6 +197,36 @@ export function resolveGetPlayerIpcMock(args: unknown): PlayerDetail | null {
   }
 
   return null;
+}
+
+export function resolveSetPlayerHiddenInformationRevealedIpcMock(
+  args: unknown,
+): Promise<boolean> {
+  playerHiddenInformationCalls = [...playerHiddenInformationCalls, args];
+  if (playerHiddenInformationMode === "error") {
+    return Promise.reject(new Error("save preference could not be updated"));
+  }
+
+  const revealed =
+    typeof args === "object" &&
+    args !== null &&
+    "revealed" in args &&
+    typeof (args as { revealed: unknown }).revealed === "boolean"
+      ? (args as { revealed: boolean }).revealed
+      : null;
+  if (revealed === null) {
+    return Promise.reject(new Error("Missing revealed state"));
+  }
+
+  const player =
+    getPlayerOverride === undefined ? fixturePlayerDetail() : getPlayerOverride;
+  if (player !== null) {
+    getPlayerOverride = {
+      ...player,
+      hiddenInformationRevealed: revealed,
+    };
+  }
+  return Promise.resolve(revealed);
 }
 
 function currentAbilityBoostResult(): PlayerBoostResult {

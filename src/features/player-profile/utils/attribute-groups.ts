@@ -4,33 +4,50 @@ export type AttributeGroupId =
   | "technical"
   | "mental"
   | "physical"
-  | "goalkeeping";
+  | "goalkeeping"
+  | "hidden"
+  | "personality";
 
 export type AttributeGroup = {
   id: AttributeGroupId;
   title: string;
   keys: readonly string[];
+  subgroups?: readonly AttributeSubgroup[];
 };
+
+export type AttributeSubgroup = {
+  title: string;
+  keys: readonly string[];
+};
+
+const TECHNICAL_SET_PIECE_KEYS = [
+  "Corners",
+  "FreeKicks",
+  "LongThrows",
+  "PenaltyTaking",
+] as const;
 
 export const VISIBLE_ATTRIBUTE_GROUPS: readonly AttributeGroup[] = [
   {
     id: "technical",
     title: "Technical",
     keys: [
-      "Corners",
       "Crossing",
       "Dribbling",
       "Finishing",
       "FirstTouch",
-      "FreeKicks",
       "Heading",
       "LongShots",
-      "LongThrows",
       "Marking",
       "Passing",
-      "PenaltyTaking",
       "Tackling",
       "Technique",
+    ],
+    subgroups: [
+      {
+        title: "Set Pieces",
+        keys: TECHNICAL_SET_PIECE_KEYS,
+      },
     ],
   },
   {
@@ -84,6 +101,49 @@ export const VISIBLE_ATTRIBUTE_GROUPS: readonly AttributeGroup[] = [
       "Throwing",
     ],
   },
+] as const;
+
+export const OUTFIELD_ATTRIBUTE_GROUPS = VISIBLE_ATTRIBUTE_GROUPS.slice(0, 3);
+export const GOALKEEPING_ATTRIBUTE_GROUP = VISIBLE_ATTRIBUTE_GROUPS[3];
+
+const GOALKEEPER_BALL_PLAYING_ATTRIBUTE_KEYS: readonly string[] = [
+  "FirstTouch",
+  "Passing",
+  "Technique",
+] as const;
+
+export const GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS =
+  OUTFIELD_ATTRIBUTE_GROUPS.slice(0, 1).map((group) => ({
+    ...group,
+    keys: group.keys.filter(
+      (key) => !GOALKEEPER_BALL_PLAYING_ATTRIBUTE_KEYS.includes(key),
+    ),
+  }));
+
+const GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP: AttributeGroup = {
+  ...GOALKEEPING_ATTRIBUTE_GROUP,
+  keys: [
+    "AerialReach",
+    "CommandOfArea",
+    "Communication",
+    "Eccentricity",
+    "FirstTouch",
+    "Handling",
+    "Kicking",
+    "OneOnOnes",
+    "Passing",
+    "Punching",
+    "Reflexes",
+    "RushingOut",
+    "Technique",
+    "Throwing",
+  ],
+};
+
+export const GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS = [
+  GOALKEEPER_PRIMARY_ATTRIBUTE_GROUP,
+  OUTFIELD_ATTRIBUTE_GROUPS[1],
+  OUTFIELD_ATTRIBUTE_GROUPS[2],
 ] as const;
 
 export const HIDDEN_ATTRIBUTE_KEYS = [

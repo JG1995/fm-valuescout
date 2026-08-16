@@ -1,4 +1,6 @@
+import { Eye, EyeOff } from "lucide-react";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button/button";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import {
   formatMissable,
@@ -10,6 +12,7 @@ import type { PlayerDetail } from "../types/player-detail";
 import {
   bestPotentialRoleScore,
   bestRoleScore,
+  rolesForPhase,
   rolesForPlayablePositions,
 } from "../utils/position-families";
 
@@ -45,41 +48,39 @@ function flagLabel(value: boolean | null | undefined, yes: string) {
 
 type BestRoleSummaryProps = {
   label: string;
-  basis: "Current" | "Potential";
   roleName: string | null;
   score: number | null;
+  concealed?: boolean;
 };
 
 function BestRoleSummary({
   label,
-  basis,
   roleName,
   score,
+  concealed = false,
 }: BestRoleSummaryProps) {
-  const accessibleLabel = `${label} (${basis})`;
-
   return (
     <div className="flex min-w-0 items-start gap-3">
       {score === null ? (
         <span
           role="img"
-          aria-label={`${accessibleLabel}: unavailable`}
+          aria-label={`${label}: ${concealed ? "concealed" : "unavailable"}`}
           className="inline-flex size-12 items-center justify-center font-mono text-mono-lg text-on-surface-variant tabular-nums"
         >
           {formatMissable(null)}
         </span>
       ) : (
-        <ScoreBadge score={score} roleName={accessibleLabel} variant="hero" />
+        <ScoreBadge score={score} roleName={label} variant="hero" />
       )}
       <div className="min-w-0">
         <p className="text-label-sm text-on-surface-variant uppercase tracking-[0.08em]">
-          {accessibleLabel}
+          {label}
         </p>
         <p
           className="truncate text-body-md text-on-surface"
-          title={roleName ?? undefined}
+          title={concealed ? undefined : (roleName ?? undefined)}
         >
-          {roleName ?? formatMissable(null)}
+          {concealed ? "Concealed" : (roleName ?? formatMissable(null))}
         </p>
       </div>
     </div>
@@ -89,11 +90,17 @@ function BestRoleSummary({
 type PlayerOverviewPanelProps = {
   player: PlayerDetail;
   actions: ReactNode;
+  hiddenInformationPending: boolean;
+  hiddenInformationError: Error | null;
+  onToggleHiddenInformation: () => void;
 };
 
 export function PlayerOverviewPanel({
   player,
   actions,
+  hiddenInformationPending,
+  hiddenInformationError,
+  onToggleHiddenInformation,
 }: PlayerOverviewPanelProps) {
   const nationality =
     player.nationalities.length > 0 ? player.nationalities.join(", ") : "—";
@@ -108,8 +115,20 @@ export function PlayerOverviewPanel({
     player.roleScores,
     player.positions,
   );
-  const bestRole = bestRoleScore(playableRoles);
-  const bestPotentialRole = bestPotentialRoleScore(playableRoles);
+  const inPossessionRoles = rolesForPhase(playableRoles, "in_possession");
+  const outOfPossessionRoles = rolesForPhase(
+    playableRoles,
+    "out_of_possession",
+  );
+  const currentIpRole = bestRoleScore(inPossessionRoles);
+  const currentOopRole = bestRoleScore(outOfPossessionRoles);
+  const potentialIpRole = player.hiddenInformationRevealed
+    ? bestPotentialRoleScore(inPossessionRoles)
+    : null;
+  const potentialOopRole = player.hiddenInformationRevealed
+    ? bestPotentialRoleScore(outOfPossessionRoles)
+    : null;
+  const VisibilityIcon = player.hiddenInformationRevealed ? EyeOff : Eye;
 
   return (
     <section
@@ -139,7 +158,30 @@ export function PlayerOverviewPanel({
         </div>
 
         <div className="min-w-0 lg:col-span-2 lg:flex lg:self-end lg:justify-end">
-          {actions}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-start justify-end gap-2">
+              {actions}
+              <Button
+                icon={VisibilityIcon}
+                variant="secondary"
+                aria-label="Reveal hidden information"
+                aria-pressed={player.hiddenInformationRevealed}
+                disabled={hiddenInformationPending}
+                loading={hiddenInformationPending}
+                loadingLabel="Updating…"
+                onClick={onToggleHiddenInformation}
+              >
+                {player.hiddenInformationRevealed
+                  ? "Hide hidden info"
+                  : "Reveal hidden info"}
+              </Button>
+            </div>
+            {hiddenInformationError ? (
+              <p className="text-right text-body-sm text-error" role="alert">
+                Could not update hidden information.
+              </p>
+            ) : null}
+          </div>
         </div>
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
@@ -165,22 +207,34 @@ export function PlayerOverviewPanel({
 
         <div className="grid min-w-0 grid-cols-2 gap-3 border-outline-variant lg:border-x lg:px-4">
           <BestRoleSummary
-            label="Best role"
-            basis="Current"
-            roleName={bestRole?.displayName ?? null}
-            score={bestRole?.score ?? null}
+            label="Current IP"
+            roleName={currentIpRole?.displayName ?? null}
+            score={currentIpRole?.score ?? null}
           />
           <BestRoleSummary
-            label="Best potential role"
-            basis="Potential"
-            roleName={bestPotentialRole?.displayName ?? null}
-            score={bestPotentialRole?.potentialScore ?? null}
+            label="Current OOP"
+            roleName={currentOopRole?.displayName ?? null}
+            score={currentOopRole?.score ?? null}
+          />
+          <BestRoleSummary
+            label="Potential IP"
+            roleName={potentialIpRole?.displayName ?? null}
+            score={potentialIpRole?.potentialScore ?? null}
+            concealed={!player.hiddenInformationRevealed}
+          />
+          <BestRoleSummary
+            label="Potential OOP"
+            roleName={potentialOopRole?.displayName ?? null}
+            score={potentialOopRole?.potentialScore ?? null}
+            concealed={!player.hiddenInformationRevealed}
           />
         </div>
 
         <dl className="grid min-w-0 grid-cols-3 gap-3">
           <SummaryFact label="CA" value={player.ca} numeric />
-          <SummaryFact label="PA" value={formatMissable(player.pa)} numeric />
+          {player.hiddenInformationRevealed ? (
+            <SummaryFact label="PA" value={formatMissable(player.pa)} numeric />
+          ) : null}
           <SummaryFact
             label="Value"
             value={

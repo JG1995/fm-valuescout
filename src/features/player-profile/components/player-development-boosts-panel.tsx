@@ -289,7 +289,7 @@ export function PlayerDevelopmentActions({
 
   return (
     <>
-      <div className="space-y-2">
+      <div>
         <div className="flex flex-wrap items-center gap-2">
           <ActionTooltip
             label="Boost CA"
@@ -358,7 +358,7 @@ export function PlayerDevelopmentActions({
         <div
           ref={outcomeRef}
           tabIndex={-1}
-          className="rounded-sm focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+          className="rounded-sm [&:not(:empty)]:mt-2 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
           aria-live="polite"
         >
           {!confirmationOpen ? (

@@ -66,6 +66,7 @@ pub fn run() {
             features::search::commands::search_players,
             features::search::commands::suggest_players,
             features::player::commands::get_player,
+            features::player::commands::set_player_hidden_information_revealed,
             features::player::commands::boost_current_ability,
             features::player::commands::boost_wonderkid_mentality,
             features::player::commands::boost_squad_current_ability,

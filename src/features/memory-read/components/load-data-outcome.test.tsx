@@ -53,6 +53,7 @@ describe("LoadDataOutcome", () => {
       <LoadDataOutcome
         error={null}
         result={resultWithHistoricalStoredSnapshot()}
+        onDismiss={() => undefined}
       />,
     );
 
@@ -69,6 +70,7 @@ describe("LoadDataOutcome", () => {
       <LoadDataOutcome
         error={null}
         result={resultWithHistoricalStoredSnapshot(true)}
+        onDismiss={() => undefined}
       />,
     );
 

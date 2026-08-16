@@ -468,6 +468,7 @@ describe("search route", () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/players/160");
+      expect(router.state.location.search).toEqual({});
     });
   });
 

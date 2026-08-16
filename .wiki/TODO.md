@@ -56,6 +56,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Completed
 
+- [Player Profile Information Controls and Layout](./features/completed/player-profile-information-controls.md) — save-scoped profile concealment, FM-style four-tab attributes, separate current/potential IP/OOP header summaries, and profile-shell containment (Linear JAY-5, JAY-8, JAY-9)
 - [Squad Boost Progress and Feedback](./features/completed/squad-boost-progress.md) — determinate per-player squad boost progress in the confirmation Modal and layout-stable final feedback in the Squad overview
 - [Early Alpha Release Readiness](./features/completed/early-alpha-release-readiness.md) — source-built unsigned Windows validation, local diagnostics, guarded dependency automation, and exact-SHA prepared release publication; the historical alpha release remains documented in the completed record
 - [Squad Workspace](./features/completed/squad-workspace.md) — club-scoped overview, Squad / Planner / Tactic navigation, Dashboard Club Setup, explicit CSV imports, and sequential squad-wide development actions
