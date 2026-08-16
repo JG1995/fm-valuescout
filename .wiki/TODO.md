@@ -50,6 +50,10 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 **Parallel tracks:** After player search (order 4), profiles (5) and squad planner shell (6, without optimizer) can overlap once tactic modeling is specced.
 
+## Active
+
+- [Complete Player Position Familiarity](./features/active/player-position-familiarity.md) — preserve all 15 canonical FM familiarity values from bridge extraction through SQLite while keeping Search, profile, projection, Academy, Planner, and optimizer behavior explicit (Linear JAY-14)
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
