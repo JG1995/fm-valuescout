@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { DatabaseZap, SearchX, UsersRound } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
   type ConfigurableTableColumn,
@@ -16,7 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { formatCount, formatMissable, formatPlayerDob } from "@/utils/format";
-import { boostStaffCurrentAbility } from "../api/boost-staff-current-ability";
+import { boostMyStaffCurrentAbility } from "../api/boost-my-staff-current-ability";
 import { staffKeys } from "../api/staff-keys";
 import {
   STAFF_PAGE_SIZE,
@@ -33,19 +33,12 @@ import {
   STAFF_BASIC_METRIC_IDS,
   STAFF_METRICS,
 } from "../utils/staff-metrics";
-import { StaffCaBoost } from "./staff-ca-boost";
+import { MyStaffBoostOutcome, MyStaffCaBoost } from "./my-staff-ca-boost";
 
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
 const NUM_CELL =
   "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
-
-const STAFF_ACTION_COLUMN = {
-  id: "actions",
-  label: "Actions",
-  align: "left" as const,
-  width: 128,
-};
 
 export type StaffWorkspaceScope = "search" | "my-staff";
 type StaffLayoutId = "staff-search" | "my-staff";
@@ -164,13 +157,6 @@ function StaffSearchTable({
   sortBy,
   sortDir,
   columns,
-  scope,
-  boostPending,
-  boostUid,
-  boostError,
-  onBoost,
-  onOpenConfirmation,
-  fallbackFocusTo,
   pageQueryOptions,
   caption,
   testId,
@@ -185,13 +171,6 @@ function StaffSearchTable({
   sortBy: StaffSortField;
   sortDir: StaffSortDir;
   columns: ConfigurableTableColumn[];
-  scope: StaffWorkspaceScope;
-  boostPending: boolean;
-  boostUid: number | undefined;
-  boostError: Error | null;
-  onBoost: (uid: number) => Promise<unknown>;
-  onOpenConfirmation: () => void;
-  fallbackFocusTo: () => HTMLElement | null;
   pageQueryOptions: (
     offset: number,
     limit: number,
@@ -214,14 +193,12 @@ function StaffSearchTable({
       caption={caption}
       columnCount={columns.length}
       columns={columns}
-      fixedColumns={scope === "my-staff" ? [STAFF_ACTION_COLUMN] : []}
       getPageRows={(page) => page.staff}
       getRowKey={(staff) => staff.uid}
       onRowActivate={onRowActivate}
       header={
         <ConfigurableTableHeader
           columns={columns}
-          fixedColumns={scope === "my-staff" ? [STAFF_ACTION_COLUMN] : []}
           metrics={STAFF_METRICS}
           sortBy={sortBy}
           sortDir={sortDir}
@@ -281,24 +258,6 @@ function StaffSearchTable({
           );
         })
       }
-      renderFixedCells={
-        scope === "my-staff"
-          ? (staff) => (
-              <td className="h-table-row-height-two-line align-middle">
-                <StaffCaBoost
-                  staff={staff}
-                  pending={boostPending && boostUid === staff?.uid}
-                  error={boostUid === staff?.uid ? boostError : null}
-                  onBoost={() =>
-                    staff ? onBoost(staff.uid) : Promise.resolve()
-                  }
-                  onOpenConfirmation={onOpenConfirmation}
-                  fallbackFocusTo={fallbackFocusTo}
-                />
-              </td>
-            )
-          : undefined
-      }
       testId={testId}
       total={total}
     />
@@ -306,6 +265,7 @@ function StaffSearchTable({
 }
 
 export function StaffSearchResultsPanel({
+  activeSnapshotId,
   scope = "search",
   sortBy,
   sortDir,
@@ -315,6 +275,7 @@ export function StaffSearchResultsPanel({
   onBoostSuccess,
   onRowActivate,
 }: {
+  activeSnapshotId: number | null;
   scope?: StaffWorkspaceScope;
   sortBy: StaffSortField;
   sortDir: StaffSortDir;
@@ -333,24 +294,22 @@ export function StaffSearchResultsPanel({
   const setColumnWidth = usePlayerTableStore((state) => state.setColumnWidth);
   const queryClient = useQueryClient();
   const boost = useMutation({
-    mutationFn: ({ uid }: { uid: number }) => boostStaffCurrentAbility(uid),
-    onSuccess: async () => {
+    mutationFn: ({
+      onProgress,
+    }: {
+      snapshotId: number;
+      onProgress: Parameters<typeof boostMyStaffCurrentAbility>[0];
+    }) => boostMyStaffCurrentAbility(onProgress),
+    onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: staffKeys.all }),
         onBoostSuccess?.(),
       ]);
     },
   });
+  const boostContextIsCurrent =
+    boost.variables?.snapshotId === activeSnapshotId;
   const boostOutcomeRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!boost.data || boost.isPending) return;
-    const frame = requestAnimationFrame(() => {
-      if (!document.querySelector('[role="dialog"]')) {
-        boostOutcomeRef.current?.focus();
-      }
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [boost.data, boost.isPending]);
   const columns = useMemo(
     () =>
       layout.columnIds.flatMap((id) => {
@@ -367,8 +326,6 @@ export function StaffSearchResultsPanel({
         .sort(),
     [columns],
   );
-  const boostContextIsCurrent =
-    scope === "my-staff" && boost.variables?.uid !== undefined;
   const { data: page } = useSuspenseQuery(
     scope === "my-staff"
       ? staffMyStaffQueryOptions(
@@ -471,6 +428,25 @@ export function StaffSearchResultsPanel({
   return (
     <Panel
       title={scope === "my-staff" ? "My Staff" : "Results"}
+      actions={
+        scope === "my-staff" ? (
+          <MyStaffCaBoost
+            pending={boostContextIsCurrent && boost.isPending}
+            disabled={
+              boostContextIsCurrent && boost.data?.recoveryRequired === true
+            }
+            error={boostContextIsCurrent ? boost.error : null}
+            onBoost={(onProgress) =>
+              boost.mutateAsync({
+                snapshotId: activeSnapshotId ?? 0,
+                onProgress,
+              })
+            }
+            onOpenConfirmation={boost.reset}
+            fallbackFocusTo={() => boostOutcomeRef.current}
+          />
+        ) : undefined
+      }
       flush
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
@@ -487,16 +463,8 @@ export function StaffSearchResultsPanel({
         className="rounded-sm px-4 [&:not(:empty)]:pb-3 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
         aria-live="polite"
       >
-        {boost.data ? (
-          <p className="text-body-sm text-success" role="status">
-            Staff CA boosted from {boost.data.previousCurrentAbility} to{" "}
-            {boost.data.currentAbility}.
-          </p>
-        ) : null}
-        {boost.error && !boost.isPending ? (
-          <p className="text-body-sm text-error" role="alert">
-            Could not apply staff CA boost. {boost.error.message}
-          </p>
+        {scope === "my-staff" && boostContextIsCurrent && !boost.isPending ? (
+          <MyStaffBoostOutcome result={boost.data} error={boost.error} />
         ) : null}
       </div>
       {allScoresUnavailable ? (
@@ -513,13 +481,6 @@ export function StaffSearchResultsPanel({
         sortBy={sortBy}
         sortDir={sortDir}
         columns={columns}
-        scope={scope}
-        boostPending={boostContextIsCurrent && boost.isPending}
-        boostUid={boostContextIsCurrent ? boost.variables?.uid : undefined}
-        boostError={boostContextIsCurrent ? boost.error : null}
-        onBoost={(uid) => boost.mutateAsync({ uid })}
-        onOpenConfirmation={boost.reset}
-        fallbackFocusTo={() => boostOutcomeRef.current}
         pageQueryOptions={(offset, limit) =>
           scope === "my-staff"
             ? staffMyStaffQueryOptions(

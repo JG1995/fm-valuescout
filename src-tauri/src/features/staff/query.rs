@@ -120,6 +120,44 @@ pub struct StaffPage {
     pub total: i64,
 }
 
+pub fn list_my_staff_uids(
+    conn: &Connection,
+    save_id: i64,
+    snapshot_id: i64,
+) -> Result<Option<Vec<i64>>, String> {
+    let configured: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM planner_club_sources WHERE save_id = ?1)",
+            [save_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if !configured {
+        return Ok(None);
+    }
+
+    let mut statement = conn
+        .prepare(
+            "SELECT DISTINCT staff.uid
+             FROM staff
+             WHERE staff.snapshot_id = ?1
+               AND EXISTS(
+                   SELECT 1
+                   FROM planner_club_sources source
+                   WHERE source.save_id = ?2
+                     AND source.club_name = staff.club
+               )
+             ORDER BY staff.uid ASC",
+        )
+        .map_err(|error| error.to_string())?;
+    let staff_uids = statement
+        .query_map(rusqlite::params![snapshot_id, save_id], |row| row.get(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(Some(staff_uids))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StaffRoleScore {
     pub role_id: String,

@@ -297,6 +297,28 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           failed: 0,
         });
       };
+      const resolveMyStaffBoost = async (args) => {
+        const total = staffRows.length;
+        sendSquadBoostProgress(args, {
+          processed: 0,
+          total,
+          updated: 0,
+          skipped: 0,
+          failed: 0,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        staffRows = staffRows.map((staff) => ({
+          ...staff,
+          ca: Math.min(staff.ca + 10, staff.pa, 200),
+        }));
+        sendSquadBoostProgress(args, {
+          processed: total,
+          total,
+          updated: total,
+          skipped: 0,
+          failed: 0,
+        });
+      };
       if (squadPageFailure) {
         squadPlayers = Array.from({ length: 51 }, (_, index) => ({
           uid: index + 1,
@@ -557,6 +579,17 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               previousCurrentAbility,
               currentAbility,
               potentialAbility: staff.pa,
+            };
+          }
+
+          if (cmd === "boost_my_staff_current_ability") {
+            await resolveMyStaffBoost(args);
+            return {
+              updated: staffRows.length,
+              skipped: 0,
+              failed: 0,
+              recoveryRequired: false,
+              recoveryMessage: null,
             };
           }
 

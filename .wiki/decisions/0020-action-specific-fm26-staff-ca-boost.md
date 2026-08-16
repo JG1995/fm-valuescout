@@ -12,7 +12,7 @@ FM ValueScout reads staff from FM26 but does not currently expose staff in the U
 
 ## Decision
 
-Add one closed bridge operation, **Boost Staff CA**. Keep the C# BepInEx bridge as the only process-memory writer. Do not expose addresses, field names, arbitrary values, custom increments, a general staff editor, or a batch staff operation to Rust or the WebView.
+Add one closed bridge operation, **Boost Staff CA**. Keep the C# BepInEx bridge as the only process-memory writer. Do not expose addresses, field names, arbitrary values, custom increments, or a general staff editor. [ADR-0021](./0021-sequential-club-family-staff-ca-boost.md) later permits Rust to orchestrate this unchanged one-staff operation across the configured club family without adding a bridge batch payload.
 
 Rust accepts only a staff UID, resolves that UID against the effective current snapshot, and derives `min(current CA + 10, PA, 200)`. The action is unavailable when CA is equal to or greater than PA. Rust binds the request to the bridge request ID that produced the snapshot and supplies the expected CA and PA; it never accepts a target value or increment from React.
 
@@ -36,7 +36,7 @@ Pass `10` or the computed target from the Staff table. A modified WebView could 
 
 ### Boost the configured club family as a batch
 
-Apply the action to all staff in My Staff. The request is for a per-staff overview action, and batch writes add partial-success and orchestration complexity without a current product need. Rejected.
+Apply the action to all staff in My Staff. The original request was for a per-staff overview action, and batch writes added partial-success and orchestration complexity without a product need. Rejected at the time; ADR-0021 supersedes this rejection after the product requirement changed.
 
 ## Consequences
 
@@ -57,7 +57,7 @@ Apply the action to all staff in My Staff. The request is for a per-staff overvi
 
 - Deliver and validate the operation through the [Staff Workspace feature plan](../features/active/staff-workspace.md).
 - Reconcile ADR-0016, CONCEPT, and ARCHITECTURE when the implementation becomes current behavior.
-- Require another decision for arbitrary staff values, another staff field, or family-wide staff mutation.
+- Require another decision for arbitrary staff values or another staff field. ADR-0021 owns family-wide orchestration.
 
 ## Related work
 

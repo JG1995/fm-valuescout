@@ -1,3 +1,7 @@
+import type {
+  MyStaffBoostProgress,
+  MyStaffBoostResult,
+} from "@/features/staff/types/my-staff-boost";
 import type { StaffBoostResult } from "@/features/staff/types/staff-boost";
 import type { StaffDetail } from "@/features/staff/types/staff-detail";
 import type { StaffFilterRuleIpc } from "@/features/staff/types/staff-filter-rule";
@@ -25,6 +29,27 @@ let pendingStaffBoost: {
   promise: Promise<StaffBoostResult>;
   resolve: (result: StaffBoostResult) => void;
 } | null = null;
+let myStaffBoostCalls: unknown[] = [];
+let myStaffBoostMode: MyStaffBoostIpcMockMode = "pending";
+let pendingMyStaffBoost: {
+  args: unknown;
+  promise: Promise<MyStaffBoostResult>;
+  resolve: (result: MyStaffBoostResult) => void;
+} | null = null;
+
+export type MyStaffBoostIpcMockMode = "pending" | "recoveryRequired" | "error";
+
+function defaultStaff() {
+  return [
+    fixtureStaff(),
+    fixtureStaff({
+      uid: 102,
+      name: "Jordan Analyst",
+      ca: 132,
+      club: "Riverside United",
+    }),
+  ];
+}
 
 export type StaffBoostIpcMockMode =
   | "success"
@@ -114,6 +139,9 @@ export function resetStaffIpcMock() {
   staffBoostMode = "success";
   staffBoostCalls = [];
   pendingStaffBoost = null;
+  myStaffBoostCalls = [];
+  myStaffBoostMode = "pending";
+  pendingMyStaffBoost = null;
 }
 
 export function fixtureStaffDetail(
@@ -327,15 +355,7 @@ export function resolveSearchStaffIpcMock(args: unknown): StaffPage {
     return { state: "no_current_snapshot", staff: [], total: 0 };
   }
   const parsed = parseArgs(args);
-  const source = overrideStaff ?? [
-    fixtureStaff(),
-    fixtureStaff({
-      uid: 102,
-      name: "Jordan Analyst",
-      ca: 132,
-      club: "Riverside United",
-    }),
-  ];
+  const source = overrideStaff ?? defaultStaff();
   const filtered =
     parsed.filters.length === 0
       ? source
@@ -371,15 +391,7 @@ export function resolveListMyStaffIpcMock(args: unknown): StaffPage {
 }
 
 function staffBoostResult(uid: number): StaffBoostResult {
-  const source = overrideStaff ?? [
-    fixtureStaff(),
-    fixtureStaff({
-      uid: 102,
-      name: "Jordan Analyst",
-      ca: 132,
-      club: "Riverside United",
-    }),
-  ];
+  const source = overrideStaff ?? defaultStaff();
   const staff = source.find((candidate) => candidate.uid === uid);
   if (!staff) throw new Error("Staff member not found");
   const target = Math.min(staff.ca + 10, staff.pa, 200);
@@ -435,4 +447,108 @@ export function resolveBoostStaffCurrentAbilityIpcMock(
     });
   }
   return Promise.resolve(staffBoostResult(uid));
+}
+
+export function getMyStaffBoostIpcMockCalls() {
+  return myStaffBoostCalls;
+}
+
+export function setMyStaffBoostIpcMockMode(mode: MyStaffBoostIpcMockMode) {
+  myStaffBoostMode = mode;
+  pendingMyStaffBoost = null;
+}
+
+export function resolvePendingMyStaffBoostIpcMock() {
+  const pending = pendingMyStaffBoost;
+  if (!pending) return;
+  const source = overrideStaff ?? defaultStaff();
+  const eligible = source.filter(
+    (staff) => staff.ca < staff.pa && staff.ca < 200,
+  );
+  const skipped = source.length - eligible.length;
+  sendMyStaffBoostProgress(pending.args, {
+    processed: source.length,
+    total: source.length,
+    updated: eligible.length,
+    skipped,
+    failed: 0,
+  });
+  overrideStaff = source.map((staff) => ({
+    ...staff,
+    ca: staff.ca < staff.pa ? Math.min(staff.ca + 10, staff.pa, 200) : staff.ca,
+  }));
+  pending.resolve({
+    updated: eligible.length,
+    skipped,
+    failed: 0,
+    recoveryRequired: false,
+    recoveryMessage: null,
+  });
+  pendingMyStaffBoost = null;
+}
+
+export function sendPendingMyStaffBoostProgressIpcMock(
+  progress: MyStaffBoostProgress = {
+    processed: 1,
+    total: 2,
+    updated: 1,
+    skipped: 0,
+    failed: 0,
+  },
+) {
+  if (pendingMyStaffBoost)
+    sendMyStaffBoostProgress(pendingMyStaffBoost.args, progress);
+}
+
+export function resolveBoostMyStaffCurrentAbilityIpcMock(
+  args: unknown,
+): Promise<MyStaffBoostResult> {
+  myStaffBoostCalls = [...myStaffBoostCalls, args];
+  if (myStaffBoostMode === "recoveryRequired") {
+    return Promise.resolve({
+      updated: 1,
+      skipped: 0,
+      failed: 0,
+      recoveryRequired: true,
+      recoveryMessage: "FM may have changed before verification.",
+    });
+  }
+  if (myStaffBoostMode === "error") {
+    return Promise.reject({
+      phase: "bridge",
+      kind: "unavailable",
+      message: "Bridge is unavailable.",
+    });
+  }
+  if (!pendingMyStaffBoost) {
+    let resolve!: (result: MyStaffBoostResult) => void;
+    const promise = new Promise<MyStaffBoostResult>((next) => {
+      resolve = next;
+    });
+    pendingMyStaffBoost = { args, promise, resolve };
+    const total = (overrideStaff ?? defaultStaff()).length;
+    sendMyStaffBoostProgress(args, {
+      processed: 0,
+      total,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    });
+  }
+  return pendingMyStaffBoost.promise;
+}
+
+function sendMyStaffBoostProgress(
+  args: unknown,
+  progress: MyStaffBoostProgress,
+) {
+  const channel =
+    typeof args === "object" && args !== null
+      ? (
+          args as {
+            onProgress?: { onmessage?: (value: MyStaffBoostProgress) => void };
+          }
+        ).onProgress
+      : undefined;
+  channel?.onmessage?.(progress);
 }

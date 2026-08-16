@@ -90,6 +90,7 @@ import {
 } from "@/testing/squad-ipc-mock";
 import {
   resetStaffIpcMock,
+  resolveBoostMyStaffCurrentAbilityIpcMock,
   resolveBoostStaffCurrentAbilityIpcMock,
   resolveGetStaffIpcMock,
   resolveListMyStaffIpcMock,
@@ -168,6 +169,10 @@ function registerIpcMocks() {
 
     if (cmd === "boost_staff_current_ability") {
       return resolveBoostStaffCurrentAbilityIpcMock(args);
+    }
+
+    if (cmd === "boost_my_staff_current_ability") {
+      return resolveBoostMyStaffCurrentAbilityIpcMock(args);
     }
 
     if (cmd === "suggest_players") {

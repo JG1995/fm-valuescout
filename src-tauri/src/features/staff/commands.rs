@@ -14,7 +14,9 @@ use super::query::{
     self, SortDir, SortField, StaffDetail, StaffPage, StaffPageState, StaffRoleScore, StaffScope,
     StaffSummary,
 };
-use super::service::{self, PreparedStaffBoost, StaffBoostError, VerifiedStaffBoost};
+use super::service::{
+    self, PreparedStaffBoost, StaffBoostBatchContext, StaffBoostError, VerifiedStaffBoost,
+};
 
 #[derive(Deserialize)]
 pub struct StaffFilterRuleInput {
@@ -292,6 +294,26 @@ pub struct StaffBoostResultDto {
     pub potential_ability: i64,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyStaffBoostResultDto {
+    pub updated: usize,
+    pub skipped: usize,
+    pub failed: usize,
+    pub recovery_required: bool,
+    pub recovery_message: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyStaffBoostProgressDto {
+    pub processed: usize,
+    pub total: usize,
+    pub updated: usize,
+    pub skipped: usize,
+    pub failed: usize,
+}
+
 impl From<VerifiedStaffBoost> for StaffBoostResultDto {
     fn from(result: VerifiedStaffBoost) -> Self {
         Self {
@@ -310,6 +332,170 @@ pub fn boost_staff_current_ability(
     db: State<'_, Db>,
 ) -> Result<StaffBoostResultDto, StaffBoostError> {
     execute_staff_boost_with(uid, db.inner(), request_local_staff_boost)
+}
+
+#[tauri::command]
+pub fn boost_my_staff_current_ability(
+    db: State<'_, Db>,
+    on_progress: tauri::ipc::Channel<MyStaffBoostProgressDto>,
+) -> Result<MyStaffBoostResultDto, StaffBoostError> {
+    execute_my_staff_boost_with_progress(db.inner(), request_local_staff_boost, move |progress| {
+        match on_progress.send(progress) {
+            Ok(()) => true,
+            Err(error) => {
+                log::debug!("My Staff boost progress delivery failed: {error}");
+                false
+            }
+        }
+    })
+}
+
+#[cfg(test)]
+fn execute_my_staff_boost_with<F>(
+    db: &Db,
+    request_bridge_boost: F,
+) -> Result<MyStaffBoostResultDto, StaffBoostError>
+where
+    F: FnMut(&PreparedStaffBoost) -> Result<StaffBoostResult, StaffBoostError>,
+{
+    execute_my_staff_boost_with_progress(db, request_bridge_boost, |_| true)
+}
+
+fn execute_my_staff_boost_with_progress<F, R>(
+    db: &Db,
+    mut request_bridge_boost: F,
+    mut on_progress: R,
+) -> Result<MyStaffBoostResultDto, StaffBoostError>
+where
+    F: FnMut(&PreparedStaffBoost) -> Result<StaffBoostResult, StaffBoostError>,
+    R: FnMut(MyStaffBoostProgressDto) -> bool,
+{
+    let _boost_guard =
+        boost_gate::acquire_boost_gate().map_err(|message| StaffBoostError::Bridge {
+            kind: "inProgress".to_string(),
+            message,
+        })?;
+    let (context, staff_uids) = capture_my_staff_boost_cohort(db)?;
+    let mut result = MyStaffBoostResultDto {
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        recovery_required: false,
+        recovery_message: None,
+    };
+    let total = staff_uids.len();
+    report_my_staff_boost_progress(&mut on_progress, &result, total);
+
+    for uid in staff_uids {
+        let prepared = match prepare_my_staff_boost(db, uid, &context) {
+            Ok(prepared) => prepared,
+            Err(StaffBoostError::Eligibility { ref kind, .. })
+                if kind == "currentAbilityAtLimit" =>
+            {
+                result.skipped += 1;
+                report_my_staff_boost_progress(&mut on_progress, &result, total);
+                continue;
+            }
+            Err(error) => return my_staff_recovery_result(db, &context, result, error),
+        };
+
+        match request_bridge_boost(&prepared) {
+            Ok(bridge_result) => {
+                let reconciled = {
+                    let mut conn = db.0.lock().map_err(|_| StaffBoostError::SnapshotSync {
+                        message:
+                            "FM changed, but the local database is unavailable. Load Data again."
+                                .to_string(),
+                    })?;
+                    service::reconcile_verified_boost(&mut conn, &prepared, bridge_result)
+                };
+                match reconciled {
+                    Ok(_) => result.updated += 1,
+                    Err(error) => return my_staff_recovery_result(db, &context, result, error),
+                }
+            }
+            Err(StaffBoostError::LiveValue { .. }) => {
+                result.failed += 1;
+            }
+            Err(error @ StaffBoostError::Bridge { .. }) => return Err(error),
+            Err(error) => return my_staff_recovery_result(db, &context, result, error),
+        }
+        report_my_staff_boost_progress(&mut on_progress, &result, total);
+    }
+
+    Ok(result)
+}
+
+fn capture_my_staff_boost_cohort(
+    db: &Db,
+) -> Result<(StaffBoostBatchContext, Vec<i64>), StaffBoostError> {
+    let conn = db.0.lock().map_err(|_| StaffBoostError::Eligibility {
+        kind: "databaseUnavailable".to_string(),
+        message: "could not read the current snapshot for this My Staff boost".to_string(),
+    })?;
+    let context = service::capture_boost_context(&conn)?;
+    let staff_uids = query::list_my_staff_uids(&conn, context.save_id, context.snapshot_id)
+        .map_err(|message| StaffBoostError::Eligibility {
+            kind: "database".to_string(),
+            message,
+        })?
+        .ok_or_else(|| StaffBoostError::Eligibility {
+            kind: "clubFamilyRequired".to_string(),
+            message: "Set up your club family in Dashboard before boosting My Staff.".to_string(),
+        })?;
+    Ok((context, staff_uids))
+}
+
+fn prepare_my_staff_boost(
+    db: &Db,
+    uid: i64,
+    expected_context: &StaffBoostBatchContext,
+) -> Result<PreparedStaffBoost, StaffBoostError> {
+    let conn = db.0.lock().map_err(|_| StaffBoostError::Eligibility {
+        kind: "databaseUnavailable".to_string(),
+        message: "could not read the current snapshot for this My Staff boost".to_string(),
+    })?;
+    if !service::boost_context_matches(&conn, expected_context)? {
+        return Err(StaffBoostError::SnapshotSync {
+            message:
+                "The active save or snapshot changed. Load Data again before continuing the My Staff boost."
+                    .to_string(),
+        });
+    }
+    service::prepare_current_ability_boost(&conn, uid)
+}
+
+fn report_my_staff_boost_progress<R>(
+    on_progress: &mut R,
+    result: &MyStaffBoostResultDto,
+    total: usize,
+) where
+    R: FnMut(MyStaffBoostProgressDto) -> bool,
+{
+    let _ = on_progress(MyStaffBoostProgressDto {
+        processed: result.updated + result.skipped + result.failed,
+        total,
+        updated: result.updated,
+        skipped: result.skipped,
+        failed: result.failed,
+    });
+}
+
+fn my_staff_recovery_result(
+    db: &Db,
+    context: &StaffBoostBatchContext,
+    mut result: MyStaffBoostResultDto,
+    error: StaffBoostError,
+) -> Result<MyStaffBoostResultDto, StaffBoostError> {
+    let conn = db.0.lock().map_err(|_| StaffBoostError::SnapshotSync {
+        message:
+            "FM may have changed, but the recovery requirement could not be saved. Load Data again."
+                .to_string(),
+    })?;
+    service::require_load_data_for_boost(&conn, &context.recovery_context())?;
+    result.recovery_required = true;
+    result.recovery_message = Some(error.to_string());
+    Ok(result)
 }
 
 fn execute_staff_boost_with<F>(
@@ -425,6 +611,46 @@ mod tests {
             potential_ability: Some(prepared.expected_potential_ability as i32),
         }
     }
+
+    fn configure_staff_family(db: &Db) {
+        let conn = db.0.lock().expect("lock database");
+        let save_id: i64 = conn
+            .query_row("SELECT id FROM saves WHERE is_active = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("read active save");
+        conn.execute(
+            "INSERT INTO planner_club_settings (save_id, primary_club) VALUES (?1, 'Golden FC')",
+            [save_id],
+        )
+        .expect("configure club family");
+        conn.execute(
+            "INSERT INTO planner_club_sources (save_id, team, club_name, team_level, is_primary)
+             VALUES (?1, 'senior', 'Golden FC', 'senior', 1)",
+            [save_id],
+        )
+        .expect("configure family source");
+    }
+
+    fn clone_staff(db: &Db, uid: i64, ca: i64, pa: i64, club: &str) {
+        db.0.lock()
+            .expect("lock database")
+            .execute(
+                "INSERT INTO staff (
+                    snapshot_id, uid, name, birth_year, birth_day_of_year, age,
+                    nationalities_json, nation_uid, gender, ca, pa, staff_attributes_json,
+                    job_id, weekly_wage_gbp, contract_expiry_year,
+                    contract_expiry_day_of_year, club, division
+                 )
+                 SELECT snapshot_id, ?1, name, birth_year, birth_day_of_year, age,
+                        nationalities_json, nation_uid, gender, ?2, ?3, staff_attributes_json,
+                        job_id, weekly_wage_gbp, contract_expiry_year,
+                        contract_expiry_day_of_year, ?4, division
+                 FROM staff WHERE uid = 88",
+                rusqlite::params![uid, ca, pa, club],
+            )
+            .expect("clone staff row");
+    }
     #[test]
     fn rejects_non_scalar_filter_values() {
         assert!(filter::filter_value_from_json(serde_json::json!({"x":1})).is_err());
@@ -517,5 +743,110 @@ mod tests {
             assert!(service::prepare_current_ability_boost(&conn, 88).is_ok());
             assert!(prepare_current_ability_boost_for_test(&conn, 77).is_ok());
         }
+    }
+
+    #[test]
+    fn my_staff_boost_uses_the_configured_family_and_skips_staff_at_their_cap() {
+        let _test_guard = BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp, db) = seeded_db(115, 140);
+        configure_staff_family(&db);
+        clone_staff(&db, 89, 140, 140, "Golden FC");
+        clone_staff(&db, 90, 100, 140, "Other FC");
+        let calls = std::cell::RefCell::new(Vec::new());
+
+        let result = execute_my_staff_boost_with(&db, |prepared| {
+            calls.borrow_mut().push(prepared.staff_uid);
+            Ok(verified_result(
+                prepared,
+                prepared.target_current_ability as i32,
+            ))
+        })
+        .expect("boost My Staff");
+
+        assert_eq!(calls.into_inner(), vec![88]);
+        assert_eq!(result.updated, 1);
+        assert_eq!(result.skipped, 1);
+        assert_eq!(result.failed, 0);
+        assert!(!result.recovery_required);
+        let conn = db.0.lock().expect("lock database");
+        let abilities: Vec<(i64, i64)> = conn
+            .prepare("SELECT uid, ca FROM staff ORDER BY uid")
+            .expect("prepare abilities")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("query abilities")
+            .collect::<Result<_, _>>()
+            .expect("read abilities");
+        assert_eq!(abilities, vec![(88, 125), (89, 140), (90, 100)]);
+    }
+
+    #[test]
+    fn my_staff_boost_stops_and_latches_recovery_after_an_uncertain_result() {
+        let _test_guard = BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp, db) = seeded_db(115, 140);
+        configure_staff_family(&db);
+        clone_staff(&db, 89, 100, 140, "Golden FC");
+        let calls = std::cell::RefCell::new(Vec::new());
+
+        let result = execute_my_staff_boost_with(&db, |prepared| {
+            calls.borrow_mut().push(prepared.staff_uid);
+            Err(StaffBoostError::SnapshotSync {
+                message: "FM may have changed before verification".to_string(),
+            })
+        })
+        .expect("report partial My Staff result");
+
+        assert_eq!(calls.into_inner(), vec![88]);
+        assert!(result.recovery_required);
+        assert_eq!(result.updated, 0);
+        let recovery: i64 =
+            db.0.lock()
+                .expect("lock database")
+                .query_row(
+                    "SELECT boost_recovery_required FROM snapshots WHERE is_current = 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("read recovery state");
+        assert_eq!(recovery, 1);
+    }
+
+    #[test]
+    fn my_staff_boost_returns_a_global_bridge_failure_without_latching_recovery() {
+        let _test_guard = BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let (_temp, db) = seeded_db(115, 140);
+        configure_staff_family(&db);
+        clone_staff(&db, 89, 100, 140, "Golden FC");
+        let calls = std::cell::RefCell::new(Vec::new());
+
+        let error = execute_my_staff_boost_with(&db, |prepared| {
+            calls.borrow_mut().push(prepared.staff_uid);
+            Err(StaffBoostError::Bridge {
+                kind: "unavailable".to_string(),
+                message: "Bridge is unavailable.".to_string(),
+            })
+        })
+        .expect_err("return the global bridge failure");
+
+        assert_eq!(calls.into_inner(), vec![88]);
+        assert!(matches!(
+            error,
+            StaffBoostError::Bridge { ref kind, .. } if kind == "unavailable"
+        ));
+        let recovery: i64 =
+            db.0.lock()
+                .expect("lock database")
+                .query_row(
+                    "SELECT boost_recovery_required FROM snapshots WHERE is_current = 1",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("read recovery state");
+        assert_eq!(recovery, 0);
     }
 }

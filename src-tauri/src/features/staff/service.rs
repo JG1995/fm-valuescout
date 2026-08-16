@@ -28,6 +28,24 @@ pub(super) struct StaffBoostContext {
     pub(super) snapshot_context_token: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StaffBoostBatchContext {
+    pub(super) snapshot_id: i64,
+    pub(super) snapshot_context_token: String,
+    pub(super) save_id: i64,
+    pub(super) save_context_token: String,
+    pub(super) source_request_id: String,
+}
+
+impl StaffBoostBatchContext {
+    pub(super) fn recovery_context(&self) -> StaffBoostContext {
+        StaffBoostContext {
+            snapshot_id: self.snapshot_id,
+            snapshot_context_token: self.snapshot_context_token.clone(),
+        }
+    }
+}
+
 impl PreparedStaffBoost {
     pub(super) fn context(&self) -> StaffBoostContext {
         StaffBoostContext {
@@ -76,7 +94,7 @@ pub(super) fn prepare_current_ability_boost(
         .ok()
         .filter(|uid| *uid != 0)
         .ok_or_else(|| eligibility_error("invalidStaff", "staff identity is invalid"))?;
-    let context = capture_context(conn)?;
+    let context = capture_boost_context(conn)?;
     let staff: Option<(i64, i64)> = conn
         .query_row(
             "SELECT ca, pa FROM staff WHERE snapshot_id = ?1 AND uid = ?2",
@@ -220,7 +238,9 @@ pub(super) fn require_load_data_for_boost(
     }
 }
 
-fn capture_context(conn: &Connection) -> Result<CapturedContext, StaffBoostError> {
+pub(super) fn capture_boost_context(
+    conn: &Connection,
+) -> Result<StaffBoostBatchContext, StaffBoostError> {
     let context: Option<(i64, i64, String, String, Option<String>, i32)> = conn
         .query_row(
             "SELECT s.id, s.save_id, s.context_token, sv.context_token,
@@ -263,13 +283,20 @@ fn capture_context(conn: &Connection) -> Result<CapturedContext, StaffBoostError
                 "Load Data again before using staff boosts",
             )
         })?;
-    Ok(CapturedContext {
+    Ok(StaffBoostBatchContext {
         snapshot_id,
         save_id,
         snapshot_context_token,
         save_context_token,
         source_request_id,
     })
+}
+
+pub(super) fn boost_context_matches(
+    conn: &Connection,
+    expected: &StaffBoostBatchContext,
+) -> Result<bool, StaffBoostError> {
+    Ok(capture_boost_context(conn)? == *expected)
 }
 
 fn verify_result(
@@ -302,14 +329,6 @@ fn verify_result(
         current_ability: values.1.expect("verified above"),
         potential_ability: values.2.expect("verified above"),
     })
-}
-
-struct CapturedContext {
-    snapshot_id: i64,
-    save_id: i64,
-    snapshot_context_token: String,
-    save_context_token: String,
-    source_request_id: String,
 }
 
 fn eligibility_error(kind: &str, message: impl Into<String>) -> StaffBoostError {

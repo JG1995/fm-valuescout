@@ -14,6 +14,8 @@ import {
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
 import {
@@ -23,9 +25,10 @@ import {
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 import {
   fixtureStaff,
-  getStaffBoostIpcMockCalls,
-  resolvePendingStaffBoostIpcMock,
-  setStaffBoostIpcMockMode,
+  getMyStaffBoostIpcMockCalls,
+  resolvePendingMyStaffBoostIpcMock,
+  sendPendingMyStaffBoostProgressIpcMock,
+  setMyStaffBoostIpcMockMode,
   setStaffFamilyConfigured,
   setStaffListIpcMockMode,
   setStaffOverride,
@@ -208,7 +211,7 @@ describe("staff route", () => {
     const myStaffTable = await screen.findByRole("table", {
       name: "My Staff overview",
     });
-    expect(within(myStaffTable).getAllByRole("columnheader")).toHaveLength(26);
+    expect(within(myStaffTable).getAllByRole("columnheader")).toHaveLength(25);
     expect(within(myStaffTable).getByText("Alex Coach")).toBeInTheDocument();
   });
 
@@ -316,7 +319,7 @@ describe("staff route", () => {
     ).toHaveAttribute("href", "/#club-setup");
   });
 
-  it("adds a fixed Boost CA action to My Staff only", async () => {
+  it("offers one bulk CA boost on My Staff and no row actions", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     renderStaffRoute("/staff?view=my-staff");
@@ -325,15 +328,12 @@ describe("staff route", () => {
       name: "My Staff overview",
     });
     expect(
-      within(myStaffTable).getByRole("columnheader", { name: "Actions" }),
-    ).toBeInTheDocument();
-    const alexRow = within(myStaffTable)
-      .getAllByRole("row")
-      .find((row) => within(row).queryByText("Alex Coach"));
-    expect(alexRow).toBeDefined();
+      within(myStaffTable).queryByRole("columnheader", { name: "Actions" }),
+    ).toBeNull();
     expect(
-      within(alexRow as HTMLElement).getByRole("button", { name: "Boost CA" }),
-    ).toBeEnabled();
+      within(myStaffTable).queryByRole("button", { name: "Boost CA" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Boost all CA" })).toBeEnabled();
 
     await user.click(screen.getByRole("tab", { name: "Search" }));
     const searchTable = await screen.findByRole("table", {
@@ -342,173 +342,102 @@ describe("staff route", () => {
     expect(
       within(searchTable).queryByRole("columnheader", { name: "Actions" }),
     ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Boost all CA" })).toBeNull();
   });
 
-  it("confirms a UID-only fixed +10 boost and refreshes the row", async () => {
+  it("confirms and reports a configured-family bulk CA boost", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     const { queryClient } = renderStaffRoute("/staff?view=my-staff");
     queryClient.setQueryData(["staff", "probe"], []);
     queryClient.setQueryData(["snapshot", "probe"], []);
-    const myStaffTable = await screen.findByRole("table", {
+    await screen.findByRole("table", {
       name: "My Staff overview",
     });
-    const alexRow = within(myStaffTable)
-      .getAllByRole("row")
-      .find((row) => within(row).queryByText("Alex Coach"));
-    expect(alexRow).toBeDefined();
-
-    await user.click(
-      within(alexRow as HTMLElement).getByRole("button", { name: "Boost CA" }),
+    await user.click(screen.getByRole("button", { name: "Boost all CA" }));
+    const dialog = await screen.findByRole("dialog", { name: "Boost all CA?" });
+    expect(dialog).toHaveTextContent(
+      "every eligible staff member in your configured club family",
     );
-    const dialog = await screen.findByRole("dialog", { name: "Boost CA?" });
-    expect(dialog).toHaveTextContent("CA 145 → 155 (+10)");
-    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+    expect(dialog).toHaveTextContent("Each boost stops at PA or 200.");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Boost all CA" }),
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Boosting…" }),
+    ).toBeDisabled();
+    expect(dialog).toHaveTextContent("0 of 2 staff processed.");
+    sendPendingMyStaffBoostProgressIpcMock();
+    await waitFor(() =>
+      expect(dialog).toHaveTextContent("1 of 2 staff processed."),
+    );
+    expect(getMyStaffBoostIpcMockCalls()).toHaveLength(1);
+    expect(getMyStaffBoostIpcMockCalls()[0]).toHaveProperty("onProgress");
+    resolvePendingMyStaffBoostIpcMock();
 
-    await waitFor(() => {
-      expect(getStaffBoostIpcMockCalls()).toEqual([{ uid: 101 }]);
-      expect(within(myStaffTable).getByText("155")).toBeInTheDocument();
-    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "2 processed — 2 updated, 0 skipped, 0 failed.",
+    );
     expect(queryClient.getQueryState(["staff", "probe"])?.isInvalidated).toBe(
       true,
     );
     expect(
       queryClient.getQueryState(["snapshot", "probe"])?.isInvalidated,
     ).toBe(true);
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Staff CA boosted from 145 to 155.",
-    );
   });
 
-  it("keeps boost feedback and focus when a sorted row leaves the virtual window", async () => {
+  it("clears bulk recovery after Load Data establishes a new snapshot", async () => {
     await resolveLoadDataIpcMock();
+    setMyStaffBoostIpcMockMode("recoveryRequired");
     const user = userEvent.setup();
-    const staff = Array.from({ length: 35 }, (_, index) =>
-      index === 20
-        ? fixtureStaff({ ca: 120, pa: 200 })
-        : fixtureStaff({
-            uid: 1000 + index,
-            name: `Staff ${index}`,
-            ca: 100 + index,
-            pa: 200,
-          }),
-    );
-    setStaffOverride(staff);
-    renderStaffRoute("/staff?view=my-staff&sort=ca&dir=asc");
+    const { queryClient } = renderStaffRoute("/staff?view=my-staff");
 
-    const myStaffTable = await screen.findByRole("table", {
-      name: "My Staff overview",
-    });
-    const alexRow = within(myStaffTable)
-      .getAllByRole("row")
-      .find((row) => within(row).queryByText("Alex Coach"));
-    expect(alexRow).toBeDefined();
+    await screen.findByRole("table", { name: "My Staff overview" });
+    await user.click(screen.getByRole("button", { name: "Boost all CA" }));
     await user.click(
-      within(alexRow as HTMLElement).getByRole("button", { name: "Boost CA" }),
+      within(
+        await screen.findByRole("dialog", { name: "Boost all CA?" }),
+      ).getByRole("button", { name: "Boost all CA" }),
     );
-    const dialog = await screen.findByRole("dialog", { name: "Boost CA?" });
-    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Load Data is required before another boost.",
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: "Boost all CA" })).toBeDisabled();
+
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      currentSnapshotQueryOptions.queryKey,
+    );
+    if (!snapshot) throw new Error("Expected a current Staff snapshot");
+    queryClient.setQueryData<SnapshotSummary>(
+      currentSnapshotQueryOptions.queryKey,
+      { ...snapshot, id: snapshot.id + 1 },
+    );
 
     await waitFor(() => {
+      expect(screen.queryByRole("status")).toBeNull();
       expect(
-        screen.getByText("Staff CA boosted from 120 to 130."),
-      ).toBeInTheDocument();
-      expect(screen.getByTestId("staff-boost-outcome")).toHaveFocus();
+        screen.getByRole("button", { name: "Boost all CA" }),
+      ).toBeEnabled();
     });
   });
 
-  it("previews a PA cap and disables the action at the limit", async () => {
+  it("keeps a global bulk bridge error in the confirmation", async () => {
     await resolveLoadDataIpcMock();
-    const user = userEvent.setup();
-    setStaffOverride([
-      fixtureStaff({ ca: 155, pa: 160 }),
-      fixtureStaff({ uid: 102, name: "Jordan Analyst", ca: 160, pa: 160 }),
-    ]);
-    renderStaffRoute("/staff?view=my-staff");
-
-    const myStaffTable = await screen.findByRole("table", {
-      name: "My Staff overview",
-    });
-    const rows = within(myStaffTable)
-      .getAllByRole("row")
-      .filter((row) => row.hasAttribute("data-index"));
-    const cappedRow = rows.find((row) => within(row).queryByText("Alex Coach"));
-    const limitRow = rows.find((row) =>
-      within(row).queryByText("Jordan Analyst"),
-    );
-    expect(cappedRow).toBeDefined();
-    expect(limitRow).toBeDefined();
-    const cappedButton = within(cappedRow as HTMLElement).getByRole("button", {
-      name: "Boost CA",
-    });
-    expect(cappedButton).toHaveAttribute(
-      "title",
-      "CA 155 → 160 (+5) · capped by PA",
-    );
-    await user.click(cappedButton);
-    expect(
-      await screen.findByRole("dialog", { name: "Boost CA?" }),
-    ).toHaveTextContent("CA 155 → 160 (+5)");
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-
-    const limitButton = within(limitRow as HTMLElement).getByRole("button", {
-      name: "Boost CA",
-    });
-    expect(limitButton).toBeDisabled();
-    expect(limitButton).toHaveAttribute(
-      "title",
-      "Current ability is already at this staff member’s potential ability.",
-    );
-  });
-
-  it("keeps the confirmation open and explains recovery-required failures", async () => {
-    await resolveLoadDataIpcMock();
-    setStaffBoostIpcMockMode("snapshotSyncError");
+    setMyStaffBoostIpcMockMode("error");
     const user = userEvent.setup();
     renderStaffRoute("/staff?view=my-staff");
-    const myStaffTable = await screen.findByRole("table", {
-      name: "My Staff overview",
-    });
-    const alexRow = within(myStaffTable)
-      .getAllByRole("row")
-      .find((row) => within(row).queryByText("Alex Coach"));
+
+    await screen.findByRole("table", { name: "My Staff overview" });
+    await user.click(screen.getByRole("button", { name: "Boost all CA" }));
+    const dialog = await screen.findByRole("dialog", { name: "Boost all CA?" });
     await user.click(
-      within(alexRow as HTMLElement).getByRole("button", { name: "Boost CA" }),
+      within(dialog).getByRole("button", { name: "Boost all CA" }),
     );
-    const dialog = await screen.findByRole("dialog", { name: "Boost CA?" });
-    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
+
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "Load Data required",
+      "Could not boost My Staff. Bridge is unavailable.",
     );
     expect(dialog).toBeInTheDocument();
-  });
-
-  it("locks the row while a staff boost is pending", async () => {
-    await resolveLoadDataIpcMock();
-    setStaffBoostIpcMockMode("pending");
-    const user = userEvent.setup();
-    renderStaffRoute("/staff?view=my-staff");
-    const myStaffTable = await screen.findByRole("table", {
-      name: "My Staff overview",
-    });
-    const alexRow = within(myStaffTable)
-      .getAllByRole("row")
-      .find((row) => within(row).queryByText("Alex Coach"));
-    await user.click(
-      within(alexRow as HTMLElement).getByRole("button", { name: "Boost CA" }),
-    );
-    const dialog = await screen.findByRole("dialog", { name: "Boost CA?" });
-    await user.click(within(dialog).getByRole("button", { name: "Boost CA" }));
-    await waitFor(() => expect(getStaffBoostIpcMockCalls()).toHaveLength(1));
-    expect(
-      within(alexRow as HTMLElement).getByRole("button", {
-        name: "Boosting…",
-      }),
-    ).toBeDisabled();
-    expect(
-      within(dialog).getByRole("button", { name: "Boosting…" }),
-    ).toBeDisabled();
-    resolvePendingStaffBoostIpcMock();
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });

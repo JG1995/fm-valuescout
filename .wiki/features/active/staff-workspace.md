@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Development
 
 ## Intent
 
@@ -18,7 +18,7 @@ Turn the already extracted staff population into a first-class Staff workspace: 
 - Job-fit scores are integer values from 0 through 100. Each is the rounded arithmetic mean of its required 1–20 staff attributes, scaled by five. A score is unavailable when any required attribute is unavailable.
 - The workspace tabs are **Search** and **My Staff**. The selected tab is URL-backed and keyboard-operable.
 - My Staff lists staff whose club belongs to any Senior, Reserves, or Youth source in the active save's configured Planner club family. It is an overview with sortable and configurable columns, not a second filter workspace.
-- My Staff offers a per-row **Boost CA** action. It always requests +10, caps at PA and 200, and is unavailable at the cap.
+- My Staff offers one **Boost all CA** action for the configured club family. It processes eligible staff one at a time, always requests +10, caps at PA and 200, and skips staff already at the cap.
 - Activating a staff row opens `/staff/$uid` for that staff member in the effective current snapshot.
 - A Staff Profile follows the player-profile frame with a compact staff summary above **Attributes** and **Role fit** panels. It has no pitch, position suitability, potential projections, or wonderkid action.
 - The Staff Profile groups the 24 extracted staff attributes into **Coaching**, **Mental**, and **Knowledge** tabs. Role fit lists all 20 current job-fit scores without a position filter, ordered by score descending with unavailable scores last and catalog order breaking ties.
@@ -46,7 +46,7 @@ Turn the already extracted staff population into a first-class Staff workspace: 
 
 - Global staff quick search, staff hiring, firing, contract editing, or planner assignment.
 - Potential staff role scores, attribute-growth simulation, or a general staff progression model.
-- Arbitrary CA values, custom increments, other staff memory edits, or club-family batch boosts.
+- Arbitrary CA values, custom increments, or other staff memory edits.
 - Inferring My Staff from the human manager's single club when a configured family exists.
 - Filtering the My Staff overview in this feature.
 - Refactoring player query services into a speculative generic people-query framework.
@@ -117,7 +117,7 @@ Boost CA follows ADR-0020: a staff-specific bridge operation and candidate index
 ### Assumptions
 
 - Staff club-name matching can use the current exact-string Planner family contract; normalization beyond existing ingestion is not introduced here.
-- My Staff keeps its per-row action for fast overview work, while the Staff Profile reuses the same confirmation and result behavior in its summary.
+- My Staff uses one configured-family bulk action, while the Staff Profile retains the individual confirmation and result behavior in its summary.
 - The player profile's compact summary and two bounded analysis panels can host staff-specific content without a new page-shell pattern.
 - The current page-size limits and 32-filter ceiling are suitable for Staff Search unless query measurements show otherwise.
 - A 20-score default table will require horizontal scrolling but remains useful because role comparison is the page's primary purpose.
@@ -467,7 +467,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 ### PR 2 — Staff workspace UI
 
-**Status:** Ready for publication
+**Status:** Active
 
 **PR ref:** Not published
 
@@ -730,23 +730,73 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **Review mandate:** Verify current-snapshot and route semantics; exact attribute/score membership; shared preference with domain-specific Adaptability handling; invalidation; action-only surface; no potential/pitch/wonderkid leakage; keyboard/focus behavior; bounded layout; and player-profile regressions.
 
+#### Commit 6 — Replace row boosts with My Staff bulk boost
+
+**Status:** Completed
+
+**Provisional commit:** `feat(staff): add bulk CA boost`
+
+**Work:** Remove the fixed row action column and add one Squad-style **Boost all CA** action to My Staff. Rust captures the configured-family cohort, processes one closed +10 staff operation at a time, reports progress, skips capped staff, and stops with the shared recovery latch on an uncertain outcome.
+
+**Validation:** Focused Staff route and Rust command tests; `./scripts/dev check`; fresh Sol Medium review.
+
+#### Commit 7 — Combine staff profile attribute groups
+
+**Status:** Active
+
+**Provisional commit:** `refactor(staff): combine profile attributes`
+
+**Work:** Replace the three Staff Profile attribute tabs with one three-column Coaching, Mental, and Knowledge panel, and tighten the label-to-score spacing.
+
+**Validation:** Focused Staff Profile tests; `./scripts/dev check`; fresh Sol Medium review.
+
+#### Commit 8 — Virtualize staff role fit
+
+**Status:** Planned
+
+**Provisional commit:** `feat(staff): virtualize profile role fit`
+
+**Work:** Constrain Role fit to its panel and use the existing virtual-row pattern so the table scrolls internally while the profile page remains fixed.
+
+**Validation:** Focused component and browser behavior tests; `./scripts/dev check`; fresh Sol Medium review.
+
+#### Commit 9 — Color staff role scores
+
+**Status:** Planned
+
+**Provisional commit:** `feat(staff): color role scores`
+
+**Work:** Apply the existing 0–100 score ramp to Staff Search, My Staff, and Staff Profile role scores while retaining the visible numeric value and accessible tier label.
+
+**Validation:** Focused Staff table/profile tests; `./scripts/dev check`; fresh Sol Medium review.
+
+#### Commit 10 — Color player search role scores
+
+**Status:** Planned
+
+**Provisional commit:** `feat(search): color role scores`
+
+**Work:** Apply the same score-ramp presentation to current and potential role-score cells in Player Search without changing other numeric metrics.
+
+**Validation:** Focused Search table tests; `./scripts/dev check`; fresh Sol Medium review.
+
 ## Active work
 
 **PR:** PR 2 — Staff workspace UI
 
-**Commit:** Add Staff Profiles — completed as `18c28ce`
+**Commit:** Combine staff profile attribute groups
 
 ### Initial RED proof
 
-Add RED route and component tests for table entry, valid and invalid UID/tab state, the staff summary and two-panel layout, exact current-attribute groups, all 20 role-fit scores, shared concealment, and the profile-only Boost CA action. The initial RED run failed because Staff rows were not activated and `/staff/$uid` had no Staff Profile presentation.
+Add RED Staff Profile tests that require Coaching, Mental, and Knowledge to appear together as three columns without a tablist, while preserving all 24 attributes exactly once.
 
 ### Expected outcome
 
-Staff Search and My Staff rows open a bounded `/staff/$uid` profile. The profile renders staff-specific summary, Coaching/Mental/Knowledge attributes, current Role fit scores, shared Hide hidden behavior, and the fixed +10 Boost CA action without player-only pitch, potential, or Wonderkid surfaces.
+The Staff Profile shows all three current-attribute groups at once in a compact three-column panel and reduces the visual distance between each attribute name and value.
 
 ### Explicit exclusions
 
-Potential staff scores, progression, pitch/position familiarity, Wonderkid Mentality, profile history/comparison, global quick search, new memory writes, family editing, team grouping, and exact-manager-club fallback remain outside this commit.
+Role-fit virtualization, score colors, summary actions, attribute membership, and non-profile surfaces remain outside this commit.
 
 ## Discoveries and replanning
 
@@ -774,6 +824,7 @@ Potential staff scores, progression, pitch/position familiarity, Wonderkid Menta
 | PR 2 | Add club-family staff overview | `Pending record` | My Staff now reads the entire configured Senior/Reserves/Youth family through its own query key, supports bounded later pages, distinguishes setup/empty/error states, and retains independent table layouts and sort state | Sol Medium accepted after two correction rounds added Dashboard staff-cache invalidation, independent Search/My Staff sorting, and a focused cache-invalidation regression | Native three-club family validation remains manual; Repowise index was stale; direct source and deterministic validation used |
 | PR 2 | Add per-staff CA boost | `Pending record` | My Staff exposes a fixed Actions column with UID-only +10/PA/200-capped Boost CA confirmation, pending lock, stable recovery feedback/focus, and staff/snapshot invalidation; Search remains action-free | Sol Medium accepted after one correction round moved success feedback and fallback focus outside the virtualized row and added a sorted-row reordering regression | Native-window layout, supported-build UI proof, and recovery-repeat UX remain manual or deferred to Staff Profile integration |
 | PR 2 | Add Staff Profiles | `18c28ce` | `/staff/$uid` presents the staff summary, Coaching/Mental/Knowledge current attributes, catalog-ranked Role fit list, shared concealment, and fixed +10 Boost CA; Search and My Staff rows navigate by path only and the profile loader skips table queries | Sol Medium accepted after one correction round isolated child profile loading, corrected highest-role selection, and one documentation reconciliation | Native-window and supported-build profile checks remain manual; frontend fixtures do not independently prove all 20 role rows |
+| PR 2 | Replace row boosts with My Staff bulk boost | `Pending record` | My Staff exposes one Rust-owned sequential configured-family CA boost with progress, cap skipping, aggregate outcomes, snapshot-bound recovery reset, and no row action column; the bridge keeps its closed one-staff operation | Sol Medium accepted after one correction round fixed recovery reset, global bridge errors, and ADR authorization | Assembled multi-staff FM validation remains manual |
 | None | Planning only | `7857e27` | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation

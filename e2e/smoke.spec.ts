@@ -338,22 +338,22 @@ test.describe("application smoke", () => {
     await expect(table.getByText("Staff member 101")).toBeVisible();
   });
 
-  test("My Staff confirms a fixed CA boost and refreshes the row", async ({
-    page,
-  }) => {
+  test("My Staff confirms a configured-family CA boost", async ({ page }) => {
     await stubTauriIpc(page, { staffWorkspace: true });
     await page.goto("/staff?view=my-staff");
 
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "My Staff overview" });
-    const row = table.locator('tr[data-index="0"]');
-    await row.getByRole("button", { name: "Boost CA" }).click();
-    const dialog = page.getByRole("dialog", { name: "Boost CA?" });
-    await expect(dialog).toContainText("CA 145 → 155 (+10)");
-    await dialog.getByRole("button", { name: "Boost CA" }).click();
-    await expect(row).toContainText("155");
+    await expect(table.getByRole("button", { name: "Boost CA" })).toHaveCount(
+      0,
+    );
+    await main.getByRole("button", { name: "Boost all CA" }).click();
+    const dialog = page.getByRole("dialog", { name: "Boost all CA?" });
+    await expect(dialog).toContainText("configured club family");
+    await dialog.getByRole("button", { name: "Boost all CA" }).click();
+    await expect(dialog).toContainText("0 of 1 staff processed.");
     await expect(main.getByTestId("staff-boost-outcome")).toContainText(
-      "Staff CA boosted from 145 to 155.",
+      "1 processed — 1 updated, 0 skipped, 0 failed.",
     );
   });
 

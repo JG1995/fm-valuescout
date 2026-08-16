@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 import {
   createFileRoute,
   Outlet,
@@ -145,6 +145,7 @@ function StaffPageContent() {
   const navigate = Route.useNavigate();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
   const filters = useMemo(() => parseStaffFilters(filterUrls), [filterUrls]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const onBoostSuccess = () =>
@@ -232,6 +233,7 @@ function StaffPageContent() {
             <div className="flex min-h-0 flex-1 flex-col">
               <Suspense fallback={<StaffFallback />}>
                 <StaffSearchResultsPanel
+                  activeSnapshotId={snapshot?.id ?? null}
                   sortBy={sort}
                   sortDir={dir}
                   filters={filters}
@@ -254,6 +256,7 @@ function StaffPageContent() {
           <div className="flex min-h-0 flex-1 flex-col">
             <Suspense fallback={<StaffFallback />}>
               <StaffSearchResultsPanel
+                activeSnapshotId={snapshot?.id ?? null}
                 scope="my-staff"
                 sortBy={sort}
                 sortDir={dir}
