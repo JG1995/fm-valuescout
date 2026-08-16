@@ -1,4 +1,5 @@
 import { invokeCommand } from "@/lib/tauri-client";
+import type { StaffDetail } from "../types/staff-detail";
 import type { StaffFilterRule } from "../types/staff-filter-rule";
 import { staffFilterRuleToIpc } from "../types/staff-filter-rule";
 import {
@@ -50,6 +51,10 @@ export function fetchMyStaff(
     "and",
     requestedFields,
   );
+}
+
+export function fetchStaffDetail(uid: number) {
+  return invokeCommand<StaffDetail | null>("get_staff", { uid });
 }
 
 function fetchStaffCommand(

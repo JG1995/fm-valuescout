@@ -252,6 +252,30 @@ test.describe("application smoke", () => {
     await expect(myStaffTable.getByText("Alex Coach")).toBeVisible();
   });
 
+  test("Staff rows open profiles with staff-only surfaces", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { staffWorkspace: true });
+    await page.goto("/staff");
+
+    const main = page.getByRole("main");
+    const table = main.getByRole("table", { name: "Staff search results" });
+    await table.locator('tr[data-index="0"]').click();
+    await expect(
+      main.getByRole("heading", { name: "Alex Coach" }),
+    ).toBeVisible();
+    await expect(main.getByRole("heading", { name: "Role fit" })).toBeVisible();
+    await expect(main.getByRole("tab", { name: "Mental" })).toBeVisible();
+    await main.getByRole("tab", { name: "Mental" }).click();
+    await expect(main.getByText("Authority")).toBeVisible();
+    await expect(main.getByText("Wonderkid Mentality")).toHaveCount(0);
+    await expect(main.getByText("Pitch")).toHaveCount(0);
+    await main.getByRole("button", { name: "Hide hidden info" }).click();
+    await expect(
+      main.getByRole("button", { name: "Reveal hidden info" }),
+    ).toBeVisible();
+  });
+
   test("Staff keeps a long Search result set inside the main table scroller", async ({
     page,
   }) => {

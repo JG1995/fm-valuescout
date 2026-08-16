@@ -179,6 +179,7 @@ function StaffSearchTable({
   onRemoveColumn,
   onMoveColumn,
   onResizeColumn,
+  onRowActivate,
 }: {
   total: number;
   sortBy: StaffSortField;
@@ -202,6 +203,7 @@ function StaffSearchTable({
   onRemoveColumn: (id: string) => void;
   onMoveColumn: (id: string, target: number) => void;
   onResizeColumn: (id: string, width: number) => void;
+  onRowActivate?: (staff: StaffSummary) => void;
 }) {
   return (
     <ConfigurableVirtualizedTable<
@@ -215,6 +217,7 @@ function StaffSearchTable({
       fixedColumns={scope === "my-staff" ? [STAFF_ACTION_COLUMN] : []}
       getPageRows={(page) => page.staff}
       getRowKey={(staff) => staff.uid}
+      onRowActivate={onRowActivate}
       header={
         <ConfigurableTableHeader
           columns={columns}
@@ -310,6 +313,7 @@ export function StaffSearchResultsPanel({
   filterCombine,
   onSortChange,
   onBoostSuccess,
+  onRowActivate,
 }: {
   scope?: StaffWorkspaceScope;
   sortBy: StaffSortField;
@@ -318,6 +322,7 @@ export function StaffSearchResultsPanel({
   filterCombine: "and" | "or";
   onSortChange: (sort: StaffSortField, dir: StaffSortDir) => void;
   onBoostSuccess?: () => Promise<void>;
+  onRowActivate?: (staff: StaffSummary) => void;
 }) {
   const layoutId: StaffLayoutId =
     scope === "my-staff" ? "my-staff" : "staff-search";
@@ -543,6 +548,7 @@ export function StaffSearchResultsPanel({
         onRemoveColumn={removeStoredColumn}
         onMoveColumn={(id, target) => moveColumn(layoutId, id, target)}
         onResizeColumn={(id, width) => setColumnWidth(layoutId, id, width)}
+        onRowActivate={onRowActivate}
       />
     </Panel>
   );

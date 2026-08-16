@@ -105,10 +105,12 @@ export function StaffCaBoost({
             ? `CA ${staff?.ca} → ${preview.target} (+${preview.increase})${preview.capped ? " · capped by PA" : ""}`
             : preview.reason
         }
-        onClick={() => {
+        onClick={(event) => {
+          event.stopPropagation();
           onOpenConfirmation();
           setConfirmationOpen(true);
         }}
+        onKeyDown={(event) => event.stopPropagation()}
       >
         Boost CA
       </Button>

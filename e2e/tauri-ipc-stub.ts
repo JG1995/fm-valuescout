@@ -713,6 +713,62 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             } : null;
           }
 
+          if (cmd === "get_staff") {
+            const staffUid = Number.isInteger(args?.uid) ? args.uid : 0;
+            if (!staffWorkspace || staffUid !== 101) return null;
+            const attributes = Object.fromEntries([
+              "Attacking",
+              "Defending",
+              "Fitness",
+              "GoalkeepingDistribution",
+              "GoalkeepingHandling",
+              "GoalkeepingReflexes",
+              "Possession",
+              "SetPieces",
+              "Tactical",
+              "Technical",
+              "Adaptability",
+              "Authority",
+              "Determination",
+              "ManManagement",
+              "Motivating",
+              "WorkingWithYoungsters",
+              "DataAnalysis",
+              "JudgingPlayerAbility",
+              "JudgingPlayerPotential",
+              "JudgingStaffAbility",
+              "Negotiating",
+              "Physiotherapy",
+              "SportsScience",
+              "TacticalKnowledge",
+            ].map((key) => [key, key === "Adaptability" ? 16 : 15]));
+            return {
+              uid: 101,
+              name: "Alex Coach",
+              age: 44,
+              birthYear: 1982,
+              birthDayOfYear: 120,
+              nationalities: ["Denmark"],
+              nationUid: null,
+              gender: "male",
+              club: "Barcelona",
+              division: "La Liga",
+              ca: 145,
+              pa: 160,
+              jobId: 1,
+              weeklyWageGbp: 15000,
+              contractExpiryYear: 2028,
+              contractExpiryDayOfYear: 220,
+              attributes,
+              hiddenInformationRevealed: playerProfileHiddenInformationRevealed,
+              roleScores: [
+                { roleId: "coach_fitness", displayName: "Coach — Fitness", score: 85 },
+                { roleId: "scout", displayName: "Scout", score: 80 },
+                { roleId: "physio", displayName: "Physio", score: null },
+              ],
+            };
+          }
+
           if (cmd === "set_hidden_information_revealed") {
             if (typeof args?.revealed !== "boolean") {
               throw new Error("Missing revealed state");

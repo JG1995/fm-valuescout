@@ -2,6 +2,7 @@ import type { PlayerBoostResult } from "@/features/player-profile/types/player-b
 import type { PlayerDetail } from "@/features/player-profile/types/player-detail";
 
 let getPlayerOverride: PlayerDetail | null | undefined;
+let playerHiddenInformationRevealed = true;
 let playerHiddenInformationMode: PlayerHiddenInformationIpcMockMode = "success";
 let playerHiddenInformationCalls: unknown[] = [];
 let currentAbilityBoostMode: CurrentAbilityBoostIpcMockMode = "success";
@@ -35,10 +36,14 @@ export type WonderkidMentalityBoostIpcMockMode =
 
 export function setGetPlayerOverride(player: PlayerDetail | null | undefined) {
   getPlayerOverride = player;
+  if (player !== undefined) {
+    playerHiddenInformationRevealed = player?.hiddenInformationRevealed ?? true;
+  }
 }
 
 export function resetGetPlayerOverride() {
   getPlayerOverride = undefined;
+  playerHiddenInformationRevealed = true;
   playerHiddenInformationMode = "success";
   playerHiddenInformationCalls = [];
   currentAbilityBoostMode = "success";
@@ -57,6 +62,10 @@ export function setPlayerHiddenInformationRevealedIpcMockMode(
 
 export function getSetPlayerHiddenInformationRevealedIpcMockCalls() {
   return playerHiddenInformationCalls;
+}
+
+export function getPlayerHiddenInformationRevealedIpcMock() {
+  return playerHiddenInformationRevealed;
 }
 
 export function setCurrentAbilityBoostIpcMockMode(
@@ -148,7 +157,7 @@ export function fixturePlayerDetail(
     teamLevel: "First",
     ca: 140,
     pa: 160,
-    hiddenInformationRevealed: true,
+    hiddenInformationRevealed: playerHiddenInformationRevealed,
     roleScores: [
       {
         roleId: "goalkeeper_ip",
@@ -237,6 +246,7 @@ export function resolveSetPlayerHiddenInformationRevealedIpcMock(
   const player =
     getPlayerOverride === undefined ? fixturePlayerDetail() : getPlayerOverride;
   if (player !== null) {
+    playerHiddenInformationRevealed = revealed;
     getPlayerOverride = {
       ...player,
       hiddenInformationRevealed: revealed,

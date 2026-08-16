@@ -91,6 +91,7 @@ import {
 import {
   resetStaffIpcMock,
   resolveBoostStaffCurrentAbilityIpcMock,
+  resolveGetStaffIpcMock,
   resolveListMyStaffIpcMock,
   resolveSearchStaffIpcMock,
 } from "@/testing/staff-ipc-mock";
@@ -159,6 +160,10 @@ function registerIpcMocks() {
 
     if (cmd === "list_my_staff") {
       return resolveListMyStaffIpcMock(args);
+    }
+
+    if (cmd === "get_staff") {
+      return resolveGetStaffIpcMock(args);
     }
 
     if (cmd === "boost_staff_current_ability") {

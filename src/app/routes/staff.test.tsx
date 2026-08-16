@@ -27,6 +27,7 @@ import {
   resolvePendingStaffBoostIpcMock,
   setStaffBoostIpcMockMode,
   setStaffFamilyConfigured,
+  setStaffListIpcMockMode,
   setStaffOverride,
 } from "@/testing/staff-ipc-mock";
 
@@ -145,10 +146,12 @@ describe("staff route", () => {
     });
   });
 
-  it("keeps Search rows non-interactive until the profile route is delivered", async () => {
+  it("opens a staff profile from a Search row", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    renderStaffRoute();
+    const { router } = renderStaffRoute(
+      "/staff?sort=name&dir=asc&filters=%5B%5D&combine=and",
+    );
     const table = await screen.findByRole("table", {
       name: "Staff search results",
     });
@@ -156,9 +159,39 @@ describe("staff route", () => {
       .getAllByRole("row")
       .find((item) => item.hasAttribute("data-index"));
     expect(row).toBeDefined();
-    expect(row).not.toHaveAttribute("tabindex");
     await user.click(row as HTMLElement);
-    expect(screen.getByRole("heading", { name: "Staff" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Alex Coach" }),
+    ).toBeInTheDocument();
+    expect(router.history.location.pathname).toBe("/staff/101");
+    expect(router.history.location.search).toBe("");
+  });
+
+  it("does not load the staff table while opening a profile", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffListIpcMockMode("error");
+    renderStaffRoute("/staff/101");
+    expect(
+      await screen.findByRole("heading", { name: "Alex Coach" }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens a staff profile from a My Staff row with Enter", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    renderStaffRoute("/staff?view=my-staff");
+    const table = await screen.findByRole("table", {
+      name: "My Staff overview",
+    });
+    const row = within(table)
+      .getAllByRole("row")
+      .find((item) => item.hasAttribute("data-index"));
+    expect(row).toBeDefined();
+    (row as HTMLElement).focus();
+    await user.keyboard("{Enter}");
+    expect(
+      await screen.findByRole("heading", { name: "Alex Coach" }),
+    ).toBeInTheDocument();
   });
 
   it("supports keyboard workspace tabs without changing the table contract", async () => {

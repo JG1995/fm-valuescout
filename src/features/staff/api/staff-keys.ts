@@ -4,6 +4,7 @@ import type { StaffSortDir, StaffSortField } from "../types/staff-sort";
 
 export const staffKeys = {
   all: ["staff"] as const,
+  detail: (uid: number) => [...staffKeys.all, "detail", uid] as const,
   list: (
     scope: "search" | "my-staff",
     offset: number,

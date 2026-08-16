@@ -83,6 +83,13 @@ function rowAtIndex<TRow>(
   return entry?.rows?.[index % pageSize];
 }
 
+function isRowActionTarget(target: EventTarget | null) {
+  return (
+    target instanceof Element &&
+    target.closest("button, a, input, select, textarea, [role=dialog]") !== null
+  );
+}
+
 export function ConfigurableVirtualizedTable<
   TPage extends TablePage,
   TRow,
@@ -303,11 +310,17 @@ export function ConfigurableVirtualizedTable<
                       : undefined
                   }
                   onClick={
-                    isInteractive && row ? () => onRowActivate(row) : undefined
+                    isInteractive && row
+                      ? (event) => {
+                          if (isRowActionTarget(event.target)) return;
+                          onRowActivate(row);
+                        }
+                      : undefined
                   }
                   onKeyDown={
                     isInteractive
                       ? (event) => {
+                          if (isRowActionTarget(event.target)) return;
                           if (event.key === "ArrowDown") {
                             event.preventDefault();
                             focusRow(virtualRow.index + 1);

@@ -1,4 +1,5 @@
 import type { StaffBoostResult } from "@/features/staff/types/staff-boost";
+import type { StaffDetail } from "@/features/staff/types/staff-detail";
 import type { StaffFilterRuleIpc } from "@/features/staff/types/staff-filter-rule";
 import {
   DEFAULT_STAFF_SORT_DIR,
@@ -10,11 +11,14 @@ import type {
   StaffPage,
   StaffSummary,
 } from "@/features/staff/types/staff-summary";
+import { getPlayerHiddenInformationRevealedIpcMock } from "./player-ipc-mock";
 import { resolveGetCurrentSnapshotIpcMock } from "./snapshot-ipc-mock";
 
 let overrideStaff: StaffSummary[] | null = null;
+let staffDetailOverride: StaffDetail | null | undefined;
 let lastStaffArgs: Record<string, unknown> | null = null;
 let staffFamilyConfigured = true;
+let staffListMode: StaffListIpcMockMode = "success";
 let staffBoostMode: StaffBoostIpcMockMode = "success";
 let staffBoostCalls: unknown[] = [];
 let pendingStaffBoost: {
@@ -28,6 +32,8 @@ export type StaffBoostIpcMockMode =
   | "eligibilityError"
   | "liveValueError"
   | "snapshotSyncError";
+
+export type StaffListIpcMockMode = "success" | "error";
 
 const ROLE_IDS = [
   "assistant_manager",
@@ -87,17 +93,90 @@ export function setStaffOverride(staff: StaffSummary[] | null) {
   overrideStaff = staff;
 }
 
+export function setStaffDetailOverride(staff: StaffDetail | null | undefined) {
+  staffDetailOverride = staff;
+}
+
 export function setStaffFamilyConfigured(configured: boolean) {
   staffFamilyConfigured = configured;
 }
 
+export function setStaffListIpcMockMode(mode: StaffListIpcMockMode) {
+  staffListMode = mode;
+}
+
 export function resetStaffIpcMock() {
   overrideStaff = null;
+  staffDetailOverride = undefined;
   lastStaffArgs = null;
   staffFamilyConfigured = true;
+  staffListMode = "success";
   staffBoostMode = "success";
   staffBoostCalls = [];
   pendingStaffBoost = null;
+}
+
+export function fixtureStaffDetail(
+  overrides: Partial<StaffDetail> = {},
+): StaffDetail {
+  const attributes = Object.fromEntries(
+    [
+      "Attacking",
+      "Defending",
+      "Fitness",
+      "Possession",
+      "Technical",
+      "Tactical",
+      "SetPieces",
+      "Determination",
+      "ManManagement",
+      "Motivating",
+      "JudgingPlayerAbility",
+      "JudgingPlayerPotential",
+      "JudgingStaffAbility",
+      "Negotiating",
+      "TacticalKnowledge",
+      "Physiotherapy",
+      "SportsScience",
+      "Authority",
+      "Adaptability",
+      "DataAnalysis",
+      "WorkingWithYoungsters",
+      "GoalkeepingDistribution",
+      "GoalkeepingHandling",
+      "GoalkeepingReflexes",
+    ].map((key) => [key, key === "Adaptability" ? 16 : 15]),
+  );
+  return {
+    ...fixtureStaff(),
+    attributes,
+    hiddenInformationRevealed: getPlayerHiddenInformationRevealedIpcMock(),
+    roleScores: [
+      { roleId: "coach_fitness", displayName: "Coach — Fitness", score: 85 },
+      { roleId: "scout", displayName: "Scout", score: 80 },
+      { roleId: "physio", displayName: "Physio", score: null },
+    ],
+    ...overrides,
+  };
+}
+
+export function resolveGetStaffIpcMock(args: unknown): StaffDetail | null {
+  if (staffDetailOverride !== undefined) {
+    return staffDetailOverride
+      ? {
+          ...staffDetailOverride,
+          hiddenInformationRevealed:
+            getPlayerHiddenInformationRevealedIpcMock(),
+        }
+      : null;
+  }
+  const uid =
+    typeof args === "object" &&
+    args !== null &&
+    typeof (args as Record<string, unknown>).uid === "number"
+      ? ((args as Record<string, number>).uid ?? 0)
+      : 0;
+  return uid === 101 ? fixtureStaffDetail() : null;
 }
 
 export function setStaffBoostIpcMockMode(mode: StaffBoostIpcMockMode) {
@@ -237,6 +316,9 @@ function sortStaff(
 }
 
 export function resolveSearchStaffIpcMock(args: unknown): StaffPage {
+  if (staffListMode === "error") {
+    throw new Error("staff list failed");
+  }
   lastStaffArgs =
     typeof args === "object" && args !== null
       ? (args as Record<string, unknown>)

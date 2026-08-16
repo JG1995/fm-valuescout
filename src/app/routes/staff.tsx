@@ -1,5 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  useLocation,
+  useRouter,
+} from "@tanstack/react-router";
 import { Suspense, useMemo } from "react";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
@@ -98,9 +103,14 @@ export const Route = createFileRoute("/staff")({
   loader: ({
     context: { queryClient },
     deps: { view, sort, dir, filters, combine },
-  }) =>
-    Promise.all([
-      queryClient.ensureQueryData(currentSnapshotQueryOptions),
+    location,
+  }) => {
+    const currentSnapshot = queryClient.ensureQueryData(
+      currentSnapshotQueryOptions,
+    );
+    if (location.pathname !== "/staff") return currentSnapshot;
+    return Promise.all([
+      currentSnapshot,
       queryClient.ensureQueryData(
         view === "my-staff"
           ? staffMyStaffQueryOptions(0, undefined, sort, dir, [])
@@ -114,7 +124,8 @@ export const Route = createFileRoute("/staff")({
               [],
             ),
       ),
-    ]),
+    ]);
+  },
   component: StaffPage,
 });
 
@@ -132,6 +143,7 @@ function StaffFallback() {
 function StaffPageContent() {
   const { view, sort, dir, filters: filterUrls, combine } = Route.useSearch();
   const navigate = Route.useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const filters = useMemo(() => parseStaffFilters(filterUrls), [filterUrls]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
@@ -228,6 +240,9 @@ function StaffPageContent() {
                     updateSearch({ sort: nextSort, dir: nextDir })
                   }
                   onBoostSuccess={onBoostSuccess}
+                  onRowActivate={(staff) =>
+                    router.history.push(`/staff/${staff.uid}`)
+                  }
                 />
               </Suspense>
             </div>
@@ -248,6 +263,9 @@ function StaffPageContent() {
                   updateSearch({ sort: nextSort, dir: nextDir })
                 }
                 onBoostSuccess={onBoostSuccess}
+                onRowActivate={(staff) =>
+                  router.history.push(`/staff/${staff.uid}`)
+                }
               />
             </Suspense>
           </div>
@@ -258,6 +276,10 @@ function StaffPageContent() {
 }
 
 function StaffPage() {
+  const location = useLocation();
+  if (location.pathname.startsWith("/staff/")) {
+    return <Outlet />;
+  }
   return (
     <div className="flex h-full min-w-0 flex-col gap-gutter">
       <Suspense fallback={<StaffFallback />}>
