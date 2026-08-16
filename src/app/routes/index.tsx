@@ -12,6 +12,7 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { sanityPlayersQueryOptions } from "@/features/snapshot/api/sanity-players-query-options";
 import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { SnapshotPanelsWithErrorBoundary } from "@/features/snapshot/components/snapshot-panels-with-error-boundary";
+import { staffKeys } from "@/features/staff/api/staff-keys";
 
 export const Route = createFileRoute("/")({
   loader: ({ context: { queryClient } }) =>
@@ -54,7 +55,11 @@ function IndexPage() {
       {snapshot ? (
         <section aria-label="Club Setup" id="club-setup">
           <Suspense fallback={<PanelFallback label="Loading club setup…" />}>
-            <PlannerClubFamilyPanel />
+            <PlannerClubFamilyPanel
+              onSaved={() => {
+                void queryClient.invalidateQueries({ queryKey: staffKeys.all });
+              }}
+            />
           </Suspense>
         </section>
       ) : null}

@@ -247,9 +247,9 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect(table.getByText("Alex Coach")).toBeVisible();
     await main.getByRole("tab", { name: "My Staff" }).click();
-    await expect(
-      main.getByText("My Staff overview is coming next"),
-    ).toBeVisible();
+    const myStaffTable = main.getByRole("table", { name: "My Staff overview" });
+    await expect(myStaffTable).toBeVisible();
+    await expect(myStaffTable.getByText("Alex Coach")).toBeVisible();
   });
 
   test("Staff keeps a long Search result set inside the main table scroller", async ({
@@ -289,6 +289,44 @@ test.describe("application smoke", () => {
     expect(dimensions.scrollerScrollHeight).toBeGreaterThan(
       dimensions.scrollerClientHeight,
     );
+  });
+
+  test("My Staff fetches a later page from the configured family", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      playerTableRowCount: 101,
+      staffWorkspace: true,
+    });
+    await page.goto("/staff?view=my-staff");
+
+    const main = page.getByRole("main");
+    const table = main.getByRole("table", { name: "My Staff overview" });
+    const scroller = main.getByTestId("my-staff-results-scroller");
+    await expect(table).toBeVisible();
+    await scroller.evaluate((element) => {
+      const scrollable = element as unknown as {
+        scrollHeight: number;
+        scrollTop: number;
+      };
+      scrollable.scrollTop = scrollable.scrollHeight;
+    });
+    await expect(table.getByText("Staff member 101")).toBeVisible();
+  });
+
+  test("My Staff points an unconfigured family to Dashboard Club Setup", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { staffFamily: "none", staffWorkspace: true });
+    await page.goto("/staff?view=my-staff");
+
+    const main = page.getByRole("main");
+    await expect(
+      main.getByText("Set up your club family", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("link", { name: "Open Club Setup" }),
+    ).toHaveAttribute("href", "/#club-setup");
   });
 
   test("planner route shows no-snapshot Load Data guidance", async ({

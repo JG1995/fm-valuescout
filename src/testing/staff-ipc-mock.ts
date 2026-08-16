@@ -13,6 +13,7 @@ import { resolveGetCurrentSnapshotIpcMock } from "./snapshot-ipc-mock";
 
 let overrideStaff: StaffSummary[] | null = null;
 let lastStaffArgs: Record<string, unknown> | null = null;
+let staffFamilyConfigured = true;
 
 const ROLE_IDS = [
   "assistant_manager",
@@ -72,9 +73,14 @@ export function setStaffOverride(staff: StaffSummary[] | null) {
   overrideStaff = staff;
 }
 
+export function setStaffFamilyConfigured(configured: boolean) {
+  staffFamilyConfigured = configured;
+}
+
 export function resetStaffIpcMock() {
   overrideStaff = null;
   lastStaffArgs = null;
+  staffFamilyConfigured = true;
 }
 
 export function getLastStaffArgs() {
@@ -237,4 +243,14 @@ export function resolveSearchStaffIpcMock(args: unknown): StaffPage {
       ),
     }));
   return { state: "ready", staff: page, total: sorted.length };
+}
+
+export function resolveListMyStaffIpcMock(args: unknown): StaffPage {
+  if (!resolveGetCurrentSnapshotIpcMock()) {
+    return { state: "no_current_snapshot", staff: [], total: 0 };
+  }
+  if (!staffFamilyConfigured) {
+    return { state: "no_club_family", staff: [], total: 0 };
+  }
+  return resolveSearchStaffIpcMock(args);
 }

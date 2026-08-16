@@ -21,8 +21,49 @@ export function fetchStaff(
   filterCombine: "and" | "or" = "and",
   requestedFields: string[] = [],
 ) {
+  return fetchStaffCommand(
+    "search_staff",
+    offset,
+    limit,
+    sortBy,
+    sortDir,
+    filters,
+    filterCombine,
+    requestedFields,
+  );
+}
+
+export function fetchMyStaff(
+  offset = 0,
+  limit = STAFF_PAGE_SIZE,
+  sortBy: StaffSortField = DEFAULT_STAFF_SORT_FIELD,
+  sortDir: StaffSortDir = DEFAULT_STAFF_SORT_DIR,
+  requestedFields: string[] = [],
+) {
+  return fetchStaffCommand(
+    "list_my_staff",
+    offset,
+    limit,
+    sortBy,
+    sortDir,
+    [],
+    "and",
+    requestedFields,
+  );
+}
+
+function fetchStaffCommand(
+  command: "search_staff" | "list_my_staff",
+  offset: number,
+  limit: number,
+  sortBy: StaffSortField,
+  sortDir: StaffSortDir,
+  filters: StaffFilterRule[],
+  filterCombine: "and" | "or",
+  requestedFields: string[],
+) {
   const applied = completeStaffFilterRules(filters);
-  return invokeCommand<StaffPage>("search_staff", {
+  return invokeCommand<StaffPage>(command, {
     offset,
     limit,
     sortBy,

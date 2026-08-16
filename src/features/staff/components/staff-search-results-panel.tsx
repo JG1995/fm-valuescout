@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { DatabaseZap, SearchX } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { DatabaseZap, SearchX, UsersRound } from "lucide-react";
 import { useMemo } from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
@@ -14,6 +15,7 @@ import { formatCount, formatMissable, formatPlayerDob } from "@/utils/format";
 import type { staffKeys } from "../api/staff-keys";
 import {
   STAFF_PAGE_SIZE,
+  staffMyStaffQueryOptions,
   staffSearchQueryOptions,
 } from "../api/staff-query-options";
 import type { StaffFilterRule } from "../types/staff-filter-rule";
@@ -31,6 +33,9 @@ const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
 const NUM_CELL =
   "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
+
+export type StaffWorkspaceScope = "search" | "my-staff";
+type StaffLayoutId = "staff-search" | "my-staff";
 
 function nextSort(
   currentBy: StaffSortField,
@@ -145,10 +150,10 @@ function StaffSearchTable({
   total,
   sortBy,
   sortDir,
-  filters,
-  filterCombine,
   columns,
-  requestedFields,
+  pageQueryOptions,
+  caption,
+  testId,
   onSortChange,
   onAddColumn,
   onRemoveColumn,
@@ -158,10 +163,13 @@ function StaffSearchTable({
   total: number;
   sortBy: StaffSortField;
   sortDir: StaffSortDir;
-  filters: StaffFilterRule[];
-  filterCombine: "and" | "or";
   columns: ConfigurableTableColumn[];
-  requestedFields: string[];
+  pageQueryOptions: (
+    offset: number,
+    limit: number,
+  ) => ReturnType<typeof staffSearchQueryOptions>;
+  caption: string;
+  testId: string;
   onSortChange: (sort: StaffSortField, dir: StaffSortDir) => void;
   onAddColumn: (id: string) => void;
   onRemoveColumn: (id: string) => void;
@@ -174,7 +182,7 @@ function StaffSearchTable({
       StaffSummary,
       ReturnType<typeof staffKeys.list>
     >
-      caption="Staff search results"
+      caption={caption}
       columnCount={columns.length}
       columns={columns}
       getPageRows={(page) => page.staff}
@@ -195,17 +203,7 @@ function StaffSearchTable({
           onResizeColumn={onResizeColumn}
         />
       }
-      pageQueryOptions={(offset, limit) =>
-        staffSearchQueryOptions(
-          offset,
-          limit,
-          sortBy,
-          sortDir,
-          filters,
-          filterCombine,
-          requestedFields,
-        )
-      }
+      pageQueryOptions={pageQueryOptions}
       pageSize={STAFF_PAGE_SIZE}
       renderCells={(staff) =>
         columns.map((column) => {
@@ -251,26 +249,30 @@ function StaffSearchTable({
           );
         })
       }
-      testId="staff-search-results-scroller"
+      testId={testId}
       total={total}
     />
   );
 }
 
 export function StaffSearchResultsPanel({
+  scope = "search",
   sortBy,
   sortDir,
   filters,
   filterCombine,
   onSortChange,
 }: {
+  scope?: StaffWorkspaceScope;
   sortBy: StaffSortField;
   sortDir: StaffSortDir;
   filters: StaffFilterRule[];
   filterCombine: "and" | "or";
   onSortChange: (sort: StaffSortField, dir: StaffSortDir) => void;
 }) {
-  const layout = usePlayerTableStore((state) => state.layouts["staff-search"]);
+  const layoutId: StaffLayoutId =
+    scope === "my-staff" ? "my-staff" : "staff-search";
+  const layout = usePlayerTableStore((state) => state.layouts[layoutId]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeColumn = usePlayerTableStore((state) => state.removeColumn);
   const moveColumn = usePlayerTableStore((state) => state.moveColumn);
@@ -292,20 +294,28 @@ export function StaffSearchResultsPanel({
     [columns],
   );
   const { data: page } = useSuspenseQuery(
-    staffSearchQueryOptions(
-      0,
-      STAFF_PAGE_SIZE,
-      sortBy,
-      sortDir,
-      filters,
-      filterCombine,
-      requestedFields,
-    ),
+    scope === "my-staff"
+      ? staffMyStaffQueryOptions(
+          0,
+          STAFF_PAGE_SIZE,
+          sortBy,
+          sortDir,
+          requestedFields,
+        )
+      : staffSearchQueryOptions(
+          0,
+          STAFF_PAGE_SIZE,
+          sortBy,
+          sortDir,
+          filters,
+          filterCombine,
+          requestedFields,
+        ),
   );
 
   if (page.state === "no_current_snapshot") {
     return (
-      <Panel title="Results" flush>
+      <Panel title={scope === "my-staff" ? "My Staff" : "Results"} flush>
         <EmptyState icon={DatabaseZap} title="No data loaded for this save">
           Use Load Data to scan Football Manager and ingest staff into the
           database.
@@ -313,20 +323,45 @@ export function StaffSearchResultsPanel({
       </Panel>
     );
   }
-  if (page.total === 0) {
+  if (page.state === "no_club_family") {
     return (
-      <Panel title="Results" flush>
+      <Panel title="My Staff" flush>
         <EmptyState
-          icon={SearchX}
-          title={
-            completeStaffFilterRules(filters).length > 0
-              ? "No staff match these filters"
-              : "No staff in snapshot"
+          icon={UsersRound}
+          title="Set up your club family"
+          action={
+            <Link
+              to="/"
+              hash="club-setup"
+              className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
+            >
+              Open Club Setup
+            </Link>
           }
         >
-          {completeStaffFilterRules(filters).length > 0
-            ? "Adjust or clear filters to widen the result set."
-            : "The snapshot exists but contains no staff rows."}
+          Configure your club family in Dashboard before reviewing your staff.
+        </EmptyState>
+      </Panel>
+    );
+  }
+  if (page.total === 0) {
+    return (
+      <Panel title={scope === "my-staff" ? "My Staff" : "Results"} flush>
+        <EmptyState
+          icon={scope === "my-staff" ? UsersRound : SearchX}
+          title={
+            scope === "my-staff"
+              ? "No staff in your club family"
+              : completeStaffFilterRules(filters).length > 0
+                ? "No staff match these filters"
+                : "No staff in snapshot"
+          }
+        >
+          {scope === "my-staff"
+            ? "No current-snapshot staff match the clubs configured for this save."
+            : completeStaffFilterRules(filters).length > 0
+              ? "Adjust or clear filters to widen the result set."
+              : "The snapshot exists but contains no staff rows."}
         </EmptyState>
       </Panel>
     );
@@ -349,7 +384,7 @@ export function StaffSearchResultsPanel({
     );
   const removeStoredColumn = (metricId: string) => {
     if (columns.length <= 1) return;
-    removeColumn("staff-search", metricId);
+    removeColumn(layoutId, metricId);
     if (sortBy === metricId) {
       const next =
         columns.find((column) => column.id !== metricId) ?? columns[0];
@@ -359,7 +394,7 @@ export function StaffSearchResultsPanel({
 
   return (
     <Panel
-      title="Results"
+      title={scope === "my-staff" ? "My Staff" : "Results"}
       flush
       className="flex min-h-0 flex-1 flex-col"
       contentClassName="flex min-h-0 flex-1 flex-col"
@@ -382,17 +417,35 @@ export function StaffSearchResultsPanel({
         total={page.total}
         sortBy={sortBy}
         sortDir={sortDir}
-        filters={filters}
-        filterCombine={filterCombine}
         columns={columns}
-        requestedFields={requestedFields}
-        onSortChange={onSortChange}
-        onAddColumn={(id) => addColumns("staff-search", [id])}
-        onRemoveColumn={removeStoredColumn}
-        onMoveColumn={(id, target) => moveColumn("staff-search", id, target)}
-        onResizeColumn={(id, width) =>
-          setColumnWidth("staff-search", id, width)
+        pageQueryOptions={(offset, limit) =>
+          scope === "my-staff"
+            ? staffMyStaffQueryOptions(
+                offset,
+                limit,
+                sortBy,
+                sortDir,
+                requestedFields,
+              )
+            : staffSearchQueryOptions(
+                offset,
+                limit,
+                sortBy,
+                sortDir,
+                filters,
+                filterCombine,
+                requestedFields,
+              )
         }
+        caption={
+          scope === "my-staff" ? "My Staff overview" : "Staff search results"
+        }
+        testId={`${layoutId}-results-scroller`}
+        onSortChange={onSortChange}
+        onAddColumn={(id) => addColumns(layoutId, [id])}
+        onRemoveColumn={removeStoredColumn}
+        onMoveColumn={(id, target) => moveColumn(layoutId, id, target)}
+        onResizeColumn={(id, width) => setColumnWidth(layoutId, id, width)}
       />
     </Panel>
   );

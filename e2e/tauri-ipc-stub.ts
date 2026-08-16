@@ -9,6 +9,7 @@ type SmokeStubOptions = {
   squadOverview?: boolean;
   playerProfile?: boolean;
   staffWorkspace?: boolean;
+  staffFamily?: "configured" | "none";
   snapshotHistory?: boolean;
 };
 
@@ -21,6 +22,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const squadOverview = options.squadOverview ?? false;
   const playerProfile = options.playerProfile ?? false;
   const staffWorkspace = options.staffWorkspace ?? false;
+  const staffFamilyConfigured = options.staffFamily !== "none";
   const snapshotHistory = options.snapshotHistory ?? false;
   await page.addInitScript({
     content: `
@@ -36,6 +38,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const squadOverview = ${squadOverview ? "true" : "false"};
       const playerProfile = ${playerProfile ? "true" : "false"};
       const staffWorkspace = ${staffWorkspace ? "true" : "false"};
+      const staffFamilyConfigured = ${staffFamilyConfigured ? "true" : "false"};
       const snapshotHistoryEnabled = ${snapshotHistory ? "true" : "false"};
       let nextSaveId = 2;
       let saves = [{
@@ -240,7 +243,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           nationalities: ["Denmark"],
           nationUid: null,
           gender: "male",
-          club: "Barcelona",
+          club: index % 2 === 0 ? "Barcelona" : "Barcelona B",
           division: "La Liga",
           ca: 145,
           pa: 160,
@@ -514,6 +517,26 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               state: staffWorkspace ? "ready" : "no_current_snapshot",
               staff: staffRows.slice(offset, offset + limit),
               total: staffRows.length,
+            };
+          }
+
+          if (cmd === "list_my_staff") {
+            const offset = Number.isInteger(args?.offset)
+              ? Math.max(0, args.offset)
+              : 0;
+            const limit = Number.isInteger(args?.limit)
+              ? Math.min(200, Math.max(1, args.limit))
+              : 50;
+            return {
+              state: !staffWorkspace
+                ? "no_current_snapshot"
+                : staffFamilyConfigured
+                  ? "ready"
+                  : "no_club_family",
+              staff: staffFamilyConfigured
+                ? staffRows.slice(offset, offset + limit)
+                : [],
+              total: staffFamilyConfigured ? staffRows.length : 0,
             };
           }
 
