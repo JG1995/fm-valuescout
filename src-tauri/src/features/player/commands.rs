@@ -183,14 +183,11 @@ pub fn get_player(uid: i64, db: State<'_, Db>) -> Result<Option<PlayerDetailDto>
 }
 
 #[tauri::command]
-pub fn set_player_hidden_information_revealed(
-    revealed: bool,
-    db: State<'_, Db>,
-) -> Result<bool, String> {
+pub fn set_hidden_information_revealed(revealed: bool, db: State<'_, Db>) -> Result<bool, String> {
     let conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
-    service::set_player_hidden_information_revealed(&conn, revealed)
+    service::set_hidden_information_revealed(&conn, revealed)
 }
 
 #[tauri::command]

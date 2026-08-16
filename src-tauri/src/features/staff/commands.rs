@@ -10,7 +10,10 @@ use crate::features::memory_read::service::{
 use crate::features::player::boost_gate;
 
 use super::filter::{self, FilterAst, FilterRule};
-use super::query::{self, SortDir, SortField, StaffPage, StaffPageState, StaffScope, StaffSummary};
+use super::query::{
+    self, SortDir, SortField, StaffDetail, StaffPage, StaffPageState, StaffRoleScore, StaffScope,
+    StaffSummary,
+};
 use super::service::{self, PreparedStaffBoost, StaffBoostError, VerifiedStaffBoost};
 
 #[derive(Deserialize)]
@@ -92,6 +95,78 @@ impl From<StaffPage> for StaffPageDto {
             },
             staff: page.staff.into_iter().map(StaffSummaryDto::from).collect(),
             total: page.total,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffRoleScoreDto {
+    pub role_id: String,
+    pub display_name: String,
+    pub score: Option<i64>,
+}
+
+impl From<StaffRoleScore> for StaffRoleScoreDto {
+    fn from(role: StaffRoleScore) -> Self {
+        Self {
+            role_id: role.role_id,
+            display_name: role.display_name,
+            score: role.score,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffDetailDto {
+    pub uid: i64,
+    pub name: Option<String>,
+    pub age: Option<i64>,
+    pub birth_year: Option<i64>,
+    pub birth_day_of_year: Option<i64>,
+    pub nationalities: Vec<String>,
+    pub nation_uid: Option<i64>,
+    pub gender: String,
+    pub club: Option<String>,
+    pub division: Option<String>,
+    pub ca: i64,
+    pub pa: i64,
+    pub job_id: Option<i64>,
+    pub weekly_wage_gbp: Option<i64>,
+    pub contract_expiry_year: Option<i64>,
+    pub contract_expiry_day_of_year: Option<i64>,
+    pub attributes: BTreeMap<String, Option<i64>>,
+    pub hidden_information_revealed: bool,
+    pub role_scores: Vec<StaffRoleScoreDto>,
+}
+
+impl From<StaffDetail> for StaffDetailDto {
+    fn from(staff: StaffDetail) -> Self {
+        Self {
+            uid: staff.uid,
+            name: staff.name,
+            age: staff.age,
+            birth_year: staff.birth_year,
+            birth_day_of_year: staff.birth_day_of_year,
+            nationalities: staff.nationalities,
+            nation_uid: staff.nation_uid,
+            gender: staff.gender,
+            club: staff.club,
+            division: staff.division,
+            ca: staff.ca,
+            pa: staff.pa,
+            job_id: staff.job_id,
+            weekly_wage_gbp: staff.weekly_wage_gbp,
+            contract_expiry_year: staff.contract_expiry_year,
+            contract_expiry_day_of_year: staff.contract_expiry_day_of_year,
+            attributes: staff.attributes,
+            hidden_information_revealed: staff.hidden_information_revealed,
+            role_scores: staff
+                .role_scores
+                .into_iter()
+                .map(StaffRoleScoreDto::from)
+                .collect(),
         }
     }
 }
@@ -196,6 +271,14 @@ pub fn list_my_staff(
         requested_fields,
         db,
     )
+}
+
+#[tauri::command]
+pub fn get_staff(uid: i64, db: State<'_, Db>) -> Result<Option<StaffDetailDto>, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    query::get_staff(&conn, uid).map(|staff| staff.map(StaffDetailDto::from))
 }
 
 #[derive(Serialize)]

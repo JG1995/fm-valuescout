@@ -4,6 +4,7 @@ use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Ro
 
 use super::filter::{compile_filters, FilterAst};
 use super::metrics::{parse_requested_fields, MetricField};
+use super::scoring::all_staff_roles;
 
 pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
@@ -117,6 +118,142 @@ pub struct StaffPage {
     pub state: StaffPageState,
     pub staff: Vec<StaffSummary>,
     pub total: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaffRoleScore {
+    pub role_id: String,
+    pub display_name: String,
+    pub score: Option<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaffDetail {
+    pub uid: i64,
+    pub name: Option<String>,
+    pub age: Option<i64>,
+    pub birth_year: Option<i64>,
+    pub birth_day_of_year: Option<i64>,
+    pub nationalities: Vec<String>,
+    pub nation_uid: Option<i64>,
+    pub gender: String,
+    pub club: Option<String>,
+    pub division: Option<String>,
+    pub ca: i64,
+    pub pa: i64,
+    pub job_id: Option<i64>,
+    pub weekly_wage_gbp: Option<i64>,
+    pub contract_expiry_year: Option<i64>,
+    pub contract_expiry_day_of_year: Option<i64>,
+    pub attributes: BTreeMap<String, Option<i64>>,
+    pub hidden_information_revealed: bool,
+    pub role_scores: Vec<StaffRoleScore>,
+}
+
+/// Load one staff member from the active save's effective current snapshot.
+pub fn get_staff(conn: &Connection, uid: i64) -> Result<Option<StaffDetail>, String> {
+    let context: Option<(i64, i64)> = conn
+        .query_row(
+            "SELECT snapshots.id, saves.reveal_hidden_information
+             FROM snapshots
+             INNER JOIN saves ON saves.id = snapshots.save_id AND saves.is_active = 1
+             WHERE snapshots.is_current = 1
+             LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some((snapshot_id, hidden_information_revealed)) = context else {
+        return Ok(None);
+    };
+
+    let staff = conn
+        .query_row(
+            "SELECT uid, name, age, birth_year, birth_day_of_year, nationalities_json,
+                    nation_uid, gender, club, division, ca, pa, job_id, weekly_wage_gbp,
+                    contract_expiry_year, contract_expiry_day_of_year, staff_attributes_json
+             FROM staff WHERE snapshot_id = ?1 AND uid = ?2",
+            rusqlite::params![snapshot_id, uid],
+            |row| map_staff_detail(row, hidden_information_revealed == 1),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some(mut staff) = staff else {
+        return Ok(None);
+    };
+    staff.role_scores = load_staff_role_scores(conn, snapshot_id, uid)?;
+    Ok(Some(staff))
+}
+
+fn map_staff_detail(
+    row: &Row<'_>,
+    hidden_information_revealed: bool,
+) -> rusqlite::Result<StaffDetail> {
+    let nationalities_json: String = row.get(5)?;
+    let attributes_json: String = row.get(16)?;
+    Ok(StaffDetail {
+        uid: row.get(0)?,
+        name: row.get(1)?,
+        age: row.get(2)?,
+        birth_year: row.get(3)?,
+        birth_day_of_year: row.get(4)?,
+        nationalities: serde_json::from_str(&nationalities_json).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                5,
+                rusqlite::types::Type::Text,
+                Box::new(error),
+            )
+        })?,
+        nation_uid: row.get(6)?,
+        gender: row.get(7)?,
+        club: row.get(8)?,
+        division: row.get(9)?,
+        ca: row.get(10)?,
+        pa: row.get(11)?,
+        job_id: row.get(12)?,
+        weekly_wage_gbp: row.get(13)?,
+        contract_expiry_year: row.get(14)?,
+        contract_expiry_day_of_year: row.get(15)?,
+        attributes: serde_json::from_str(&attributes_json).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                16,
+                rusqlite::types::Type::Text,
+                Box::new(error),
+            )
+        })?,
+        hidden_information_revealed,
+        role_scores: Vec::new(),
+    })
+}
+
+fn load_staff_role_scores(
+    conn: &Connection,
+    snapshot_id: i64,
+    uid: i64,
+) -> Result<Vec<StaffRoleScore>, String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT role_id, score FROM staff_role_scores
+             WHERE snapshot_id = ?1 AND uid = ?2",
+        )
+        .map_err(|error| error.to_string())?;
+    let stored = statement
+        .query_map(rusqlite::params![snapshot_id, uid], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<BTreeMap<_, _>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    Ok(all_staff_roles()
+        .iter()
+        .map(|role| StaffRoleScore {
+            role_id: role.role_id.to_string(),
+            display_name: role.display_name.to_string(),
+            score: stored.get(role.role_id).copied().flatten(),
+        })
+        .collect())
 }
 
 #[allow(clippy::too_many_arguments)] // Keeps the internal query seam aligned with the flat Tauri page request.
@@ -252,6 +389,7 @@ fn map_staff(row: &Row<'_>, fields: &[MetricField]) -> rusqlite::Result<StaffSum
 mod tests {
     use super::*;
     use crate::db::migrations;
+    use crate::features::player::{query as player_query, service as player_service};
     use crate::features::staff::filter::{parse_filter_ast, FilterRule, FilterValue};
     fn open() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -337,6 +475,113 @@ mod tests {
         assert_eq!(page.staff.len(), 1);
         assert_eq!(page.staff[0].dynamic_values["attr.Authority"], Some(18));
         assert_eq!(page.staff[0].dynamic_values["role.coach_fitness"], Some(80));
+    }
+
+    #[test]
+    fn staff_detail_is_current_only_and_returns_catalog_order_with_null_scores() {
+        let conn = open();
+        assert!(get_staff(&conn, 1)
+            .expect("lookup without an active snapshot")
+            .is_none());
+        seed(&conn, true);
+        conn.execute_batch(
+            "INSERT INTO saves (id,name,is_active) VALUES (2,'Inactive',0);
+             INSERT INTO snapshots (id,save_id,is_current,schema_version,generated_at_utc,game_version,supported_game_version,bridge_version,protocol_version,game_date_source,scan_truncated,player_count)
+             VALUES (3,2,1,8,'now','26.3','26.3','0.4',1,'unknown',0,0);
+             INSERT INTO staff (snapshot_id,uid,name,age,nationalities_json,gender,ca,pa,staff_attributes_json,club)
+             VALUES (3,1,'Inactive Alpha',40,'[]','unknown',200,200,'{}','Other');",
+        )
+        .expect("insert inactive save staff");
+
+        let detail = get_staff(&conn, 1).expect("get staff").expect("staff");
+        assert_eq!(detail.name.as_deref(), Some("Alpha"));
+        assert_eq!(detail.attributes["Authority"], Some(18));
+        assert!(detail.hidden_information_revealed);
+        assert_eq!(detail.role_scores.len(), all_staff_roles().len());
+        assert_eq!(detail.role_scores[0].role_id, "assistant_manager");
+        assert_eq!(detail.role_scores[0].score, None);
+        assert_eq!(
+            detail
+                .role_scores
+                .iter()
+                .find(|role| role.role_id == "coach_fitness")
+                .and_then(|role| role.score),
+            Some(80)
+        );
+        assert!(get_staff(&conn, 9)
+            .expect("historical staff lookup")
+            .is_none());
+        assert!(get_staff(&conn, 999)
+            .expect("missing staff lookup")
+            .is_none());
+        assert_eq!(
+            get_staff(&conn, 3)
+                .expect("get nullable staff")
+                .expect("nullable staff")
+                .attributes["Authority"],
+            None
+        );
+    }
+
+    #[test]
+    fn staff_detail_reads_the_shared_active_save_visibility_without_redaction() {
+        let conn = open();
+        seed(&conn, true);
+        conn.execute(
+            "UPDATE saves SET reveal_hidden_information = 0 WHERE id = 1",
+            [],
+        )
+        .expect("conceal information");
+
+        let detail = get_staff(&conn, 1).expect("get staff").expect("staff");
+        assert!(!detail.hidden_information_revealed);
+        assert_eq!(detail.pa, 120);
+        assert_eq!(detail.attributes["Authority"], Some(18));
+        assert_eq!(detail.role_scores.len(), 20);
+    }
+
+    #[test]
+    fn one_visibility_setter_is_observed_by_player_and_staff_details() {
+        let conn = open();
+        seed(&conn, true);
+        conn.execute(
+            "INSERT INTO players (
+                snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
+                nationalities_json, preferred_foot, positions_json, attributes_json,
+                hidden_attributes_json, personality_json
+             ) VALUES (1, 77, 100, 120, 'Player', 2000, 1, '[]', 'right', '{}', '{}', '{}', '{}')",
+            [],
+        )
+        .expect("insert player");
+
+        assert!(
+            player_query::get_player(&conn, 77)
+                .expect("get player")
+                .expect("player")
+                .hidden_information_revealed
+        );
+        assert!(
+            get_staff(&conn, 1)
+                .expect("get staff")
+                .expect("staff")
+                .hidden_information_revealed
+        );
+
+        assert!(
+            !player_service::set_hidden_information_revealed(&conn, false)
+                .expect("conceal shared information")
+        );
+
+        let player = player_query::get_player(&conn, 77)
+            .expect("get concealed player")
+            .expect("player");
+        let staff = get_staff(&conn, 1)
+            .expect("get concealed staff")
+            .expect("staff");
+        assert!(!player.hidden_information_revealed);
+        assert!(!staff.hidden_information_revealed);
+        assert_eq!(player.pa, 120);
+        assert_eq!(staff.pa, 120);
     }
     #[test]
     fn injection_shaped_text_is_bound_as_data() {

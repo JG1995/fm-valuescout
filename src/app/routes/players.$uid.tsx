@@ -14,7 +14,7 @@ import { boostCurrentAbility } from "@/features/player-profile/api/boost-current
 import { boostWonderkidMentality } from "@/features/player-profile/api/boost-wonderkid-mentality";
 import { getPlayerQueryOptions } from "@/features/player-profile/api/get-player-query-options";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
-import { setPlayerHiddenInformationRevealed } from "@/features/player-profile/api/set-player-hidden-information-revealed";
+import { setHiddenInformationRevealed } from "@/features/player-profile/api/set-hidden-information-revealed";
 import { PlayerAttributesPanel } from "@/features/player-profile/components/player-attributes-panel";
 import { PlayerDevelopmentActions } from "@/features/player-profile/components/player-development-boosts-panel";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
@@ -178,7 +178,7 @@ function PlayerProfileContent({
   const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
   const hiddenInformation = useMutation({
     mutationFn: ({ revealed }: PlayerHiddenInformationMutation) =>
-      setPlayerHiddenInformationRevealed(revealed),
+      setHiddenInformationRevealed(revealed),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: playerKeys.all });
     },

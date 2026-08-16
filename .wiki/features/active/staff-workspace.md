@@ -55,10 +55,10 @@ Turn the already extracted staff population into a first-class Staff workspace: 
 ## Current-state map
 
 - Relevant components: `src/app/components/app-nav-rail.tsx`; `src/app/routes/search.tsx`; `src/app/routes/planner.tsx`; `src/app/routes/players.$uid.tsx`; `src/features/search/`; `src/features/squad/`; `src/features/player-profile/`; `src/components/player-table/`; `src/components/ui/player-metric-picker.tsx`; `src/stores/use-player-table-store.ts`.
-- Data model: snapshot-owned `staff` rows already contain identity, nationality, gender, CA/PA, employment fields, and `staff_attributes_json`; no staff UI, query service, role-score table, or mutation command exists.
-- Persistence and migrations: SQLite schema version 23 is current. `player_role_scores` is the closest persisted-score analogue. `planner_club_sources` owns the configured family. `snapshots.player_boost_recovery_required` currently names a recovery condition that staff writes must share. `saves.reveal_hidden_player_information` stores a save-scoped player-profile presentation preference that this feature must generalize without changing its value.
+- Data model: snapshot-owned `staff` rows contain identity, nationality, gender, CA/PA, employment fields, and `staff_attributes_json`; `staff_role_scores` stores current job-fit scores, and Rust exposes bounded list, detail, and CA-boost commands. No staff UI exists yet.
+- Persistence and migrations: SQLite schema version 26 is current. `staff_role_scores` owns current staff scores, `planner_club_sources` owns the configured family, `snapshots.boost_recovery_required` covers both mutation families, and `saves.reveal_hidden_information` is the shared save-scoped profile preference.
 - Existing behavioral assumptions: Search uses URL-backed flat AND/OR filters with a 32-rule limit and bounded pages; configurable player tables persist separate Search and Squad layouts; Squad family reads match `planner_club_sources.club_name` against snapshot clubs. Player profiles read only the effective current snapshot and conceal PA, projected and potential values, hidden/personality values, and development actions when the save preference is off.
-- Architectural seams: React invokes typed Tauri commands; Rust validates and queries SQLite; C# produces dump schema v7 and is the only process-memory reader/writer. The bridge currently indexes and mutates players only.
+- Architectural seams: React invokes typed Tauri commands; Rust validates and queries SQLite; C# produces dump schema v8 and is the only process-memory reader/writer. The bridge maintains separate player and staff indexes and exposes only the accepted closed mutations.
 - Project validation commands: `./scripts/dev test`, `./scripts/dev check`, `./scripts/dev bridge-test`, and `CI=1 ./scripts/dev smoke`. Live staff-mutation proof requires the supported Windows FM build.
 - Primary risks: the accepted Authority pin may be wrong; player-table behavior may regress while controls are shared; dynamic score filters may be expensive across a large staff population; snapshot-to-live-process writes may become stale; and FM/SQLite reconciliation may fail after a write.
 
@@ -417,7 +417,7 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 #### Commit 6 — Query staff profiles with shared concealment
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): query staff profiles`
 
@@ -732,19 +732,19 @@ The thinnest end-to-end slice is: a schema-v8 staff record with Authority from `
 
 **PR:** PR 1 — Staff data foundation
 
-**Commit:** Reconcile verified staff boosts
+**Commit:** Query staff profiles with shared concealment
 
 ### RED proof
 
-Add Rust tests for UID-only staff boost preparation, fixed +10 and cap handling, stale/current-context rejection, shared player/staff mutation exclusion, verified bridge reconciliation, recovery-required outcomes, and migration preservation. They fail today because Rust has no typed staff bridge request/result or staff boost service, and the recovery column remains player-specific.
+Add migration, query, and composed preference tests for the current Staff Profile read contract and one shared save-scoped concealment preference.
 
 ### Expected outcome
 
-Rust accepts only a staff UID, derives the current snapshot and expected CA/PA under the shared mutation gate, sends the source-bound closed bridge request, and reconciles only a verified value into the matching current staff row. Migration 25 preserves and generalizes the recovery flag so any uncertain player or staff outcome blocks both action families until Load Data.
+The active save's effective current snapshot exposes one complete staff detail DTO with all 20 catalog-ordered scores. Player and staff reads observe the same migrated preference without backend redaction.
 
 ### Explicit exclusions
 
-No React control, batch action, staff score recomputation, arbitrary target/increment, profile read contract, or unrelated player policy change belongs in the active commit.
+No Staff route, sidebar entry, table UI, profile UI, score recalculation, or new memory-write operation belongs in this commit.
 
 ## Discoveries and replanning
 
@@ -763,7 +763,7 @@ No React control, batch action, staff score recomputation, arbitrary target/incr
 | PR 1 | Persist staff job-fit scores | `94bc921` | Migration 24 adds snapshot-scoped staff score rows; one 20-role Rust catalog calculates and transactionally persists only complete current-ability scores | Sol Medium accepted after one fix round added successful replacement and 2,000-staff ingest proof | Repowise advisory index was stale; direct source and 423-test gate used |
 | PR 1 | Query scored staff pages | `98cf8c5` | Bounded current-snapshot Staff Search and unfiltered configured-family My Staff APIs expose allow-listed identity, employment, 24 attribute, and 20 score fields with parameterized filters and stable pagination | Sol Medium accepted after one fix round removed My Staff filters and bounded raw requested-field input | Representative score lookup uses its composite primary key; Repowise advisory index was stale |
 | PR 1 | Add the closed staff CA bridge operation | `1932350` | Separate live staff candidates feed one fixed +10, PA/200-capped protocol operation with source/UID/CA/PA revalidation, verified readback, rollback classification, and exact FM 26.3.2 capability | Sol Medium accepted after one fix round updated protocol docs and closed deterministic boundary-test gaps | Controlled live proof passed with +10 and PA-capped results plus independent rescan readback |
-| PR 1 | Reconcile verified staff boosts | Pending record | UID-only Rust command derives fixed/capped values, serializes player/staff writes through one gate, reconciles only verified current staff CA, and shares the preserved snapshot recovery latch | Sol Medium accepted after one fix round added command-level recovery classification proof | No role-score recomputation; proven pre-write failures do not latch recovery |
+| PR 1 | Reconcile verified staff boosts | `48e5c5a` | UID-only Rust command derives fixed/capped values, serializes player/staff writes through one gate, reconciles only verified current staff CA, and shares the preserved snapshot recovery latch | Sol Medium accepted after one fix round added command-level recovery classification proof | No role-score recomputation; proven pre-write failures do not latch recovery |
 | None | Planning only | Pending record | Ledger and ADR-0020 | Not applicable | None |
 
 ## Final validation

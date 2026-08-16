@@ -155,7 +155,7 @@ function registerIpcMocks() {
       return resolveGetPlayerIpcMock(args);
     }
 
-    if (cmd === "set_player_hidden_information_revealed") {
+    if (cmd === "set_hidden_information_revealed") {
       return resolveSetPlayerHiddenInformationRevealedIpcMock(args);
     }
 

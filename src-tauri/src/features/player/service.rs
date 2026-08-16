@@ -110,17 +110,14 @@ impl std::fmt::Display for PlayerBoostError {
 
 impl std::error::Error for PlayerBoostError {}
 
-pub fn set_player_hidden_information_revealed(
-    conn: &Connection,
-    revealed: bool,
-) -> Result<bool, String> {
+pub fn set_hidden_information_revealed(conn: &Connection, revealed: bool) -> Result<bool, String> {
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
     let changed = tx
         .execute(
             "UPDATE saves
-             SET reveal_hidden_player_information = ?1,
+             SET reveal_hidden_information = ?1,
                  updated_at_utc = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
              WHERE is_active = 1",
             [i64::from(revealed)],
@@ -132,7 +129,7 @@ pub fn set_player_hidden_information_revealed(
 
     let persisted: i64 = tx
         .query_row(
-            "SELECT reveal_hidden_player_information
+            "SELECT reveal_hidden_information
              FROM saves
              WHERE is_active = 1",
             [],
@@ -958,18 +955,18 @@ mod tests {
         );
 
         assert!(
-            !super::set_player_hidden_information_revealed(&fixture.conn, false)
+            !super::set_hidden_information_revealed(&fixture.conn, false)
                 .expect("conceal active save")
         );
         assert!(
-            !super::set_player_hidden_information_revealed(&fixture.conn, false)
+            !super::set_hidden_information_revealed(&fixture.conn, false)
                 .expect("repeat concealment")
         );
 
         let first_state: i64 = fixture
             .conn
             .query_row(
-                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                "SELECT reveal_hidden_information FROM saves WHERE id = ?1",
                 [fixture.save_id],
                 |row| row.get(0),
             )
@@ -978,15 +975,13 @@ mod tests {
 
         let second_save = create_save(&fixture.conn, "Second save").expect("create second save");
         set_active_save(&mut fixture.conn, second_save.id).expect("switch to second save");
-        assert!(
-            super::set_player_hidden_information_revealed(&fixture.conn, true)
-                .expect("reveal second save")
-        );
+        assert!(super::set_hidden_information_revealed(&fixture.conn, true)
+            .expect("reveal second save"));
 
         let second_state: i64 = fixture
             .conn
             .query_row(
-                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                "SELECT reveal_hidden_information FROM saves WHERE id = ?1",
                 [second_save.id],
                 |row| row.get(0),
             )
@@ -997,7 +992,7 @@ mod tests {
         let first_state_after_switch: i64 = fixture
             .conn
             .query_row(
-                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                "SELECT reveal_hidden_information FROM saves WHERE id = ?1",
                 [fixture.save_id],
                 |row| row.get(0),
             )
@@ -1022,14 +1017,14 @@ mod tests {
             .execute("UPDATE saves SET is_active = 0", [])
             .expect("clear active save");
 
-        let error = super::set_player_hidden_information_revealed(&fixture.conn, false)
+        let error = super::set_hidden_information_revealed(&fixture.conn, false)
             .expect_err("reject missing active save");
         assert_eq!(error, "No active save");
 
         let state: i64 = fixture
             .conn
             .query_row(
-                "SELECT reveal_hidden_player_information FROM saves WHERE id = ?1",
+                "SELECT reveal_hidden_information FROM saves WHERE id = ?1",
                 [fixture.save_id],
                 |row| row.get(0),
             )

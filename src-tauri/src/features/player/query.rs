@@ -58,7 +58,7 @@ pub struct PlayerDetail {
 pub fn get_player(conn: &Connection, uid: i64) -> Result<Option<PlayerDetail>, String> {
     let snapshot: Option<(i64, i64)> = conn
         .query_row(
-            "SELECT s.id, sv.reveal_hidden_player_information
+            "SELECT s.id, sv.reveal_hidden_information
              FROM snapshots s
              INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
              WHERE s.is_current = 1
@@ -521,7 +521,7 @@ mod tests {
             vec![player_template(2, "Second save player", 150)],
         );
         conn.execute(
-            "UPDATE saves SET reveal_hidden_player_information = 0 WHERE id = ?1",
+            "UPDATE saves SET reveal_hidden_information = 0 WHERE id = ?1",
             [first_save.id],
         )
         .expect("conceal second save");
