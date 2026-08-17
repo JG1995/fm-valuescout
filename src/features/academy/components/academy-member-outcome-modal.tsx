@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
+import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
 import { academyKeys } from "../api/academy-keys";
 import { setAcademyMemberOutcome } from "../api/set-academy-member-outcome";
 import type { AcademyMember } from "../types/academy";
@@ -115,6 +116,8 @@ export function AcademyMemberOutcomeModal({
   }, [activeMode, buyingClub, clubOptions]);
   const activeClub = matches[activeSuggestion];
   const showSuggestions = suggestionsOpen && matches.length > 0;
+  const { anchorRef, popoverRef, popover } =
+    useAnchoredPopover<HTMLDivElement>(showSuggestions);
   const error =
     validationError ?? (mutation.isError ? errorMessage(mutation.error) : null);
   const pendingMode = mutation.isPending ? mutation.variables : null;
@@ -236,7 +239,7 @@ export function AcademyMemberOutcomeModal({
               Record the buying club and agreed transfer fee. This manual entry
               stays with the Academy membership.
             </p>
-            <div className="relative">
+            <div ref={anchorRef} className="relative">
               <TextField
                 aria-activedescendant={
                   showSuggestions
@@ -294,9 +297,11 @@ export function AcademyMemberOutcomeModal({
               />
               {showSuggestions ? (
                 <div
+                  ref={popoverRef}
                   aria-label="Buying club suggestions"
-                  className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-outline-variant bg-surface-container-highest py-1 shadow-overlay"
+                  className="absolute z-20 m-0 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-outline-variant bg-surface-container-highest py-1 shadow-overlay"
                   id={listboxId}
+                  popover={popover}
                   role="listbox"
                 >
                   {matches.map((club, index) => (

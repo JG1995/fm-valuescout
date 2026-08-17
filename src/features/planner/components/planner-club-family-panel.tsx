@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button/button";
 import { SelectField } from "@/components/ui/field/select-field";
 import { TextField } from "@/components/ui/field/text-field";
 import { Panel } from "@/components/ui/panel/panel";
+import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
 import { plannerClubFamilyQueryOptions } from "../api/get-planner-club-family-query-options";
 import { plannerClubsQueryOptions } from "../api/planner-clubs-query-options";
 import { plannerKeys } from "../api/planner-keys";
@@ -82,6 +83,8 @@ function PrimaryClubPicker({
   }, [clubs, query]);
   const activeClub = matches[activeIndex];
   const showSuggestions = open && matches.length > 0;
+  const { anchorRef, popoverRef, popover } =
+    useAnchoredPopover<HTMLDivElement>(showSuggestions);
 
   useEffect(() => {
     if (!activeClub) {
@@ -98,7 +101,7 @@ function PrimaryClubPicker({
   };
 
   return (
-    <div className="relative">
+    <div ref={anchorRef} className="relative">
       <TextField
         aria-activedescendant={
           showSuggestions ? `${optionIdPrefix}-${activeIndex}` : undefined
@@ -164,9 +167,11 @@ function PrimaryClubPicker({
       />
       {showSuggestions ? (
         <div
+          ref={popoverRef}
           aria-label="Club suggestions"
-          className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-outline-variant bg-surface-container-highest py-1 shadow-overlay"
+          className="absolute z-20 m-0 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-outline-variant bg-surface-container-highest py-1 shadow-overlay"
           id={listboxId}
+          popover={popover}
           role="listbox"
         >
           {matches.map((club, index) => (
