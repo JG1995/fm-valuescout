@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.5.1"
+version = "0.5.2"
 description = "FM ValueScout"
 authors = ["FM ValueScout"]
 license = ""
