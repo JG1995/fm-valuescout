@@ -4,8 +4,8 @@ import type { StaffView } from "../utils/staff-url-search";
 
 export const STAFF_VIEWS = [
   "search",
-  "my-staff",
   "shortlist",
+  "my-staff",
 ] as const satisfies readonly StaffView[];
 
 const VIEW_LABELS: Record<StaffView, string> = {

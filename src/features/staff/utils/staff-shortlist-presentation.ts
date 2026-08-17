@@ -5,8 +5,6 @@ const BASIC_COLUMNS = [
   "club",
   "ca",
   "pa",
-  "preferred_job",
-  "club_job",
   "coaching_qualifications",
 ];
 

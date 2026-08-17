@@ -30,6 +30,7 @@ import type {
 import {
   DEFAULT_STAFF_SORT_FIELD,
   defaultDirForStaffSortField,
+  isStaffShortlistSortField,
   isStaffSortDir,
   isStaffSortField,
 } from "@/features/staff/types/staff-sort";
@@ -52,6 +53,8 @@ export type StaffSearch = {
   myStaffDir: StaffSortDir;
   shortlistSort: StaffSortField;
   shortlistDir: StaffSortDir;
+  shortlistContextSort?: StaffSortField;
+  shortlistContextDir?: StaffSortDir;
   preferredJob?: string;
   unemployedOnly: boolean;
   filters: ReturnType<typeof staffFiltersForUrl>;
@@ -62,8 +65,9 @@ function normalizedStaffSort(
   rawSort: unknown,
   rawDir: unknown,
   fallbackSort: StaffSortField,
+  isValidSortField = isStaffSortField,
 ): { sort: StaffSortField; dir: StaffSortDir } {
-  const sort = isStaffSortField(rawSort) ? rawSort : fallbackSort;
+  const sort = isValidSortField(rawSort) ? rawSort : fallbackSort;
   return {
     sort,
     dir: isStaffSortDir(rawDir) ? rawDir : defaultDirForStaffSortField(sort),
@@ -92,7 +96,16 @@ export const Route = createFileRoute("/staff")({
       search.shortlistSort ?? (view === "shortlist" ? legacy.sort : undefined),
       search.shortlistDir ?? (view === "shortlist" ? legacy.dir : undefined),
       DEFAULT_STAFF_SORT_FIELD,
+      isStaffShortlistSortField,
     );
+    const shortlistContextState =
+      isStaffShortlistSortField(search.shortlistContextSort) &&
+      isStaffSortDir(search.shortlistContextDir)
+        ? {
+            sort: search.shortlistContextSort,
+            dir: search.shortlistContextDir,
+          }
+        : undefined;
     const activeState =
       view === "search"
         ? searchState
@@ -110,6 +123,8 @@ export const Route = createFileRoute("/staff")({
       myStaffDir: myStaffState.dir,
       shortlistSort: shortlistState.sort,
       shortlistDir: shortlistState.dir,
+      shortlistContextSort: shortlistContextState?.sort,
+      shortlistContextDir: shortlistContextState?.dir,
       preferredJob:
         typeof search.preferredJob === "string"
           ? search.preferredJob
@@ -191,6 +206,8 @@ function StaffPageContent() {
     unemployedOnly,
     shortlistSort,
     shortlistDir,
+    shortlistContextSort,
+    shortlistContextDir,
   } = Route.useSearch();
   const navigate = Route.useNavigate();
   const router = useRouter();
@@ -206,11 +223,20 @@ function StaffPageContent() {
   const shortlistSortIsVisible =
     !shortlistPresentation ||
     shortlistPresentation.columnIds.includes(shortlistSort);
-  const effectiveShortlistSort = shortlistPresentation?.sort
-    ? { sort: shortlistPresentation.sort, dir: shortlistPresentation.dir }
-    : shortlistSortIsVisible
-      ? { sort: shortlistSort, dir: shortlistDir }
-      : { sort: "ca", dir: "desc" as const };
+  const shortlistContextSortIsVisible =
+    shortlistPresentation &&
+    shortlistContextSort &&
+    shortlistContextDir &&
+    shortlistPresentation.columnIds.includes(shortlistContextSort);
+  const effectiveShortlistSort = shortlistPresentation
+    ? shortlistContextSortIsVisible
+      ? { sort: shortlistContextSort, dir: shortlistContextDir }
+      : shortlistPresentation.sort
+        ? { sort: shortlistPresentation.sort, dir: shortlistPresentation.dir }
+        : shortlistSortIsVisible
+          ? { sort: shortlistSort, dir: shortlistDir }
+          : { sort: "ca", dir: "desc" as const }
+    : { sort: shortlistSort, dir: shortlistDir };
   const onBoostSuccess = () =>
     queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
 
@@ -223,6 +249,8 @@ function StaffPageContent() {
       combine: "and" | "or";
       preferredJob?: string;
       unemployedOnly: boolean;
+      shortlistContextSort: StaffSortField | null;
+      shortlistContextDir: StaffSortDir | null;
     }>,
   ) =>
     navigate({
@@ -275,6 +303,14 @@ function StaffPageContent() {
           myStaffDir: nextMyStaffDir,
           shortlistSort: nextShortlistSort,
           shortlistDir: nextShortlistDir,
+          shortlistContextSort:
+            patch.shortlistContextSort !== undefined
+              ? patch.shortlistContextSort || undefined
+              : previous.shortlistContextSort,
+          shortlistContextDir:
+            patch.shortlistContextDir !== undefined
+              ? patch.shortlistContextDir || undefined
+              : previous.shortlistContextDir,
           preferredJob:
             patch.preferredJob !== undefined
               ? patch.preferredJob || undefined
@@ -372,9 +408,23 @@ function StaffPageContent() {
                 <select
                   className="rounded-md border border-outline bg-surface px-2 py-1 text-on-surface"
                   value={preferredJob ?? ""}
-                  onChange={(event) =>
-                    updateSearch({ preferredJob: event.target.value })
-                  }
+                  onChange={(event) => {
+                    const nextPreferredJob = event.target.value;
+                    const presentation =
+                      staffShortlistPresentation(nextPreferredJob);
+                    updateSearch({
+                      preferredJob: nextPreferredJob,
+                      ...(presentation?.sort
+                        ? {
+                            shortlistContextSort: presentation.sort,
+                            shortlistContextDir: presentation.dir,
+                          }
+                        : {
+                            shortlistContextSort: null,
+                            shortlistContextDir: null,
+                          }),
+                    });
+                  }}
                 >
                   <option value="">All jobs</option>
                   {(shortlistPage.preferredJobOptions ?? []).map((job) => (
@@ -408,7 +458,14 @@ function StaffPageContent() {
                   unemployedOnly={unemployedOnly}
                   visibleColumnIds={shortlistPresentation?.columnIds}
                   onSortChange={(nextSort, nextDir) =>
-                    updateSearch({ sort: nextSort, dir: nextDir })
+                    updateSearch(
+                      shortlistPresentation
+                        ? {
+                            shortlistContextSort: nextSort,
+                            shortlistContextDir: nextDir,
+                          }
+                        : { sort: nextSort, dir: nextDir },
+                    )
                   }
                   onRowActivate={(staff) =>
                     router.history.push(`/staff/${staff.uid}`)

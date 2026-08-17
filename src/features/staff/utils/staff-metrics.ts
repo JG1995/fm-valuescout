@@ -129,7 +129,7 @@ export const STAFF_ATTRIBUTE_METRICS: readonly StaffMetric[] =
 
 const STAFF_BASIC_METRICS: readonly StaffMetric[] = [
   stringMetric("name", "Name", "identity"),
-  integerMetric("age", "Age / DOB", "identity", 112),
+  integerMetric("age", "Age / DOB", "identity", 152),
   integerMetric("birth_year", "Birth year", "identity", 112),
   integerMetric("birth_day_of_year", "Birth day", "identity", 112),
   stringMetric("nationality", "Nation", "identity", 128),
@@ -186,7 +186,16 @@ export function isStaffMetricId(value: unknown): value is string {
 }
 
 export function defaultDirForStaffSortField(field: string): "asc" | "desc" {
-  return ["name", "age", "nationality", "club", "division"].includes(field)
+  return [
+    "name",
+    "age",
+    "nationality",
+    "club",
+    "division",
+    "preferred_job",
+    "club_job",
+    "coaching_qualifications",
+  ].includes(field)
     ? "asc"
     : "desc";
 }

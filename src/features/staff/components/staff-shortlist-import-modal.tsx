@@ -28,15 +28,13 @@ export function StaffShortlistImportModal({
     setPending(true);
     setError(undefined);
     try {
-      const summary = await invokeCommand<{
+      await invokeCommand<{
         totalStaff: number;
         storedStaff: number;
         skippedStaff: number;
       }>("import_staff_shortlist_csv", { path });
       await onImported();
-      setError(
-        `Imported ${summary.storedStaff} of ${summary.totalStaff} staff (${summary.skippedStaff} skipped).`,
-      );
+      onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {

@@ -46,6 +46,8 @@ import { MyStaffBoostOutcome, MyStaffCaBoost } from "./my-staff-ca-boost";
 
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
+const AGE_CELL =
+  "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-body-sm";
 const NUM_CELL =
   "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
 
@@ -199,7 +201,7 @@ function StaffSearchTable({
         <ConfigurableTableHeader
           columns={columns}
           configurable={configurable}
-          sortable={configurable}
+          sortable
           metrics={
             scope === "shortlist" ? STAFF_SHORTLIST_METRICS : STAFF_METRICS
           }
@@ -288,7 +290,7 @@ function StaffSearchTable({
               className={
                 cell.numeric
                   ? NUM_CELL
-                  : `${TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
+                  : `${column.id === "age" ? AGE_CELL : TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
               }
               title={cell.title}
             >

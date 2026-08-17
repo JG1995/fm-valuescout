@@ -33,6 +33,7 @@ import {
   setStaffFamilyConfigured,
   setStaffListIpcMockMode,
   setStaffOverride,
+  setStaffShortlistOverride,
 } from "@/testing/staff-ipc-mock";
 
 function renderStaffRoute(initialEntry = "/staff") {
@@ -84,6 +85,103 @@ describe("staff route", () => {
       within(table).getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeInTheDocument();
     expect(within(table).getByText("Alex Coach")).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Search",
+      "Shortlist",
+      "My Staff",
+    ]);
+  });
+
+  it("keeps projected shortlist columns sortable without showing job metadata", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffShortlistOverride([
+      fixtureStaff({
+        shortlist: {
+          preferredJob: "Technical Director",
+          clubJob: "Technical Director",
+          coachingQualifications: "Continental Pro",
+        },
+      }),
+    ]);
+    const user = userEvent.setup();
+    const { router } = renderStaffRoute("/staff?view=shortlist");
+
+    const allJobsTable = await screen.findByRole("table", {
+      name: "Staff Shortlist",
+    });
+    await user.click(
+      within(allJobsTable).getByRole("button", { name: "Name" }),
+    );
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        shortlistSort: "name",
+        shortlistDir: "asc",
+      });
+    });
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Preferred Job" }),
+      "Technical Director",
+    );
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        preferredJob: "Technical Director",
+        shortlistSort: "name",
+        shortlistDir: "asc",
+        shortlistContextSort: "role.technical_director",
+        shortlistContextDir: "desc",
+      });
+    });
+    const table = await screen.findByRole("table", { name: "Staff Shortlist" });
+    expect(
+      within(table).queryByRole("columnheader", { name: "Preferred Job" }),
+    ).toBeNull();
+    expect(
+      within(table).queryByRole("columnheader", { name: "Club Job" }),
+    ).toBeNull();
+    await user.click(
+      within(table).getByRole("button", { name: "Coaching Qualifications" }),
+    );
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        shortlistSort: "name",
+        shortlistDir: "asc",
+        shortlistContextSort: "coaching_qualifications",
+        shortlistContextDir: "asc",
+      });
+    });
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Preferred Job" }),
+      "",
+    );
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        shortlistSort: "name",
+        shortlistDir: "asc",
+      });
+      expect(router.state.location.search).not.toHaveProperty(
+        "shortlistContextSort",
+      );
+      expect(router.state.location.search).not.toHaveProperty(
+        "shortlistContextDir",
+      );
+    });
+    expect(
+      within(
+        await screen.findByRole("table", { name: "Staff Shortlist" }),
+      ).getByRole("columnheader", { name: "Name" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+  });
+
+  it("does not truncate a staff member's Age / DOB cell", async () => {
+    await resolveLoadDataIpcMock();
+    renderStaffRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Staff search results",
+    });
+    const cell = within(table).getAllByTitle(/\(44\)$/)[0];
+    expect(cell).toHaveClass("whitespace-nowrap");
+    expect(cell).not.toHaveClass("truncate");
   });
 
   it("normalizes invalid view and sort state to Search and CA", async () => {
