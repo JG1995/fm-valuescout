@@ -73,6 +73,7 @@ describe("usePlayerTableStore", () => {
         ...defaultPlayerTableLayouts(),
         "staff-search": { columnIds: [], widths: {} },
         "my-staff": { columnIds: [], widths: {} },
+        "staff-shortlist": { columnIds: [], widths: {} },
       },
     });
     const store = usePlayerTableStore.getState();
@@ -90,6 +91,57 @@ describe("usePlayerTableStore", () => {
     });
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
       ...DEFAULT_PLAYER_TABLE_COLUMN_IDS,
+    ]);
+  });
+
+  it("starts Shortlist with its recruitment context before score columns", () => {
+    expect(
+      defaultPlayerTableLayouts()["staff-shortlist"].columnIds.slice(0, 9),
+    ).toEqual([
+      "name",
+      "age",
+      "nationality",
+      "club",
+      "ca",
+      "pa",
+      "preferred_job",
+      "club_job",
+      "coaching_qualifications",
+    ]);
+  });
+
+  it("adds the current Shortlist defaults when hydrating v2 preferences", async () => {
+    localStorage.setItem(
+      PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          layouts: {
+            search: { columnIds: ["name"], widths: {} },
+            squad: { columnIds: ["name"], widths: {} },
+            "staff-search": { columnIds: ["name"], widths: {} },
+            "my-staff": { columnIds: ["name"], widths: {} },
+          },
+        },
+        version: 2,
+      }),
+    );
+
+    await usePlayerTableStore.persist.rehydrate();
+
+    expect(
+      usePlayerTableStore
+        .getState()
+        .layouts["staff-shortlist"].columnIds.slice(0, 9),
+    ).toEqual([
+      "name",
+      "age",
+      "nationality",
+      "club",
+      "ca",
+      "pa",
+      "preferred_job",
+      "club_job",
+      "coaching_qualifications",
     ]);
   });
 
@@ -161,6 +213,7 @@ describe("usePlayerTableStore", () => {
         },
         "staff-search": { columnIds: [], widths: {} },
         "my-staff": { columnIds: [], widths: {} },
+        "staff-shortlist": { columnIds: [], widths: {} },
       },
     });
 

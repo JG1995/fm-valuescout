@@ -31,4 +31,8 @@ describe("staff metrics", () => {
       true,
     );
   });
+
+  it("aligns the formatted Age / DOB display as text", () => {
+    expect(getStaffMetric("age")?.align).toBe("left");
+  });
 });

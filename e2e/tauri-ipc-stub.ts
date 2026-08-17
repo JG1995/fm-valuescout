@@ -9,6 +9,7 @@ type SmokeStubOptions = {
   squadOverview?: boolean;
   playerProfile?: boolean;
   staffWorkspace?: boolean;
+  staffShortlist?: boolean;
   staffFamily?: "configured" | "none";
   snapshotHistory?: boolean;
 };
@@ -22,6 +23,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const squadOverview = options.squadOverview ?? false;
   const playerProfile = options.playerProfile ?? false;
   const staffWorkspace = options.staffWorkspace ?? false;
+  const staffShortlist = options.staffShortlist ?? false;
   const staffFamilyConfigured = options.staffFamily !== "none";
   const snapshotHistory = options.snapshotHistory ?? false;
   await page.addInitScript({
@@ -38,6 +40,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const squadOverview = ${squadOverview ? "true" : "false"};
       const playerProfile = ${playerProfile ? "true" : "false"};
       const staffWorkspace = ${staffWorkspace ? "true" : "false"};
+      const staffShortlist = ${staffShortlist ? "true" : "false"};
       const staffFamilyConfigured = ${staffFamilyConfigured ? "true" : "false"};
       const snapshotHistoryEnabled = ${snapshotHistory ? "true" : "false"};
       let nextSaveId = 2;
@@ -254,6 +257,51 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           dynamicValues: Object.fromEntries(staffRoleIds.map((roleId) => ["role." + roleId, 72])),
         }));
       }
+      const shortlistStaffRows = staffWorkspace && staffShortlist ? [
+        {
+          ...staffRows[0],
+          shortlist: {
+            preferredJob: "Technical Director",
+            clubJob: "Technical Director",
+            coachingQualifications: "Continental Pro",
+          },
+          dynamicValues: {
+            ...staffRows[0].dynamicValues,
+            "role.technical_director": 95,
+          },
+        },
+        {
+          ...staffRows[0],
+          uid: 102,
+          name: "Coach Casey",
+          shortlist: {
+            preferredJob: "Coach",
+            clubJob: "-",
+            coachingQualifications: "Continental A",
+          },
+        },
+        {
+          ...staffRows[0],
+          uid: 103,
+          name: "Manager Morgan",
+          shortlist: {
+            preferredJob: "Manager",
+            clubJob: "",
+            coachingQualifications: "Continental Pro",
+          },
+        },
+        {
+          ...staffRows[0],
+          uid: 104,
+          name: "Manager Taylor",
+          ca: 150,
+          shortlist: {
+            preferredJob: "Manager",
+            clubJob: "Manager",
+            coachingQualifications: "Continental Pro",
+          },
+        },
+      ] : [];
       if (squadOverview && playerTableRowCount !== null) {
         squadPlayers = Array.from({ length: playerTableRowCount }, (_, index) => ({
           uid: index + 1,
@@ -559,6 +607,40 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 ? staffRows.slice(offset, offset + limit)
                 : [],
               total: staffFamilyConfigured ? staffRows.length : 0,
+            };
+          }
+
+          if (cmd === "list_staff_shortlist") {
+            if (staffWorkspace && staffShortlist) {
+              const preferredJob = typeof args?.preferredJob === "string"
+                ? args.preferredJob
+                : "";
+              const unemployedOnly = args?.unemployedOnly === true;
+              const matching = shortlistStaffRows.filter((staff) =>
+                (!preferredJob || staff.shortlist.preferredJob === preferredJob) &&
+                (!unemployedOnly || !staff.shortlist.clubJob || staff.shortlist.clubJob === "-"),
+              );
+              if (args?.sortBy === "ca" && args?.sortDir === "desc") {
+                matching.sort((left, right) => right.ca - left.ca);
+              }
+              const offset = Number.isInteger(args?.offset)
+                ? Math.max(0, args.offset)
+                : 0;
+              const limit = Number.isInteger(args?.limit)
+                ? Math.min(200, Math.max(1, args.limit))
+                : 50;
+              return {
+                state: "ready",
+                staff: matching.slice(offset, offset + limit),
+                total: matching.length,
+                preferredJobOptions: ["Coach", "Manager", "Technical Director"],
+              };
+            }
+            return {
+              state: staffWorkspace ? "no_shortlist" : "no_current_snapshot",
+              staff: [],
+              total: 0,
+              preferredJobOptions: [],
             };
           }
 

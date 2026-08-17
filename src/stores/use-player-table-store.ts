@@ -8,10 +8,31 @@ import {
 } from "@/utils/player-metrics";
 import { DEFAULT_STAFF_TABLE_COLUMN_IDS } from "@/utils/staff-table-layout";
 
+const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
+  "name",
+  "age",
+  "nationality",
+  "club",
+  "ca",
+  "pa",
+  "preferred_job",
+  "club_job",
+  "coaching_qualifications",
+  ...DEFAULT_STAFF_TABLE_COLUMN_IDS.filter(
+    (columnId) =>
+      !["name", "age", "nationality", "ca", "pa"].includes(columnId),
+  ),
+];
+
 export const PLAYER_TABLE_LAYOUT_STORAGE_KEY =
   "fm-valuescout-player-table-layouts";
 
-export type PlayerTableId = "search" | "squad" | "staff-search" | "my-staff";
+export type PlayerTableId =
+  | "search"
+  | "squad"
+  | "staff-search"
+  | "my-staff"
+  | "staff-shortlist";
 
 export type PlayerTableLayout = {
   columnIds: string[];
@@ -54,7 +75,9 @@ function defaultLayout(table: PlayerTableId): PlayerTableLayout {
     columnIds:
       table === "search" || table === "squad"
         ? [...DEFAULT_PLAYER_TABLE_COLUMN_IDS]
-        : [...DEFAULT_STAFF_TABLE_COLUMN_IDS],
+        : table === "staff-shortlist"
+          ? [...DEFAULT_STAFF_SHORTLIST_COLUMN_IDS]
+          : [...DEFAULT_STAFF_TABLE_COLUMN_IDS],
     widths: {},
   };
 }
@@ -65,6 +88,7 @@ export function defaultPlayerTableLayouts(): PlayerTableLayouts {
     squad: defaultLayout("squad"),
     "staff-search": defaultLayout("staff-search"),
     "my-staff": defaultLayout("my-staff"),
+    "staff-shortlist": defaultLayout("staff-shortlist"),
   };
 }
 
@@ -88,7 +112,7 @@ function sanitizeLayout(
       ? columnIds
       : table === "search" || table === "squad"
         ? [...DEFAULT_PLAYER_TABLE_COLUMN_IDS]
-        : [...DEFAULT_STAFF_TABLE_COLUMN_IDS];
+        : [...defaultLayout(table).columnIds];
   const rawWidths = isRecord(record.widths) ? record.widths : {};
   const widths = Object.fromEntries(
     visibleColumnIds.flatMap((metricId) => {
@@ -111,6 +135,10 @@ function sanitizePersistedState(value: unknown): PersistedPlayerTableState {
       squad: sanitizeLayout(layouts.squad, "squad"),
       "staff-search": sanitizeLayout(layouts["staff-search"], "staff-search"),
       "my-staff": sanitizeLayout(layouts["my-staff"], "my-staff"),
+      "staff-shortlist": sanitizeLayout(
+        layouts["staff-shortlist"],
+        "staff-shortlist",
+      ),
     },
   };
 }
@@ -209,7 +237,7 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
     }),
     {
       name: PLAYER_TABLE_LAYOUT_STORAGE_KEY,
-      version: 2,
+      version: 3,
       partialize: (state) => ({ layouts: state.layouts }),
       migrate: (persistedState) => sanitizePersistedState(persistedState),
       merge: (persistedState, currentState) => ({

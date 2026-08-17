@@ -19,6 +19,7 @@ import { getPlayerHiddenInformationRevealedIpcMock } from "./player-ipc-mock";
 import { resolveGetCurrentSnapshotIpcMock } from "./snapshot-ipc-mock";
 
 let overrideStaff: StaffSummary[] | null = null;
+let shortlistOverride: StaffSummary[] | null = null;
 let staffDetailOverride: StaffDetail | null | undefined;
 let lastStaffArgs: Record<string, unknown> | null = null;
 let staffFamilyConfigured = true;
@@ -119,6 +120,10 @@ export function setStaffOverride(staff: StaffSummary[] | null) {
   overrideStaff = staff;
 }
 
+export function setStaffShortlistOverride(staff: StaffSummary[] | null) {
+  shortlistOverride = staff;
+}
+
 export function setStaffDetailOverride(staff: StaffDetail | null | undefined) {
   staffDetailOverride = staff;
 }
@@ -133,6 +138,7 @@ export function setStaffListIpcMockMode(mode: StaffListIpcMockMode) {
 
 export function resetStaffIpcMock() {
   overrideStaff = null;
+  shortlistOverride = null;
   staffDetailOverride = undefined;
   lastStaffArgs = null;
   staffFamilyConfigured = true;
@@ -389,6 +395,34 @@ export function resolveListMyStaffIpcMock(args: unknown): StaffPage {
     return { state: "no_club_family", staff: [], total: 0 };
   }
   return resolveSearchStaffIpcMock(args);
+}
+
+export function resolveListStaffShortlistIpcMock(args: unknown): StaffPage {
+  if (!resolveGetCurrentSnapshotIpcMock()) {
+    return { state: "no_current_snapshot", staff: [], total: 0 };
+  }
+  if (shortlistOverride) {
+    const parsed = parseArgs(args);
+    const sorted = sortStaff(shortlistOverride, parsed.sortBy, parsed.sortDir);
+    return {
+      state: "ready",
+      staff: sorted.slice(parsed.offset, parsed.offset + parsed.limit),
+      total: sorted.length,
+      preferredJobOptions: [
+        ...new Set(
+          shortlistOverride.flatMap((staff) =>
+            staff.shortlist?.preferredJob ? [staff.shortlist.preferredJob] : [],
+          ),
+        ),
+      ],
+    };
+  }
+  return {
+    state: "no_shortlist",
+    staff: [],
+    total: 0,
+    preferredJobOptions: [],
+  };
 }
 
 function staffBoostResult(uid: number): StaffBoostResult {

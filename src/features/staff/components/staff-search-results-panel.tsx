@@ -28,6 +28,7 @@ import {
   STAFF_PAGE_SIZE,
   staffMyStaffQueryOptions,
   staffSearchQueryOptions,
+  staffShortlistQueryOptions,
 } from "../api/staff-query-options";
 import type { StaffFilterRule } from "../types/staff-filter-rule";
 import type { StaffSortDir, StaffSortField } from "../types/staff-sort";
@@ -36,18 +37,22 @@ import { completeStaffFilterRules } from "../utils/staff-filter-registry";
 import {
   defaultDirForStaffSortField,
   getStaffMetric,
+  getStaffShortlistMetric,
   STAFF_BASIC_METRIC_IDS,
   STAFF_METRICS,
+  STAFF_SHORTLIST_METRICS,
 } from "../utils/staff-metrics";
 import { MyStaffBoostOutcome, MyStaffCaBoost } from "./my-staff-ca-boost";
 
 const TEXT_CELL =
   "h-table-row-height-two-line max-w-0 truncate px-2 align-middle text-body-sm";
+const AGE_CELL =
+  "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-body-sm";
 const NUM_CELL =
   "h-table-row-height-two-line whitespace-nowrap px-2 align-middle text-right font-mono text-mono-sm text-on-surface tabular-nums";
 
-export type StaffWorkspaceScope = "search" | "my-staff";
-type StaffLayoutId = "staff-search" | "my-staff";
+export type StaffWorkspaceScope = "search" | "my-staff" | "shortlist";
+type StaffLayoutId = "staff-search" | "my-staff" | "staff-shortlist";
 
 function nextSort(
   currentBy: StaffSortField,
@@ -144,21 +149,6 @@ function basicCell(
   }
 }
 
-function columnForMetric(
-  metricId: string,
-  width: number | undefined,
-): ConfigurableTableColumn | undefined {
-  const metric = getStaffMetric(metricId);
-  return metric
-    ? {
-        id: metric.id,
-        label: metric.label,
-        align: metric.align,
-        width: width ?? metric.defaultWidth,
-      }
-    : undefined;
-}
-
 function StaffSearchTable({
   total,
   sortBy,
@@ -173,6 +163,8 @@ function StaffSearchTable({
   onMoveColumn,
   onResizeColumn,
   onRowActivate,
+  scope,
+  configurable,
 }: {
   total: number;
   sortBy: StaffSortField;
@@ -190,6 +182,8 @@ function StaffSearchTable({
   onMoveColumn: (id: string, target: number) => void;
   onResizeColumn: (id: string, width: number) => void;
   onRowActivate?: (staff: StaffSummary) => void;
+  scope: StaffWorkspaceScope;
+  configurable: boolean;
 }) {
   return (
     <ConfigurableVirtualizedTable<
@@ -206,7 +200,11 @@ function StaffSearchTable({
       header={
         <ConfigurableTableHeader
           columns={columns}
-          metrics={STAFF_METRICS}
+          configurable={configurable}
+          sortable
+          metrics={
+            scope === "shortlist" ? STAFF_SHORTLIST_METRICS : STAFF_METRICS
+          }
           sortBy={sortBy}
           sortDir={sortDir}
           onSortChange={(metricId) => {
@@ -224,6 +222,23 @@ function StaffSearchTable({
       renderCells={(staff) =>
         columns.map((column) => {
           if (!STAFF_BASIC_METRIC_IDS.includes(column.id)) {
+            if (
+              column.id === "preferred_job" ||
+              column.id === "club_job" ||
+              column.id === "coaching_qualifications"
+            ) {
+              const value =
+                column.id === "preferred_job"
+                  ? staff?.shortlist?.preferredJob
+                  : column.id === "club_job"
+                    ? staff?.shortlist?.clubJob
+                    : staff?.shortlist?.coachingQualifications;
+              return (
+                <td key={column.id} className={`${TEXT_CELL} text-on-surface`}>
+                  {value || (staff === undefined ? "…" : "—")}
+                </td>
+              );
+            }
             if (column.id.startsWith("role.")) {
               const score = staff?.dynamicValues?.[column.id];
               return (
@@ -275,7 +290,7 @@ function StaffSearchTable({
               className={
                 cell.numeric
                   ? NUM_CELL
-                  : `${TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
+                  : `${column.id === "age" ? AGE_CELL : TEXT_CELL} ${column.id === "age" || column.id === "division" ? "text-on-surface-variant" : "text-on-surface"}`
               }
               title={cell.title}
             >
@@ -297,9 +312,12 @@ export function StaffSearchResultsPanel({
   sortDir,
   filters,
   filterCombine,
+  preferredJob,
+  unemployedOnly = false,
   onSortChange,
   onBoostSuccess,
   onRowActivate,
+  visibleColumnIds,
 }: {
   activeSnapshotId: number | null;
   scope?: StaffWorkspaceScope;
@@ -307,12 +325,19 @@ export function StaffSearchResultsPanel({
   sortDir: StaffSortDir;
   filters: StaffFilterRule[];
   filterCombine: "and" | "or";
+  preferredJob?: string;
+  unemployedOnly?: boolean;
   onSortChange: (sort: StaffSortField, dir: StaffSortDir) => void;
   onBoostSuccess?: () => Promise<void>;
   onRowActivate?: (staff: StaffSummary) => void;
+  visibleColumnIds?: string[];
 }) {
   const layoutId: StaffLayoutId =
-    scope === "my-staff" ? "my-staff" : "staff-search";
+    scope === "my-staff"
+      ? "my-staff"
+      : scope === "shortlist"
+        ? "staff-shortlist"
+        : "staff-search";
   const layout = usePlayerTableStore((state) => state.layouts[layoutId]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeColumn = usePlayerTableStore((state) => state.removeColumn);
@@ -338,16 +363,33 @@ export function StaffSearchResultsPanel({
   const boostOutcomeRef = useRef<HTMLDivElement>(null);
   const columns = useMemo(
     () =>
-      layout.columnIds.flatMap((id) => {
-        const column = columnForMetric(id, layout.widths[id]);
+      (visibleColumnIds ?? layout.columnIds).flatMap((id) => {
+        const metric =
+          scope === "shortlist"
+            ? getStaffShortlistMetric(id)
+            : getStaffMetric(id);
+        const column = metric
+          ? {
+              id: metric.id,
+              label: metric.label,
+              align: metric.align,
+              width: layout.widths[id] ?? metric.defaultWidth,
+            }
+          : undefined;
         return column ? [column] : [];
       }),
-    [layout],
+    [layout, scope, visibleColumnIds],
   );
   const requestedFields = useMemo(
     () =>
       columns
-        .filter((column) => !STAFF_BASIC_METRIC_IDS.includes(column.id))
+        .filter(
+          (column) =>
+            !STAFF_BASIC_METRIC_IDS.includes(column.id) &&
+            !["preferred_job", "club_job", "coaching_qualifications"].includes(
+              column.id,
+            ),
+        )
         .map((column) => column.id)
         .sort(),
     [columns],
@@ -361,15 +403,25 @@ export function StaffSearchResultsPanel({
           sortDir,
           requestedFields,
         )
-      : staffSearchQueryOptions(
-          0,
-          STAFF_PAGE_SIZE,
-          sortBy,
-          sortDir,
-          filters,
-          filterCombine,
-          requestedFields,
-        ),
+      : scope === "shortlist"
+        ? staffShortlistQueryOptions(
+            0,
+            STAFF_PAGE_SIZE,
+            sortBy,
+            sortDir,
+            preferredJob,
+            unemployedOnly,
+            requestedFields,
+          )
+        : staffSearchQueryOptions(
+            0,
+            STAFF_PAGE_SIZE,
+            sortBy,
+            sortDir,
+            filters,
+            filterCombine,
+            requestedFields,
+          ),
   );
 
   if (page.state === "no_current_snapshot") {
@@ -403,30 +455,61 @@ export function StaffSearchResultsPanel({
       </Panel>
     );
   }
-  if (page.total === 0) {
+  if (page.state === "no_shortlist") {
     return (
-      <Panel title={scope === "my-staff" ? "My Staff" : "Results"} flush>
+      <Panel title="Staff Shortlist" flush>
+        <EmptyState icon={UsersRound} title="No Staff Shortlist uploaded">
+          Upload a staff CSV to view the people included in it.
+        </EmptyState>
+      </Panel>
+    );
+  }
+  if (page.total === 0) {
+    const isShortlist = scope === "shortlist";
+    const hasShortlistFilter = preferredJob || unemployedOnly;
+    return (
+      <Panel
+        title={
+          scope === "my-staff"
+            ? "My Staff"
+            : isShortlist
+              ? "Staff Shortlist"
+              : "Results"
+        }
+        flush
+      >
         <EmptyState
-          icon={scope === "my-staff" ? UsersRound : SearchX}
+          icon={scope === "my-staff" || isShortlist ? UsersRound : SearchX}
           title={
             scope === "my-staff"
               ? "No staff in your club family"
-              : completeStaffFilterRules(filters).length > 0
-                ? "No staff match these filters"
-                : "No staff in snapshot"
+              : isShortlist
+                ? hasShortlistFilter
+                  ? "No shortlist staff match these filters"
+                  : "No shortlisted staff in this snapshot"
+                : completeStaffFilterRules(filters).length > 0
+                  ? "No staff match these filters"
+                  : "No staff in snapshot"
           }
         >
           {scope === "my-staff"
             ? "No current-snapshot staff match the clubs configured for this save."
-            : completeStaffFilterRules(filters).length > 0
-              ? "Adjust or clear filters to widen the result set."
-              : "The snapshot exists but contains no staff rows."}
+            : isShortlist
+              ? hasShortlistFilter
+                ? "Choose All jobs or turn off Only unemployed to widen the results."
+                : "Load Data to restore saved shortlist people who are absent from the current snapshot."
+              : completeStaffFilterRules(filters).length > 0
+                ? "Adjust or clear filters to widen the result set."
+                : "The snapshot exists but contains no staff rows."}
         </EmptyState>
       </Panel>
     );
   }
 
-  const sortMetric = getStaffMetric(sortBy);
+  const sortMetric =
+    scope === "shortlist"
+      ? getStaffShortlistMetric(sortBy)
+      : getStaffMetric(sortBy);
   const sortLabel = sortMetric?.label ?? sortBy;
   const requestedRoleFields = requestedFields.filter((field) =>
     field.startsWith("role."),
@@ -442,6 +525,7 @@ export function StaffSearchResultsPanel({
       ),
     );
   const removeStoredColumn = (metricId: string) => {
+    if (scope === "shortlist" && visibleColumnIds) return;
     if (columns.length <= 1) return;
     removeColumn(layoutId, metricId);
     if (sortBy === metricId) {
@@ -453,7 +537,13 @@ export function StaffSearchResultsPanel({
 
   return (
     <Panel
-      title={scope === "my-staff" ? "My Staff" : "Results"}
+      title={
+        scope === "my-staff"
+          ? "My Staff"
+          : scope === "shortlist"
+            ? "Staff Shortlist"
+            : "Results"
+      }
       actions={
         scope === "my-staff" ? (
           <MyStaffCaBoost
@@ -516,26 +606,48 @@ export function StaffSearchResultsPanel({
                 sortDir,
                 requestedFields,
               )
-            : staffSearchQueryOptions(
-                offset,
-                limit,
-                sortBy,
-                sortDir,
-                filters,
-                filterCombine,
-                requestedFields,
-              )
+            : scope === "shortlist"
+              ? staffShortlistQueryOptions(
+                  offset,
+                  limit,
+                  sortBy,
+                  sortDir,
+                  preferredJob,
+                  unemployedOnly,
+                  requestedFields,
+                )
+              : staffSearchQueryOptions(
+                  offset,
+                  limit,
+                  sortBy,
+                  sortDir,
+                  filters,
+                  filterCombine,
+                  requestedFields,
+                )
         }
         caption={
-          scope === "my-staff" ? "My Staff overview" : "Staff search results"
+          scope === "my-staff"
+            ? "My Staff overview"
+            : scope === "shortlist"
+              ? "Staff Shortlist"
+              : "Staff search results"
         }
         testId={`${layoutId}-results-scroller`}
         onSortChange={onSortChange}
-        onAddColumn={(id) => addColumns(layoutId, [id])}
+        onAddColumn={(id) => {
+          if (!visibleColumnIds) addColumns(layoutId, [id]);
+        }}
         onRemoveColumn={removeStoredColumn}
-        onMoveColumn={(id, target) => moveColumn(layoutId, id, target)}
-        onResizeColumn={(id, width) => setColumnWidth(layoutId, id, width)}
+        onMoveColumn={(id, target) => {
+          if (!visibleColumnIds) moveColumn(layoutId, id, target);
+        }}
+        onResizeColumn={(id, width) => {
+          if (!visibleColumnIds) setColumnWidth(layoutId, id, width);
+        }}
         onRowActivate={onRowActivate}
+        scope={scope}
+        configurable={!visibleColumnIds}
       />
     </Panel>
   );

@@ -1,6 +1,7 @@
 import {
   defaultDirForStaffSortField,
   getStaffMetric,
+  getStaffShortlistMetric,
 } from "../utils/staff-metrics";
 
 export type StaffSortField = string;
@@ -11,6 +12,14 @@ export const DEFAULT_STAFF_SORT_DIR: StaffSortDir = "desc";
 
 export function isStaffSortField(value: unknown): value is StaffSortField {
   return typeof value === "string" && getStaffMetric(value) !== undefined;
+}
+
+export function isStaffShortlistSortField(
+  value: unknown,
+): value is StaffSortField {
+  return (
+    typeof value === "string" && getStaffShortlistMetric(value) !== undefined
+  );
 }
 
 export function isStaffSortDir(value: unknown): value is StaffSortDir {

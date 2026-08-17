@@ -38,6 +38,8 @@ export type ConfigurableTableMetric = MetricPickerMetric & {
 export type ConfigurableTableHeaderProps = {
   columns: readonly ConfigurableTableColumn[];
   fixedColumns?: readonly ConfigurableTableFixedColumn[];
+  configurable?: boolean;
+  sortable?: boolean;
   metrics: readonly ConfigurableTableMetric[];
   sortBy: string;
   sortDir: "asc" | "desc";
@@ -148,6 +150,8 @@ function ColumnResizeHandle({
 export function ConfigurableTableHeader({
   columns,
   fixedColumns = [],
+  configurable = true,
+  sortable = true,
   metrics,
   sortBy,
   sortDir,
@@ -221,11 +225,15 @@ export function ConfigurableTableHeader({
               className={`relative h-table-header-height px-2 ${
                 column.align === "right" ? "text-right" : "text-left"
               }`}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                setOpenColumnId(column.id);
-                setPickingColumnId(null);
-              }}
+              onContextMenu={
+                configurable
+                  ? (event) => {
+                      event.preventDefault();
+                      setOpenColumnId(column.id);
+                      setPickingColumnId(null);
+                    }
+                  : undefined
+              }
             >
               <div className="flex min-w-0 items-center justify-between gap-1 pr-1">
                 <button
@@ -238,15 +246,20 @@ export function ConfigurableTableHeader({
                   }}
                   type="button"
                   aria-keyshortcuts="Shift+F10"
-                  title={`${column.label}: click to sort; right-click or press Shift+F10 for column options`}
+                  title={
+                    sortable
+                      ? `${column.label}: click to sort; right-click or press Shift+F10 for column options`
+                      : column.label
+                  }
                   className={`inline-flex w-full min-w-0 items-center gap-1 truncate text-label-md uppercase ${
                     column.align === "right" ? "justify-end" : "justify-start"
                   } ${active ? "text-primary" : "text-on-surface-variant"}`}
-                  onClick={() => onSortChange(column.id)}
+                  onClick={sortable ? () => onSortChange(column.id) : undefined}
                   onKeyDown={(event) => {
                     if (
-                      event.key === "ContextMenu" ||
-                      (event.key === "F10" && event.shiftKey)
+                      configurable &&
+                      (event.key === "ContextMenu" ||
+                        (event.key === "F10" && event.shiftKey))
                     ) {
                       event.preventDefault();
                       setOpenColumnId(column.id);
@@ -268,7 +281,7 @@ export function ConfigurableTableHeader({
                 </button>
               </div>
 
-              {open && !picking ? (
+              {configurable && open && !picking ? (
                 <div
                   ref={menuRef}
                   role="menu"
@@ -333,7 +346,7 @@ export function ConfigurableTableHeader({
                 </div>
               ) : null}
 
-              {open && picking ? (
+              {configurable && open && picking ? (
                 <div
                   ref={menuRef}
                   role="dialog"
@@ -358,11 +371,13 @@ export function ConfigurableTableHeader({
                 </div>
               ) : null}
 
-              <ColumnResizeHandle
-                label={column.label}
-                width={column.width}
-                onResize={(width) => onResizeColumn(column.id, width)}
-              />
+              {configurable ? (
+                <ColumnResizeHandle
+                  label={column.label}
+                  width={column.width}
+                  onResize={(width) => onResizeColumn(column.id, width)}
+                />
+              ) : null}
             </th>
           );
         })}

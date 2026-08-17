@@ -6,7 +6,7 @@ export const staffKeys = {
   all: ["staff"] as const,
   detail: (uid: number) => [...staffKeys.all, "detail", uid] as const,
   list: (
-    scope: "search" | "my-staff",
+    scope: "search" | "my-staff" | "shortlist",
     offset: number,
     limit: number,
     sort: StaffSortField,
@@ -14,6 +14,8 @@ export const staffKeys = {
     filters: StaffFilterRule[],
     combine: "and" | "or",
     requestedFields: string[],
+    preferredJob?: string,
+    unemployedOnly?: boolean,
   ) =>
     [
       ...staffKeys.all,
@@ -26,5 +28,7 @@ export const staffKeys = {
       filters,
       combine,
       requestedFields,
+      preferredJob,
+      unemployedOnly,
     ] as const satisfies QueryKey,
 } as const;

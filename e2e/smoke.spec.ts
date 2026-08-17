@@ -250,6 +250,14 @@ test.describe("application smoke", () => {
     const myStaffTable = main.getByRole("table", { name: "My Staff overview" });
     await expect(myStaffTable).toBeVisible();
     await expect(myStaffTable.getByText("Alex Coach")).toBeVisible();
+    await main.getByRole("tab", { name: "Shortlist" }).click();
+    await expect(main.getByText("No Staff Shortlist uploaded")).toBeVisible();
+    await expect(
+      main.getByRole("button", { name: "Upload CSV" }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("combobox", { name: "Preferred Job" }),
+    ).toHaveValue("");
   });
 
   test("Staff rows open profiles with staff-only surfaces", async ({
@@ -277,6 +285,61 @@ test.describe("application smoke", () => {
     await main.getByRole("button", { name: "Hide hidden info" }).click();
     await expect(
       main.getByRole("button", { name: "Reveal hidden info" }),
+    ).toBeVisible();
+  });
+
+  test("Staff Shortlist filters staff and adapts score columns", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { staffWorkspace: true, staffShortlist: true });
+    await page.goto("/staff?view=shortlist");
+
+    const main = page.getByRole("main");
+    const table = main.getByRole("table", { name: "Staff Shortlist" });
+    const preferredJob = main.getByRole("combobox", { name: "Preferred Job" });
+
+    await expect(table.getByText("Alex Coach")).toBeVisible();
+    await preferredJob.selectOption("Technical Director");
+    await expect(
+      table.getByRole("columnheader", { name: "Technical Director" }),
+    ).toBeVisible();
+    await expect(
+      table.getByRole("columnheader", { name: "Preferred Job" }),
+    ).toHaveCount(0);
+
+    await preferredJob.selectOption("Coach");
+    await expect(
+      table.getByRole("columnheader", { name: "Coach — Attacking Technical" }),
+    ).toBeVisible();
+    await expect(
+      table.getByRole("columnheader", { name: "Coach — Fitness" }),
+    ).toHaveCount(0);
+
+    await preferredJob.selectOption("Manager");
+    await expect(table.getByText("Manager Morgan")).toBeVisible();
+    await expect(table.locator('tr[data-index="0"]')).toContainText(
+      "Manager Taylor",
+    );
+    await expect(table.getByRole("columnheader")).toHaveCount(7);
+
+    await preferredJob.selectOption("");
+    await expect(
+      table.getByRole("columnheader", { name: "Preferred Job" }),
+    ).toBeVisible();
+    await expect(
+      table.getByRole("columnheader", { name: "Technical Director" }),
+    ).toBeVisible();
+    await main.getByRole("checkbox", { name: "Only unemployed" }).check();
+    await expect(table.getByText("Coach Casey")).toBeVisible();
+    await expect(table.getByText("Manager Morgan")).toBeVisible();
+    await expect(table.getByText("Alex Coach")).toHaveCount(0);
+    await main.getByRole("checkbox", { name: "Only unemployed" }).uncheck();
+    await table
+      .locator("tr[data-index]")
+      .filter({ hasText: "Alex Coach" })
+      .click();
+    await expect(
+      main.getByRole("heading", { name: "Alex Coach" }),
     ).toBeVisible();
   });
 
