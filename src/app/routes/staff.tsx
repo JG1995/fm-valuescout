@@ -17,6 +17,7 @@ import {
 } from "@/features/staff/api/staff-query-options";
 import { StaffFilterBar } from "@/features/staff/components/staff-filter-bar";
 import { StaffSearchResultsPanel } from "@/features/staff/components/staff-search-results-panel";
+import type { StaffShortlistImportSummary } from "@/features/staff/components/staff-shortlist-import-modal";
 import { StaffShortlistImportModal } from "@/features/staff/components/staff-shortlist-import-modal";
 import {
   StaffWorkspaceTabs,
@@ -216,6 +217,10 @@ function StaffPageContent() {
   const filters = useMemo(() => parseStaffFilters(filterUrls), [filterUrls]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const [importOpen, setImportOpen] = useState(false);
+  const [shortlistImport, setShortlistImport] = useState<
+    { contextKey: string; summary: StaffShortlistImportSummary } | undefined
+  >();
+  const shortlistContextKey = `${snapshot?.saveId ?? "none"}:${snapshot?.id ?? "none"}`;
   const shortlistPage = useSuspenseQuery(
     staffShortlistQueryOptions(0, 1, "ca", "desc", undefined, false, []),
   ).data;
@@ -445,6 +450,13 @@ function StaffPageContent() {
                 Only unemployed
               </label>
             </div>
+            {shortlistImport?.contextKey === shortlistContextKey ? (
+              <p role="status" className="text-body-sm text-on-surface-variant">
+                Stored {shortlistImport.summary.storedStaff} of{" "}
+                {shortlistImport.summary.totalStaff} staff IDs;{" "}
+                {shortlistImport.summary.skippedStaff} skipped.
+              </p>
+            ) : null}
             <div className="flex min-h-0 flex-1 flex-col">
               <Suspense fallback={<StaffFallback />}>
                 <StaffSearchResultsPanel
@@ -477,12 +489,15 @@ function StaffPageContent() {
         ) : null}
       </div>
       <StaffShortlistImportModal
+        activeSaveId={snapshot?.saveId}
+        snapshotId={snapshot?.id}
         open={importOpen}
         replacesExisting={shortlistPage.state !== "no_shortlist"}
         onClose={() => setImportOpen(false)}
-        onImported={async () => {
+        onImported={async (summary) => {
           await queryClient.invalidateQueries({ queryKey: staffKeys.all });
           await updateSearch({ preferredJob: "", unemployedOnly: false });
+          setShortlistImport({ contextKey: shortlistContextKey, summary });
         }}
       />
     </>

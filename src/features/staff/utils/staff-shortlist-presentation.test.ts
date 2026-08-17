@@ -9,6 +9,15 @@ describe("staff shortlist presentation", () => {
     });
   });
 
+  it("maps Head Performance Analyst to its role score", () => {
+    expect(
+      staffShortlistPresentation("Head Performance Analyst"),
+    ).toMatchObject({
+      sort: "role.head_performance_analyst",
+      dir: "desc",
+    });
+  });
+
   it("shows the six outfield coaching scores without choosing a sort", () => {
     const presentation = staffShortlistPresentation("Coach");
     expect(presentation?.sort).toBeUndefined();

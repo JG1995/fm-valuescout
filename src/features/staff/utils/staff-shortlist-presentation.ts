@@ -13,7 +13,7 @@ const PREFERRED_JOB_SCORE_FIELDS: Record<string, string> = {
   "Director of Football": "role.director_of_football",
   "Fitness Coach": "role.coach_fitness",
   "Goalkeeping Coach": "role.coach_goalkeeping",
-  "Head of Performance Analysis": "role.head_performance_analyst",
+  "Head Performance Analyst": "role.head_performance_analyst",
   "Head of Youth Development": "role.head_of_youth_development",
   "Loan Manager": "role.loan_manager",
   "Performance Analyst": "role.performance_analyst",

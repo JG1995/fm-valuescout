@@ -94,6 +94,57 @@ describe("usePlayerTableStore", () => {
     ]);
   });
 
+  it("starts Shortlist with its recruitment context before score columns", () => {
+    expect(
+      defaultPlayerTableLayouts()["staff-shortlist"].columnIds.slice(0, 9),
+    ).toEqual([
+      "name",
+      "age",
+      "nationality",
+      "club",
+      "ca",
+      "pa",
+      "preferred_job",
+      "club_job",
+      "coaching_qualifications",
+    ]);
+  });
+
+  it("adds the current Shortlist defaults when hydrating v2 preferences", async () => {
+    localStorage.setItem(
+      PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        state: {
+          layouts: {
+            search: { columnIds: ["name"], widths: {} },
+            squad: { columnIds: ["name"], widths: {} },
+            "staff-search": { columnIds: ["name"], widths: {} },
+            "my-staff": { columnIds: ["name"], widths: {} },
+          },
+        },
+        version: 2,
+      }),
+    );
+
+    await usePlayerTableStore.persist.rehydrate();
+
+    expect(
+      usePlayerTableStore
+        .getState()
+        .layouts["staff-shortlist"].columnIds.slice(0, 9),
+    ).toEqual([
+      "name",
+      "age",
+      "nationality",
+      "club",
+      "ca",
+      "pa",
+      "preferred_job",
+      "club_job",
+      "coaching_qualifications",
+    ]);
+  });
+
   it("moves a visible column to either edge without changing its width or the other table", () => {
     const store = usePlayerTableStore.getState();
     store.setColumnWidth("search", "club", 248);

@@ -465,23 +465,42 @@ export function StaffSearchResultsPanel({
     );
   }
   if (page.total === 0) {
+    const isShortlist = scope === "shortlist";
+    const hasShortlistFilter = preferredJob || unemployedOnly;
     return (
-      <Panel title={scope === "my-staff" ? "My Staff" : "Results"} flush>
+      <Panel
+        title={
+          scope === "my-staff"
+            ? "My Staff"
+            : isShortlist
+              ? "Staff Shortlist"
+              : "Results"
+        }
+        flush
+      >
         <EmptyState
-          icon={scope === "my-staff" ? UsersRound : SearchX}
+          icon={scope === "my-staff" || isShortlist ? UsersRound : SearchX}
           title={
             scope === "my-staff"
               ? "No staff in your club family"
-              : completeStaffFilterRules(filters).length > 0
-                ? "No staff match these filters"
-                : "No staff in snapshot"
+              : isShortlist
+                ? hasShortlistFilter
+                  ? "No shortlist staff match these filters"
+                  : "No shortlisted staff in this snapshot"
+                : completeStaffFilterRules(filters).length > 0
+                  ? "No staff match these filters"
+                  : "No staff in snapshot"
           }
         >
           {scope === "my-staff"
             ? "No current-snapshot staff match the clubs configured for this save."
-            : completeStaffFilterRules(filters).length > 0
-              ? "Adjust or clear filters to widen the result set."
-              : "The snapshot exists but contains no staff rows."}
+            : isShortlist
+              ? hasShortlistFilter
+                ? "Choose All jobs or turn off Only unemployed to widen the results."
+                : "Load Data to restore saved shortlist people who are absent from the current snapshot."
+              : completeStaffFilterRules(filters).length > 0
+                ? "Adjust or clear filters to widen the result set."
+                : "The snapshot exists but contains no staff rows."}
         </EmptyState>
       </Panel>
     );

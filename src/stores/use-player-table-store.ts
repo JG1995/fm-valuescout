@@ -9,10 +9,19 @@ import {
 import { DEFAULT_STAFF_TABLE_COLUMN_IDS } from "@/utils/staff-table-layout";
 
 const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
-  ...DEFAULT_STAFF_TABLE_COLUMN_IDS,
+  "name",
+  "age",
+  "nationality",
+  "club",
+  "ca",
+  "pa",
   "preferred_job",
   "club_job",
   "coaching_qualifications",
+  ...DEFAULT_STAFF_TABLE_COLUMN_IDS.filter(
+    (columnId) =>
+      !["name", "age", "nationality", "ca", "pa"].includes(columnId),
+  ),
 ];
 
 export const PLAYER_TABLE_LAYOUT_STORAGE_KEY =

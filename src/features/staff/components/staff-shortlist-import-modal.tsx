@@ -1,44 +1,80 @@
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { FileUp } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
 import { invokeCommand } from "@/lib/tauri-client";
 
+export type StaffShortlistImportSummary = {
+  totalStaff: number;
+  storedStaff: number;
+  skippedStaff: number;
+};
+
 export function StaffShortlistImportModal({
+  activeSaveId,
+  snapshotId,
   open,
   replacesExisting,
   onClose,
   onImported,
 }: {
+  activeSaveId: number | undefined;
+  snapshotId: number | undefined;
   open: boolean;
   replacesExisting: boolean;
   onClose: () => void;
-  onImported: () => Promise<void>;
+  onImported: (summary: StaffShortlistImportSummary) => Promise<void>;
 }) {
+  const contextKey = `${activeSaveId ?? "none"}:${snapshotId ?? "none"}`;
+  const currentContext = useRef(contextKey);
+  const contextGeneration = useRef(0);
+  const previousContextKey = useRef(contextKey);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
+  useLayoutEffect(() => {
+    currentContext.current = contextKey;
+    contextGeneration.current += 1;
+    setPending(false);
+    setError(undefined);
+  }, [contextKey]);
+  useEffect(() => {
+    if (previousContextKey.current !== contextKey && open) {
+      onClose();
+    }
+    previousContextKey.current = contextKey;
+  }, [contextKey, onClose, open]);
   const chooseFile = async () => {
+    const selection = {
+      contextKey,
+      generation: contextGeneration.current,
+    };
+    const isCurrentSelection = () =>
+      currentContext.current === selection.contextKey &&
+      contextGeneration.current === selection.generation;
     const path = await openFileDialog({
       multiple: false,
       directory: false,
       filters: [{ name: "CSV", extensions: ["csv"] }],
     });
-    if (!path) return;
+    if (!path || !isCurrentSelection()) return;
     setPending(true);
     setError(undefined);
     try {
-      await invokeCommand<{
-        totalStaff: number;
-        storedStaff: number;
-        skippedStaff: number;
-      }>("import_staff_shortlist_csv", { path });
-      await onImported();
-      onClose();
+      const summary = await invokeCommand<StaffShortlistImportSummary>(
+        "import_staff_shortlist_csv",
+        { path },
+      );
+      if (isCurrentSelection()) {
+        await onImported(summary);
+        onClose();
+      }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      if (isCurrentSelection()) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      }
     } finally {
-      setPending(false);
+      if (isCurrentSelection()) setPending(false);
     }
   };
   return (

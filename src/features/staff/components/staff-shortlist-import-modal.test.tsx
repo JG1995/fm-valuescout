@@ -17,7 +17,7 @@ describe("StaffShortlistImportModal", () => {
     invokeCommand.mockReset();
   });
 
-  it("closes after importing a selected staff CSV", async () => {
+  it("reports the import summary before closing", async () => {
     openFileDialog.mockResolvedValue("C:\\exports\\staff.csv");
     invokeCommand.mockResolvedValue({
       totalStaff: 2,
@@ -29,6 +29,8 @@ describe("StaffShortlistImportModal", () => {
     const user = userEvent.setup();
     render(
       <StaffShortlistImportModal
+        activeSaveId={1}
+        snapshotId={1}
         open
         replacesExisting={false}
         onClose={onClose}
@@ -39,8 +41,53 @@ describe("StaffShortlistImportModal", () => {
     await user.click(screen.getByRole("button", { name: "Choose CSV" }));
 
     await waitFor(() => {
-      expect(onImported).toHaveBeenCalledOnce();
+      expect(onImported).toHaveBeenCalledWith({
+        totalStaff: 2,
+        storedStaff: 2,
+        skippedStaff: 0,
+      });
       expect(onClose).toHaveBeenCalledOnce();
     });
+  });
+
+  it("abandons a picked file when the active snapshot changes", async () => {
+    let resolvePath: (path: string) => void = (_path) => {
+      throw new Error("Expected file picker resolver");
+    };
+    openFileDialog.mockReturnValue(
+      new Promise<string>((resolve) => {
+        resolvePath = resolve;
+      }),
+    );
+    const onClose = vi.fn();
+    const onImported = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <StaffShortlistImportModal
+        activeSaveId={1}
+        snapshotId={1}
+        open
+        replacesExisting={false}
+        onClose={onClose}
+        onImported={onImported}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    rerender(
+      <StaffShortlistImportModal
+        activeSaveId={1}
+        snapshotId={2}
+        open
+        replacesExisting={false}
+        onClose={onClose}
+        onImported={onImported}
+      />,
+    );
+    resolvePath("C:\\exports\\staff.csv");
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(invokeCommand).not.toHaveBeenCalled();
+    expect(onImported).not.toHaveBeenCalled();
   });
 });
