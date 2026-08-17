@@ -391,6 +391,18 @@ export function resolveListMyStaffIpcMock(args: unknown): StaffPage {
   return resolveSearchStaffIpcMock(args);
 }
 
+export function resolveListStaffShortlistIpcMock(_args: unknown): StaffPage {
+  if (!resolveGetCurrentSnapshotIpcMock()) {
+    return { state: "no_current_snapshot", staff: [], total: 0 };
+  }
+  return {
+    state: "no_shortlist",
+    staff: [],
+    total: 0,
+    preferredJobOptions: [],
+  };
+}
+
 function staffBoostResult(uid: number): StaffBoostResult {
   const source = overrideStaff ?? defaultStaff();
   const staff = source.find((candidate) => candidate.uid === uid);

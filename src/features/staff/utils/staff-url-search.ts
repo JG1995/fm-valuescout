@@ -6,7 +6,7 @@ import {
 } from "./staff-filter-registry";
 import { defaultDirForStaffSortField, isStaffMetricId } from "./staff-metrics";
 
-export type StaffView = "search" | "my-staff";
+export type StaffView = "search" | "my-staff" | "shortlist";
 export type StaffSortDir = "asc" | "desc";
 export type StaffSortField = string;
 
@@ -18,7 +18,7 @@ export type StaffFilterRuleUrl = {
 };
 
 export function parseStaffView(value: unknown): StaffView {
-  return value === "my-staff" ? "my-staff" : "search";
+  return value === "my-staff" || value === "shortlist" ? value : "search";
 }
 
 export function parseStaffSort(value: unknown): StaffSortField {

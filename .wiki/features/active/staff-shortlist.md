@@ -400,7 +400,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 #### Commit 4 — Staff Shortlist workspace
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): add shortlist workspace`
 
@@ -496,7 +496,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 #### Commit 5 — Minor release preparation
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `chore(release): prepare version 0.6.0`
 
@@ -564,7 +564,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 **PR:** PR 1 — CSV-backed Staff Shortlist workspace
 
-**Commit:** Commit 4 — Staff Shortlist workspace
+**Commit:** Commit 5 — Minor release preparation
 
 ### RED proof
 

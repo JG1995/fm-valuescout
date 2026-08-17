@@ -155,14 +155,34 @@ export const STAFF_METRICS: readonly StaffMetric[] = [
   ...STAFF_ROLE_METRICS,
 ];
 
+export const STAFF_SHORTLIST_METRICS: readonly StaffMetric[] = [
+  ...STAFF_METRICS,
+  stringMetric("preferred_job", "Preferred Job", "shortlist", 160),
+  stringMetric("club_job", "Club Job", "shortlist", 160),
+  stringMetric(
+    "coaching_qualifications",
+    "Coaching Qualifications",
+    "shortlist",
+    184,
+  ),
+];
+
 export { DEFAULT_STAFF_TABLE_COLUMN_IDS } from "@/utils/staff-table-layout";
 
 export function getStaffMetric(metricId: string): StaffMetric | undefined {
   return STAFF_METRICS.find((metric) => metric.id === metricId);
 }
 
+export function getStaffShortlistMetric(
+  metricId: string,
+): StaffMetric | undefined {
+  return STAFF_SHORTLIST_METRICS.find((metric) => metric.id === metricId);
+}
+
 export function isStaffMetricId(value: unknown): value is string {
-  return typeof value === "string" && getStaffMetric(value) !== undefined;
+  return (
+    typeof value === "string" && getStaffShortlistMetric(value) !== undefined
+  );
 }
 
 export function defaultDirForStaffSortField(field: string): "asc" | "desc" {

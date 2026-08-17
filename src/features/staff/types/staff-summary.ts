@@ -18,12 +18,22 @@ export type StaffSummary = {
   contractExpiryYear: number | null;
   contractExpiryDayOfYear: number | null;
   dynamicValues?: Record<string, StaffDynamicValue>;
+  shortlist?: {
+    preferredJob: string;
+    clubJob: string;
+    coachingQualifications: string;
+  } | null;
 };
 
-export type StaffPageState = "ready" | "no_current_snapshot" | "no_club_family";
+export type StaffPageState =
+  | "ready"
+  | "no_current_snapshot"
+  | "no_club_family"
+  | "no_shortlist";
 
 export type StaffPage = {
   state: StaffPageState;
   staff: StaffSummary[];
   total: number;
+  preferredJobOptions?: string[];
 };

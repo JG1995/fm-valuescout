@@ -73,6 +73,7 @@ describe("usePlayerTableStore", () => {
         ...defaultPlayerTableLayouts(),
         "staff-search": { columnIds: [], widths: {} },
         "my-staff": { columnIds: [], widths: {} },
+        "staff-shortlist": { columnIds: [], widths: {} },
       },
     });
     const store = usePlayerTableStore.getState();
@@ -161,6 +162,7 @@ describe("usePlayerTableStore", () => {
         },
         "staff-search": { columnIds: [], widths: {} },
         "my-staff": { columnIds: [], widths: {} },
+        "staff-shortlist": { columnIds: [], widths: {} },
       },
     });
 

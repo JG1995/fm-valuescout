@@ -5,11 +5,13 @@ import type { StaffView } from "../utils/staff-url-search";
 export const STAFF_VIEWS = [
   "search",
   "my-staff",
+  "shortlist",
 ] as const satisfies readonly StaffView[];
 
 const VIEW_LABELS: Record<StaffView, string> = {
   search: "Search",
   "my-staff": "My Staff",
+  shortlist: "Shortlist",
 };
 
 function focusStaffTab(view: StaffView) {

@@ -53,6 +53,26 @@ export function fetchMyStaff(
   );
 }
 
+export function fetchStaffShortlist(
+  offset = 0,
+  limit = STAFF_PAGE_SIZE,
+  sortBy: StaffSortField = DEFAULT_STAFF_SORT_FIELD,
+  sortDir: StaffSortDir = DEFAULT_STAFF_SORT_DIR,
+  preferredJob?: string,
+  unemployedOnly = false,
+  requestedFields: string[] = [],
+) {
+  return invokeCommand<StaffPage>("list_staff_shortlist", {
+    offset,
+    limit,
+    sortBy,
+    sortDir,
+    preferredJob,
+    unemployedOnly,
+    requestedFields,
+  });
+}
+
 export function fetchStaffDetail(uid: number) {
   return invokeCommand<StaffDetail | null>("get_staff", { uid });
 }

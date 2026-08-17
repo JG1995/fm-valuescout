@@ -5,7 +5,12 @@ import {
   DEFAULT_STAFF_SORT_DIR,
   DEFAULT_STAFF_SORT_FIELD,
 } from "../types/staff-sort";
-import { fetchMyStaff, fetchStaff, STAFF_PAGE_SIZE } from "./fetch-staff";
+import {
+  fetchMyStaff,
+  fetchStaff,
+  fetchStaffShortlist,
+  STAFF_PAGE_SIZE,
+} from "./fetch-staff";
 import { staffKeys } from "./staff-keys";
 
 export { STAFF_PAGE_SIZE };
@@ -38,6 +43,41 @@ export function staffSearchQueryOptions(
         sortDir,
         filters,
         filterCombine,
+        requestedFields,
+      ),
+  });
+}
+
+export function staffShortlistQueryOptions(
+  offset = 0,
+  limit = STAFF_PAGE_SIZE,
+  sortBy: StaffSortField = DEFAULT_STAFF_SORT_FIELD,
+  sortDir: StaffSortDir = DEFAULT_STAFF_SORT_DIR,
+  preferredJob?: string,
+  unemployedOnly = false,
+  requestedFields: string[] = [],
+) {
+  return queryOptions({
+    queryKey: staffKeys.list(
+      "shortlist",
+      offset,
+      limit,
+      sortBy,
+      sortDir,
+      [],
+      "and",
+      requestedFields,
+      preferredJob,
+      unemployedOnly,
+    ),
+    queryFn: () =>
+      fetchStaffShortlist(
+        offset,
+        limit,
+        sortBy,
+        sortDir,
+        preferredJob,
+        unemployedOnly,
         requestedFields,
       ),
   });
