@@ -182,7 +182,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 #### Commit 1 — Save-owned shortlist persistence
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(storage): add save-owned staff shortlists`
 
@@ -247,7 +247,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 #### Commit 2 — Transactional Staff CSV replacement
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(import): replace staff shortlists from CSV`
 
@@ -564,19 +564,19 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 **PR:** PR 1 — CSV-backed Staff Shortlist workspace
 
-**Commit:** Commit 1 — Save-owned shortlist persistence
+**Commit:** Commit 2 — Transactional Staff CSV replacement
 
 ### RED proof
 
-Add migration tests that require schema v27, the new save-owned entry table, same-UID isolation between two saves, save deletion cascade, and snapshot deletion preservation. The current v26 migration registry must fail those assertions because no shortlist table exists.
+Add parser and service tests for the dedicated staff CSV contract, including valid semicolon exports, exact UID reconciliation, preserved blank and `-` Club Job values, rejection without replacing an old shortlist, and transactional replacement. The current player-only import path must fail those assertions because no staff importer exists.
 
 ### Expected outcome
 
-A fresh or v26 database reaches v27 with an empty `staff_shortlist_entries` table whose ownership and constraints support later transactional imports without coupling entries to snapshots.
+A trusted Rust command validates and parses a bounded staff CSV outside the database lock, then replaces only the captured active save's matching shortlist entries in one context-checked transaction and returns total, stored, and skipped counts.
 
 ### Explicit exclusions
 
-No parser, import command, query scope, React code, release metadata, or user-visible behavior belongs in Commit 1.
+No Staff Shortlist query scope, Preferred Job or unemployment filtering, React upload UI, table rendering, or release metadata belongs in Commit 2.
 
 ## Discoveries and replanning
 
@@ -589,7 +589,7 @@ No parser, import command, query scope, React code, release metadata, or user-vi
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| — | — | — | None yet | Not run | None |
+| PR 1 | Commit 1 — Save-owned shortlist persistence | Pending record | Migration v27 adds save-owned shortlist rows, uniqueness, exact-job index, and upgrade/cascade tests | Cleared after 1 fix round | None |
 
 ## Final validation
 
