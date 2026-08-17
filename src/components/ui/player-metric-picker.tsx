@@ -4,6 +4,7 @@ import {
   fieldClasses,
   fieldLabelClasses,
 } from "@/components/ui/field/field-styles";
+import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
 
 export type MetricPickerMetric = {
   id: string;
@@ -62,10 +63,8 @@ const ROLE_FAMILY_ORDER = [
   "Forwards",
 ] as const;
 
-const POPUP_GAP = 4;
 const POPUP_MAX_HEIGHT = 320;
 const POPUP_MIN_WIDTH = 288;
-const VIEWPORT_PADDING = 8;
 
 function groupsForMetrics(
   metrics: readonly MetricPickerMetric[],
@@ -163,8 +162,6 @@ export function MetricPicker({
   const optionIdPrefix = useId();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const activeOptionRef = useRef<HTMLButtonElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popupRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -176,9 +173,14 @@ export function MetricPicker({
   const options = groups.flatMap((group) => group.metrics);
   const activeMetric = options[activeIndex];
   const searchLabel = `Search ${label.toLowerCase()}s`;
-  const supportsPopover =
-    typeof HTMLElement !== "undefined" &&
-    "showPopover" in HTMLElement.prototype;
+  const {
+    anchorRef: triggerRef,
+    popoverRef: popupRef,
+    popover,
+  } = useAnchoredPopover<HTMLButtonElement>(open, {
+    maxHeight: POPUP_MAX_HEIGHT,
+    minWidth: POPUP_MIN_WIDTH,
+  });
 
   useEffect(() => {
     if (!open) {
@@ -188,59 +190,6 @@ export function MetricPicker({
     setActiveIndex(0);
     searchInputRef.current?.focus();
   }, [open]);
-
-  useEffect(() => {
-    const popup = popupRef.current;
-    const trigger = triggerRef.current;
-    if (!open || !popup || !trigger || !supportsPopover) {
-      return;
-    }
-
-    const positionPopup = () => {
-      const triggerBounds = trigger.getBoundingClientRect();
-      const width = Math.min(
-        Math.max(triggerBounds.width, POPUP_MIN_WIDTH),
-        window.innerWidth - VIEWPORT_PADDING * 2,
-      );
-      const left = Math.min(
-        Math.max(VIEWPORT_PADDING, triggerBounds.left),
-        window.innerWidth - width - VIEWPORT_PADDING,
-      );
-      const spaceBelow =
-        window.innerHeight -
-        triggerBounds.bottom -
-        POPUP_GAP -
-        VIEWPORT_PADDING;
-      const spaceAbove = triggerBounds.top - POPUP_GAP - VIEWPORT_PADDING;
-      const placeBelow = spaceBelow >= Math.min(POPUP_MAX_HEIGHT, spaceAbove);
-
-      popup.style.position = "fixed";
-      popup.style.left = `${left}px`;
-      popup.style.right = "auto";
-      popup.style.width = `${width}px`;
-      popup.style.maxHeight = `${Math.min(
-        POPUP_MAX_HEIGHT,
-        Math.max(spaceBelow, spaceAbove),
-      )}px`;
-      if (placeBelow) {
-        popup.style.top = `${triggerBounds.bottom + POPUP_GAP}px`;
-        popup.style.bottom = "auto";
-      } else {
-        popup.style.top = "auto";
-        popup.style.bottom = `${window.innerHeight - triggerBounds.top + POPUP_GAP}px`;
-      }
-    };
-
-    positionPopup();
-    popup.showPopover();
-    window.addEventListener("resize", positionPopup);
-    window.addEventListener("scroll", positionPopup, true);
-    return () => {
-      window.removeEventListener("resize", positionPopup);
-      window.removeEventListener("scroll", positionPopup, true);
-      popup.hidePopover();
-    };
-  }, [open, supportsPopover]);
 
   useEffect(() => {
     if (!activeMetric) {
@@ -282,8 +231,8 @@ export function MetricPicker({
       {open ? (
         <div
           ref={popupRef}
-          popover={supportsPopover ? "manual" : undefined}
-          className="z-50 m-0 flex flex-col overflow-hidden rounded-md border border-outline-variant bg-surface-container-highest p-0 text-left shadow-overlay"
+          popover={popover}
+          className="absolute z-50 m-0 flex flex-col overflow-hidden rounded-md border border-outline-variant bg-surface-container-highest p-0 text-left shadow-overlay"
         >
           <div className="border-b border-outline-variant p-2">
             <label className="sr-only" htmlFor={searchInputId}>

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Search, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
 import { cn } from "@/utils/cn";
 import { formatCount } from "@/utils/format";
 import { suggestPlayersQueryOptions } from "../api/suggest-players-query-options";
@@ -70,6 +71,8 @@ export function GlobalPlayerSearch() {
 
   const { data: hits = [] } = useQuery(suggestPlayersQueryOptions(debounced));
   const showPopover = open && debounced.length > 0 && hits.length > 0;
+  const { anchorRef, popoverRef, popover } =
+    useAnchoredPopover<HTMLDivElement>(showPopover);
 
   const activateHit = (uid: number) => {
     setValue("");
@@ -92,7 +95,7 @@ export function GlobalPlayerSearch() {
 
   return (
     <div className="relative min-w-0 flex-1">
-      <div className="relative">
+      <div ref={anchorRef} className="relative">
         <Search
           aria-hidden
           className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-on-surface-variant"
@@ -185,9 +188,11 @@ export function GlobalPlayerSearch() {
       </div>
       {showPopover ? (
         <div
+          ref={popoverRef}
           aria-label="Player suggestions"
-          className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-outline-variant bg-surface-container-highest py-1 shadow-overlay"
+          className="absolute z-20 m-0 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-outline-variant bg-surface-container-highest py-1 shadow-overlay"
           id={listboxId}
+          popover={popover}
           role="listbox"
         >
           {hits.map((hit, index) => (

@@ -471,6 +471,47 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
+  test("Dashboard club suggestions remain interactive outside the panel", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/#club-setup");
+
+    const primaryClub = page.getByRole("main").getByRole("combobox", {
+      name: "Primary club",
+    });
+    await primaryClub.fill("Bar");
+
+    const listbox = page.getByRole("listbox", { name: "Club suggestions" });
+    await expect(listbox).toBeVisible();
+    expect(
+      await listbox.evaluate((element) => {
+        const listboxElement = element as unknown as {
+          contains: (node: unknown) => boolean;
+          getBoundingClientRect: () => {
+            bottom: number;
+            left: number;
+            width: number;
+          };
+        };
+        const browser = globalThis as unknown as {
+          document: {
+            elementFromPoint: (x: number, y: number) => unknown;
+          };
+          innerHeight: number;
+        };
+        const bounds = listboxElement.getBoundingClientRect();
+        const hit = browser.document.elementFromPoint(
+          bounds.left + Math.min(8, bounds.width / 2),
+          Math.min(bounds.bottom - 4, browser.innerHeight - 4),
+        );
+        return (
+          hit === element || (hit !== null && listboxElement.contains(hit))
+        );
+      }),
+    ).toBe(true);
+  });
+
   test("configured Squad shows its sortable player overview", async ({
     page,
   }) => {
