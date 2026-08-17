@@ -76,16 +76,16 @@ const DEFAULT_LANES: [DefaultLane; TACTIC_LANE_COUNT] = [
     },
     DefaultLane {
         lane_id: "left_centre_back",
-        ip_position: "DC",
+        ip_position: "DCR",
         ip_role_id: "centre_back_ip",
-        oop_position: "DC",
+        oop_position: "DCR",
         oop_role_id: "covering_centre_back_oop",
     },
     DefaultLane {
         lane_id: "right_centre_back",
-        ip_position: "DC",
+        ip_position: "DCL",
         ip_role_id: "centre_back_ip",
-        oop_position: "DC",
+        oop_position: "DCL",
         oop_role_id: "covering_centre_back_oop",
     },
     DefaultLane {
@@ -104,16 +104,16 @@ const DEFAULT_LANES: [DefaultLane; TACTIC_LANE_COUNT] = [
     },
     DefaultLane {
         lane_id: "left_central_midfielder",
-        ip_position: "MC",
+        ip_position: "MCR",
         ip_role_id: "central_midfielder_ip",
-        oop_position: "MC",
+        oop_position: "MCR",
         oop_role_id: "pressing_central_midfielder_oop",
     },
     DefaultLane {
         lane_id: "right_central_midfielder",
-        ip_position: "MC",
+        ip_position: "MCL",
         ip_role_id: "central_midfielder_ip",
-        oop_position: "MC",
+        oop_position: "MCL",
         oop_role_id: "pressing_central_midfielder_oop",
     },
     DefaultLane {
@@ -132,12 +132,44 @@ const DEFAULT_LANES: [DefaultLane; TACTIC_LANE_COUNT] = [
     },
     DefaultLane {
         lane_id: "centre_forward",
-        ip_position: "ST",
+        ip_position: "STC",
         ip_role_id: "centre_forward_ip",
-        oop_position: "ST",
+        oop_position: "STC",
         oop_role_id: "central_outlet_centre_forward_oop",
     },
 ];
+
+const SIDED_BASE_POSITIONS: [&str; 5] = ["DC", "DM", "MC", "AMC", "ST"];
+
+fn sided_placements(base_position: &str) -> Option<[&'static str; 3]> {
+    match base_position {
+        "DC" => Some(["DCR", "DC", "DCL"]),
+        "DM" => Some(["DMCR", "DM", "DMCL"]),
+        "MC" => Some(["MCR", "MC", "MCL"]),
+        "AMC" => Some(["AMCR", "AMC", "AMCL"]),
+        "ST" => Some(["STCR", "STC", "STCL"]),
+        _ => None,
+    }
+}
+
+pub(super) fn base_position(placement: &str) -> &str {
+    match placement {
+        "DCR" | "DC" | "DCL" => "DC",
+        "DMCR" | "DM" | "DMCL" => "DM",
+        "MCR" | "MC" | "MCL" => "MC",
+        "AMCR" | "AMC" | "AMCL" => "AMC",
+        "STCR" | "ST" | "STC" | "STCL" => "ST",
+        _ => placement,
+    }
+}
+
+fn canonical_placement(placement: &str) -> &str {
+    if placement == "ST" {
+        "STC"
+    } else {
+        placement
+    }
+}
 
 pub fn default_tactic() -> PlannerTactic {
     PlannerTactic {
@@ -220,13 +252,17 @@ pub fn save_tactic(conn: &Connection, save_id: i64, tactic: &PlannerTactic) -> R
 
 pub fn get_tactic_options() -> TacticOptions {
     let mut placements = Vec::new();
-    let mut seen_placements = HashSet::new();
+    let mut seen_base_positions = HashSet::new();
     let roles = all_roles()
         .iter()
         .map(|role| {
             for position_tag in role.position_tags {
-                if seen_placements.insert(*position_tag) {
-                    placements.push((*position_tag).to_string());
+                if seen_base_positions.insert(*position_tag) {
+                    if let Some(sided) = sided_placements(position_tag) {
+                        placements.extend(sided.map(str::to_string));
+                    } else {
+                        placements.push((*position_tag).to_string());
+                    }
                 }
             }
 
@@ -273,9 +309,50 @@ fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String>
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
 
-    let tactic = PlannerTactic { lanes };
-    validate_tactic(&tactic)?;
+    let mut tactic = PlannerTactic { lanes };
+    normalize_legacy_placements(&mut tactic);
+    validate_tactic_contents(&tactic, false)?;
     Ok(tactic)
+}
+
+fn normalize_legacy_placements(tactic: &mut PlannerTactic) {
+    let ip_positions =
+        normalize_legacy_phase(tactic.lanes.iter().map(|lane| lane.ip_position.as_str()));
+    let oop_positions =
+        normalize_legacy_phase(tactic.lanes.iter().map(|lane| lane.oop_position.as_str()));
+
+    for ((lane, ip_position), oop_position) in
+        tactic.lanes.iter_mut().zip(ip_positions).zip(oop_positions)
+    {
+        lane.ip_position = ip_position;
+        lane.oop_position = oop_position;
+    }
+}
+
+fn normalize_legacy_phase<'a>(positions: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let mut normalized = positions.map(str::to_string).collect::<Vec<_>>();
+
+    for base_position in SIDED_BASE_POSITIONS {
+        let indices = normalized
+            .iter()
+            .enumerate()
+            .filter_map(|(index, position)| (position == base_position).then_some(index))
+            .collect::<Vec<_>>();
+        let Some(sided) = sided_placements(base_position) else {
+            continue;
+        };
+        let placements: &[&str] = match indices.len() {
+            1 => &sided[1..2],
+            2 => &[sided[0], sided[2]],
+            3 => &sided,
+            _ => continue,
+        };
+        for (index, placement) in indices.into_iter().zip(placements) {
+            normalized[index] = (*placement).to_string();
+        }
+    }
+
+    normalized
 }
 
 fn ensure_save_exists(conn: &Connection, save_id: i64) -> Result<(), String> {
@@ -293,6 +370,13 @@ fn ensure_save_exists(conn: &Connection, save_id: i64) -> Result<(), String> {
 }
 
 fn validate_tactic(tactic: &PlannerTactic) -> Result<(), String> {
+    validate_tactic_contents(tactic, true)
+}
+
+fn validate_tactic_contents(
+    tactic: &PlannerTactic,
+    require_unique_placements: bool,
+) -> Result<(), String> {
     if tactic.lanes.len() != TACTIC_LANE_COUNT {
         return Err(format!(
             "Tactic must contain exactly {TACTIC_LANE_COUNT} lanes"
@@ -300,6 +384,8 @@ fn validate_tactic(tactic: &PlannerTactic) -> Result<(), String> {
     }
 
     let mut importance_ranks = HashSet::new();
+    let mut ip_placements = HashSet::new();
+    let mut oop_placements = HashSet::new();
     for (index, lane) in tactic.lanes.iter().enumerate() {
         let expected_lane_id = DEFAULT_LANE_IDS[index];
         if lane.lane_id != expected_lane_id {
@@ -340,6 +426,20 @@ fn validate_tactic(tactic: &PlannerTactic) -> Result<(), String> {
                 lane.lane_id
             ));
         }
+        let ip_placement = canonical_placement(&lane.ip_position);
+        if require_unique_placements && !ip_placements.insert(ip_placement) {
+            return Err(format!(
+                "{} is already used in the in-possession phase",
+                ip_placement
+            ));
+        }
+        let oop_placement = canonical_placement(&lane.oop_position);
+        if require_unique_placements && !oop_placements.insert(oop_placement) {
+            return Err(format!(
+                "{} is already used in the out-of-possession phase",
+                oop_placement
+            ));
+        }
         validate_role(
             &lane.lane_id,
             "in-possession",
@@ -375,7 +475,7 @@ fn validate_role(
             "Lane `{lane_id}` uses role `{role_id}` in the wrong {phase_label} phase"
         ));
     }
-    if !role.position_tags.contains(&position) {
+    if !role.position_tags.contains(&base_position(position)) {
         return Err(format!(
             "Role `{role_id}` does not support position {position}"
         ));
@@ -422,10 +522,15 @@ mod tests {
         assert_eq!(tactic.lanes[0].ip_position, "GK");
         assert_eq!(tactic.lanes[0].ip_weight, 0.5);
         assert_eq!(tactic.lanes[0].oop_position, "GK");
+        assert_eq!(tactic.lanes[2].ip_position, "DCR");
+        assert_eq!(tactic.lanes[3].ip_position, "DCL");
         assert_eq!(tactic.lanes[5].ip_position, "DM");
         assert_eq!(tactic.lanes[5].oop_position, "DM");
+        assert_eq!(tactic.lanes[6].ip_position, "MCR");
+        assert_eq!(tactic.lanes[7].ip_position, "MCL");
         assert_eq!(tactic.lanes[8].ip_position, "AML");
         assert_eq!(tactic.lanes[8].oop_position, "ML");
+        assert_eq!(tactic.lanes[10].ip_position, "STC");
     }
 
     #[test]
@@ -453,6 +558,52 @@ mod tests {
             get_tactic(&conn, second_save_id).expect("reload second tactic"),
             second
         );
+    }
+
+    #[test]
+    fn legacy_repeated_base_positions_keep_their_existing_visual_order() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        get_tactic(&conn, save_id).expect("seed default tactic");
+
+        conn.execute(
+            "UPDATE planner_tactic_lanes
+             SET ip_position = 'MC'
+             WHERE save_id = ?1
+               AND lane_id IN ('left_central_midfielder', 'right_central_midfielder')",
+            [save_id],
+        )
+        .expect("restore legacy midfield placements");
+
+        let tactic = get_tactic(&conn, save_id).expect("load legacy tactic");
+        assert_eq!(tactic.lanes[6].ip_position, "MCR");
+        assert_eq!(tactic.lanes[7].ip_position, "MCL");
+    }
+
+    #[test]
+    fn legacy_groups_larger_than_three_load_but_require_resolution_before_save() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        get_tactic(&conn, save_id).expect("seed default tactic");
+
+        conn.execute(
+            "UPDATE planner_tactic_lanes
+             SET ip_position = 'MC', ip_role_id = 'central_midfielder_ip'
+             WHERE save_id = ?1 AND lane_order < 4",
+            [save_id],
+        )
+        .expect("create oversized legacy group");
+
+        let tactic = get_tactic(&conn, save_id).expect("load legacy tactic");
+        assert_eq!(
+            tactic
+                .lanes
+                .iter()
+                .filter(|lane| lane.ip_position == "MC")
+                .count(),
+            4
+        );
+        let error = save_tactic(&conn, save_id, &tactic)
+            .expect_err("require distinct placements before save");
+        assert!(error.contains("MC is already used in the in-possession phase"));
     }
 
     #[test]
@@ -540,6 +691,46 @@ mod tests {
     }
 
     #[test]
+    fn accepts_sided_placements_for_roles_that_support_the_base_position() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        let mut tactic = get_tactic(&conn, save_id).expect("load default tactic");
+        tactic.lanes[6].ip_position = "MCR".to_string();
+        tactic.lanes[7].ip_position = "MCL".to_string();
+
+        save_tactic(&conn, save_id, &tactic).expect("save sided midfield placements");
+
+        let reloaded = get_tactic(&conn, save_id).expect("reload tactic");
+        assert_eq!(reloaded.lanes[6].ip_position, "MCR");
+        assert_eq!(reloaded.lanes[7].ip_position, "MCL");
+    }
+
+    #[test]
+    fn rejects_duplicate_sided_placements_in_one_phase() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        let mut tactic = get_tactic(&conn, save_id).expect("load default tactic");
+        tactic.lanes[6].ip_position = "MCR".to_string();
+        tactic.lanes[7].ip_position = "MCR".to_string();
+
+        let error = save_tactic(&conn, save_id, &tactic)
+            .expect_err("reject two lanes in the same sided placement");
+
+        assert!(error.contains("MCR is already used in the in-possession phase"));
+    }
+
+    #[test]
+    fn rejects_legacy_striker_alias_in_the_canonical_centre_placement() {
+        let (_temp_dir, conn, save_id) = open_with_save();
+        let mut tactic = get_tactic(&conn, save_id).expect("load default tactic");
+        tactic.lanes[0].ip_position = "ST".to_string();
+        tactic.lanes[0].ip_role_id = "centre_forward_ip".to_string();
+
+        let error = save_tactic(&conn, save_id, &tactic)
+            .expect_err("reject legacy and canonical centre striker aliases");
+
+        assert!(error.contains("STC is already used in the in-possession phase"));
+    }
+
+    #[test]
     fn rejects_ip_weights_outside_zero_to_one() {
         let (_temp_dir, conn, save_id) = open_with_save();
         let mut tactic = get_tactic(&conn, save_id).expect("load default tactic");
@@ -565,6 +756,9 @@ mod tests {
 
         assert!(options.placements.contains(&"GK".to_string()));
         assert!(options.placements.contains(&"AML".to_string()));
+        assert!(options.placements.contains(&"MCR".to_string()));
+        assert!(options.placements.contains(&"MCL".to_string()));
+        assert!(options.placements.contains(&"STC".to_string()));
         let goalkeeper = options
             .roles
             .iter()

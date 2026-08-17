@@ -35,6 +35,25 @@ export function phaseRoleId(lane: TacticLane, phase: TacticPhase): string {
   return phase === "ip" ? lane.ipRoleId : lane.oopRoleId;
 }
 
+export function basePosition(placement: string): string {
+  if (["DCR", "DC", "DCL"].includes(placement)) {
+    return "DC";
+  }
+  if (["DMCR", "DM", "DMCL"].includes(placement)) {
+    return "DM";
+  }
+  if (["MCR", "MC", "MCL"].includes(placement)) {
+    return "MC";
+  }
+  if (["AMCR", "AMC", "AMCL"].includes(placement)) {
+    return "AMC";
+  }
+  if (["STCR", "ST", "STC", "STCL"].includes(placement)) {
+    return "ST";
+  }
+  return placement;
+}
+
 export function updatePhaseLane(
   lane: TacticLane,
   phase: TacticPhase,
@@ -55,7 +74,7 @@ export function rolesForPhase(
   return options.roles.filter(
     (role) =>
       role.phase === TACTIC_PHASES[phase].rolePhase &&
-      role.positionTags.includes(position),
+      role.positionTags.includes(basePosition(position)),
   );
 }
 
@@ -78,13 +97,30 @@ export type PhasePositionPlacement = {
   rowSize: 1 | 2 | 3;
 };
 
-const CENTRAL_POSITION_LABELS: Record<string, string> = {
-  DC: "DC",
-  DM: "DM",
-  MC: "MC",
-  AMC: "AMC",
-  ST: "STC",
+const CENTRAL_BASE_POSITIONS = new Set(["DC", "DM", "MC", "AMC", "ST"]);
+
+const PLACEMENT_COLUMNS: Record<string, PhasePositionColumn> = {
+  DCR: "right",
+  DC: "centre",
+  DCL: "left",
+  DMCR: "right",
+  DM: "centre",
+  DMCL: "left",
+  MCR: "right",
+  MC: "centre",
+  MCL: "left",
+  AMCR: "right",
+  AMC: "centre",
+  AMCL: "left",
+  STCR: "right",
+  ST: "centre",
+  STC: "centre",
+  STCL: "left",
 };
+
+function canonicalPlacement(placement: string): string {
+  return placement === "ST" ? "STC" : placement;
+}
 
 const CENTRAL_COLUMNS: Record<1 | 2 | 3, PhasePositionColumn[]> = {
   1: ["centre"],
@@ -97,7 +133,7 @@ function positionPlacement(
   index: number,
   count: number,
 ): PhasePositionPlacement {
-  if (!(position in CENTRAL_POSITION_LABELS)) {
+  if (!CENTRAL_BASE_POSITIONS.has(basePosition(position))) {
     return { column: "centre", row: index, rowSize: 1 };
   }
 
@@ -114,18 +150,30 @@ export function phasePositionLayout(
 ): Map<string, PhasePositionPlacement> {
   const grouped = new Map<string, TacticLane[]>();
   for (const lane of lanes) {
-    const position = phasePosition(lane, phase);
+    const position = basePosition(phasePosition(lane, phase));
     const positionLanes = grouped.get(position) ?? [];
     positionLanes.push(lane);
     grouped.set(position, positionLanes);
   }
 
   const layout = new Map<string, PhasePositionPlacement>();
-  for (const [position, positionLanes] of grouped) {
+  for (const [base, positionLanes] of grouped) {
+    const placements = positionLanes.map((lane) => phasePosition(lane, phase));
+    const hasExplicitUniquePlacements =
+      CENTRAL_BASE_POSITIONS.has(base) &&
+      new Set(placements.map(canonicalPlacement)).size === placements.length &&
+      placements.every((placement) => placement in PLACEMENT_COLUMNS);
+
     positionLanes.forEach((lane, index) => {
       layout.set(
         lane.laneId,
-        positionPlacement(position, index, positionLanes.length),
+        hasExplicitUniquePlacements
+          ? {
+              column: PLACEMENT_COLUMNS[phasePosition(lane, phase)],
+              row: 0,
+              rowSize: 3,
+            }
+          : positionPlacement(base, index, positionLanes.length),
       );
     });
   }
@@ -142,16 +190,28 @@ export function phasePositionLabel(
     return "Position";
   }
 
-  const label = CENTRAL_POSITION_LABELS[position] ?? position;
   const placement = phasePositionLayout(phase, lanes).get(lane.laneId);
   if (!placement) {
-    return label;
+    return position;
+  }
+
+  const matchingPlacementCount = lanes.filter(
+    (candidate) => phasePosition(candidate, phase) === position,
+  ).length;
+  if (
+    position in PLACEMENT_COLUMNS &&
+    (position !== basePosition(position) || matchingPlacementCount === 1)
+  ) {
+    return position === "ST" ? "STC" : position;
   }
 
   const positionedLabel =
-    position in CENTRAL_POSITION_LABELS && placement.column !== "centre"
-      ? `${label}${placement.column === "left" ? "L" : "R"}`
-      : label;
+    CENTRAL_BASE_POSITIONS.has(basePosition(position)) &&
+    placement.column !== "centre"
+      ? `${basePosition(position)}${placement.column === "left" ? "L" : "R"}`
+      : position === "ST"
+        ? "STC"
+        : position;
   return placement.row === 0
     ? positionedLabel
     : `${positionedLabel} (row ${placement.row + 1})`;
@@ -207,6 +267,10 @@ export function validateTacticDraft(
   }
 
   const importanceRanks = new Set<number>();
+  const phasePlacements = {
+    ip: new Set<string>(),
+    oop: new Set<string>(),
+  };
   for (const lane of tactic.lanes) {
     if (
       !Number.isFinite(lane.ipWeight) ||
@@ -234,6 +298,11 @@ export function validateTacticDraft(
     }
     for (const phase of ["ip", "oop"] as const) {
       const position = phasePosition(lane, phase);
+      const placement = canonicalPlacement(position);
+      if (phasePlacements[phase].has(placement)) {
+        return `${placement} is already used in the ${TACTIC_PHASES[phase].label} phase.`;
+      }
+      phasePlacements[phase].add(placement);
       const role = options.roles.find(
         (candidate) => candidate.roleId === phaseRoleId(lane, phase),
       );
@@ -241,7 +310,7 @@ export function validateTacticDraft(
         !position ||
         !role ||
         role.phase !== TACTIC_PHASES[phase].rolePhase ||
-        !role.positionTags.includes(position)
+        !role.positionTags.includes(basePosition(position))
       ) {
         const position = phasePositionLabel(lane, phase, tactic.lanes);
         return `Choose a compatible ${TACTIC_PHASES[phase].shortLabel} role for ${position}.`;

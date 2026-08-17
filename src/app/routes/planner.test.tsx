@@ -22,7 +22,10 @@ import type {
   PlannerSlotCandidate,
 } from "@/features/planner/types/depth";
 import type { PlannerTactic } from "@/features/planner/types/tactic";
-import { phasePositionLabel } from "@/features/planner/utils/tactic-editor";
+import {
+  phasePositionLabel,
+  validateTacticDraft,
+} from "@/features/planner/utils/tactic-editor";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
@@ -40,6 +43,7 @@ import {
   getPlannerSlotCandidateFetchCount,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
+  resolvePlannerTacticOptionsIpcMock,
   resolveSavePlannerClubFamilyIpcMock,
   setPlannerAddStringError,
   setPlannerAddStringPending,
@@ -1332,6 +1336,23 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes[1] = {
+      ...tactic.lanes[1],
+      ipPosition: "DCR",
+      ipRoleId: "centre_back_ip",
+      oopPosition: "DCR",
+      oopRoleId: "covering_centre_back_oop",
+    };
+    tactic.lanes[2] = {
+      ...tactic.lanes[2],
+      ipPosition: "DC",
+      oopPosition: "DC",
+    };
+    setPlannerTacticIpcMock(tactic);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.tactic = tactic;
+    setPlannerDepthIpcMock(depth);
     renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
@@ -1665,6 +1686,15 @@ describe("planner route", () => {
     expect(mcGroup).not.toBeNull();
     expect(mcGroup).toContainElement(centreMc);
     expect(mcGroup).toContainElement(leftMc);
+    expect(
+      within(mcGroup as HTMLElement)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "IP: MCL · Box-to-Box Midfielder",
+      "IP: MC · Advanced Playmaker",
+      "IP: MCR · Central Midfielder",
+    ]);
     expect(mcGroup).toHaveAttribute("data-position-slot-count", "3");
     for (const pitch of await screen.findAllByRole("group", {
       name: /pitch$/,
@@ -1709,12 +1739,12 @@ describe("planner route", () => {
     });
     expect(defensiveMidfielder).toBeInTheDocument();
     expect(defensiveMidfielder.parentElement).toHaveStyle({
-      gridColumn: "1 / span 2",
+      gridColumn: "3 / span 2",
       gridRow: "1",
     });
     expect(
       defensiveMidfielder.closest('[data-position-group="DM"]'),
-    ).toHaveStyle({ gridColumn: "5 / span 2" });
+    ).toHaveStyle({ gridColumn: "3 / span 6" });
     const leftMidfielder = screen.getByRole("button", {
       name: "IP: ML · Wide Midfielder",
     });
@@ -1960,6 +1990,70 @@ describe("planner route", () => {
 
     expect(resolvePlannerTacticIpcMock().lanes[0].ipWeight).toBe(0.5);
     expect(resolvePlannerTacticIpcMock().lanes[1].ipWeight).toBe(0.51);
+  });
+
+  it("saves an explicit midfield side without clearing its compatible role", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "IP: MCR · Central Midfielder",
+      }),
+    );
+    const position = screen.getByRole("combobox", {
+      name: "IP MCR position",
+    });
+    const role = screen.getByRole("combobox", {
+      name: "IP MCR role",
+    });
+
+    await user.selectOptions(position, "MC");
+    await user.selectOptions(position, "MCR");
+
+    expect(role).toHaveValue("central_midfielder_ip");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+    expect(resolvePlannerTacticIpcMock().lanes[6]).toMatchObject({
+      ipPosition: "MCR",
+      ipRoleId: "central_midfielder_ip",
+    });
+  });
+
+  it("blocks two lanes from using the same sided placement", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "IP: MCR · Central Midfielder",
+      }),
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "IP MCR position" }),
+      "MCL",
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "MCL is already used in the In-Possession phase.",
+    );
+    expect(screen.getByRole("button", { name: "Save tactic" })).toBeDisabled();
+  });
+
+  it("treats legacy ST and canonical STC as the same placement", () => {
+    const tactic = resolvePlannerTacticIpcMock();
+    tactic.lanes[0] = {
+      ...tactic.lanes[0],
+      ipPosition: "ST",
+      ipRoleId: "centre_forward_ip",
+    };
+
+    expect(
+      validateTacticDraft(tactic, resolvePlannerTacticOptionsIpcMock()),
+    ).toBe("STC is already used in the In-Possession phase.");
   });
 
   it("saves and reloads the selected lane importance rank", async () => {

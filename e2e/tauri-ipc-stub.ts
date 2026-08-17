@@ -123,15 +123,15 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         lanes: [
           ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
           ["left_back", "DL", "full_back_ip", "DL", "holding_full_back_oop"],
-          ["left_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
-          ["right_centre_back", "DC", "centre_back_ip", "DC", "covering_centre_back_oop"],
+          ["left_centre_back", "DCR", "centre_back_ip", "DCR", "covering_centre_back_oop"],
+          ["right_centre_back", "DCL", "centre_back_ip", "DCL", "covering_centre_back_oop"],
           ["right_back", "DR", "full_back_ip", "DR", "holding_full_back_oop"],
           ["defensive_midfielder", "DM", "defensive_midfielder_ip", "DM", "screening_defensive_midfielder_oop"],
-          ["left_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
-          ["right_central_midfielder", "MC", "central_midfielder_ip", "MC", "pressing_central_midfielder_oop"],
+          ["left_central_midfielder", "MCR", "central_midfielder_ip", "MCR", "pressing_central_midfielder_oop"],
+          ["right_central_midfielder", "MCL", "central_midfielder_ip", "MCL", "pressing_central_midfielder_oop"],
           ["left_winger", "AML", "winger_ip", "ML", "tracking_wide_midfielder_oop"],
           ["right_winger", "AMR", "winger_ip", "MR", "tracking_wide_midfielder_oop"],
-          ["centre_forward", "ST", "centre_forward_ip", "ST", "central_outlet_centre_forward_oop"],
+          ["centre_forward", "STC", "centre_forward_ip", "STC", "central_outlet_centre_forward_oop"],
         ].map(([laneId, ipPosition, ipRoleId, oopPosition, oopRoleId]) => ({
           laneId,
           ipWeight: 0.5,
@@ -1002,7 +1002,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
 
           if (cmd === "get_planner_tactic_options") {
             return {
-              placements: ["GK", "DL", "DC", "DR", "DM", "MC", "ML", "MR", "AML", "AMR", "ST"],
+              placements: ["GK", "DL", "DCR", "DC", "DCL", "DR", "DMCR", "DM", "DMCL", "MCR", "MC", "MCL", "ML", "MR", "AML", "AMCR", "AMC", "AMCL", "AMR", "STCR", "STC", "STCL"],
               roles: [
                 { roleId: "goalkeeper_ip", displayName: "Goalkeeper", phase: "in_possession", positionTags: ["GK"] },
                 { roleId: "line_holding_keeper_oop", displayName: "Line-Holding Keeper", phase: "out_of_possession", positionTags: ["GK"] },

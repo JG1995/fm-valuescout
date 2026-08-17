@@ -1,6 +1,7 @@
 import { useId } from "react";
 import type { TacticLane, TacticOptions } from "../types/tactic";
 import {
+  basePosition,
   type PhasePositionPlacement,
   phaseDescription,
   phasePosition,
@@ -75,6 +76,7 @@ const PITCH_ROWS = [
 const MIN_PITCH_SLOT_COUNT = 3;
 const MAX_PITCH_SLOT_COUNT = 5;
 const TACTIC_PHASE_IDS: TacticPhase[] = ["ip", "oop"];
+const POSITION_COLUMN_ORDER = { left: 0, centre: 1, right: 2 } as const;
 
 function LaneButton({
   phase,
@@ -172,7 +174,8 @@ function PitchBoard({
         const positionLanes = row.cells.map((cell) =>
           cell.position
             ? lanes.filter(
-                (lane) => phasePosition(lane, phase) === cell.position,
+                (lane) =>
+                  basePosition(phasePosition(lane, phase)) === cell.position,
               )
             : [],
         );
@@ -194,7 +197,11 @@ function PitchBoard({
                     (positionLayout.get(lane.laneId)?.row ?? 0) === visualRow,
                 ),
               );
-              const groupTracks = positionGroupTracks(rowLanes, slotCount);
+              const groupTracks = positionGroupTracks(
+                rowLanes,
+                slotCount,
+                positionLayout,
+              );
               const visualRowKey =
                 rowLanes
                   .flat()
@@ -216,7 +223,18 @@ function PitchBoard({
                       return null;
                     }
 
-                    const cellRowLanes = rowLanes[cellIndex];
+                    const cellRowLanes = [...rowLanes[cellIndex]].sort(
+                      (left, right) => {
+                        const leftColumn =
+                          positionLayout.get(left.laneId)?.column ?? "centre";
+                        const rightColumn =
+                          positionLayout.get(right.laneId)?.column ?? "centre";
+                        return (
+                          POSITION_COLUMN_ORDER[leftColumn] -
+                          POSITION_COLUMN_ORDER[rightColumn]
+                        );
+                      },
+                    );
                     return (
                       <div
                         className="grid min-h-16 min-w-0 gap-1 rounded-md border border-outline-variant bg-surface-container-high"
@@ -300,17 +318,31 @@ function tacticSlotCount(lanes: TacticLane[]): number {
           cell.position ? [cell.position] : [],
         ),
       );
-      const rowCounts = new Map<number, number>();
+      const rowWidths = new Map<number, { centre: number; outer: number }>();
 
       for (const lane of lanes) {
-        if (!rowPositions.has(phasePosition(lane, phase))) {
+        const position = basePosition(phasePosition(lane, phase));
+        if (!rowPositions.has(position)) {
           continue;
         }
-        const visualRow = layout.get(lane.laneId)?.row ?? 0;
-        rowCounts.set(visualRow, (rowCounts.get(visualRow) ?? 0) + 1);
+        const placement = layout.get(lane.laneId);
+        const visualRow = placement?.row ?? 0;
+        const width = rowWidths.get(visualRow) ?? { centre: 0, outer: 0 };
+        if (pitchRow.cells[1].position === position) {
+          width.centre = Math.max(width.centre, placement?.rowSize ?? 1);
+        } else {
+          width.outer += 1;
+        }
+        rowWidths.set(visualRow, width);
       }
 
-      densestRow = Math.max(densestRow, ...rowCounts.values());
+      densestRow = Math.max(
+        densestRow,
+        ...Array.from(
+          rowWidths.values(),
+          ({ centre, outer }) => centre + outer,
+        ),
+      );
     }
   }
 
@@ -323,8 +355,12 @@ function tacticSlotCount(lanes: TacticLane[]): number {
 function positionGroupTracks(
   rowLanes: TacticLane[][],
   slotCount: number,
+  layout: Map<string, PhasePositionPlacement>,
 ): { start: number; span: number }[] {
-  const centreSlots = Math.max(1, rowLanes[1].length);
+  const centreSlots = Math.max(
+    1,
+    ...rowLanes[1].map((lane) => layout.get(lane.laneId)?.rowSize ?? 1),
+  );
   const outerTracks = slotCount * 2 - centreSlots * 2;
   const leftMinimum = rowLanes[0].length > 0 ? 2 : 0;
   const rightMinimum = rowLanes[2].length > 0 ? 2 : 0;
