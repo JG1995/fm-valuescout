@@ -63,6 +63,7 @@ pub fn run() {
             features::snapshot::commands::list_sanity_players,
             features::snapshot::commands::load_data,
             features::csv_import::commands::import_csv,
+            features::csv_import::commands::import_staff_shortlist_csv,
             features::search::commands::search_players,
             features::search::commands::suggest_players,
             features::staff::commands::search_staff,

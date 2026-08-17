@@ -247,7 +247,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 #### Commit 2 — Transactional Staff CSV replacement
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): replace staff shortlists from CSV`
 
@@ -323,7 +323,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 #### Commit 3 — Bounded shortlist staff queries
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): query CSV-backed staff shortlists`
 
@@ -590,6 +590,7 @@ No Staff Shortlist query scope, Preferred Job or unemployment filtering, React u
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Save-owned shortlist persistence | Pending record | Migration v27 adds save-owned shortlist rows, uniqueness, exact-job index, and upgrade/cascade tests | Cleared after 1 fix round | None |
+| PR 1 | Commit 2 — Transactional Staff CSV replacement | Pending record | Dedicated bounded staff CSV parser and transactional save-scoped replacement command with safe summary | Cleared after 1 coverage round | None |
 
 ## Final validation
 

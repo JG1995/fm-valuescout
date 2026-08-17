@@ -3,6 +3,7 @@ mod error;
 mod model;
 pub(crate) mod parser;
 pub(crate) mod service;
+pub(crate) mod staff_shortlist;
 mod statistics;
 
 pub(crate) use error::CsvImportError;

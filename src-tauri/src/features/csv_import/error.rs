@@ -45,7 +45,7 @@ impl std::fmt::Display for CsvImportError {
                     "CSV record {row} repeats the Unique ID from record {first_row}"
                 )
             }
-            Self::TooManyRows { limit } => write!(f, "CSV contains more than {limit} player rows"),
+            Self::TooManyRows { limit } => write!(f, "CSV contains more than {limit} rows"),
         }
     }
 }

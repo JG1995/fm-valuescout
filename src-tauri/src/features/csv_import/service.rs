@@ -32,11 +32,16 @@ pub(crate) struct CsvImportSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImportContext {
-    save_id: i64,
-    save_context_token: String,
-    snapshot_id: i64,
-    snapshot_context_token: String,
+    active: ActiveImportContext,
     player_uids: HashSet<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ActiveImportContext {
+    pub(crate) save_id: i64,
+    save_context_token: String,
+    pub(crate) snapshot_id: i64,
+    snapshot_context_token: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,7 +73,7 @@ impl std::fmt::Display for CsvImportServiceError {
             Self::FormatMismatch => {
                 write!(f, "CSV does not match the selected upload format")
             }
-            Self::TooManyRows => write!(f, "CSV contains more than 1000 player rows"),
+            Self::TooManyRows => write!(f, "CSV contains more than 1000 rows"),
             Self::InvalidCsv(error) => write!(f, "CSV file is invalid: {error}"),
             Self::Database => write!(f, "CSV import is unavailable"),
         }
@@ -142,6 +147,26 @@ pub(crate) struct PreparedMoneyballStats {
 pub(crate) fn capture_import_context(
     conn: &Connection,
 ) -> Result<ImportContext, CsvImportServiceError> {
+    let active = capture_active_import_context(conn)?;
+
+    let mut statement = conn
+        .prepare("SELECT uid FROM players WHERE snapshot_id = ?1")
+        .map_err(|_| CsvImportServiceError::Database)?;
+    let player_uids = statement
+        .query_map([active.snapshot_id], |row| row.get(0))
+        .map_err(|_| CsvImportServiceError::Database)?
+        .collect::<Result<HashSet<_>, _>>()
+        .map_err(|_| CsvImportServiceError::Database)?;
+
+    Ok(ImportContext {
+        active,
+        player_uids,
+    })
+}
+
+pub(crate) fn capture_active_import_context(
+    conn: &Connection,
+) -> Result<ActiveImportContext, CsvImportServiceError> {
     let context = conn
         .query_row(
             "SELECT sv.id, sv.context_token, s.id, s.context_token
@@ -156,21 +181,11 @@ pub(crate) fn capture_import_context(
         .map_err(|_| CsvImportServiceError::Database)?
         .ok_or(CsvImportServiceError::NoCurrentSnapshot)?;
 
-    let mut statement = conn
-        .prepare("SELECT uid FROM players WHERE snapshot_id = ?1")
-        .map_err(|_| CsvImportServiceError::Database)?;
-    let player_uids = statement
-        .query_map([context.2], |row| row.get(0))
-        .map_err(|_| CsvImportServiceError::Database)?
-        .collect::<Result<HashSet<_>, _>>()
-        .map_err(|_| CsvImportServiceError::Database)?;
-
-    Ok(ImportContext {
+    Ok(ActiveImportContext {
         save_id: context.0,
         save_context_token: context.1,
         snapshot_id: context.2,
         snapshot_context_token: context.3,
-        player_uids,
     })
 }
 
@@ -225,7 +240,7 @@ pub(crate) fn persist_csv_import(
                 if !context.player_uids.contains(&player.player_uid) {
                     continue;
                 }
-                upsert_youth_career_stats(&tx, context.save_id, &player)?;
+                upsert_youth_career_stats(&tx, context.active.save_id, &player)?;
                 stored_players += 1;
             }
             CsvImportSummary {
@@ -242,7 +257,7 @@ pub(crate) fn persist_csv_import(
                 if !context.player_uids.contains(&player.player_uid) {
                     continue;
                 }
-                upsert_moneyball_stats(&tx, context.snapshot_id, &player)?;
+                upsert_moneyball_stats(&tx, context.active.snapshot_id, &player)?;
                 stored_players += 1;
             }
             CsvImportSummary {
@@ -259,6 +274,11 @@ pub(crate) fn persist_csv_import(
 }
 
 fn parse_csv_file(path: &Path) -> Result<ParsedCsv, CsvImportServiceError> {
+    let input = read_csv_file(path)?;
+    parse_csv_with_row_limit(&input, Some(MAX_CSV_ROWS)).map_err(map_csv_error)
+}
+
+pub(crate) fn read_csv_file(path: &Path) -> Result<String, CsvImportServiceError> {
     let metadata = fs::symlink_metadata(path).map_err(|_| CsvImportServiceError::InvalidFile)?;
     if !metadata.file_type().is_file() || !has_csv_extension(path) {
         return Err(CsvImportServiceError::InvalidFile);
@@ -274,13 +294,19 @@ fn parse_csv_file(path: &Path) -> Result<ParsedCsv, CsvImportServiceError> {
     if !metadata.file_type().is_file() {
         return Err(CsvImportServiceError::InvalidFile);
     }
-    let input = read_bounded_file(&mut file)?;
-    parse_csv_with_row_limit(&input, Some(MAX_CSV_ROWS)).map_err(map_csv_error)
+    read_bounded_file(&mut file)
 }
 
 pub(crate) fn revalidate_import_context(
     conn: &Connection,
     context: &ImportContext,
+) -> Result<(), CsvImportServiceError> {
+    revalidate_active_import_context(conn, &context.active)
+}
+
+pub(crate) fn revalidate_active_import_context(
+    conn: &Connection,
+    context: &ActiveImportContext,
 ) -> Result<(), CsvImportServiceError> {
     let is_current: bool = conn
         .query_row(
@@ -683,7 +709,7 @@ mod tests {
 
         let latest_context =
             capture_import_context(&conn).expect("capture effective latest context");
-        assert_eq!(latest_context.snapshot_id, second_snapshot_id);
+        assert_eq!(latest_context.active.snapshot_id, second_snapshot_id);
         persist_csv_import(&mut conn, &latest_context, moneyball_import(1, 4_000_000))
             .expect("import against effective current snapshot");
         assert_eq!(
@@ -788,7 +814,7 @@ mod tests {
 
         conn.execute(
             "UPDATE snapshots SET is_current = 0 WHERE id = ?1",
-            [context.snapshot_id],
+            [context.active.snapshot_id],
         )
         .expect("replace current snapshot");
 
@@ -821,7 +847,7 @@ mod tests {
         let import = prepare_csv_import(&path).expect("prepare import outside transaction");
         conn.execute(
             "UPDATE saves SET is_active = 0 WHERE id = ?1",
-            [context.save_id],
+            [context.active.save_id],
         )
         .expect("deactivate captured save");
         conn.execute(
@@ -1112,10 +1138,14 @@ mod tests {
         seed_current_snapshot(&mut conn, &[1]);
         let context = capture_import_context(&conn).expect("capture current snapshot");
 
-        conn.execute("DELETE FROM snapshots WHERE id = ?1", [context.snapshot_id])
-            .expect("delete captured snapshot");
-        let replacement_snapshot_id = insert_snapshot(&mut conn, context.save_id, true, &[1]);
-        assert_eq!(replacement_snapshot_id, context.snapshot_id);
+        conn.execute(
+            "DELETE FROM snapshots WHERE id = ?1",
+            [context.active.snapshot_id],
+        )
+        .expect("delete captured snapshot");
+        let replacement_snapshot_id =
+            insert_snapshot(&mut conn, context.active.save_id, true, &[1]);
+        assert_eq!(replacement_snapshot_id, context.active.snapshot_id);
 
         assert_eq!(
             revalidate_import_context(&conn, &context).expect_err("reject reused snapshot id"),
