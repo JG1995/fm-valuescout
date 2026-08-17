@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-17
+
+### Added
+
+- Staff Shortlist imports a save-owned Football Manager staff CSV, keeps Preferred Job, Club Job, and Coaching Qualifications, and shows only current matched staff.
+- Staff Shortlist filters exact Preferred Job values and unemployed staff, and adapts role-score columns for direct jobs and Coach.
+
 ## [0.5.2] - 2026-08-17
 
 ### Fixed

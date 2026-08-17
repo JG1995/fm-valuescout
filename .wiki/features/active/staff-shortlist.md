@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -148,7 +148,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 ### PR 1 — CSV-backed Staff Shortlist workspace
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -496,7 +496,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 #### Commit 5 — Minor release preparation
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `chore(release): prepare version 0.6.0`
 
@@ -562,21 +562,21 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 ## Active work
 
-**PR:** PR 1 — CSV-backed Staff Shortlist workspace
+**PR:** PR 1 — CSV-backed Staff Shortlist workspace (Ready for publication)
 
-**Commit:** Commit 5 — Minor release preparation
+**Commit:** No active implementation commit
 
 ### RED proof
 
-Add Staff query and command tests for a bounded Shortlist page that joins save-owned CSV metadata to the active current snapshot, filters exact Preferred Job and unemployment before paging, and distinguishes no shortlist from no current snapshot. The existing two-scope query path must fail those assertions because it has no Shortlist scope or DTO.
+`./scripts/dev release-metadata v0.5.2 minor` rejects the old patch release-preparation record because its intent does not match the planned minor release.
 
 ### Expected outcome
 
-A trusted Rust command returns bounded current staff rows with typed shortlist metadata, preferred-job options, and pre-paging exact filters while preserving Search and My Staff behavior.
+Version owners, release preparation, and the dated changelog section consistently prepare the complete Staff Shortlist capability as version 0.6.0.
 
 ### Explicit exclusions
 
-No React route, table layout, upload dialog, profile enrichment, or release metadata belongs in Commit 3.
+No feature implementation, publication, tagging, pushing, pull-request creation, or merging belongs in Commit 5.
 
 ## Discoveries and replanning
 
@@ -592,6 +592,8 @@ No React route, table layout, upload dialog, profile enrichment, or release meta
 | PR 1 | Commit 1 — Save-owned shortlist persistence | Pending record | Migration v27 adds save-owned shortlist rows, uniqueness, exact-job index, and upgrade/cascade tests | Cleared after 1 fix round | None |
 | PR 1 | Commit 2 — Transactional Staff CSV replacement | Pending record | Dedicated bounded staff CSV parser and transactional save-scoped replacement command with safe summary | Cleared after 1 coverage round | None |
 | PR 1 | Commit 3 — Bounded shortlist staff queries | Pending record | Bounded current-snapshot shortlist pages, typed metadata, pre-paging filters, scoped sorts, and IPC | Cleared after 2 coverage rounds | None |
+| PR 1 | Commit 4 — Staff Shortlist workspace | Pending record | Shortlist tab, CSV upload and replacement interaction, adaptive score views, and persisted table state | Cleared after 3 fix rounds | None |
+| PR 1 | Commit 5 — Minor release preparation | Pending record | Version 0.6.0, complete changelog entry, and matching minor release authorization | Cleared with no fix rounds | None |
 
 ## Final validation
 
