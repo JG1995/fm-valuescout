@@ -12,7 +12,7 @@ use super::depth::{
     current_snapshot_id, ensure_depth, get_depth, insert_assignment, AssignmentProvenance,
     PlannerDepth, PlannerTeam, PLANNER_TEAMS,
 };
-use super::tactic::{PlannerTactic, TacticLane, TACTIC_LANE_COUNT};
+use super::tactic::{base_position, PlannerTactic, TacticLane, TACTIC_LANE_COUNT};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct OptimizerCandidate {
@@ -717,11 +717,38 @@ fn is_suitable_for_lane(
 ) -> bool {
     let has_suitability = |position: &str| {
         positions
-            .get(position)
+            .get(base_position(position))
             .copied()
             .flatten()
             .is_some_and(|suitability| suitability >= 15)
     };
     has_suitability(&lane.ip_position)
-        && (lane.ip_position == lane.oop_position || has_suitability(&lane.oop_position))
+        && (base_position(&lane.ip_position) == base_position(&lane.oop_position)
+            || has_suitability(&lane.oop_position))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::is_suitable_for_lane;
+    use crate::features::planner::tactic::TacticLane;
+
+    #[test]
+    fn sided_placements_use_base_position_familiarity() {
+        let positions = BTreeMap::from([("MC".to_string(), Some(18))]);
+        let lane = TacticLane {
+            lane_id: "midfielder".to_string(),
+            ip_weight: 0.5,
+            importance_rank: None,
+            preferred_foot: "any".to_string(),
+            foot_preference: "preferred".to_string(),
+            ip_position: "MCR".to_string(),
+            ip_role_id: "central_midfielder_ip".to_string(),
+            oop_position: "MCL".to_string(),
+            oop_role_id: "pressing_central_midfielder_oop".to_string(),
+        };
+
+        assert!(is_suitable_for_lane(&positions, &lane));
+    }
 }

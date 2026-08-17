@@ -1144,9 +1144,19 @@ test.describe("application smoke", () => {
       .locator('[data-position-group="AMR"]');
     await expect(rightMc).toBeVisible();
     await expect(leftMc).toBeVisible();
+    await rightMc.click();
+    await main
+      .getByRole("combobox", { name: "IP MCR position" })
+      .selectOption("MC");
+    await expect(
+      main.getByRole("combobox", { name: "IP MC role" }),
+    ).toHaveValue("central_midfielder_ip");
+    await main
+      .getByRole("combobox", { name: "IP MC position" })
+      .selectOption("MCR");
     await expect(pitches).toHaveCount(2);
-    await expect(pitches.first()).toHaveAttribute("data-pitch-slot-count", "4");
-    await expect(pitches.last()).toHaveAttribute("data-pitch-slot-count", "4");
+    await expect(pitches.first()).toHaveAttribute("data-pitch-slot-count", "5");
+    await expect(pitches.last()).toHaveAttribute("data-pitch-slot-count", "5");
     const [
       rightMcBox,
       leftMcBox,
@@ -1179,7 +1189,7 @@ test.describe("application smoke", () => {
     expect(rightMcBox.width).toBeCloseTo(leftMcBox.width, 1);
     expect(rightMcBox.width).toBeCloseTo(leftWingerBox.width, 1);
     expect(rightMcBox.width).toBeCloseTo(rightWingerBox.width, 1);
-    expect(rightMcBox.width).toBeGreaterThan(bothPitchBox.width * 0.2);
+    expect(rightMcBox.width).toBeGreaterThan(bothPitchBox.width * 0.15);
     expect(leftMcBox.x + leftMcBox.width).toBeLessThan(rightMcBox.x);
     expect(leftWingerBox.x + leftWingerBox.width).toBeLessThan(
       rightWingerBox.x,

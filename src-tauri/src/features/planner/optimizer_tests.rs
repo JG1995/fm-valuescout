@@ -333,11 +333,11 @@ fn optimizer_uses_the_exact_matcher_when_lanes_are_unranked() {
          SET score = NULL
          WHERE snapshot_id = ?1
            AND uid IN (77, 78)
-           AND role_id NOT IN ('inside_forward_ip', 'winger_ip', 'tracking_wide_midfielder_oop')",
+           AND role_id NOT IN ('inside_winger_ip', 'winger_ip', 'tracking_wide_midfielder_oop')",
         [snapshot_id],
     )
     .expect("limit candidates to conflicting winger lanes");
-    set_role_score(&conn, save_id, 77, "inside_forward_ip", Some(100));
+    set_role_score(&conn, save_id, 77, "inside_winger_ip", Some(100));
     set_role_score(&conn, save_id, 77, "winger_ip", Some(98));
     set_role_score(
         &conn,
@@ -346,13 +346,15 @@ fn optimizer_uses_the_exact_matcher_when_lanes_are_unranked() {
         "tracking_wide_midfielder_oop",
         Some(100),
     );
-    set_role_score(&conn, save_id, 78, "inside_forward_ip", Some(98));
+    set_role_score(&conn, save_id, 78, "inside_winger_ip", Some(98));
     set_role_score(&conn, save_id, 78, "winger_ip", None);
     set_role_score(&conn, save_id, 78, "tracking_wide_midfielder_oop", Some(98));
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
-    tactic.lanes[8].ip_position = "AMR".to_string();
-    tactic.lanes[8].oop_position = "MR".to_string();
-    tactic.lanes[8].ip_role_id = "inside_forward_ip".to_string();
+    set_player_positions(&conn, save_id, 77, r#"{"ML": 18, "MR": 18, "AMR": 18}"#);
+    set_player_positions(&conn, save_id, 78, r#"{"ML": 18, "MR": 18, "AMR": 18}"#);
+    tactic.lanes[8].ip_position = "MR".to_string();
+    tactic.lanes[8].oop_position = "ML".to_string();
+    tactic.lanes[8].ip_role_id = "inside_winger_ip".to_string();
     tactic::save_tactic(&conn, save_id, &tactic).expect("save conflicting unranked lanes");
 
     let optimized = optimize_depth(&conn, save_id).expect("optimize unranked tactic");
@@ -390,8 +392,10 @@ fn optimizer_assigns_ranked_lanes_in_ascending_order() {
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(100));
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
-    tactic.lanes[8].ip_position = "AMR".to_string();
-    tactic.lanes[8].oop_position = "MR".to_string();
+    set_player_positions(&conn, save_id, 77, r#"{"ML": 18, "MR": 18, "AMR": 18}"#);
+    set_player_positions(&conn, save_id, 78, r#"{"ML": 18, "MR": 18, "AMR": 18}"#);
+    tactic.lanes[8].ip_position = "MR".to_string();
+    tactic.lanes[8].oop_position = "ML".to_string();
     tactic.lanes[8].importance_rank = Some(11);
     tactic.lanes[9].importance_rank = Some(1);
     tactic::save_tactic(&conn, save_id, &tactic).expect("save ranked tactic");
