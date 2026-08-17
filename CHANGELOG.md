@@ -6,12 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-08-17
+
+### Fixed
+
+- Tactic positions can use distinct right, centre, and left central placements without losing role compatibility or optimizer familiarity.
+
 ## [0.5.1] - 2026-08-17
 
 ### Fixed
 
 - Scrollable suggestion menus remain visible and interactive when opened inside clipped panels, modal scroll regions, or the app shell.
-- Tactic positions can use distinct right, centre, and left central placements without losing role compatibility or optimizer familiarity.
 
 ## [0.5.0] - 2026-08-16
 
