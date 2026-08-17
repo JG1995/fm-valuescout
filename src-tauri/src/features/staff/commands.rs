@@ -12,7 +12,7 @@ use crate::features::player::boost_gate;
 use super::filter::{self, FilterAst, FilterRule};
 use super::query::{
     self, SortDir, SortField, StaffDetail, StaffPage, StaffPageState, StaffRoleScore, StaffScope,
-    StaffSummary,
+    StaffShortlistMetadata, StaffSummary,
 };
 use super::service::{
     self, PreparedStaffBoost, StaffBoostBatchContext, StaffBoostError, VerifiedStaffBoost,
@@ -55,6 +55,25 @@ pub struct StaffSummaryDto {
     pub contract_expiry_year: Option<i64>,
     pub contract_expiry_day_of_year: Option<i64>,
     pub dynamic_values: BTreeMap<String, Option<i64>>,
+    pub shortlist: Option<StaffShortlistMetadataDto>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffShortlistMetadataDto {
+    pub preferred_job: String,
+    pub club_job: String,
+    pub coaching_qualifications: String,
+}
+
+impl From<StaffShortlistMetadata> for StaffShortlistMetadataDto {
+    fn from(value: StaffShortlistMetadata) -> Self {
+        Self {
+            preferred_job: value.preferred_job,
+            club_job: value.club_job,
+            coaching_qualifications: value.coaching_qualifications,
+        }
+    }
 }
 impl From<StaffSummary> for StaffSummaryDto {
     fn from(row: StaffSummary) -> Self {
@@ -76,6 +95,7 @@ impl From<StaffSummary> for StaffSummaryDto {
             contract_expiry_year: row.contract_expiry_year,
             contract_expiry_day_of_year: row.contract_expiry_day_of_year,
             dynamic_values: row.dynamic_values,
+            shortlist: row.shortlist.map(StaffShortlistMetadataDto::from),
         }
     }
 }
@@ -86,6 +106,7 @@ pub struct StaffPageDto {
     pub state: &'static str,
     pub staff: Vec<StaffSummaryDto>,
     pub total: i64,
+    pub preferred_job_options: Vec<String>,
 }
 impl From<StaffPage> for StaffPageDto {
     fn from(page: StaffPage) -> Self {
@@ -94,9 +115,11 @@ impl From<StaffPage> for StaffPageDto {
                 StaffPageState::Ready => "ready",
                 StaffPageState::NoCurrentSnapshot => "no_current_snapshot",
                 StaffPageState::NoClubFamily => "no_club_family",
+                StaffPageState::NoShortlist => "no_shortlist",
             },
             staff: page.staff.into_iter().map(StaffSummaryDto::from).collect(),
             total: page.total,
+            preferred_job_options: page.preferred_job_options,
         }
     }
 }
@@ -273,6 +296,44 @@ pub fn list_my_staff(
         requested_fields,
         db,
     )
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn list_staff_shortlist(
+    offset: Option<u32>,
+    limit: Option<u32>,
+    sort_by: Option<String>,
+    sort_dir: Option<String>,
+    preferred_job: Option<String>,
+    unemployed_only: Option<bool>,
+    requested_fields: Option<Vec<String>>,
+    db: State<'_, Db>,
+) -> Result<StaffPageDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let sort = sort_by
+        .as_deref()
+        .map(SortField::parse)
+        .transpose()?
+        .unwrap_or(SortField::DEFAULT);
+    let direction = sort_dir
+        .as_deref()
+        .map(SortDir::parse)
+        .transpose()?
+        .unwrap_or(SortDir::DEFAULT);
+    query::list_staff_shortlist(
+        &conn,
+        offset.unwrap_or(0) as usize,
+        limit.unwrap_or(query::DEFAULT_PAGE_LIMIT as u32) as usize,
+        sort,
+        direction,
+        preferred_job.as_deref(),
+        unemployed_only.unwrap_or(false),
+        &requested_fields.unwrap_or_default(),
+    )
+    .map(StaffPageDto::from)
 }
 
 #[tauri::command]
@@ -658,6 +719,59 @@ mod tests {
             filter::filter_value_from_json(serde_json::json!(4)).unwrap(),
             filter::FilterValue::Integer(4)
         ));
+    }
+
+    #[test]
+    fn shortlist_page_dto_serializes_metadata_options_and_state_in_camel_case() {
+        let dto = StaffPageDto::from(StaffPage {
+            state: StaffPageState::Ready,
+            staff: vec![StaffSummary {
+                uid: 88,
+                name: Some("Staff".to_string()),
+                age: None,
+                birth_year: None,
+                birth_day_of_year: None,
+                nationalities: vec![],
+                nation_uid: None,
+                gender: "unknown".to_string(),
+                club: None,
+                division: None,
+                ca: 100,
+                pa: 120,
+                job_id: None,
+                weekly_wage_gbp: None,
+                contract_expiry_year: None,
+                contract_expiry_day_of_year: None,
+                dynamic_values: BTreeMap::new(),
+                shortlist: Some(StaffShortlistMetadata {
+                    preferred_job: "Physio".to_string(),
+                    club_job: "-".to_string(),
+                    coaching_qualifications: "Continental Pro".to_string(),
+                }),
+            }],
+            total: 1,
+            preferred_job_options: vec!["Physio".to_string()],
+        });
+        let value = serde_json::to_value(dto).expect("serialize shortlist page");
+        assert_eq!(value["state"], "ready");
+        assert_eq!(value["total"], 1);
+        assert_eq!(value["preferredJobOptions"], serde_json::json!(["Physio"]));
+        assert_eq!(value["staff"][0]["shortlist"]["preferredJob"], "Physio");
+        assert_eq!(value["staff"][0]["shortlist"]["clubJob"], "-");
+        assert_eq!(
+            value["staff"][0]["shortlist"]["coachingQualifications"],
+            "Continental Pro"
+        );
+        assert_eq!(
+            serde_json::to_value(StaffPageDto::from(StaffPage {
+                state: StaffPageState::NoShortlist,
+                staff: Vec::new(),
+                total: 0,
+                preferred_job_options: Vec::new(),
+            }))
+            .expect("serialize no shortlist state")["state"],
+            "no_shortlist"
+        );
     }
 
     #[test]

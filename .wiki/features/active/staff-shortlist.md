@@ -323,7 +323,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 #### Commit 3 — Bounded shortlist staff queries
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): query CSV-backed staff shortlists`
 
@@ -400,7 +400,7 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 #### Commit 4 — Staff Shortlist workspace
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): add shortlist workspace`
 
@@ -564,19 +564,19 @@ Import one synthetic staff row for the active save, persist its UID and three CS
 
 **PR:** PR 1 — CSV-backed Staff Shortlist workspace
 
-**Commit:** Commit 2 — Transactional Staff CSV replacement
+**Commit:** Commit 4 — Staff Shortlist workspace
 
 ### RED proof
 
-Add parser and service tests for the dedicated staff CSV contract, including valid semicolon exports, exact UID reconciliation, preserved blank and `-` Club Job values, rejection without replacing an old shortlist, and transactional replacement. The current player-only import path must fail those assertions because no staff importer exists.
+Add Staff query and command tests for a bounded Shortlist page that joins save-owned CSV metadata to the active current snapshot, filters exact Preferred Job and unemployment before paging, and distinguishes no shortlist from no current snapshot. The existing two-scope query path must fail those assertions because it has no Shortlist scope or DTO.
 
 ### Expected outcome
 
-A trusted Rust command validates and parses a bounded staff CSV outside the database lock, then replaces only the captured active save's matching shortlist entries in one context-checked transaction and returns total, stored, and skipped counts.
+A trusted Rust command returns bounded current staff rows with typed shortlist metadata, preferred-job options, and pre-paging exact filters while preserving Search and My Staff behavior.
 
 ### Explicit exclusions
 
-No Staff Shortlist query scope, Preferred Job or unemployment filtering, React upload UI, table rendering, or release metadata belongs in Commit 2.
+No React route, table layout, upload dialog, profile enrichment, or release metadata belongs in Commit 3.
 
 ## Discoveries and replanning
 
@@ -591,6 +591,7 @@ No Staff Shortlist query scope, Preferred Job or unemployment filtering, React u
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Save-owned shortlist persistence | Pending record | Migration v27 adds save-owned shortlist rows, uniqueness, exact-job index, and upgrade/cascade tests | Cleared after 1 fix round | None |
 | PR 1 | Commit 2 — Transactional Staff CSV replacement | Pending record | Dedicated bounded staff CSV parser and transactional save-scoped replacement command with safe summary | Cleared after 1 coverage round | None |
+| PR 1 | Commit 3 — Bounded shortlist staff queries | Pending record | Bounded current-snapshot shortlist pages, typed metadata, pre-paging filters, scoped sorts, and IPC | Cleared after 2 coverage rounds | None |
 
 ## Final validation
 

@@ -13,6 +13,7 @@ pub const MAX_PAGE_LIMIT: usize = 200;
 pub enum StaffScope {
     Search,
     MyStaff,
+    Shortlist,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,6 +21,7 @@ pub enum StaffPageState {
     Ready,
     NoCurrentSnapshot,
     NoClubFamily,
+    NoShortlist,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +63,9 @@ pub enum SortField {
     Wage,
     ContractYear,
     ContractDayOfYear,
+    PreferredJob,
+    ClubJob,
+    CoachingQualifications,
     Dynamic(MetricField),
 }
 impl SortField {
@@ -82,6 +87,9 @@ impl SortField {
             "wage" => Ok(Self::Wage),
             "contract_year" => Ok(Self::ContractYear),
             "contract_day" => Ok(Self::ContractDayOfYear),
+            "preferred_job" => Ok(Self::PreferredJob),
+            "club_job" => Ok(Self::ClubJob),
+            "coaching_qualifications" => Ok(Self::CoachingQualifications),
             other => Ok(Self::Dynamic(MetricField::parse(other)?)),
         }
     }
@@ -102,6 +110,11 @@ impl SortField {
             Self::Wage => "staff.weekly_wage_gbp".into(),
             Self::ContractYear => "staff.contract_expiry_year".into(),
             Self::ContractDayOfYear => "staff.contract_expiry_day_of_year".into(),
+            Self::PreferredJob => "shortlist.preferred_job COLLATE NOCASE".into(),
+            Self::ClubJob => "shortlist.club_job COLLATE NOCASE".into(),
+            Self::CoachingQualifications => {
+                "shortlist.coaching_qualifications COLLATE NOCASE".into()
+            }
             Self::Dynamic(field) => field.sql_expression("staff"),
         }
     }
@@ -126,6 +139,14 @@ pub struct StaffSummary {
     pub contract_expiry_year: Option<i64>,
     pub contract_expiry_day_of_year: Option<i64>,
     pub dynamic_values: BTreeMap<String, Option<i64>>,
+    pub shortlist: Option<StaffShortlistMetadata>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaffShortlistMetadata {
+    pub preferred_job: String,
+    pub club_job: String,
+    pub coaching_qualifications: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +154,7 @@ pub struct StaffPage {
     pub state: StaffPageState,
     pub staff: Vec<StaffSummary>,
     pub total: i64,
+    pub preferred_job_options: Vec<String>,
 }
 
 pub fn list_my_staff_uids(
@@ -320,6 +342,66 @@ pub fn list_staff(
     filters: Option<&FilterAst>,
     requested_fields: &[String],
 ) -> Result<StaffPage, String> {
+    list_staff_with_shortlist(
+        conn,
+        scope,
+        offset,
+        limit,
+        sort,
+        direction,
+        filters,
+        &[],
+        false,
+        requested_fields,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn list_staff_shortlist(
+    conn: &Connection,
+    offset: usize,
+    limit: usize,
+    sort: SortField,
+    direction: SortDir,
+    preferred_job: Option<&str>,
+    unemployed_only: bool,
+    requested_fields: &[String],
+) -> Result<StaffPage, String> {
+    let preferred_jobs = preferred_job.into_iter().collect::<Vec<_>>();
+    list_staff_with_shortlist(
+        conn,
+        StaffScope::Shortlist,
+        offset,
+        limit,
+        sort,
+        direction,
+        None,
+        &preferred_jobs,
+        unemployed_only,
+        requested_fields,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn list_staff_with_shortlist(
+    conn: &Connection,
+    scope: StaffScope,
+    offset: usize,
+    limit: usize,
+    sort: SortField,
+    direction: SortDir,
+    filters: Option<&FilterAst>,
+    preferred_jobs: &[&str],
+    unemployed_only: bool,
+    requested_fields: &[String],
+) -> Result<StaffPage, String> {
+    if matches!(
+        sort,
+        SortField::PreferredJob | SortField::ClubJob | SortField::CoachingQualifications
+    ) && scope != StaffScope::Shortlist
+    {
+        return Err("shortlist CSV columns can only sort Shortlist".to_string());
+    }
     let dynamic_fields = parse_requested_fields(requested_fields)?;
     let compiled = filters
         .map(|filters| compile_filters(filters, if scope == StaffScope::MyStaff { 3 } else { 2 }))
@@ -347,9 +429,34 @@ pub fn list_staff(
 
     let mut binds = vec![Value::Integer(snapshot_id)];
     let mut where_sql = "staff.snapshot_id = ?1".to_string();
+    let mut from_sql = "staff".to_string();
     if scope == StaffScope::MyStaff {
         binds.push(Value::Integer(save_id));
         where_sql.push_str(" AND EXISTS(SELECT 1 FROM planner_club_sources source WHERE source.save_id = ?2 AND source.club_name = staff.club)");
+    }
+    if scope == StaffScope::Shortlist {
+        let has_shortlist: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM staff_shortlist_entries WHERE save_id = ?1)",
+                [save_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if !has_shortlist {
+            return Ok(empty(StaffPageState::NoShortlist));
+        }
+        binds.push(Value::Integer(save_id));
+        from_sql.push_str(" INNER JOIN staff_shortlist_entries shortlist ON shortlist.staff_uid = staff.uid AND shortlist.save_id = ?2");
+        if let Some(preferred_job) = preferred_jobs.first() {
+            binds.push(Value::Text((*preferred_job).to_string()));
+            where_sql.push_str(&format!(
+                " AND shortlist.preferred_job COLLATE NOCASE = ?{}",
+                binds.len()
+            ));
+        }
+        if unemployed_only {
+            where_sql.push_str(" AND trim(shortlist.club_job) IN ('', '-')");
+        }
     }
     if let Some(compiled) = compiled {
         if !compiled.sql.is_empty() {
@@ -361,7 +468,7 @@ pub fn list_staff(
 
     let total: i64 = conn
         .query_row(
-            &format!("SELECT COUNT(*) FROM staff WHERE {where_sql}"),
+            &format!("SELECT COUNT(*) FROM {from_sql} WHERE {where_sql}"),
             params_from_iter(binds.iter()),
             |row| row.get(0),
         )
@@ -381,23 +488,42 @@ pub fn list_staff(
     }
     let limit_index = binds.len() + 1;
     let offset_index = binds.len() + 2;
+    if scope == StaffScope::Shortlist {
+        sql.push_str(
+            ", shortlist.preferred_job, shortlist.club_job, shortlist.coaching_qualifications",
+        );
+    }
     sql.push_str(&format!(
-        " FROM staff WHERE {where_sql} {order} LIMIT ?{limit_index} OFFSET ?{offset_index}"
+        " FROM {from_sql} WHERE {where_sql} {order} LIMIT ?{limit_index} OFFSET ?{offset_index}"
     ));
     binds.push(Value::Integer(limit));
     binds.push(Value::Integer(offset));
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let staff = statement
         .query_map(params_from_iter(binds.iter()), |row| {
-            map_staff(row, &dynamic_fields)
+            map_staff(row, &dynamic_fields, scope == StaffScope::Shortlist)
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
+    let preferred_job_options = if scope == StaffScope::Shortlist {
+        let mut statement = conn
+            .prepare("SELECT DISTINCT preferred_job FROM staff_shortlist_entries WHERE save_id = ?1 ORDER BY preferred_job COLLATE NOCASE ASC")
+            .map_err(|error| error.to_string())?;
+        let options = statement
+            .query_map([save_id], |row| row.get(0))
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        options
+    } else {
+        Vec::new()
+    };
     Ok(StaffPage {
         state: StaffPageState::Ready,
         staff,
         total,
+        preferred_job_options,
     })
 }
 
@@ -406,9 +532,14 @@ fn empty(state: StaffPageState) -> StaffPage {
         state,
         staff: Vec::new(),
         total: 0,
+        preferred_job_options: Vec::new(),
     }
 }
-fn map_staff(row: &Row<'_>, fields: &[MetricField]) -> rusqlite::Result<StaffSummary> {
+fn map_staff(
+    row: &Row<'_>,
+    fields: &[MetricField],
+    has_shortlist: bool,
+) -> rusqlite::Result<StaffSummary> {
     let json: String = row.get(5)?;
     let nationalities = serde_json::from_str(&json).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(error))
@@ -435,6 +566,15 @@ fn map_staff(row: &Row<'_>, fields: &[MetricField]) -> rusqlite::Result<StaffSum
         contract_expiry_year: row.get(14)?,
         contract_expiry_day_of_year: row.get(15)?,
         dynamic_values,
+        shortlist: if has_shortlist {
+            Some(StaffShortlistMetadata {
+                preferred_job: row.get(16 + fields.len())?,
+                club_job: row.get(17 + fields.len())?,
+                coaching_qualifications: row.get(18 + fields.len())?,
+            })
+        } else {
+            None
+        },
     })
 }
 
@@ -500,6 +640,216 @@ mod tests {
         .unwrap();
         assert_eq!(second_page.total, 2);
         assert_eq!(second_page.staff[0].uid, 2);
+    }
+
+    #[test]
+    fn shortlist_joins_active_save_metadata_and_filters_before_paging() {
+        let conn = open();
+        seed(&conn, false);
+        conn.execute_batch(
+            "INSERT INTO staff_shortlist_entries (
+                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+             ) VALUES
+                (1, 1, 'Physio', '-', 'Continental Pro'),
+                (1, 2, 'Scout', '', 'National C'),
+                (1, 3, 'Scout', 'Chief Scout', 'National B');",
+        )
+        .expect("seed shortlist");
+
+        let all =
+            list_staff_shortlist(&conn, 0, 1, SortField::Name, SortDir::Asc, None, false, &[])
+                .expect("list shortlist");
+        assert_eq!(all.total, 3);
+        assert_eq!(all.staff[0].uid, 1);
+        assert_eq!(
+            all.staff[0].shortlist.as_ref().expect("shortlist metadata"),
+            &StaffShortlistMetadata {
+                preferred_job: "Physio".to_string(),
+                club_job: "-".to_string(),
+                coaching_qualifications: "Continental Pro".to_string(),
+            }
+        );
+        assert_eq!(all.preferred_job_options, ["Physio", "Scout"]);
+
+        let unemployed_scouts = list_staff_shortlist(
+            &conn,
+            0,
+            50,
+            SortField::Name,
+            SortDir::Asc,
+            Some("Scout"),
+            true,
+            &[],
+        )
+        .expect("filter shortlist");
+        assert_eq!(unemployed_scouts.total, 1);
+        assert_eq!(unemployed_scouts.staff[0].uid, 2);
+
+        let unemployed =
+            list_staff_shortlist(&conn, 0, 50, SortField::Name, SortDir::Asc, None, true, &[])
+                .expect("all unemployed shortlist staff");
+        assert_eq!(
+            unemployed
+                .staff
+                .iter()
+                .map(|staff| staff.uid)
+                .collect::<Vec<_>>(),
+            [1, 2]
+        );
+
+        let case_insensitive = list_staff_shortlist(
+            &conn,
+            0,
+            50,
+            SortField::Name,
+            SortDir::Asc,
+            Some("scout"),
+            false,
+            &[],
+        )
+        .expect("case-insensitive job filter");
+        assert_eq!(case_insensitive.total, 2);
+    }
+
+    #[test]
+    fn shortlist_distinguishes_setup_states_and_keeps_saved_rows_when_current_staff_changes() {
+        let conn = open();
+        assert_eq!(
+            list_staff_shortlist(&conn, 0, 50, SortField::Ca, SortDir::Desc, None, false, &[])
+                .expect("empty database state")
+                .state,
+            StaffPageState::NoCurrentSnapshot
+        );
+        seed(&conn, false);
+        assert_eq!(
+            list_staff_shortlist(&conn, 0, 50, SortField::Ca, SortDir::Desc, None, false, &[])
+                .expect("no shortlist state")
+                .state,
+            StaffPageState::NoShortlist
+        );
+        conn.execute(
+            "INSERT INTO staff_shortlist_entries (
+                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+             ) VALUES (1, 1, 'Physio', '-', 'A')",
+            [],
+        )
+        .expect("seed shortlist");
+        conn.execute(
+            "INSERT INTO staff_shortlist_entries (
+                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+             ) VALUES (1, 3, 'Scout', '-', 'B')",
+            [],
+        )
+        .expect("seed departed entry");
+        conn.execute_batch(
+            "UPDATE snapshots SET is_current = 0 WHERE id = 1;
+             UPDATE snapshots SET is_current = 1 WHERE id = 2;
+             INSERT INTO staff (
+                snapshot_id, uid, name, age, nationalities_json, gender, ca, pa,
+                staff_attributes_json, club
+             ) VALUES (2, 1, 'Replacement', 30, '[]', 'unknown', 150, 160, '{}', 'New Club');",
+        )
+        .expect("replace current snapshot");
+
+        let replacement =
+            list_staff_shortlist(&conn, 0, 50, SortField::Ca, SortDir::Desc, None, false, &[])
+                .expect("current replacement staff");
+        assert_eq!(replacement.state, StaffPageState::Ready);
+        assert_eq!(replacement.total, 1);
+        assert_eq!(replacement.staff[0].name.as_deref(), Some("Replacement"));
+        assert_eq!(
+            replacement.staff[0]
+                .shortlist
+                .as_ref()
+                .unwrap()
+                .preferred_job,
+            "Physio"
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM staff_shortlist_entries WHERE save_id = 1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("saved row remains"),
+            2
+        );
+    }
+
+    #[test]
+    fn shortlist_scopes_csv_sorts_and_role_projection_to_the_bounded_query() {
+        let conn = open();
+        seed(&conn, false);
+        conn.execute_batch(
+            "INSERT INTO staff_shortlist_entries (
+                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+             ) VALUES
+                (1, 1, 'Zulu', 'Zulu job', 'Zulu qualification'),
+                (1, 2, 'Alpha', 'Alpha job', 'Alpha qualification');
+             INSERT INTO saves (id, name, is_active) VALUES (2, 'Inactive', 0);
+             INSERT INTO staff_shortlist_entries (
+                save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+             ) VALUES (2, 1, 'Wrong save', '-', 'Wrong qualification');
+             UPDATE staff_role_scores SET score = 70 WHERE snapshot_id = 1 AND uid = 1;
+             UPDATE staff_role_scores SET score = 80 WHERE snapshot_id = 1 AND uid = 2;",
+        )
+        .expect("seed shortlist");
+        for sort in [
+            SortField::PreferredJob,
+            SortField::ClubJob,
+            SortField::CoachingQualifications,
+        ] {
+            let sorted =
+                list_staff_shortlist(&conn, 0, 50, sort.clone(), SortDir::Asc, None, false, &[])
+                    .expect("sort shortlist CSV column");
+            assert_eq!(
+                sorted
+                    .staff
+                    .iter()
+                    .map(|staff| staff.uid)
+                    .collect::<Vec<_>>(),
+                [2, 1]
+            );
+            assert!(list_staff(
+                &conn,
+                StaffScope::Search,
+                0,
+                50,
+                sort,
+                SortDir::Asc,
+                None,
+                &[],
+            )
+            .is_err());
+        }
+        let scores = list_staff_shortlist(
+            &conn,
+            0,
+            1,
+            SortField::parse("role.coach_fitness").unwrap(),
+            SortDir::Desc,
+            None,
+            false,
+            &["role.coach_fitness".to_string()],
+        )
+        .expect("role score page");
+        assert_eq!(scores.total, 2);
+        assert_eq!(scores.staff[0].uid, 2);
+        assert_eq!(
+            scores.staff[0].dynamic_values["role.coach_fitness"],
+            Some(80)
+        );
+        assert!(list_staff_shortlist(
+            &conn,
+            0,
+            50,
+            SortField::Ca,
+            SortDir::Desc,
+            None,
+            false,
+            &["role.unknown".to_string()],
+        )
+        .is_err());
     }
     #[test]
     fn returns_requested_metrics_and_applies_bound_filters() {
