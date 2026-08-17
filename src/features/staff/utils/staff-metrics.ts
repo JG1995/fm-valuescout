@@ -129,7 +129,7 @@ export const STAFF_ATTRIBUTE_METRICS: readonly StaffMetric[] =
 
 const STAFF_BASIC_METRICS: readonly StaffMetric[] = [
   stringMetric("name", "Name", "identity"),
-  integerMetric("age", "Age / DOB", "identity", 152),
+  { ...integerMetric("age", "Age / DOB", "identity", 152), align: "left" },
   integerMetric("birth_year", "Birth year", "identity", 112),
   integerMetric("birth_day_of_year", "Birth day", "identity", 112),
   stringMetric("nationality", "Nation", "identity", 128),
