@@ -197,6 +197,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       ] : [];
       const staffRoleIds = [
         "assistant_manager",
+        "manager",
         "coach_attacking_technical",
         "coach_attacking_tactical",
         "coach_defending_technical",
@@ -289,6 +290,10 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             clubJob: "",
             coachingQualifications: "Continental Pro",
           },
+          dynamicValues: {
+            ...staffRows[0].dynamicValues,
+            "role.manager": 90,
+          },
         },
         {
           ...staffRows[0],
@@ -299,6 +304,10 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             preferredJob: "Manager",
             clubJob: "Manager",
             coachingQualifications: "Continental Pro",
+          },
+          dynamicValues: {
+            ...staffRows[0].dynamicValues,
+            "role.manager": 80,
           },
         },
       ] : [];
@@ -622,6 +631,16 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               );
               if (args?.sortBy === "ca" && args?.sortDir === "desc") {
                 matching.sort((left, right) => right.ca - left.ca);
+              } else if (
+                typeof args?.sortBy === "string" &&
+                args.sortBy.startsWith("role.") &&
+                args?.sortDir === "desc"
+              ) {
+                matching.sort(
+                  (left, right) =>
+                    (right.dynamicValues?.[args.sortBy] ?? -1) -
+                    (left.dynamicValues?.[args.sortBy] ?? -1),
+                );
               }
               const offset = Number.isInteger(args?.offset)
                 ? Math.max(0, args.offset)

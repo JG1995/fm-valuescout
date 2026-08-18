@@ -80,7 +80,7 @@ describe("staff route", () => {
     const table = await screen.findByRole("table", {
       name: "Staff search results",
     });
-    expect(within(table).getAllByRole("columnheader")).toHaveLength(25);
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(26);
     expect(
       within(table).getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeInTheDocument();
@@ -310,7 +310,7 @@ describe("staff route", () => {
     const myStaffTable = await screen.findByRole("table", {
       name: "My Staff overview",
     });
-    expect(within(myStaffTable).getAllByRole("columnheader")).toHaveLength(25);
+    expect(within(myStaffTable).getAllByRole("columnheader")).toHaveLength(26);
     expect(within(myStaffTable).getByText("Alex Coach")).toBeInTheDocument();
   });
 

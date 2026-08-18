@@ -241,7 +241,7 @@ test.describe("application smoke", () => {
     );
     const table = main.getByRole("table", { name: "Staff search results" });
     await expect(table).toBeVisible();
-    await expect(table.getByRole("columnheader")).toHaveCount(25);
+    await expect(table.getByRole("columnheader")).toHaveCount(26);
     await expect(
       table.getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeVisible();
@@ -316,11 +316,15 @@ test.describe("application smoke", () => {
     ).toHaveCount(0);
 
     await preferredJob.selectOption("Manager");
-    await expect(table.getByText("Manager Morgan")).toBeVisible();
-    await expect(table.locator('tr[data-index="0"]')).toContainText(
-      "Manager Taylor",
-    );
-    await expect(table.getByRole("columnheader")).toHaveCount(7);
+    await expect(
+      table.getByRole("columnheader", { name: "Manager" }),
+    ).toBeVisible();
+    const managerRows = table.locator("tr[data-index]");
+    await expect(managerRows.nth(0)).toContainText("Manager Morgan");
+    await expect(managerRows.nth(0).getByRole("cell").last()).toHaveText("90");
+    await expect(managerRows.nth(1)).toContainText("Manager Taylor");
+    await expect(managerRows.nth(1).getByRole("cell").last()).toHaveText("80");
+    await expect(table.getByRole("columnheader")).toHaveCount(8);
 
     await preferredJob.selectOption("");
     await expect(
