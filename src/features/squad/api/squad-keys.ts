@@ -5,8 +5,8 @@ import {
 } from "../types/squad-sort";
 
 export const squadKeys = {
-  // Planner owns the club-family query contract, so its existing invalidation
-  // boundary also refreshes this Squad presentation read.
+  // Planner owns Squad membership queries, so its invalidation boundary also
+  // refreshes this presentation read after managed-club changes.
   all: ["planner", "squad"] as const,
   players: (
     offset: number,

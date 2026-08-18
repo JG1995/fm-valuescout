@@ -3,7 +3,6 @@ import { useRef } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
-import type { PlannerTeam } from "../types/club-family";
 import type {
   PlannerAssignment,
   PlannerDepth,
@@ -11,6 +10,7 @@ import type {
   PlannerString,
 } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
+import type { PlannerTeam } from "../types/team";
 import {
   linkedPositionDescription,
   phaseDescription,

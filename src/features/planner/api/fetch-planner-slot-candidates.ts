@@ -1,6 +1,6 @@
 import { invokeCommand } from "@/lib/tauri-client";
-import type { PlannerTeam } from "../types/club-family";
 import type { PlannerSlotCandidate } from "../types/depth";
+import type { PlannerTeam } from "../types/team";
 
 export type PlannerSlotCandidateParams = {
   team: PlannerTeam;

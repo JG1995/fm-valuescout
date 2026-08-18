@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-18
+
+### Added
+
+- Settings now manages saves, snapshots, the FM bridge, and one save-scoped managed club selected from the latest snapshot.
+
+### Changed
+
+- Squad, Planner, Academy, My Staff, and club-wide boosts now derive membership from exact managed-club matches in the latest snapshot.
+- Planner teams now share the complete managed-club player pool while preserving age limits, team priority, and save-wide uniqueness.
+- Dashboard is now a placeholder while active-save selection and **Load Data** remain in the top bar.
+
+### Removed
+
+- Removed manual Senior, Reserves, and Youth club-source configuration, the Dashboard CSV importer, and the Dashboard sanity-player list.
+
 ## [0.6.4] - 2026-08-18
 
 ### Fixed

@@ -7,12 +7,12 @@ import {
   type PlannerTeamSettingInput,
   savePlannerTeams,
 } from "../api/save-planner-teams";
+import type { PlannerDepth } from "../types/depth";
 import {
   PLANNER_TEAM_NAMES,
   PLANNER_TEAMS,
   type PlannerTeam,
-} from "../types/club-family";
-import type { PlannerDepth } from "../types/depth";
+} from "../types/team";
 
 type PlannerTeamDraft = PlannerTeamSettingInput & {
   included: boolean;

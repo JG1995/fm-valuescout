@@ -4,7 +4,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
@@ -111,5 +111,30 @@ describe("app shell routing", () => {
     expect(
       await screen.findByRole("link", { name: "Youth Academy" }),
     ).toHaveAttribute("href", "/academy");
+  });
+
+  it("navigates to Settings and preserves the route through browser history", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWithProviders();
+
+    await user.click(await screen.findByRole("link", { name: "Settings" }));
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: "Dashboard" }));
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Dashboard" }),
+    ).toBeInTheDocument();
+
+    await act(async () => router.history.back());
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeInTheDocument();
+
+    await act(async () => router.history.forward());
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Dashboard" }),
+    ).toBeInTheDocument();
   });
 });

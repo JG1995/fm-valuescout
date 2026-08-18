@@ -1,7 +1,6 @@
 pub mod commands;
 pub mod depth;
 mod optimizer;
-pub mod service;
 pub mod squad;
 pub mod tactic;
 mod teams;

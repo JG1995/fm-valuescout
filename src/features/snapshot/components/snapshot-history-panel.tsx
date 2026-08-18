@@ -354,9 +354,6 @@ export function SnapshotHistoryPanel({
             void queryClient.invalidateQueries({
               queryKey: snapshotKeys.current(),
             });
-            void queryClient.invalidateQueries({
-              queryKey: snapshotKeys.sanityPlayers(),
-            });
             onCurrentContextChanged?.();
           }
         }}

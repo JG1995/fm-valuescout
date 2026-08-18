@@ -50,12 +50,17 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 **Parallel tracks:** After player search (order 4), profiles (5) and squad planner shell (6, without optimizer) can overlap once tactic modeling is specced.
 
+## Active
+
+_None._
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
 
 ## Completed
 
+- [Settings and Managed Club](./features/completed/settings-managed-club.md) — Settings owns save, snapshot, managed-club, and bridge management; Dashboard is a placeholder; one save-scoped managed club supplies exact current-snapshot cohorts to Squad, Planner, Academy, Staff, and club-wide boosts (Linear JAY-26, JAY-27)
 - [Optional Planner Teams](./features/completed/optional-planner-teams.md) — user-managed one-to-three Senior, Reserves, and Youth categories with per-save display names, safe assignment cleanup, dynamic Planner presentation, and available-team-only optimization (Linear JAY-28)
 - [Staff Shortlist CSV Enrichment](./features/completed/staff-shortlist.md) — save-owned replacement imports joined to current staff by UID, with exact Preferred Job filtering, adaptive job-score columns, and unemployment filtering in a third Staff workspace
 - [Staff Workspace](./features/completed/staff-workspace.md) — scored Staff Search, configured club-family overview, staff-specific profiles with shared concealment, and fixed individual and configured-family +10 CA actions

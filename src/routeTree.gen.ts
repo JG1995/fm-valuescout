@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './app/routes/index'
 import { Route as AcademyRouteImport } from './app/routes/academy'
 import { Route as PlannerRouteImport } from './app/routes/planner'
 import { Route as SearchRouteImport } from './app/routes/search'
+import { Route as SettingsRouteImport } from './app/routes/settings'
 import { Route as StaffRouteImport } from './app/routes/staff'
 import { Route as PlayersUidRouteImport } from './app/routes/players.$uid'
 import { Route as StaffUidRouteImport } from './app/routes/staff.$uid'
@@ -37,6 +38,11 @@ const SearchRoute = SearchRouteImport.update({
   path: '/search',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StaffRoute = StaffRouteImport.update({
   id: '/staff',
   path: '/staff',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/academy': typeof AcademyRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
+  '/settings': typeof SettingsRoute
   '/staff': typeof StaffRouteWithChildren
   '/players/$uid': typeof PlayersUidRoute
   '/staff/$uid': typeof StaffUidRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/academy': typeof AcademyRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
+  '/settings': typeof SettingsRoute
   '/staff': typeof StaffRouteWithChildren
   '/players/$uid': typeof PlayersUidRoute
   '/staff/$uid': typeof StaffUidRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/academy': typeof AcademyRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
+  '/settings': typeof SettingsRoute
   '/staff': typeof StaffRouteWithChildren
   '/players/$uid': typeof PlayersUidRoute
   '/staff/$uid': typeof StaffUidRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/academy'
     | '/planner'
     | '/search'
+    | '/settings'
     | '/staff'
     | '/players/$uid'
     | '/staff/$uid'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/academy'
     | '/planner'
     | '/search'
+    | '/settings'
     | '/staff'
     | '/players/$uid'
     | '/staff/$uid'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/academy'
     | '/planner'
     | '/search'
+    | '/settings'
     | '/staff'
     | '/players/$uid'
     | '/staff/$uid'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   AcademyRoute: typeof AcademyRoute
   PlannerRoute: typeof PlannerRoute
   SearchRoute: typeof SearchRoute
+  SettingsRoute: typeof SettingsRoute
   StaffRoute: typeof StaffRouteWithChildren
   PlayersUidRoute: typeof PlayersUidRoute
 }
@@ -148,6 +161,13 @@ declare module '@tanstack/react-router' {
       path: '/search'
       fullPath: '/search'
       preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/staff': {
@@ -189,6 +209,7 @@ const rootRouteChildren: RootRouteChildren = {
   AcademyRoute: AcademyRoute,
   PlannerRoute: PlannerRoute,
   SearchRoute: SearchRoute,
+  SettingsRoute: SettingsRoute,
   StaffRoute: StaffRouteWithChildren,
   PlayersUidRoute: PlayersUidRoute,
 }

@@ -124,9 +124,8 @@ export function MyStaffCaBoost({
       >
         <div className="space-y-3">
           <p className="text-body-md text-on-surface-variant">
-            This boosts current ability by 10 for every eligible staff member in
-            your configured club family, one at a time. Each boost stops at PA
-            or 200.
+            This boosts current ability by 10 for every eligible staff member at
+            your managed club, one at a time. Each boost stops at PA or 200.
           </p>
           <p className="text-body-sm text-on-surface-variant">
             Changes already applied cannot be undone.

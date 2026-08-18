@@ -119,11 +119,8 @@ pub fn list_squad_player_uids(
             "SELECT DISTINCT p.uid
              FROM players p
              WHERE p.snapshot_id = ?1
-               AND EXISTS(
-                   SELECT 1
-                   FROM planner_club_sources source
-                   WHERE source.save_id = ?2
-                     AND source.club_name = p.current_club
+               AND p.current_club = (
+                   SELECT club_name FROM managed_club_settings WHERE save_id = ?2
                )
              ORDER BY p.uid ASC",
         )
@@ -156,7 +153,7 @@ pub fn list_squad_players(
     let is_configured: bool = conn
         .query_row(
             "SELECT EXISTS(
-                 SELECT 1 FROM planner_club_settings WHERE save_id = ?1
+                 SELECT 1 FROM managed_club_settings WHERE save_id = ?1
              )",
             params![save_id],
             |row| row.get(0),
@@ -170,11 +167,8 @@ pub fn list_squad_players(
     let offset = i64::try_from(offset).map_err(|_| "squad offset out of range".to_string())?;
     let limit = i64::try_from(limit).map_err(|_| "squad limit out of range".to_string())?;
     let membership_sql = "p.snapshot_id = ?1
-        AND EXISTS(
-            SELECT 1
-            FROM planner_club_sources source
-            WHERE source.save_id = ?2
-              AND source.club_name = p.current_club
+        AND p.current_club = (
+            SELECT club_name FROM managed_club_settings WHERE save_id = ?2
         )";
 
     if let Some(role_id) = sort_by.potential_role_id() {

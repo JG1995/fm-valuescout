@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection};
 
 use crate::db::migrations;
-use crate::features::planner::service::{self, ClubSourceInput};
+use crate::features::managed_club::service as managed_club_service;
 use crate::features::snapshot;
 
 use super::depth::{PlannerDepth, PlannerString, PlannerTeam};
@@ -24,7 +24,8 @@ pub(super) fn open_with_snapshot() -> (tempfile::TempDir, Connection, i64) {
     )
     .expect("write dump");
     snapshot::ingest::ingest_dump_file(&mut conn, &dump_path).expect("ingest dump");
-    service::save_club_family(&conn, save.id, "Loan FC", &[]).expect("configure club family");
+    managed_club_service::set_managed_club(&conn, save.id, "Loan FC")
+        .expect("configure managed club");
     (temp_dir, conn, save.id)
 }
 
@@ -161,14 +162,15 @@ pub(super) fn add_picker_candidates(
     let mut reserve = original.clone();
     reserve["uid"] = serde_json::Value::Number(78.into());
     reserve["name"] = serde_json::Value::String("Reserve Player".to_string());
-    reserve["teamLevel"] = serde_json::Value::String("reserve".to_string());
+    reserve["teamLevel"] = serde_json::Value::String("senior".to_string());
     let mut b_team = original.clone();
     b_team["uid"] = serde_json::Value::Number(79.into());
-    b_team["name"] = serde_json::Value::String("B Team Player".to_string());
-    b_team["currentClub"] = serde_json::Value::String("Loan B FC".to_string());
+    b_team["name"] = serde_json::Value::String("Second Reserve Player".to_string());
+    b_team["teamLevel"] = serde_json::Value::String("reserve".to_string());
     let mut unknown = b_team.clone();
     unknown["uid"] = serde_json::Value::Number(80.into());
-    unknown["name"] = serde_json::Value::String("Unknown Score Player".to_string());
+    unknown["name"] = serde_json::Value::String("Youth Player".to_string());
+    unknown["teamLevel"] = serde_json::Value::String("youth".to_string());
     dump["players"] = serde_json::Value::Array(vec![original, reserve, b_team, unknown]);
     dump["playerCount"] = serde_json::Value::Number(4.into());
     std::fs::write(
@@ -178,15 +180,6 @@ pub(super) fn add_picker_candidates(
     .expect("write picker candidates");
     snapshot::ingest::ingest_dump_file_for_save(conn, save_id, &dump_path)
         .expect("ingest picker candidates");
-    service::save_club_family(
-        conn,
-        save_id,
-        "Loan FC",
-        &[ClubSourceInput {
-            team: "reserves".to_string(),
-            club_name: "Loan B FC".to_string(),
-            team_level: None,
-        }],
-    )
-    .expect("configure B-team source");
+    managed_club_service::set_managed_club(conn, save_id, "Loan FC")
+        .expect("configure managed club");
 }

@@ -8,7 +8,7 @@ use super::test_support::{
 use crate::features::player_metrics::resolver::DynamicValue;
 
 #[test]
-fn lists_the_distinct_current_club_family_union() {
+fn lists_the_exact_current_managed_club() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
 
@@ -135,7 +135,7 @@ fn orders_every_fixed_column_and_pages_deterministically() {
         (
             SquadSortField::Club,
             SquadSortDir::Asc,
-            vec![79, 80, 77, 78],
+            vec![77, 78, 79, 80],
         ),
         (
             SquadSortField::Club,
@@ -202,12 +202,7 @@ fn orders_every_fixed_column_and_pages_deterministically() {
 fn returns_no_players_without_a_configuration_or_matching_current_players() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     conn.execute(
-        "DELETE FROM planner_club_sources WHERE save_id = ?1",
-        params![save_id],
-    )
-    .expect("remove sources");
-    conn.execute(
-        "DELETE FROM planner_club_settings WHERE save_id = ?1",
+        "DELETE FROM managed_club_settings WHERE save_id = ?1",
         params![save_id],
     )
     .expect("remove configuration");
@@ -232,7 +227,7 @@ fn returns_no_players_without_a_configuration_or_matching_current_players() {
          WHERE snapshot_id = ?1",
         params![current_snapshot_id(&conn, save_id)],
     )
-    .expect("move current players outside club family");
+    .expect("move current players outside managed club");
     let empty_current_result = list_squad_players(
         &conn,
         save_id,

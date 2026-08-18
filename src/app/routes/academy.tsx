@@ -26,8 +26,10 @@ import {
   parseAcademyView,
   snapshotYear,
 } from "@/features/academy/utils/academy-workspace";
-import { plannerClubFamilyQueryOptions } from "@/features/planner/api/get-planner-club-family-query-options";
-import { plannerClubsQueryOptions } from "@/features/planner/api/planner-clubs-query-options";
+import {
+  managedClubOptionsQueryOptions,
+  managedClubQueryOptions,
+} from "@/features/managed-club/api/managed-club-query-options";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 
 export type AcademySearch = {
@@ -47,7 +49,7 @@ export const Route = createFileRoute("/academy")({
   loader: ({ context: { queryClient } }) =>
     Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
-      queryClient.ensureQueryData(plannerClubFamilyQueryOptions),
+      queryClient.ensureQueryData(managedClubQueryOptions),
       queryClient.ensureQueryData(academyClassesQueryOptions),
     ]),
   component: AcademyRoute,
@@ -75,24 +77,24 @@ function AcademyNoSnapshot() {
   );
 }
 
-function AcademyNoClubFamily() {
+function AcademyNoManagedClub() {
   return (
-    <Panel title="Set up your club family" flush>
+    <Panel title="Choose your managed club" flush>
       <EmptyState
         icon={UsersRound}
-        title="Academy needs your club family"
+        title="Academy needs your managed club"
         action={
           <Link
-            to="/"
-            hash="club-setup"
+            to="/settings"
+            hash="managed-club"
             className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
           >
-            Open Club Setup
+            Open Managed Club
           </Link>
         }
       >
-        Youth Academy uses the same club-family sources as Planner. Configure
-        them once to define which players can be tracked.
+        Choose the club you manage to define which current players can be
+        tracked.
       </EmptyState>
     </Panel>
   );
@@ -119,10 +121,10 @@ function AcademyNoClasses({ onCreate }: { onCreate: () => void }) {
 
 function AcademyPageContent() {
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
-  const { data: clubFamily } = useSuspenseQuery(plannerClubFamilyQueryOptions);
+  const { data: managedClub } = useSuspenseQuery(managedClubQueryOptions);
   const { data: classes } = useSuspenseQuery(academyClassesQueryOptions);
   const clubOptions = useQuery({
-    ...plannerClubsQueryOptions,
+    ...managedClubOptionsQueryOptions,
     enabled: Boolean(snapshot),
   });
   const classDetailQueries = useQueries({
@@ -188,11 +190,11 @@ function AcademyPageContent() {
     );
   }
 
-  if (!clubFamily.primaryClub) {
+  if (!managedClub.clubName) {
     return (
       <div className="space-y-gutter">
         <h1 className="text-headline-lg text-on-surface">Youth Academy</h1>
-        <AcademyNoClubFamily />
+        <AcademyNoManagedClub />
       </div>
     );
   }
@@ -203,7 +205,7 @@ function AcademyPageContent() {
         <div>
           <h1 className="text-headline-lg text-on-surface">Youth Academy</h1>
           <p className="text-body-sm text-on-surface-variant">
-            {clubFamily.primaryClub} · Class cohorts from your club family
+            {managedClub.clubName} · Managed-club class cohorts
           </p>
         </div>
         <AcademyWorkspaceTabs view={activeView} onViewChange={onViewChange} />

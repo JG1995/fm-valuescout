@@ -102,7 +102,7 @@ export function AcademyAddPlayersModal({
       <div className="space-y-3">
         <div className="space-y-1">
           <label className={fieldLabelClasses} htmlFor={searchInputId}>
-            Search club-family players
+            Search managed-club players
           </label>
           <input
             aria-activedescendant={
@@ -160,12 +160,12 @@ export function AcademyAddPlayersModal({
         ) : null}
         {candidatesQuery.isPending ? (
           <p className="text-body-sm text-on-surface-variant">
-            Finding club-family players…
+            Finding managed-club players…
           </p>
         ) : null}
         {!candidatesQuery.isPending && candidates.length === 0 ? (
           <p className="text-body-sm text-on-surface-variant">
-            No unclassified club-family players match this search.
+            No unclassified managed-club players match this search.
           </p>
         ) : null}
         {candidates.length > 0 ? (

@@ -11,8 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { SquadCsvImportActions } from "@/features/csv-import/components/squad-csv-import-actions";
-import { plannerClubFamilyQueryOptions } from "@/features/planner/api/get-planner-club-family-query-options";
-import { plannerClubsQueryOptions } from "@/features/planner/api/planner-clubs-query-options";
+import { managedClubQueryOptions } from "@/features/managed-club/api/managed-club-query-options";
 import { plannerDepthQueryOptions } from "@/features/planner/api/planner-depth-query-options";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { plannerTacticOptionsQueryOptions } from "@/features/planner/api/planner-tactic-options-query-options";
@@ -83,8 +82,7 @@ export const Route = createFileRoute("/planner")({
   loader: ({ context: { queryClient }, deps: { sort, dir } }) =>
     Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
-      queryClient.ensureQueryData(plannerClubFamilyQueryOptions),
-      queryClient.ensureQueryData(plannerClubsQueryOptions),
+      queryClient.ensureQueryData(managedClubQueryOptions),
       queryClient.ensureQueryData(plannerTacticQueryOptions),
       queryClient.ensureQueryData(plannerTacticOptionsQueryOptions),
       queryClient.ensureQueryData(plannerDepthQueryOptions),
@@ -114,7 +112,7 @@ function PlannerPageContent() {
   const squadBoostFeedbackRef = useRef<HTMLDivElement>(null);
   const { data: snapshot, isRefetchError: snapshotRefreshError } =
     useSuspenseQuery(currentSnapshotQueryOptions);
-  const { data: clubFamily } = useSuspenseQuery(plannerClubFamilyQueryOptions);
+  const { data: managedClub } = useSuspenseQuery(managedClubQueryOptions);
   const { data: tactic, isRefetchError: tacticRefreshError } = useSuspenseQuery(
     plannerTacticQueryOptions,
   );
@@ -219,9 +217,9 @@ function PlannerPageContent() {
     <header className="flex flex-col items-start gap-2">
       <div>
         <h1 className="text-headline-lg text-on-surface">Squad</h1>
-        {clubFamily.primaryClub ? (
+        {managedClub.clubName ? (
           <p className="text-body-sm text-on-surface-variant">
-            Primary club: {clubFamily.primaryClub}
+            Managed club: {managedClub.clubName}
           </p>
         ) : null}
       </div>
@@ -255,7 +253,7 @@ function PlannerPageContent() {
         {...plannerWorkspacePanelProps("squad", activeWorkspace)}
         className="flex min-h-0 flex-1 flex-col"
       >
-        {clubFamily.primaryClub ? (
+        {managedClub.clubName ? (
           <Suspense
             fallback={
               <div className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
@@ -345,19 +343,18 @@ function PlannerPageContent() {
           <Panel title="Squad" flush>
             <EmptyState
               icon={UsersRound}
-              title="Set up your club family"
+              title="Choose your managed club"
               action={
                 <Link
-                  to="/"
-                  hash="club-setup"
+                  to="/settings"
+                  hash="managed-club"
                   className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
                 >
-                  Open Club Setup
+                  Open Managed Club
                 </Link>
               }
             >
-              Configure your club family in Dashboard before reviewing your
-              squad.
+              Choose your managed club in Settings before reviewing your squad.
             </EmptyState>
           </Panel>
         )}

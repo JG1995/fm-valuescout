@@ -49,7 +49,7 @@ async function renderTopBarWithAcademyProbe() {
     routeTree,
     context: { queryClient } satisfies RouterContext,
     defaultPreloadStaleTime: 0,
-    history: createMemoryHistory({ initialEntries: ["/"] }),
+    history: createMemoryHistory({ initialEntries: ["/settings"] }),
   });
 
   render(
@@ -175,7 +175,7 @@ describe("app top bar", () => {
   it("drops a failure banner once the user switches save", async () => {
     setLoadDataIpcMockMode("scanFailed");
     const user = userEvent.setup();
-    renderWithProviders();
+    renderWithProviders({ initialEntries: ["/settings"] });
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
     expect(await screen.findByText(/Scan failed/i)).toBeInTheDocument();
@@ -274,7 +274,9 @@ describe("app top bar", () => {
 
   it("invalidates cached Staff data after switching saves", async () => {
     const user = userEvent.setup();
-    const { queryClient } = renderWithProviders();
+    const { queryClient } = renderWithProviders({
+      initialEntries: ["/settings"],
+    });
     const staffProbeKey = [...staffKeys.all, "probe"];
     queryClient.setQueryData(staffProbeKey, []);
 

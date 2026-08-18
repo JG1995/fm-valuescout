@@ -1199,12 +1199,21 @@ mod tests {
             vec![2025, 2027]
         );
 
-        let visible_names: Vec<String> =
-            crate::features::snapshot::query::list_sanity_players(&conn, 20)
-                .expect("list current players")
-                .into_iter()
-                .map(|player| player.name)
-                .collect();
+        let mut current_players = conn
+            .prepare(
+                "SELECT p.name
+                 FROM players p
+                 INNER JOIN snapshots s ON s.id = p.snapshot_id
+                 INNER JOIN saves sv ON sv.id = s.save_id AND sv.is_active = 1
+                 WHERE s.is_current = 1
+                 ORDER BY p.name COLLATE NOCASE",
+            )
+            .expect("prepare current-player query");
+        let visible_names = current_players
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query current players")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect current players");
         assert_eq!(visible_names, vec!["Later player"]);
     }
 

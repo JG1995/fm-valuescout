@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { renderWithProviders } from "@/testing/render-with-providers";
+import { renderWithProviders as renderApp } from "@/testing/render-with-providers";
 import { setLoadDataIpcMockMode } from "@/testing/snapshot-ipc-mock";
 import { setBridgeInstallIpcMockMode } from "../api/bridge-install-ipc-mock";
 import {
@@ -9,6 +9,10 @@ import {
   setBridgeStatusIpcMockMode,
   setDumpRequestIpcMockMode,
 } from "../api/bridge-status-ipc-mock";
+
+function renderWithProviders() {
+  return renderApp({ initialEntries: ["/settings"] });
+}
 
 describe("bridge status panel", () => {
   beforeEach(() => {

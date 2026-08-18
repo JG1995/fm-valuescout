@@ -434,23 +434,23 @@ export function StaffSearchResultsPanel({
       </Panel>
     );
   }
-  if (page.state === "no_club_family") {
+  if (page.state === "no_managed_club") {
     return (
       <Panel title="My Staff" flush>
         <EmptyState
           icon={UsersRound}
-          title="Set up your club family"
+          title="Choose your managed club"
           action={
             <Link
-              to="/"
-              hash="club-setup"
+              to="/settings"
+              hash="managed-club"
               className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
             >
-              Open Club Setup
+              Open Managed Club
             </Link>
           }
         >
-          Configure your club family in Dashboard before reviewing your staff.
+          Choose your managed club in Settings before reviewing your staff.
         </EmptyState>
       </Panel>
     );
@@ -482,7 +482,7 @@ export function StaffSearchResultsPanel({
           icon={scope === "my-staff" || isShortlist ? UsersRound : SearchX}
           title={
             scope === "my-staff"
-              ? "No staff in your club family"
+              ? "No staff at your managed club"
               : isShortlist
                 ? hasShortlistFilter
                   ? "No shortlist staff match these filters"
@@ -493,7 +493,7 @@ export function StaffSearchResultsPanel({
           }
         >
           {scope === "my-staff"
-            ? "No current-snapshot staff match the clubs configured for this save."
+            ? "No current-snapshot staff match your managed club."
             : isShortlist
               ? hasShortlistFilter
                 ? "Choose All jobs or turn off Only unemployed to widen the results."

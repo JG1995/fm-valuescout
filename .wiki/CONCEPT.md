@@ -26,13 +26,13 @@ ValueScout solves this with four pillars tied to how FM players actually work:
 
 Load the current game world from a running FM26 session. One action captures clubs, squads, contracts, and attributes to match what is in memory. The primary workflow needs no manual export step. Successful snapshots stay in the active app save, and the snapshot with the greatest valid in-game date is current for normal product reads. Snapshots are explicit (you click **Load Data** when you want fresh data), which keeps the model simple and predictable.
 
-An optional Dashboard import supplements the current snapshot with supported Youth Tracker and Moneyball CSV values that the memory pipeline does not supply. Imports use exact numeric player IDs, stay scoped to the active app save, and never create players or replace live memory data. The Staff workspace can also import one save-owned shortlist from a staff CSV; it matches exact staff IDs and keeps Preferred Job, Club Job, and qualifications as recruitment context.
+Optional format-specific Squad imports supplement the current snapshot with supported Youth Tracker and Moneyball CSV values that the memory pipeline does not supply. Imports use exact numeric player IDs, stay scoped to the active app save, and never create players or replace live memory data. The Staff workspace can also import one save-owned shortlist from a staff CSV; it matches exact staff IDs and keeps Preferred Job, Club Job, and qualifications as recruitment context.
 
 The app supports multiple **save slots** (separate scouting databases—for example, different FM careers). Exactly one slot is active; **Load Data** stores a new snapshot in that slot, while Search, profiles, Planner, Academy, and CSV matching use the slot's current snapshot. Slots are app-side labels, not FM save files.
 
 ### 2. Searchable databases with role scores
 
-Every loaded player lives in a searchable database with scores per position and per role (e.g. defensive midfielder / deep-lying playmaker). Staff have current-ability job-fit scores derived from the attributes required by each job. Sort and filter by the fit you need, inspect detailed player or staff profiles, review the complete configured club-family staff group in My Staff, and narrow an imported Staff Shortlist by Preferred Job or unemployment.
+Every loaded player lives in a searchable database with scores per position and per role (e.g. defensive midfielder / deep-lying playmaker). Staff have current-ability job-fit scores derived from the attributes required by each job. Sort and filter by the fit you need, inspect detailed player or staff profiles, review everyone at the selected managed club in My Staff, and narrow an imported Staff Shortlist by Preferred Job or unemployment.
 
 ### 3. Squad planner
 
@@ -90,7 +90,7 @@ A week later in-game, the signing completes. You click **Load Data** again. The 
 - Detailed player profile view
 - Transfer search with sort/filter by role scores
 - Staff Search with sort/filter by current job-fit scores
-- My Staff overview for the configured Senior, Reserves, and Youth club family
+- My Staff overview for everyone at the selected managed club
 - Save-owned Staff Shortlist CSV import with exact staff-ID matching, Preferred Job filtering, and unemployment filtering
 - Detailed Staff Profile with current attributes and job fit
 - Squad planner aligned to the user's tactic
@@ -105,7 +105,7 @@ A week later in-game, the signing completes. You click **Load Data** again. The 
 - Historical Moneyball seasons, season selection, trends, comparisons, historical player views, and analytics beyond the supported current-snapshot contract
 - Automatic or background sync while FM runs (refresh is manual)
 - Accounts, cloud sync, or multi-user collaboration
-- Executing transfers or general edits inside FM from the app. The only accepted exceptions are the two action-specific player boosts in [ADR-0017](./decisions/0017-action-specific-fm26-player-boosts.md), the fixed staff CA boost in [ADR-0020](./decisions/0020-action-specific-fm26-staff-ca-boost.md), and sequential configured-family orchestration of those closed operations in [ADR-0018](./decisions/0018-squad-wide-player-boosts.md) and [ADR-0021](./decisions/0021-sequential-club-family-staff-ca-boost.md). The bridge still exposes only three fixed one-person actions; transfers and general editing remain out of scope.
+- Executing transfers or general edits inside FM from the app. The only accepted exceptions are the two action-specific player boosts in [ADR-0017](./decisions/0017-action-specific-fm26-player-boosts.md), the fixed staff CA boost in [ADR-0020](./decisions/0020-action-specific-fm26-staff-ca-boost.md), and sequential managed-club orchestration of those closed operations in [ADR-0018](./decisions/0018-squad-wide-player-boosts.md) and [ADR-0021](./decisions/0021-sequential-club-family-staff-ca-boost.md). The bridge still exposes only three fixed one-person actions; transfers and general editing remain out of scope.
 - Mobile or web clients
 - Community databases, facepacks, or mod management
 - Advanced moneyball analytics beyond defined position/role scores (e.g. xG models, custom ML pipelines)

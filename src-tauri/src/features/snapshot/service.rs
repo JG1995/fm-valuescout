@@ -813,7 +813,7 @@ mod tests {
         )
         .expect("insert historical Moneyball row");
         conn.execute(
-            "INSERT INTO planner_club_settings (save_id, primary_club) VALUES (?1, 'History FC')",
+            "INSERT INTO managed_club_settings (save_id, club_name) VALUES (?1, 'History FC')",
             [save.id],
         )
         .expect("insert planner setting");
@@ -857,7 +857,7 @@ mod tests {
             0
         );
         assert_eq!(
-            conn.query_row("SELECT COUNT(*) FROM planner_club_settings", [], |row| row
+            conn.query_row("SELECT COUNT(*) FROM managed_club_settings", [], |row| row
                 .get::<_, i64>(
                 0
             ))
@@ -947,7 +947,7 @@ mod tests {
         );
         insert_player(&conn, inactive_snapshot, 77);
         conn.execute(
-            "INSERT INTO planner_club_settings (save_id, primary_club) VALUES (?1, 'Inactive FC')",
+            "INSERT INTO managed_club_settings (save_id, club_name) VALUES (?1, 'Inactive FC')",
             [inactive.id],
         )
         .expect("insert inactive planner setting");
@@ -974,7 +974,7 @@ mod tests {
             0
         );
         for table in [
-            "planner_club_settings",
+            "managed_club_settings",
             "player_youth_career_stats",
             "academy_classes",
         ] {
@@ -1040,7 +1040,7 @@ mod tests {
         );
         insert_player(&conn, snapshot, 77);
         conn.execute(
-            "INSERT INTO planner_club_settings (save_id, primary_club) VALUES (?1, 'Rollback FC')",
+            "INSERT INTO managed_club_settings (save_id, club_name) VALUES (?1, 'Rollback FC')",
             [save.id],
         )
         .expect("insert planner setting");
@@ -1080,7 +1080,7 @@ mod tests {
             .expect("count retained players");
         assert_eq!(retained_player_count, 1);
         for table in [
-            "planner_club_settings",
+            "managed_club_settings",
             "player_youth_career_stats",
             "academy_classes",
         ] {

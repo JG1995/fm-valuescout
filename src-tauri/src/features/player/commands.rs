@@ -2,10 +2,11 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::db::Db;
+use crate::features::managed_club::service as managed_club_service;
 use crate::features::memory_read::service::{
     request_player_boost_from_local_app_data, DumpWaitConfig, PlayerBoostResult,
 };
-use crate::features::planner::{service as planner_service, squad as planner_squad};
+use crate::features::planner::squad as planner_squad;
 
 use super::boost_gate;
 use super::query::{self, PlayerDetail, PlayerRoleScore};
@@ -430,16 +431,17 @@ fn capture_squad_player_boost_cohort(
     conn: &rusqlite::Connection,
 ) -> Result<(PlayerBoostContext, Vec<i64>), PlayerBoostError> {
     let context = service::capture_active_player_boost_context(conn)?;
-    let club_family = planner_service::get_club_family(conn, context.save_id).map_err(|_| {
-        PlayerBoostError::Eligibility {
-            kind: "database".to_string(),
-            message: "could not read the configured club family for this squad boost".to_string(),
-        }
-    })?;
-    if club_family.primary_club.is_none() {
+    let managed_club =
+        managed_club_service::selected_club(conn, context.save_id).map_err(|_| {
+            PlayerBoostError::Eligibility {
+                kind: "database".to_string(),
+                message: "could not read the managed club for this squad boost".to_string(),
+            }
+        })?;
+    if managed_club.is_none() {
         return Err(PlayerBoostError::Eligibility {
-            kind: "clubFamilyRequired".to_string(),
-            message: "Set up your club family in Dashboard before boosting the squad.".to_string(),
+            kind: "managedClubRequired".to_string(),
+            message: "Select your managed club in Settings before boosting the squad.".to_string(),
         });
     }
     let player_uids =
@@ -568,10 +570,10 @@ mod tests {
 
     use super::*;
     use crate::db::migrations;
+    use crate::features::managed_club::service as managed_club_service;
     use crate::features::memory_read::service::{
         PlayerBoostRequestError, PlayerBoostResult, OPERATION_BOOST_CURRENT_ABILITY,
     };
-    use crate::features::planner::service as planner_service;
     use crate::features::player::boost_gate::BOOST_TEST_GATE as PLAYER_BOOST_TEST_GATE;
     use crate::features::snapshot::commands as snapshot_commands;
     use crate::features::snapshot::ingest::ingest_dump_file;
@@ -674,8 +676,8 @@ mod tests {
         )
         .expect("bind source request");
         let save_id = snapshot_service::active_save_id(&conn).expect("active save");
-        planner_service::save_club_family(&conn, save_id, "Loan FC", &[])
-            .expect("configure club family");
+        managed_club_service::set_managed_club(&conn, save_id, "Loan FC")
+            .expect("configure managed club");
 
         (temp_dir, Db(Mutex::new(conn)))
     }

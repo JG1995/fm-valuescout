@@ -14,10 +14,49 @@ import {
   isSearchSortDir,
   isSearchSortField,
 } from "@/features/search/types/search-sort";
-import {
-  resolveGetCurrentSnapshotIpcMock,
-  resolveListSanityPlayersIpcMock,
-} from "@/testing/snapshot-ipc-mock";
+import { resolveGetCurrentSnapshotIpcMock } from "@/testing/snapshot-ipc-mock";
+
+const DEFAULT_PLAYERS: PlayerSummary[] = [
+  {
+    uid: 1,
+    name: "Alex Morgan",
+    age: 25,
+    birthYear: 2001,
+    birthDayOfYear: 80,
+    nationalities: ["ENG"],
+    club: "Metro FC",
+    division: "Premier Division",
+    ca: 165,
+    pa: 175,
+    marketValueGbp: 16_500_000,
+  },
+  {
+    uid: 2,
+    name: "Jordan Lee",
+    age: 25,
+    birthYear: 2001,
+    birthDayOfYear: 80,
+    nationalities: ["ENG"],
+    club: "Riverside United",
+    division: "Premier Division",
+    ca: 142,
+    pa: 152,
+    marketValueGbp: 14_200_000,
+  },
+  {
+    uid: 3,
+    name: "Sam Rivera",
+    age: 25,
+    birthYear: 2001,
+    birthDayOfYear: 80,
+    nationalities: ["ENG"],
+    club: null,
+    division: null,
+    ca: 178,
+    pa: 188,
+    marketValueGbp: 17_800_000,
+  },
+];
 
 let overridePlayers: PlayerSummary[] | null = null;
 let lastSearchPlayersArgs: Record<string, unknown> | null = null;
@@ -289,20 +328,10 @@ function applyFilters(
   });
 }
 
-function fromSanityRows(): PlayerSummary[] {
-  return resolveListSanityPlayersIpcMock().map((row, index) => ({
-    uid: index + 1,
-    name: row.name,
-    age: 25,
-    birthYear: 2001,
-    birthDayOfYear: 80,
-    nationalities: ["ENG"],
-    club: row.club,
-    division: row.club ? "Premier Division" : null,
-    ca: row.ca,
-    pa: row.ca + 10,
-    marketValueGbp: row.ca * 100_000,
-  }));
+function defaultPlayers(): PlayerSummary[] {
+  return resolveGetCurrentSnapshotIpcMock()
+    ? DEFAULT_PLAYERS.map((player) => ({ ...player }))
+    : [];
 }
 
 /** Ranked name suggestions for the top-bar global search. */
@@ -334,7 +363,7 @@ export function resolveSuggestPlayersIpcMock(
       ? Math.min(20, Math.max(1, record.limit))
       : 10;
   const needle = query.toLowerCase();
-  const players = overridePlayers ?? fromSanityRows();
+  const players = overridePlayers ?? defaultPlayers();
 
   const ranked = players
     .filter((player) => player.name.toLowerCase().includes(needle))
@@ -370,7 +399,7 @@ function searchPlayersPage(args: unknown): SearchPlayersPage {
   const { offset, limit, sortBy, sortDir, filters, filterCombine } =
     parsePaging(args);
   const players = applyFilters(
-    [...(overridePlayers ?? fromSanityRows())],
+    [...(overridePlayers ?? defaultPlayers())],
     filters,
     filterCombine,
   ).sort((a, b) => comparePlayers(a, b, sortBy, sortDir));

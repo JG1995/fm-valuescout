@@ -116,12 +116,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         playerCount: snapshot.playerCount,
         loadedAtUtc: snapshot.loadedAtUtc,
       });
-      const snapshotSanityPlayers = (snapshot) => [{
-        name: "Snapshot " + snapshot.id + " player",
-        ca: snapshot.playerCount,
-        club: "Snapshot " + snapshot.id + " FC",
-        proofRoleScore: snapshot.playerCount,
-      }];
       const plannerTactic = {
         lanes: [
           ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
@@ -562,11 +556,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               : null;
           }
 
-          if (cmd === "list_sanity_players") {
-            const snapshot = currentSnapshot();
-            return snapshot ? snapshotSanityPlayers(snapshot) : [];
-          }
-
           if (cmd === "import_csv") {
             return {
               format: csvImportFormat,
@@ -617,7 +606,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 ? "no_current_snapshot"
                 : staffFamilyConfigured
                   ? "ready"
-                  : "no_club_family",
+                  : "no_managed_club",
               staff: staffFamilyConfigured
                 ? staffRows.slice(offset, offset + limit)
                 : [],
@@ -963,10 +952,18 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
-          if (cmd === "get_planner_club_family") {
+          if (cmd === "get_managed_club") {
             return squadOverview
-              ? { primaryClub: "Barcelona", sources: [] }
-              : { primaryClub: null, sources: [] };
+              ? {
+                  clubName: "Barcelona",
+                  status: "available",
+                  unclassifiedPlayerCount: 0,
+                }
+              : {
+                  clubName: null,
+                  status: "unconfigured",
+                  unclassifiedPlayerCount: 0,
+                };
           }
 
           if (cmd === "list_squad_players") {
@@ -1009,14 +1006,18 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
-          if (cmd === "list_planner_clubs") {
+          if (cmd === "list_managed_club_options") {
             return plannerSnapshot
               ? ["Barcelona", "Barca Athletic", "Barcelona U19"]
               : [];
           }
 
-          if (cmd === "save_planner_club_family") {
-            return { primaryClub: args?.primaryClub ?? null, sources: [] };
+          if (cmd === "set_managed_club") {
+            return {
+              clubName: args?.clubName ?? null,
+              status: "available",
+              unclassifiedPlayerCount: 0,
+            };
           }
 
           if (cmd === "get_planner_tactic") {

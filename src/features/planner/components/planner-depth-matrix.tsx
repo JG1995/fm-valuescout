@@ -15,13 +15,13 @@ import {
 } from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
 import { removePlannerString } from "../api/remove-planner-string";
-import { PLANNER_TEAMS, type PlannerTeam } from "../types/club-family";
 import type {
   PlannerDepth,
   PlannerDepthTeam,
   PlannerString,
 } from "../types/depth";
 import type { TacticOptions } from "../types/tactic";
+import { PLANNER_TEAMS, type PlannerTeam } from "../types/team";
 import { PlannerClearAllControl } from "./planner-clear-all-control";
 import {
   PlannerDepthTable,

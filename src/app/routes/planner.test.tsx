@@ -215,7 +215,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     renderPlannerRoute({ initialEntry: "/planner" });
 
-    await screen.findByRole("link", { name: "Open Club Setup" });
+    await screen.findByRole("link", { name: "Open Managed Club" });
     expect(screen.getByRole("tab", { name: "Squad" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -226,8 +226,8 @@ describe("planner route", () => {
     );
     expect(screen.queryByRole("tab", { name: "Club Setup" })).toBeNull();
     expect(
-      screen.getByRole("link", { name: "Open Club Setup" }),
-    ).toHaveAttribute("href", "/#club-setup");
+      screen.getByRole("link", { name: "Open Managed Club" }),
+    ).toHaveAttribute("href", "/settings#managed-club");
     const tacticPanel = document.getElementById(
       "planner-workspace-panel-tactic",
     );
@@ -307,6 +307,22 @@ describe("planner route", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit filters" })).toBeNull();
+  });
+
+  it("describes an empty configured Squad as one managed club", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([]);
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    expect(
+      await screen.findByText(
+        "No current-snapshot players match your managed club.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("renders every nationality flag in the squad overview", async () => {
@@ -1271,7 +1287,7 @@ describe("planner route", () => {
     const { router } = renderPlannerRoute({ initialEntry: "/planner" });
 
     expect(
-      await screen.findByText("Primary club: Barcelona"),
+      await screen.findByText("Managed club: Barcelona"),
     ).toBeInTheDocument();
     const squadTab = screen.getByRole("tab", { name: "Squad" });
     expect(squadTab).toHaveAttribute("aria-selected", "true");
@@ -1332,7 +1348,9 @@ describe("planner route", () => {
       "aria-selected",
       "true",
     );
-    expect(screen.getByRole("link", { name: "Open Club Setup" })).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Open Managed Club" }),
+    ).toBeVisible();
   });
 
   it("edits linked IP and OOP lanes with filtered roles and weight control", async () => {

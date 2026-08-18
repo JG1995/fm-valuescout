@@ -1,9 +1,4 @@
-import type {
-  ClubFamily,
-  ClubSourceInput,
-  PlannerTeam,
-} from "@/features/planner/types/club-family";
-import { PLANNER_TEAMS } from "@/features/planner/types/club-family";
+import type { ManagedClubStatus } from "@/features/managed-club/types/managed-club";
 import type {
   PlannerDepth,
   PlannerSlotCandidate,
@@ -13,10 +8,12 @@ import type {
   TacticOptions,
   TacticRoleOption,
 } from "@/features/planner/types/tactic";
+import { PLANNER_TEAMS, type PlannerTeam } from "@/features/planner/types/team";
 
-const DEFAULT_CLUB_FAMILY: ClubFamily = {
-  primaryClub: null,
-  sources: [],
+const DEFAULT_MANAGED_CLUB: ManagedClubStatus = {
+  clubName: null,
+  status: "unconfigured",
+  unclassifiedPlayerCount: 0,
 };
 
 const DEFAULT_TACTIC: PlannerTactic = {
@@ -255,9 +252,14 @@ function tacticRole(
   return { roleId, displayName, phase, positionTags };
 }
 
-let clubFamily: ClubFamily = { ...DEFAULT_CLUB_FAMILY, sources: [] };
+let managedClub: ManagedClubStatus = { ...DEFAULT_MANAGED_CLUB };
 let availableClubs: string[] = [];
-let clubFamilySaveCalls = 0;
+let managedClubSaveCalls = 0;
+let managedClubSavePending = false;
+let pendingManagedClubSave: {
+  result: ManagedClubStatus;
+  resolve: (result: ManagedClubStatus) => void;
+} | null = null;
 let tactic: PlannerTactic = cloneTactic(DEFAULT_TACTIC);
 let depth: PlannerDepth = buildDefaultDepth();
 let depthFetchCount = 0;
@@ -332,9 +334,11 @@ function buildDefaultDepth(): PlannerDepth {
 }
 
 export function resetPlannerIpcMock() {
-  clubFamily = { ...DEFAULT_CLUB_FAMILY, sources: [] };
+  managedClub = { ...DEFAULT_MANAGED_CLUB };
   availableClubs = [];
-  clubFamilySaveCalls = 0;
+  managedClubSaveCalls = 0;
+  managedClubSavePending = false;
+  pendingManagedClubSave = null;
   tactic = cloneTactic(DEFAULT_TACTIC);
   depth = buildDefaultDepth();
   depthFetchCount = 0;
@@ -362,18 +366,32 @@ export function setPlannerAvailableClubs(clubs: string[]) {
   availableClubs = [...clubs];
 }
 
-export function resolvePlannerClubFamilyIpcMock(): ClubFamily {
-  return {
-    ...clubFamily,
-    sources: clubFamily.sources.map((source) => ({ ...source })),
-  };
+export function setManagedClubIpcMock(status: ManagedClubStatus) {
+  managedClub = { ...status };
 }
 
-export function getPlannerClubFamilySaveCalls() {
-  return clubFamilySaveCalls;
+export function setManagedClubSavePending(pending: boolean) {
+  managedClubSavePending = pending;
 }
 
-export function resolvePlannerClubsIpcMock() {
+export function resolvePendingManagedClubSave() {
+  const pending = pendingManagedClubSave;
+  if (!pending) {
+    throw new Error("No managed-club save is pending");
+  }
+  pendingManagedClubSave = null;
+  pending.resolve(pending.result);
+}
+
+export function resolveManagedClubIpcMock(): ManagedClubStatus {
+  return { ...managedClub };
+}
+
+export function getManagedClubSaveCalls() {
+  return managedClubSaveCalls;
+}
+
+export function resolveManagedClubOptionsIpcMock() {
   return [...availableClubs];
 }
 
@@ -853,55 +871,33 @@ export function resolveSavePlannerTacticIpcMock(args: unknown) {
   return resolvePlannerTacticIpcMock();
 }
 
-export function resolveSavePlannerClubFamilyIpcMock(args: unknown): ClubFamily {
-  clubFamilySaveCalls += 1;
-  const record = args as {
-    primaryClub?: unknown;
-    sources?: unknown;
-  };
-  const primaryClub =
-    typeof record.primaryClub === "string" ? record.primaryClub.trim() : "";
-  if (!primaryClub) {
-    throw "Primary club must not be empty";
+export function resolveSetManagedClubIpcMock(
+  args: unknown,
+): ManagedClubStatus | Promise<ManagedClubStatus> {
+  managedClubSaveCalls += 1;
+  const clubName = (args as { clubName?: unknown }).clubName;
+  if (typeof clubName !== "string" || !clubName.trim()) {
+    throw "Managed club must not be empty";
   }
-
-  const sources = Array.isArray(record.sources)
-    ? (record.sources as Array<ClubSourceInput & { id?: number }>).map(
-        (source, index) => ({
-          id: source.id ?? -(index + 1),
-          team: source.team,
-          clubName: source.clubName,
-          teamLevel: source.teamLevel,
-          isPrimary: false,
-        }),
-      )
-    : [];
-  clubFamily = {
-    primaryClub,
-    sources: [
-      {
-        id: 1,
-        team: "senior",
-        clubName: primaryClub,
-        teamLevel: "senior",
-        isPrimary: true,
-      },
-      {
-        id: 2,
-        team: "reserves",
-        clubName: primaryClub,
-        teamLevel: "reserve",
-        isPrimary: true,
-      },
-      {
-        id: 3,
-        team: "youth",
-        clubName: primaryClub,
-        teamLevel: "youth",
-        isPrimary: true,
-      },
-      ...sources,
-    ],
+  const normalized = clubName.trim();
+  const result: ManagedClubStatus = {
+    clubName: normalized,
+    status: availableClubs.includes(normalized) ? "available" : "missing",
+    unclassifiedPlayerCount: 0,
   };
-  return resolvePlannerClubFamilyIpcMock();
+  if (managedClubSavePending) {
+    return new Promise<ManagedClubStatus>((resolve) => {
+      pendingManagedClubSave = { result, resolve };
+    });
+  }
+  managedClub = result;
+  return resolveManagedClubIpcMock();
+}
+
+// Existing route tests use this setup helper to seed the selected club. The
+// attached-source input is intentionally ignored because membership is now
+// derived from the latest snapshot.
+export function resolveSavePlannerClubFamilyIpcMock(args: unknown) {
+  const primaryClub = (args as { primaryClub?: unknown }).primaryClub;
+  return resolveSetManagedClubIpcMock({ clubName: primaryClub });
 }

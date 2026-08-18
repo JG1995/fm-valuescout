@@ -114,7 +114,7 @@ impl From<StaffPage> for StaffPageDto {
             state: match page.state {
                 StaffPageState::Ready => "ready",
                 StaffPageState::NoCurrentSnapshot => "no_current_snapshot",
-                StaffPageState::NoClubFamily => "no_club_family",
+                StaffPageState::NoManagedClub => "no_managed_club",
                 StaffPageState::NoShortlist => "no_shortlist",
             },
             staff: page.staff.into_iter().map(StaffSummaryDto::from).collect(),
@@ -501,8 +501,8 @@ fn capture_my_staff_boost_cohort(
             message,
         })?
         .ok_or_else(|| StaffBoostError::Eligibility {
-            kind: "clubFamilyRequired".to_string(),
-            message: "Set up your club family in Dashboard before boosting My Staff.".to_string(),
+            kind: "managedClubRequired".to_string(),
+            message: "Select your managed club in Settings before boosting My Staff.".to_string(),
         })?;
     Ok((context, staff_uids))
 }
@@ -673,7 +673,7 @@ mod tests {
         }
     }
 
-    fn configure_staff_family(db: &Db) {
+    fn configure_managed_club(db: &Db) {
         let conn = db.0.lock().expect("lock database");
         let save_id: i64 = conn
             .query_row("SELECT id FROM saves WHERE is_active = 1", [], |row| {
@@ -681,16 +681,10 @@ mod tests {
             })
             .expect("read active save");
         conn.execute(
-            "INSERT INTO planner_club_settings (save_id, primary_club) VALUES (?1, 'Golden FC')",
+            "INSERT INTO managed_club_settings (save_id, club_name) VALUES (?1, 'Golden FC')",
             [save_id],
         )
-        .expect("configure club family");
-        conn.execute(
-            "INSERT INTO planner_club_sources (save_id, team, club_name, team_level, is_primary)
-             VALUES (?1, 'senior', 'Golden FC', 'senior', 1)",
-            [save_id],
-        )
-        .expect("configure family source");
+        .expect("configure managed club");
     }
 
     fn clone_staff(db: &Db, uid: i64, ca: i64, pa: i64, club: &str) {
@@ -865,7 +859,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let (_temp, db) = seeded_db(115, 140);
-        configure_staff_family(&db);
+        configure_managed_club(&db);
         clone_staff(&db, 89, 140, 140, "Golden FC");
         clone_staff(&db, 90, 100, 140, "Other FC");
         let calls = std::cell::RefCell::new(Vec::new());
@@ -901,7 +895,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let (_temp, db) = seeded_db(115, 140);
-        configure_staff_family(&db);
+        configure_managed_club(&db);
         clone_staff(&db, 89, 100, 140, "Golden FC");
         let calls = std::cell::RefCell::new(Vec::new());
 
@@ -934,7 +928,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let (_temp, db) = seeded_db(115, 140);
-        configure_staff_family(&db);
+        configure_managed_club(&db);
         clone_staff(&db, 89, 100, 140, "Golden FC");
         let calls = std::cell::RefCell::new(Vec::new());
 

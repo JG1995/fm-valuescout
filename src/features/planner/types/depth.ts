@@ -1,5 +1,5 @@
-import type { PlannerTeam } from "./club-family";
 import type { PlannerTactic } from "./tactic";
+import type { PlannerTeam } from "./team";
 
 export type PlannerAssignmentState = "resolved" | "outside_pool" | "unresolved";
 

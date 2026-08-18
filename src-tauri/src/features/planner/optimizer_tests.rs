@@ -9,7 +9,6 @@ use super::optimizer::{
     allocation_score, foot_matches, match_lanes, optimize_depth, optimize_depth_with_basis,
     OptimizerCandidate, ScoreBasis,
 };
-use super::service::{self, ClubSourceInput};
 use super::tactic;
 use super::teams::{save_team_settings, PlannerTeamInput};
 use super::test_support::{
@@ -200,6 +199,11 @@ fn optimizer_switches_between_current_and_projected_candidate_scores() {
         ],
     )
     .expect("make future-fit player projectable");
+    conn.execute(
+        "UPDATE players SET team_level = NULL WHERE snapshot_id = ?1 AND uid IN (77, 78)",
+        [snapshot_id],
+    )
+    .expect("remove team levels");
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(90));
 
@@ -226,20 +230,9 @@ fn optimizer_switches_between_current_and_projected_candidate_scores() {
 }
 
 #[test]
-fn optimizer_skips_absent_team_sources_for_current_and_potential_scores() {
+fn optimizer_skips_an_unavailable_team_for_current_and_potential_scores() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
-    service::save_club_family(
-        &conn,
-        save_id,
-        "Loan FC",
-        &[ClubSourceInput {
-            team: "reserves".to_string(),
-            club_name: "Loan B FC".to_string(),
-            team_level: None,
-        }],
-    )
-    .expect("configure reserve-only source");
     set_right_winger_scores(&conn, save_id, 79, Some(100));
     get_depth(&conn, save_id).expect("initialize planner depth");
     save_team_settings(
@@ -262,17 +255,15 @@ fn optimizer_skips_absent_team_sources_for_current_and_potential_scores() {
     let current = optimize_depth(&conn, save_id).expect("optimize current scores");
     let potential = optimize_depth_with_basis(&conn, save_id, ScoreBasis::Potential)
         .expect("optimize potential scores");
+    assert_eq!(
+        assigned_player_uid(&current, PlannerTeam::Senior, "right_winger"),
+        Some(79)
+    );
     for optimized in [current, potential] {
         assert!(!optimized
             .teams
             .iter()
             .any(|team| team.team == PlannerTeam::Reserves));
-        assert!(optimized
-            .teams
-            .iter()
-            .flat_map(|team| team.strings.iter())
-            .flat_map(|planner_string| planner_string.assignments.iter())
-            .all(|assignment| assignment.player_uid != 79));
     }
     assert_eq!(
         conn.query_row(
@@ -666,7 +657,7 @@ fn optimizer_requires_age_both_positions_and_complete_scores() {
 }
 
 #[test]
-fn optimizer_limits_attached_club_sources_to_their_configured_team() {
+fn optimizer_allocates_the_shared_managed_club_pool_in_team_order() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     set_right_winger_scores(&conn, save_id, 77, None);
@@ -674,16 +665,21 @@ fn optimizer_limits_attached_club_sources_to_their_configured_team() {
     set_player_age(&conn, save_id, 79, Some(18));
     set_right_winger_scores(&conn, save_id, 79, Some(100));
     set_right_winger_scores(&conn, save_id, 80, None);
+    conn.execute(
+        "UPDATE players SET team_level = NULL WHERE snapshot_id = ?1 AND uid = 79",
+        [current_snapshot_id(&conn, save_id)],
+    )
+    .expect("remove candidate team level");
 
     let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
 
     assert_eq!(
         assigned_player_uid(&optimized, PlannerTeam::Senior, "right_winger"),
-        None
+        Some(79)
     );
     assert_eq!(
         assigned_player_uid(&optimized, PlannerTeam::Reserves, "right_winger"),
-        Some(79)
+        None
     );
     assert_eq!(
         assigned_player_uid(&optimized, PlannerTeam::Youth, "right_winger"),
@@ -692,7 +688,7 @@ fn optimizer_limits_attached_club_sources_to_their_configured_team() {
 }
 
 #[test]
-fn optimizer_does_not_load_scores_outside_configured_club_family() {
+fn optimizer_does_not_load_scores_outside_the_managed_club() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let snapshot_id: i64 = conn
@@ -706,18 +702,18 @@ fn optimizer_does_not_load_scores_outside_configured_club_family() {
         "UPDATE players SET current_club = 'Other FC' WHERE snapshot_id = ?1 AND uid = 80",
         params![snapshot_id],
     )
-    .expect("exclude player from configured sources");
+    .expect("exclude player from managed club");
     conn.execute_batch("PRAGMA ignore_check_constraints = ON")
-        .expect("allow invalid non-source score");
+        .expect("allow invalid outside-club score");
     conn.execute(
         "UPDATE player_role_scores SET score = 'invalid' WHERE snapshot_id = ?1 AND uid = 80",
         params![snapshot_id],
     )
-    .expect("set invalid non-source score");
+    .expect("set invalid outside-club score");
     conn.execute_batch("PRAGMA ignore_check_constraints = OFF")
         .expect("restore score constraints");
 
-    optimize_depth(&conn, save_id).expect("ignore scores outside configured sources");
+    optimize_depth(&conn, save_id).expect("ignore scores outside managed club");
 }
 
 #[test]
@@ -729,6 +725,17 @@ fn optimizer_excludes_players_with_a_missing_role_score() {
     set_role_score(&conn, save_id, 78, "winger_ip", None);
     set_player_age(&conn, save_id, 79, Some(23));
     set_right_winger_scores(&conn, save_id, 79, Some(50));
+    get_depth(&conn, save_id).expect("initialize planner depth");
+    save_team_settings(
+        &conn,
+        save_id,
+        &[PlannerTeamInput {
+            team: "reserves".to_string(),
+            display_name: "Reserves".to_string(),
+        }],
+        false,
+    )
+    .expect("keep only reserves");
 
     let optimized = optimize_depth(&conn, save_id).expect("optimize planner depth");
 

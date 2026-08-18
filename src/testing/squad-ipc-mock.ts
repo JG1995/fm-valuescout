@@ -223,9 +223,9 @@ export function resolveSquadCurrentAbilityBoostIpcMock(
   if (squadCurrentAbilityBoostMode === "error") {
     return Promise.reject({
       phase: "eligibility",
-      kind: "clubFamilyRequired",
+      kind: "managedClubRequired",
       message:
-        "Set up your club family in Dashboard before boosting the squad.",
+        "Choose your managed club in Settings before boosting the squad.",
     });
   }
 
@@ -338,9 +338,9 @@ export function resolveSquadWonderkidMentalityBoostIpcMock(
   if (squadWonderkidMentalityBoostMode === "error") {
     return Promise.reject({
       phase: "eligibility",
-      kind: "clubFamilyRequired",
+      kind: "managedClubRequired",
       message:
-        "Set up your club family in Dashboard before boosting the squad.",
+        "Choose your managed club in Settings before boosting the squad.",
     });
   }
 

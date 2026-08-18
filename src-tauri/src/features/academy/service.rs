@@ -340,11 +340,8 @@ pub fn list_candidates(
              FROM players p
              WHERE p.snapshot_id = ?1
                AND p.name LIKE ?2 ESCAPE '\\' COLLATE NOCASE
-               AND EXISTS(
-                   SELECT 1
-                   FROM planner_club_sources source
-                   WHERE source.save_id = ?3
-                     AND source.club_name = p.current_club
+               AND p.current_club = (
+                   SELECT club_name FROM managed_club_settings WHERE save_id = ?3
                )
                AND NOT EXISTS(
                    SELECT 1
@@ -406,11 +403,8 @@ pub fn assign_member(
              FROM players p
              WHERE p.snapshot_id = ?1
                AND p.uid = ?2
-               AND EXISTS(
-                   SELECT 1
-                   FROM planner_club_sources source
-                   WHERE source.save_id = ?3
-                     AND source.club_name = p.current_club
+               AND p.current_club = (
+                   SELECT club_name FROM managed_club_settings WHERE save_id = ?3
                )",
             params![snapshot_id, player_uid, save_id],
             |row| row.get(0),
@@ -632,7 +626,7 @@ fn academy_member(
                 .map(|appearances| appearances >= 1),
         });
     };
-    let state = if player_is_in_club_family(conn, save_id, player.current_club.as_deref())? {
+    let state = if player_is_in_managed_club(conn, save_id, player.current_club.as_deref())? {
         AcademyMemberState::Resolved
     } else {
         AcademyMemberState::Departed
@@ -788,7 +782,7 @@ fn load_current_player(
         .transpose()
 }
 
-fn player_is_in_club_family(
+fn player_is_in_managed_club(
     conn: &Connection,
     save_id: i64,
     current_club: Option<&str>,
@@ -799,7 +793,7 @@ fn player_is_in_club_family(
     conn.query_row(
         "SELECT EXISTS(
              SELECT 1
-             FROM planner_club_sources
+             FROM managed_club_settings
              WHERE save_id = ?1 AND club_name = ?2
          )",
         params![save_id, current_club],
@@ -897,7 +891,7 @@ mod tests {
     use serde_json::{json, Value};
 
     use crate::db::migrations;
-    use crate::features::planner::service::{self as planner_service, ClubSourceInput};
+    use crate::features::managed_club::service as managed_club_service;
     use crate::features::snapshot::ingest;
     use crate::features::snapshot::service as snapshot_service;
 
@@ -982,18 +976,9 @@ mod tests {
         );
     }
 
-    fn configure_club_family(conn: &Connection, save_id: i64) {
-        planner_service::save_club_family(
-            conn,
-            save_id,
-            "Loan FC",
-            &[ClubSourceInput {
-                team: "youth".to_string(),
-                club_name: "Loan B FC".to_string(),
-                team_level: Some("youth".to_string()),
-            }],
-        )
-        .expect("configure club family");
+    fn configure_managed_club(conn: &Connection, save_id: i64) {
+        managed_club_service::set_managed_club(conn, save_id, "Loan FC")
+            .expect("configure managed club");
     }
 
     fn insert_membership(conn: &Connection, save_id: i64, class_id: i64, player_uid: i64) {
@@ -1305,7 +1290,7 @@ mod tests {
     }
 
     #[test]
-    fn candidates_follow_the_club_family_and_members_keep_nullable_career_stats() {
+    fn candidates_follow_the_managed_club_and_members_keep_nullable_career_stats() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("academy-candidates.db"));
         let save_id = insert_save(&conn, "Academy save");
@@ -1320,7 +1305,7 @@ mod tests {
                 fixture_player(79, "Other Player", "Other FC", "youth"),
             ],
         );
-        configure_club_family(&conn, save_id);
+        configure_managed_club(&conn, save_id);
         let academy_class =
             super::create_class(&conn, save_id, 2030).expect("create academy class");
 
@@ -1331,7 +1316,7 @@ mod tests {
                 .iter()
                 .map(|candidate| candidate.player_uid)
                 .collect::<Vec<_>>(),
-            [78, 77]
+            [77]
         );
         super::assign_member(&conn, save_id, academy_class.id, 77).expect("assign eligible player");
         assert_eq!(
@@ -1362,14 +1347,9 @@ mod tests {
         assert_eq!(member.international_caps, None);
         assert_eq!(member.outcome, None);
         assert_eq!(member.is_graduate, None);
-        assert_eq!(
-            super::list_candidates(&conn, save_id, "")
-                .expect("list unassigned candidates")
-                .iter()
-                .map(|candidate| candidate.player_uid)
-                .collect::<Vec<_>>(),
-            [78]
-        );
+        assert!(super::list_candidates(&conn, save_id, "")
+            .expect("list unassigned candidates")
+            .is_empty());
     }
 
     #[test]
@@ -1388,7 +1368,7 @@ mod tests {
                 fixture_player(78, "Attached Player", "Loan B FC", "senior"),
             ],
         );
-        configure_club_family(&conn, first_save_id);
+        configure_managed_club(&conn, first_save_id);
         let first_class =
             super::create_class(&conn, first_save_id, 2030).expect("create first academy class");
         super::assign_member(&conn, first_save_id, first_class.id, 77)
@@ -1703,7 +1683,7 @@ mod tests {
                 fixture_player(78, "Attached Player", "Loan B FC", "senior"),
             ],
         );
-        configure_club_family(&conn, save_id);
+        configure_managed_club(&conn, save_id);
         let first_class =
             super::create_class(&conn, save_id, 2030).expect("create first academy class");
         let second_class =
