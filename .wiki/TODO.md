@@ -50,6 +50,10 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 **Parallel tracks:** After player search (order 4), profiles (5) and squad planner shell (6, without optimizer) can overlap once tactic modeling is specced.
 
+## Active
+
+- [Optional Planner Teams](./features/active/optional-planner-teams.md) — user-managed one-to-three Senior, Reserves, and Youth categories with per-save display names, safe assignment cleanup, dynamic Planner presentation, and available-team-only optimization (Linear JAY-28)
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
