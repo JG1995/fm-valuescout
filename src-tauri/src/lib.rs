@@ -94,6 +94,7 @@ pub fn run() {
             features::planner::commands::get_planner_tactic_options,
             features::planner::commands::save_planner_tactic,
             features::planner::commands::get_planner_depth,
+            features::planner::commands::save_planner_teams,
             features::planner::commands::optimize_planner_depth,
             features::planner::commands::get_planner_slot_candidates,
             features::planner::commands::add_planner_string,

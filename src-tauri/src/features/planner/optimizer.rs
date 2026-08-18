@@ -10,9 +10,10 @@ use crate::features::scoring::{
 
 use super::depth::{
     current_snapshot_id, ensure_depth, get_depth, insert_assignment, AssignmentProvenance,
-    PlannerDepth, PlannerTeam, PLANNER_TEAMS,
+    PlannerDepth, PlannerTeam,
 };
 use super::tactic::{base_position, PlannerTactic, TacticLane, TACTIC_LANE_COUNT};
+use super::teams;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct OptimizerCandidate {
@@ -250,6 +251,7 @@ pub(super) fn optimize_depth_with_basis(
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
+    let available_teams = teams::load_team_settings_from_tx(&tx, save_id)?;
     let manual_assignments = load_manual_assignments(&tx, save_id)?;
     let mut reserved_uids = manual_assignments
         .iter()
@@ -270,7 +272,8 @@ pub(super) fn optimize_depth_with_basis(
     .map_err(|error| error.to_string())?;
 
     let strings = load_ordered_strings(&tx, save_id)?;
-    for team in PLANNER_TEAMS {
+    for setting in available_teams {
+        let team = setting.team;
         let candidates =
             load_optimizer_candidates(&tx, save_id, snapshot_id, team, &tactic, score_basis)?;
         for planner_string in strings

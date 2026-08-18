@@ -177,7 +177,7 @@ The first two commits form the walking skeleton. A migrated save is changed thro
 
 #### Commit 1 — Persist save-scoped team settings
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): persist save-scoped team settings`
 
@@ -281,7 +281,7 @@ The first two commits form the walking skeleton. A migrated save is changed thro
 
 #### Commit 2 — Render configured squad teams
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): render configured squad teams`
 
@@ -481,22 +481,21 @@ The first two commits form the walking skeleton. A migrated save is changed thro
 
 **PR:** PR 1 — Support configurable Planner teams
 
-**Commit:** Persist save-scoped team settings
+**Commit:** Render configured squad teams
 
 ### RED proof
 
-Create a populated schema-v27 database with all three Planner teams, migrate it, then attempt to replace its configuration with renamed Senior and Youth only. The first test must fail because schema v27 has no `planner_teams` contract or replacement service. A second optimizer test must fail because both score modes still iterate the fixed three-category array and attempt to load sentinel data reachable only through Reserves.
+Add a two-team renamed Planner route fixture and assert that the current static rendering still shows Reserves and canonical labels in tabs, headings, picker locations, and Clear all copy. The focused route test must fail before the matrix, table, picker, and action components consume the variable-length `displayName`-bearing depth response.
 
 ### Expected outcome
 
-Schema v28 backfills all three canonical settings without changing existing data. The Rust service can atomically persist one-to-three renamed categories, requires confirmation before deleting populated categories, removes their strings and assignments after confirmation, rejects direct absent-team commands, and makes both optimizer modes operate only on the persisted available subset.
+The existing Planner depth UI renders only the configured one-to-three categories, uses persisted display names everywhere user-facing, keeps stable category identities for keys and IPC calls, cycles keyboard selection within the available subset, and remounts cleanly when the active save changes.
 
 ### Explicit exclusions
 
-- No React UI or TypeScript DTO consumption beyond what is required to keep the existing all-three frontend contract compatible.
-- No JAY-27 membership derivation or club-source changes.
-- No current-state architecture or design update before implementation makes the contract true.
-- No staging, commit, push, PR creation, or release preparation during planning.
+- No user-facing add, remove, or rename form; that belongs to Commit 3.
+- No new backend behavior beyond adapting frontend types and rendering to Commit 1's DTO.
+- No JAY-27 membership derivation, Club Setup changes, or design-system changes.
 
 ## Discoveries and replanning
 
@@ -504,12 +503,13 @@ Schema v28 backfills all three canonical settings without changing existing data
 - The added rename requirement makes `planner_strings` presence unsuitable as the source of truth because strings do not own category metadata and are created during depth reads.
 - JAY-27 will replace membership derivation but not the stable category identity. The two features can land independently if JAY-27 later consumes `planner_teams` availability.
 - Repowise was fresh at the planning base but reported no coverage map. Impacted-test selection therefore comes from direct source, current colocated tests, the route suite, and browser smoke rather than coverage-backed recommendations.
+- Commit 1 review required complete team replacement to delete and reinsert settings inside the existing transaction so any legal display name remains saveable, and exact pre/post fixture tuples to prove v27 migration preservation; both are now covered.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | Persist save-scoped team settings | Pending record | Not started | Not run | None |
+| PR 1 | Persist save-scoped team settings | Pending record | v28 persistence, availability guards, transactional replacement, cleanup, and optimizer integration complete | Sol Medium accepted after two correction rounds | Repowise refresh unavailable; direct source and test evidence used |
 | PR 1 | Render configured squad teams | Pending record | Not started | Not run | None |
 | PR 1 | Add squad team management | Pending record | Not started | Not run | None |
 

@@ -7,7 +7,9 @@ use super::optimizer::{
     allocation_score, foot_matches, match_lanes, optimize_depth, optimize_depth_with_basis,
     OptimizerCandidate, ScoreBasis,
 };
+use super::service::{self, ClubSourceInput};
 use super::tactic;
+use super::teams::{save_team_settings, PlannerTeamInput};
 use super::test_support::{
     add_picker_candidates, assigned_player_uid, assignment_provenance, current_snapshot_id,
     open_with_snapshot, set_player_age, set_player_positions, set_player_preferred_foot,
@@ -162,6 +164,66 @@ fn optimizer_switches_between_current_and_projected_candidate_scores() {
     assert_eq!(
         ScoreBasis::parse("unsupported").expect_err("reject unknown basis"),
         "Unknown optimizer score basis `unsupported`"
+    );
+}
+
+#[test]
+fn optimizer_skips_absent_team_sources_for_current_and_potential_scores() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    service::save_club_family(
+        &conn,
+        save_id,
+        "Loan FC",
+        &[ClubSourceInput {
+            team: "reserves".to_string(),
+            club_name: "Loan B FC".to_string(),
+            team_level: None,
+        }],
+    )
+    .expect("configure reserve-only source");
+    set_right_winger_scores(&conn, save_id, 79, Some(100));
+    get_depth(&conn, save_id).expect("initialize planner depth");
+    save_team_settings(
+        &conn,
+        save_id,
+        &[
+            PlannerTeamInput {
+                team: "senior".to_string(),
+                display_name: "Senior".to_string(),
+            },
+            PlannerTeamInput {
+                team: "youth".to_string(),
+                display_name: "Youth".to_string(),
+            },
+        ],
+        false,
+    )
+    .expect("remove reserves before optimization");
+
+    let current = optimize_depth(&conn, save_id).expect("optimize current scores");
+    let potential = optimize_depth_with_basis(&conn, save_id, ScoreBasis::Potential)
+        .expect("optimize potential scores");
+    for optimized in [current, potential] {
+        assert!(!optimized
+            .teams
+            .iter()
+            .any(|team| team.team == PlannerTeam::Reserves));
+        assert!(optimized
+            .teams
+            .iter()
+            .flat_map(|team| team.strings.iter())
+            .flat_map(|planner_string| planner_string.assignments.iter())
+            .all(|assignment| assignment.player_uid != 79));
+    }
+    assert_eq!(
+        conn.query_row(
+            "SELECT COUNT(*) FROM planner_strings WHERE save_id = ?1 AND team = 'reserves'",
+            [save_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("count removed-team strings"),
+        0
     );
 }
 

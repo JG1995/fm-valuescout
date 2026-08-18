@@ -14,6 +14,7 @@ use super::depth::{
     add_string, assign_player, clear_all, clear_assignment, get_depth, get_slot_candidates,
     move_player, remove_string, AssignmentState, PlannerTeam,
 };
+use super::teams::{save_team_settings, PlannerTeamInput};
 use super::test_support::{
     add_picker_candidates, assignment_provenance, current_snapshot_id, open_with_snapshot,
     team_strings,
@@ -189,6 +190,35 @@ fn creates_one_default_string_for_each_team() {
         .teams
         .iter()
         .all(|team| team.strings[0].string_order == 0));
+}
+
+#[test]
+fn direct_depth_commands_reject_an_unavailable_team_without_recreating_it() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    get_depth(&conn, save_id).expect("initialize planner depth");
+    save_team_settings(
+        &conn,
+        save_id,
+        &[PlannerTeamInput {
+            team: "senior".to_string(),
+            display_name: "Senior".to_string(),
+        }],
+        false,
+    )
+    .expect("remove unused teams");
+
+    let add_error = add_string(&conn, save_id, PlannerTeam::Reserves)
+        .expect_err("reject adding a string to an unavailable team");
+    assert!(add_error.contains("not available"));
+    let candidate_error =
+        get_slot_candidates(&conn, save_id, PlannerTeam::Reserves, "goalkeeper", "")
+            .expect_err("reject loading candidates for an unavailable team");
+    assert!(candidate_error.contains("not available"));
+    assert!(!get_depth(&conn, save_id)
+        .expect("reload depth")
+        .teams
+        .iter()
+        .any(|team| team.team == PlannerTeam::Reserves));
 }
 
 #[test]

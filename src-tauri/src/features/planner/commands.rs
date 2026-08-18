@@ -15,6 +15,7 @@ use super::squad::{
     DEFAULT_SQUAD_PAGE_LIMIT, MAX_SQUAD_PAGE_LIMIT,
 };
 use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
+use super::teams::{self as teams_service, PlannerTeamInput};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -366,6 +367,7 @@ impl From<PlannerString> for PlannerStringDto {
 #[serde(rename_all = "camelCase")]
 pub struct PlannerDepthTeamDto {
     pub team: String,
+    pub display_name: String,
     pub strings: Vec<PlannerStringDto>,
 }
 
@@ -373,6 +375,7 @@ impl From<PlannerDepthTeam> for PlannerDepthTeamDto {
     fn from(team: PlannerDepthTeam) -> Self {
         Self {
             team: team.team.as_str().to_string(),
+            display_name: team.display_name,
             strings: team
                 .strings
                 .into_iter()
@@ -510,6 +513,40 @@ pub fn get_planner_depth(db: State<'_, Db>) -> Result<PlannerDepthDto, String> {
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
+    Ok(depth_service::get_depth(&conn, save_id)?.into())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerTeamInputDto {
+    pub team: String,
+    pub display_name: String,
+}
+
+impl From<PlannerTeamInputDto> for PlannerTeamInput {
+    fn from(input: PlannerTeamInputDto) -> Self {
+        Self {
+            team: input.team,
+            display_name: input.display_name,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn save_planner_teams(
+    teams: Vec<PlannerTeamInputDto>,
+    confirm_populated_removal: bool,
+    db: State<'_, Db>,
+) -> Result<PlannerDepthDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    let teams = teams
+        .into_iter()
+        .map(PlannerTeamInput::from)
+        .collect::<Vec<_>>();
+    teams_service::save_team_settings(&conn, save_id, &teams, confirm_populated_removal)?;
     Ok(depth_service::get_depth(&conn, save_id)?.into())
 }
 
