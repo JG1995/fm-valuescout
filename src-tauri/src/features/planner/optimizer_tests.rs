@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use rusqlite::params;
 
 use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
@@ -95,8 +97,64 @@ fn two_footed_players_match_every_restricted_foot_rule() {
 fn soft_foot_mismatches_are_capped_at_zero() {
     let mut lane = tactic::default_tactic().lanes.remove(0);
     lane.preferred_foot = "right".to_string();
+    let positions = BTreeMap::from([("GK".to_string(), Some(16))]);
 
-    assert_eq!(allocation_score(3, "left", &lane), Some(0));
+    assert_eq!(allocation_score(3, "left", &positions, &lane), Some(0));
+}
+
+#[test]
+fn allocation_score_deducts_five_for_each_sub_16_lane_position() {
+    let lane = tactic::default_tactic().lanes.remove(9);
+
+    for (ip_familiarity, oop_familiarity, expected) in
+        [(16, 16, 50), (15, 16, 45), (16, 15, 45), (15, 15, 40)]
+    {
+        let positions = BTreeMap::from([
+            ("AMR".to_string(), Some(ip_familiarity)),
+            ("MR".to_string(), Some(oop_familiarity)),
+        ]);
+
+        assert_eq!(
+            allocation_score(50, "right", &positions, &lane),
+            Some(expected),
+            "IP {ip_familiarity}, OOP {oop_familiarity}",
+        );
+    }
+}
+
+#[test]
+fn optimizer_penalizes_sub_16_familiarity_without_excluding_eligible_players() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE player_role_scores
+         SET score = NULL
+         WHERE snapshot_id = ?1
+           AND uid IN (77, 78)
+           AND role_id NOT IN ('winger_ip', 'tracking_wide_midfielder_oop')",
+        [snapshot_id],
+    )
+    .expect("limit candidates to the right-winger lane");
+    set_right_winger_scores(&conn, save_id, 77, Some(100));
+    set_right_winger_scores(&conn, save_id, 78, Some(98));
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 16, "MR": 15}"#);
+    set_player_positions(&conn, save_id, 78, r#"{"AMR": 16, "MR": 16}"#);
+
+    let one_below = optimize_depth(&conn, save_id).expect("optimize one sub-16 position");
+    assert_eq!(
+        assigned_player_uid(&one_below, PlannerTeam::Senior, "right_winger"),
+        Some(78)
+    );
+
+    set_right_winger_scores(&conn, save_id, 78, Some(91));
+    set_player_positions(&conn, save_id, 77, r#"{"AMR": 15, "MR": 15}"#);
+
+    let both_below = optimize_depth(&conn, save_id).expect("optimize two sub-16 positions");
+    assert_eq!(
+        assigned_player_uid(&both_below, PlannerTeam::Senior, "right_winger"),
+        Some(78)
+    );
 }
 
 #[test]

@@ -547,7 +547,9 @@ fn load_current_optimizer_candidates(
                                         .flatten(),
                                     lane.ip_weight,
                                 )
-                                .and_then(|score| allocation_score(score, &preferred_foot, lane))
+                                .and_then(|score| {
+                                    allocation_score(score, &preferred_foot, &positions, lane)
+                                })
                             })
                             .flatten()
                     })
@@ -667,7 +669,9 @@ fn load_potential_optimizer_candidates(
                                     score_role(&projected_attributes, oop_role),
                                     lane.ip_weight,
                                 )
-                                .and_then(|score| allocation_score(score, &preferred_foot, lane))
+                                .and_then(|score| {
+                                    allocation_score(score, &preferred_foot, &positions, lane)
+                                })
                             })
                             .flatten()
                     })
@@ -689,11 +693,31 @@ fn load_potential_optimizer_candidates(
         .collect()
 }
 
-pub(super) fn allocation_score(score: u8, player_foot: &str, lane: &TacticLane) -> Option<u8> {
-    if foot_matches(player_foot, &lane.preferred_foot) {
-        return Some(score);
-    }
-    (lane.foot_preference != "strict").then_some(score.saturating_sub(5))
+pub(super) fn allocation_score(
+    score: u8,
+    player_foot: &str,
+    positions: &std::collections::BTreeMap<String, Option<i64>>,
+    lane: &TacticLane,
+) -> Option<u8> {
+    let foot_penalty = if foot_matches(player_foot, &lane.preferred_foot) {
+        0
+    } else if lane.foot_preference == "strict" {
+        return None;
+    } else {
+        5
+    };
+    let familiarity_penalty = [&lane.ip_position, &lane.oop_position]
+        .into_iter()
+        .filter(|position| {
+            positions
+                .get(base_position(position))
+                .copied()
+                .flatten()
+                .is_some_and(|familiarity| familiarity < 16)
+        })
+        .count() as u8
+        * 5;
+    Some(score.saturating_sub(foot_penalty + familiarity_penalty))
 }
 
 pub(super) fn foot_matches(player_foot: &str, preferred_foot: &str) -> bool {
@@ -718,16 +742,16 @@ fn is_suitable_for_lane(
     positions: &std::collections::BTreeMap<String, Option<i64>>,
     lane: &TacticLane,
 ) -> bool {
-    let has_suitability = |position: &str, minimum: i64| {
+    let has_suitability = |position: &str| {
         positions
             .get(base_position(position))
             .copied()
             .flatten()
-            .is_some_and(|suitability| suitability >= minimum)
+            .is_some_and(|suitability| suitability >= 12)
     };
-    has_suitability(&lane.ip_position, 16)
+    has_suitability(&lane.ip_position)
         && (base_position(&lane.ip_position) == base_position(&lane.oop_position)
-            || has_suitability(&lane.oop_position, 12))
+            || has_suitability(&lane.oop_position))
 }
 
 #[cfg(test)]
@@ -756,9 +780,9 @@ mod tests {
     }
 
     #[test]
-    fn distinct_lane_positions_allow_lower_oop_familiarity() {
+    fn distinct_lane_positions_allow_minimum_familiarity() {
         let positions =
-            BTreeMap::from([("DC".to_string(), Some(16)), ("MC".to_string(), Some(12))]);
+            BTreeMap::from([("DC".to_string(), Some(12)), ("MC".to_string(), Some(12))]);
         let lane = TacticLane {
             lane_id: "defensive_midfielder".to_string(),
             ip_weight: 0.5,
@@ -789,11 +813,11 @@ mod tests {
         };
 
         assert!(!is_suitable_for_lane(
-            &BTreeMap::from([("DC".to_string(), Some(15)), ("MC".to_string(), Some(12)),]),
+            &BTreeMap::from([("DC".to_string(), Some(11)), ("MC".to_string(), Some(12)),]),
             &lane,
         ));
         assert!(!is_suitable_for_lane(
-            &BTreeMap::from([("DC".to_string(), Some(16)), ("MC".to_string(), Some(11)),]),
+            &BTreeMap::from([("DC".to_string(), Some(12)), ("MC".to_string(), Some(11)),]),
             &lane,
         ));
     }

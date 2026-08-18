@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-08-18
+
+### Fixed
+
+- Planner optimization now accepts familiarity of 12 in both tactic phases and applies hidden ranking deductions below 16.
+
 ## [0.6.3] - 2026-08-18
 
 ### Fixed
