@@ -2,7 +2,7 @@
 
 ## Status
 
-Completed — documentation reconciled; ready for publication
+Completed — draft PR #66 open for review
 
 ## Delivered behavior
 
@@ -41,15 +41,15 @@ Completed — documentation reconciled; ready for publication
 | `aa67ab79f4a070aa7a723a0fbc4a39c8c33927b6` | `feat(planner): render configured squad teams` | Dynamic display-name rendering and available-team keyboard navigation |
 | `ac036c58a8a5704277537d24e94c6df29acb91b0` | `feat(planner): add squad team management` | Management Modal, confirmation, cache and focus reconciliation, IPC doubles, and browser smoke |
 
-No correction commit was required after the feature-complete review. The documentation reconciliation ref is **Pending record** until this documentation-only change is checkpointed.
+No correction commit was required after the feature-complete review. Documentation reconciliation committed as `ad62448`.
 
 ## Final publication
 
 ```yaml
-status: ready_for_publication
-pr_status: not_published
+status: published
+pr_status: draft
 merge_status: not_merged
-pr_ref: "Not published"
+pr_ref: "https://github.com/JG1995/fm-valuescout/pull/66"
 merge_ref: "Not merged"
 branch: feature/optional-planner-teams
 base_branch: main
@@ -70,7 +70,7 @@ feature_review_high: none
 feature_review_medium: none
 feature_review_nitpick: none
 ci_repair_attempts: 0
-publication_evidence: not_published/not_merged
+publication_evidence: draft_pr_66/not_merged
 publication_range: "e713e2449059b162c392407c3b042cec3196e067..ac036c58a8a5704277537d24e94c6df29acb91b0"
 feature_review_scope: "945025cb1cacfcf11e51d9d6e28de4efd1b908d6, aa67ab79f4a070aa7a723a0fbc4a39c8c33927b6, ac036c58a8a5704277537d24e94c6df29acb91b0"
 final_pr_commit_set:
@@ -78,12 +78,12 @@ final_pr_commit_set:
   - 945025cb1cacfcf11e51d9d6e28de4efd1b908d6
   - aa67ab79f4a070aa7a723a0fbc4a39c8c33927b6
   - ac036c58a8a5704277537d24e94c6df29acb91b0
-close_out_documentation_ref: Pending record
+close_out_documentation_ref: ad62448f4b51ddf452d98848e487f61e701ef8c6
 ```
 
 ## Feature close-out
 
-**State:** Current. The exact implementation set passed final validation, the Sol xhigh feature review, and documentation reconciliation. The branch remains local and unpublished; no PR or merge ref exists. Publication can resume from the machine-readable block without reopening implementation scope.
+**State:** Current. The exact implementation set passed final validation, the Sol xhigh feature review, and documentation reconciliation. Draft PR [#66](https://github.com/JG1995/fm-valuescout/pull/66) is open from `feature/optional-planner-teams`; no merge ref exists.
 
 ## Follow-up
 
