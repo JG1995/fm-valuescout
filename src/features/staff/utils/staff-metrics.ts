@@ -56,6 +56,7 @@ const STAFF_ATTRIBUTE_KEYS = [
 
 const STAFF_ROLES = [
   ["assistant_manager", "Assistant Manager"],
+  ["manager", "Manager"],
   ["coach_attacking_technical", "Coach — Attacking Technical"],
   ["coach_attacking_tactical", "Coach — Attacking Tactical"],
   ["coach_defending_technical", "Coach — Defending Technical"],

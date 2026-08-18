@@ -5,6 +5,7 @@ export const DEFAULT_STAFF_TABLE_COLUMN_IDS = [
   "ca",
   "pa",
   "role.assistant_manager",
+  "role.manager",
   "role.coach_attacking_technical",
   "role.coach_attacking_tactical",
   "role.coach_defending_technical",

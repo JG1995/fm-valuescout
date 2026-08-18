@@ -18,6 +18,17 @@ const STAFF_ROLES: &[StaffRoleDefinition] = &[
         ],
     },
     StaffRoleDefinition {
+        role_id: "manager",
+        display_name: "Manager",
+        attributes: &[
+            "Motivating",
+            "ManManagement",
+            "JudgingPlayerAbility",
+            "JudgingPlayerPotential",
+            "TacticalKnowledge",
+        ],
+    },
+    StaffRoleDefinition {
         role_id: "coach_attacking_technical",
         display_name: "Coach — Attacking Technical",
         attributes: &[
@@ -222,15 +233,15 @@ mod tests {
     }
 
     #[test]
-    fn catalog_has_twenty_unique_stable_ids_and_exact_special_formulas() {
+    fn catalog_has_twenty_one_unique_stable_ids_and_exact_special_formulas() {
         let roles = all_staff_roles();
         let unique_ids = roles
             .iter()
             .map(|role| role.role_id)
             .collect::<std::collections::HashSet<_>>();
 
-        assert_eq!(roles.len(), 20);
-        assert_eq!(unique_ids.len(), 20);
+        assert_eq!(roles.len(), 21);
+        assert_eq!(unique_ids.len(), 21);
         let expected = [
             (
                 "assistant_manager",
@@ -238,6 +249,17 @@ mod tests {
                     "ManManagement",
                     "JudgingPlayerPotential",
                     "JudgingPlayerAbility",
+                ][..]
+                    .as_ref(),
+            ),
+            (
+                "manager",
+                &[
+                    "Motivating",
+                    "ManManagement",
+                    "JudgingPlayerAbility",
+                    "JudgingPlayerPotential",
+                    "TacticalKnowledge",
                 ][..]
                     .as_ref(),
             ),
@@ -420,6 +442,19 @@ mod tests {
                 role("assistant_manager"),
             ),
             Some(55)
+        );
+        assert_eq!(
+            score_staff_role(
+                &attrs(&[
+                    ("Motivating", Some(10)),
+                    ("ManManagement", Some(11)),
+                    ("JudgingPlayerAbility", Some(12)),
+                    ("JudgingPlayerPotential", Some(13)),
+                    ("TacticalKnowledge", Some(14)),
+                ]),
+                role("manager"),
+            ),
+            Some(60)
         );
     }
 
