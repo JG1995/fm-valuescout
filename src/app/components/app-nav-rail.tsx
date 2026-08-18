@@ -6,6 +6,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Search,
+  Settings as SettingsIcon,
   UserRoundCog,
   UsersRound,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const navItems: NavItem[] = [
   { to: "/staff", label: "Staff", icon: UserRoundCog },
   { to: "/planner", label: "Squad", icon: UsersRound },
   { to: "/academy", label: "Youth Academy", icon: GraduationCap },
+  { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 export function AppNavRail() {

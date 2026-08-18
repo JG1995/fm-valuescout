@@ -471,7 +471,7 @@ describe("staff route", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open Club Setup" }),
-    ).toHaveAttribute("href", "/#club-setup");
+    ).toHaveAttribute("href", "/settings#club-setup");
   });
 
   it("offers one bulk CA boost on My Staff and no row actions", async () => {

@@ -83,7 +83,7 @@ function AcademyNoClubFamily() {
         title="Academy needs your club family"
         action={
           <Link
-            to="/"
+            to="/settings"
             hash="club-setup"
             className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
           >

@@ -116,12 +116,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         playerCount: snapshot.playerCount,
         loadedAtUtc: snapshot.loadedAtUtc,
       });
-      const snapshotSanityPlayers = (snapshot) => [{
-        name: "Snapshot " + snapshot.id + " player",
-        ca: snapshot.playerCount,
-        club: "Snapshot " + snapshot.id + " FC",
-        proofRoleScore: snapshot.playerCount,
-      }];
       const plannerTactic = {
         lanes: [
           ["goalkeeper", "GK", "goalkeeper_ip", "GK", "line_holding_keeper_oop"],
@@ -560,11 +554,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   loadedAtUtc: "2026-07-28T15:05:00.000Z",
                 }
               : null;
-          }
-
-          if (cmd === "list_sanity_players") {
-            const snapshot = currentSnapshot();
-            return snapshot ? snapshotSanityPlayers(snapshot) : [];
           }
 
           if (cmd === "import_csv") {

@@ -227,7 +227,7 @@ describe("planner route", () => {
     expect(screen.queryByRole("tab", { name: "Club Setup" })).toBeNull();
     expect(
       screen.getByRole("link", { name: "Open Club Setup" }),
-    ).toHaveAttribute("href", "/#club-setup");
+    ).toHaveAttribute("href", "/settings#club-setup");
     const tacticPanel = document.getElementById(
       "planner-workspace-panel-tactic",
     );

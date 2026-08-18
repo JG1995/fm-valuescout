@@ -74,7 +74,6 @@ import {
   resolveDeleteSaveIpcMock,
   resolveDeleteSnapshotIpcMock,
   resolveGetCurrentSnapshotIpcMock,
-  resolveListSanityPlayersIpcMock,
   resolveListSavesIpcMock,
   resolveListSnapshotsIpcMock,
   resolveLoadDataIpcMock,
@@ -143,10 +142,6 @@ function registerIpcMocks() {
 
     if (cmd === "get_current_snapshot") {
       return resolveGetCurrentSnapshotIpcMock();
-    }
-
-    if (cmd === "list_sanity_players") {
-      return resolveListSanityPlayersIpcMock();
     }
 
     if (cmd === "import_csv") {

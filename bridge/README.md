@@ -151,7 +151,7 @@ Copy-Item Directory.Build.props.example Directory.Build.user.props
 
 ## In-app install (Tauri)
 
-The desktop app can install, update, or remove `FmDataBridge.dll` into the default Steam FM26 `BepInEx/plugins` folder from the **Bridge plugin install** section on the home screen.
+The desktop app can install, update, or remove `FmDataBridge.dll` into the default Steam FM26 `BepInEx/plugins` folder from the **Bridge plugin install** section in Settings.
 
 1. Ensure BepInEx 6 IL2CPP is already installed in the FM26 Steam folder (the app does **not** install BepInEx itself).
 2. Click **Install plugin** (or **Update plugin** when a copy is already present).

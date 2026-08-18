@@ -502,7 +502,7 @@ fn capture_my_staff_boost_cohort(
         })?
         .ok_or_else(|| StaffBoostError::Eligibility {
             kind: "clubFamilyRequired".to_string(),
-            message: "Set up your club family in Dashboard before boosting My Staff.".to_string(),
+            message: "Set up your club family in Settings before boosting My Staff.".to_string(),
         })?;
     Ok((context, staff_uids))
 }

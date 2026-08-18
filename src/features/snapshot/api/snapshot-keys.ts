@@ -4,5 +4,4 @@ export const snapshotKeys = {
   current: () => [...snapshotKeys.all, "current"] as const,
   history: (saveId: number) =>
     [...snapshotKeys.all, "history", saveId] as const,
-  sanityPlayers: () => [...snapshotKeys.all, "sanity-players"] as const,
 };

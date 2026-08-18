@@ -148,7 +148,7 @@ Commit 1 makes `/settings` routable from the nav rail, moves the existing save/s
 
 #### Commit 1 — Move operational controls to Settings
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(settings): move app management from Dashboard`
 
@@ -240,7 +240,7 @@ Commit 1 makes `/settings` routable from the nav rail, moves the existing save/s
 
 #### Commit 2 — Replace club-family configuration with managed-club membership
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(club): derive managed membership from FM data`
 
@@ -350,19 +350,19 @@ Commit 1 makes `/settings` routable from the nav rail, moves the existing save/s
 
 **PR:** PR 1 — Move app management to Settings and derive managed-club membership
 
-**Commit:** Commit 1 — Move operational controls to Settings
+**Commit:** Commit 2 — Replace club-family configuration with managed-club membership
 
 ### RED proof
 
-Add route and shell tests that require a Settings navigation entry, direct `/settings` rendering of the existing management panels, browser Back/Forward route preservation, and a placeholder-only Dashboard. Add a snapshot overview proof that fails while the sanity table and `list_sanity_players` call still exist.
+Add migration tests that require primary-selection preservation and attached-source removal, managed-club service tests for exact current-snapshot options and status, and consumer tests that require exact club and team-level membership while retaining existing Planner assignments and Academy history.
 
 ### Expected outcome
 
-The repository has a routable Settings management page, a minimal Dashboard, no Dashboard auto-detect CSV action, and no development sanity-player IPC path. Existing Club Setup behavior remains unchanged in Settings until Commit 2.
+The repository has one save-scoped managed-club selection, current cohorts derive from exact effective-snapshot club and team-level data, Settings exposes one selector, and obsolete club-family sources, commands, types, recovery copy, and persistence are removed.
 
 ### Explicit exclusions
 
-Do not change club-family persistence, membership, DTOs, or copy beyond the location needed for Settings. Do not begin migration v29 or downstream consumer rewrites.
+Do not change the bridge or dump schema, infer affiliates or fuzzy club relationships, change Planner team configuration, build My Club, add Dashboard content, or delete retained assignments, Academy history, tactics, strings, shortlists, enrichment, saves, or snapshots.
 
 ## Discoveries and replanning
 
@@ -374,7 +374,7 @@ Do not change club-family persistence, membership, DTOs, or copy beyond the loca
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | Commit 1 — Move operational controls to Settings | Pending record | Pending | Pending | None |
+| PR 1 | Commit 1 — Move operational controls to Settings | Pending record | Settings route and navigation; placeholder Dashboard; relocated management panels; Dashboard importer and sanity IPC removed | Sol Medium accepted after one documentation correction round | None |
 | PR 1 | Commit 2 — Replace club-family configuration with managed-club membership | Pending record | Pending | Pending | None |
 
 ## Final validation

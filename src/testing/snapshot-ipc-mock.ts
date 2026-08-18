@@ -8,13 +8,6 @@ import type {
 
 export type { SnapshotMetadata } from "@/features/snapshot/types/snapshot";
 
-type PlayerSanityRow = {
-  name: string;
-  ca: number;
-  club: string | null;
-  proofRoleScore: number | null;
-};
-
 type LoadDataTimings = {
   scanMs: number;
   ingestMs: number;
@@ -49,17 +42,10 @@ const DEFAULT_SAVE: SaveSummary = {
   updatedAtUtc: "2026-07-28T12:00:00.000Z",
 };
 
-const SAMPLE_PLAYERS: PlayerSanityRow[] = [
-  { name: "Alex Morgan", ca: 165, club: "Metro FC", proofRoleScore: 72 },
-  { name: "Jordan Lee", ca: 142, club: "Riverside United", proofRoleScore: 58 },
-  { name: "Sam Rivera", ca: 178, club: null, proofRoleScore: 81 },
-];
+const SAMPLE_PLAYER_COUNT = 3;
 
 let saves: SaveSummary[] = [{ ...DEFAULT_SAVE }];
-const snapshotsBySaveId = new Map<
-  number,
-  { snapshot: SnapshotSummary; players: PlayerSanityRow[] }
->();
+const snapshotsBySaveId = new Map<number, { snapshot: SnapshotSummary }>();
 let snapshotHistory: SnapshotMetadata[] = [];
 let loadDataMode: LoadDataIpcMockMode = "success";
 let snapshotDeleteMode: SnapshotManagementIpcMockMode = "success";
@@ -92,7 +78,7 @@ function buildSnapshot(overrides?: Partial<SnapshotSummary>): SnapshotSummary {
     gameDateSource: "inGame",
     scanTruncated: false,
     maxAccepted: null,
-    playerCount: SAMPLE_PLAYERS.length,
+    playerCount: SAMPLE_PLAYER_COUNT,
     loadedAtUtc: "2026-07-28T15:05:00.000Z",
     ...overrides,
   };
@@ -131,14 +117,6 @@ function historySnapshotState(snapshot: SnapshotMetadata) {
       playerCount: snapshot.playerCount,
       loadedAtUtc: snapshot.loadedAtUtc,
     }),
-    players: [
-      {
-        name: `Snapshot ${snapshot.id} player`,
-        ca: snapshot.playerCount,
-        club: `Snapshot ${snapshot.id} FC`,
-        proofRoleScore: snapshot.playerCount,
-      },
-    ],
   };
 }
 
@@ -313,11 +291,6 @@ export function resolveListSnapshotsIpcMock(args: unknown) {
 export function resolveGetCurrentSnapshotIpcMock() {
   const state = activeSaveSnapshot();
   return state ? { ...state.snapshot } : null;
-}
-
-export function resolveListSanityPlayersIpcMock() {
-  const state = activeSaveSnapshot();
-  return state ? state.players.map((player) => ({ ...player })) : [];
 }
 
 export function resolveCreateSaveIpcMock(args: unknown) {
@@ -555,23 +528,18 @@ export function resolveLoadDataIpcMock(
 
   const truncated = loadDataMode === "truncatedSuccess";
   const result = buildLoadDataResult({
-    playersFound: truncated ? 500 : SAMPLE_PLAYERS.length,
+    playersFound: truncated ? 500 : SAMPLE_PLAYER_COUNT,
     scanTruncated: truncated,
     maxAccepted: truncated ? 500 : null,
     storedSnapshot: buildSnapshot({
       scanTruncated: truncated,
       maxAccepted: truncated ? 500 : null,
-      playerCount: truncated ? 500 : SAMPLE_PLAYERS.length,
+      playerCount: truncated ? 500 : SAMPLE_PLAYER_COUNT,
     }),
   });
 
-  const players = truncated
-    ? [{ name: "Capped Player", ca: 150, club: "Cap City", proofRoleScore: 65 }]
-    : [...SAMPLE_PLAYERS];
-
   snapshotsBySaveId.set(activeSave().id, {
     snapshot: result.effectiveSnapshot,
-    players,
   });
   snapshotHistory = [
     ...snapshotHistory

@@ -60,7 +60,6 @@ pub fn run() {
             features::snapshot::commands::delete_snapshot,
             features::snapshot::commands::delete_save,
             features::snapshot::commands::get_current_snapshot,
-            features::snapshot::commands::list_sanity_players,
             features::snapshot::commands::load_data,
             features::csv_import::commands::import_csv,
             features::csv_import::commands::import_staff_shortlist_csv,

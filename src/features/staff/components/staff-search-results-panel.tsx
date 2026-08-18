@@ -442,7 +442,7 @@ export function StaffSearchResultsPanel({
           title="Set up your club family"
           action={
             <Link
-              to="/"
+              to="/settings"
               hash="club-setup"
               className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
             >
@@ -450,7 +450,7 @@ export function StaffSearchResultsPanel({
             </Link>
           }
         >
-          Configure your club family in Dashboard before reviewing your staff.
+          Configure your club family in Settings before reviewing your staff.
         </EmptyState>
       </Panel>
     );

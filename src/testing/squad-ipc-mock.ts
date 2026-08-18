@@ -224,8 +224,7 @@ export function resolveSquadCurrentAbilityBoostIpcMock(
     return Promise.reject({
       phase: "eligibility",
       kind: "clubFamilyRequired",
-      message:
-        "Set up your club family in Dashboard before boosting the squad.",
+      message: "Set up your club family in Settings before boosting the squad.",
     });
   }
 
@@ -339,8 +338,7 @@ export function resolveSquadWonderkidMentalityBoostIpcMock(
     return Promise.reject({
       phase: "eligibility",
       kind: "clubFamilyRequired",
-      message:
-        "Set up your club family in Dashboard before boosting the squad.",
+      message: "Set up your club family in Settings before boosting the squad.",
     });
   }
 

@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { renderWithProviders } from "@/testing/render-with-providers";
+import { renderWithProviders as renderApp } from "@/testing/render-with-providers";
 import {
   getLastSnapshotManagementIpcArgs,
   resolveBusyLoadDataRequest,
@@ -53,6 +53,10 @@ function seedHistory() {
   setSnapshotHistoryIpcMock(HISTORY);
 }
 
+function renderWithProviders() {
+  return renderApp({ initialEntries: ["/settings"] });
+}
+
 describe("snapshot panels", () => {
   beforeEach(() => {
     setLoadDataIpcMockMode("success");
@@ -76,7 +80,7 @@ describe("snapshot panels", () => {
     );
   });
 
-  it("shows snapshot metadata and sanity list after Load Data", async () => {
+  it("shows snapshot metadata without a sanity table after Load Data", async () => {
     const user = userEvent.setup();
     renderWithProviders();
 
@@ -87,10 +91,10 @@ describe("snapshot panels", () => {
       await screen.findByText(/Loaded 3 players into the database/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/In database:/i)).toBeInTheDocument();
-    expect(screen.getByText("Alex Morgan")).toBeInTheDocument();
-    expect(screen.getByText("165")).toBeInTheDocument();
-    expect(screen.getByText("72")).toBeInTheDocument();
-    expect(screen.getByText("Metro FC")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("table", { name: "Player sanity list" }),
+    ).toBeNull();
+    expect(screen.queryByText("Alex Morgan")).toBeNull();
   });
 
   it("shows truncated banner after capped Load Data", async () => {
@@ -134,7 +138,7 @@ describe("snapshot panels", () => {
 
     await screen.findByText(/No snapshot loaded for the active save/i);
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
-    expect(await screen.findByText("Alex Morgan")).toBeInTheDocument();
+    expect(await screen.findByText(/In database:/i)).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("New save"), "Youth intake");
     await user.click(screen.getByRole("button", { name: "Create save" }));
@@ -145,13 +149,13 @@ describe("snapshot panels", () => {
     expect(
       await screen.findByText(/No snapshot loaded for the active save/i),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Alex Morgan")).not.toBeInTheDocument();
+    expect(screen.queryByText(/In database:/i)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/Loaded 3 players into the database/i),
     ).not.toBeInTheDocument();
 
     await user.selectOptions(select, "1");
-    expect(await screen.findByText("Alex Morgan")).toBeInTheDocument();
+    expect(await screen.findByText(/In database:/i)).toBeInTheDocument();
   });
 
   it("retargets the rename field when the top bar switches save", async () => {

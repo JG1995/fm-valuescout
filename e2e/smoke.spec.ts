@@ -8,7 +8,7 @@ test.describe("application smoke", () => {
     await stubTauriIpc(page);
   });
 
-  test("home route shows Dashboard product panels without template health controls", async ({
+  test("Dashboard stays minimal and Settings hosts app management", async ({
     page,
   }) => {
     await page.goto("/");
@@ -19,26 +19,34 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("heading", { level: 1, name: "Dashboard" }),
     ).toBeVisible();
-    await expect(main.getByRole("heading", { name: "Saves" })).toBeVisible();
+    await expect(main.getByText("Placeholder.")).toBeVisible();
+    await expect(main.getByRole("heading", { name: "Saves" })).toHaveCount(0);
     await expect(
       header.getByRole("combobox", { name: "Active save" }),
     ).toBeVisible();
     await expect(
-      main.getByRole("heading", { name: "Snapshot", exact: true }),
-    ).toBeVisible();
-    await expect(
       header.getByRole("button", { name: "Load Data" }),
     ).toBeVisible();
+    await page.getByRole("link", { name: "Settings" }).click();
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(
+      main.getByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeVisible();
+    await expect(main.getByRole("region", { name: "Save data" })).toBeVisible();
+    await expect(
+      main.getByRole("region", { name: "Club setup" }),
+    ).toBeVisible();
+    await expect(main.getByRole("region", { name: "Bridge" })).toBeVisible();
     await expect(main.getByText(/^Bridge:/i)).toContainText("ready");
     await expect(main.getByText("Status:")).toHaveCount(0);
     await expect(main.getByText("Stored value:")).toHaveCount(0);
   });
 
-  test("Dashboard renames and removes a historical snapshot", async ({
+  test("Settings renames and removes a historical snapshot", async ({
     page,
   }) => {
     await stubTauriIpc(page, { snapshotHistory: true });
-    await page.goto("/");
+    await page.goto("/settings");
 
     const main = page.getByRole("main");
     const history = main.getByRole("table", { name: "Snapshot history" });
@@ -70,22 +78,18 @@ test.describe("application smoke", () => {
     ).toHaveCount(0);
   });
 
-  test("Dashboard promotes the next dated snapshot after deleting current", async ({
+  test("Settings promotes the next dated snapshot after deleting current", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
       snapshotHistory: true,
-      csvImportFormat: "moneyball",
     });
-    await page.goto("/");
+    await page.goto("/settings");
 
     const main = page.getByRole("main");
     const history = main.getByRole("table", { name: "Snapshot history" });
     const snapshotSummary = main.getByText(/In database:/).locator("..");
     await expect(snapshotSummary).toContainText("24 players");
-    await expect(main.getByText("Snapshot 2 player")).toBeVisible();
-    await main.getByRole("button", { name: "Import CSV" }).click();
-    await expect(main.getByText(/Moneyball imported/i)).toBeVisible();
 
     await history
       .getByRole("button", { name: /^Delete snapshot 2026-08-01/ })
@@ -99,17 +103,12 @@ test.describe("application smoke", () => {
     await expect(history.getByRole("row").nth(1)).toContainText("2026-06-01");
     await expect(history.getByRole("row").nth(1)).toContainText("Current");
     await expect(snapshotSummary).toContainText("21 players");
-    await expect(main.getByText("Snapshot 1 player")).toBeVisible();
-    await expect(main.getByText("Snapshot 2 player")).toHaveCount(0);
-    await expect(
-      main.getByText(/Choose a Youth Tracker or Moneyball export to import/i),
-    ).toBeVisible();
   });
 
-  test("Dashboard deletes inactive and active saves with the right fallback", async ({
+  test("Settings deletes inactive and active saves with the right fallback", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/settings");
 
     const main = page.getByRole("main");
     const activeSave = page.getByRole("combobox", { name: "Active save" });
@@ -137,10 +136,10 @@ test.describe("application smoke", () => {
     await expect(activeSave.locator("option:checked")).toHaveText("Archive");
   });
 
-  test("Dashboard replaces the final deleted save with Default save", async ({
+  test("Settings replaces the final deleted save with Default save", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/settings");
 
     const main = page.getByRole("main");
     await main
@@ -158,39 +157,6 @@ test.describe("application smoke", () => {
         .getByRole("combobox", { name: "Active save" })
         .locator("option:checked"),
     ).toHaveText("Default save");
-  });
-
-  test("Dashboard keeps the CSV import idle when the browser dialog stub cancels", async ({
-    page,
-  }) => {
-    await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/");
-
-    const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Import CSV" }).click();
-
-    await expect(
-      main.getByText(/Choose a Youth Tracker or Moneyball export to import/i),
-    ).toBeVisible();
-  });
-
-  test("Dashboard reports the stubbed CSV import without exposing its path", async ({
-    page,
-  }) => {
-    await stubTauriIpc(page, {
-      plannerSnapshot: true,
-      csvImportFormat: "youthTracker",
-    });
-    await page.goto("/");
-
-    const main = page.getByRole("main");
-    await main.getByRole("button", { name: "Import CSV" }).click();
-
-    await expect(main.getByText(/Youth Tracker imported/i)).toBeVisible();
-    await expect(
-      main.getByText("3 of 3 player IDs were stored."),
-    ).toBeVisible();
-    expect(await main.textContent()).not.toContain("/tmp/smoke-import.csv");
   });
 
   test("nav rail expands from its own toggle", async ({ page }) => {
@@ -483,7 +449,7 @@ test.describe("application smoke", () => {
     );
   });
 
-  test("My Staff points an unconfigured family to Dashboard Club Setup", async ({
+  test("My Staff points an unconfigured family to Settings Club setup", async ({
     page,
   }) => {
     await stubTauriIpc(page, { staffFamily: "none", staffWorkspace: true });
@@ -495,7 +461,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect(
       main.getByRole("link", { name: "Open Club Setup" }),
-    ).toHaveAttribute("href", "/#club-setup");
+    ).toHaveAttribute("href", "/settings#club-setup");
   });
 
   test("planner route shows no-snapshot Load Data guidance", async ({
@@ -513,7 +479,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Squad points an unconfigured save to Dashboard Club Setup", async ({
+  test("Squad points an unconfigured save to Settings Club setup", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
@@ -529,20 +495,20 @@ test.describe("application smoke", () => {
     );
     await expect(main.getByText("Set up your club family")).toBeVisible();
     await main.getByRole("link", { name: "Open Club Setup" }).click();
-    await expect(page).toHaveURL(/\/#club-setup$/);
+    await expect(page).toHaveURL(/\/settings#club-setup$/);
     await expect(
-      page.getByRole("main").getByRole("region", { name: "Club Setup" }),
+      page.getByRole("main").getByRole("region", { name: "Club setup" }),
     ).toBeVisible();
     await expect(
       page.getByRole("main").getByRole("combobox", { name: "Primary club" }),
     ).toBeVisible();
   });
 
-  test("Dashboard club suggestions remain interactive outside the panel", async ({
+  test("Settings club suggestions remain interactive outside the panel", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/#club-setup");
+    await page.goto("/settings#club-setup");
 
     const primaryClub = page.getByRole("main").getByRole("combobox", {
       name: "Primary club",

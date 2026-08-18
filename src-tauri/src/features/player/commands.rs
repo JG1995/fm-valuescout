@@ -439,7 +439,7 @@ fn capture_squad_player_boost_cohort(
     if club_family.primary_club.is_none() {
         return Err(PlayerBoostError::Eligibility {
             kind: "clubFamilyRequired".to_string(),
-            message: "Set up your club family in Dashboard before boosting the squad.".to_string(),
+            message: "Set up your club family in Settings before boosting the squad.".to_string(),
         });
     }
     let player_uids =
