@@ -32,12 +32,7 @@ import {
   PlannerSlotFitPicker,
   type PlannerSlotTarget,
 } from "./planner-slot-fit-picker";
-
-const TEAM_LABELS: Record<PlannerTeam, string> = {
-  senior: "Senior",
-  reserves: "Reserves",
-  youth: "Youth",
-};
+import { PlannerTeamManagement } from "./planner-team-management";
 
 const MIN_MATRIX_COLUMN_REM = 13;
 
@@ -89,24 +84,30 @@ function useElementWidth(elementRef: RefObject<HTMLElement | null>) {
   return width;
 }
 
-function nextTeam(team: PlannerTeam, key: string): PlannerTeam | null {
-  const index = PLANNER_TEAMS.indexOf(team);
+function nextTeam(
+  team: PlannerTeam,
+  key: string,
+  availableTeams: PlannerTeam[],
+): PlannerTeam | null {
+  const index = availableTeams.indexOf(team);
   if (index < 0) {
     return null;
   }
   if (key === "Home") {
-    return PLANNER_TEAMS[0];
+    return availableTeams[0] ?? null;
   }
   if (key === "End") {
-    return PLANNER_TEAMS[PLANNER_TEAMS.length - 1];
+    return availableTeams.at(-1) ?? null;
   }
   if (key === "ArrowRight" || key === "ArrowDown") {
-    return PLANNER_TEAMS[(index + 1) % PLANNER_TEAMS.length];
+    return availableTeams[(index + 1) % availableTeams.length] ?? null;
   }
   if (key === "ArrowLeft" || key === "ArrowUp") {
-    return PLANNER_TEAMS[
-      (index - 1 + PLANNER_TEAMS.length) % PLANNER_TEAMS.length
-    ];
+    return (
+      availableTeams[
+        (index - 1 + availableTeams.length) % availableTeams.length
+      ] ?? null
+    );
   }
   return null;
 }
@@ -140,11 +141,13 @@ export function PlannerDepthMatrix({
   const [clearAllError, setClearAllError] = useState<string | null>(null);
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
+  const [teamManagementPending, setTeamManagementPending] = useState(false);
   const matrixContainerRef = useRef<HTMLDivElement>(null);
   const matrixWidth = useElementWidth(matrixContainerRef);
   const queryClient = useQueryClient();
   const closeTimerRef = useRef<number | null>(null);
   const removalTimerRef = useRef<number | null>(null);
+  const teamFocusTimerRef = useRef<number | null>(null);
   const stringHeaderRefs = useRef(new Map<number, HTMLButtonElement>());
   const cellRefs = useRef(new Map<string, HTMLButtonElement>());
   const tabRefs = useRef<Record<PlannerTeam, HTMLButtonElement | null>>({
@@ -173,14 +176,32 @@ export function PlannerDepthMatrix({
       if (removalTimerRef.current !== null) {
         window.clearTimeout(removalTimerRef.current);
       }
+      if (teamFocusTimerRef.current !== null) {
+        window.clearTimeout(teamFocusTimerRef.current);
+      }
     };
   }, []);
 
-  const orderedTeamDepths = PLANNER_TEAMS.map((team) =>
-    depth.teams.find((candidate) => candidate.team === team),
-  ).filter((teamDepth): teamDepth is PlannerDepth["teams"][number] =>
-    Boolean(teamDepth),
+  const orderedTeamDepths = depth.teams;
+  const availableTeams = orderedTeamDepths.map((teamDepth) => teamDepth.team);
+  const firstAvailableTeam = availableTeams[0] ?? "senior";
+  const selectedTeamAvailable = availableTeams.includes(selectedTeam);
+  const teamLabels = orderedTeamDepths.reduce<
+    Partial<Record<PlannerTeam, string>>
+  >((labels, teamDepth) => {
+    labels[teamDepth.team] = teamDepth.displayName;
+    return labels;
+  }, {});
+  const availableTeamNames = orderedTeamDepths.map(
+    (teamDepth) => teamDepth.displayName,
   );
+
+  useEffect(() => {
+    if (!selectedTeamAvailable) {
+      setSelectedTeam(firstAvailableTeam);
+    }
+  }, [firstAvailableTeam, selectedTeamAvailable]);
+
   const showCombinedTeams =
     matrixWidth > 0 &&
     matrixWidth >= combinedMatrixMinimumWidth(orderedTeamDepths);
@@ -244,7 +265,7 @@ export function PlannerDepthMatrix({
   };
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const next = nextTeam(selectedTeam, event.key);
+    const next = nextTeam(selectedTeam, event.key, availableTeams);
     if (!next) {
       return;
     }
@@ -390,7 +411,7 @@ export function PlannerDepthMatrix({
   const optimizePendingBasis = optimize.isPending ? optimize.variables : null;
 
   const requestClearAll = () => {
-    if (clearAll.isPending || optimize.isPending) {
+    if (clearAll.isPending || optimize.isPending || teamManagementPending) {
       return;
     }
     setClearAllError(null);
@@ -399,7 +420,7 @@ export function PlannerDepthMatrix({
   };
 
   const runOptimization = (scoreBasis: PlannerScoreBasis) => {
-    if (clearAll.isPending || optimize.isPending) {
+    if (clearAll.isPending || optimize.isPending || teamManagementPending) {
       return;
     }
     setOptimizeError(null);
@@ -418,6 +439,58 @@ export function PlannerDepthMatrix({
       return;
     }
     completeStringAction(removalTarget.id);
+  };
+
+  const reconcileTeamSettings = (
+    nextDepth: PlannerDepth,
+    removedTeams: PlannerTeam[],
+  ) => {
+    queryClient.setQueryData(plannerKeys.depth(), nextDepth);
+    void queryClient.invalidateQueries({
+      queryKey: plannerKeys.slotCandidates(),
+    });
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setPickerOpen(false);
+    setPicker(null);
+    setOpenStringId(null);
+    setRemovalOpen(false);
+    setRemovalTarget(null);
+    setPickerError(null);
+    setStringError(null);
+    setOptimizeError(null);
+    setActionStatus("Team settings saved.");
+
+    if (!removedTeams.includes(selectedTeam)) {
+      return;
+    }
+
+    const availableTeams = nextDepth.teams.map((team) => team.team);
+    const selectedIndex = PLANNER_TEAMS.indexOf(selectedTeam);
+    const nextTeam =
+      availableTeams.find(
+        (team) => PLANNER_TEAMS.indexOf(team) > selectedIndex,
+      ) ?? availableTeams[0];
+    if (!nextTeam) {
+      return;
+    }
+    setSelectedTeam(nextTeam);
+    if (teamFocusTimerRef.current !== null) {
+      window.clearTimeout(teamFocusTimerRef.current);
+    }
+    teamFocusTimerRef.current = window.setTimeout(() => {
+      const focusTarget =
+        document.querySelector<HTMLButtonElement>(
+          `[data-planner-team-tab="${nextTeam}"]`,
+        ) ??
+        document.querySelector<HTMLButtonElement>(
+          "[data-planner-manage-teams]",
+        );
+      focusTarget?.focus();
+      teamFocusTimerRef.current = null;
+    }, 220);
   };
 
   const stringHeaderRef =
@@ -455,7 +528,6 @@ export function PlannerDepthMatrix({
   ) => (
     <PlannerDepthTable
       teamDepths={teamDepths}
-      teamLabels={TEAM_LABELS}
       combined={combined}
       tactic={tactic}
       options={options}
@@ -469,7 +541,7 @@ export function PlannerDepthMatrix({
         addString.mutate({ team, originStringId });
       }}
       onRemoveString={requestRemoveString}
-      addDisabled={addString.isPending}
+      addDisabled={addString.isPending || teamManagementPending}
       stringHeaderRef={stringHeaderRef}
       onStringHeaderFocus={onStringHeaderFocus}
       cellRef={cellRef}
@@ -495,7 +567,8 @@ export function PlannerDepthMatrix({
               className="inline-flex rounded-full bg-surface-container-high p-0.5"
               onKeyDown={handleTabKeyDown}
             >
-              {PLANNER_TEAMS.map((team) => {
+              {orderedTeamDepths.map((teamDepth) => {
+                const team = teamDepth.team;
                 const selected = team === selectedTeam;
                 return (
                   <button
@@ -503,6 +576,7 @@ export function PlannerDepthMatrix({
                     ref={(element) => {
                       tabRefs.current[team] = element;
                     }}
+                    data-planner-team-tab={team}
                     type="button"
                     role="tab"
                     id={`${team}-depth-tab`}
@@ -519,7 +593,7 @@ export function PlannerDepthMatrix({
                     }}
                     onClick={() => setSelectedTeam(team)}
                   >
-                    {TEAM_LABELS[team]}
+                    {teamDepth.displayName}
                   </button>
                 );
               })}
@@ -528,21 +602,46 @@ export function PlannerDepthMatrix({
           <div className="flex flex-wrap items-center justify-end gap-2">
             <PlannerOptimizerControls
               pendingBasis={optimizePendingBasis}
-              disabled={clearAll.isPending || optimize.isPending}
+              disabled={
+                clearAll.isPending ||
+                optimize.isPending ||
+                teamManagementPending
+              }
               onOptimize={runOptimization}
+            />
+            <PlannerTeamManagement
+              depth={depth}
+              disabled={
+                teamManagementPending ||
+                clearAll.isPending ||
+                optimize.isPending ||
+                addString.isPending ||
+                removeString.isPending
+              }
+              onPendingChange={setTeamManagementPending}
+              onSaved={reconcileTeamSettings}
             />
             <PlannerClearAllControl
               open={clearAllOpen}
               pending={clearAll.isPending}
-              disabled={clearAll.isPending || optimize.isPending}
+              disabled={
+                clearAll.isPending ||
+                optimize.isPending ||
+                teamManagementPending
+              }
               error={clearAllError}
+              teamNames={availableTeamNames}
               onRequest={requestClearAll}
               onFocus={() => {
                 lastFocusContext.current = { kind: "clear" };
               }}
               onClose={closeClearAll}
               onConfirm={() => {
-                if (!clearAll.isPending && !optimize.isPending) {
+                if (
+                  !clearAll.isPending &&
+                  !optimize.isPending &&
+                  !teamManagementPending
+                ) {
                   clearAll.mutate();
                 }
               }}
@@ -596,6 +695,7 @@ export function PlannerDepthMatrix({
           target={picker}
           tactic={tactic}
           options={options}
+          teamLabels={teamLabels}
           onClose={closePicker}
           onMutationError={setPickerError}
         />

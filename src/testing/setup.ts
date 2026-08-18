@@ -52,6 +52,7 @@ import {
   resolveRemovePlannerStringIpcMock,
   resolveSavePlannerClubFamilyIpcMock,
   resolveSavePlannerTacticIpcMock,
+  resolveSavePlannerTeamsIpcMock,
 } from "@/testing/planner-ipc-mock";
 import {
   resetGetPlayerOverride,
@@ -254,6 +255,10 @@ function registerIpcMocks() {
 
     if (cmd === "save_planner_club_family") {
       return resolveSavePlannerClubFamilyIpcMock(args);
+    }
+
+    if (cmd === "save_planner_teams") {
+      return resolveSavePlannerTeamsIpcMock(args);
     }
 
     if (cmd === "get_planner_tactic") {

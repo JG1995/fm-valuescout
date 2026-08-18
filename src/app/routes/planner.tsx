@@ -367,6 +367,7 @@ function PlannerPageContent() {
         className="min-h-0 flex-1 overflow-y-auto"
       >
         <PlannerDepthMatrix
+          key={snapshot.saveId}
           activeSaveId={snapshot.saveId}
           depth={depth}
           tactic={tactic}

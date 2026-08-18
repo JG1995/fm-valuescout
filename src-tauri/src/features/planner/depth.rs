@@ -6,12 +6,8 @@ use crate::features::scoring::{
 };
 
 use super::tactic::{self, PlannerTactic, TacticLane};
+use super::teams;
 
-pub(super) const PLANNER_TEAMS: [PlannerTeam; 3] = [
-    PlannerTeam::Senior,
-    PlannerTeam::Reserves,
-    PlannerTeam::Youth,
-];
 const MAX_SLOT_CANDIDATES: usize = 100;
 const MAX_CANDIDATE_SEARCH_LEN: usize = 120;
 
@@ -99,6 +95,7 @@ pub struct PlannerString {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannerDepthTeam {
     pub team: PlannerTeam,
+    pub display_name: String,
     pub strings: Vec<PlannerString>,
 }
 
@@ -125,11 +122,13 @@ impl AssignmentProvenance {
 
 pub fn get_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
     let tactic = ensure_depth(conn, save_id)?;
+    let settings = teams::get_team_settings(conn, save_id)?;
     let snapshot_id = current_snapshot_id(conn, save_id)?;
-    let mut teams = PLANNER_TEAMS
+    let mut teams = settings
         .into_iter()
-        .map(|team| PlannerDepthTeam {
-            team,
+        .map(|setting| PlannerDepthTeam {
+            team: setting.team,
+            display_name: setting.display_name,
             strings: Vec::new(),
         })
         .collect::<Vec<_>>();
@@ -185,6 +184,7 @@ pub fn get_slot_candidates(
 ) -> Result<Vec<PlannerSlotCandidate>, String> {
     let search = normalize_candidate_search(search)?;
     let tactic = ensure_depth(conn, save_id)?;
+    teams::ensure_available(conn, save_id, team)?;
     let lane = find_lane(&tactic, lane_id)?;
     let snapshot_id = current_snapshot_id(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
@@ -312,6 +312,7 @@ pub fn add_string(
     team: PlannerTeam,
 ) -> Result<PlannerString, String> {
     ensure_depth(conn, save_id)?;
+    teams::ensure_available(conn, save_id, team)?;
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
@@ -528,10 +529,11 @@ fn normalize_candidate_search(search: &str) -> Result<String, String> {
 
 pub(super) fn ensure_depth(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
     let tactic = tactic::get_tactic(conn, save_id)?;
+    let settings = teams::ensure_team_settings(conn, save_id)?;
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
-    for team in PLANNER_TEAMS {
+    for setting in settings {
         tx.execute(
             "INSERT INTO planner_strings (save_id, team, string_order)
              SELECT ?1, ?2, 0
@@ -540,7 +542,7 @@ pub(super) fn ensure_depth(conn: &Connection, save_id: i64) -> Result<PlannerTac
                  FROM planner_strings
                  WHERE save_id = ?1 AND team = ?2
              )",
-            params![save_id, team.as_str()],
+            params![save_id, setting.team.as_str()],
         )
         .map_err(|error| error.to_string())?;
     }

@@ -56,6 +56,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Completed
 
+- [Optional Planner Teams](./features/completed/optional-planner-teams.md) — user-managed one-to-three Senior, Reserves, and Youth categories with per-save display names, safe assignment cleanup, dynamic Planner presentation, and available-team-only optimization (Linear JAY-28)
 - [Staff Shortlist CSV Enrichment](./features/completed/staff-shortlist.md) — save-owned replacement imports joined to current staff by UID, with exact Preferred Job filtering, adaptive job-score columns, and unemployment filtering in a third Staff workspace
 - [Staff Workspace](./features/completed/staff-workspace.md) — scored Staff Search, configured club-family overview, staff-specific profiles with shared concealment, and fixed individual and configured-family +10 CA actions
 - [Player Profile Information Controls and Layout](./features/completed/player-profile-information-controls.md) — save-scoped profile concealment, FM-style four-tab attributes, separate current/potential IP/OOP header summaries, and profile-shell containment (Linear JAY-5, JAY-8, JAY-9)

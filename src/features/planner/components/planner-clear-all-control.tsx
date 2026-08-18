@@ -1,11 +1,13 @@
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
+import { joinPlannerTeamNames } from "../utils/team-display";
 
 type PlannerClearAllControlProps = {
   open: boolean;
   pending: boolean;
   disabled: boolean;
   error: string | null;
+  teamNames: string[];
   onRequest: () => void;
   onFocus: () => void;
   onClose: () => void;
@@ -17,6 +19,7 @@ export function PlannerClearAllControl({
   pending,
   disabled,
   error,
+  teamNames,
   onRequest,
   onFocus,
   onClose,
@@ -56,7 +59,7 @@ export function PlannerClearAllControl({
         }
       >
         <p className="text-body-md text-on-surface-variant">
-          This clears every assignment from Senior, Reserves, and Youth.
+          This clears every assignment from {joinPlannerTeamNames(teamNames)}.
         </p>
         {error ? (
           <p className="mt-3 text-body-sm text-error" role="alert">

@@ -22,6 +22,7 @@ export type PlannerString = {
 
 export type PlannerDepthTeam = {
   team: PlannerTeam;
+  displayName: string;
   strings: PlannerString[];
 };
 

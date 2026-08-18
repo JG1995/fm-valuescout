@@ -665,6 +665,28 @@ CREATE INDEX idx_staff_shortlist_entries_save_preferred_job
     ON staff_shortlist_entries(save_id, preferred_job COLLATE NOCASE);
 ";
 
+pub const PLANNER_TEAM_SETTINGS_SQL: &str = "
+CREATE TABLE planner_teams (
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    team TEXT NOT NULL CHECK (team IN ('senior', 'reserves', 'youth')),
+    display_name TEXT NOT NULL CHECK (length(trim(display_name)) BETWEEN 1 AND 40),
+    PRIMARY KEY (save_id, team),
+    UNIQUE (save_id, display_name COLLATE NOCASE)
+);
+
+CREATE INDEX idx_planner_teams_save_team
+    ON planner_teams(save_id, team);
+
+INSERT INTO planner_teams (save_id, team, display_name)
+SELECT id, 'senior', 'Senior' FROM saves;
+
+INSERT INTO planner_teams (save_id, team, display_name)
+SELECT id, 'reserves', 'Reserves' FROM saves;
+
+INSERT INTO planner_teams (save_id, team, display_name)
+SELECT id, 'youth', 'Youth' FROM saves;
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -802,6 +824,11 @@ pub fn all() -> &'static [Migration] {
             description: "create_staff_shortlist_entries",
             sql: STAFF_SHORTLIST_SCHEMA_SQL,
         },
+        Migration {
+            version: 28,
+            description: "create_planner_team_settings",
+            sql: PLANNER_TEAM_SETTINGS_SQL,
+        },
     ]
 }
 
@@ -927,7 +954,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
 
         let demo_value_exists: bool = conn
             .query_row(
@@ -939,6 +966,509 @@ mod tests {
             )
             .expect("check demo table");
         assert!(!demo_value_exists);
+    }
+
+    #[test]
+    fn migrates_populated_v27_planner_rows_to_save_scoped_team_settings() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn =
+            Connection::open(temp_dir.path().join("planner-teams-v27.db")).expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 27) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migrations through v27");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set v27 version");
+        }
+
+        let first_save_id: i64 = conn
+            .query_row(
+                "INSERT INTO saves (name, is_active) VALUES ('First save', 1) RETURNING id",
+                [],
+                |row| row.get(0),
+            )
+            .expect("create first save");
+        let second_save_id: i64 = conn
+            .query_row(
+                "INSERT INTO saves (name, is_active) VALUES ('Second save', 0) RETURNING id",
+                [],
+                |row| row.get(0),
+            )
+            .expect("create second save");
+
+        for (save_id, club_name, staff_uid) in [
+            (first_save_id, "First FC", 88_i64),
+            (second_save_id, "Second FC", 99_i64),
+        ] {
+            conn.execute(
+                INSERT_SNAPSHOT_SQL,
+                params![save_id, true, false, Option::<i64>::None],
+            )
+            .expect("create existing snapshot");
+            conn.execute(
+                "INSERT INTO planner_tactic_lanes (
+                     save_id, lane_order, lane_id, ip_weight, importance_rank,
+                     preferred_foot, foot_preference, ip_position, ip_role_id,
+                     oop_position, oop_role_id
+                 ) VALUES (?1, 0, 'goalkeeper', 0.5, 1, 'any', 'preferred',
+                           'GK', 'goalkeeper', 'GK', 'line_holding_keeper')",
+                [save_id],
+            )
+            .expect("create existing planner tactic lane");
+            conn.execute(
+                "INSERT INTO planner_club_settings (save_id, primary_club)
+                 VALUES (?1, ?2)",
+                params![save_id, club_name],
+            )
+            .expect("create existing planner club settings");
+            conn.execute(
+                "INSERT INTO planner_club_sources (
+                     save_id, team, club_name, team_level, is_primary
+                 ) VALUES (?1, 'reserves', ?2, 'reserve', 1)",
+                params![save_id, format!("{club_name} Reserves")],
+            )
+            .expect("create existing planner club source");
+            conn.execute(
+                "INSERT INTO staff_shortlist_entries (
+                     save_id, staff_uid, preferred_job, club_job, coaching_qualifications
+                 ) VALUES (?1, ?2, 'Manager', 'Club', 'Good')",
+                params![save_id, staff_uid],
+            )
+            .expect("create existing shortlist row");
+        }
+
+        let reserve_string_id: i64 = conn
+            .query_row(
+                "INSERT INTO planner_strings (save_id, team, string_order)
+                 VALUES (?1, 'reserves', 0) RETURNING id",
+                [first_save_id],
+                |row| row.get(0),
+            )
+            .expect("create populated reserve string");
+        conn.execute(
+            "INSERT INTO planner_strings (save_id, team, string_order)
+             VALUES (?1, 'senior', 0), (?1, 'youth', 0)",
+            [first_save_id],
+        )
+        .expect("create other planner strings");
+        let second_string_id: i64 = conn
+            .query_row(
+                "INSERT INTO planner_strings (save_id, team, string_order)
+                 VALUES (?1, 'senior', 0) RETURNING id",
+                [second_save_id],
+                |row| row.get(0),
+            )
+            .expect("create second save planner string");
+        conn.execute(
+            "INSERT INTO planner_assignments (
+                 save_id, string_id, lane_id, player_uid, last_known_name, provenance
+             ) VALUES (?1, ?2, 'goalkeeper', 77, 'Fixture player', 'manual')",
+            params![first_save_id, reserve_string_id],
+        )
+        .expect("create planner assignment");
+        conn.execute(
+            "INSERT INTO planner_assignments (
+                 save_id, string_id, lane_id, player_uid, last_known_name, provenance
+             ) VALUES (?1, ?2, 'goalkeeper', 99, 'Second fixture player', 'optimizer')",
+            params![second_save_id, second_string_id],
+        )
+        .expect("create second planner assignment");
+
+        type SnapshotRow = (
+            i64,
+            i64,
+            i64,
+            i64,
+            String,
+            String,
+            String,
+            String,
+            i64,
+            String,
+            i64,
+            Option<i64>,
+        );
+        type TacticLaneRow = (
+            i64,
+            i64,
+            i64,
+            String,
+            f64,
+            Option<i64>,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+        );
+        type ClubSettingRow = (i64, String);
+        type ClubSourceRow = (i64, i64, String, String, Option<String>, i64);
+        type ShortlistRow = (i64, i64, String, String, String);
+        type PlannerStringRow = (i64, i64, String, i64);
+        type AssignmentRow = (i64, i64, i64, String, i64, String, String);
+
+        let snapshots_before: Vec<SnapshotRow> = conn
+            .prepare(
+                "SELECT id, save_id, is_current, schema_version, generated_at_utc,
+                        game_version, supported_game_version, bridge_version,
+                        protocol_version, game_date_source, scan_truncated,
+                        max_accepted
+                 FROM snapshots ORDER BY id",
+            )
+            .expect("prepare snapshot preservation query")
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
+                ))
+            })
+            .expect("query snapshots before migration")
+            .collect::<Result<_, _>>()
+            .expect("read snapshots before migration");
+        let tactic_lanes_before: Vec<TacticLaneRow> = conn
+            .prepare(
+                "SELECT id, save_id, lane_order, lane_id, ip_weight, importance_rank,
+                        preferred_foot, foot_preference, ip_position, ip_role_id,
+                        oop_position, oop_role_id
+                 FROM planner_tactic_lanes ORDER BY id",
+            )
+            .expect("prepare tactic preservation query")
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
+                ))
+            })
+            .expect("query tactic lanes before migration")
+            .collect::<Result<_, _>>()
+            .expect("read tactic lanes before migration");
+        let club_settings_before: Vec<ClubSettingRow> = conn
+            .prepare(
+                "SELECT save_id, primary_club
+                 FROM planner_club_settings ORDER BY save_id",
+            )
+            .expect("prepare club settings preservation query")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("query club settings before migration")
+            .collect::<Result<_, _>>()
+            .expect("read club settings before migration");
+        let club_sources_before: Vec<ClubSourceRow> = conn
+            .prepare(
+                "SELECT id, save_id, team, club_name, team_level, is_primary
+                 FROM planner_club_sources ORDER BY id",
+            )
+            .expect("prepare club source preservation query")
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })
+            .expect("query club sources before migration")
+            .collect::<Result<_, _>>()
+            .expect("read club sources before migration");
+        let shortlist_before: Vec<ShortlistRow> = conn
+            .prepare(
+                "SELECT save_id, staff_uid, preferred_job, club_job,
+                        coaching_qualifications
+                 FROM staff_shortlist_entries ORDER BY save_id, staff_uid",
+            )
+            .expect("prepare shortlist preservation query")
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .expect("query shortlist before migration")
+            .collect::<Result<_, _>>()
+            .expect("read shortlist before migration");
+        let planner_strings_before: Vec<PlannerStringRow> = conn
+            .prepare(
+                "SELECT id, save_id, team, string_order
+                 FROM planner_strings ORDER BY id",
+            )
+            .expect("prepare planner string preservation query")
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .expect("query planner strings before migration")
+            .collect::<Result<_, _>>()
+            .expect("read planner strings before migration");
+        let assignments_before: Vec<AssignmentRow> = conn
+            .prepare(
+                "SELECT id, save_id, string_id, lane_id, player_uid,
+                        last_known_name, provenance
+                 FROM planner_assignments ORDER BY id",
+            )
+            .expect("prepare assignment preservation query")
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            })
+            .expect("query assignments before migration")
+            .collect::<Result<_, _>>()
+            .expect("read assignments before migration");
+
+        apply(&conn).expect("apply planner team settings migration");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read migrated version");
+        assert_eq!(version, 28);
+        let settings: Vec<(i64, String, String)> = conn
+            .prepare(
+                "SELECT save_id, team, display_name
+                 FROM planner_teams ORDER BY save_id, team",
+            )
+            .expect("prepare settings query")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .expect("query settings")
+            .collect::<Result<_, _>>()
+            .expect("read settings");
+        assert_eq!(
+            settings,
+            vec![
+                (
+                    first_save_id,
+                    "reserves".to_string(),
+                    "Reserves".to_string()
+                ),
+                (first_save_id, "senior".to_string(), "Senior".to_string()),
+                (first_save_id, "youth".to_string(), "Youth".to_string()),
+                (
+                    second_save_id,
+                    "reserves".to_string(),
+                    "Reserves".to_string()
+                ),
+                (second_save_id, "senior".to_string(), "Senior".to_string()),
+                (second_save_id, "youth".to_string(), "Youth".to_string()),
+            ]
+        );
+        let snapshots_after: Vec<SnapshotRow> = conn
+            .prepare(
+                "SELECT id, save_id, is_current, schema_version, generated_at_utc,
+                        game_version, supported_game_version, bridge_version,
+                        protocol_version, game_date_source, scan_truncated,
+                        max_accepted
+                 FROM snapshots ORDER BY id",
+            )
+            .expect("prepare migrated snapshot query")
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
+                ))
+            })
+            .expect("query migrated snapshots")
+            .collect::<Result<_, _>>()
+            .expect("read migrated snapshots");
+        assert_eq!(snapshots_after, snapshots_before);
+
+        let tactic_lanes_after: Vec<TacticLaneRow> = conn
+            .prepare(
+                "SELECT id, save_id, lane_order, lane_id, ip_weight, importance_rank,
+                        preferred_foot, foot_preference, ip_position, ip_role_id,
+                        oop_position, oop_role_id
+                 FROM planner_tactic_lanes ORDER BY id",
+            )
+            .expect("prepare migrated tactic query")
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
+                ))
+            })
+            .expect("query migrated tactic lanes")
+            .collect::<Result<_, _>>()
+            .expect("read migrated tactic lanes");
+        assert_eq!(tactic_lanes_after, tactic_lanes_before);
+
+        let club_settings_after: Vec<ClubSettingRow> = conn
+            .prepare(
+                "SELECT save_id, primary_club
+                 FROM planner_club_settings ORDER BY save_id",
+            )
+            .expect("prepare migrated club settings query")
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("query migrated club settings")
+            .collect::<Result<_, _>>()
+            .expect("read migrated club settings");
+        assert_eq!(club_settings_after, club_settings_before);
+
+        let club_sources_after: Vec<ClubSourceRow> = conn
+            .prepare(
+                "SELECT id, save_id, team, club_name, team_level, is_primary
+                 FROM planner_club_sources ORDER BY id",
+            )
+            .expect("prepare migrated club source query")
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })
+            .expect("query migrated club sources")
+            .collect::<Result<_, _>>()
+            .expect("read migrated club sources");
+        assert_eq!(club_sources_after, club_sources_before);
+
+        let shortlist_after: Vec<ShortlistRow> = conn
+            .prepare(
+                "SELECT save_id, staff_uid, preferred_job, club_job,
+                        coaching_qualifications
+                 FROM staff_shortlist_entries ORDER BY save_id, staff_uid",
+            )
+            .expect("prepare migrated shortlist query")
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .expect("query migrated shortlist")
+            .collect::<Result<_, _>>()
+            .expect("read migrated shortlist");
+        assert_eq!(shortlist_after, shortlist_before);
+
+        let planner_strings_after: Vec<PlannerStringRow> = conn
+            .prepare(
+                "SELECT id, save_id, team, string_order
+                 FROM planner_strings ORDER BY id",
+            )
+            .expect("prepare migrated planner string query")
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .expect("query migrated planner strings")
+            .collect::<Result<_, _>>()
+            .expect("read migrated planner strings");
+        assert_eq!(planner_strings_after, planner_strings_before);
+
+        let assignments_after: Vec<AssignmentRow> = conn
+            .prepare(
+                "SELECT id, save_id, string_id, lane_id, player_uid,
+                        last_known_name, provenance
+                 FROM planner_assignments ORDER BY id",
+            )
+            .expect("prepare migrated assignment query")
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ))
+            })
+            .expect("query migrated assignments")
+            .collect::<Result<_, _>>()
+            .expect("read migrated assignments");
+        assert_eq!(assignments_after, assignments_before);
+    }
+
+    #[test]
+    fn planner_team_settings_schema_enforces_supported_names_and_constraints() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("planner-team-schema.db"));
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Test save', 1)",
+            [],
+        )
+        .expect("create save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO planner_teams (save_id, team, display_name)
+             VALUES (?1, 'senior', 'Senior')",
+            [save_id],
+        )
+        .expect("insert valid settings");
+
+        for (team, display_name) in [
+            ("unknown", "Unknown"),
+            ("reserves", " "),
+            ("youth", &"x".repeat(41)),
+        ] {
+            assert!(conn
+                .execute(
+                    "INSERT INTO planner_teams (save_id, team, display_name)
+                     VALUES (?1, ?2, ?3)",
+                    params![save_id, team, display_name],
+                )
+                .is_err());
+        }
+        assert!(conn
+            .execute(
+                "INSERT INTO planner_teams (save_id, team, display_name)
+                 VALUES (?1, 'reserves', 'senior')",
+                [save_id],
+            )
+            .is_err());
     }
 
     #[test]
@@ -1025,7 +1555,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         let existing: i64 = conn
             .query_row("SELECT reveal_hidden_information FROM saves", [], |row| {
                 row.get(0)
@@ -1128,7 +1658,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -1209,7 +1739,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         assert_eq!(
             table_columns(&conn, "player_potential_role_scores"),
             [
@@ -1761,7 +2291,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, planner_club_settings.primary_club
@@ -1841,7 +2371,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -2028,7 +2558,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         let primary_club: String = conn
             .query_row(
                 "SELECT primary_club FROM planner_club_settings WHERE save_id = ?1",
@@ -2076,7 +2606,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -2317,7 +2847,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -2423,7 +2953,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
 
         let table_name: String = conn
             .query_row(
@@ -2658,7 +3188,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -2722,7 +3252,7 @@ mod tests {
                 row.get(0)
             })
             .expect("count absent backfill");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         assert_eq!(staff_count, 1);
         assert_eq!(score_count, 0);
     }
@@ -2870,6 +3400,7 @@ mod tests {
                 "idx_planner_strings_save_team_order",
                 "idx_planner_tactic_lanes_save_importance_rank",
                 "idx_planner_tactic_lanes_save_order",
+                "idx_planner_teams_save_team",
                 "idx_player_potential_role_scores_snapshot_role_score",
                 "idx_player_role_scores_snapshot_role",
                 "idx_players_snapshot_ca",
@@ -2967,7 +3498,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
     }
 
     #[test]
@@ -3001,7 +3532,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 27);
+        assert_eq!(version, 28);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -3041,7 +3572,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 27, "legacy version {legacy_version}");
+            assert_eq!(version, 28, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -3054,7 +3585,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 27);
+        assert_eq!(migrations.len(), 28);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -3170,6 +3701,9 @@ mod tests {
         assert_eq!(migrations[26].version, 27);
         assert_eq!(migrations[26].description, "create_staff_shortlist_entries");
         assert_eq!(migrations[26].sql, STAFF_SHORTLIST_SCHEMA_SQL);
+        assert_eq!(migrations[27].version, 28);
+        assert_eq!(migrations[27].description, "create_planner_team_settings");
+        assert_eq!(migrations[27].sql, PLANNER_TEAM_SETTINGS_SQL);
     }
 
     #[test]

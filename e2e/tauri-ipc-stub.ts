@@ -147,10 +147,16 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           oopRoleId,
         })),
       };
+      const plannerTeamNames = {
+        senior: "Senior",
+        reserves: "Reserves",
+        youth: "Youth",
+      };
       const plannerDepth = {
         tactic: plannerTactic,
         teams: ["senior", "reserves", "youth"].map((team, index) => ({
           team,
+          displayName: plannerTeamNames[team],
           strings: [{
             id: index + 1,
             stringOrder: 0,
@@ -1018,6 +1024,55 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "get_planner_depth") {
+            return plannerDepth;
+          }
+
+          if (cmd === "save_planner_teams") {
+            if (!Array.isArray(args?.teams) || args.teams.length < 1 || args.teams.length > 3) {
+              throw new Error("Planner configuration must contain one to three teams");
+            }
+            const inputs = args.teams.map((input) => {
+              if (
+                !["senior", "reserves", "youth"].includes(input?.team) ||
+                typeof input?.displayName !== "string"
+              ) {
+                throw new Error("Invalid planner team settings");
+              }
+              return {
+                team: input.team,
+                displayName: input.displayName.trim(),
+              };
+            });
+            const removedPopulated = plannerDepth.teams.some(
+              (team) =>
+                !inputs.some((input) => input.team === team.team) &&
+                team.strings.some((plannerString) => plannerString.assignments.length > 0),
+            );
+            if (removedPopulated && args?.confirmPopulatedRemoval !== true) {
+              throw new Error("Removing populated planner teams requires confirmation");
+            }
+            let nextStringId =
+              Math.max(
+                0,
+                ...plannerDepth.teams.flatMap((team) =>
+                  team.strings.map((plannerString) => plannerString.id),
+                ),
+              ) + 1;
+            plannerDepth.teams = ["senior", "reserves", "youth"]
+              .filter((team) => inputs.some((input) => input.team === team))
+              .map((team) => {
+                const existing = plannerDepth.teams.find(
+                  (candidate) => candidate.team === team,
+                );
+                const input = inputs.find((candidate) => candidate.team === team);
+                return existing
+                  ? { ...existing, displayName: input.displayName }
+                  : {
+                      team,
+                      displayName: input.displayName,
+                      strings: [{ id: nextStringId++, stringOrder: 0, assignments: [] }],
+                    };
+              });
             return plannerDepth;
           }
 

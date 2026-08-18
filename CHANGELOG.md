@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-18
+
+### Fixed
+
+- Planner teams can now be configured per save, with editable display names and safe removal of unneeded teams.
+
 ## [0.6.2] - 2026-08-18
 
 ### Fixed
