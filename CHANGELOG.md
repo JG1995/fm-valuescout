@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-18
+
+### Fixed
+
+- Manager job-fit scores now use Motivating, People Management, Judging Player Ability, Judging Player Potential, and Tactical Knowledge. Staff Shortlists now display and rank a Manager preferred job by that score.
+
 ## [0.6.0] - 2026-08-17
 
 ### Added
