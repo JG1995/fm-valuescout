@@ -1,6 +1,6 @@
 {
   "name": "fm-valuescout",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "FM ValueScout desktop application.",
