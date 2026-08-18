@@ -9,7 +9,6 @@ use super::optimizer::{
     allocation_score, foot_matches, match_lanes, optimize_depth, optimize_depth_with_basis,
     OptimizerCandidate, ScoreBasis,
 };
-use super::service::{self, ClubSourceInput};
 use super::tactic;
 use super::teams::{save_team_settings, PlannerTeamInput};
 use super::test_support::{
@@ -226,20 +225,9 @@ fn optimizer_switches_between_current_and_projected_candidate_scores() {
 }
 
 #[test]
-fn optimizer_skips_absent_team_sources_for_current_and_potential_scores() {
+fn optimizer_skips_an_unavailable_team_for_current_and_potential_scores() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
-    service::save_club_family(
-        &conn,
-        save_id,
-        "Loan FC",
-        &[ClubSourceInput {
-            team: "reserves".to_string(),
-            club_name: "Loan B FC".to_string(),
-            team_level: None,
-        }],
-    )
-    .expect("configure reserve-only source");
     set_right_winger_scores(&conn, save_id, 79, Some(100));
     get_depth(&conn, save_id).expect("initialize planner depth");
     save_team_settings(
@@ -666,7 +654,7 @@ fn optimizer_requires_age_both_positions_and_complete_scores() {
 }
 
 #[test]
-fn optimizer_limits_attached_club_sources_to_their_configured_team() {
+fn optimizer_uses_exact_managed_club_team_levels() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     set_right_winger_scores(&conn, save_id, 77, None);
@@ -692,7 +680,7 @@ fn optimizer_limits_attached_club_sources_to_their_configured_team() {
 }
 
 #[test]
-fn optimizer_does_not_load_scores_outside_configured_club_family() {
+fn optimizer_does_not_load_scores_outside_the_managed_club() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let snapshot_id: i64 = conn
@@ -706,18 +694,18 @@ fn optimizer_does_not_load_scores_outside_configured_club_family() {
         "UPDATE players SET current_club = 'Other FC' WHERE snapshot_id = ?1 AND uid = 80",
         params![snapshot_id],
     )
-    .expect("exclude player from configured sources");
+    .expect("exclude player from managed club");
     conn.execute_batch("PRAGMA ignore_check_constraints = ON")
-        .expect("allow invalid non-source score");
+        .expect("allow invalid outside-club score");
     conn.execute(
         "UPDATE player_role_scores SET score = 'invalid' WHERE snapshot_id = ?1 AND uid = 80",
         params![snapshot_id],
     )
-    .expect("set invalid non-source score");
+    .expect("set invalid outside-club score");
     conn.execute_batch("PRAGMA ignore_check_constraints = OFF")
         .expect("restore score constraints");
 
-    optimize_depth(&conn, save_id).expect("ignore scores outside configured sources");
+    optimize_depth(&conn, save_id).expect("ignore scores outside managed club");
 }
 
 #[test]

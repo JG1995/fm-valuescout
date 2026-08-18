@@ -392,7 +392,7 @@ export function resolveListMyStaffIpcMock(args: unknown): StaffPage {
     return { state: "no_current_snapshot", staff: [], total: 0 };
   }
   if (!staffFamilyConfigured) {
-    return { state: "no_club_family", staff: [], total: 0 };
+    return { state: "no_managed_club", staff: [], total: 0 };
   }
   return resolveSearchStaffIpcMock(args);
 }

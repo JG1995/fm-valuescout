@@ -186,8 +186,7 @@ function SquadPlayerBoost({
             {isCurrentAbility
               ? "boosts current ability for"
               : "applies Wonderkid Mentality to"}{" "}
-            every eligible player in your configured club family, one player at
-            a time.
+            every eligible player at your managed club, one player at a time.
           </p>
           {isCurrentAbility ? (
             <ul className="list-disc space-y-1 pl-5 text-body-sm text-on-surface-variant">

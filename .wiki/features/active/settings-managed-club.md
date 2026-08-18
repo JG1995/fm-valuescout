@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -118,7 +118,7 @@ Commit 1 makes `/settings` routable from the nav rail, moves the existing save/s
 
 ### PR 1 — Move app management to Settings and derive managed-club membership
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -240,7 +240,7 @@ Commit 1 makes `/settings` routable from the nav rail, moves the existing save/s
 
 #### Commit 2 — Replace club-family configuration with managed-club membership
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(club): derive managed membership from FM data`
 
@@ -348,34 +348,21 @@ Commit 1 makes `/settings` routable from the nav rail, moves the existing save/s
 
 ## Active work
 
-**PR:** PR 1 — Move app management to Settings and derive managed-club membership
-
-**Commit:** Commit 2 — Replace club-family configuration with managed-club membership
-
-### RED proof
-
-Add migration tests that require primary-selection preservation and attached-source removal, managed-club service tests for exact current-snapshot options and status, and consumer tests that require exact club and team-level membership while retaining existing Planner assignments and Academy history.
-
-### Expected outcome
-
-The repository has one save-scoped managed-club selection, current cohorts derive from exact effective-snapshot club and team-level data, Settings exposes one selector, and obsolete club-family sources, commands, types, recovery copy, and persistence are removed.
-
-### Explicit exclusions
-
-Do not change the bridge or dump schema, infer affiliates or fuzzy club relationships, change Planner team configuration, build My Club, add Dashboard content, or delete retained assignments, Academy history, tactics, strings, shortlists, enrichment, saves, or snapshots.
+No implementation commit is active. PR 1 is ready for publication and the feature awaits feature-complete validation and documentation reconciliation.
 
 ## Discoveries and replanning
 
 - Linear readback on 2026-08-18 confirmed JAY-26 and JAY-27 are related, In Progress, and have no additional comments or blockers.
 - Repository inspection confirmed Repowise is synchronized to `ad5c12ff386274057dd2f06b2f03e4adcbe9dbfb`. Its broad synthesized answers had weak retrieval quality, so this plan relies on direct source, tests, current-state docs, and Git evidence for file-level contracts.
 - The dump already persists the required nullable `team_level`; no bridge change or runtime spike is needed.
+- Commit 2 review found and corrected a nullable retained-assignment membership decode, a late managed-club mutation cache race, loss of the searchable picker contract, and stale current-state documentation. One correction round cleared all findings.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Move operational controls to Settings | Pending record | Settings route and navigation; placeholder Dashboard; relocated management panels; Dashboard importer and sanity IPC removed | Sol Medium accepted after one documentation correction round | None |
-| PR 1 | Commit 2 — Replace club-family configuration with managed-club membership | Pending record | Pending | Pending | None |
+| PR 1 | Commit 2 — Replace club-family configuration with managed-club membership | Pending record | Migration v29; one managed-club selector; exact effective-snapshot membership across Squad, Planner, Academy, Staff, and boost cohorts; obsolete club-family persistence, IPC, types, and copy removed | Sol Medium accepted after one correction round; full gate and 44-test smoke suite passed | None |
 
 ## Final validation
 

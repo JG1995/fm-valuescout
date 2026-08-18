@@ -515,16 +515,16 @@ describe("academy route", () => {
     setAcademyCreateError(null);
   });
 
-  it("guides an unconfigured save to Settings Club setup", async () => {
+  it("guides an unconfigured save to Settings managed club", async () => {
     await resolveLoadDataIpcMock();
     renderAcademyRoute();
 
     expect(
-      await screen.findByText("Set up your club family"),
+      await screen.findByText("Academy needs your managed club"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Open Club Setup" }),
-    ).toHaveAttribute("href", "/settings#club-setup");
+      screen.getByRole("link", { name: "Open Managed Club" }),
+    ).toHaveAttribute("href", "/settings#managed-club");
   });
 
   it("shows Load Data guidance when the active save has no snapshot", async () => {
@@ -596,7 +596,7 @@ describe("academy route", () => {
     });
     await user.type(
       within(dialog).getByRole("combobox", {
-        name: "Search club-family players",
+        name: "Search managed-club players",
       }),
       "prospect",
     );
@@ -845,7 +845,7 @@ describe("academy route", () => {
       screen.getByRole("cell", { name: /^Missing prospect/ }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("status")[0]).toHaveTextContent(
-      "No longer in your club family",
+      "No longer at your managed club",
     );
     expect(screen.getAllByRole("status")[1]).toHaveTextContent(
       "Unavailable in the current snapshot",
@@ -1079,7 +1079,7 @@ describe("academy route", () => {
       name: "Add players to Class of 2026",
     });
     const search = within(dialog).getByRole("combobox", {
-      name: "Search club-family players",
+      name: "Search managed-club players",
     });
     await user.keyboard("{Enter}");
     expect(
@@ -1092,7 +1092,7 @@ describe("academy route", () => {
     });
     expect(
       await within(reopened).findByText(
-        "No unclassified club-family players match this search.",
+        "No unclassified managed-club players match this search.",
       ),
     ).toBeInTheDocument();
     await user.click(within(reopened).getByRole("button", { name: "Cancel" }));
@@ -1141,7 +1141,7 @@ describe("academy route", () => {
         name: "Add players to Class of 2026",
       });
       const search = within(dialog).getByRole("combobox", {
-        name: "Search club-family players",
+        name: "Search managed-club players",
       });
       const prospect = await within(dialog).findByRole("option", {
         name: /Club prospect/i,

@@ -41,18 +41,18 @@ import {
   resolveAssignPlannerPlayerIpcMock,
   resolveClearPlannerAssignmentIpcMock,
   resolveClearPlannerDepthIpcMock,
+  resolveManagedClubIpcMock,
+  resolveManagedClubOptionsIpcMock,
   resolveMovePlannerPlayerIpcMock,
   resolveOptimizePlannerDepthIpcMock,
-  resolvePlannerClubFamilyIpcMock,
-  resolvePlannerClubsIpcMock,
   resolvePlannerDepthIpcMock,
   resolvePlannerSlotCandidatesIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
   resolveRemovePlannerStringIpcMock,
-  resolveSavePlannerClubFamilyIpcMock,
   resolveSavePlannerTacticIpcMock,
   resolveSavePlannerTeamsIpcMock,
+  resolveSetManagedClubIpcMock,
 } from "@/testing/planner-ipc-mock";
 import {
   resetGetPlayerOverride,
@@ -228,8 +228,8 @@ function registerIpcMocks() {
       return resolveSetAcademyMemberOutcomeIpcMock(args);
     }
 
-    if (cmd === "get_planner_club_family") {
-      return resolvePlannerClubFamilyIpcMock();
+    if (cmd === "get_managed_club") {
+      return resolveManagedClubIpcMock();
     }
 
     if (cmd === "list_squad_players") {
@@ -244,12 +244,12 @@ function registerIpcMocks() {
       return resolveSquadWonderkidMentalityBoostIpcMock(args);
     }
 
-    if (cmd === "list_planner_clubs") {
-      return resolvePlannerClubsIpcMock();
+    if (cmd === "list_managed_club_options") {
+      return resolveManagedClubOptionsIpcMock();
     }
 
-    if (cmd === "save_planner_club_family") {
-      return resolveSavePlannerClubFamilyIpcMock(args);
+    if (cmd === "set_managed_club") {
+      return resolveSetManagedClubIpcMock(args);
     }
 
     if (cmd === "save_planner_teams") {

@@ -1,6 +1,6 @@
 use super::depth::{assign_player, get_depth, PlannerTeam};
 use super::teams::{get_team_settings, save_team_settings, PlannerTeamInput};
-use super::test_support::{open_with_snapshot, team_strings};
+use super::test_support::{add_picker_candidates, open_with_snapshot, team_strings};
 
 fn input(team: &str, display_name: &str) -> PlannerTeamInput {
     PlannerTeamInput {
@@ -11,10 +11,11 @@ fn input(team: &str, display_name: &str) -> PlannerTeamInput {
 
 #[test]
 fn replaces_team_names_and_removes_populated_team_after_confirmation() {
-    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
     let depth = get_depth(&conn, save_id).expect("initialize planner depth");
     let reserves_string_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
-    assign_player(&conn, save_id, reserves_string_id, "goalkeeper", 77)
+    assign_player(&conn, save_id, reserves_string_id, "goalkeeper", 79)
         .expect("assign reserve player");
 
     let error = save_team_settings(

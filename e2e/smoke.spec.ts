@@ -34,7 +34,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect(main.getByRole("region", { name: "Save data" })).toBeVisible();
     await expect(
-      main.getByRole("region", { name: "Club setup" }),
+      main.getByRole("region", { name: "Managed club" }),
     ).toBeVisible();
     await expect(main.getByRole("region", { name: "Bridge" })).toBeVisible();
     await expect(main.getByText(/^Bridge:/i)).toContainText("ready");
@@ -430,7 +430,7 @@ test.describe("application smoke", () => {
     await expect(table.getByText("Staff member 101")).toBeVisible();
   });
 
-  test("My Staff confirms a configured-family CA boost", async ({ page }) => {
+  test("My Staff confirms a managed-club CA boost", async ({ page }) => {
     await stubTauriIpc(page, { staffWorkspace: true });
     await page.goto("/staff?view=my-staff");
 
@@ -441,15 +441,14 @@ test.describe("application smoke", () => {
     );
     await main.getByRole("button", { name: "Boost all CA" }).click();
     const dialog = page.getByRole("dialog", { name: "Boost all CA?" });
-    await expect(dialog).toContainText("configured club family");
+    await expect(dialog).toContainText("at your managed club");
     await dialog.getByRole("button", { name: "Boost all CA" }).click();
-    await expect(dialog).toContainText("0 of 1 staff processed.");
     await expect(main.getByTestId("staff-boost-outcome")).toContainText(
       "1 processed — 1 updated, 0 skipped, 0 failed.",
     );
   });
 
-  test("My Staff points an unconfigured family to Settings Club setup", async ({
+  test("My Staff points an unconfigured save to Settings managed club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { staffFamily: "none", staffWorkspace: true });
@@ -457,11 +456,11 @@ test.describe("application smoke", () => {
 
     const main = page.getByRole("main");
     await expect(
-      main.getByText("Set up your club family", { exact: true }),
+      main.getByText("Choose your managed club", { exact: true }),
     ).toBeVisible();
     await expect(
-      main.getByRole("link", { name: "Open Club Setup" }),
-    ).toHaveAttribute("href", "/settings#club-setup");
+      main.getByRole("link", { name: "Open Managed Club" }),
+    ).toHaveAttribute("href", "/settings#managed-club");
   });
 
   test("planner route shows no-snapshot Load Data guidance", async ({
@@ -479,7 +478,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Squad points an unconfigured save to Settings Club setup", async ({
+  test("Squad points an unconfigured save to Settings managed club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
@@ -493,56 +492,35 @@ test.describe("application smoke", () => {
       "aria-selected",
       "true",
     );
-    await expect(main.getByText("Set up your club family")).toBeVisible();
-    await main.getByRole("link", { name: "Open Club Setup" }).click();
-    await expect(page).toHaveURL(/\/settings#club-setup$/);
     await expect(
-      page.getByRole("main").getByRole("region", { name: "Club setup" }),
+      main.getByText("Choose your managed club", { exact: true }),
+    ).toBeVisible();
+    await main.getByRole("link", { name: "Open Managed Club" }).click();
+    await expect(page).toHaveURL(/\/settings#managed-club$/);
+    await expect(
+      page.getByRole("main").getByRole("region", { name: "Managed club" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("main").getByRole("combobox", { name: "Primary club" }),
+      page.getByRole("main").getByRole("combobox", { name: "Managed club" }),
     ).toBeVisible();
   });
 
-  test("Settings club suggestions remain interactive outside the panel", async ({
+  test("Settings saves one managed club from the latest snapshot", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/settings#club-setup");
+    await page.goto("/settings#managed-club");
 
-    const primaryClub = page.getByRole("main").getByRole("combobox", {
-      name: "Primary club",
+    const managedClub = page.getByRole("main").getByRole("combobox", {
+      name: "Managed club",
     });
-    await primaryClub.fill("Bar");
-
-    const listbox = page.getByRole("listbox", { name: "Club suggestions" });
-    await expect(listbox).toBeVisible();
-    expect(
-      await listbox.evaluate((element) => {
-        const listboxElement = element as unknown as {
-          contains: (node: unknown) => boolean;
-          getBoundingClientRect: () => {
-            bottom: number;
-            left: number;
-            width: number;
-          };
-        };
-        const browser = globalThis as unknown as {
-          document: {
-            elementFromPoint: (x: number, y: number) => unknown;
-          };
-          innerHeight: number;
-        };
-        const bounds = listboxElement.getBoundingClientRect();
-        const hit = browser.document.elementFromPoint(
-          bounds.left + Math.min(8, bounds.width / 2),
-          Math.min(bounds.bottom - 4, browser.innerHeight - 4),
-        );
-        return (
-          hit === element || (hit !== null && listboxElement.contains(hit))
-        );
-      }),
-    ).toBe(true);
+    await managedClub.fill("Bar");
+    await page.getByRole("option", { name: "Barcelona", exact: true }).click();
+    await page
+      .getByRole("main")
+      .getByRole("button", { name: "Save managed club" })
+      .click();
+    await expect(managedClub).toHaveValue("Barcelona");
   });
 
   test("configured Squad shows its sortable player overview", async ({

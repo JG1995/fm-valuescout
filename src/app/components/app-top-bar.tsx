@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { fieldClasses } from "@/components/ui/field/field-styles";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import { LoadDataOutcome } from "@/features/memory-read/components/load-data-outcome";
 import { useLoadData } from "@/features/memory-read/hooks/use-load-data";
 import { useLoadDataPreferences } from "@/features/memory-read/stores/use-load-data-preferences";
@@ -39,6 +40,7 @@ export function AppTopBar() {
       void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
       void queryClient.invalidateQueries({ queryKey: searchKeys.all });
       void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+      void queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
       void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
       void queryClient.invalidateQueries({ queryKey: academyKeys.all });
       void queryClient.invalidateQueries({ queryKey: staffKeys.all });
@@ -69,6 +71,9 @@ export function AppTopBar() {
           onSwitched={() => {
             void queryClient.invalidateQueries({ queryKey: searchKeys.all });
             void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+            void queryClient.invalidateQueries({
+              queryKey: managedClubKeys.all,
+            });
             void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
             void queryClient.resetQueries({ queryKey: academyKeys.all });
             void queryClient.invalidateQueries({ queryKey: staffKeys.all });

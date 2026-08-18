@@ -20,7 +20,7 @@ pub enum StaffScope {
 pub enum StaffPageState {
     Ready,
     NoCurrentSnapshot,
-    NoClubFamily,
+    NoManagedClub,
     NoShortlist,
 }
 
@@ -164,7 +164,7 @@ pub fn list_my_staff_uids(
 ) -> Result<Option<Vec<i64>>, String> {
     let configured: bool = conn
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM planner_club_sources WHERE save_id = ?1)",
+            "SELECT EXISTS(SELECT 1 FROM managed_club_settings WHERE save_id = ?1)",
             [save_id],
             |row| row.get(0),
         )
@@ -178,11 +178,8 @@ pub fn list_my_staff_uids(
             "SELECT DISTINCT staff.uid
              FROM staff
              WHERE staff.snapshot_id = ?1
-               AND EXISTS(
-                   SELECT 1
-                   FROM planner_club_sources source
-                   WHERE source.save_id = ?2
-                     AND source.club_name = staff.club
+               AND staff.club = (
+                   SELECT club_name FROM managed_club_settings WHERE save_id = ?2
                )
              ORDER BY staff.uid ASC",
         )
@@ -417,13 +414,13 @@ fn list_staff_with_shortlist(
     if scope == StaffScope::MyStaff {
         let configured: bool = conn
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM planner_club_sources WHERE save_id = ?1)",
+                "SELECT EXISTS(SELECT 1 FROM managed_club_settings WHERE save_id = ?1)",
                 [save_id],
                 |row| row.get(0),
             )
             .map_err(|error| error.to_string())?;
         if !configured {
-            return Ok(empty(StaffPageState::NoClubFamily));
+            return Ok(empty(StaffPageState::NoManagedClub));
         }
     }
 
@@ -432,7 +429,9 @@ fn list_staff_with_shortlist(
     let mut from_sql = "staff".to_string();
     if scope == StaffScope::MyStaff {
         binds.push(Value::Integer(save_id));
-        where_sql.push_str(" AND EXISTS(SELECT 1 FROM planner_club_sources source WHERE source.save_id = ?2 AND source.club_name = staff.club)");
+        where_sql.push_str(
+            " AND staff.club = (SELECT club_name FROM managed_club_settings WHERE save_id = ?2)",
+        );
     }
     if scope == StaffScope::Shortlist {
         let has_shortlist: bool = conn
@@ -590,14 +589,17 @@ mod tests {
         migrations::apply(&conn).unwrap();
         conn
     }
-    fn seed(conn: &Connection, family: bool) {
+    fn seed(conn: &Connection, managed_club: bool) {
         conn.execute_batch("INSERT INTO saves (id,name,is_active) VALUES (1,'Save',1); INSERT INTO snapshots (id,save_id,is_current,schema_version,generated_at_utc,game_version,supported_game_version,bridge_version,protocol_version,game_date_source,scan_truncated,player_count) VALUES (1,1,1,8,'now','26.3','26.3','0.4',1,'unknown',0,0),(2,1,0,8,'old','26.3','26.3','0.4',1,'unknown',0,0); INSERT INTO staff (snapshot_id,uid,name,age,nationalities_json,gender,ca,pa,staff_attributes_json,club) VALUES (1,1,'Alpha',40,'[\"DEN\"]','male',100,120,'{\"Authority\":18}','Club A'),(1,2,'Beta',41,'[\"SWE\"]','female',110,130,'{\"Authority\":15}','Club B'),(1,3,'Gamma',42,'[]','unknown',90,100,'{\"Authority\":null}','Other'),(2,9,'Old',50,'[]','unknown',200,200,'{}','Club A'); INSERT INTO staff_role_scores (snapshot_id,uid,role_id,score) VALUES (1,1,'coach_fitness',80),(1,2,'coach_fitness',70);").unwrap();
-        if family {
-            conn.execute_batch("INSERT INTO planner_club_settings (save_id,primary_club) VALUES (1,'Club A'); INSERT INTO planner_club_sources (save_id,team,club_name,is_primary) VALUES (1,'senior','Club A',1),(1,'reserves','Club B',0);").unwrap();
+        if managed_club {
+            conn.execute_batch(
+                "INSERT INTO managed_club_settings (save_id,club_name) VALUES (1,'Club A');",
+            )
+            .unwrap();
         }
     }
     #[test]
-    fn search_is_all_current_while_my_staff_uses_every_family_club() {
+    fn search_is_all_current_while_my_staff_uses_the_exact_managed_club() {
         let conn = open();
         seed(&conn, true);
         let search = list_staff(
@@ -626,11 +628,11 @@ mod tests {
             search.staff.iter().map(|s| s.uid).collect::<Vec<_>>(),
             [1, 2, 3]
         );
-        assert_eq!(mine.staff.iter().map(|s| s.uid).collect::<Vec<_>>(), [1, 2]);
+        assert_eq!(mine.staff.iter().map(|s| s.uid).collect::<Vec<_>>(), [1]);
         let second_page = list_staff(
             &conn,
             StaffScope::MyStaff,
-            1,
+            0,
             1,
             SortField::Name,
             SortDir::Asc,
@@ -638,8 +640,8 @@ mod tests {
             &[],
         )
         .unwrap();
-        assert_eq!(second_page.total, 2);
-        assert_eq!(second_page.staff[0].uid, 2);
+        assert_eq!(second_page.total, 1);
+        assert_eq!(second_page.staff[0].uid, 1);
     }
 
     #[test]
@@ -1127,7 +1129,7 @@ mod tests {
             )
             .unwrap()
             .state,
-            StaffPageState::NoClubFamily
+            StaffPageState::NoManagedClub
         );
         let page = list_staff(
             &conn,

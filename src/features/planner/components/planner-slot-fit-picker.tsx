@@ -12,9 +12,9 @@ import { clearPlannerAssignment } from "../api/clear-planner-assignment";
 import { movePlannerPlayer } from "../api/move-planner-player";
 import { plannerKeys } from "../api/planner-keys";
 import { plannerSlotCandidatesQueryOptions } from "../api/planner-slot-candidates-query-options";
-import type { PlannerTeam } from "../types/club-family";
 import type { PlannerSlotCandidate } from "../types/depth";
 import type { PlannerTactic, TacticOptions } from "../types/tactic";
+import type { PlannerTeam } from "../types/team";
 import { linkedPositionDescriptionForId } from "../utils/tactic-editor";
 
 const SEARCH_DEBOUNCE_MS = 200;
@@ -344,7 +344,7 @@ export function PlannerSlotFitPicker({
           ) : null}
           {!candidatesQuery.isPending && candidates.length === 0 ? (
             <p className="text-body-sm text-on-surface-variant">
-              No configured club-family players match this search.
+              No managed-club players at this team level match this search.
             </p>
           ) : null}
           {candidates.length > 0 ? (

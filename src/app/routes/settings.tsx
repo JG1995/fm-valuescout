@@ -7,13 +7,16 @@ import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
+import {
+  managedClubOptionsQueryOptions,
+  managedClubQueryOptions,
+} from "@/features/managed-club/api/managed-club-query-options";
+import { ManagedClubPanel } from "@/features/managed-club/components/managed-club-panel";
 import { bridgeInstallQueryOptions } from "@/features/memory-read/api/bridge-install-query-options";
 import { bridgeStatusQueryOptions } from "@/features/memory-read/api/bridge-status-query-options";
 import { BridgeStatusPanelWithErrorBoundary } from "@/features/memory-read/components/bridge-status-panel-with-error-boundary";
-import { plannerClubFamilyQueryOptions } from "@/features/planner/api/get-planner-club-family-query-options";
-import { plannerClubsQueryOptions } from "@/features/planner/api/planner-clubs-query-options";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
-import { PlannerClubFamilyPanel } from "@/features/planner/components/planner-club-family-panel";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
@@ -26,8 +29,8 @@ export const Route = createFileRoute("/settings")({
     Promise.all([
       queryClient.prefetchQuery(savesQueryOptions),
       queryClient.prefetchQuery(currentSnapshotQueryOptions),
-      queryClient.prefetchQuery(plannerClubFamilyQueryOptions),
-      queryClient.prefetchQuery(plannerClubsQueryOptions),
+      queryClient.prefetchQuery(managedClubQueryOptions),
+      queryClient.prefetchQuery(managedClubOptionsQueryOptions),
       queryClient.prefetchQuery(bridgeInstallQueryOptions),
       queryClient.prefetchQuery(bridgeStatusQueryOptions),
     ]),
@@ -42,20 +45,25 @@ function SectionFallback({ label }: { label: string }) {
   );
 }
 
-function ClubSetupError({ error, reset }: { error: Error; reset: () => void }) {
+function ManagedClubError({
+  error,
+  reset,
+}: {
+  error: Error;
+  reset: () => void;
+}) {
   const queryClient = useQueryClient();
 
   return (
     <Panel>
       <EmptyState
         icon={CircleAlert}
-        title="Could not load club setup"
+        title="Could not load managed club"
         action={
           <Button
             variant="secondary"
             onClick={() => {
-              queryClient.resetQueries({ queryKey: plannerKeys.clubFamily() });
-              queryClient.resetQueries({ queryKey: plannerKeys.clubs() });
+              queryClient.resetQueries({ queryKey: managedClubKeys.all });
               reset();
             }}
           >
@@ -74,6 +82,7 @@ function SettingsPage() {
   const invalidateCurrentContext = () => {
     void queryClient.invalidateQueries({ queryKey: searchKeys.all });
     void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+    void queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
     void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
     void queryClient.resetQueries({ queryKey: academyKeys.all });
     void queryClient.invalidateQueries({ queryKey: staffKeys.all });
@@ -95,21 +104,27 @@ function SettingsPage() {
       </section>
 
       <section
-        aria-labelledby="club-setup-heading"
+        aria-labelledby="managed-club-heading"
         className="space-y-3"
-        id="club-setup"
+        id="managed-club"
       >
-        <h2 className="text-title-lg text-on-surface" id="club-setup-heading">
-          Club setup
+        <h2 className="text-title-lg text-on-surface" id="managed-club-heading">
+          Managed club
         </h2>
         <ErrorBoundary
           fallback={({ error, reset }) => (
-            <ClubSetupError error={error} reset={reset} />
+            <ManagedClubError error={error} reset={reset} />
           )}
         >
-          <Suspense fallback={<SectionFallback label="Loading club setup…" />}>
-            <PlannerClubFamilyPanel
+          <Suspense
+            fallback={<SectionFallback label="Loading managed club…" />}
+          >
+            <ManagedClubPanel
               onSaved={() => {
+                void queryClient.invalidateQueries({
+                  queryKey: plannerKeys.all,
+                });
+                void queryClient.resetQueries({ queryKey: academyKeys.all });
                 void queryClient.invalidateQueries({ queryKey: staffKeys.all });
               }}
             />

@@ -28,7 +28,7 @@ export type StaffSummary = {
 export type StaffPageState =
   | "ready"
   | "no_current_snapshot"
-  | "no_club_family"
+  | "no_managed_club"
   | "no_shortlist";
 
 export type StaffPage = {

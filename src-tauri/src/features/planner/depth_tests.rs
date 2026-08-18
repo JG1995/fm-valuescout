@@ -1,6 +1,6 @@
 use rusqlite::params;
 
-use crate::features::planner::service::{self, ClubSourceInput};
+use crate::features::managed_club::service as managed_club_service;
 use crate::features::planner::tactic;
 use crate::features::scoring::{
     catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
@@ -21,7 +21,7 @@ use super::test_support::{
 };
 
 #[test]
-fn returns_ranked_candidates_from_the_target_team_club_family() {
+fn returns_ranked_candidates_from_the_managed_club_team_level() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let snapshot_id: i64 = conn
@@ -46,7 +46,7 @@ fn returns_ranked_candidates_from_the_target_team_club_family() {
     .expect("set candidate scores");
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let reserve_string_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
-    assign_player(&conn, save_id, reserve_string_id, "goalkeeper", 78)
+    assign_player(&conn, save_id, reserve_string_id, "goalkeeper", 79)
         .expect("assign reserve player");
 
     let candidates = get_slot_candidates(&conn, save_id, PlannerTeam::Reserves, "goalkeeper", "")
@@ -57,15 +57,12 @@ fn returns_ranked_candidates_from_the_target_team_club_family() {
             .iter()
             .map(|candidate| candidate.player_uid)
             .collect::<Vec<_>>(),
-        [79, 78, 77, 80]
+        [79]
     );
     assert_eq!(candidates[0].combined_score, Some(80));
-    assert_eq!(candidates[1].combined_score, Some(50));
-    assert_eq!(candidates[2].combined_score, None);
-    assert_eq!(candidates[3].combined_score, None);
-    assert_eq!(candidates[0].current_club, "Loan B FC");
+    assert_eq!(candidates[0].current_club, "Loan FC");
     assert_eq!(
-        candidates[1].assignment_location.as_ref().map(|location| (
+        candidates[0].assignment_location.as_ref().map(|location| (
             location.team.as_str(),
             location.string_id,
             location.lane_id.as_str()
@@ -78,7 +75,7 @@ fn returns_ranked_candidates_from_the_target_team_club_family() {
         save_id,
         PlannerTeam::Reserves,
         "goalkeeper",
-        "b team",
+        "reserve",
     )
     .expect("search reserve candidates");
     assert_eq!(
@@ -132,43 +129,37 @@ fn slot_candidates_use_the_selected_lane_weight() {
 }
 
 #[test]
-fn team_level_does_not_restrict_the_primary_club_pool() {
+fn team_level_maps_each_managed_club_player_to_one_team_pool() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
 
-    for team_level in [Some("senior"), None] {
-        conn.execute(
-            "UPDATE players SET team_level = ?1 WHERE current_club = 'Loan FC'",
-            params![team_level],
-        )
-        .expect("set team level");
-
-        for team in [
-            PlannerTeam::Senior,
-            PlannerTeam::Reserves,
-            PlannerTeam::Youth,
-        ] {
-            let candidates = get_slot_candidates(&conn, save_id, team, "goalkeeper", "")
-                .expect("load candidates");
-
-            assert_eq!(
-                candidates
-                    .iter()
-                    .map(|candidate| candidate.player_uid)
-                    .collect::<Vec<_>>(),
-                [77]
-            );
-        }
-    }
-
-    let depth = get_depth(&conn, save_id).expect("load depth");
-    let youth_string_id = team_strings(&depth, PlannerTeam::Youth)[0].id;
-    assign_player(&conn, save_id, youth_string_id, "goalkeeper", 77)
-        .expect("assign senior-level player to youth planner team");
-
-    let depth = get_depth(&conn, save_id).expect("reload depth");
     assert_eq!(
-        team_strings(&depth, PlannerTeam::Youth)[0].assignments[0].state,
-        AssignmentState::Resolved
+        get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
+            .expect("load senior candidates")
+            .iter()
+            .map(|candidate| candidate.player_uid)
+            .collect::<Vec<_>>(),
+        [77]
+    );
+    assert!(
+        get_slot_candidates(&conn, save_id, PlannerTeam::Reserves, "goalkeeper", "")
+            .expect("load reserve candidates")
+            .is_empty()
+    );
+    assert!(
+        get_slot_candidates(&conn, save_id, PlannerTeam::Youth, "goalkeeper", "")
+            .expect("load youth candidates")
+            .is_empty()
+    );
+
+    conn.execute(
+        "UPDATE players SET team_level = NULL WHERE current_club = 'Loan FC'",
+        [],
+    )
+    .expect("remove team level");
+    assert!(
+        get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
+            .expect("exclude unclassified player")
+            .is_empty()
     );
 }
 
@@ -296,24 +287,6 @@ fn populated_string_requires_confirmation_and_deletes_only_its_assignments() {
 fn clearing_all_requires_confirmation_and_preserves_other_saves_and_settings() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
-    service::save_club_family(
-        &conn,
-        save_id,
-        "Loan FC",
-        &[
-            ClubSourceInput {
-                team: "reserves".to_string(),
-                club_name: "Loan B FC".to_string(),
-                team_level: None,
-            },
-            ClubSourceInput {
-                team: "youth".to_string(),
-                club_name: "Loan B FC".to_string(),
-                team_level: None,
-            },
-        ],
-    )
-    .expect("configure reserve and youth sources");
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let senior_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
     let reserve_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
@@ -330,8 +303,8 @@ fn clearing_all_requires_confirmation_and_preserves_other_saves_and_settings() {
     .expect("assign optimizer row");
 
     let before_tactic = tactic::get_tactic(&conn, save_id).expect("load tactic before clear");
-    let before_club_family =
-        service::get_club_family(&conn, save_id).expect("load club family before clear");
+    let before_managed_club = managed_club_service::get_managed_club(&conn, save_id)
+        .expect("load managed club before clear");
     let before_string_ids = get_depth(&conn, save_id)
         .expect("reload before clear")
         .teams
@@ -373,7 +346,7 @@ fn clearing_all_requires_confirmation_and_preserves_other_saves_and_settings() {
     .expect("write second save dump");
     snapshot::ingest::ingest_dump_file_for_save(&mut conn, second_save_id, &second_dump_path)
         .expect("ingest second save");
-    service::save_club_family(&conn, second_save_id, "Loan FC", &[])
+    managed_club_service::set_managed_club(&conn, second_save_id, "Loan FC")
         .expect("configure second save");
     let second_depth = get_depth(&conn, second_save_id).expect("create second depth");
     let second_string_id = team_strings(&second_depth, PlannerTeam::Senior)[0].id;
@@ -404,8 +377,9 @@ fn clearing_all_requires_confirmation_and_preserves_other_saves_and_settings() {
     );
     assert_eq!(reloaded.tactic, before_tactic);
     assert_eq!(
-        service::get_club_family(&conn, save_id).expect("load club family after clear"),
-        before_club_family
+        managed_club_service::get_managed_club(&conn, save_id)
+            .expect("load managed club after clear"),
+        before_managed_club
     );
     assert_eq!(
         team_strings(
@@ -421,17 +395,6 @@ fn clearing_all_requires_confirmation_and_preserves_other_saves_and_settings() {
 #[test]
 fn enforces_player_uniqueness_and_moves_in_one_save() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
-    service::save_club_family(
-        &conn,
-        save_id,
-        "Loan FC",
-        &[ClubSourceInput {
-            team: "reserves".to_string(),
-            club_name: "Loan FC".to_string(),
-            team_level: None,
-        }],
-    )
-    .expect("add reserve source");
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let first_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
     let reserve_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
@@ -442,8 +405,8 @@ fn enforces_player_uniqueness_and_moves_in_one_save() {
         .expect_err("reject duplicate player");
     assert!(error.contains("already assigned"));
     let error = assign_player(&conn, save_id, reserve_id, "goalkeeper", 77)
-        .expect_err("reject duplicate player across teams");
-    assert!(error.contains("already assigned"));
+        .expect_err("reject player outside reserve team level");
+    assert!(error.contains("not available"));
 
     move_player(&conn, save_id, second.id, "goalkeeper", 77).expect("move player");
     let reloaded = get_depth(&conn, save_id).expect("reload depth");
@@ -560,10 +523,10 @@ fn combines_selected_lane_potential_scores_for_resolved_and_outside_pool_players
     assert_eq!(assignment.potential_combined_score, expected_potential);
 
     conn.execute(
-        "UPDATE players SET current_club = 'Other FC' WHERE snapshot_id = ?1 AND uid = 77",
+        "UPDATE players SET team_level = NULL WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
-    .expect("move player outside pool");
+    .expect("remove assigned player team level");
 
     let reloaded = get_depth(&conn, save_id).expect("reload depth");
     let assignment = &team_strings(&reloaded, PlannerTeam::Senior)[0].assignments[0];
@@ -599,23 +562,19 @@ fn keeps_potential_combined_score_unavailable_when_selected_attributes_are_missi
 }
 
 #[test]
-fn source_and_tactic_updates_preserve_existing_assignments_and_saves_are_isolated() {
+fn managed_club_and_tactic_updates_preserve_assignments_and_save_isolation() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     let depth = get_depth(&conn, save_id).expect("create planner depth");
     let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
     assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
 
-    service::save_club_family(
-        &conn,
-        save_id,
-        "Loan FC",
-        &[ClubSourceInput {
-            team: "reserves".to_string(),
-            club_name: "Loan FC".to_string(),
-            team_level: None,
-        }],
+    conn.execute(
+        "UPDATE players SET current_club = 'Other FC' WHERE current_club = 'Loan FC'",
+        [],
     )
-    .expect("replace sources");
+    .expect("move player to another available club");
+    managed_club_service::set_managed_club(&conn, save_id, "Other FC")
+        .expect("replace managed club");
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
     tactic.lanes[0].ip_role_id = "ball_playing_goalkeeper_ip".to_string();
     tactic::save_tactic(&conn, save_id, &tactic).expect("change tactic role");
@@ -643,7 +602,7 @@ fn source_and_tactic_updates_preserve_existing_assignments_and_saves_are_isolate
     .expect("write second save dump");
     snapshot::ingest::ingest_dump_file_for_save(&mut conn, second_save_id, &second_dump_path)
         .expect("ingest second save");
-    service::save_club_family(&conn, second_save_id, "Loan FC", &[])
+    managed_club_service::set_managed_club(&conn, second_save_id, "Loan FC")
         .expect("configure second save");
     let second_depth = get_depth(&conn, second_save_id).expect("create isolated depth");
     let second_string_id = team_strings(&second_depth, PlannerTeam::Senior)[0].id;

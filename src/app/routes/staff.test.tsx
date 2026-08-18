@@ -462,16 +462,16 @@ describe("staff route", () => {
     ).toBeInTheDocument();
   });
 
-  it("distinguishes an unconfigured club family from an empty overview", async () => {
+  it("distinguishes an unconfigured managed club from an empty overview", async () => {
     await resolveLoadDataIpcMock();
     setStaffFamilyConfigured(false);
     renderStaffRoute("/staff?view=my-staff");
     expect(
-      await screen.findByText("Set up your club family", { exact: true }),
+      await screen.findByText("Choose your managed club", { exact: true }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Open Club Setup" }),
-    ).toHaveAttribute("href", "/settings#club-setup");
+      screen.getByRole("link", { name: "Open Managed Club" }),
+    ).toHaveAttribute("href", "/settings#managed-club");
   });
 
   it("offers one bulk CA boost on My Staff and no row actions", async () => {
@@ -500,7 +500,7 @@ describe("staff route", () => {
     expect(screen.queryByRole("button", { name: "Boost all CA" })).toBeNull();
   });
 
-  it("confirms and reports a configured-family bulk CA boost", async () => {
+  it("confirms and reports a managed-club bulk CA boost", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     const { queryClient } = renderStaffRoute("/staff?view=my-staff");
@@ -512,7 +512,7 @@ describe("staff route", () => {
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
     const dialog = await screen.findByRole("dialog", { name: "Boost all CA?" });
     expect(dialog).toHaveTextContent(
-      "every eligible staff member in your configured club family",
+      "every eligible staff member at your managed club",
     );
     expect(dialog).toHaveTextContent("Each boost stops at PA or 200.");
     await user.click(

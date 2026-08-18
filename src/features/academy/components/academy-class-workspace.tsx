@@ -374,7 +374,7 @@ function AcademyRosterRow({
   const name = member.currentName ?? member.lastKnownName;
   const warning =
     member.state === "departed"
-      ? "No longer in your club family"
+      ? "No longer at your managed club"
       : member.state === "unresolved"
         ? "Unavailable in the current snapshot"
         : null;

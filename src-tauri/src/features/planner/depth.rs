@@ -188,6 +188,7 @@ pub fn get_slot_candidates(
     let lane = find_lane(&tactic, lane_id)?;
     let snapshot_id = current_snapshot_id(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
+    let team_level = crate::features::managed_club::service::planner_team_level(team.as_str())?;
 
     let mut statement = conn
         .prepare(
@@ -216,13 +217,10 @@ pub fn get_slot_candidates(
              LEFT JOIN planner_strings assignment_string
                ON assignment_string.id = assignment.string_id
              WHERE p.snapshot_id = ?1
-               AND EXISTS(
-                   SELECT 1
-                   FROM planner_club_sources source
-                   WHERE source.save_id = ?2
-                     AND source.team = ?3
-                     AND source.club_name = p.current_club
-               )",
+               AND p.current_club = (
+                   SELECT club_name FROM managed_club_settings WHERE save_id = ?2
+               )
+               AND p.team_level = ?3",
         )
         .map_err(|error| error.to_string())?;
     let candidates = statement
@@ -230,7 +228,7 @@ pub fn get_slot_candidates(
             params![
                 snapshot_id,
                 save_id,
-                team.as_str(),
+                team_level,
                 lane.ip_role_id,
                 lane.oop_role_id,
             ],
@@ -631,17 +629,17 @@ fn resolve_assignment(
             potential_combined_score: None,
         });
     };
+    let team_level = crate::features::managed_club::service::planner_team_level(team.as_str())?;
 
     let player = conn
         .query_row(
             "SELECT
                 p.name,
-                EXISTS(
-                    SELECT 1
-                    FROM planner_club_sources source
-                    WHERE source.save_id = ?1
-                      AND source.team = ?2
-                      AND source.club_name = p.current_club
+                COALESCE(
+                    p.current_club = (
+                        SELECT club_name FROM managed_club_settings WHERE save_id = ?1
+                    ) AND p.team_level = ?2,
+                    0
                 ),
                 p.attributes_json,
                 p.ca,
@@ -662,7 +660,7 @@ fn resolve_assignment(
              WHERE p.snapshot_id = ?3 AND p.uid = ?4",
             params![
                 save_id,
-                team.as_str(),
+                team_level,
                 snapshot_id,
                 player_uid,
                 lane.ip_role_id,
@@ -808,19 +806,17 @@ fn assignable_player_name(
 ) -> Result<String, String> {
     let snapshot_id = current_snapshot_id(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
+    let team_level = crate::features::managed_club::service::planner_team_level(team.as_str())?;
     conn.query_row(
         "SELECT p.name
          FROM players p
          WHERE p.snapshot_id = ?1
            AND p.uid = ?2
-           AND EXISTS(
-               SELECT 1
-               FROM planner_club_sources source
-               WHERE source.save_id = ?3
-                 AND source.team = ?4
-                 AND source.club_name = p.current_club
-           )",
-        params![snapshot_id, player_uid, save_id, team.as_str()],
+           AND p.current_club = (
+               SELECT club_name FROM managed_club_settings WHERE save_id = ?3
+           )
+           AND p.team_level = ?4",
+        params![snapshot_id, player_uid, save_id, team_level],
         |row| row.get(0),
     )
     .optional()
