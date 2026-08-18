@@ -309,6 +309,22 @@ describe("planner route", () => {
     expect(screen.queryByRole("button", { name: "Edit filters" })).toBeNull();
   });
 
+  it("describes an empty configured Squad as one managed club", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([]);
+    renderPlannerRoute({ initialEntry: "/planner" });
+
+    expect(
+      await screen.findByText(
+        "No current-snapshot players match your managed club.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("renders every nationality flag in the squad overview", async () => {
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({

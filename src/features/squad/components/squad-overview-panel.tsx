@@ -346,7 +346,7 @@ export function SquadOverviewPanel({
       <Panel title="Squad overview" actions={actions} flush>
         <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
         <EmptyState icon={UsersRound} title="No players at your managed club">
-          No current-snapshot players match the clubs configured for this save.
+          No current-snapshot players match your managed club.
         </EmptyState>
       </Panel>
     );

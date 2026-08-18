@@ -474,6 +474,18 @@ describe("staff route", () => {
     ).toHaveAttribute("href", "/settings#managed-club");
   });
 
+  it("describes an empty My Staff overview as one managed club", async () => {
+    await resolveLoadDataIpcMock();
+    setStaffOverride([]);
+    renderStaffRoute("/staff?view=my-staff");
+
+    expect(
+      await screen.findByText(
+        "No current-snapshot staff match your managed club.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("offers one bulk CA boost on My Staff and no row actions", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();

@@ -960,6 +960,15 @@ mod tests {
         .expect("insert player");
     }
 
+    fn query_json_rows(conn: &Connection, query: &str) -> Vec<String> {
+        conn.prepare(query)
+            .expect("prepare preservation query")
+            .query_map([], |row| row.get(0))
+            .expect("query preserved rows")
+            .collect::<Result<_, _>>()
+            .expect("read preserved rows")
+    }
+
     #[test]
     fn opening_fresh_db_applies_all_migrations_without_demo_value() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -984,10 +993,10 @@ mod tests {
     }
 
     #[test]
-    fn migrates_populated_v27_to_team_and_managed_club_settings() {
+    fn migrates_populated_v28_to_managed_club_settings() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn =
-            Connection::open(temp_dir.path().join("planner-teams-v27.db")).expect("open test db");
+            Connection::open(temp_dir.path().join("managed-club-v28.db")).expect("open test db");
         conn.pragma_update(None, "foreign_keys", true)
             .expect("enable foreign keys");
         for migration in all().iter().filter(|migration| migration.version <= 27) {
@@ -1089,6 +1098,101 @@ mod tests {
             params![second_save_id, second_string_id],
         )
         .expect("create second planner assignment");
+
+        let first_snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE save_id = ?1",
+                [first_save_id],
+                |row| row.get(0),
+            )
+            .expect("read first snapshot id");
+        insert_player(&conn, first_snapshot_id, 77);
+        let academy_class_id: i64 = conn
+            .query_row(
+                "INSERT INTO academy_classes (save_id, class_year, is_automatic)
+                 VALUES (?1, 2031, 0) RETURNING id",
+                [first_save_id],
+                |row| row.get(0),
+            )
+            .expect("create academy class");
+        conn.execute(
+            "INSERT INTO academy_memberships (
+                 save_id, class_id, player_uid, last_known_name
+             ) VALUES (?1, ?2, 77, 'Academy player')",
+            params![first_save_id, academy_class_id],
+        )
+        .expect("create academy membership");
+        conn.execute(
+            "INSERT INTO academy_member_outcomes (
+                 save_id, player_uid, status, buying_club, sale_fee_eur
+             ) VALUES (?1, 77, 'sold', 'Buying FC', 1250000)",
+            [first_save_id],
+        )
+        .expect("create academy outcome");
+        conn.execute(
+            "INSERT INTO player_youth_career_stats (
+                 save_id, player_uid, career_appearances, international_caps,
+                 career_goals, career_assists
+             ) VALUES (?1, 77, 14, 2, 3, 5)",
+            [first_save_id],
+        )
+        .expect("create youth enrichment");
+        conn.execute(
+            "INSERT INTO player_moneyball_stats (
+                 snapshot_id, player_uid, asking_price_kind,
+                 asking_price_lower_eur, starts, substitute_appearances,
+                 minutes, statistics_json
+             ) VALUES (?1, 77, 'single', 2500000, 12, 4, 1080, '{\"xg\":4.5}')",
+            [first_snapshot_id],
+        )
+        .expect("create Moneyball enrichment");
+
+        let planner_team_migration = all()
+            .iter()
+            .find(|migration| migration.version == 28)
+            .expect("find planner team migration");
+        conn.execute_batch(planner_team_migration.sql)
+            .expect("apply migration 28");
+        conn.pragma_update(None, "user_version", 28)
+            .expect("set v28 version");
+
+        let preservation_queries = [
+            (
+                "academy_classes",
+                "SELECT json_array(id, save_id, class_year, is_automatic)
+                 FROM academy_classes ORDER BY id",
+            ),
+            (
+                "academy_memberships",
+                "SELECT json_array(save_id, class_id, player_uid, last_known_name)
+                 FROM academy_memberships ORDER BY save_id, player_uid",
+            ),
+            (
+                "academy_member_outcomes",
+                "SELECT json_array(save_id, player_uid, status, buying_club, sale_fee_eur)
+                 FROM academy_member_outcomes ORDER BY save_id, player_uid",
+            ),
+            (
+                "player_youth_career_stats",
+                "SELECT json_array(
+                     save_id, player_uid, career_appearances, international_caps,
+                     career_goals, career_assists, imported_at_utc
+                 ) FROM player_youth_career_stats ORDER BY save_id, player_uid",
+            ),
+            (
+                "player_moneyball_stats",
+                "SELECT json_array(
+                     snapshot_id, player_uid, asking_price_kind,
+                     asking_price_lower_eur, asking_price_upper_eur, starts,
+                     substitute_appearances, minutes, statistics_json,
+                     imported_at_utc
+                 ) FROM player_moneyball_stats ORDER BY snapshot_id, player_uid",
+            ),
+        ];
+        let preserved_rows_before: Vec<_> = preservation_queries
+            .iter()
+            .map(|(table, query)| (*table, query_json_rows(&conn, query)))
+            .collect();
 
         type SnapshotRow = (
             i64,
@@ -1261,7 +1365,7 @@ mod tests {
             .collect::<Result<_, _>>()
             .expect("read assignments before migration");
 
-        apply(&conn).expect("apply planner team and managed club migrations");
+        apply(&conn).expect("apply managed club migration");
 
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
@@ -1439,6 +1543,17 @@ mod tests {
             .collect::<Result<_, _>>()
             .expect("read migrated assignments");
         assert_eq!(assignments_after, assignments_before);
+
+        for ((table, query), (_, rows_before)) in preservation_queries
+            .iter()
+            .zip(preserved_rows_before.iter())
+        {
+            assert_eq!(
+                query_json_rows(&conn, query),
+                *rows_before,
+                "{table} changed during migration 29"
+            );
+        }
     }
 
     #[test]

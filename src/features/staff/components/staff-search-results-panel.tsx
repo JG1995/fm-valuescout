@@ -493,7 +493,7 @@ export function StaffSearchResultsPanel({
           }
         >
           {scope === "my-staff"
-            ? "No current-snapshot staff match the clubs configured for this save."
+            ? "No current-snapshot staff match your managed club."
             : isShortlist
               ? hasShortlistFilter
                 ? "Choose All jobs or turn off Only unemployed to widen the results."
