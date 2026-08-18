@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Fixed
 
 - Planner teams can now be configured per save, with editable display names and safe removal of unneeded teams.
+- Planner optimization now accepts familiarity of 12 in both tactic phases and applies hidden ranking deductions below 16.
 
 ## [0.6.2] - 2026-08-18
 

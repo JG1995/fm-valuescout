@@ -8,7 +8,7 @@ Linear JAY-14 preserves the complete raw FM26 position-familiarity map from brid
 
 - Schema-v7 dumps contain exactly 15 canonical keys: `GK`, `SW`, `DL`, `DC`, `DR`, `DM`, `ML`, `MC`, `MR`, `AML`, `AMC`, `AMR`, `ST`, `WBL`, and `WBR`.
 - Each newly scanned value is an exact integer from `0` through `20`, including zero, or `null` when unread or invalid. Snapshot ingest validates the complete map before mutation and stores it unchanged.
-- Recorded positions use familiarity `> 0` in Search, Squad, Academy labels, profile pitch labels, and best-position selection. Playable positions use `>= 15` in profile summaries and goalkeeper mode. Optimizer eligibility separately requires IP suitability of at least 16 and OOP suitability of at least 12 for distinct lane positions.
+- Recorded positions use familiarity `> 0` in Search, Squad, Academy labels, profile pitch labels, and best-position selection. Playable positions use `>= 15` in profile summaries and goalkeeper mode. Optimizer eligibility separately requires IP and OOP suitability of at least 12. Its allocation score applies a hidden five-point deduction for each phase below 16.
 - Potential projection selects natural positions with `>= max(15, strongest - 2)`. If no value reaches 15, it selects the first strongest positive value in canonical layout order. Complete maps therefore preserve equivalent sparse-map projection behavior.
 - The profile pitch has all 15 slots, including `SW`. It displays positive familiarity without inventing an `SW` role. The existing current/potential IP/OOP summaries and concealment behavior remain unchanged.
 - Existing schema-v6 snapshots remain readable as sparse legacy data. New ingestion rejects stale dump files and requires an updated bridge scan for complete familiarity.
@@ -86,6 +86,6 @@ documentation_commit: ea82d2fea0dbc92769c7d60edf6f05a28bbb9113
 ## Follow-up
 
 - Install the schema-v7 bridge in a supported Windows FM26 environment, run Load Data, and inspect a representative dump and stored row for all 15 keys, positive secondary values, zero, and unread `null`.
-- Confirm live Search, Squad, profile, Planner, optimizer, and Academy behavior. Include the exact optimizer boundaries: IP familiarity 16 is eligible and 15 is not; distinct OOP familiarity 12 is eligible and 11 is not.
+- Confirm live Search, Squad, profile, Planner, optimizer, and Academy behavior. Include the exact optimizer boundaries: IP and OOP familiarity 12 are eligible and 11 is not, while each phase below 16 receives a hidden five-point allocation deduction.
 - Open a persisted schema-v6 snapshot to prove sparse legacy reads end to end. The deterministic suites cover sparse fixtures, but no dedicated persisted-v6 snapshot regression or live FM run was recorded.
 - Publish only through the GitHub publication workflow. Resolve the pending documentation ref from Git when this reconciliation is committed.
