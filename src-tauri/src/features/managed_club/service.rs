@@ -135,15 +135,6 @@ pub fn selected_club(conn: &Connection, save_id: i64) -> Result<Option<String>, 
     .map_err(|error| error.to_string())
 }
 
-pub fn planner_team_level(team: &str) -> Result<&'static str, String> {
-    match team {
-        "senior" => Ok("senior"),
-        "reserves" => Ok("reserve"),
-        "youth" => Ok("youth"),
-        _ => Err(format!("Unknown planner team `{team}`")),
-    }
-}
-
 fn validate_club_name(club_name: &str) -> Result<String, String> {
     let club_name = club_name.trim();
     if club_name.is_empty() {
@@ -272,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn managed_club_cascades_with_its_save_and_team_mapping_is_closed() {
+    fn managed_club_cascades_with_its_save() {
         let conn = connection();
         let save_id = insert_save(&conn, "Save");
         let snapshot_id = insert_snapshot(&conn, save_id, true);
@@ -288,9 +279,5 @@ mod tests {
             .expect("count settings"),
             0
         );
-        assert_eq!(planner_team_level("senior"), Ok("senior"));
-        assert_eq!(planner_team_level("reserves"), Ok("reserve"));
-        assert_eq!(planner_team_level("youth"), Ok("youth"));
-        assert!(planner_team_level("academy").is_err());
     }
 }

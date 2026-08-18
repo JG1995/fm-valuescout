@@ -344,7 +344,7 @@ export function PlannerSlotFitPicker({
           ) : null}
           {!candidatesQuery.isPending && candidates.length === 0 ? (
             <p className="text-body-sm text-on-surface-variant">
-              No managed-club players at this team level match this search.
+              No managed-club players match this search.
             </p>
           ) : null}
           {candidates.length > 0 ? (

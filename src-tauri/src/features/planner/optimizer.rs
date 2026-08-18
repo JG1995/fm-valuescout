@@ -454,7 +454,6 @@ fn load_current_optimizer_candidates(
     team: PlannerTeam,
     tactic: &PlannerTactic,
 ) -> Result<Vec<OptimizerCandidate>, String> {
-    let team_level = crate::features::managed_club::service::planner_team_level(team.as_str())?;
     let mut score_statement = tx
         .prepare(
             "SELECT scores.uid, scores.role_id, scores.score
@@ -464,13 +463,12 @@ fn load_current_optimizer_candidates(
                AND player.current_club = (
                    SELECT club_name FROM managed_club_settings WHERE save_id = ?2
                )
-               AND player.team_level = ?3
                AND scores.snapshot_id = player.snapshot_id
                AND scores.uid = player.uid",
         )
         .map_err(|error| error.to_string())?;
     let role_scores = score_statement
-        .query_map(params![snapshot_id, save_id, team_level], |row| {
+        .query_map(params![snapshot_id, save_id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -497,12 +495,11 @@ fn load_current_optimizer_candidates(
                AND p.current_club = (
                    SELECT club_name FROM managed_club_settings WHERE save_id = ?2
                )
-               AND p.team_level = ?3
              ORDER BY p.uid",
         )
         .map_err(|error| error.to_string())?;
     let players = player_statement
-        .query_map(params![snapshot_id, save_id, team_level], |row| {
+        .query_map(params![snapshot_id, save_id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -573,7 +570,6 @@ fn load_potential_optimizer_candidates(
     team: PlannerTeam,
     tactic: &PlannerTactic,
 ) -> Result<Vec<OptimizerCandidate>, String> {
-    let team_level = crate::features::managed_club::service::planner_team_level(team.as_str())?;
     let lane_roles = tactic
         .lanes
         .iter()
@@ -599,12 +595,11 @@ fn load_potential_optimizer_candidates(
                AND p.current_club = (
                    SELECT club_name FROM managed_club_settings WHERE save_id = ?2
                )
-               AND p.team_level = ?3
              ORDER BY p.uid",
         )
         .map_err(|error| error.to_string())?;
     let players = player_statement
-        .query_map(params![snapshot_id, save_id, team_level], |row| {
+        .query_map(params![snapshot_id, save_id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,

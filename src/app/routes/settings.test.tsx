@@ -107,7 +107,7 @@ describe("Settings", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "2 managed-club players have no supported team level and are excluded from Planner teams.",
+        "2 managed-club players have no supported FM team level. Planner still includes them.",
       ),
     ).toBeInTheDocument();
   });

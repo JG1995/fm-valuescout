@@ -21,7 +21,7 @@ use super::test_support::{
 };
 
 #[test]
-fn returns_ranked_candidates_from_the_managed_club_team_level() {
+fn returns_ranked_candidates_from_the_managed_club() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let snapshot_id: i64 = conn
@@ -57,7 +57,7 @@ fn returns_ranked_candidates_from_the_managed_club_team_level() {
             .iter()
             .map(|candidate| candidate.player_uid)
             .collect::<Vec<_>>(),
-        [79]
+        [79, 78, 77, 80]
     );
     assert_eq!(candidates[0].combined_score, Some(80));
     assert_eq!(candidates[0].current_club, "Loan FC");
@@ -83,7 +83,7 @@ fn returns_ranked_candidates_from_the_managed_club_team_level() {
             .iter()
             .map(|candidate| candidate.player_uid)
             .collect::<Vec<_>>(),
-        [79]
+        [79, 78]
     );
 
     let error = get_slot_candidates(
@@ -129,38 +129,29 @@ fn slot_candidates_use_the_selected_lane_weight() {
 }
 
 #[test]
-fn team_level_maps_each_managed_club_player_to_one_team_pool() {
+fn missing_team_level_does_not_restrict_the_managed_club_planner_pool() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
-
-    assert_eq!(
-        get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
-            .expect("load senior candidates")
-            .iter()
-            .map(|candidate| candidate.player_uid)
-            .collect::<Vec<_>>(),
-        [77]
-    );
-    assert!(
-        get_slot_candidates(&conn, save_id, PlannerTeam::Reserves, "goalkeeper", "")
-            .expect("load reserve candidates")
-            .is_empty()
-    );
-    assert!(
-        get_slot_candidates(&conn, save_id, PlannerTeam::Youth, "goalkeeper", "")
-            .expect("load youth candidates")
-            .is_empty()
-    );
 
     conn.execute(
         "UPDATE players SET team_level = NULL WHERE current_club = 'Loan FC'",
         [],
     )
     .expect("remove team level");
-    assert!(
-        get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
-            .expect("exclude unclassified player")
-            .is_empty()
-    );
+
+    for team in [
+        PlannerTeam::Senior,
+        PlannerTeam::Reserves,
+        PlannerTeam::Youth,
+    ] {
+        assert_eq!(
+            get_slot_candidates(&conn, save_id, team, "goalkeeper", "")
+                .expect("load managed-club candidates")
+                .iter()
+                .map(|candidate| candidate.player_uid)
+                .collect::<Vec<_>>(),
+            [77]
+        );
+    }
 }
 
 #[test]
@@ -405,24 +396,21 @@ fn enforces_player_uniqueness_and_moves_in_one_save() {
         .expect_err("reject duplicate player");
     assert!(error.contains("already assigned"));
     let error = assign_player(&conn, save_id, reserve_id, "goalkeeper", 77)
-        .expect_err("reject player outside reserve team level");
-    assert!(error.contains("not available"));
+        .expect_err("reject duplicate player across teams");
+    assert!(error.contains("already assigned"));
 
-    move_player(&conn, save_id, second.id, "goalkeeper", 77).expect("move player");
+    move_player(&conn, save_id, reserve_id, "goalkeeper", 77).expect("move player across teams");
     let reloaded = get_depth(&conn, save_id).expect("reload depth");
     let strings = team_strings(&reloaded, PlannerTeam::Senior);
     assert!(strings
         .iter()
         .any(|string| string.id == first_id && string.assignments.is_empty()));
-    assert!(strings.iter().any(|string| {
-        string.id == second.id
-            && string
-                .assignments
-                .iter()
-                .any(|assignment| assignment.player_uid == 77)
-    }));
+    assert!(team_strings(&reloaded, PlannerTeam::Reserves)[0]
+        .assignments
+        .iter()
+        .any(|assignment| assignment.player_uid == 77));
 
-    clear_assignment(&conn, save_id, second.id, "goalkeeper").expect("clear assignment");
+    clear_assignment(&conn, save_id, reserve_id, "goalkeeper").expect("clear assignment");
     assert!(team_strings(
         &get_depth(&conn, save_id).expect("reload after clear"),
         PlannerTeam::Senior,
@@ -455,7 +443,7 @@ fn preserves_assignment_as_unresolved_when_snapshot_replaces_player() {
 }
 
 #[test]
-fn combines_selected_lane_potential_scores_for_resolved_and_outside_pool_players() {
+fn assignment_state_uses_managed_club_membership_not_team_level() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
     tactic.lanes[0].ip_weight = 0.25;
@@ -529,6 +517,18 @@ fn combines_selected_lane_potential_scores_for_resolved_and_outside_pool_players
     .expect("remove assigned player team level");
 
     let reloaded = get_depth(&conn, save_id).expect("reload depth");
+    let assignment = &team_strings(&reloaded, PlannerTeam::Senior)[0].assignments[0];
+    assert_eq!(assignment.state, AssignmentState::Resolved);
+    assert_eq!(assignment.combined_score, Some(65));
+    assert_eq!(assignment.potential_combined_score, expected_potential);
+
+    conn.execute(
+        "UPDATE players SET current_club = 'Other FC' WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("move assigned player outside managed club");
+
+    let reloaded = get_depth(&conn, save_id).expect("reload outside-pool assignment");
     let assignment = &team_strings(&reloaded, PlannerTeam::Senior)[0].assignments[0];
     assert_eq!(assignment.state, AssignmentState::OutsidePool);
     assert_eq!(assignment.combined_score, Some(65));
