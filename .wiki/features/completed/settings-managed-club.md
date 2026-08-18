@@ -56,15 +56,15 @@ Combine Linear JAY-26 and JAY-27 in one feature. Move operational management fro
 | `950d0baaed6f9926b631b53502ace7dbdaa49df9` | `fix(settings): remove non-actionable team-level warning` | Removed Settings diagnostic copy while retaining native metadata |
 | `09b60dd1c050f1826852602b69bbea0676db7b09` | `fix(settings): preserve data through managed-club migration` | Added complete v28-to-v29 preservation proof and aligned empty-state and top-bar lifecycle coverage |
 
-Documentation reconciliation commit: Pending record.
+Documentation reconciliation committed as `d363353921cf1bd558eea054a5139e2eb7fda23d`.
 
 ## Final publication
 
 ```yaml
-status: ready_for_publication
-pr_status: not_published
+status: published
+pr_status: draft
 merge_status: not_merged
-pr_ref: "Not published"
+pr_ref: "https://github.com/JG1995/fm-valuescout/pull/68"
 merge_ref: "Not merged"
 branch: feature/settings-managed-club
 base_branch: main
@@ -82,7 +82,8 @@ feature_review_recommendation: accept
 feature_review_findings: none
 feature_review_correction_rounds: 1
 ci_repair_attempts: 0
-publication_range: "ad5c12ff386274057dd2f06b2f03e4adcbe9dbfb..09b60dd1c050f1826852602b69bbea0676db7b09"
+publication_evidence: draft_pr_68/not_merged
+publication_range: "ad5c12ff386274057dd2f06b2f03e4adcbe9dbfb..973beaf17d4ceaf22f80aca09a35854cee70e6ed"
 feature_review_scope: "f536ac2f78dad38a4c8bc0129f9edc850e1a719c, 1bc7717e620cded6ea20fdb32f517a5dadf8bd19, 98e56df1a65ab65224ed5304395341bea3b578f0, 950d0baaed6f9926b631b53502ace7dbdaa49df9, 09b60dd1c050f1826852602b69bbea0676db7b09"
 final_pr_commit_set:
   - fce4c716edbc5ababf3c56eef94aef3220890b9d
@@ -91,14 +92,15 @@ final_pr_commit_set:
   - 98e56df1a65ab65224ed5304395341bea3b578f0
   - 950d0baaed6f9926b631b53502ace7dbdaa49df9
   - 09b60dd1c050f1826852602b69bbea0676db7b09
-close_out_documentation_ref: Pending record
+  - d363353921cf1bd558eea054a5139e2eb7fda23d
+  - 973beaf17d4ceaf22f80aca09a35854cee70e6ed
+close_out_documentation_ref: d363353921cf1bd558eea054a5139e2eb7fda23d
 ```
 
 ## Feature close-out
 
-**State:** Current. The exact implementation set passed final validation, the Sol xhigh feature review, and documentation reconciliation. The feature branch is ready for publication; no pull request or merge ref exists.
+**State:** Current. The exact implementation set passed final validation, the Sol xhigh feature review, and documentation reconciliation. Draft PR [#68](https://github.com/JG1995/fm-valuescout/pull/68) is open from `feature/settings-managed-club`; no merge ref exists.
 
 ## Follow-up
 
-- Publish through the repository pull-request workflow when requested. Record the pull request URL and merge ref only after GitHub provides evidence.
 - Run native Tauri/WebView route, focus, unsupported-platform bridge, and minimum-window checks when a desktop environment is available.
