@@ -286,6 +286,7 @@ function cloneDepth(value: PlannerDepth): PlannerDepth {
     tactic: cloneTactic(value.tactic),
     teams: value.teams.map((team) => ({
       team: team.team,
+      displayName: team.displayName,
       strings: team.strings.map((plannerString) => ({
         id: plannerString.id,
         stringOrder: plannerString.stringOrder,
@@ -307,10 +308,16 @@ function cloneSlotCandidates(value: PlannerSlotCandidate[]) {
 }
 
 function buildDefaultDepth(): PlannerDepth {
+  const displayNames = {
+    senior: "Senior",
+    reserves: "Reserves",
+    youth: "Youth",
+  } as const;
   return {
     tactic: cloneTactic(DEFAULT_TACTIC),
     teams: ["senior", "reserves", "youth"].map((team, index) => ({
       team: team as PlannerDepth["teams"][number]["team"],
+      displayName: displayNames[team as keyof typeof displayNames],
       strings: [{ id: index + 1, stringOrder: 0, assignments: [] }],
     })),
   };

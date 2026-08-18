@@ -3382,6 +3382,182 @@ describe("planner route", () => {
     await user.keyboard("{Escape}");
   });
 
+  it("renders only configured teams with their persisted display names", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const configuredDepth = resolvePlannerDepthIpcMock();
+    configuredDepth.teams = configuredDepth.teams
+      .filter((team) => team.team !== "reserves")
+      .map((team) => ({
+        ...team,
+        displayName: team.team === "senior" ? "First Team" : "U19",
+      }));
+    setPlannerDepthIpcMock(configuredDepth);
+    renderPlannerRoute();
+
+    expect(
+      await screen.findByRole("tab", { name: "First Team" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "U19" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Reserves" })).toBeNull();
+
+    await setPlannerMatrixWidth(2_000);
+    const matrix = await screen.findByRole("region", {
+      name: "All squads depth matrix",
+    });
+    expect(
+      within(matrix).getByRole("columnheader", { name: "First Team squad" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).getByRole("columnheader", { name: "U19 squad" }),
+    ).toBeInTheDocument();
+    expect(
+      within(matrix).queryByRole("columnheader", { name: "Reserves squad" }),
+    ).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Clear all" }));
+    expect(
+      screen.getByRole("dialog", { name: "Clear all squads?" }),
+    ).toHaveTextContent(
+      "This clears every assignment from First Team and U19.",
+    );
+  });
+
+  it("cycles keyboard team selection through only the available teams", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const configuredDepth = resolvePlannerDepthIpcMock();
+    configuredDepth.teams = configuredDepth.teams
+      .filter((team) => team.team !== "reserves")
+      .map((team) => ({
+        ...team,
+        displayName: team.team === "senior" ? "First Team" : "U19",
+      }));
+    setPlannerDepthIpcMock(configuredDepth);
+    renderPlannerRoute();
+
+    const firstTeamTab = await screen.findByRole("tab", { name: "First Team" });
+    firstTeamTab.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "U19" })).toHaveFocus();
+    await user.keyboard("{ArrowRight}");
+    expect(firstTeamTab).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(screen.getByRole("tab", { name: "U19" })).toHaveFocus();
+    await user.keyboard("{Home}");
+    expect(firstTeamTab).toHaveFocus();
+  });
+
+  it("keeps keyboard team selection on the only available team", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const configuredDepth = resolvePlannerDepthIpcMock();
+    configuredDepth.teams = configuredDepth.teams
+      .filter((team) => team.team === "senior")
+      .map((team) => ({ ...team, displayName: "First Team" }));
+    setPlannerDepthIpcMock(configuredDepth);
+    renderPlannerRoute();
+
+    const firstTeamTab = await screen.findByRole("tab", { name: "First Team" });
+    firstTeamTab.focus();
+    await user.keyboard("{ArrowRight}{ArrowLeft}{Home}{End}");
+    expect(firstTeamTab).toHaveFocus();
+    expect(
+      within(
+        screen.getByRole("tablist", { name: "Squad planner teams" }),
+      ).getAllByRole("tab"),
+    ).toHaveLength(1);
+  });
+
+  it("resets matrix state when the active save changes", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const previousDepth = resolvePlannerDepthIpcMock();
+    previousDepth.teams = previousDepth.teams
+      .filter((team) => team.team !== "reserves")
+      .map((team) => ({
+        ...team,
+        displayName: team.team === "senior" ? "First Team" : "U19",
+      }));
+    setPlannerDepthIpcMock(previousDepth);
+    const { queryClient } = renderPlannerRoute();
+
+    const previousTeamTab = await screen.findByRole("tab", { name: "U19" });
+    await user.click(previousTeamTab);
+    await user.click(
+      await screen.findByRole("button", {
+        name: /U19, 1st string, IP: GK .* Empty/,
+      }),
+    );
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+
+    const nextDepth = resolvePlannerDepthIpcMock();
+    nextDepth.teams = nextDepth.teams
+      .filter((team) => team.team === "senior")
+      .map((team) => ({ ...team, displayName: "Fresh Save Team" }));
+    setPlannerDepthIpcMock(nextDepth);
+    queryClient.setQueryData(plannerKeys.depth(), nextDepth);
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      snapshotKeys.current(),
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot in the planner query");
+    }
+    queryClient.setQueryData<SnapshotSummary | null>(
+      snapshotKeys.current(),
+      () => ({ ...snapshot, saveId: 2 }),
+    );
+
+    expect(
+      await screen.findByRole("tab", { name: "Fresh Save Team" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "U19" })).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(document.activeElement).not.toBe(previousTeamTab);
+  });
+
+  it("uses configured display names for picker assignment locations", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const configuredDepth = withDepthAssignments(resolvePlannerDepthIpcMock());
+    configuredDepth.teams = configuredDepth.teams
+      .filter((team) => team.team !== "reserves")
+      .map((team) => ({
+        ...team,
+        displayName: team.team === "senior" ? "First Team" : "U19",
+      }));
+    setPlannerDepthIpcMock(configuredDepth);
+    setPlannerSlotCandidates([
+      slotCandidate({ playerUid: 77, name: "Alex Keeper" }),
+    ]);
+    renderPlannerRoute();
+
+    await user.click(await screen.findByRole("tab", { name: "U19" }));
+    const target = await screen.findByRole("button", {
+      name: /U19, 1st string, IP: GK .* Empty/,
+    });
+    await user.click(target);
+    const candidate = await screen.findByRole("option", {
+      name: /Alex Keeper/,
+    });
+    expect(candidate).toHaveTextContent(
+      `Assigned: First Team · 1st string · ${KEEPER_POSITION}`,
+    );
+    await user.click(candidate);
+    expect(
+      screen.getByRole("dialog", { name: "Move Alex Keeper?" }),
+    ).toHaveTextContent(
+      `Move Alex Keeper from First Team · 1st string · ${KEEPER_POSITION} to U19 · 1st string · ${KEEPER_POSITION}?`,
+    );
+  });
+
   it("prevents duplicate clear-all requests while confirmation is pending", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

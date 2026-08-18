@@ -19,12 +19,6 @@ import { linkedPositionDescriptionForId } from "../utils/tactic-editor";
 
 const SEARCH_DEBOUNCE_MS = 200;
 
-const TEAM_LABELS: Record<PlannerTeam, string> = {
-  senior: "Senior",
-  reserves: "Reserves",
-  youth: "Youth",
-};
-
 export type PlannerSlotTarget = {
   team: PlannerTeam;
   stringId: number;
@@ -40,6 +34,7 @@ type PlannerSlotFitPickerProps = {
   target: PlannerSlotTarget;
   tactic: PlannerTactic;
   options: TacticOptions;
+  teamLabels: Partial<Record<PlannerTeam, string>>;
   onClose: () => void;
   onMutationError: (message: string) => void;
 };
@@ -67,6 +62,7 @@ function assignmentLocation(
   candidate: PlannerSlotCandidate,
   tactic: PlannerTactic,
   options: TacticOptions,
+  teamLabels: Partial<Record<PlannerTeam, string>>,
 ) {
   const location = candidate.assignmentLocation;
   if (!location) {
@@ -76,6 +72,7 @@ function assignmentLocation(
     location.team,
     location.stringOrder,
     linkedPositionDescriptionForId(location.laneId, tactic.lanes, options),
+    teamLabels,
   )}`;
 }
 
@@ -83,12 +80,21 @@ function slotLocation(
   team: PlannerTeam,
   stringOrder: number,
   laneName: string,
+  teamLabels: Partial<Record<PlannerTeam, string>>,
 ) {
-  return `${TEAM_LABELS[team]} · ${ordinal(stringOrder)} · ${laneName}`;
+  return `${teamLabels[team] ?? team} · ${ordinal(stringOrder)} · ${laneName}`;
 }
 
-function targetLocation(target: PlannerSlotTarget) {
-  return slotLocation(target.team, target.stringOrder, target.laneName);
+function targetLocation(
+  target: PlannerSlotTarget,
+  teamLabels: Partial<Record<PlannerTeam, string>>,
+) {
+  return slotLocation(
+    target.team,
+    target.stringOrder,
+    target.laneName,
+    teamLabels,
+  );
 }
 
 function moveConfirmation(
@@ -96,6 +102,7 @@ function moveConfirmation(
   target: PlannerSlotTarget,
   tactic: PlannerTactic,
   options: TacticOptions,
+  teamLabels: Partial<Record<PlannerTeam, string>>,
 ) {
   const location = candidate.assignmentLocation;
   if (!location) {
@@ -105,7 +112,8 @@ function moveConfirmation(
     location.team,
     location.stringOrder,
     linkedPositionDescriptionForId(location.laneId, tactic.lanes, options),
-  )} to ${targetLocation(target)}?`;
+    teamLabels,
+  )} to ${targetLocation(target, teamLabels)}?`;
 }
 
 function errorMessage(error: unknown) {
@@ -118,6 +126,7 @@ export function PlannerSlotFitPicker({
   target,
   tactic,
   options,
+  teamLabels,
   onClose,
   onMutationError,
 }: PlannerSlotFitPickerProps) {
@@ -264,13 +273,20 @@ export function PlannerSlotFitPicker({
     >
       {isOccupied ? (
         <p className="text-body-md text-on-surface-variant">
-          {target.occupantName} is assigned to {targetLocation(target)}. It must
-          be cleared before assigning or moving a player.
+          {target.occupantName} is assigned to{" "}
+          {targetLocation(target, teamLabels)}. It must be cleared before
+          assigning or moving a player.
         </p>
       ) : isMoveConfirmation ? (
         moveCandidate ? (
           <p className="text-body-md text-on-surface-variant">
-            {moveConfirmation(moveCandidate, target, tactic, options)}
+            {moveConfirmation(
+              moveCandidate,
+              target,
+              tactic,
+              options,
+              teamLabels,
+            )}
           </p>
         ) : null
       ) : (
@@ -362,7 +378,12 @@ export function PlannerSlotFitPicker({
                     <span className="block truncate">{candidate.name}</span>
                     <span className="block text-body-sm text-on-surface-variant">
                       {candidate.currentClub} ·{" "}
-                      {assignmentLocation(candidate, tactic, options)}
+                      {assignmentLocation(
+                        candidate,
+                        tactic,
+                        options,
+                        teamLabels,
+                      )}
                     </span>
                     <span className="block font-mono text-mono-sm text-on-surface-variant">
                       IP {scoreEvidence(candidate.ipScore)} · OOP{" "}

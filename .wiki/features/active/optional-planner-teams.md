@@ -281,7 +281,7 @@ The first two commits form the walking skeleton. A migrated save is changed thro
 
 #### Commit 2 — Render configured squad teams
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): render configured squad teams`
 
@@ -376,7 +376,7 @@ The first two commits form the walking skeleton. A migrated save is changed thro
 
 #### Commit 3 — Add squad team management
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): add squad team management`
 
@@ -481,21 +481,21 @@ The first two commits form the walking skeleton. A migrated save is changed thro
 
 **PR:** PR 1 — Support configurable Planner teams
 
-**Commit:** Render configured squad teams
+**Commit:** Add squad team management
 
 ### RED proof
 
-Add a two-team renamed Planner route fixture and assert that the current static rendering still shows Reserves and canonical labels in tabs, headings, picker locations, and Clear all copy. The focused route test must fail before the matrix, table, picker, and action components consume the variable-length `displayName`-bearing depth response.
+Add a Planner route test for the Manage teams trigger and a renamed two-team success result. The focused test must fail before the complete team-settings IPC command and management flow exist.
 
 ### Expected outcome
 
-The existing Planner depth UI renders only the configured one-to-three categories, uses persisted display names everywhere user-facing, keeps stable category identities for keys and IPC calls, cycles keyboard selection within the available subset, and remounts cleanly when the active save changes.
+The Planner toolbar lets the user include, remove, and rename the three supported categories with accessible validation and populated-removal confirmation. Successful saves reconcile depth and candidates, close stale interaction state, and move selection and focus to a remaining canonical category when needed; rejected saves retain the draft and existing assignments.
 
 ### Explicit exclusions
 
-- No user-facing add, remove, or rename form; that belongs to Commit 3.
-- No new backend behavior beyond adapting frontend types and rendering to Commit 1's DTO.
-- No JAY-27 membership derivation, Club Setup changes, or design-system changes.
+- No general Settings or My Club page, arbitrary categories, reordering, undo, or dormant assignments.
+- No Club Setup source changes, JAY-27 membership derivation, snapshot or bridge behavior, or new form dependency.
+- No optimistic removal or display-name use as a stable category identity.
 
 ## Discoveries and replanning
 
@@ -510,7 +510,7 @@ The existing Planner depth UI renders only the configured one-to-three categorie
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Persist save-scoped team settings | Pending record | v28 persistence, availability guards, transactional replacement, cleanup, and optimizer integration complete | Sol Medium accepted after two correction rounds | Repowise refresh unavailable; direct source and test evidence used |
-| PR 1 | Render configured squad teams | Pending record | Not started | Not run | None |
+| PR 1 | Render configured squad teams | Pending record | Variable-length renamed team rendering across tabs, matrix headings and captions, picker locations, Clear all copy, keyboard subset navigation, and active-save remount; route coverage includes two-team, one-team, and save-replacement state | Sol Medium accepted after one correction round; no findings remain | None |
 | PR 1 | Add squad team management | Pending record | Not started | Not run | None |
 
 ## Final validation

@@ -15,7 +15,7 @@ import {
 } from "../api/optimize-planner-depth";
 import { plannerKeys } from "../api/planner-keys";
 import { removePlannerString } from "../api/remove-planner-string";
-import { PLANNER_TEAMS, type PlannerTeam } from "../types/club-family";
+import type { PlannerTeam } from "../types/club-family";
 import type {
   PlannerDepth,
   PlannerDepthTeam,
@@ -32,12 +32,6 @@ import {
   PlannerSlotFitPicker,
   type PlannerSlotTarget,
 } from "./planner-slot-fit-picker";
-
-const TEAM_LABELS: Record<PlannerTeam, string> = {
-  senior: "Senior",
-  reserves: "Reserves",
-  youth: "Youth",
-};
 
 const MIN_MATRIX_COLUMN_REM = 13;
 
@@ -89,24 +83,30 @@ function useElementWidth(elementRef: RefObject<HTMLElement | null>) {
   return width;
 }
 
-function nextTeam(team: PlannerTeam, key: string): PlannerTeam | null {
-  const index = PLANNER_TEAMS.indexOf(team);
+function nextTeam(
+  team: PlannerTeam,
+  key: string,
+  availableTeams: PlannerTeam[],
+): PlannerTeam | null {
+  const index = availableTeams.indexOf(team);
   if (index < 0) {
     return null;
   }
   if (key === "Home") {
-    return PLANNER_TEAMS[0];
+    return availableTeams[0] ?? null;
   }
   if (key === "End") {
-    return PLANNER_TEAMS[PLANNER_TEAMS.length - 1];
+    return availableTeams.at(-1) ?? null;
   }
   if (key === "ArrowRight" || key === "ArrowDown") {
-    return PLANNER_TEAMS[(index + 1) % PLANNER_TEAMS.length];
+    return availableTeams[(index + 1) % availableTeams.length] ?? null;
   }
   if (key === "ArrowLeft" || key === "ArrowUp") {
-    return PLANNER_TEAMS[
-      (index - 1 + PLANNER_TEAMS.length) % PLANNER_TEAMS.length
-    ];
+    return (
+      availableTeams[
+        (index - 1 + availableTeams.length) % availableTeams.length
+      ] ?? null
+    );
   }
   return null;
 }
@@ -176,11 +176,26 @@ export function PlannerDepthMatrix({
     };
   }, []);
 
-  const orderedTeamDepths = PLANNER_TEAMS.map((team) =>
-    depth.teams.find((candidate) => candidate.team === team),
-  ).filter((teamDepth): teamDepth is PlannerDepth["teams"][number] =>
-    Boolean(teamDepth),
+  const orderedTeamDepths = depth.teams;
+  const availableTeams = orderedTeamDepths.map((teamDepth) => teamDepth.team);
+  const firstAvailableTeam = availableTeams[0] ?? "senior";
+  const selectedTeamAvailable = availableTeams.includes(selectedTeam);
+  const teamLabels = orderedTeamDepths.reduce<
+    Partial<Record<PlannerTeam, string>>
+  >((labels, teamDepth) => {
+    labels[teamDepth.team] = teamDepth.displayName;
+    return labels;
+  }, {});
+  const availableTeamNames = orderedTeamDepths.map(
+    (teamDepth) => teamDepth.displayName,
   );
+
+  useEffect(() => {
+    if (!selectedTeamAvailable) {
+      setSelectedTeam(firstAvailableTeam);
+    }
+  }, [firstAvailableTeam, selectedTeamAvailable]);
+
   const showCombinedTeams =
     matrixWidth > 0 &&
     matrixWidth >= combinedMatrixMinimumWidth(orderedTeamDepths);
@@ -244,7 +259,7 @@ export function PlannerDepthMatrix({
   };
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const next = nextTeam(selectedTeam, event.key);
+    const next = nextTeam(selectedTeam, event.key, availableTeams);
     if (!next) {
       return;
     }
@@ -455,7 +470,6 @@ export function PlannerDepthMatrix({
   ) => (
     <PlannerDepthTable
       teamDepths={teamDepths}
-      teamLabels={TEAM_LABELS}
       combined={combined}
       tactic={tactic}
       options={options}
@@ -495,7 +509,8 @@ export function PlannerDepthMatrix({
               className="inline-flex rounded-full bg-surface-container-high p-0.5"
               onKeyDown={handleTabKeyDown}
             >
-              {PLANNER_TEAMS.map((team) => {
+              {orderedTeamDepths.map((teamDepth) => {
+                const team = teamDepth.team;
                 const selected = team === selectedTeam;
                 return (
                   <button
@@ -519,7 +534,7 @@ export function PlannerDepthMatrix({
                     }}
                     onClick={() => setSelectedTeam(team)}
                   >
-                    {TEAM_LABELS[team]}
+                    {teamDepth.displayName}
                   </button>
                 );
               })}
@@ -536,6 +551,7 @@ export function PlannerDepthMatrix({
               pending={clearAll.isPending}
               disabled={clearAll.isPending || optimize.isPending}
               error={clearAllError}
+              teamNames={availableTeamNames}
               onRequest={requestClearAll}
               onFocus={() => {
                 lastFocusContext.current = { kind: "clear" };
@@ -596,6 +612,7 @@ export function PlannerDepthMatrix({
           target={picker}
           tactic={tactic}
           options={options}
+          teamLabels={teamLabels}
           onClose={closePicker}
           onMutationError={setPickerError}
         />

@@ -15,6 +15,7 @@ import {
   linkedPositionDescription,
   phaseDescription,
 } from "../utils/tactic-editor";
+import { joinPlannerTeamNames } from "../utils/team-display";
 import type { PlannerSlotTarget } from "./planner-slot-fit-picker";
 
 function ordinal(value: number): string {
@@ -322,7 +323,6 @@ function AssignmentCell({
 
 type PlannerDepthTableProps = {
   teamDepths: PlannerDepthTeam[];
-  teamLabels: Record<PlannerTeam, string>;
   combined: boolean;
   tactic: PlannerDepth["tactic"];
   options: TacticOptions;
@@ -347,7 +347,6 @@ type PlannerDepthTableProps = {
 
 export function PlannerDepthTable({
   teamDepths,
-  teamLabels,
   combined,
   tactic,
   options,
@@ -363,9 +362,12 @@ export function PlannerDepthTable({
   cellRef,
   onCellFocus,
 }: PlannerDepthTableProps) {
+  const teamDisplayName = (team: PlannerTeam) =>
+    teamDepths.find((candidate) => candidate.team === team)?.displayName ??
+    team;
   const matrixLabel = combined
     ? "All squads depth matrix"
-    : `${teamLabels[teamDepths[0].team]} squad depth matrix`;
+    : `${teamDepths[0].displayName} squad depth matrix`;
   const allStrings = teamDepths.flatMap((teamDepth) =>
     teamDepth.strings.map((plannerString) => ({
       team: teamDepth.team,
@@ -414,8 +416,8 @@ export function PlannerDepthTable({
       >
         <caption className="sr-only">
           {combined
-            ? "Senior, Reserves, and Youth squad depth using the shared tactic"
-            : `${teamLabels[teamDepths[0].team]} squad depth using the shared tactic`}
+            ? `${joinPlannerTeamNames(teamDepths.map((team) => team.displayName))} squad depth using the shared tactic`
+            : `${teamDepths[0].displayName} squad depth using the shared tactic`}
         </caption>
         <thead>
           {combined ? (
@@ -436,10 +438,10 @@ export function PlannerDepthTable({
                       id={groupId}
                       colSpan={teamDepth.strings.length}
                       scope="colgroup"
-                      aria-label={`${teamLabels[teamDepth.team]} squad`}
+                      aria-label={`${teamDepth.displayName} squad`}
                       className={`${index > 0 ? "border-l-2" : ""} sticky top-0 z-20 h-table-header-height border-b border-outline-variant bg-surface-container-lowest px-3 text-label-md text-on-surface`}
                     >
-                      {teamLabels[teamDepth.team]} squad
+                      {teamDepth.displayName} squad
                     </th>
                   );
                 })}
@@ -509,7 +511,7 @@ export function PlannerDepthTable({
                   <AssignmentCell
                     key={plannerString.id}
                     team={team}
-                    teamLabel={teamLabels[team]}
+                    teamLabel={teamDisplayName(team)}
                     laneId={lane.laneId}
                     laneName={positionDescription}
                     teamStart={
