@@ -1445,6 +1445,58 @@ test.describe("application smoke", () => {
     }
   });
 
+  test("planner team management renames, removes, and restores a populated team", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 600, height: 800 });
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/planner");
+
+    const main = page.getByRole("main");
+    await main.getByRole("tab", { name: "Planner" }).click();
+    await main.getByRole("button", { name: "Optimize squads" }).click();
+    await expect(main.getByRole("status")).toHaveText(
+      "Squads optimized by current scores.",
+    );
+
+    await main.getByRole("button", { name: "Manage teams" }).click();
+    const management = page.getByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await management.getByLabel("Senior display name").fill("First Team");
+    await management.getByRole("checkbox", { name: "Reserves" }).uncheck();
+    await management.getByRole("button", { name: "Save teams" }).click();
+
+    const removal = page.getByRole("dialog", {
+      name: "Remove planner teams?",
+    });
+    await expect(removal).toContainText("Reserves: 1 assignment");
+    await removal.getByRole("button", { name: "Remove teams" }).click();
+    await expect(main.getByRole("tab", { name: "First Team" })).toBeVisible();
+    await expect(main.getByRole("tab", { name: "Youth" })).toBeVisible();
+    await expect(main.getByRole("tab", { name: "Reserves" })).toHaveCount(0);
+
+    await main.getByRole("button", { name: "Manage teams" }).click();
+    const restoration = page.getByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await restoration.getByRole("checkbox", { name: "Reserves" }).check();
+    await restoration.getByLabel("Reserves display name").fill("B Team");
+    await restoration.getByRole("button", { name: "Save teams" }).click();
+    await expect(main.getByRole("tab", { name: "B Team" })).toBeVisible();
+
+    await page.setViewportSize({ width: 1920, height: 900 });
+    await expect(
+      main.getByRole("columnheader", { name: "First Team squad" }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("columnheader", { name: "B Team squad" }),
+    ).toBeVisible();
+    await expect(
+      main.getByRole("columnheader", { name: "Youth squad" }),
+    ).toBeVisible();
+  });
+
   test("planner depth optimizes current and potential squads within desktop widths", async ({
     page,
   }) => {

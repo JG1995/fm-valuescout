@@ -1,7 +1,9 @@
 import type {
   ClubFamily,
   ClubSourceInput,
+  PlannerTeam,
 } from "@/features/planner/types/club-family";
+import { PLANNER_TEAMS } from "@/features/planner/types/club-family";
 import type {
   PlannerDepth,
   PlannerSlotCandidate,
@@ -274,6 +276,12 @@ let optimizeError: string | null = null;
 let optimizePending = false;
 let optimizeCalls = 0;
 let optimizeBases: string[] = [];
+let teamSaveError: string | null = null;
+let teamSavePending = false;
+let teamSaveCalls: Array<{
+  teams: Array<{ team: PlannerTeam; displayName: string }>;
+  confirmPopulatedRemoval: boolean;
+}> = [];
 
 function cloneTactic(value: PlannerTactic): PlannerTactic {
   return {
@@ -345,6 +353,9 @@ export function resetPlannerIpcMock() {
   optimizePending = false;
   optimizeCalls = 0;
   optimizeBases = [];
+  teamSaveError = null;
+  teamSavePending = false;
+  teamSaveCalls = [];
 }
 
 export function setPlannerAvailableClubs(clubs: string[]) {
@@ -440,6 +451,21 @@ export function setPlannerOptimizeError(message: string | null) {
 
 export function setPlannerOptimizePending(value: boolean) {
   optimizePending = value;
+}
+
+export function setPlannerTeamSaveError(message: string | null) {
+  teamSaveError = message;
+}
+
+export function setPlannerTeamSavePending(value: boolean) {
+  teamSavePending = value;
+}
+
+export function getPlannerTeamSaveIpcMockCalls() {
+  return teamSaveCalls.map((call) => ({
+    teams: call.teams.map((team) => ({ ...team })),
+    confirmPopulatedRemoval: call.confirmPopulatedRemoval,
+  }));
 }
 
 export function getPlannerOptimizeIpcMockCalls() {
@@ -725,6 +751,89 @@ export function resolveOptimizePlannerDepthIpcMock(args: unknown) {
   if (optimizeDepth) {
     depth = cloneDepth(optimizeDepth);
   }
+  return cloneDepth(depth);
+}
+
+export function resolveSavePlannerTeamsIpcMock(args: unknown) {
+  if (
+    typeof args !== "object" ||
+    args === null ||
+    !("teams" in args) ||
+    !("confirmPopulatedRemoval" in args) ||
+    !Array.isArray(args.teams) ||
+    typeof args.confirmPopulatedRemoval !== "boolean"
+  ) {
+    throw "Invalid planner team settings";
+  }
+  const teams = args.teams as Array<{
+    team: unknown;
+    displayName: unknown;
+  }>;
+  if (teams.length < 1 || teams.length > PLANNER_TEAMS.length) {
+    throw "Planner configuration must contain one to three teams";
+  }
+  const inputs = teams.map((team) => {
+    if (
+      typeof team.team !== "string" ||
+      !PLANNER_TEAMS.includes(team.team as PlannerTeam) ||
+      typeof team.displayName !== "string"
+    ) {
+      throw "Invalid planner team settings";
+    }
+    return {
+      team: team.team as PlannerTeam,
+      displayName: team.displayName.trim(),
+    };
+  });
+  teamSaveCalls.push({
+    teams: inputs,
+    confirmPopulatedRemoval: args.confirmPopulatedRemoval,
+  });
+  if (teamSaveError) {
+    throw teamSaveError;
+  }
+  if (teamSavePending) {
+    return new Promise<PlannerDepth>(() => {});
+  }
+
+  const removedPopulatedTeams = depth.teams.filter(
+    (team) =>
+      !inputs.some((input) => input.team === team.team) &&
+      team.strings.some(
+        (plannerString) => plannerString.assignments.length > 0,
+      ),
+  );
+  if (removedPopulatedTeams.length > 0 && !args.confirmPopulatedRemoval) {
+    throw `Removing populated planner teams requires confirmation: ${removedPopulatedTeams
+      .map((team) => team.displayName)
+      .join(", ")}`;
+  }
+
+  let nextStringId =
+    Math.max(
+      0,
+      ...depth.teams.flatMap((candidate) =>
+        candidate.strings.map((plannerString) => plannerString.id),
+      ),
+    ) + 1;
+  const nextTeams = PLANNER_TEAMS.filter((team) =>
+    inputs.some((input) => input.team === team),
+  ).map((team) => {
+    const current = depth.teams.find((candidate) => candidate.team === team);
+    const input = inputs.find((candidate) => candidate.team === team);
+    if (current) {
+      return {
+        ...current,
+        displayName: input?.displayName ?? current.displayName,
+      };
+    }
+    return {
+      team,
+      displayName: input?.displayName ?? team,
+      strings: [{ id: nextStringId++, stringOrder: 0, assignments: [] }],
+    };
+  });
+  depth.teams = nextTeams;
   return cloneDepth(depth);
 }
 

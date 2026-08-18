@@ -304,7 +304,7 @@ export function PlannerClubFamilyPanel({
             {sources.length === 0 ? (
               <p className="text-body-sm text-on-surface-variant">
                 No associated clubs yet. Every primary-club player is available
-                to all three teams.
+                to every configured team.
               </p>
             ) : (
               <div className="space-y-3">

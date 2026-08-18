@@ -41,6 +41,7 @@ import {
   getPlannerOptimizeIpcMockBases,
   getPlannerOptimizeIpcMockCalls,
   getPlannerSlotCandidateFetchCount,
+  getPlannerTeamSaveIpcMockCalls,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
@@ -58,6 +59,8 @@ import {
   setPlannerSlotCandidates,
   setPlannerTacticIpcMock,
   setPlannerTacticSaveError,
+  setPlannerTeamSaveError,
+  setPlannerTeamSavePending,
 } from "@/testing/planner-ipc-mock";
 import { resolveLoadDataIpcMock } from "@/testing/snapshot-ipc-mock";
 import {
@@ -3422,6 +3425,486 @@ describe("planner route", () => {
     ).toHaveTextContent(
       "This clears every assignment from First Team and U19.",
     );
+  });
+
+  it("opens squad team management with the current configuration", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    expect(dialog).toHaveTextContent("Senior");
+    expect(dialog).toHaveTextContent("Reserves");
+    expect(dialog).toHaveTextContent("Youth");
+    expect(within(dialog).getAllByRole("checkbox")).toHaveLength(3);
+    expect(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    ).toBeInTheDocument();
+    const manageButton = screen.getByRole("button", { name: "Manage teams" });
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(manageButton).toHaveFocus();
+
+    await user.click(manageButton);
+    await screen.findByRole("dialog", { name: "Manage squad teams" });
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(manageButton).toHaveFocus();
+  });
+
+  it("renames teams and confirms populated team removal", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = withReserveGoalkeeper(resolvePlannerDepthIpcMock());
+    setPlannerDepthIpcMock({
+      ...depth,
+      teams: depth.teams.map((team) => ({
+        ...team,
+        displayName:
+          team.team === "senior"
+            ? "First Team"
+            : team.team === "reserves"
+              ? "B Team"
+              : "U19",
+      })),
+    });
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Reserves" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    const confirmation = await screen.findByRole("dialog", {
+      name: "Remove planner teams?",
+    });
+    expect(confirmation).toHaveTextContent("B Team: 1 assignment");
+    expect(
+      within(confirmation).getByRole("button", { name: "Cancel" }),
+    ).toHaveFocus();
+    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
+    await user.click(
+      within(confirmation).getByRole("button", { name: "Cancel" }),
+    );
+    const managementDialog = screen.getByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    expect(managementDialog).toBeInTheDocument();
+    expect(
+      within(managementDialog).getByRole("button", { name: "Save teams" }),
+    ).toHaveFocus();
+
+    await user.click(
+      within(managementDialog).getByRole("button", { name: "Save teams" }),
+    );
+    await screen.findByRole("dialog", { name: "Remove planner teams?" });
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("dialog", { name: "Manage squad teams" }),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      within(
+        screen.getByRole("dialog", { name: "Manage squad teams" }),
+      ).getByRole("button", { name: "Save teams" }),
+    ).toHaveFocus();
+
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: "Manage squad teams" }),
+      ).getByRole("button", { name: "Save teams" }),
+    );
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: "Remove planner teams?" }),
+      ).getByRole("button", { name: "Remove teams" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
+      {
+        teams: [
+          { team: "senior", displayName: "First Team" },
+          { team: "youth", displayName: "U19" },
+        ],
+        confirmPopulatedRemoval: true,
+      },
+    ]);
+    expect(screen.getByRole("tab", { name: "First Team" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "U19" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "B Team" })).toBeNull();
+    expect(await screen.findByText("Team settings saved.")).toBeInTheDocument();
+  });
+
+  it("restores a removed team with a custom name and an empty string", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.teams = depth.teams
+      .filter((team) => team.team !== "reserves")
+      .map((team) => ({
+        ...team,
+        displayName: team.team === "senior" ? "First Team" : "U19",
+      }));
+    setPlannerDepthIpcMock(depth);
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Reserves" }),
+    );
+    await user.clear(
+      within(dialog).getByRole("textbox", { name: "Reserves display name" }),
+    );
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "Reserves display name" }),
+      "B Team",
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(getPlannerTeamSaveIpcMockCalls()).toEqual([
+      {
+        teams: [
+          { team: "senior", displayName: "First Team" },
+          { team: "reserves", displayName: "B Team" },
+          { team: "youth", displayName: "U19" },
+        ],
+        confirmPopulatedRemoval: false,
+      },
+    ]);
+    expect(screen.getByRole("tab", { name: "B Team" })).toBeInTheDocument();
+    const restoredDepth = resolvePlannerDepthIpcMock();
+    const restoredReserves = restoredDepth.teams.find(
+      (team) => team.team === "reserves",
+    );
+    expect(restoredReserves).toMatchObject({ displayName: "B Team" });
+    expect(restoredReserves?.strings).toHaveLength(1);
+    expect(restoredReserves?.strings[0]?.assignments).toEqual([]);
+  });
+
+  it("restores both missing teams with distinct string ids", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.teams = depth.teams.filter((team) => team.team === "senior");
+    setPlannerDepthIpcMock(depth);
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Reserves" }),
+    );
+    await user.click(within(dialog).getByRole("checkbox", { name: "Youth" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("tab", { name: "Reserves" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Youth" })).toBeInTheDocument();
+    const restoredDepth = resolvePlannerDepthIpcMock();
+    const restoredIds = restoredDepth.teams
+      .filter((team) => team.team !== "senior")
+      .flatMap((team) => team.strings.map((plannerString) => plannerString.id));
+    expect(restoredIds).toHaveLength(2);
+    expect(new Set(restoredIds).size).toBe(2);
+  });
+
+  it("keeps team-management drafts on validation and backend failure", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerTeamSaveError("Team settings failed");
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    const seniorName = within(dialog).getByRole("textbox", {
+      name: "Senior display name",
+    });
+    await user.clear(seniorName);
+    expect(within(dialog).getByText("Enter a team name")).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    ).toBeDisabled();
+    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
+
+    await user.type(seniorName, "First Team");
+    await user.clear(
+      within(dialog).getByRole("textbox", { name: "Reserves display name" }),
+    );
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "Reserves display name" }),
+      "First Team",
+    );
+    expect(
+      within(dialog).getAllByText("Team names must be unique"),
+    ).toHaveLength(2);
+    expect(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    ).toBeDisabled();
+    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
+
+    const reservesName = within(dialog).getByRole("textbox", {
+      name: "Reserves display name",
+    });
+    fireEvent.change(reservesName, { target: { value: "x".repeat(41) } });
+    expect(
+      within(dialog).getByText("Use 40 characters or fewer"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    ).toBeDisabled();
+
+    await user.clear(reservesName);
+    await user.type(reservesName, "Reserves Team");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Team settings failed",
+    );
+    expect(
+      within(
+        screen.getByRole("dialog", { name: "Manage squad teams" }),
+      ).getByRole("textbox", { name: "Senior display name" }),
+    ).toHaveValue("First Team");
+    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(1);
+  });
+
+  it("prevents removing the final team and duplicate management saves", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const depth = resolvePlannerDepthIpcMock();
+    depth.teams = depth.teams.filter((team) => team.team === "senior");
+    setPlannerDepthIpcMock(depth);
+    setPlannerTeamSavePending(true);
+    renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Senior" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Reserves" }),
+    ).not.toBeChecked();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+    await waitFor(() =>
+      expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(1),
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Saving…" }),
+    ).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "Saving…" }));
+    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(1);
+  });
+
+  it("discards an open management draft when the active save changes", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const { queryClient } = renderPlannerRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    const seniorName = within(dialog).getByRole("textbox", {
+      name: "Senior display name",
+    });
+    await user.clear(seniorName);
+    await user.type(seniorName, "Draft Only");
+
+    const nextDepth = resolvePlannerDepthIpcMock();
+    nextDepth.teams = nextDepth.teams
+      .filter((team) => team.team === "youth")
+      .map((team) => ({ ...team, displayName: "Fresh Save Team" }));
+    setPlannerDepthIpcMock(nextDepth);
+    queryClient.setQueryData(plannerKeys.depth(), nextDepth);
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      snapshotKeys.current(),
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot in the planner query");
+    }
+    queryClient.setQueryData<SnapshotSummary | null>(
+      snapshotKeys.current(),
+      () => ({ ...snapshot, saveId: 2 }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(
+      await screen.findByRole("tab", { name: "Fresh Save Team" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Draft Only" })).toBeNull();
+  });
+
+  it("refetches picker candidates after team settings change", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerSlotCandidates([
+      slotCandidate({ playerUid: 77, name: "Alex Keeper" }),
+    ]);
+    renderPlannerRoute({ staleTime: 60_000 });
+
+    const seniorCell = await screen.findByRole("button", {
+      name: /Senior, 1st string, IP: GK .* Empty/,
+    });
+    await user.click(seniorCell);
+    expect(
+      await screen.findByRole("option", { name: /Alex Keeper/ }),
+    ).toBeInTheDocument();
+    const fetchesBeforeSave = getPlannerSlotCandidateFetchCount();
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Manage teams" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    const seniorName = within(dialog).getByRole("textbox", {
+      name: "Senior display name",
+    });
+    await user.clear(seniorName);
+    await user.type(seniorName, "First Team");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /First Team, 1st string, IP: GK .* Empty/,
+      }),
+    );
+    expect(
+      await screen.findByRole("option", { name: /Alex Keeper/ }),
+    ).toBeInTheDocument();
+    expect(getPlannerSlotCandidateFetchCount()).toBeGreaterThan(
+      fetchesBeforeSave,
+    );
+  });
+
+  it("keeps one team selected and moves focus after removing the selected team", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    const reservesTab = await screen.findByRole("tab", { name: "Reserves" });
+    await user.click(reservesTab);
+    await user.click(screen.getByRole("button", { name: "Manage teams" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Reserves" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    const youthTab = await screen.findByRole("tab", { name: "Youth" });
+    await waitFor(() => expect(youthTab).toHaveFocus());
+    expect(screen.queryByRole("tab", { name: "Reserves" })).toBeNull();
+    expect(screen.getByRole("tab", { name: "Senior" })).toBeInTheDocument();
+  });
+
+  it("returns focus to management after removing a selected team in the combined layout", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderPlannerRoute();
+
+    await user.click(await screen.findByRole("tab", { name: "Reserves" }));
+    await setPlannerMatrixWidth(800);
+    await user.click(screen.getByRole("button", { name: "Manage teams" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Reserves" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+
+    const manageButton = await screen.findByRole("button", {
+      name: "Manage teams",
+    });
+    await waitFor(() => expect(manageButton).toHaveFocus());
+    expect(
+      screen.getByRole("columnheader", { name: "Senior squad" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Youth squad" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: "Reserves squad" }),
+    ).toBeNull();
   });
 
   it("cycles keyboard team selection through only the available teams", async () => {

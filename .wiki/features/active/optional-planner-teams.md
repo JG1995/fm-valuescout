@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -143,7 +143,7 @@ The first two commits form the walking skeleton. A migrated save is changed thro
 
 ### PR 1 — Support configurable Planner teams
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -376,7 +376,7 @@ The first two commits form the walking skeleton. A migrated save is changed thro
 
 #### Commit 3 — Add squad team management
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): add squad team management`
 
@@ -403,7 +403,8 @@ The first two commits form the walking skeleton. A migrated save is changed thro
 - `src/features/planner/api/save-planner-teams.ts` — invoke `save_planner_teams` with the complete one-to-three settings list and populated-removal confirmation flag.
 - `src/features/planner/components/planner-team-management.tsx` — own the Manage teams trigger, draft category inclusion and names, validation feedback, assignment-removal summary, destructive confirmation, pending state, error retention, and focus contract.
 - `src/features/planner/components/planner-depth-matrix.tsx` — compose the new control, provide depth and assignment counts, close stale interaction state, reconcile Query caches, choose the fallback selected team, and schedule the required focus target.
-- `src/features/planner/types/depth.ts` or a focused team-settings type file — define the complete mutation input without duplicating the stable category union.
+- `src/features/planner/types/club-family.ts` — keep the stable category union and canonical names used when a removed category is restored.
+- `src/features/planner/components/planner-club-family-panel.tsx` — keep the no-associated-club explanation accurate for configured team availability.
 - `src/testing/planner-ipc-mock.ts` and `src/testing/setup.ts` — implement controllable success, validation failure, pending, and populated-removal behavior for the new command.
 - `src/app/routes/planner.test.tsx` — prove add, remove, rename, validation, confirmation, rollback, cache invalidation, selection fallback, focus, and save isolation at the user-visible seam.
 - `e2e/tauri-ipc-stub.ts` — model the same complete replacement semantics for browser smoke, including string and assignment cleanup.
@@ -481,11 +482,11 @@ The first two commits form the walking skeleton. A migrated save is changed thro
 
 **PR:** PR 1 — Support configurable Planner teams
 
-**Commit:** Add squad team management
+**Commit:** Implementation complete; feature close-out remains
 
 ### RED proof
 
-Add a Planner route test for the Manage teams trigger and a renamed two-team success result. The focused test must fail before the complete team-settings IPC command and management flow exist.
+The focused Planner route and browser tests fail before the complete team-settings IPC command and management flow exist.
 
 ### Expected outcome
 
@@ -504,6 +505,7 @@ The Planner toolbar lets the user include, remove, and rename the three supporte
 - JAY-27 will replace membership derivation but not the stable category identity. The two features can land independently if JAY-27 later consumes `planner_teams` availability.
 - Repowise was fresh at the planning base but reported no coverage map. Impacted-test selection therefore comes from direct source, current colocated tests, the route suite, and browser smoke rather than coverage-backed recommendations.
 - Commit 1 review required complete team replacement to delete and reinsert settings inside the existing transaction so any legal display name remains saveable, and exact pre/post fixture tuples to prove v27 migration preservation; both are now covered.
+- Commit 3 keeps the fixed category set in the management Modal and chooses focus from the post-save DOM, so removing a selected team remains safe when the responsive matrix changes from tabs to the combined layout.
 
 ## Completed work
 
@@ -511,7 +513,7 @@ The Planner toolbar lets the user include, remove, and rename the three supporte
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Persist save-scoped team settings | Pending record | v28 persistence, availability guards, transactional replacement, cleanup, and optimizer integration complete | Sol Medium accepted after two correction rounds | Repowise refresh unavailable; direct source and test evidence used |
 | PR 1 | Render configured squad teams | Pending record | Variable-length renamed team rendering across tabs, matrix headings and captions, picker locations, Clear all copy, keyboard subset navigation, and active-save remount; route coverage includes two-team, one-team, and save-replacement state | Sol Medium accepted after one correction round; no findings remain | None |
-| PR 1 | Add squad team management | Pending record | Not started | Not run | None |
+| PR 1 | Add squad team management | Pending record | Management Modal supports one-to-three category selection, save-scoped renaming, populated-removal confirmation, restoration, validation, cache and focus reconciliation, plus matching IPC doubles and browser smoke coverage | Sol Medium accepted after one correction round; no findings remain | Feature smoke is green for Planner management; the full smoke suite retains an unrelated pre-existing My Staff CA-boost timing failure |
 
 ## Final validation
 
