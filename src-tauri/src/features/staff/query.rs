@@ -940,7 +940,7 @@ mod tests {
         assert!(!detail.hidden_information_revealed);
         assert_eq!(detail.pa, 120);
         assert_eq!(detail.attributes["Authority"], Some(18));
-        assert_eq!(detail.role_scores.len(), 20);
+        assert_eq!(detail.role_scores.len(), 21);
     }
 
     #[test]

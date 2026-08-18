@@ -7,8 +7,8 @@ import {
 } from "./staff-metrics";
 
 describe("staff metrics", () => {
-  it("defines the 25 default search columns in catalog order", () => {
-    expect(DEFAULT_STAFF_TABLE_COLUMN_IDS).toHaveLength(25);
+  it("defines the 26 default search columns in catalog order", () => {
+    expect(DEFAULT_STAFF_TABLE_COLUMN_IDS).toHaveLength(26);
     expect(DEFAULT_STAFF_TABLE_COLUMN_IDS.slice(0, 5)).toEqual([
       "name",
       "age",
@@ -22,7 +22,8 @@ describe("staff metrics", () => {
   });
 
   it("keeps role metadata separate and resolves missing score values", () => {
-    expect(STAFF_ROLE_METRICS).toHaveLength(20);
+    expect(STAFF_ROLE_METRICS).toHaveLength(21);
+    expect(getStaffMetric("role.manager")?.label).toBe("Manager");
     expect(getStaffMetric("role.coach_goalkeeping")?.label).toBe(
       "Coach — Goalkeeping",
     );

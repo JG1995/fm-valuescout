@@ -10,6 +10,7 @@ const BASIC_COLUMNS = [
 
 const PREFERRED_JOB_SCORE_FIELDS: Record<string, string> = {
   "Assistant Manager": "role.assistant_manager",
+  Manager: "role.manager",
   "Director of Football": "role.director_of_football",
   "Fitness Coach": "role.coach_fitness",
   "Goalkeeping Coach": "role.coach_goalkeeping",

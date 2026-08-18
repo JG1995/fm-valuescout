@@ -18,6 +18,13 @@ describe("staff shortlist presentation", () => {
     });
   });
 
+  it("maps Manager to its role score", () => {
+    expect(staffShortlistPresentation("Manager")).toMatchObject({
+      sort: "role.manager",
+      dir: "desc",
+    });
+  });
+
   it("shows the six outfield coaching scores without choosing a sort", () => {
     const presentation = staffShortlistPresentation("Coach");
     expect(presentation?.sort).toBeUndefined();

@@ -851,7 +851,7 @@ mod tests {
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest staff scores");
         let scores = staff_role_scores(&conn, snapshot.id, 88);
 
-        assert_eq!(scores.len(), 14, "six roles have unavailable dependencies");
+        assert_eq!(scores.len(), 15, "six roles have unavailable dependencies");
         assert_eq!(
             scores
                 .iter()
@@ -919,8 +919,8 @@ mod tests {
 
         let first_scores = staff_role_scores(&conn, first.id, 88);
         let second_scores = staff_role_scores(&conn, second.id, 88);
-        assert_eq!(first_scores.len(), 14);
-        assert_eq!(second_scores.len(), 20);
+        assert_eq!(first_scores.len(), 15);
+        assert_eq!(second_scores.len(), 21);
         assert_eq!(
             first_scores
                 .iter()
