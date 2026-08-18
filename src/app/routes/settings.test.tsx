@@ -88,7 +88,7 @@ describe("Settings", () => {
     });
   });
 
-  it("retains a missing managed club and reports unclassified players", async () => {
+  it("retains a missing managed club without exposing team-level diagnostics", async () => {
     setManagedClubIpcMock({
       clubName: "Legacy FC",
       status: "missing",
@@ -106,10 +106,8 @@ describe("Settings", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "2 managed-club players have no supported FM team level. Planner still includes them.",
-      ),
-    ).toBeInTheDocument();
+      screen.queryByText(/supported FM team level/i),
+    ).not.toBeInTheDocument();
   });
 
   it("does not restore a late managed-club result after context invalidation", async () => {

@@ -218,12 +218,6 @@ export function ManagedClubPanel({ onSaved }: { onSaved?: () => void } = {}) {
             selection remains active until you replace it.
           </p>
         ) : null}
-        {managedClub.unclassifiedPlayerCount > 0 ? (
-          <p className="text-body-sm text-on-surface-variant">
-            {managedClub.unclassifiedPlayerCount} managed-club players have no
-            supported FM team level. Planner still includes them.
-          </p>
-        ) : null}
         {save.error ? (
           <p className="text-body-sm text-error">{save.error.message}</p>
         ) : null}

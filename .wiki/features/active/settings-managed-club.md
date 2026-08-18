@@ -19,7 +19,7 @@ Combine Linear JAY-26 and JAY-27 into one feature PR. Move application-managemen
 - Settings lets the user select exactly one managed club for the active app save. It does not expose attached Reserves, Youth, B-team, or affiliate sources.
 - Squad overview, Academy candidates, My Staff, and club-wide boost cohorts use exact managed-club membership from the active save's effective current snapshot.
 - Planner team candidates and optimization use the same exact managed-club player pool across Senior, Reserves, and Youth. Imported FM `team_level` remains available as metadata but does not control Planner eligibility.
-- A current managed-club player with no usable FM team level remains available to Planner. Settings still reports that FM did not classify those players so the incomplete source data stays visible.
+- A current managed-club player with no usable FM team level remains available to Planner. The native status retains the unclassified count as diagnostic metadata, but Settings does not display it because users cannot act on it.
 - If the selected club is absent from the effective current snapshot, the selection remains saved, Settings shows it as unavailable, current managed-club cohorts are empty, and retained Planner or Academy records are not deleted.
 - Changing the managed club, active save, or effective current snapshot refreshes every managed-club consumer. The effective current snapshot is always authoritative.
 - Existing Planner assignments remain save-scoped. A player who no longer matches the selected club remains in the matrix with the existing outside-pool or unresolved warning instead of being deleted.
@@ -94,7 +94,7 @@ Combine Linear JAY-26 and JAY-27 into one feature PR. Move application-managemen
 - Use two implementation commits: first establish Settings and remove obsolete Dashboard surfaces; then replace the club-family contract across persistence and every downstream consumer.
 - Keep Dashboard copy deliberately minimal: `Placeholder.`
 - Drop `planner_club_sources` immediately in v29. Preserve only the existing primary selection.
-- Treat `current_club` and `staff.club` as authoritative membership fields. Retain `team_level` as imported metadata and a Settings diagnostic, but do not use it for Planner membership. Do not infer from `parent_club` or fuzzy club relationships.
+- Treat `current_club` and `staff.club` as authoritative membership fields. Retain `team_level` as imported metadata and keep its count in the native managed-club status, but do not use it for Planner membership or display it in Settings. Do not infer from `parent_club` or fuzzy club relationships.
 - Keep existing assignment and Academy retention behavior when membership changes. This is the smallest graceful behavior and avoids data loss.
 - Do not create an ADR. The change replaces an obsolete feature contract using fields and current-snapshot ownership that the repository already accepts; the active ledger, migration tests, code, and final current-state reconciliation are sufficient.
 
@@ -104,7 +104,7 @@ Combine Linear JAY-26 and JAY-27 into one feature PR. Move application-managemen
 
 ### Risks
 
-- Some representative FM snapshots may contain null `team_level` for a selected-club player. The feature must report the unclassified count without excluding those rows from Planner.
+- Some representative FM snapshots may contain null `team_level` for a selected-club player. The native contract keeps the unclassified count without excluding those rows from Planner; Settings does not surface it.
 - A selected club may disappear or be renamed in a later snapshot. The feature must keep the saved value, show `missing`, return empty current cohorts, and preserve historical user data.
 - Renaming the settings table can break save deletion or migration fixtures if SQLite foreign-key behavior is assumed instead of tested.
 - Removing old IPC commands requires synchronized native registration, browser stubs, frontend APIs, generated routes, and smoke fixtures.
@@ -275,7 +275,7 @@ Commit 1 makes `/settings` routable from the nav rail, moves the existing save/s
 - `src-tauri/src/features/academy/service.rs` — exact managed-club candidate and retained-member state.
 - `src-tauri/src/features/staff/{query.rs,commands.rs}` — exact managed staff state, pages, and bulk cohort.
 - `src-tauri/src/features/player/commands.rs` — exact managed player cohort for both squad-wide actions and Settings recovery copy.
-- `src/features/managed-club/**` — typed IPC, Query state, simplified searchable Settings panel, missing/unclassified states, and focused component tests.
+- `src/features/managed-club/**` — typed IPC, Query state, simplified searchable Settings panel, missing-selection state, and focused component tests.
 - `src/features/planner/types/team.ts` and Planner API/component imports — canonical team identity after deleting `types/club-family.ts`.
 - `src/app/routes/settings.tsx`, `planner.tsx`, `academy.tsx`, Staff/Squad/Academy components, and route tests — compose the new state, update headings/context/recovery links, and preserve current workspaces.
 - `src/app/components/app-top-bar.tsx` — managed-club invalidation on current-context changes.
@@ -298,7 +298,7 @@ Commit 1 makes `/settings` routable from the nav rail, moves the existing save/s
 3. Implement v29 and the Rust managed-club service/commands; keep the gate green before switching consumers.
 4. Add RED consumer tests for exact player/staff membership, shared Planner membership regardless of nullable team level, snapshot/save refresh, missing club, and retained outside-pool assignments/memberships.
 5. Replace each backend consumer and delete `planner_club_sources` reads, old Planner club-family services, DTOs, command registration, and obsolete test helpers.
-6. Add RED Settings panel and route tests for one selector, missing/unclassified warnings, no attached-source controls, and complete consumer invalidation.
+6. Add RED Settings panel and route tests for one selector, a missing-selection warning, no user-facing unclassified diagnostic, no attached-source controls, and complete consumer invalidation.
 7. Replace frontend APIs/types/mocks/copy/recovery links, move the canonical Planner team type, and remove obsolete source fields and commands.
 8. Update implementation-intrinsic current-state docs, run formatting, focused route and Rust proofs, the full gate, and smoke.
 
@@ -310,7 +310,7 @@ Commit 1 makes `/settings` routable from the nav rail, moves the existing save/s
 - Planner: every team picker uses the exact managed-club player pool regardless of nullable team level; assignment state uses managed-club membership, while the optimizer also applies existing age limits, global uniqueness, and canonical team order.
 - Lifecycle: changing the managed club, active save, or effective snapshot refreshes all consumers; late results do not restore stale status.
 - Retention: a transferred, missing, or differently classified assigned player stays in its Planner cell with the existing warning; Academy membership and manual outcomes remain.
-- UI: Settings exposes one managed-club combobox and no source buttons/selects; missing and unclassified states are textual and accessible; all recovery links target `/settings#managed-club`.
+- UI: Settings exposes one managed-club combobox and no source buttons/selects; the missing state is textual and accessible; the unclassified diagnostic is not shown; all recovery links target `/settings#managed-club`.
 
 **Patterns to verify:**
 
@@ -347,15 +347,16 @@ Commit 1 makes `/settings` routable from the nav rail, moves the existing save/s
 
 ## Active work
 
-No implementation work is active. The Planner eligibility correction removed FM team-level gating from picker, assignment-state, and optimizer paths while retaining the imported value and truthful Settings diagnostic. The full gate, smoke suite, and fresh review passed; the correction is ready for checkpoint and commit approval.
+No implementation work is active. Settings no longer shows the non-actionable team-level diagnostic, while the native contract retains the imported value and unclassified count for future use. The focused route test and application gate passed; the adjustment is ready for checkpoint.
 
 ## Discoveries and replanning
 
 - Linear readback on 2026-08-18 confirmed JAY-26 and JAY-27 are related, In Progress, and have no additional comments or blockers.
 - Repository inspection confirmed Repowise is synchronized to `ad5c12ff386274057dd2f06b2f03e4adcbe9dbfb`. Its broad synthesized answers had weak retrieval quality, so this plan relies on direct source, tests, current-state docs, and Git evidence for file-level contracts.
 - Live FM 26.3.2 diagnostics on 2026-08-18 showed `playersLinkedViaSquad=0`: contract-club fallback populated `current_club`, but every accepted player retained a null `team_level`. The planned team-level Planner split therefore made the complete managed-club cohort unusable in Planner even though Squad displayed it.
-- The developer chose to keep imported `team_level` for future consumers and retain a truthful Settings warning, while removing it from Planner and optimizer eligibility. Exact managed-club membership is now the shared pool; the optimizer's existing age limits, canonical team order, and global uniqueness remain responsible for allocation.
+- The developer chose to keep imported `team_level` and its native diagnostic count for future consumers while removing both the value's Planner eligibility role and the non-actionable Settings message. Exact managed-club membership is now the shared pool; the optimizer's existing age limits, canonical team order, and global uniqueness remain responsible for allocation.
 - The correction passed the repository gate with 481 Rust tests and two intentional ignores, passed all 44 browser smoke tests, and was accepted by a fresh Sol Medium reviewer without findings.
+- The follow-up removal of the non-actionable Settings message passed all five focused Settings route tests and the application quality gate. The native count remains available but has no user-facing presentation.
 - Commit 2 review found and corrected a nullable retained-assignment membership decode, a late managed-club mutation cache race, loss of the searchable picker contract, and stale current-state documentation. One correction round cleared all findings.
 
 ## Completed work
@@ -364,7 +365,8 @@ No implementation work is active. The Planner eligibility correction removed FM 
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Move operational controls to Settings | Pending record | Settings route and navigation; placeholder Dashboard; relocated management panels; Dashboard importer and sanity IPC removed | Sol Medium accepted after one documentation correction round | None |
 | PR 1 | Commit 2 — Replace club-family configuration with managed-club membership | Pending record | Migration v29; one managed-club selector; exact effective-snapshot membership across Squad, Planner, Academy, Staff, and boost cohorts; obsolete club-family persistence, IPC, types, and copy removed | Sol Medium accepted after one correction round; full gate and 44-test smoke suite passed | Live data invalidated the planned team-level Planner split; corrected in the follow-up row. |
-| PR 1 | Correction — Share the managed-club pool across Planner teams | Pending record | Removed team-level eligibility from picker, assignment state, and both optimizer score paths; retained FM metadata and the Settings diagnostic | Sol Medium accepted without findings; full gate and 44-test smoke suite passed | Restores the pre-feature Planner pool after live diagnostics showed all imported team levels were null. |
+| PR 1 | Correction — Share the managed-club pool across Planner teams | `98e56df` | Removed team-level eligibility from picker, assignment state, and both optimizer score paths; retained FM metadata and its native count | Sol Medium accepted without findings; full gate and 44-test smoke suite passed | Restores the pre-feature Planner pool after live diagnostics showed all imported team levels were null. |
+| PR 1 | Adjustment — Hide the team-level diagnostic | Pending record | Removed the non-actionable Settings message while retaining its native count | Trivial deletion; five focused route tests and the application gate passed | User feedback superseded the earlier warning-copy decision. |
 
 ## Final validation
 
