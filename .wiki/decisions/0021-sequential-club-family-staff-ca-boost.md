@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted — the club-family cohort selection is superseded by the managed-club contract below.
 
 ## Context
 
@@ -37,6 +37,10 @@ Send every UID and expected value to C#. This widens the memory-write protocol a
 ### Run staff requests in parallel
 
 Parallel submission conflicts with the shared mutation gate and adds ordering and stale-context risk without parallel FM execution. Rejected.
+
+## Superseded cohort selection
+
+The [Settings and Managed Club feature](../features/completed/settings-managed-club.md) replaces configured club-family sources with one save-scoped managed club. Rust now derives the cohort from exact `staff.club` matches in the effective current snapshot. The WebView boundary, single-staff bridge operation, sequential processing, partial-result behavior, and recovery rules in this decision remain in force.
 
 ## Consequences
 

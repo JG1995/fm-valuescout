@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted — the club-family cohort selection is superseded by the managed-club contract below.
 
 ## Context
 
@@ -45,6 +45,10 @@ Attempt an all-or-nothing squad transaction across FM memory and SQLite. There i
 ### Let React enumerate the visible table rows
 
 Send the currently loaded or selected UIDs from the WebView. This would trust a paginated presentation cache as the authoritative squad and allow a modified WebView to choose targets. Rejected; Rust derives the cohort from the current snapshot and club family.
+
+## Superseded cohort selection
+
+The [Settings and Managed Club feature](../features/completed/settings-managed-club.md) replaces configured club-family sources with one save-scoped managed club. Rust now derives the cohort from exact `players.current_club` matches in the effective current snapshot. The WebView boundary, sequential processing, verified readback, and recovery rules in this decision remain in force.
 
 ## Consequences
 

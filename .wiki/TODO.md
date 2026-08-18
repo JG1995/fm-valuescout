@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Settings and Managed Club](./features/active/settings-managed-club.md) — combine Linear JAY-26 and JAY-27 in one feature PR: move operational controls from Dashboard to Settings, retire the Dashboard importer and sanity list, and replace manual club-family sources with one save-scoped managed club whose current membership comes from FM snapshot data.
+_None._
 
 ## Next
 
@@ -60,6 +60,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Completed
 
+- [Settings and Managed Club](./features/completed/settings-managed-club.md) — Settings owns save, snapshot, managed-club, and bridge management; Dashboard is a placeholder; one save-scoped managed club supplies exact current-snapshot cohorts to Squad, Planner, Academy, Staff, and club-wide boosts (Linear JAY-26, JAY-27)
 - [Optional Planner Teams](./features/completed/optional-planner-teams.md) — user-managed one-to-three Senior, Reserves, and Youth categories with per-save display names, safe assignment cleanup, dynamic Planner presentation, and available-team-only optimization (Linear JAY-28)
 - [Staff Shortlist CSV Enrichment](./features/completed/staff-shortlist.md) — save-owned replacement imports joined to current staff by UID, with exact Preferred Job filtering, adaptive job-score columns, and unemployment filtering in a third Staff workspace
 - [Staff Workspace](./features/completed/staff-workspace.md) — scored Staff Search, configured club-family overview, staff-specific profiles with shared concealment, and fixed individual and configured-family +10 CA actions

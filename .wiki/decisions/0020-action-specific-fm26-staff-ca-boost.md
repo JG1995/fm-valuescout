@@ -12,7 +12,7 @@ The Staff workspace needs one development action: increase one staff member's cu
 
 ## Decision
 
-Add one closed bridge operation, **Boost Staff CA**. Keep the C# BepInEx bridge as the only process-memory writer. Do not expose addresses, field names, arbitrary values, custom increments, or a general staff editor. [ADR-0021](./0021-sequential-club-family-staff-ca-boost.md) later permits Rust to orchestrate this unchanged one-staff operation across the configured club family without adding a bridge batch payload.
+Add one closed bridge operation, **Boost Staff CA**. Keep the C# BepInEx bridge as the only process-memory writer. Do not expose addresses, field names, arbitrary values, custom increments, or a general staff editor. [ADR-0021](./0021-sequential-club-family-staff-ca-boost.md) later permits Rust to orchestrate this unchanged one-staff operation across the managed-club cohort without adding a bridge batch payload.
 
 Rust accepts only a staff UID, resolves that UID against the effective current snapshot, and derives `min(current CA + 10, PA, 200)`. The action is unavailable when CA is equal to or greater than PA. Rust binds the request to the bridge request ID that produced the snapshot and supplies the expected CA and PA; it never accepts a target value or increment from React.
 
