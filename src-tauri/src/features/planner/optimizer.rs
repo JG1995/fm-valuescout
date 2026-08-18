@@ -715,16 +715,16 @@ fn is_suitable_for_lane(
     positions: &std::collections::BTreeMap<String, Option<i64>>,
     lane: &TacticLane,
 ) -> bool {
-    let has_suitability = |position: &str| {
+    let has_suitability = |position: &str, minimum: i64| {
         positions
             .get(base_position(position))
             .copied()
             .flatten()
-            .is_some_and(|suitability| suitability >= 15)
+            .is_some_and(|suitability| suitability >= minimum)
     };
-    has_suitability(&lane.ip_position)
+    has_suitability(&lane.ip_position, 16)
         && (base_position(&lane.ip_position) == base_position(&lane.oop_position)
-            || has_suitability(&lane.oop_position))
+            || has_suitability(&lane.oop_position, 12))
 }
 
 #[cfg(test)]
@@ -750,5 +750,48 @@ mod tests {
         };
 
         assert!(is_suitable_for_lane(&positions, &lane));
+    }
+
+    #[test]
+    fn distinct_lane_positions_allow_lower_oop_familiarity() {
+        let positions =
+            BTreeMap::from([("DC".to_string(), Some(16)), ("MC".to_string(), Some(12))]);
+        let lane = TacticLane {
+            lane_id: "defensive_midfielder".to_string(),
+            ip_weight: 0.5,
+            importance_rank: None,
+            preferred_foot: "any".to_string(),
+            foot_preference: "preferred".to_string(),
+            ip_position: "DC".to_string(),
+            ip_role_id: "ball_playing_defender_ip".to_string(),
+            oop_position: "MC".to_string(),
+            oop_role_id: "defensive_midfielder_oop".to_string(),
+        };
+
+        assert!(is_suitable_for_lane(&positions, &lane));
+    }
+
+    #[test]
+    fn lane_positions_require_minimum_ip_and_oop_familiarity() {
+        let lane = TacticLane {
+            lane_id: "defensive_midfielder".to_string(),
+            ip_weight: 0.5,
+            importance_rank: None,
+            preferred_foot: "any".to_string(),
+            foot_preference: "preferred".to_string(),
+            ip_position: "DC".to_string(),
+            ip_role_id: "ball_playing_defender_ip".to_string(),
+            oop_position: "MC".to_string(),
+            oop_role_id: "defensive_midfielder_oop".to_string(),
+        };
+
+        assert!(!is_suitable_for_lane(
+            &BTreeMap::from([("DC".to_string(), Some(15)), ("MC".to_string(), Some(12)),]),
+            &lane,
+        ));
+        assert!(!is_suitable_for_lane(
+            &BTreeMap::from([("DC".to_string(), Some(16)), ("MC".to_string(), Some(11)),]),
+            &lane,
+        ));
     }
 }

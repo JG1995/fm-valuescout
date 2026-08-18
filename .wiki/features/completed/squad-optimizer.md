@@ -7,7 +7,7 @@ Fill the configured Planner depth charts with the best eligible players for the 
 ## Delivered behavior
 
 - **Optimize squads** fills Senior, Reserves, and Youth in that order, then each team's strings in order. It uses an exact per-string matcher that maximizes combined IP/OOP score, then filled lanes, then a stable UID tie-break.
-- A candidate must be in the team's configured club-family pool, meet the team's age rule, have suitability of at least 15 for each lane position, and have both role scores. A zero combined score remains eligible. Manual assignments reserve their player UID before optimization.
+- A candidate must be in the team's configured club-family pool, meet the team's age rule, have IP suitability of at least 16 and OOP suitability of at least 12 for distinct lane positions, and have both role scores. A zero combined score remains eligible. Manual assignments reserve their player UID before optimization.
 - Re-running Optimize preserves manual assignments, removes only earlier optimizer assignments, and recalculates from the current snapshot, tactic, and club-family sources in one Rust-owned database transaction.
 - **Clear Squad** removes all manual and optimizer assignments from the selected Planner team only after destructive confirmation. It does not change the other teams.
 - Both actions provide pending, success, and error feedback. On success, the frontend replaces its Planner depth data and invalidates slot-candidate data. The browser smoke suite exercises the Optimize control path through its IPC stub.
