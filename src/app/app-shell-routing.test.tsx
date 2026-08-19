@@ -96,12 +96,12 @@ describe("app shell routing", () => {
     ).toBeInTheDocument();
   });
 
-  it("lists Squad in the nav rail", async () => {
+  it("lists My Club in the nav rail", async () => {
     renderWithProviders();
 
     expect(
-      await screen.findByRole("link", { name: "Squad" }),
-    ).toBeInTheDocument();
+      await screen.findByRole("link", { name: "My Club" }),
+    ).toHaveAttribute("href", "/my-club");
     expect(screen.queryByRole("link", { name: "Planner" })).toBeNull();
   });
 

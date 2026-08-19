@@ -426,7 +426,7 @@ export function StaffSearchResultsPanel({
 
   if (page.state === "no_current_snapshot") {
     return (
-      <Panel title={scope === "my-staff" ? "My Staff" : "Results"} flush>
+      <Panel title={scope === "my-staff" ? "Staff" : "Results"} flush>
         <EmptyState icon={DatabaseZap} title="No data loaded for this save">
           Use Load Data to scan Football Manager and ingest staff into the
           database.
@@ -436,13 +436,13 @@ export function StaffSearchResultsPanel({
   }
   if (page.state === "no_managed_club") {
     return (
-      <Panel title="My Staff" flush>
+      <Panel title="Staff" flush>
         <EmptyState
           icon={UsersRound}
           title="Choose your managed club"
           action={
             <Link
-              to="/settings"
+              to="/my-club"
               hash="managed-club"
               className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
             >
@@ -450,7 +450,7 @@ export function StaffSearchResultsPanel({
             </Link>
           }
         >
-          Choose your managed club in Settings before reviewing your staff.
+          Choose your managed club in My Club before reviewing your staff.
         </EmptyState>
       </Panel>
     );
@@ -471,7 +471,7 @@ export function StaffSearchResultsPanel({
       <Panel
         title={
           scope === "my-staff"
-            ? "My Staff"
+            ? "Staff"
             : isShortlist
               ? "Staff Shortlist"
               : "Results"
@@ -539,7 +539,7 @@ export function StaffSearchResultsPanel({
     <Panel
       title={
         scope === "my-staff"
-          ? "My Staff"
+          ? "Staff"
           : scope === "shortlist"
             ? "Staff Shortlist"
             : "Results"
@@ -628,7 +628,7 @@ export function StaffSearchResultsPanel({
         }
         caption={
           scope === "my-staff"
-            ? "My Staff overview"
+            ? "Staff overview"
             : scope === "shortlist"
               ? "Staff Shortlist"
               : "Staff search results"

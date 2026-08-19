@@ -35,7 +35,7 @@ test.describe("application smoke", () => {
     await expect(main.getByRole("region", { name: "Save data" })).toBeVisible();
     await expect(
       main.getByRole("region", { name: "Managed club" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(main.getByRole("region", { name: "Bridge" })).toBeVisible();
     await expect(main.getByText(/^Bridge:/i)).toContainText("ready");
     await expect(main.getByText("Status:")).toHaveCount(0);
@@ -182,16 +182,15 @@ test.describe("application smoke", () => {
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("heading", { level: 1, name: "Search" }),
+      main.getByRole("heading", { level: 1, name: "Player Search" }),
     ).toBeVisible();
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Search" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    await expect(
+      page.getByRole("link", { name: "Player Search" }),
+    ).toHaveAttribute("aria-current", "page");
   });
 
-  test("Staff opens its Search workspace with the default role-fit columns", async ({
+  test("Staff Search stays standalone while My Club owns Staff workspaces", async ({
     page,
   }) => {
     await stubTauriIpc(page, { staffWorkspace: true });
@@ -199,12 +198,12 @@ test.describe("application smoke", () => {
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("heading", { level: 1, name: "Staff" }),
+      main.getByRole("heading", { level: 1, name: "Staff Search" }),
     ).toBeVisible();
-    await expect(main.getByRole("tab", { name: "Search" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    await expect(main.getByRole("tablist")).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Staff Search" }),
+    ).toHaveAttribute("aria-current", "page");
     const table = main.getByRole("table", { name: "Staff search results" });
     await expect(table).toBeVisible();
     await expect(table.getByRole("columnheader")).toHaveCount(26);
@@ -212,11 +211,14 @@ test.describe("application smoke", () => {
       table.getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeVisible();
     await expect(table.getByText("Alex Coach")).toBeVisible();
-    await main.getByRole("tab", { name: "My Staff" }).click();
-    const myStaffTable = main.getByRole("table", { name: "My Staff overview" });
-    await expect(myStaffTable).toBeVisible();
-    await expect(myStaffTable.getByText("Alex Coach")).toBeVisible();
-    await main.getByRole("tab", { name: "Shortlist" }).click();
+    await page.goto("/my-club?view=staff");
+    await expect(
+      main.getByRole("tab", { name: "Staff", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    const staffTable = main.getByRole("table", { name: "Staff overview" });
+    await expect(staffTable).toBeVisible();
+    await expect(staffTable.getByText("Alex Coach")).toBeVisible();
+    await page.goto("/my-club?view=staff-shortlist");
     await expect(main.getByText("No Staff Shortlist uploaded")).toBeVisible();
     await expect(
       main.getByRole("button", { name: "Upload CSV" }),
@@ -258,7 +260,7 @@ test.describe("application smoke", () => {
     page,
   }) => {
     await stubTauriIpc(page, { staffWorkspace: true, staffShortlist: true });
-    await page.goto("/staff?view=shortlist");
+    await page.goto("/my-club?view=staff-shortlist");
 
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Staff Shortlist" });
@@ -407,17 +409,17 @@ test.describe("application smoke", () => {
     );
   });
 
-  test("My Staff fetches a later page from the configured family", async ({
+  test("My Club Staff fetches a later page from the configured family", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
       playerTableRowCount: 101,
       staffWorkspace: true,
     });
-    await page.goto("/staff?view=my-staff");
+    await page.goto("/my-club?view=staff");
 
     const main = page.getByRole("main");
-    const table = main.getByRole("table", { name: "My Staff overview" });
+    const table = main.getByRole("table", { name: "Staff overview" });
     const scroller = main.getByTestId("my-staff-results-scroller");
     await expect(table).toBeVisible();
     await scroller.evaluate((element) => {
@@ -430,12 +432,12 @@ test.describe("application smoke", () => {
     await expect(table.getByText("Staff member 101")).toBeVisible();
   });
 
-  test("My Staff confirms a managed-club CA boost", async ({ page }) => {
+  test("My Club Staff confirms a managed-club CA boost", async ({ page }) => {
     await stubTauriIpc(page, { staffWorkspace: true });
-    await page.goto("/staff?view=my-staff");
+    await page.goto("/my-club?view=staff");
 
     const main = page.getByRole("main");
-    const table = main.getByRole("table", { name: "My Staff overview" });
+    const table = main.getByRole("table", { name: "Staff overview" });
     await expect(table.getByRole("button", { name: "Boost CA" })).toHaveCount(
       0,
     );
@@ -448,29 +450,28 @@ test.describe("application smoke", () => {
     );
   });
 
-  test("My Staff points an unconfigured save to Settings managed club", async ({
+  test("My Club Staff points an unconfigured save to My Club managed club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { staffFamily: "none", staffWorkspace: true });
-    await page.goto("/staff?view=my-staff");
+    await page.goto("/my-club?view=staff");
 
     const main = page.getByRole("main");
+    const staffPanel = main.getByRole("tabpanel", { name: "Staff" });
     await expect(
-      main.getByText("Choose your managed club", { exact: true }),
+      staffPanel.getByText("Choose your managed club", { exact: true }),
     ).toBeVisible();
     await expect(
       main.getByRole("link", { name: "Open Managed Club" }),
-    ).toHaveAttribute("href", "/settings#managed-club");
+    ).toHaveAttribute("href", "/my-club#managed-club");
   });
 
-  test("planner route shows no-snapshot Load Data guidance", async ({
-    page,
-  }) => {
-    await page.goto("/planner");
+  test("My Club shows no-snapshot Load Data guidance", async ({ page }) => {
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("heading", { level: 1, name: "Squad" }),
+      main.getByRole("heading", { level: 1, name: "My Club" }),
     ).toBeVisible();
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
     await expect(
@@ -478,15 +479,31 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Squad points an unconfigured save to Settings managed club", async ({
+  test("legacy Planner links replace into the canonical My Club URL", async ({
+    page,
+  }) => {
+    await page.goto("/planner?view=tactic&sort=name&dir=asc");
+
+    await expect(page).toHaveURL(
+      /\/my-club\?view=tactic&squadSort=name&squadDir=asc$/,
+    );
+    await expect(
+      page.getByRole("main").getByRole("heading", {
+        level: 1,
+        name: "My Club",
+      }),
+    ).toBeVisible();
+  });
+
+  test("Squad points an unconfigured save to My Club managed club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("heading", { level: 1, name: "Squad" }),
+      main.getByRole("heading", { level: 1, name: "My Club" }),
     ).toBeVisible();
     await expect(main.getByRole("tab", { name: "Squad" })).toHaveAttribute(
       "aria-selected",
@@ -496,20 +513,18 @@ test.describe("application smoke", () => {
       main.getByText("Choose your managed club", { exact: true }),
     ).toBeVisible();
     await main.getByRole("link", { name: "Open Managed Club" }).click();
-    await expect(page).toHaveURL(/\/settings#managed-club$/);
-    await expect(
-      page.getByRole("main").getByRole("region", { name: "Managed club" }),
-    ).toBeVisible();
+    await expect(page).toHaveURL(/\/my-club#managed-club$/);
     await expect(
       page.getByRole("main").getByRole("combobox", { name: "Managed club" }),
     ).toBeVisible();
   });
 
-  test("Settings saves one managed club from the latest snapshot", async ({
+  test("legacy Settings managed-club links save from My Club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/settings#managed-club");
+    await expect(page).toHaveURL(/\/my-club#managed-club$/);
 
     const managedClub = page.getByRole("main").getByRole("combobox", {
       name: "Managed club",
@@ -530,7 +545,7 @@ test.describe("application smoke", () => {
       plannerSnapshot: true,
       squadOverview: true,
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Squad overview" });
@@ -568,11 +583,14 @@ test.describe("application smoke", () => {
       [1600, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
-      await page.goto("/planner");
+      await page.goto("/my-club");
 
       const main = page.getByRole("main");
       const scroller = main.getByTestId("squad-overview-scroller");
       await expect(scroller).toBeVisible();
+      await expect(
+        main.getByRole("combobox", { name: "Managed club" }),
+      ).toBeVisible();
 
       const [mainBox, scrollerBox, mainDimensions, dimensions] =
         await Promise.all([
@@ -636,7 +654,7 @@ test.describe("application smoke", () => {
       squadOverview: true,
       squadPageFailure: true,
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const scroller = page.getByTestId("squad-overview-scroller");
     await expect(scroller).toBeVisible();
@@ -977,7 +995,7 @@ test.describe("application smoke", () => {
       search.getByRole("separator", { name: "Resize Acceleration column" }),
     ).toHaveAttribute("aria-valuenow", "104");
 
-    await page.goto("/planner");
+    await page.goto("/my-club");
     const squad = page.getByRole("main");
     await expect(
       squad
@@ -999,7 +1017,10 @@ test.describe("application smoke", () => {
       .getByRole("table", { name: "Player search results" })
       .getByRole("columnheader", { name: "CA" });
     const menu = page.getByRole("menu", { name: "CA column actions" });
-    const heading = page.getByRole("heading", { level: 1, name: "Search" });
+    const heading = page.getByRole("heading", {
+      level: 1,
+      name: "Player Search",
+    });
 
     await caHeader.click({ button: "right" });
     await expect(menu).toBeVisible();
@@ -1020,7 +1041,7 @@ test.describe("application smoke", () => {
       squadOverview: true,
       csvImportFormat: "moneyball",
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await expect(
@@ -1061,7 +1082,7 @@ test.describe("application smoke", () => {
       plannerSnapshot: true,
       squadOverview: true,
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     const caButton = main.getByRole("button", { name: "Boost all CA" });
@@ -1104,7 +1125,7 @@ test.describe("application smoke", () => {
       plannerSnapshot: true,
       squadOverview: true,
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("button", { name: "Make all Wonderkids" }).click();
@@ -1126,7 +1147,7 @@ test.describe("application smoke", () => {
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Tactic" }).click();
@@ -1267,7 +1288,7 @@ test.describe("application smoke", () => {
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner?view=tactic");
+    await page.goto("/my-club?view=tactic");
 
     const main = page.getByRole("main");
     const pitches = main.getByRole("group", { name: /pitch$/ });
@@ -1276,10 +1297,10 @@ test.describe("application smoke", () => {
     });
     const plannerHeading = main.getByRole("heading", {
       level: 1,
-      name: "Squad",
+      name: "My Club",
     });
     const workspaceTabs = main.getByRole("tablist", {
-      name: "Squad workspaces",
+      name: "My Club workspaces",
     });
     const navToggle = page.getByRole("button", {
       name: "Toggle navigation",
@@ -1375,7 +1396,7 @@ test.describe("application smoke", () => {
   }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Planner" }).click();
@@ -1394,7 +1415,7 @@ test.describe("application smoke", () => {
   }) => {
     await page.setViewportSize({ width: 600, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Planner" }).click();
@@ -1451,7 +1472,7 @@ test.describe("application smoke", () => {
       [1600, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
-      await page.goto("/planner");
+      await page.goto("/my-club");
 
       const main = page.getByRole("main");
       await main.getByRole("tab", { name: "Planner" }).click();
@@ -1504,7 +1525,7 @@ test.describe("application smoke", () => {
   }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Planner" }).click();
@@ -1535,7 +1556,7 @@ test.describe("application smoke", () => {
   }) => {
     await page.setViewportSize({ width: 1920, height: 900 });
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Planner" }).click();
@@ -1562,7 +1583,7 @@ test.describe("application smoke", () => {
       plannerSnapshot: true,
       plannerPotentialScores: true,
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Planner" }).click();

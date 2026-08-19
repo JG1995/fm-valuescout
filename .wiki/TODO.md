@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-_None._
+- [My Club Workspace](./features/active/my-club-workspace.md) — unify Squad, Planner, Tactic, managed-club selection, managed-club Staff, and Staff Shortlist under `/my-club` while keeping Player Search and Staff Search separate (Linear JAY-25)
 
 ## Next
 

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './app/routes/__root'
 import { Route as IndexRouteImport } from './app/routes/index'
 import { Route as AcademyRouteImport } from './app/routes/academy'
+import { Route as MyClubRouteImport } from './app/routes/my-club'
 import { Route as PlannerRouteImport } from './app/routes/planner'
 import { Route as SearchRouteImport } from './app/routes/search'
 import { Route as SettingsRouteImport } from './app/routes/settings'
@@ -26,6 +27,11 @@ const IndexRoute = IndexRouteImport.update({
 const AcademyRoute = AcademyRouteImport.update({
   id: '/academy',
   path: '/academy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MyClubRoute = MyClubRouteImport.update({
+  id: '/my-club',
+  path: '/my-club',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PlannerRoute = PlannerRouteImport.update({
@@ -62,6 +68,7 @@ const StaffUidRoute = StaffUidRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/academy': typeof AcademyRoute
+  '/my-club': typeof MyClubRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
@@ -72,6 +79,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/academy': typeof AcademyRoute
+  '/my-club': typeof MyClubRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
@@ -83,6 +91,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/academy': typeof AcademyRoute
+  '/my-club': typeof MyClubRoute
   '/planner': typeof PlannerRoute
   '/search': typeof SearchRoute
   '/settings': typeof SettingsRoute
@@ -95,6 +104,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/academy'
+    | '/my-club'
     | '/planner'
     | '/search'
     | '/settings'
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/academy'
+    | '/my-club'
     | '/planner'
     | '/search'
     | '/settings'
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/academy'
+    | '/my-club'
     | '/planner'
     | '/search'
     | '/settings'
@@ -126,6 +138,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AcademyRoute: typeof AcademyRoute
+  MyClubRoute: typeof MyClubRoute
   PlannerRoute: typeof PlannerRoute
   SearchRoute: typeof SearchRoute
   SettingsRoute: typeof SettingsRoute
@@ -147,6 +160,13 @@ declare module '@tanstack/react-router' {
       path: '/academy'
       fullPath: '/academy'
       preLoaderRoute: typeof AcademyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/my-club': {
+      id: '/my-club'
+      path: '/my-club'
+      fullPath: '/my-club'
+      preLoaderRoute: typeof MyClubRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/planner': {
@@ -207,6 +227,7 @@ const StaffRouteWithChildren = StaffRoute._addFileChildren(StaffRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcademyRoute: AcademyRoute,
+  MyClubRoute: MyClubRoute,
   PlannerRoute: PlannerRoute,
   SearchRoute: SearchRoute,
   SettingsRoute: SettingsRoute,

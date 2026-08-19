@@ -63,19 +63,16 @@ describe("staff route", () => {
     usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });
   });
 
-  it("adds Staff to navigation and opens Search with all default role columns", async () => {
+  it("adds Staff Search to navigation and opens Search-only with all default role columns", async () => {
     await resolveLoadDataIpcMock();
     renderStaffRoute();
 
-    const staffLink = await screen.findByRole("link", { name: "Staff" });
+    const staffLink = await screen.findByRole("link", { name: "Staff Search" });
     expect(staffLink).toHaveAttribute("aria-current", "page");
     expect(
-      await screen.findByRole("heading", { name: "Staff" }),
+      await screen.findByRole("heading", { name: "Staff Search" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Search" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.queryByRole("tablist")).toBeNull();
 
     const table = await screen.findByRole("table", {
       name: "Staff search results",
@@ -85,11 +82,6 @@ describe("staff route", () => {
       within(table).getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeInTheDocument();
     expect(within(table).getByText("Alex Coach")).toBeInTheDocument();
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
-      "Search",
-      "Shortlist",
-      "My Staff",
-    ]);
   });
 
   it("keeps projected shortlist columns sortable without showing job metadata", async () => {
@@ -104,7 +96,7 @@ describe("staff route", () => {
       }),
     ]);
     const user = userEvent.setup();
-    const { router } = renderStaffRoute("/staff?view=shortlist");
+    const { router } = renderStaffRoute("/my-club?view=staff-shortlist");
 
     const allJobsTable = await screen.findByRole("table", {
       name: "Staff Shortlist",
@@ -197,14 +189,15 @@ describe("staff route", () => {
     });
   });
 
-  it("retains independent Search and My Staff sort state", async () => {
+  it("keeps standalone Staff Search sorting in sync with its URL state", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    const { router } = renderStaffRoute();
-    const searchTable = await screen.findByRole("table", {
+    const { router } = renderStaffRoute("/staff");
+    const table = await screen.findByRole("table", {
       name: "Staff search results",
     });
-    await user.click(within(searchTable).getByRole("button", { name: "Name" }));
+
+    await user.click(within(table).getByRole("button", { name: "Name" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
         sort: "name",
@@ -213,38 +206,31 @@ describe("staff route", () => {
         searchDir: "asc",
       });
     });
+    const sortedTable = await screen.findByRole("table", {
+      name: "Staff search results",
+    });
+    expect(
+      within(sortedTable).getByRole("columnheader", { name: "Name" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+  });
 
-    await user.click(screen.getByRole("tab", { name: "My Staff" }));
+  it("retains managed-club Staff sort state in My Club", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    const { router } = renderStaffRoute("/my-club?view=staff");
     const myStaffTable = await screen.findByRole("table", {
-      name: "My Staff overview",
+      name: "Staff overview",
     });
     expect(router.state.location.search).toMatchObject({
-      sort: "ca",
-      dir: "desc",
-      myStaffSort: "ca",
-      myStaffDir: "desc",
+      view: "staff",
     });
     await user.click(within(myStaffTable).getByRole("button", { name: "PA" }));
     await waitFor(() => {
       expect(router.state.location.search).toMatchObject({
-        sort: "pa",
-        dir: "desc",
-        searchSort: "name",
-        searchDir: "asc",
-        myStaffSort: "pa",
-        myStaffDir: "desc",
+        view: "staff",
+        staffSort: "pa",
+        staffDir: "desc",
       });
-    });
-
-    await user.click(screen.getByRole("tab", { name: "Search" }));
-    await screen.findByRole("table", { name: "Staff search results" });
-    expect(router.state.location.search).toMatchObject({
-      sort: "name",
-      dir: "asc",
-      searchSort: "name",
-      searchDir: "asc",
-      myStaffSort: "pa",
-      myStaffDir: "desc",
     });
   });
 
@@ -278,12 +264,12 @@ describe("staff route", () => {
     ).toBeInTheDocument();
   });
 
-  it("opens a staff profile from a My Staff row with Enter", async () => {
+  it("opens a staff profile from a managed-club Staff row with Enter", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    renderStaffRoute("/staff?view=my-staff");
+    renderStaffRoute("/my-club?view=staff");
     const table = await screen.findByRole("table", {
-      name: "My Staff overview",
+      name: "Staff overview",
     });
     const row = within(table)
       .getAllByRole("row")
@@ -296,19 +282,19 @@ describe("staff route", () => {
     ).toBeInTheDocument();
   });
 
-  it("supports keyboard workspace tabs without changing the table contract", async () => {
+  it("supports keyboard My Club workspace tabs without changing the table contract", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    renderStaffRoute();
-    await screen.findByRole("table", { name: "Staff search results" });
-    const searchTab = screen.getByRole("tab", { name: "Search" });
-    searchTab.focus();
-    fireEvent.keyDown(searchTab.parentElement as HTMLElement, {
+    renderStaffRoute("/my-club?view=staff");
+    await screen.findByRole("table", { name: "Staff overview" });
+    const squadTab = screen.getByRole("tab", { name: "Squad" });
+    squadTab.focus();
+    fireEvent.keyDown(squadTab.parentElement as HTMLElement, {
       key: "ArrowRight",
     });
-    await user.click(screen.getByRole("tab", { name: "My Staff" }));
+    await user.click(screen.getByRole("tab", { name: "Staff" }));
     const myStaffTable = await screen.findByRole("table", {
-      name: "My Staff overview",
+      name: "Staff overview",
     });
     expect(within(myStaffTable).getAllByRole("columnheader")).toHaveLength(26);
     expect(within(myStaffTable).getByText("Alex Coach")).toBeInTheDocument();
@@ -332,7 +318,7 @@ describe("staff route", () => {
     ).toBeNull();
   });
 
-  it("uses the shared score ramp for role scores in Search and My Staff", async () => {
+  it("uses the shared score ramp for role scores in managed-club Staff", async () => {
     await resolveLoadDataIpcMock();
     const staff = fixtureStaff();
     setStaffOverride([
@@ -347,39 +333,28 @@ describe("staff route", () => {
         },
       },
     ]);
-    const user = userEvent.setup();
-    renderStaffRoute();
+    renderStaffRoute("/my-club?view=staff");
 
-    const searchTable = await screen.findByRole("table", {
-      name: "Staff search results",
+    const staffTable = await screen.findByRole("table", {
+      name: "Staff overview",
     });
     expect(
-      within(searchTable).getByRole("img", {
+      within(staffTable).getByRole("img", {
         name: "Assistant Manager role score: 20, Weak",
       }),
     ).toHaveClass("text-score-1");
     expect(
-      within(searchTable).getByRole("img", {
+      within(staffTable).getByRole("img", {
         name: "Coach — Attacking Technical role score: 50, Average",
       }),
     ).toHaveClass("text-score-2");
     expect(
-      within(searchTable).getByRole("img", {
+      within(staffTable).getByRole("img", {
         name: "Coach — Attacking Tactical role score: 70, Good",
       }),
     ).toHaveClass("text-score-3");
     expect(
-      within(searchTable).getByRole("img", {
-        name: "Coach — Defending Technical role score: 90, Excellent",
-      }),
-    ).toHaveClass("text-score-4");
-
-    await user.click(screen.getByRole("tab", { name: "My Staff" }));
-    const myStaffTable = await screen.findByRole("table", {
-      name: "My Staff overview",
-    });
-    expect(
-      within(myStaffTable).getByRole("img", {
+      within(staffTable).getByRole("img", {
         name: "Coach — Defending Technical role score: 90, Excellent",
       }),
     ).toHaveClass("text-score-4");
@@ -438,12 +413,15 @@ describe("staff route", () => {
     expect(screen.queryByText(/Staff role scores are unavailable/)).toBeNull();
   });
 
-  it("keeps My Staff layout changes separate from Search", async () => {
+  it("keeps managed-club Staff layout changes on its stable table ID", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    renderStaffRoute("/staff?view=my-staff");
+    const staffSearchColumns = [
+      ...usePlayerTableStore.getState().layouts["staff-search"].columnIds,
+    ];
+    renderStaffRoute("/my-club?view=staff");
     const myStaffTable = await screen.findByRole("table", {
-      name: "My Staff overview",
+      name: "Staff overview",
     });
     fireEvent.contextMenu(
       within(myStaffTable).getByRole("columnheader", { name: "Scout" }),
@@ -452,32 +430,27 @@ describe("staff route", () => {
     expect(
       within(myStaffTable).queryByRole("columnheader", { name: "Scout" }),
     ).toBeNull();
-
-    await user.click(screen.getByRole("tab", { name: "Search" }));
-    const searchTable = await screen.findByRole("table", {
-      name: "Staff search results",
-    });
     expect(
-      within(searchTable).getByRole("columnheader", { name: "Scout" }),
-    ).toBeInTheDocument();
+      usePlayerTableStore.getState().layouts["staff-search"].columnIds,
+    ).toEqual(staffSearchColumns);
   });
 
-  it("distinguishes an unconfigured managed club from an empty overview", async () => {
+  it("distinguishes an unconfigured managed club from an empty Staff overview", async () => {
     await resolveLoadDataIpcMock();
     setStaffFamilyConfigured(false);
-    renderStaffRoute("/staff?view=my-staff");
+    renderStaffRoute("/my-club?view=staff");
     expect(
       await screen.findByText("Choose your managed club", { exact: true }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open Managed Club" }),
-    ).toHaveAttribute("href", "/settings#managed-club");
+    ).toHaveAttribute("href", "/my-club#managed-club");
   });
 
-  it("describes an empty My Staff overview as one managed club", async () => {
+  it("describes an empty managed-club Staff overview as one managed club", async () => {
     await resolveLoadDataIpcMock();
     setStaffOverride([]);
-    renderStaffRoute("/staff?view=my-staff");
+    renderStaffRoute("/my-club?view=staff");
 
     expect(
       await screen.findByText(
@@ -486,13 +459,12 @@ describe("staff route", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers one bulk CA boost on My Staff and no row actions", async () => {
+  it("offers one bulk CA boost on managed-club Staff and no row actions", async () => {
     await resolveLoadDataIpcMock();
-    const user = userEvent.setup();
-    renderStaffRoute("/staff?view=my-staff");
+    renderStaffRoute("/my-club?view=staff");
 
     const myStaffTable = await screen.findByRole("table", {
-      name: "My Staff overview",
+      name: "Staff overview",
     });
     expect(
       within(myStaffTable).queryByRole("columnheader", { name: "Actions" }),
@@ -501,25 +473,16 @@ describe("staff route", () => {
       within(myStaffTable).queryByRole("button", { name: "Boost CA" }),
     ).toBeNull();
     expect(screen.getByRole("button", { name: "Boost all CA" })).toBeEnabled();
-
-    await user.click(screen.getByRole("tab", { name: "Search" }));
-    const searchTable = await screen.findByRole("table", {
-      name: "Staff search results",
-    });
-    expect(
-      within(searchTable).queryByRole("columnheader", { name: "Actions" }),
-    ).toBeNull();
-    expect(screen.queryByRole("button", { name: "Boost all CA" })).toBeNull();
   });
 
   it("confirms and reports a managed-club bulk CA boost", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    const { queryClient } = renderStaffRoute("/staff?view=my-staff");
+    const { queryClient } = renderStaffRoute("/my-club?view=staff");
     queryClient.setQueryData(["staff", "probe"], []);
     queryClient.setQueryData(["snapshot", "probe"], []);
     await screen.findByRole("table", {
-      name: "My Staff overview",
+      name: "Staff overview",
     });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
     const dialog = await screen.findByRole("dialog", { name: "Boost all CA?" });
@@ -557,9 +520,9 @@ describe("staff route", () => {
     await resolveLoadDataIpcMock();
     setMyStaffBoostIpcMockMode("recoveryRequired");
     const user = userEvent.setup();
-    const { queryClient } = renderStaffRoute("/staff?view=my-staff");
+    const { queryClient } = renderStaffRoute("/my-club?view=staff");
 
-    await screen.findByRole("table", { name: "My Staff overview" });
+    await screen.findByRole("table", { name: "Staff overview" });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
     await user.click(
       within(
@@ -593,9 +556,9 @@ describe("staff route", () => {
     await resolveLoadDataIpcMock();
     setMyStaffBoostIpcMockMode("pending");
     const user = userEvent.setup();
-    renderStaffRoute("/staff?view=my-staff");
+    renderStaffRoute("/my-club?view=staff");
 
-    await screen.findByRole("table", { name: "My Staff overview" });
+    await screen.findByRole("table", { name: "Staff overview" });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
     const dialog = await screen.findByRole("dialog", { name: "Boost all CA?" });
     await user.click(
@@ -608,7 +571,7 @@ describe("staff route", () => {
     rejectPendingMyStaffBoostIpcMock(new Error("Bridge is unavailable."));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      "Could not boost My Staff. Bridge is unavailable.",
+      "Could not boost Staff. Bridge is unavailable.",
     );
     expect(within(dialog).getByRole("alert")).toHaveTextContent(
       "1 processed — 1 updated, 0 skipped, 0 failed.",

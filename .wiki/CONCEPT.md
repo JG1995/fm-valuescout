@@ -32,7 +32,7 @@ The app supports multiple **save slots** (separate scouting databases—for exam
 
 ### 2. Searchable databases with role scores
 
-Every loaded player lives in a searchable database with scores per position and per role (e.g. defensive midfielder / deep-lying playmaker). Staff have current-ability job-fit scores derived from the attributes required by each job. Sort and filter by the fit you need, inspect detailed player or staff profiles, review everyone at the selected managed club in My Staff, and narrow an imported Staff Shortlist by Preferred Job or unemployment.
+Every loaded player lives in a searchable database with scores per position and per role (e.g. defensive midfielder / deep-lying playmaker). Staff have current-ability job-fit scores derived from the attributes required by each job. Sort and filter by the fit you need, inspect detailed player or staff profiles, review everyone at the selected managed club in Staff, and narrow an imported Staff Shortlist by Preferred Job or unemployment.
 
 ### 3. Squad planner
 
@@ -90,7 +90,7 @@ A week later in-game, the signing completes. You click **Load Data** again. The 
 - Detailed player profile view
 - Transfer search with sort/filter by role scores
 - Staff Search with sort/filter by current job-fit scores
-- My Staff overview for everyone at the selected managed club
+- Staff overview for everyone at the selected managed club
 - Save-owned Staff Shortlist CSV import with exact staff-ID matching, Preferred Job filtering, and unemployment filtering
 - Detailed Staff Profile with current attributes and job fit
 - Squad planner aligned to the user's tactic

@@ -1,55 +1,63 @@
 import type { KeyboardEvent } from "react";
 import { cn } from "@/utils/cn";
 
-export const PLANNER_WORKSPACES = ["squad", "planner", "tactic"] as const;
-export type PlannerWorkspace = (typeof PLANNER_WORKSPACES)[number];
+export const MY_CLUB_WORKSPACES = [
+  "squad",
+  "planner",
+  "tactic",
+  "staff",
+  "staff-shortlist",
+] as const;
+export type MyClubWorkspace = (typeof MY_CLUB_WORKSPACES)[number];
 
-const WORKSPACE_LABELS: Record<PlannerWorkspace, string> = {
+const WORKSPACE_LABELS: Record<MyClubWorkspace, string> = {
   squad: "Squad",
   planner: "Planner",
   tactic: "Tactic",
+  staff: "Staff",
+  "staff-shortlist": "Staff Shortlist",
 };
 
-export function parsePlannerWorkspace(raw: unknown): PlannerWorkspace | null {
-  return typeof raw === "string" && isPlannerWorkspace(raw) ? raw : null;
+export function parseMyClubWorkspace(raw: unknown): MyClubWorkspace | null {
+  return typeof raw === "string" && isMyClubWorkspace(raw) ? raw : null;
 }
 
-function isPlannerWorkspace(raw: string): raw is PlannerWorkspace {
-  return (PLANNER_WORKSPACES as readonly string[]).includes(raw);
+function isMyClubWorkspace(raw: string): raw is MyClubWorkspace {
+  return (MY_CLUB_WORKSPACES as readonly string[]).includes(raw);
 }
 
-function focusWorkspaceTab(workspace: PlannerWorkspace) {
-  document.getElementById(`planner-workspace-tab-${workspace}`)?.focus();
+function focusWorkspaceTab(workspace: MyClubWorkspace) {
+  document.getElementById(`my-club-workspace-tab-${workspace}`)?.focus();
 }
 
-type PlannerWorkspaceTabsProps = {
-  workspace: PlannerWorkspace;
-  onWorkspaceChange: (workspace: PlannerWorkspace) => void;
+type MyClubWorkspaceTabsProps = {
+  workspace: MyClubWorkspace;
+  onWorkspaceChange: (workspace: MyClubWorkspace) => void;
 };
 
-export function PlannerWorkspaceTabs({
+export function MyClubWorkspaceTabs({
   workspace,
   onWorkspaceChange,
-}: PlannerWorkspaceTabsProps) {
+}: MyClubWorkspaceTabsProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const index = PLANNER_WORKSPACES.indexOf(workspace);
+    const index = MY_CLUB_WORKSPACES.indexOf(workspace);
     let nextIndex = index;
 
     if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-      nextIndex = (index + 1) % PLANNER_WORKSPACES.length;
+      nextIndex = (index + 1) % MY_CLUB_WORKSPACES.length;
     } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
       nextIndex =
-        (index - 1 + PLANNER_WORKSPACES.length) % PLANNER_WORKSPACES.length;
+        (index - 1 + MY_CLUB_WORKSPACES.length) % MY_CLUB_WORKSPACES.length;
     } else if (event.key === "Home") {
       nextIndex = 0;
     } else if (event.key === "End") {
-      nextIndex = PLANNER_WORKSPACES.length - 1;
+      nextIndex = MY_CLUB_WORKSPACES.length - 1;
     } else {
       return;
     }
 
     event.preventDefault();
-    const next = PLANNER_WORKSPACES[nextIndex];
+    const next = MY_CLUB_WORKSPACES[nextIndex];
     onWorkspaceChange(next);
     focusWorkspaceTab(next);
   };
@@ -57,20 +65,20 @@ export function PlannerWorkspaceTabs({
   return (
     <div
       role="tablist"
-      aria-label="Squad workspaces"
+      aria-label="My Club workspaces"
       className="inline-flex rounded-full bg-surface-container-high p-0.5"
       onKeyDown={onKeyDown}
     >
-      {PLANNER_WORKSPACES.map((id) => {
+      {MY_CLUB_WORKSPACES.map((id) => {
         const selected = id === workspace;
         return (
           <button
             key={id}
             type="button"
             role="tab"
-            id={`planner-workspace-tab-${id}`}
+            id={`my-club-workspace-tab-${id}`}
             aria-selected={selected}
-            aria-controls={`planner-workspace-panel-${id}`}
+            aria-controls={`my-club-workspace-panel-${id}`}
             tabIndex={selected ? 0 : -1}
             className={cn(
               "cursor-pointer rounded-full px-4 py-1.5 text-label-lg transition-colors duration-150 ease-out",
@@ -91,14 +99,14 @@ export function PlannerWorkspaceTabs({
   );
 }
 
-export function plannerWorkspacePanelProps(
-  workspace: PlannerWorkspace,
-  activeWorkspace: PlannerWorkspace,
+export function myClubWorkspacePanelProps(
+  workspace: MyClubWorkspace,
+  activeWorkspace: MyClubWorkspace,
 ) {
   return {
-    id: `planner-workspace-panel-${workspace}`,
+    id: `my-club-workspace-panel-${workspace}`,
     role: "tabpanel" as const,
-    "aria-labelledby": `planner-workspace-tab-${workspace}`,
+    "aria-labelledby": `my-club-workspace-tab-${workspace}`,
     hidden: workspace !== activeWorkspace,
   };
 }

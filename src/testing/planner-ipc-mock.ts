@@ -254,6 +254,7 @@ function tacticRole(
 
 let managedClub: ManagedClubStatus = { ...DEFAULT_MANAGED_CLUB };
 let availableClubs: string[] = [];
+let managedClubOptionsError: Error | null = null;
 let managedClubSaveCalls = 0;
 let managedClubSavePending = false;
 let pendingManagedClubSave: {
@@ -336,6 +337,7 @@ function buildDefaultDepth(): PlannerDepth {
 export function resetPlannerIpcMock() {
   managedClub = { ...DEFAULT_MANAGED_CLUB };
   availableClubs = [];
+  managedClubOptionsError = null;
   managedClubSaveCalls = 0;
   managedClubSavePending = false;
   pendingManagedClubSave = null;
@@ -366,6 +368,10 @@ export function setPlannerAvailableClubs(clubs: string[]) {
   availableClubs = [...clubs];
 }
 
+export function setManagedClubOptionsError(message: string | null) {
+  managedClubOptionsError = message ? new Error(message) : null;
+}
+
 export function setManagedClubIpcMock(status: ManagedClubStatus) {
   managedClub = { ...status };
 }
@@ -392,6 +398,9 @@ export function getManagedClubSaveCalls() {
 }
 
 export function resolveManagedClubOptionsIpcMock() {
+  if (managedClubOptionsError) {
+    throw managedClubOptionsError;
+  }
   return [...availableClubs];
 }
 
