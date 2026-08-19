@@ -182,16 +182,15 @@ test.describe("application smoke", () => {
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("heading", { level: 1, name: "Search" }),
+      main.getByRole("heading", { level: 1, name: "Player Search" }),
     ).toBeVisible();
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Search" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    await expect(
+      page.getByRole("link", { name: "Player Search" }),
+    ).toHaveAttribute("aria-current", "page");
   });
 
-  test("Staff opens its Search workspace with the default role-fit columns", async ({
+  test("Staff Search stays standalone while My Club owns Staff workspaces", async ({
     page,
   }) => {
     await stubTauriIpc(page, { staffWorkspace: true });
@@ -199,12 +198,12 @@ test.describe("application smoke", () => {
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("heading", { level: 1, name: "Staff" }),
+      main.getByRole("heading", { level: 1, name: "Staff Search" }),
     ).toBeVisible();
-    await expect(main.getByRole("tab", { name: "Search" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    await expect(main.getByRole("tablist")).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Staff Search" }),
+    ).toHaveAttribute("aria-current", "page");
     const table = main.getByRole("table", { name: "Staff search results" });
     await expect(table).toBeVisible();
     await expect(table.getByRole("columnheader")).toHaveCount(26);
@@ -212,11 +211,14 @@ test.describe("application smoke", () => {
       table.getByRole("columnheader", { name: "Coach — Goalkeeping" }),
     ).toBeVisible();
     await expect(table.getByText("Alex Coach")).toBeVisible();
-    await main.getByRole("tab", { name: "My Staff" }).click();
-    const myStaffTable = main.getByRole("table", { name: "My Staff overview" });
-    await expect(myStaffTable).toBeVisible();
-    await expect(myStaffTable.getByText("Alex Coach")).toBeVisible();
-    await main.getByRole("tab", { name: "Shortlist" }).click();
+    await page.goto("/my-club?view=staff");
+    await expect(
+      main.getByRole("tab", { name: "Staff", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    const staffTable = main.getByRole("table", { name: "Staff overview" });
+    await expect(staffTable).toBeVisible();
+    await expect(staffTable.getByText("Alex Coach")).toBeVisible();
+    await page.goto("/my-club?view=staff-shortlist");
     await expect(main.getByText("No Staff Shortlist uploaded")).toBeVisible();
     await expect(
       main.getByRole("button", { name: "Upload CSV" }),
@@ -258,7 +260,7 @@ test.describe("application smoke", () => {
     page,
   }) => {
     await stubTauriIpc(page, { staffWorkspace: true, staffShortlist: true });
-    await page.goto("/staff?view=shortlist");
+    await page.goto("/my-club?view=staff-shortlist");
 
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Staff Shortlist" });
@@ -407,17 +409,17 @@ test.describe("application smoke", () => {
     );
   });
 
-  test("My Staff fetches a later page from the configured family", async ({
+  test("My Club Staff fetches a later page from the configured family", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
       playerTableRowCount: 101,
       staffWorkspace: true,
     });
-    await page.goto("/staff?view=my-staff");
+    await page.goto("/my-club?view=staff");
 
     const main = page.getByRole("main");
-    const table = main.getByRole("table", { name: "My Staff overview" });
+    const table = main.getByRole("table", { name: "Staff overview" });
     const scroller = main.getByTestId("my-staff-results-scroller");
     await expect(table).toBeVisible();
     await scroller.evaluate((element) => {
@@ -430,12 +432,12 @@ test.describe("application smoke", () => {
     await expect(table.getByText("Staff member 101")).toBeVisible();
   });
 
-  test("My Staff confirms a managed-club CA boost", async ({ page }) => {
+  test("My Club Staff confirms a managed-club CA boost", async ({ page }) => {
     await stubTauriIpc(page, { staffWorkspace: true });
-    await page.goto("/staff?view=my-staff");
+    await page.goto("/my-club?view=staff");
 
     const main = page.getByRole("main");
-    const table = main.getByRole("table", { name: "My Staff overview" });
+    const table = main.getByRole("table", { name: "Staff overview" });
     await expect(table.getByRole("button", { name: "Boost CA" })).toHaveCount(
       0,
     );
@@ -448,15 +450,16 @@ test.describe("application smoke", () => {
     );
   });
 
-  test("My Staff points an unconfigured save to My Club managed club", async ({
+  test("My Club Staff points an unconfigured save to My Club managed club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { staffFamily: "none", staffWorkspace: true });
-    await page.goto("/staff?view=my-staff");
+    await page.goto("/my-club?view=staff");
 
     const main = page.getByRole("main");
+    const staffPanel = main.getByRole("tabpanel", { name: "Staff" });
     await expect(
-      main.getByText("Choose your managed club", { exact: true }),
+      staffPanel.getByText("Choose your managed club", { exact: true }),
     ).toBeVisible();
     await expect(
       main.getByRole("link", { name: "Open Managed Club" }),
@@ -1014,7 +1017,10 @@ test.describe("application smoke", () => {
       .getByRole("table", { name: "Player search results" })
       .getByRole("columnheader", { name: "CA" });
     const menu = page.getByRole("menu", { name: "CA column actions" });
-    const heading = page.getByRole("heading", { level: 1, name: "Search" });
+    const heading = page.getByRole("heading", {
+      level: 1,
+      name: "Player Search",
+    });
 
     await caHeader.click({ button: "right" });
     await expect(menu).toBeVisible();

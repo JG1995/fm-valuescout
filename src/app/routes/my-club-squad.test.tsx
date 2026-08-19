@@ -122,6 +122,8 @@ async function openMyClubWorkspace(
     squad: "Squad",
     planner: "Planner",
     tactic: "Tactic",
+    staff: "Staff",
+    "staff-shortlist": "Staff Shortlist",
   };
   await user.click(await screen.findByRole("tab", { name: labels[workspace] }));
 }
@@ -202,6 +204,35 @@ function mockScrollerScrollTo(scroller: HTMLElement) {
 }
 
 describe("My Club route", () => {
+  it("exposes the five My Club workspaces in order", async () => {
+    await resolveLoadDataIpcMock();
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    expect(
+      await screen.findByRole("tab", { name: "Staff" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Squad",
+      "Planner",
+      "Tactic",
+      "Staff",
+      "Staff Shortlist",
+    ]);
+  });
+
+  it("renders managed-club Staff inside My Club", async () => {
+    await resolveLoadDataIpcMock();
+    renderMyClubRoute({ initialEntry: "/my-club?view=staff" });
+
+    expect(await screen.findByRole("tab", { name: "Staff" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      await screen.findByRole("table", { name: "Staff overview" }),
+    ).toBeInTheDocument();
+  });
+
   it("shows Load Data guidance when the active save has no snapshot", async () => {
     renderMyClubRoute({ initialEntry: "/my-club" });
 
@@ -1401,25 +1432,25 @@ describe("My Club route", () => {
     squadTab.focus();
     await user.keyboard("{End}");
 
-    const tacticTab = screen.getByRole("tab", { name: "Tactic" });
-    expect(tacticTab).toHaveAttribute("aria-selected", "true");
-    expect(tacticTab).toHaveFocus();
-    expect(tacticTab).toHaveAttribute("tabIndex", "0");
+    const shortlistTab = screen.getByRole("tab", { name: "Staff Shortlist" });
+    expect(shortlistTab).toHaveAttribute("aria-selected", "true");
+    expect(shortlistTab).toHaveFocus();
+    expect(shortlistTab).toHaveAttribute("tabIndex", "0");
     expect(squadTab).toHaveAttribute("tabIndex", "-1");
-    expect(router.state.location.search).toEqual({ view: "tactic" });
+    expect(router.state.location.search).toEqual({ view: "staff-shortlist" });
     await user.keyboard("{ArrowLeft}");
-    const plannerTab = screen.getByRole("tab", { name: "Planner" });
-    expect(plannerTab).toHaveAttribute("aria-selected", "true");
-    expect(plannerTab).toHaveFocus();
-    expect(plannerTab).toHaveAttribute("tabIndex", "0");
-    expect(tacticTab).toHaveAttribute("tabIndex", "-1");
-    expect(router.state.location.search).toEqual({ view: "planner" });
-    plannerTab.focus();
+    const staffTab = screen.getByRole("tab", { name: "Staff" });
+    expect(staffTab).toHaveAttribute("aria-selected", "true");
+    expect(staffTab).toHaveFocus();
+    expect(staffTab).toHaveAttribute("tabIndex", "0");
+    expect(shortlistTab).toHaveAttribute("tabIndex", "-1");
+    expect(router.state.location.search).toEqual({ view: "staff" });
+    staffTab.focus();
     await user.keyboard("{Home}");
     expect(squadTab).toHaveAttribute("aria-selected", "true");
     expect(squadTab).toHaveFocus();
     expect(squadTab).toHaveAttribute("tabIndex", "0");
-    expect(plannerTab).toHaveAttribute("tabIndex", "-1");
+    expect(staffTab).toHaveAttribute("tabIndex", "-1");
     expect(router.state.location.search).toEqual({ view: "squad" });
 
     router.history.back();

@@ -53,7 +53,7 @@ export function MyStaffBoostOutcome({
   }
   return error ? (
     <div className="space-y-1 text-body-sm text-error" role="alert">
-      <p>Could not boost My Staff. {error.message}</p>
+      <p>Could not boost Staff. {error.message}</p>
       {progress && progress.processed > 0 ? (
         <p>
           {progress.processed} processed — {progress.updated} updated,{" "}
@@ -137,7 +137,7 @@ export function MyStaffCaBoost({
             >
               {progress && progress.total > 0 ? (
                 <progress
-                  aria-label="My Staff boost progress"
+                  aria-label="Staff boost progress"
                   className="h-2 w-full accent-primary"
                   max={progress.total}
                   value={progress.processed}
@@ -146,7 +146,7 @@ export function MyStaffCaBoost({
               <p>
                 {progress
                   ? `${progress.processed} of ${progress.total} staff processed.`
-                  : "Preparing My Staff…"}
+                  : "Preparing Staff…"}
               </p>
             </div>
           ) : null}

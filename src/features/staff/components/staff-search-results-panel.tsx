@@ -426,7 +426,7 @@ export function StaffSearchResultsPanel({
 
   if (page.state === "no_current_snapshot") {
     return (
-      <Panel title={scope === "my-staff" ? "My Staff" : "Results"} flush>
+      <Panel title={scope === "my-staff" ? "Staff" : "Results"} flush>
         <EmptyState icon={DatabaseZap} title="No data loaded for this save">
           Use Load Data to scan Football Manager and ingest staff into the
           database.
@@ -436,7 +436,7 @@ export function StaffSearchResultsPanel({
   }
   if (page.state === "no_managed_club") {
     return (
-      <Panel title="My Staff" flush>
+      <Panel title="Staff" flush>
         <EmptyState
           icon={UsersRound}
           title="Choose your managed club"
@@ -471,7 +471,7 @@ export function StaffSearchResultsPanel({
       <Panel
         title={
           scope === "my-staff"
-            ? "My Staff"
+            ? "Staff"
             : isShortlist
               ? "Staff Shortlist"
               : "Results"
@@ -539,7 +539,7 @@ export function StaffSearchResultsPanel({
     <Panel
       title={
         scope === "my-staff"
-          ? "My Staff"
+          ? "Staff"
           : scope === "shortlist"
             ? "Staff Shortlist"
             : "Results"
@@ -628,7 +628,7 @@ export function StaffSearchResultsPanel({
         }
         caption={
           scope === "my-staff"
-            ? "My Staff overview"
+            ? "Staff overview"
             : scope === "shortlist"
               ? "Staff Shortlist"
               : "Staff search results"

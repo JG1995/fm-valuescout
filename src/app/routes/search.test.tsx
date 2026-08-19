@@ -103,15 +103,17 @@ describe("search route", () => {
     useLayoutStore.setState({ railExpanded: true });
   });
 
-  it("lists Search in the nav rail and opens the no-snapshot empty state", async () => {
+  it("lists Player Search in the nav rail and opens the no-snapshot empty state", async () => {
     const user = userEvent.setup();
     renderWithProviders();
 
-    const searchLink = await screen.findByRole("link", { name: "Search" });
+    const searchLink = await screen.findByRole("link", {
+      name: "Player Search",
+    });
     await user.click(searchLink);
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Search" }),
+      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
     ).toBeInTheDocument();
     expect(searchLink).toHaveAttribute("aria-current", "page");
     expect(
@@ -125,7 +127,7 @@ describe("search route", () => {
     renderSearchRoute();
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Search" }),
+      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
     ).toBeInTheDocument();
 
     const table = await screen.findByRole("table", {

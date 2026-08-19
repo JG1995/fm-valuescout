@@ -1,28 +1,16 @@
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   createFileRoute,
   Outlet,
   useLocation,
   useRouter,
 } from "@tanstack/react-router";
-import { Suspense, useMemo, useState } from "react";
-import { Button } from "@/components/ui/button/button";
+import { Suspense, useMemo } from "react";
+import type { MyClubSearch } from "@/app/routes/my-club";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
-import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
-import { staffKeys } from "@/features/staff/api/staff-keys";
-import {
-  staffMyStaffQueryOptions,
-  staffSearchQueryOptions,
-  staffShortlistQueryOptions,
-} from "@/features/staff/api/staff-query-options";
+import { staffSearchQueryOptions } from "@/features/staff/api/staff-query-options";
 import { StaffFilterBar } from "@/features/staff/components/staff-filter-bar";
 import { StaffSearchResultsPanel } from "@/features/staff/components/staff-search-results-panel";
-import type { StaffShortlistImportSummary } from "@/features/staff/components/staff-shortlist-import-modal";
-import { StaffShortlistImportModal } from "@/features/staff/components/staff-shortlist-import-modal";
-import {
-  StaffWorkspaceTabs,
-  staffWorkspacePanelProps,
-} from "@/features/staff/components/staff-workspace-tabs";
 import type { StaffFilterRule } from "@/features/staff/types/staff-filter-rule";
 import type {
   StaffSortDir,
@@ -35,7 +23,6 @@ import {
   isStaffSortDir,
   isStaffSortField,
 } from "@/features/staff/types/staff-sort";
-import { staffShortlistPresentation } from "@/features/staff/utils/staff-shortlist-presentation";
 import {
   parseStaffCombine,
   parseStaffFilters,
@@ -72,6 +59,30 @@ function normalizedStaffSort(
   return {
     sort,
     dir: isStaffSortDir(rawDir) ? rawDir : defaultDirForStaffSortField(sort),
+  };
+}
+
+function toMyClubSearch(search: StaffSearch): MyClubSearch {
+  if (search.view === "my-staff") {
+    return {
+      view: "staff",
+      staffSort: search.myStaffSort,
+      staffDir: search.myStaffDir,
+    };
+  }
+
+  return {
+    view: "staff-shortlist",
+    shortlistSort: search.shortlistSort,
+    shortlistDir: search.shortlistDir,
+    ...(search.shortlistContextSort
+      ? { shortlistContextSort: search.shortlistContextSort }
+      : {}),
+    ...(search.shortlistContextDir
+      ? { shortlistContextDir: search.shortlistContextDir }
+      : {}),
+    ...(search.preferredJob ? { preferredJob: search.preferredJob } : {}),
+    ...(search.unemployedOnly ? { unemployedOnly: true } : {}),
   };
 }
 
@@ -135,20 +146,24 @@ export const Route = createFileRoute("/staff")({
       combine: parseStaffCombine(search.combine),
     };
   },
-  loaderDeps: ({
-    search: { view, sort, dir, filters, combine, preferredJob, unemployedOnly },
-  }) => ({
-    view,
+  beforeLoad: ({ location, search }) => {
+    if (location.pathname === "/staff" && search.view !== "search") {
+      throw Route.redirect({
+        to: "/my-club",
+        search: toMyClubSearch(search),
+        replace: true,
+      });
+    }
+  },
+  loaderDeps: ({ search: { sort, dir, filters, combine } }) => ({
     sort,
     dir,
     filters,
     combine,
-    preferredJob,
-    unemployedOnly,
   }),
   loader: ({
     context: { queryClient },
-    deps: { view, sort, dir, filters, combine, preferredJob, unemployedOnly },
+    deps: { sort, dir, filters, combine },
     location,
   }) => {
     const currentSnapshot = queryClient.ensureQueryData(
@@ -158,27 +173,15 @@ export const Route = createFileRoute("/staff")({
     return Promise.all([
       currentSnapshot,
       queryClient.ensureQueryData(
-        view === "my-staff"
-          ? staffMyStaffQueryOptions(0, undefined, sort, dir, [])
-          : view === "shortlist"
-            ? staffShortlistQueryOptions(
-                0,
-                undefined,
-                sort,
-                dir,
-                preferredJob,
-                unemployedOnly,
-                [],
-              )
-            : staffSearchQueryOptions(
-                0,
-                undefined,
-                sort,
-                dir,
-                parseStaffFilters(filters),
-                combine,
-                [],
-              ),
+        staffSearchQueryOptions(
+          0,
+          undefined,
+          sort,
+          dir,
+          parseStaffFilters(filters),
+          combine,
+          [],
+        ),
       ),
     ]);
   },
@@ -191,315 +194,83 @@ function StaffFallback() {
       className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant"
       aria-busy="true"
     >
-      Loading staff…
+      Loading staff search…
     </div>
   );
 }
 
 function StaffPageContent() {
-  const {
-    view,
-    sort,
-    dir,
-    filters: filterUrls,
-    combine,
-    preferredJob,
-    unemployedOnly,
-    shortlistSort,
-    shortlistDir,
-    shortlistContextSort,
-    shortlistContextDir,
-  } = Route.useSearch();
+  const { sort, dir, filters: filterUrls, combine } = Route.useSearch();
   const navigate = Route.useNavigate();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
-  const filters = useMemo(() => parseStaffFilters(filterUrls), [filterUrls]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
-  const [importOpen, setImportOpen] = useState(false);
-  const [shortlistImport, setShortlistImport] = useState<
-    { contextKey: string; summary: StaffShortlistImportSummary } | undefined
-  >();
-  const shortlistContextKey = `${snapshot?.saveId ?? "none"}:${snapshot?.id ?? "none"}`;
-  const shortlistPage = useSuspenseQuery(
-    staffShortlistQueryOptions(0, 1, "ca", "desc", undefined, false, []),
-  ).data;
-  const shortlistPresentation = staffShortlistPresentation(preferredJob);
-  const shortlistSortIsVisible =
-    !shortlistPresentation ||
-    shortlistPresentation.columnIds.includes(shortlistSort);
-  const shortlistContextSortIsVisible =
-    shortlistPresentation &&
-    shortlistContextSort &&
-    shortlistContextDir &&
-    shortlistPresentation.columnIds.includes(shortlistContextSort);
-  const effectiveShortlistSort = shortlistPresentation
-    ? shortlistContextSortIsVisible
-      ? { sort: shortlistContextSort, dir: shortlistContextDir }
-      : shortlistPresentation.sort
-        ? { sort: shortlistPresentation.sort, dir: shortlistPresentation.dir }
-        : shortlistSortIsVisible
-          ? { sort: shortlistSort, dir: shortlistDir }
-          : { sort: "ca", dir: "desc" as const }
-    : { sort: shortlistSort, dir: shortlistDir };
-  const onBoostSuccess = () =>
-    queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
+  const filters = useMemo(() => parseStaffFilters(filterUrls), [filterUrls]);
 
   const updateSearch = (
     patch: Partial<{
-      view: "search" | "my-staff" | "shortlist";
       sort: StaffSortField;
       dir: StaffSortDir;
       filters: StaffFilterRule[];
       combine: "and" | "or";
-      preferredJob?: string;
-      unemployedOnly: boolean;
-      shortlistContextSort: StaffSortField | null;
-      shortlistContextDir: StaffSortDir | null;
     }>,
   ) =>
     navigate({
-      search: (previous) => {
-        const nextView = patch.view ?? previous.view;
-        const nextSearchSort =
-          nextView === "search" && patch.sort !== undefined
-            ? patch.sort
-            : previous.searchSort;
-        const nextSearchDir =
-          nextView === "search" && patch.dir !== undefined
-            ? patch.dir
-            : previous.searchDir;
-        const nextMyStaffSort =
-          nextView === "my-staff" && patch.sort !== undefined
-            ? patch.sort
-            : previous.myStaffSort;
-        const nextMyStaffDir =
-          nextView === "my-staff" && patch.dir !== undefined
-            ? patch.dir
-            : previous.myStaffDir;
-        const nextShortlistSort =
-          nextView === "shortlist" && patch.sort !== undefined
-            ? patch.sort
-            : previous.shortlistSort;
-        const nextShortlistDir =
-          nextView === "shortlist" && patch.dir !== undefined
-            ? patch.dir
-            : previous.shortlistDir;
-        const nextActiveSort =
-          nextView === "search"
-            ? nextSearchSort
-            : nextView === "my-staff"
-              ? nextMyStaffSort
-              : nextShortlistSort;
-        const nextActiveDir =
-          nextView === "search"
-            ? nextSearchDir
-            : nextView === "my-staff"
-              ? nextMyStaffDir
-              : nextShortlistDir;
-        return {
-          ...previous,
-          view: nextView,
-          sort: nextActiveSort,
-          dir: nextActiveDir,
-          searchSort: nextSearchSort,
-          searchDir: nextSearchDir,
-          myStaffSort: nextMyStaffSort,
-          myStaffDir: nextMyStaffDir,
-          shortlistSort: nextShortlistSort,
-          shortlistDir: nextShortlistDir,
-          shortlistContextSort:
-            patch.shortlistContextSort !== undefined
-              ? patch.shortlistContextSort || undefined
-              : previous.shortlistContextSort,
-          shortlistContextDir:
-            patch.shortlistContextDir !== undefined
-              ? patch.shortlistContextDir || undefined
-              : previous.shortlistContextDir,
-          preferredJob:
-            patch.preferredJob !== undefined
-              ? patch.preferredJob || undefined
-              : previous.preferredJob,
-          unemployedOnly: patch.unemployedOnly ?? previous.unemployedOnly,
-          filters:
-            patch.filters !== undefined
-              ? staffFiltersForUrl(patch.filters)
-              : previous.filters,
-          combine: patch.combine ?? previous.combine,
-        };
-      },
+      search: (previous) => ({
+        ...previous,
+        sort: patch.sort ?? previous.sort,
+        dir: patch.dir ?? previous.dir,
+        searchSort: patch.sort ?? previous.searchSort,
+        searchDir: patch.dir ?? previous.searchDir,
+        filters:
+          patch.filters !== undefined
+            ? staffFiltersForUrl(patch.filters)
+            : previous.filters,
+        combine: patch.combine ?? previous.combine,
+      }),
       replace: true,
     });
 
   return (
     <>
       <header className="flex flex-col items-start gap-2">
-        <h1 className="text-headline-lg text-on-surface">Staff</h1>
-        <StaffWorkspaceTabs
-          view={view}
-          onViewChange={(nextView) => updateSearch({ view: nextView })}
-        />
+        <h1 className="text-headline-lg text-on-surface">Staff Search</h1>
       </header>
-      <div {...staffWorkspacePanelProps("search", view)}>
-        {view === "search" ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-gutter">
-            <StaffFilterBar
-              rules={filters}
-              combine={combine}
-              onRulesChange={(rules) => updateSearch({ filters: rules })}
-              onApply={(rules, nextCombine) => {
-                void updateSearch({
-                  filters: rules,
-                  combine: nextCombine,
-                }).then(() =>
-                  addColumns(
-                    "staff-search",
-                    rules.map((rule) => rule.field),
-                  ),
-                );
-              }}
+      <div className="flex min-h-0 flex-1 flex-col gap-gutter">
+        <StaffFilterBar
+          rules={filters}
+          combine={combine}
+          onRulesChange={(rules) => updateSearch({ filters: rules })}
+          onApply={(rules, nextCombine) => {
+            void updateSearch({
+              filters: rules,
+              combine: nextCombine,
+            }).then(() =>
+              addColumns(
+                "staff-search",
+                rules.map((rule) => rule.field),
+              ),
+            );
+          }}
+        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          <Suspense fallback={<StaffFallback />}>
+            <StaffSearchResultsPanel
+              activeSnapshotId={snapshot?.id ?? null}
+              sortBy={sort}
+              sortDir={dir}
+              filters={filters}
+              filterCombine={combine}
+              onSortChange={(nextSort, nextDir) =>
+                updateSearch({ sort: nextSort, dir: nextDir })
+              }
+              onRowActivate={(staff) =>
+                router.history.push(`/staff/${staff.uid}`)
+              }
             />
-            <div className="flex min-h-0 flex-1 flex-col">
-              <Suspense fallback={<StaffFallback />}>
-                <StaffSearchResultsPanel
-                  activeSnapshotId={snapshot?.id ?? null}
-                  sortBy={sort}
-                  sortDir={dir}
-                  filters={filters}
-                  filterCombine={combine}
-                  onSortChange={(nextSort, nextDir) =>
-                    updateSearch({ sort: nextSort, dir: nextDir })
-                  }
-                  onBoostSuccess={onBoostSuccess}
-                  onRowActivate={(staff) =>
-                    router.history.push(`/staff/${staff.uid}`)
-                  }
-                />
-              </Suspense>
-            </div>
-          </div>
-        ) : null}
+          </Suspense>
+        </div>
       </div>
-      <div {...staffWorkspacePanelProps("my-staff", view)}>
-        {view === "my-staff" ? (
-          <div className="flex min-h-0 flex-1 flex-col">
-            <Suspense fallback={<StaffFallback />}>
-              <StaffSearchResultsPanel
-                activeSnapshotId={snapshot?.id ?? null}
-                scope="my-staff"
-                sortBy={sort}
-                sortDir={dir}
-                filters={[]}
-                filterCombine="and"
-                onSortChange={(nextSort, nextDir) =>
-                  updateSearch({ sort: nextSort, dir: nextDir })
-                }
-                onBoostSuccess={onBoostSuccess}
-                onRowActivate={(staff) =>
-                  router.history.push(`/staff/${staff.uid}`)
-                }
-              />
-            </Suspense>
-          </div>
-        ) : null}
-      </div>
-      <div {...staffWorkspacePanelProps("shortlist", view)}>
-        {view === "shortlist" ? (
-          <div className="flex min-h-0 flex-1 flex-col gap-gutter">
-            <div className="flex flex-wrap items-center gap-4 rounded-lg border border-outline-variant bg-surface-container px-4 py-3">
-              <Button onClick={() => setImportOpen(true)}>Upload CSV</Button>
-              <label className="flex items-center gap-2 text-body-md text-on-surface">
-                Preferred Job
-                <select
-                  className="rounded-md border border-outline bg-surface px-2 py-1 text-on-surface"
-                  value={preferredJob ?? ""}
-                  onChange={(event) => {
-                    const nextPreferredJob = event.target.value;
-                    const presentation =
-                      staffShortlistPresentation(nextPreferredJob);
-                    updateSearch({
-                      preferredJob: nextPreferredJob,
-                      ...(presentation?.sort
-                        ? {
-                            shortlistContextSort: presentation.sort,
-                            shortlistContextDir: presentation.dir,
-                          }
-                        : {
-                            shortlistContextSort: null,
-                            shortlistContextDir: null,
-                          }),
-                    });
-                  }}
-                >
-                  <option value="">All jobs</option>
-                  {(shortlistPage.preferredJobOptions ?? []).map((job) => (
-                    <option key={job} value={job}>
-                      {job}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex items-center gap-2 text-body-md text-on-surface">
-                <input
-                  type="checkbox"
-                  checked={unemployedOnly}
-                  onChange={(event) =>
-                    updateSearch({ unemployedOnly: event.target.checked })
-                  }
-                />
-                Only unemployed
-              </label>
-            </div>
-            {shortlistImport?.contextKey === shortlistContextKey ? (
-              <p role="status" className="text-body-sm text-on-surface-variant">
-                Stored {shortlistImport.summary.storedStaff} of{" "}
-                {shortlistImport.summary.totalStaff} staff IDs;{" "}
-                {shortlistImport.summary.skippedStaff} skipped.
-              </p>
-            ) : null}
-            <div className="flex min-h-0 flex-1 flex-col">
-              <Suspense fallback={<StaffFallback />}>
-                <StaffSearchResultsPanel
-                  activeSnapshotId={snapshot?.id ?? null}
-                  scope="shortlist"
-                  sortBy={effectiveShortlistSort.sort}
-                  sortDir={effectiveShortlistSort.dir}
-                  filters={[]}
-                  filterCombine="and"
-                  preferredJob={preferredJob}
-                  unemployedOnly={unemployedOnly}
-                  visibleColumnIds={shortlistPresentation?.columnIds}
-                  onSortChange={(nextSort, nextDir) =>
-                    updateSearch(
-                      shortlistPresentation
-                        ? {
-                            shortlistContextSort: nextSort,
-                            shortlistContextDir: nextDir,
-                          }
-                        : { sort: nextSort, dir: nextDir },
-                    )
-                  }
-                  onRowActivate={(staff) =>
-                    router.history.push(`/staff/${staff.uid}`)
-                  }
-                />
-              </Suspense>
-            </div>
-          </div>
-        ) : null}
-      </div>
-      <StaffShortlistImportModal
-        activeSaveId={snapshot?.saveId}
-        snapshotId={snapshot?.id}
-        open={importOpen}
-        replacesExisting={shortlistPage.state !== "no_shortlist"}
-        onClose={() => setImportOpen(false)}
-        onImported={async (summary) => {
-          await queryClient.invalidateQueries({ queryKey: staffKeys.all });
-          await updateSearch({ preferredJob: "", unemployedOnly: false });
-          setShortlistImport({ contextKey: shortlistContextKey, summary });
-        }}
-      />
     </>
   );
 }

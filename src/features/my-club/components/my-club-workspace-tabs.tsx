@@ -1,13 +1,21 @@
 import type { KeyboardEvent } from "react";
 import { cn } from "@/utils/cn";
 
-export const MY_CLUB_WORKSPACES = ["squad", "planner", "tactic"] as const;
+export const MY_CLUB_WORKSPACES = [
+  "squad",
+  "planner",
+  "tactic",
+  "staff",
+  "staff-shortlist",
+] as const;
 export type MyClubWorkspace = (typeof MY_CLUB_WORKSPACES)[number];
 
 const WORKSPACE_LABELS: Record<MyClubWorkspace, string> = {
   squad: "Squad",
   planner: "Planner",
   tactic: "Tactic",
+  staff: "Staff",
+  "staff-shortlist": "Staff Shortlist",
 };
 
 export function parseMyClubWorkspace(raw: unknown): MyClubWorkspace | null {

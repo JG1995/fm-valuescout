@@ -4,7 +4,7 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { CircleAlert, DatabaseZap, UsersRound } from "lucide-react";
 import { Suspense, useRef, useState } from "react";
 import { ErrorBoundary } from "@/components/error-boundary/error-boundary";
@@ -58,11 +58,38 @@ import {
   isSquadSortField,
 } from "@/features/squad/types/squad-sort";
 import { staffKeys } from "@/features/staff/api/staff-keys";
+import {
+  staffMyStaffQueryOptions,
+  staffShortlistQueryOptions,
+} from "@/features/staff/api/staff-query-options";
+import { StaffSearchResultsPanel } from "@/features/staff/components/staff-search-results-panel";
+import type { StaffShortlistImportSummary } from "@/features/staff/components/staff-shortlist-import-modal";
+import { StaffShortlistImportModal } from "@/features/staff/components/staff-shortlist-import-modal";
+import type {
+  StaffSortDir,
+  StaffSortField,
+} from "@/features/staff/types/staff-sort";
+import {
+  DEFAULT_STAFF_SORT_FIELD,
+  defaultDirForStaffSortField,
+  isStaffShortlistSortField,
+  isStaffSortDir,
+  isStaffSortField,
+} from "@/features/staff/types/staff-sort";
+import { staffShortlistPresentation } from "@/features/staff/utils/staff-shortlist-presentation";
 
 export type MyClubSearch = {
   view?: MyClubWorkspace;
   squadSort?: SquadSortField;
   squadDir?: SquadSortDir;
+  staffSort?: StaffSortField;
+  staffDir?: StaffSortDir;
+  shortlistSort?: StaffSortField;
+  shortlistDir?: StaffSortDir;
+  shortlistContextSort?: StaffSortField;
+  shortlistContextDir?: StaffSortDir;
+  preferredJob?: string;
+  unemployedOnly?: boolean;
 };
 
 function squadSortForSearch(search: MyClubSearch): {
@@ -80,15 +107,111 @@ function squadSortForSearch(search: MyClubSearch): {
   return { sort, dir };
 }
 
+function staffSortForSearch(search: MyClubSearch): {
+  sort: StaffSortField;
+  dir: StaffSortDir;
+} {
+  const sort = isStaffSortField(search.staffSort)
+    ? search.staffSort
+    : DEFAULT_STAFF_SORT_FIELD;
+  const dir = isStaffSortDir(search.staffDir)
+    ? search.staffDir
+    : defaultDirForStaffSortField(sort);
+  return { sort, dir };
+}
+
+function shortlistSortForSearch(search: MyClubSearch): {
+  sort: StaffSortField;
+  dir: StaffSortDir;
+} {
+  const sort = isStaffShortlistSortField(search.shortlistSort)
+    ? search.shortlistSort
+    : DEFAULT_STAFF_SORT_FIELD;
+  const dir = isStaffSortDir(search.shortlistDir)
+    ? search.shortlistDir
+    : defaultDirForStaffSortField(sort);
+  return { sort, dir };
+}
+
 type SquadBoostMutationVariables = {
   snapshotId: number;
   onProgress: (progress: SquadPlayerBoostProgress) => void;
 };
 
+type MyClubStaffSearchPatch = {
+  staffSort?: StaffSortField;
+  staffDir?: StaffSortDir;
+  shortlistSort?: StaffSortField;
+  shortlistDir?: StaffSortDir;
+  shortlistContextSort?: StaffSortField | null;
+  shortlistContextDir?: StaffSortDir | null;
+  preferredJob?: string;
+  unemployedOnly?: boolean;
+};
+
 export const Route = createFileRoute("/my-club")({
-  loaderDeps: ({ search }) => squadSortForSearch(search),
-  loader: ({ context: { queryClient }, deps: { sort, dir } }) =>
-    Promise.all([
+  loaderDeps: ({ search }) => {
+    const { sort, dir } = squadSortForSearch(search);
+    const staff = staffSortForSearch(search);
+    const shortlist = shortlistSortForSearch(search);
+    return {
+      view: parseMyClubWorkspace(search.view) ?? "squad",
+      sort,
+      dir,
+      staffSort: staff.sort,
+      staffDir: staff.dir,
+      shortlistSort: shortlist.sort,
+      shortlistDir: shortlist.dir,
+      preferredJob: search.preferredJob,
+      unemployedOnly: search.unemployedOnly === true,
+    };
+  },
+  loader: ({
+    context: { queryClient },
+    deps: {
+      view,
+      sort,
+      dir,
+      staffSort,
+      staffDir,
+      shortlistSort,
+      shortlistDir,
+      preferredJob,
+      unemployedOnly,
+    },
+  }) => {
+    const staffQuery =
+      view === "staff"
+        ? queryClient.ensureQueryData(
+            staffMyStaffQueryOptions(0, undefined, staffSort, staffDir, []),
+          )
+        : view === "staff-shortlist"
+          ? Promise.all([
+              queryClient.ensureQueryData(
+                staffShortlistQueryOptions(
+                  0,
+                  undefined,
+                  shortlistSort,
+                  shortlistDir,
+                  preferredJob,
+                  unemployedOnly,
+                  [],
+                ),
+              ),
+              queryClient.ensureQueryData(
+                staffShortlistQueryOptions(
+                  0,
+                  1,
+                  "ca",
+                  "desc",
+                  undefined,
+                  false,
+                  [],
+                ),
+              ),
+            ])
+          : Promise.resolve();
+    return Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(managedClubQueryOptions),
       queryClient.prefetchQuery(managedClubOptionsQueryOptions),
@@ -98,7 +221,9 @@ export const Route = createFileRoute("/my-club")({
       queryClient.ensureQueryData(
         squadPlayersQueryOptions(0, undefined, sort, dir),
       ),
-    ]),
+      staffQuery,
+    ]);
+  },
   validateSearch: (search: Record<string, unknown>): MyClubSearch => {
     const view = parseMyClubWorkspace(search.view);
     const squadSort = isSquadSortField(search.squadSort)
@@ -107,10 +232,42 @@ export const Route = createFileRoute("/my-club")({
     const squadDir = isSquadSortDir(search.squadDir)
       ? search.squadDir
       : undefined;
+    const staffSort = isStaffSortField(search.staffSort)
+      ? search.staffSort
+      : undefined;
+    const staffDir = isStaffSortDir(search.staffDir)
+      ? search.staffDir
+      : undefined;
+    const shortlistSort = isStaffShortlistSortField(search.shortlistSort)
+      ? search.shortlistSort
+      : undefined;
+    const shortlistDir = isStaffSortDir(search.shortlistDir)
+      ? search.shortlistDir
+      : undefined;
+    const shortlistContextSort = isStaffShortlistSortField(
+      search.shortlistContextSort,
+    )
+      ? search.shortlistContextSort
+      : undefined;
+    const shortlistContextDir = isStaffSortDir(search.shortlistContextDir)
+      ? search.shortlistContextDir
+      : undefined;
+    const preferredJob =
+      typeof search.preferredJob === "string" && search.preferredJob
+        ? search.preferredJob
+        : undefined;
     return {
       ...(view ? { view } : {}),
       ...(squadSort ? { squadSort } : {}),
       ...(squadDir ? { squadDir } : {}),
+      ...(staffSort ? { staffSort } : {}),
+      ...(staffDir ? { staffDir } : {}),
+      ...(shortlistSort ? { shortlistSort } : {}),
+      ...(shortlistDir ? { shortlistDir } : {}),
+      ...(shortlistContextSort ? { shortlistContextSort } : {}),
+      ...(shortlistContextDir ? { shortlistContextDir } : {}),
+      ...(preferredJob ? { preferredJob } : {}),
+      ...(search.unemployedOnly === true ? { unemployedOnly: true } : {}),
     };
   },
   component: MyClubPage,
@@ -204,8 +361,42 @@ function MyClubPageContent() {
   const { view } = search;
   const { sort: squadSort, dir: squadDir } = squadSortForSearch(search);
   const navigate = Route.useNavigate();
+  const router = useRouter();
   const requestedWorkspace = parseMyClubWorkspace(view);
   const activeWorkspace = requestedWorkspace ?? "squad";
+  const { sort: staffSort, dir: staffDir } = staffSortForSearch(search);
+  const { sort: shortlistSort, dir: shortlistDir } =
+    shortlistSortForSearch(search);
+  const shortlistPresentation = staffShortlistPresentation(search.preferredJob);
+  const shortlistSortIsVisible =
+    !shortlistPresentation ||
+    shortlistPresentation.columnIds.includes(shortlistSort);
+  const shortlistContextSortIsVisible =
+    shortlistPresentation &&
+    search.shortlistContextSort &&
+    search.shortlistContextDir &&
+    shortlistPresentation.columnIds.includes(search.shortlistContextSort);
+  const effectiveShortlistSort = shortlistPresentation
+    ? shortlistContextSortIsVisible &&
+      search.shortlistContextSort &&
+      search.shortlistContextDir
+      ? {
+          sort: search.shortlistContextSort,
+          dir: search.shortlistContextDir,
+        }
+      : shortlistPresentation.sort
+        ? {
+            sort: shortlistPresentation.sort,
+            dir: shortlistPresentation.dir,
+          }
+        : shortlistSortIsVisible
+          ? { sort: shortlistSort, dir: shortlistDir }
+          : { sort: "ca", dir: "desc" as const }
+    : { sort: shortlistSort, dir: shortlistDir };
+  const [shortlistImport, setShortlistImport] = useState<
+    { contextKey: string; summary: StaffShortlistImportSummary } | undefined
+  >();
+  const shortlistContextKey = `${snapshot?.saveId ?? "none"}:${snapshot?.id ?? "none"}`;
   const squadCurrentAbilityBoostContextIsCurrent =
     squadCurrentAbilityBoost.variables?.snapshotId === snapshot?.id;
   const squadWonderkidMentalityBoostContextIsCurrent =
@@ -263,6 +454,72 @@ function MyClubPageContent() {
       replace: true,
     });
   };
+  const updateStaffSearch = (patch: MyClubStaffSearchPatch) =>
+    navigate({
+      search: (previous) => ({
+        ...previous,
+        ...(patch.staffSort ? { staffSort: patch.staffSort } : {}),
+        ...(patch.staffDir ? { staffDir: patch.staffDir } : {}),
+        ...(patch.shortlistSort ? { shortlistSort: patch.shortlistSort } : {}),
+        ...(patch.shortlistDir ? { shortlistDir: patch.shortlistDir } : {}),
+        shortlistContextSort:
+          patch.shortlistContextSort !== undefined
+            ? patch.shortlistContextSort || undefined
+            : previous.shortlistContextSort,
+        shortlistContextDir:
+          patch.shortlistContextDir !== undefined
+            ? patch.shortlistContextDir || undefined
+            : previous.shortlistContextDir,
+        preferredJob:
+          patch.preferredJob !== undefined
+            ? patch.preferredJob || undefined
+            : previous.preferredJob,
+        unemployedOnly:
+          patch.unemployedOnly ?? previous.unemployedOnly ?? false,
+      }),
+      replace: true,
+    });
+  const onStaffSortChange = (
+    nextSort: StaffSortField,
+    nextDir: StaffSortDir,
+  ) => {
+    void updateStaffSearch({ staffSort: nextSort, staffDir: nextDir });
+  };
+  const onShortlistSortChange = (
+    nextSort: StaffSortField,
+    nextDir: StaffSortDir,
+  ) => {
+    void updateStaffSearch(
+      shortlistPresentation
+        ? {
+            shortlistContextSort: nextSort,
+            shortlistContextDir: nextDir,
+          }
+        : { shortlistSort: nextSort, shortlistDir: nextDir },
+    );
+  };
+  const onPreferredJobChange = (nextPreferredJob: string) => {
+    const presentation = staffShortlistPresentation(nextPreferredJob);
+    void updateStaffSearch({
+      preferredJob: nextPreferredJob,
+      ...(presentation?.sort
+        ? {
+            shortlistContextSort: presentation.sort,
+            shortlistContextDir: presentation.dir,
+          }
+        : {
+            shortlistContextSort: null,
+            shortlistContextDir: null,
+          }),
+    });
+  };
+  const onShortlistImported = async (summary: StaffShortlistImportSummary) => {
+    await queryClient.invalidateQueries({ queryKey: staffKeys.all });
+    await updateStaffSearch({ preferredJob: "", unemployedOnly: false });
+    setShortlistImport({ contextKey: shortlistContextKey, summary });
+  };
+  const onStaffBoostSuccess = () =>
+    queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
   const myClubHeader = (
     <header className="flex flex-col items-start gap-2">
       <div className="flex w-full flex-wrap items-start justify-between gap-3">
@@ -455,6 +712,167 @@ function MyClubPageContent() {
           options={tacticOptions}
         />
       </div>
+      <div
+        {...myClubWorkspacePanelProps("staff", activeWorkspace)}
+        className="min-h-0 flex-1 flex-col"
+      >
+        <Suspense fallback={<StaffWorkspaceFallback />}>
+          <StaffSearchResultsPanel
+            activeSnapshotId={snapshot.id}
+            scope="my-staff"
+            sortBy={staffSort}
+            sortDir={staffDir}
+            filters={[]}
+            filterCombine="and"
+            onSortChange={onStaffSortChange}
+            onBoostSuccess={onStaffBoostSuccess}
+            onRowActivate={(staff) =>
+              router.history.push(`/staff/${staff.uid}`)
+            }
+          />
+        </Suspense>
+      </div>
+      <div
+        {...myClubWorkspacePanelProps("staff-shortlist", activeWorkspace)}
+        className="min-h-0 flex-1 flex-col"
+      >
+        <Suspense fallback={<StaffWorkspaceFallback />}>
+          <MyClubStaffShortlistWorkspace
+            activeSaveId={snapshot.saveId}
+            snapshotId={snapshot.id}
+            shortlistContextKey={shortlistContextKey}
+            shortlistImport={shortlistImport}
+            preferredJob={search.preferredJob}
+            unemployedOnly={search.unemployedOnly === true}
+            shortlistPageSort={effectiveShortlistSort.sort}
+            shortlistPageDir={effectiveShortlistSort.dir}
+            shortlistPresentation={shortlistPresentation}
+            onPreferredJobChange={onPreferredJobChange}
+            onUnemployedOnlyChange={(value) =>
+              void updateStaffSearch({ unemployedOnly: value })
+            }
+            onSortChange={onShortlistSortChange}
+            onImported={onShortlistImported}
+            onRowActivate={(staff) =>
+              router.history.push(`/staff/${staff.uid}`)
+            }
+          />
+        </Suspense>
+      </div>
+    </div>
+  );
+}
+
+function StaffWorkspaceFallback() {
+  return (
+    <div
+      className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant"
+      aria-busy="true"
+    >
+      Loading staff…
+    </div>
+  );
+}
+
+function MyClubStaffShortlistWorkspace({
+  activeSaveId,
+  snapshotId,
+  shortlistContextKey,
+  shortlistImport,
+  preferredJob,
+  unemployedOnly,
+  shortlistPageSort,
+  shortlistPageDir,
+  shortlistPresentation,
+  onPreferredJobChange,
+  onUnemployedOnlyChange,
+  onSortChange,
+  onImported,
+  onRowActivate,
+}: {
+  activeSaveId: number;
+  snapshotId: number;
+  shortlistContextKey: string;
+  shortlistImport?: {
+    contextKey: string;
+    summary: StaffShortlistImportSummary;
+  };
+  preferredJob?: string;
+  unemployedOnly: boolean;
+  shortlistPageSort: StaffSortField;
+  shortlistPageDir: StaffSortDir;
+  shortlistPresentation: ReturnType<typeof staffShortlistPresentation>;
+  onPreferredJobChange: (preferredJob: string) => void;
+  onUnemployedOnlyChange: (value: boolean) => void;
+  onSortChange: (sort: StaffSortField, dir: StaffSortDir) => void;
+  onImported: (summary: StaffShortlistImportSummary) => Promise<void>;
+  onRowActivate: (staff: { uid: number }) => void;
+}) {
+  const [importOpen, setImportOpen] = useState(false);
+  const { data: shortlistPage } = useSuspenseQuery(
+    staffShortlistQueryOptions(0, 1, "ca", "desc", undefined, false, []),
+  );
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-gutter">
+      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-outline-variant bg-surface-container px-4 py-3">
+        <Button onClick={() => setImportOpen(true)}>Upload CSV</Button>
+        <label className="flex items-center gap-2 text-body-md text-on-surface">
+          Preferred Job
+          <select
+            className="rounded-md border border-outline bg-surface px-2 py-1 text-on-surface"
+            value={preferredJob ?? ""}
+            onChange={(event) => onPreferredJobChange(event.target.value)}
+          >
+            <option value="">All jobs</option>
+            {(shortlistPage.preferredJobOptions ?? []).map((job) => (
+              <option key={job} value={job}>
+                {job}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-body-md text-on-surface">
+          <input
+            type="checkbox"
+            checked={unemployedOnly}
+            onChange={(event) => onUnemployedOnlyChange(event.target.checked)}
+          />
+          Only unemployed
+        </label>
+      </div>
+      {shortlistImport?.contextKey === shortlistContextKey ? (
+        <p role="status" className="text-body-sm text-on-surface-variant">
+          Stored {shortlistImport.summary.storedStaff} of{" "}
+          {shortlistImport.summary.totalStaff} staff IDs;{" "}
+          {shortlistImport.summary.skippedStaff} skipped.
+        </p>
+      ) : null}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Suspense fallback={<StaffWorkspaceFallback />}>
+          <StaffSearchResultsPanel
+            activeSnapshotId={snapshotId}
+            scope="shortlist"
+            sortBy={shortlistPageSort}
+            sortDir={shortlistPageDir}
+            filters={[]}
+            filterCombine="and"
+            preferredJob={preferredJob}
+            unemployedOnly={unemployedOnly}
+            visibleColumnIds={shortlistPresentation?.columnIds}
+            onSortChange={onSortChange}
+            onRowActivate={onRowActivate}
+          />
+        </Suspense>
+      </div>
+      <StaffShortlistImportModal
+        activeSaveId={activeSaveId}
+        snapshotId={snapshotId}
+        open={importOpen}
+        replacesExisting={shortlistPage.state !== "no_shortlist"}
+        onClose={() => setImportOpen(false)}
+        onImported={onImported}
+      />
     </div>
   );
 }

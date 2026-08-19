@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -45,11 +45,11 @@ Implement Linear JAY-25 by giving every managed-club player and staff workflow o
 
 ## Current-state map
 
-- Relevant components: `src/app/routes/my-club.tsx` composes Squad, Planner, Tactic, and the managed-club selector; `src/app/routes/staff.tsx` composes Search, My Staff, Shortlist, and the `/staff/$uid` outlet; `src/app/routes/settings.tsx` composes Save data and Bridge; `src/app/components/app-nav-rail.tsx` links Search, Staff, and My Club as separate top-level items.
-- Relevant feature UI: `src/features/managed-club/components/managed-club-selector.tsx`, `src/features/my-club/components/my-club-workspace-tabs.tsx`, `src/features/staff/components/staff-workspace-tabs.tsx`, `src/features/staff/components/staff-search-results-panel.tsx`, `src/features/squad/components/squad-overview-panel.tsx`, `src/features/planner/components/planner-depth-matrix.tsx`, and `src/features/planner/components/planner-tactic-editor.tsx`.
-- Route state: `/my-club` owns `view`, Squad `squadSort`, and Squad `squadDir`; `/staff` owns three independent table-sort pairs plus Search filters and Shortlist filters; workspace controls replace search state. `/settings#managed-club` replaces itself with `/my-club#managed-club`.
-- Recovery links: Squad, My Staff, and Youth Academy target `/my-club#managed-club`; My Club owns the selector and its downstream invalidation callback.
-- Data model: migration v29 stores one optional exact `managed_club_settings.club_name` per save. Squad, Planner, Academy, and My Staff read exact current-snapshot cohorts. Staff Shortlist remains in save-owned `staff_shortlist_entries` and joins current staff by UID.
+- Relevant components: `src/app/routes/my-club.tsx` composes Squad, Planner, Tactic, Staff, Staff Shortlist, and the managed-club selector; `src/app/routes/staff.tsx` composes Staff Search and the `/staff/$uid` outlet; `src/app/routes/settings.tsx` composes Save data and Bridge; `src/app/components/app-nav-rail.tsx` links Player Search, Staff Search, and My Club as separate top-level items.
+- Relevant feature UI: `src/features/managed-club/components/managed-club-selector.tsx`, `src/features/my-club/components/my-club-workspace-tabs.tsx`, `src/features/staff/components/staff-search-results-panel.tsx`, `src/features/squad/components/squad-overview-panel.tsx`, `src/features/planner/components/planner-depth-matrix.tsx`, and `src/features/planner/components/planner-tactic-editor.tsx`.
+- Route state: `/my-club` owns `view`, independent Squad and Staff sort pairs, and Staff Shortlist sort, context, Preferred Job, and unemployment state; `/staff` owns Staff Search filters, combine mode, and sort state. Workspace controls replace search state. `/settings#managed-club` replaces itself with `/my-club#managed-club`.
+- Recovery links: Squad, managed-club Staff, and Youth Academy target `/my-club#managed-club`; My Club owns the selector and its downstream invalidation callback.
+- Data model: migration v29 stores one optional exact `managed_club_settings.club_name` per save. Squad, Planner, Academy, and managed-club Staff read exact current-snapshot cohorts. Staff Shortlist remains in save-owned `staff_shortlist_entries` and joins current staff by UID.
 - Persistence and migrations: no persistence or migration change is required. Existing save, snapshot, tactic, string, assignment, table-layout, shortlist, and club-selection state remains in place.
 - Existing behavioral assumptions: `/planner` defaults to Squad and keeps Planner and Tactic mounted; the Squad table and staff tables keep independent Zustand layouts; staff profile links push `/staff/$uid`; the Staff Shortlist modal suppresses stale context results.
 - Architectural seams: TanStack Router owns validated shareable state and compatibility redirects; TanStack Query owns IPC cache and invalidation; route files compose features; Rust and SQLite remain unchanged.
@@ -60,7 +60,7 @@ Implement Linear JAY-25 by giving every managed-club player and staff workflow o
 
 `src/app/routes/my-club.tsx` becomes the sole My Club route, URL-state owner, and cross-feature composition seam. It validates a compact `MyClubSearch` contract with an optional workspace plus separate optional Squad, Staff, and Staff Shortlist sort pairs. It derives defaults without serializing every inactive workspace default, replaces search state on workspace and sort changes, and directly composes the existing feature components as thin route wiring.
 
-`MyClubWorkspaceTabs` lives in `src/features/my-club/components/`, owns the five accessible tabs and keyboard traversal, and imports no sibling feature. The route composes the existing Squad, Planner, Tactic, managed-club, My Staff, and Shortlist feature components while preserving their query, mutation, hidden-panel, and focus behavior. No route-specific product component moves into `src/app/components/`, and no feature imports another feature.
+`MyClubWorkspaceTabs` lives in `src/features/my-club/components/`, owns the five accessible tabs and keyboard traversal, and imports no sibling feature. The route composes the existing Squad, Planner, Tactic, managed-club, Staff, and Staff Shortlist feature components while preserving their query, mutation, hidden-panel, and focus behavior. No route-specific product component moves into `src/app/components/`, and no feature imports another feature.
 
 The managed-club feature keeps its existing Query and mutation adapters. Its former Settings panel is now a compact `ManagedClubSelector` in the My Club header with the stable `managed-club` anchor. On save, the selector refreshes managed-club state and the route invalidates Planner (including Squad), Staff, and Academy state through their established query roots. Settings continues to invalidate managed-club state when save or effective-snapshot management changes, but it no longer renders the selector.
 
@@ -115,7 +115,7 @@ Commit 1 creates canonical `/my-club`, moves the existing Squad, Planner, and Ta
 
 ### PR 1 — Unify managed-club workspaces
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -336,7 +336,7 @@ Commit 1 creates canonical `/my-club`, moves the existing Squad, Planner, and Ta
 
 #### Commit 3 — Move club staff views into My Club
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(club): move club staff views into My Club`
 
@@ -366,10 +366,9 @@ Commit 1 creates canonical `/my-club`, moves the existing Squad, Planner, and Ta
 - `src/app/routes/staff.tsx` — Search-only canonical page, exact-path legacy redirects, and unchanged profile outlet behavior.
 - `src/app/routes/search.tsx` — visible **Player Search** heading only; no path or query change.
 - `src/app/components/app-nav-rail.tsx` — visible **Player Search** and **Staff Search** labels while keeping their existing destinations and icons.
-- `src/features/staff/components/staff-search-results-panel.tsx` — user-facing managed-club Staff titles and recovery copy only; keep API scope and table identifiers.
+- `src/features/staff/components/staff-search-results-panel.tsx` and `src/features/staff/components/my-staff-ca-boost.tsx` — user-facing managed-club Staff titles and recovery copy only; keep API scope and table identifiers.
 - `src/features/staff/components/staff-workspace-tabs.tsx` and `src/features/planner/components/planner-workspace-tabs.tsx` — remove when no caller remains.
-- `src/app/routes/my-club-staff.test.tsx` — moved My Staff and Shortlist behavior, independent URL state, imports, boosts, empty states, profile Back, and table-layout persistence.
-- `src/app/routes/staff.test.tsx` — Search-only route behavior, filters, columns, profiles, and absence of club tabs.
+- `src/app/routes/staff.test.tsx` — Staff Search behavior plus canonical My Club Staff and Staff Shortlist behavior, independent URL state, boosts, empty states, profile Back, and table-layout persistence.
 - `src/app/routes/legacy-club-routes.test.tsx` — My Staff/Shortlist mapping, filters, replacement history, and profile-route exclusion.
 - `src/app/routes/search.test.tsx` and `src/app/app-shell-routing.test.tsx` — accepted headings, nav labels, paths, and active states.
 - `e2e/smoke.spec.ts` — canonical My Club Staff/Shortlist flows, Staff Search isolation, legacy links, profile Back, keyboard tabs, imports, boosts, long-table containment, and final viewport fit.
@@ -378,7 +377,7 @@ Commit 1 creates canonical `/my-club`, moves the existing Squad, Planner, and Ta
 **Behavior and data flow:**
 
 - `/my-club?view=staff` renders `StaffSearchResultsPanel` with internal scope `my-staff`, current snapshot context, its established table layout, and the existing managed-club bulk boost.
-- `/my-club?view=staff-shortlist` renders the same save-owned Shortlist query, filters, contextual score columns, upload modal, context-bound feedback, and profile links now used at `/staff?view=shortlist`.
+- `/my-club?view=staff-shortlist` renders the same save-owned Shortlist query, filters, contextual score columns, upload modal, context-bound feedback, and profile links formerly used at `/staff?view=shortlist`.
 - The My Club route stores independent sort state for Squad, Staff, and Staff Shortlist. Tab changes preserve all keys and replace the current history entry.
 - `/staff` always renders Staff Search. Its filters, combine mode, sort state, table layout, profile links, loader, and child outlet remain in place.
 - Exact legacy Staff workspace URLs map once to My Club. `/staff/$uid` bypasses this mapping, so direct profile loads and browser Back remain reliable.
@@ -405,7 +404,7 @@ Commit 1 creates canonical `/my-club`, moves the existing Squad, Planner, and Ta
 **Patterns to verify:**
 
 - `src/app/routes/staff.tsx` for independent per-view URL state, Shortlist presentation, context-key suppression, bulk refresh, profile history, and child outlet handling.
-- `src/features/staff/components/staff-workspace-tabs.tsx` and Planner tabs for keyboard behavior to consolidate in the feature-owned five-tab control.
+- The former Staff workspace-tab component and Planner tabs for keyboard behavior to consolidate in the feature-owned five-tab control.
 - `src/features/staff/components/staff-search-results-panel.tsx` for internal scopes, stable table IDs, managed-club boost behavior, and empty-state ownership.
 - `src/app/routes/search.tsx` for the standalone Player Search route, whose behavior and path must remain unchanged.
 - Staff and Planner route suites plus `e2e/smoke.spec.ts` for table containment, focus, imports, boosts, state restoration, and existing viewport loops.
@@ -441,23 +440,7 @@ Commit 1 creates canonical `/my-club`, moves the existing Squad, Planner, and Ta
 
 ## Active work
 
-**PR:** PR 1 — Unify managed-club workspaces
-
-**Commit:** Commit 3 — Move club staff views into My Club
-
-### RED proof
-
-Add failing My Club Staff and Staff Shortlist, Search-only Staff, naming, legacy redirect, independent state, profile Back, and shortlist-scope tests. They must fail because the staff workspaces are still owned by `/staff` and the final My Club tab shell does not yet expose them.
-
-### Expected outcome
-
-My Club owns five URL-backed workspaces in the agreed order, Staff and Staff Shortlist retain their existing behavior and internal identifiers under the canonical route, `/staff` remains Staff Search with its profile outlet, and legacy staff workspace links replace into My Club without losing applicable state.
-
-### Explicit exclusions
-
-- Staff Search, Player Search, Youth Academy, Dashboard, and profile-path relocation.
-- Managed-club filtering of Staff Shortlist or changes to staff persistence, scoring, table layouts, imports, boosts, or query scopes.
-- Backend, persistence, scoring, query-key, stored-layout, IPC, or capability changes.
+No active commit remains. PR 1 is implementation-complete and ready for publication. Feature close-out has not run.
 
 ## Discoveries and replanning
 
@@ -466,6 +449,8 @@ My Club owns five URL-backed workspaces in the agreed order, Staff and Staff Sho
 - No product or structural question blocks Commit 1. Visual fit remains an automated and native validation concern.
 - Commit 1 review found that legacy direction-only sort state could be dropped by the compatibility mapper. The mapper now preserves a valid `dir` as canonical `squadDir`, with regression coverage for absent and invalid legacy sort fields.
 - Commit 2 review found that a throwing managed-club options preload bypassed the route-local retry boundary. The My Club loader now prefetches that optional query, and a regression proves scoped error recovery; the selector remains the sole owner and Settings remains limited to Save data and Bridge.
+- Commit 3 implementation kept the stable `my-staff` and `staff-shortlist` scopes/table IDs while moving visible Staff and Staff Shortlist composition into My Club; exact `/staff` redirects remain limited to the parent path so `/staff/$uid` profiles are not intercepted.
+- Commit 3 review found that standalone Staff Search sorting updated canonical `sort`/`dir` fields while leaving validated compatibility fields stale. The route now synchronizes both sort pairs, and a regression proves URL state and the visible ascending sort stay aligned.
 
 ## Completed work
 
@@ -473,14 +458,17 @@ My Club owns five URL-backed workspaces in the agreed order, Staff and Staff Sho
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Commit 1 — Move squad planning into My Club | Pending record | Canonical My Club route, mounted Squad/Planner/Tactic workspaces, typed `/planner` compatibility redirect, nav and current-state docs | Sol Medium clean after one bounded compatibility correction | None |
 | PR 1 | Commit 2 — Move managed-club selection into My Club | Pending record | My Club header selector with explicit Save, missing-club and scoped retry states; Settings reduced to Save data and Bridge; canonical recovery links and legacy Settings-anchor redirect; current-state docs | Sol Medium clean after two bounded corrections: scope managed-club option failures to the selector boundary and reconcile the stale Academy ownership sentence | None |
-| PR 1 | Commit 3 — Move club staff views into My Club | Pending record | Pending | Pending | None |
+| PR 1 | Commit 3 — Move club staff views into My Club | Pending record | Five-tab My Club shell with managed-club Staff and save-owned Staff Shortlist, Search-only `/staff`, visible recruitment naming, exact legacy redirects, stable internal scopes/table IDs, and reconciled route/product docs | Sol Medium clean after one bounded Staff Search sort-state correction | None |
 
 ## Final validation
 
-- `./scripts/dev test` — full frontend behavior suite, including canonical routes, compatibility redirects, table state, profiles, imports, boosts, Planner/Tactic persistence, and managed-club lifecycle.
-- `./scripts/dev check` — Biome, TypeScript, secretlint, Rust format, Clippy, and Rust tests through the stable repository gate.
-- `./scripts/dev smoke` — full Chromium product suite with canonical My Club paths and 1280×800 and 1600×900 coverage for the final header, selector, tables, Planner, Tactic, Staff, and Staff Shortlist.
-- `git diff --check` — no whitespace errors in the complete working change; feature completion must also review the exact recorded implementation range.
+- `./scripts/dev test src/app/routes/my-club-squad.test.tsx` — 99 tests passed.
+- `./scripts/dev test src/app/routes/staff.test.tsx` — 22 tests passed.
+- `./scripts/dev test src/app/routes/legacy-club-routes.test.tsx` — 7 tests passed.
+- `./scripts/dev test` — 495 of 497 tests passed. Two unrelated release-script tests failed while parsing empty JSON output: `scripts/release-metadata.test.ts` and `scripts/release-publication-policy.test.ts`. Commit 3 does not touch those scripts.
+- `./scripts/dev check` — passed: Biome, TypeScript, secretlint, Rust format, Clippy, and 481 Rust tests passed with 2 ignored.
+- `./scripts/dev smoke` — 45 Chromium tests passed, including 1280×800 and 1600×900 coverage for the final header, selector, tables, Planner, Tactic, Staff, and Staff Shortlist.
+- `git diff --cached --check` — no whitespace errors in the staged change.
 - Manual native Tauri/WebView pass when a desktop runtime is available: direct and legacy routes, five-tab keyboard traversal, selector focus/save, unsaved tactic draft retention, staff and player profile Back, expanded/collapsed rail, and no document-level scrolling at 1280×800 and 1600×900. If unavailable, record the gap and do not claim it passed.
 - Confirm no migration, IPC, capability, dependency, release metadata, or backend file changed. Confirm `./scripts/dev mutate` remains unsupported and is not reported as passed.
 

@@ -170,7 +170,7 @@ function SearchPageContent() {
 function SearchPage() {
   return (
     <div className="flex h-full min-w-0 flex-col gap-gutter">
-      <h1 className="text-headline-lg text-on-surface">Search</h1>
+      <h1 className="text-headline-lg text-on-surface">Player Search</h1>
       <Suspense fallback={<PanelFallback />}>
         <SearchPageContent />
       </Suspense>
