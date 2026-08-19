@@ -88,13 +88,13 @@ The feature extends Linear JAY-19 with the agreed Search workspace and app-wide 
   - src/features/csv-import/components/squad-csv-import-modal.tsx and src/features/csv-import/utils/use-csv-import.ts own the context-bound picker, native drop, import result, and Youth invalidation.
   - src/app/routes/settings.tsx currently contains Save data and Bridge sections.
 - Data model:
-  - Schema v29 stores player_moneyball_stats by snapshot_id and player_uid with asking-price context, starts, substitute appearances, minutes, one exact 138-key statistics_json object, and import time.
+  - Schema v30 stores player_moneyball_stats by snapshot_id and player UID with asking-price context, starts, substitute appearances, minutes, one exact 138-key statistics_json object, an exact nullable 138-key percentiles_json object, and import time. Existing v29 rows retain null percentiles_json.
   - The v17 player_moneyball_stats_legacy quarantine remains save-owned, unread, and intentionally detached from current snapshots.
-  - Current rows contain no percentile object or import-cohort marker.
+  - A non-null percentiles_json identifies a complete scored import cohort; pre-feature rows remain unscored until a replacement import.
 - Persistence and migrations:
   - src-tauri/src/db/migrations.rs owns ordered PRAGMA user_version migrations and upgrade tests.
-  - src-tauri/src/features/csv_import/service.rs captures save and snapshot tokens plus the current UID set, parses outside the database lock, revalidates inside a transaction, and currently upserts only included matching Moneyball players.
-  - Current re-import behavior leaves omitted current-snapshot players in player_moneyball_stats, so it cannot define an exact active comparison cohort.
+  - src-tauri/src/features/csv_import/service.rs captures save and snapshot tokens plus the current UID set, parses and calculates matched Moneyball percentiles outside the database lock, revalidates inside a transaction, and atomically replaces only the captured snapshot's cohort.
+  - A successful Moneyball re-import removes omitted current-snapshot players while preserving other snapshots and the legacy quarantine.
 - Existing behavioral assumptions:
   - Moneyball parsing is bounded, null-preserving, and exact-UID-only.
   - src-tauri/src/features/csv_import/statistics.rs already produces the exact 138 canonical exported-or-derived statistics and pins their spelling through moneyball_canonical_statistics.txt.
@@ -266,7 +266,7 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 #### Commit 1 — Persist Moneyball percentile cohorts
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** feat(import): persist Moneyball percentile cohorts
 
@@ -364,7 +364,7 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 #### Commit 2 — Add the Moneyball Player Profile view
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** feat(profile): add Moneyball analysis view
 
@@ -773,22 +773,21 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 **PR:** PR 1 — Optional Moneyball analysis views
 
-**Commit:** Commit 1 — Persist Moneyball percentile cohorts
+**Commit:** Commit 2 — Add the Moneyball Player Profile view
 
 ### RED proof
 
-Add a Rust service test that seeds two current-snapshot Moneyball rows, imports a valid replacement containing only one matched player, and asserts the omitted player no longer exists while a row on an older snapshot remains. Add pure percentile assertions showing null values are excluded, one/non-varying populations receive 50, and a skipped unknown UID cannot change a matched player's score. The current implementation fails because it upserts included players, has no percentile engine, and has no percentiles_json column.
+Add Rust query and command tests for active-current Moneyball selection, no row, pre-feature unscored row, scored-row decoding, unknown UID rejection, and older-snapshot isolation. Add the first Profile route test proving view=moneyball is currently normalized away while General remains unchanged.
 
 ### Expected outcome
 
-Schema v30 preserves existing rows with null percentile provenance. Every new successful Moneyball import prepares a matched-only 138-metric percentile cohort outside the database lock and atomically replaces only the captured current snapshot's Moneyball rows. Youth import and every failure path retain their existing behavior.
+A current player's Moneyball profile reads only a complete scored row from the active save's effective current snapshot and renders raw values plus persisted full-import percentiles in a validated optional workspace. General profile behavior remains unchanged.
 
 ### Explicit exclusions
 
-- No React or IPC read model.
-- No Search or Profile view.
-- No upload relocation.
-- No filtered-result calculation.
+- No Moneyball Search, filtered-result percentiles, or table columns.
+- No Moneyball upload relocation.
+- No persisted default-view preference; an absent explicit view remains General.
 - No JAY-20 composite scoring.
 
 ## Discoveries and replanning
@@ -806,7 +805,7 @@ Schema v30 preserves existing rows with null percentile provenance. Every new su
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | None | Pending record | Planning only | Not run | None |
+| PR 1 — Optional Moneyball analysis views | Commit 1 — Persist Moneyball percentile cohorts | Pending record | Added v30 score storage, matched-only percentile preparation, and atomic current-snapshot cohort replacement. | Sol Medium accepted after one stale-cohort preservation coverage correction. | None |
 
 ## Final validation
 

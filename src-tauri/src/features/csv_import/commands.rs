@@ -40,7 +40,7 @@ pub(crate) fn import_csv_for_path_with_expected_format(
         let conn = db.0.lock().map_err(|_| CsvPersistenceError::Database)?;
         capture_import_context(&conn)?
     };
-    let import = prepare_csv_import_for_expected_format(path, expected_format)?;
+    let import = prepare_csv_import_for_expected_format(path, &context, expected_format)?;
     let mut conn = db.0.lock().map_err(|_| CsvPersistenceError::Database)?;
     persist_csv_import(&mut conn, &context, import)
 }
