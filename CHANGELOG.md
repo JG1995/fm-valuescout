@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-19
+
+### Added
+
+- My Club now provides URL-backed Squad, Planner, Tactic, Staff, and Staff Shortlist workspaces for the selected managed club.
+
+### Changed
+
+- Managed-club selection now lives in My Club, while Settings remains focused on save, snapshot, and bridge management.
+- Player Search and Staff Search are explicit standalone destinations, and legacy Planner and Staff workspace links redirect to their canonical My Club URLs.
+
 ## [0.7.0] - 2026-08-18
 
 ### Added
