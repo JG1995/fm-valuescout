@@ -73,7 +73,7 @@ final_pr_commit_set:
   - dbf7afb1aab04807ae9e7891b443894cae5608c9
   - 177ae67893ee03c54f35b8dc8c60eb84bebb1ade
   - 7c08539d987e8468520de76b4ccfb566e060c4fa
-close_out_documentation_ref: Pending record
+close_out_documentation_ref: a4b4046c694f193dcc501fa6e1cd20f0f7d06051
 ```
 
 ## Feature close-out
