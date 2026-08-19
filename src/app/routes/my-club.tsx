@@ -5,13 +5,20 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { DatabaseZap, UsersRound } from "lucide-react";
+import { CircleAlert, DatabaseZap, UsersRound } from "lucide-react";
 import { Suspense, useRef, useState } from "react";
+import { ErrorBoundary } from "@/components/error-boundary/error-boundary";
+import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { SquadCsvImportActions } from "@/features/csv-import/components/squad-csv-import-actions";
-import { managedClubQueryOptions } from "@/features/managed-club/api/managed-club-query-options";
+import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
+import {
+  managedClubOptionsQueryOptions,
+  managedClubQueryOptions,
+} from "@/features/managed-club/api/managed-club-query-options";
+import { ManagedClubSelector } from "@/features/managed-club/components/managed-club-selector";
 import {
   type MyClubWorkspace,
   MyClubWorkspaceTabs,
@@ -50,6 +57,7 @@ import {
   isSquadSortDir,
   isSquadSortField,
 } from "@/features/squad/types/squad-sort";
+import { staffKeys } from "@/features/staff/api/staff-keys";
 
 export type MyClubSearch = {
   view?: MyClubWorkspace;
@@ -83,6 +91,7 @@ export const Route = createFileRoute("/my-club")({
     Promise.all([
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(managedClubQueryOptions),
+      queryClient.prefetchQuery(managedClubOptionsQueryOptions),
       queryClient.ensureQueryData(plannerTacticQueryOptions),
       queryClient.ensureQueryData(plannerTacticOptionsQueryOptions),
       queryClient.ensureQueryData(plannerDepthQueryOptions),
@@ -106,6 +115,38 @@ export const Route = createFileRoute("/my-club")({
   },
   component: MyClubPage,
 });
+
+function ManagedClubError({
+  error,
+  reset,
+}: {
+  error: Error;
+  reset: () => void;
+}) {
+  const queryClient = useQueryClient();
+
+  return (
+    <Panel>
+      <EmptyState
+        icon={CircleAlert}
+        title="Could not load managed club"
+        action={
+          <Button
+            variant="secondary"
+            onClick={() => {
+              queryClient.resetQueries({ queryKey: managedClubKeys.all });
+              reset();
+            }}
+          >
+            Retry
+          </Button>
+        }
+      >
+        {error.message}
+      </EmptyState>
+    </Panel>
+  );
+}
 
 function MyClubPageContent() {
   const queryClient = useQueryClient();
@@ -133,6 +174,11 @@ function MyClubPageContent() {
       queryClient.invalidateQueries({ queryKey: plannerKeys.all }),
       queryClient.invalidateQueries({ queryKey: academyKeys.all }),
     ]);
+  };
+  const onManagedClubSaved = () => {
+    void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
+    void queryClient.resetQueries({ queryKey: academyKeys.all });
+    void queryClient.invalidateQueries({ queryKey: staffKeys.all });
   };
   const squadCurrentAbilityBoost = useMutation({
     mutationFn: ({ onProgress }: SquadBoostMutationVariables) =>
@@ -219,13 +265,34 @@ function MyClubPageContent() {
   };
   const myClubHeader = (
     <header className="flex flex-col items-start gap-2">
-      <div>
-        <h1 className="text-headline-lg text-on-surface">My Club</h1>
-        {managedClub.clubName ? (
-          <p className="text-body-sm text-on-surface-variant">
-            Managed club: {managedClub.clubName}
-          </p>
-        ) : null}
+      <div className="flex w-full flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-headline-lg text-on-surface">My Club</h1>
+          {managedClub.clubName ? (
+            <p className="text-body-sm text-on-surface-variant">
+              Managed club: {managedClub.clubName}
+            </p>
+          ) : null}
+        </div>
+        <div className="min-w-64 flex-1" id="managed-club">
+          {snapshot ? (
+            <ErrorBoundary
+              fallback={({ error, reset }) => (
+                <ManagedClubError error={error} reset={reset} />
+              )}
+            >
+              <Suspense
+                fallback={
+                  <div className="flex min-h-16 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-sm text-on-surface-variant">
+                    Loading managed club…
+                  </div>
+                }
+              >
+                <ManagedClubSelector onSaved={onManagedClubSaved} />
+              </Suspense>
+            </ErrorBoundary>
+          ) : null}
+        </div>
       </div>
       {snapshot ? (
         <MyClubWorkspaceTabs
@@ -350,7 +417,7 @@ function MyClubPageContent() {
               title="Choose your managed club"
               action={
                 <Link
-                  to="/settings"
+                  to="/my-club"
                   hash="managed-club"
                   className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
                 >
@@ -358,7 +425,7 @@ function MyClubPageContent() {
                 </Link>
               }
             >
-              Choose your managed club in Settings before reviewing your squad.
+              Choose your managed club in My Club before reviewing your squad.
             </EmptyState>
           </Panel>
         )}

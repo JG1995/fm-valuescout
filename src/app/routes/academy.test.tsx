@@ -515,7 +515,7 @@ describe("academy route", () => {
     setAcademyCreateError(null);
   });
 
-  it("guides an unconfigured save to Settings managed club", async () => {
+  it("guides an unconfigured save to My Club managed club", async () => {
     await resolveLoadDataIpcMock();
     renderAcademyRoute();
 
@@ -524,7 +524,7 @@ describe("academy route", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open Managed Club" }),
-    ).toHaveAttribute("href", "/settings#managed-club");
+    ).toHaveAttribute("href", "/my-club#managed-club");
   });
 
   it("shows Load Data guidance when the active save has no snapshot", async () => {

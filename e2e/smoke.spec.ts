@@ -35,7 +35,7 @@ test.describe("application smoke", () => {
     await expect(main.getByRole("region", { name: "Save data" })).toBeVisible();
     await expect(
       main.getByRole("region", { name: "Managed club" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(main.getByRole("region", { name: "Bridge" })).toBeVisible();
     await expect(main.getByText(/^Bridge:/i)).toContainText("ready");
     await expect(main.getByText("Status:")).toHaveCount(0);
@@ -448,7 +448,7 @@ test.describe("application smoke", () => {
     );
   });
 
-  test("My Staff points an unconfigured save to Settings managed club", async ({
+  test("My Staff points an unconfigured save to My Club managed club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { staffFamily: "none", staffWorkspace: true });
@@ -460,7 +460,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect(
       main.getByRole("link", { name: "Open Managed Club" }),
-    ).toHaveAttribute("href", "/settings#managed-club");
+    ).toHaveAttribute("href", "/my-club#managed-club");
   });
 
   test("My Club shows no-snapshot Load Data guidance", async ({ page }) => {
@@ -492,7 +492,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
-  test("Squad points an unconfigured save to Settings managed club", async ({
+  test("Squad points an unconfigured save to My Club managed club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
@@ -510,20 +510,18 @@ test.describe("application smoke", () => {
       main.getByText("Choose your managed club", { exact: true }),
     ).toBeVisible();
     await main.getByRole("link", { name: "Open Managed Club" }).click();
-    await expect(page).toHaveURL(/\/settings#managed-club$/);
-    await expect(
-      page.getByRole("main").getByRole("region", { name: "Managed club" }),
-    ).toBeVisible();
+    await expect(page).toHaveURL(/\/my-club#managed-club$/);
     await expect(
       page.getByRole("main").getByRole("combobox", { name: "Managed club" }),
     ).toBeVisible();
   });
 
-  test("Settings saves one managed club from the latest snapshot", async ({
+  test("legacy Settings managed-club links save from My Club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
     await page.goto("/settings#managed-club");
+    await expect(page).toHaveURL(/\/my-club#managed-club$/);
 
     const managedClub = page.getByRole("main").getByRole("combobox", {
       name: "Managed club",
@@ -587,6 +585,9 @@ test.describe("application smoke", () => {
       const main = page.getByRole("main");
       const scroller = main.getByTestId("squad-overview-scroller");
       await expect(scroller).toBeVisible();
+      await expect(
+        main.getByRole("combobox", { name: "Managed club" }),
+      ).toBeVisible();
 
       const [mainBox, scrollerBox, mainDimensions, dimensions] =
         await Promise.all([

@@ -75,4 +75,20 @@ describe("legacy club routes", () => {
       await screen.findByRole("heading", { level: 1, name: "My Club" }),
     ).toBeInTheDocument();
   });
+
+  it("replaces the legacy Settings managed-club anchor with My Club", async () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: () => {},
+    });
+    const { history, router } = renderLegacyPlannerRoute(
+      "/settings#managed-club",
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/my-club");
+      expect(router.state.location.hash).toBe("managed-club");
+    });
+    expect(history.canGoBack()).toBe(false);
+  });
 });

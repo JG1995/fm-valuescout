@@ -15,6 +15,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import type { MyClubWorkspace } from "@/features/my-club/components/my-club-workspace-tabs";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import type {
@@ -32,6 +33,7 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import type { SquadPlayer } from "@/features/squad/types/squad-player";
+import { staffKeys } from "@/features/staff/api/staff-keys";
 import { routeTree } from "@/routeTree.gen";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import {
@@ -42,10 +44,14 @@ import {
   getPlannerOptimizeIpcMockCalls,
   getPlannerSlotCandidateFetchCount,
   getPlannerTeamSaveIpcMockCalls,
+  resolvePendingManagedClubSave,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
   resolveSavePlannerClubFamilyIpcMock,
+  setManagedClubIpcMock,
+  setManagedClubOptionsError,
+  setManagedClubSavePending,
   setPlannerAddStringError,
   setPlannerAddStringPending,
   setPlannerAssignmentError,
@@ -210,6 +216,107 @@ describe("My Club route", () => {
     ).toBeInTheDocument();
   });
 
+  it("selects one managed club and invalidates membership consumers", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    setPlannerAvailableClubs(["Barcelona"]);
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+    queryClient.setQueryData(staffKeys.all, []);
+
+    const managedClub = await screen.findByRole("combobox", {
+      name: "Managed club",
+    });
+    await user.type(managedClub, "Bar");
+    await user.click(screen.getByRole("option", { name: "Barcelona" }));
+    await user.click(screen.getByRole("button", { name: "Save managed club" }));
+
+    await waitFor(() => {
+      expect(queryClient.getQueryState(staffKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+    });
+  });
+
+  it("retains a missing managed club without exposing team-level diagnostics", async () => {
+    await resolveLoadDataIpcMock();
+    setManagedClubIpcMock({
+      clubName: "Legacy FC",
+      status: "missing",
+      unclassifiedPlayerCount: 2,
+    });
+
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    expect(
+      await screen.findByRole("combobox", { name: "Managed club" }),
+    ).toHaveValue("Legacy FC");
+    expect(
+      screen.getByText(
+        "Legacy FC is not in the latest snapshot. The saved selection remains active until you replace it.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/supported FM team level/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps managed-club option failures inside the selector boundary", async () => {
+    await resolveLoadDataIpcMock();
+    setManagedClubOptionsError("Managed club options are unavailable.");
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    expect(
+      await screen.findByText("Managed club options are unavailable."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+
+    setManagedClubOptionsError(null);
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(
+      await screen.findByRole("combobox", { name: "Managed club" }),
+    ).toBeInTheDocument();
+    expect(queryClient.getQueryState(managedClubKeys.options())?.status).toBe(
+      "success",
+    );
+  });
+
+  it("does not restore a late managed-club result after context invalidation", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setManagedClubSavePending(true);
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+    const picker = await screen.findByRole("combobox", {
+      name: "Managed club",
+    });
+    await user.type(picker, "Bar");
+    await user.click(screen.getByRole("option", { name: "Barcelona" }));
+    await user.click(screen.getByRole("button", { name: "Save managed club" }));
+
+    setManagedClubIpcMock({
+      clubName: "Second FC",
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    setPlannerAvailableClubs(["Second FC"]);
+    await queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
+    await waitFor(() => expect(picker).toHaveValue("Second FC"));
+
+    resolvePendingManagedClubSave();
+
+    await waitFor(() => {
+      expect(picker).toHaveValue("Second FC");
+      expect(queryClient.getQueryData(managedClubKeys.status())).toEqual({
+        clubName: "Second FC",
+        status: "available",
+        unclassifiedPlayerCount: 0,
+      });
+    });
+  });
+
   it("defaults to Squad and keeps Planner and Tactic mounted", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
@@ -227,7 +334,7 @@ describe("My Club route", () => {
     expect(screen.queryByRole("tab", { name: "Club Setup" })).toBeNull();
     expect(
       screen.getByRole("link", { name: "Open Managed Club" }),
-    ).toHaveAttribute("href", "/settings#managed-club");
+    ).toHaveAttribute("href", "/my-club#managed-club");
     const tacticPanel = document.getElementById(
       "my-club-workspace-panel-tactic",
     );

@@ -6,7 +6,6 @@ import {
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
-import { Panel } from "@/components/ui/panel/panel";
 import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
 import { managedClubKeys } from "../api/managed-club-keys";
 import {
@@ -161,7 +160,11 @@ function ManagedClubPicker({
   );
 }
 
-export function ManagedClubPanel({ onSaved }: { onSaved?: () => void } = {}) {
+export function ManagedClubSelector({
+  onSaved,
+}: {
+  onSaved?: () => void;
+} = {}) {
   const queryClient = useQueryClient();
   const { data: managedClub } = useSuspenseQuery(managedClubQueryOptions);
   const { data: availableClubs } = useSuspenseQuery(
@@ -194,44 +197,42 @@ export function ManagedClubPanel({ onSaved }: { onSaved?: () => void } = {}) {
   });
 
   return (
-    <Panel title="Club selection" flush>
-      <form
-        className="max-w-md space-y-4 p-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          save.mutate();
+    <form
+      className="w-full max-w-md space-y-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        save.mutate();
+      }}
+    >
+      <ManagedClubPicker
+        clubs={clubOptions}
+        value={clubName}
+        onSearchChange={(query) => setSearchPending(query !== clubName)}
+        onSelect={(club) => {
+          setClubName(club);
+          setSearchPending(false);
         }}
+      />
+
+      {managedClub.status === "missing" ? (
+        <p className="text-body-sm text-warning">
+          {managedClub.clubName} is not in the latest snapshot. The saved
+          selection remains active until you replace it.
+        </p>
+      ) : null}
+      {save.error ? (
+        <p className="text-body-sm text-error">{save.error.message}</p>
+      ) : null}
+
+      <Button
+        disabled={
+          !clubName || searchPending || clubName === managedClub.clubName
+        }
+        loading={save.isPending}
+        type="submit"
       >
-        <ManagedClubPicker
-          clubs={clubOptions}
-          value={clubName}
-          onSearchChange={(query) => setSearchPending(query !== clubName)}
-          onSelect={(club) => {
-            setClubName(club);
-            setSearchPending(false);
-          }}
-        />
-
-        {managedClub.status === "missing" ? (
-          <p className="text-body-sm text-warning">
-            {managedClub.clubName} is not in the latest snapshot. The saved
-            selection remains active until you replace it.
-          </p>
-        ) : null}
-        {save.error ? (
-          <p className="text-body-sm text-error">{save.error.message}</p>
-        ) : null}
-
-        <Button
-          disabled={
-            !clubName || searchPending || clubName === managedClub.clubName
-          }
-          loading={save.isPending}
-          type="submit"
-        >
-          Save managed club
-        </Button>
-      </form>
-    </Panel>
+        Save managed club
+      </Button>
+    </form>
   );
 }

@@ -85,7 +85,7 @@ function AcademyNoManagedClub() {
         title="Academy needs your managed club"
         action={
           <Link
-            to="/settings"
+            to="/my-club"
             hash="managed-club"
             className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
           >

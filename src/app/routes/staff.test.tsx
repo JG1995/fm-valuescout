@@ -471,7 +471,7 @@ describe("staff route", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Open Managed Club" }),
-    ).toHaveAttribute("href", "/settings#managed-club");
+    ).toHaveAttribute("href", "/my-club#managed-club");
   });
 
   it("describes an empty My Staff overview as one managed club", async () => {

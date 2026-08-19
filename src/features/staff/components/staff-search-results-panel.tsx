@@ -442,7 +442,7 @@ export function StaffSearchResultsPanel({
           title="Choose your managed club"
           action={
             <Link
-              to="/settings"
+              to="/my-club"
               hash="managed-club"
               className="inline-flex h-8 items-center rounded-full border border-outline px-4 text-label-lg text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high"
             >
@@ -450,7 +450,7 @@ export function StaffSearchResultsPanel({
             </Link>
           }
         >
-          Choose your managed club in Settings before reviewing your staff.
+          Choose your managed club in My Club before reviewing your staff.
         </EmptyState>
       </Panel>
     );
