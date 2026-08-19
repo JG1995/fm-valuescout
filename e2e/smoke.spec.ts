@@ -463,14 +463,12 @@ test.describe("application smoke", () => {
     ).toHaveAttribute("href", "/settings#managed-club");
   });
 
-  test("planner route shows no-snapshot Load Data guidance", async ({
-    page,
-  }) => {
-    await page.goto("/planner");
+  test("My Club shows no-snapshot Load Data guidance", async ({ page }) => {
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("heading", { level: 1, name: "Squad" }),
+      main.getByRole("heading", { level: 1, name: "My Club" }),
     ).toBeVisible();
     await expect(main.getByText("No data loaded for this save")).toBeVisible();
     await expect(
@@ -478,15 +476,31 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
+  test("legacy Planner links replace into the canonical My Club URL", async ({
+    page,
+  }) => {
+    await page.goto("/planner?view=tactic&sort=name&dir=asc");
+
+    await expect(page).toHaveURL(
+      /\/my-club\?view=tactic&squadSort=name&squadDir=asc$/,
+    );
+    await expect(
+      page.getByRole("main").getByRole("heading", {
+        level: 1,
+        name: "My Club",
+      }),
+    ).toBeVisible();
+  });
+
   test("Squad points an unconfigured save to Settings managed club", async ({
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await expect(
-      main.getByRole("heading", { level: 1, name: "Squad" }),
+      main.getByRole("heading", { level: 1, name: "My Club" }),
     ).toBeVisible();
     await expect(main.getByRole("tab", { name: "Squad" })).toHaveAttribute(
       "aria-selected",
@@ -530,7 +544,7 @@ test.describe("application smoke", () => {
       plannerSnapshot: true,
       squadOverview: true,
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     const table = main.getByRole("table", { name: "Squad overview" });
@@ -568,7 +582,7 @@ test.describe("application smoke", () => {
       [1600, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
-      await page.goto("/planner");
+      await page.goto("/my-club");
 
       const main = page.getByRole("main");
       const scroller = main.getByTestId("squad-overview-scroller");
@@ -636,7 +650,7 @@ test.describe("application smoke", () => {
       squadOverview: true,
       squadPageFailure: true,
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const scroller = page.getByTestId("squad-overview-scroller");
     await expect(scroller).toBeVisible();
@@ -977,7 +991,7 @@ test.describe("application smoke", () => {
       search.getByRole("separator", { name: "Resize Acceleration column" }),
     ).toHaveAttribute("aria-valuenow", "104");
 
-    await page.goto("/planner");
+    await page.goto("/my-club");
     const squad = page.getByRole("main");
     await expect(
       squad
@@ -1020,7 +1034,7 @@ test.describe("application smoke", () => {
       squadOverview: true,
       csvImportFormat: "moneyball",
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await expect(
@@ -1061,7 +1075,7 @@ test.describe("application smoke", () => {
       plannerSnapshot: true,
       squadOverview: true,
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     const caButton = main.getByRole("button", { name: "Boost all CA" });
@@ -1104,7 +1118,7 @@ test.describe("application smoke", () => {
       plannerSnapshot: true,
       squadOverview: true,
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("button", { name: "Make all Wonderkids" }).click();
@@ -1126,7 +1140,7 @@ test.describe("application smoke", () => {
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Tactic" }).click();
@@ -1267,7 +1281,7 @@ test.describe("application smoke", () => {
     page,
   }) => {
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner?view=tactic");
+    await page.goto("/my-club?view=tactic");
 
     const main = page.getByRole("main");
     const pitches = main.getByRole("group", { name: /pitch$/ });
@@ -1276,10 +1290,10 @@ test.describe("application smoke", () => {
     });
     const plannerHeading = main.getByRole("heading", {
       level: 1,
-      name: "Squad",
+      name: "My Club",
     });
     const workspaceTabs = main.getByRole("tablist", {
-      name: "Squad workspaces",
+      name: "My Club workspaces",
     });
     const navToggle = page.getByRole("button", {
       name: "Toggle navigation",
@@ -1375,7 +1389,7 @@ test.describe("application smoke", () => {
   }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Planner" }).click();
@@ -1394,7 +1408,7 @@ test.describe("application smoke", () => {
   }) => {
     await page.setViewportSize({ width: 600, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Planner" }).click();
@@ -1451,7 +1465,7 @@ test.describe("application smoke", () => {
       [1600, 900],
     ] as const) {
       await page.setViewportSize({ width, height });
-      await page.goto("/planner");
+      await page.goto("/my-club");
 
       const main = page.getByRole("main");
       await main.getByRole("tab", { name: "Planner" }).click();
@@ -1504,7 +1518,7 @@ test.describe("application smoke", () => {
   }) => {
     await page.setViewportSize({ width: 900, height: 800 });
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Planner" }).click();
@@ -1535,7 +1549,7 @@ test.describe("application smoke", () => {
   }) => {
     await page.setViewportSize({ width: 1920, height: 900 });
     await stubTauriIpc(page, { plannerSnapshot: true });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Planner" }).click();
@@ -1562,7 +1576,7 @@ test.describe("application smoke", () => {
       plannerSnapshot: true,
       plannerPotentialScores: true,
     });
-    await page.goto("/planner");
+    await page.goto("/my-club");
 
     const main = page.getByRole("main");
     await main.getByRole("tab", { name: "Planner" }).click();

@@ -24,7 +24,7 @@ const navItems: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/search", label: "Search", icon: Search },
   { to: "/staff", label: "Staff", icon: UserRoundCog },
-  { to: "/planner", label: "Squad", icon: UsersRound },
+  { to: "/my-club", label: "My Club", icon: UsersRound },
   { to: "/academy", label: "Youth Academy", icon: GraduationCap },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];

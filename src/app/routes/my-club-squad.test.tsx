@@ -15,8 +15,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import type { MyClubWorkspace } from "@/features/my-club/components/my-club-workspace-tabs";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
-import type { PlannerWorkspace } from "@/features/planner/components/planner-workspace-tabs";
 import type {
   PlannerDepth,
   PlannerSlotCandidate,
@@ -81,9 +81,9 @@ import {
   setSquadWonderkidMentalityBoostIpcMockMode,
 } from "@/testing/squad-ipc-mock";
 
-function renderPlannerRoute({
+function renderMyClubRoute({
   staleTime = 0,
-  initialEntry = "/planner?view=planner",
+  initialEntry = "/my-club?view=planner",
 }: {
   staleTime?: number;
   initialEntry?: string;
@@ -108,11 +108,11 @@ function renderPlannerRoute({
   return { history, queryClient, router };
 }
 
-async function openPlannerWorkspace(
+async function openMyClubWorkspace(
   user: ReturnType<typeof userEvent.setup>,
-  workspace: PlannerWorkspace,
+  workspace: MyClubWorkspace,
 ) {
-  const labels: Record<PlannerWorkspace, string> = {
+  const labels: Record<MyClubWorkspace, string> = {
     squad: "Squad",
     planner: "Planner",
     tactic: "Tactic",
@@ -195,12 +195,12 @@ function mockScrollerScrollTo(scroller: HTMLElement) {
   });
 }
 
-describe("planner route", () => {
+describe("My Club route", () => {
   it("shows Load Data guidance when the active save has no snapshot", async () => {
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Squad" }),
+      await screen.findByRole("heading", { level: 1, name: "My Club" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText("No data loaded for this save"),
@@ -213,7 +213,7 @@ describe("planner route", () => {
   it("defaults to Squad and keeps Planner and Tactic mounted", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("link", { name: "Open Managed Club" });
     expect(screen.getByRole("tab", { name: "Squad" })).toHaveAttribute(
@@ -229,10 +229,10 @@ describe("planner route", () => {
       screen.getByRole("link", { name: "Open Managed Club" }),
     ).toHaveAttribute("href", "/settings#managed-club");
     const tacticPanel = document.getElementById(
-      "planner-workspace-panel-tactic",
+      "my-club-workspace-panel-tactic",
     );
     const plannerPanel = document.getElementById(
-      "planner-workspace-panel-planner",
+      "my-club-workspace-panel-planner",
     );
     expect(tacticPanel).toBeInTheDocument();
     expect(plannerPanel).toBeInTheDocument();
@@ -252,7 +252,7 @@ describe("planner route", () => {
       }),
     ).toBeInTheDocument();
 
-    await openPlannerWorkspace(user, "tactic");
+    await openMyClubWorkspace(user, "tactic");
     const tacticEditor = screen.getByRole("region", {
       name: "Tactic controls",
     });
@@ -261,8 +261,8 @@ describe("planner route", () => {
     });
     weight.focus();
     await user.keyboard("{ArrowRight}");
-    await openPlannerWorkspace(user, "planner");
-    await openPlannerWorkspace(user, "tactic");
+    await openMyClubWorkspace(user, "planner");
+    await openMyClubWorkspace(user, "tactic");
     expect(tacticEditor).toBeInTheDocument();
     expect(weight).toHaveValue("51");
   });
@@ -274,7 +274,7 @@ describe("planner route", () => {
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", {
       name: "Squad overview",
@@ -316,7 +316,7 @@ describe("planner route", () => {
       sources: [],
     });
     setSquadPlayersOverride([]);
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     expect(
       await screen.findByText(
@@ -337,7 +337,7 @@ describe("planner route", () => {
         nationalities: ["England", "Wales", "South Korea"],
       },
     ]);
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", { name: "Squad overview" });
     const flags = await within(table).findAllByRole("img");
@@ -363,7 +363,7 @@ describe("planner route", () => {
         dynamicValues: { "attr.Acceleration": 16 },
       },
     ]);
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", {
       name: "Squad overview",
@@ -413,7 +413,7 @@ describe("planner route", () => {
         dynamicValues: { "attr.Acceleration": 16, "attr.Agility": 15 },
       })),
     );
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", { name: "Squad overview" });
     const scroller = screen.getByTestId("squad-overview-scroller");
@@ -475,7 +475,7 @@ describe("planner route", () => {
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     expect(
@@ -522,7 +522,7 @@ describe("planner route", () => {
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
     setSquadCurrentAbilityBoostIpcMockMode("pending");
-    const { queryClient } = renderPlannerRoute({ initialEntry: "/planner" });
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
@@ -601,7 +601,7 @@ describe("planner route", () => {
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
     setSquadCurrentAbilityBoostIpcMockMode("pendingEmpty");
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
@@ -633,7 +633,7 @@ describe("planner route", () => {
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
@@ -682,7 +682,7 @@ describe("planner route", () => {
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
     setSquadCurrentAbilityBoostIpcMockMode("error");
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
@@ -713,7 +713,7 @@ describe("planner route", () => {
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
-    const { queryClient } = renderPlannerRoute({ initialEntry: "/planner" });
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
@@ -749,7 +749,7 @@ describe("planner route", () => {
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
     setSquadCurrentAbilityBoostIpcMockMode("pending");
-    const { queryClient } = renderPlannerRoute({ initialEntry: "/planner" });
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
@@ -789,7 +789,7 @@ describe("planner route", () => {
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
     setSquadCurrentAbilityBoostIpcMockMode("recoveryRequired");
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     await user.click(screen.getByRole("button", { name: "Boost all CA" }));
@@ -823,7 +823,7 @@ describe("planner route", () => {
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     await user.click(
@@ -857,7 +857,7 @@ describe("planner route", () => {
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
     setSquadWonderkidMentalityBoostIpcMockMode("pending");
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     await user.click(
@@ -903,7 +903,7 @@ describe("planner route", () => {
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
     setSquadWonderkidMentalityBoostIpcMockMode("recoveryRequired");
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     await user.click(
@@ -944,7 +944,7 @@ describe("planner route", () => {
       squadPlayerNamed("Zara Scout", 1, 160),
       squadPlayerNamed("Alex Scout", 2, 150),
     ]);
-    const { router } = renderPlannerRoute({ initialEntry: "/planner" });
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", {
       name: "Squad overview",
@@ -953,8 +953,8 @@ describe("planner route", () => {
 
     await waitFor(() => {
       expect(router.state.location.search).toEqual({
-        sort: "name",
-        dir: "asc",
+        squadSort: "name",
+        squadDir: "asc",
       });
       expect(getLastSquadPlayersArgs()).toMatchObject({
         offset: 0,
@@ -984,7 +984,7 @@ describe("planner route", () => {
       squadPlayerNamed("Alex Scout", 42, 160),
       squadPlayerNamed("Zara Scout", 43, 150),
     ]);
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", {
       name: "Squad overview",
@@ -1007,7 +1007,7 @@ describe("planner route", () => {
       sources: [],
     });
     setSquadPlayersOverride(manySquadPlayers(101));
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", {
       name: "Squad overview",
@@ -1056,7 +1056,7 @@ describe("planner route", () => {
     });
     setSquadPlayersOverride(manySquadPlayers(101));
     setSquadPlayersPageIpcMockMode("pendingSecondPage");
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     const scroller = screen.getByTestId("squad-overview-scroller");
@@ -1095,7 +1095,7 @@ describe("planner route", () => {
     });
     setSquadPlayersOverride(manySquadPlayers(101));
     setSquadPlayersPageIpcMockMode("pendingSecondPage");
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     const scroller = screen.getByTestId("squad-overview-scroller");
@@ -1134,7 +1134,7 @@ describe("planner route", () => {
     });
     setSquadPlayersOverride(manySquadPlayers(101));
     setSquadPlayersPageIpcMockMode("rejectSecondPageOnce");
-    renderPlannerRoute({ initialEntry: "/planner" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     const scroller = screen.getByTestId("squad-overview-scroller");
@@ -1159,7 +1159,7 @@ describe("planner route", () => {
       sources: [],
     });
     setSquadPlayersOverride(manySquadPlayers(101));
-    const { queryClient } = renderPlannerRoute({ initialEntry: "/planner" });
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
     const scroller = screen.getByTestId("squad-overview-scroller");
@@ -1203,7 +1203,7 @@ describe("planner route", () => {
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
-    const { router } = renderPlannerRoute({ initialEntry: "/planner" });
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", {
       name: "Squad overview",
@@ -1227,7 +1227,7 @@ describe("planner route", () => {
       squadPlayerNamed("Zara Scout", 42),
       squadPlayerNamed("Alex Scout", 43),
     ]);
-    const { router } = renderPlannerRoute({ initialEntry: "/planner" });
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     const table = await screen.findByRole("table", {
       name: "Squad overview",
@@ -1235,8 +1235,8 @@ describe("planner route", () => {
     await user.click(within(table).getByRole("button", { name: "Name" }));
     await waitFor(() => {
       expect(router.state.location.search).toEqual({
-        sort: "name",
-        dir: "asc",
+        squadSort: "name",
+        squadDir: "asc",
       });
     });
     const sortedRow = await waitFor(() => {
@@ -1262,10 +1262,10 @@ describe("planner route", () => {
     await router.history.back();
 
     await waitFor(() => {
-      expect(router.state.location.pathname).toBe("/planner");
+      expect(router.state.location.pathname).toBe("/my-club");
       expect(router.state.location.search).toEqual({
-        sort: "name",
-        dir: "asc",
+        squadSort: "name",
+        squadDir: "asc",
       });
     });
     const restoredTable = await screen.findByRole("table", {
@@ -1284,7 +1284,7 @@ describe("planner route", () => {
       primaryClub: "Barcelona",
       sources: [],
     });
-    const { router } = renderPlannerRoute({ initialEntry: "/planner" });
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     expect(
       await screen.findByText("Managed club: Barcelona"),
@@ -1328,7 +1328,7 @@ describe("planner route", () => {
       primaryClub: "Barcelona",
       sources: [],
     });
-    renderPlannerRoute({ initialEntry: "/planner?view=planner" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=planner" });
 
     expect(await screen.findByRole("tab", { name: "Planner" })).toHaveAttribute(
       "aria-selected",
@@ -1342,7 +1342,7 @@ describe("planner route", () => {
   it("uses the Squad default for the retired Club Setup workspace", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute({ initialEntry: "/planner?view=clubs" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=clubs" });
 
     expect(await screen.findByRole("tab", { name: "Squad" })).toHaveAttribute(
       "aria-selected",
@@ -1374,7 +1374,7 @@ describe("planner route", () => {
     const depth = resolvePlannerDepthIpcMock();
     depth.tactic = tactic;
     setPlannerDepthIpcMock(depth);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
 
@@ -1467,7 +1467,7 @@ describe("planner route", () => {
   it("orders the tactic command bar, pitches, and one settings shelf", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     const commandBar = await screen.findByRole("region", {
       name: "Tactic controls",
@@ -1531,7 +1531,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
     const viewGroup = screen.getByRole("group", {
@@ -1568,7 +1568,7 @@ describe("planner route", () => {
     const depth = resolvePlannerDepthIpcMock();
     depth.tactic = tactic;
     setPlannerDepthIpcMock(depth);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     const ipButton = await screen.findByRole("button", {
       name: /IP: AMC · Winger/,
@@ -1597,7 +1597,7 @@ describe("planner route", () => {
     weight.focus();
     expect(oopButton).toHaveClass("ring-2");
 
-    await openPlannerWorkspace(user, "planner");
+    await openMyClubWorkspace(user, "planner");
     const matrix = screen.getByRole("region", {
       name: "Senior squad depth matrix",
     });
@@ -1692,7 +1692,7 @@ describe("planner route", () => {
     const depth = resolvePlannerDepthIpcMock();
     depth.tactic = tactic;
     setPlannerDepthIpcMock(depth);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     const rightMc = await screen.findByRole("button", {
       name: "IP: MCR · Central Midfielder",
@@ -1814,7 +1814,7 @@ describe("planner route", () => {
     const depth = resolvePlannerDepthIpcMock();
     depth.tactic = tactic;
     setPlannerDepthIpcMock(depth);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     for (const pitch of await screen.findAllByRole("group", {
       name: /pitch$/,
@@ -1869,7 +1869,7 @@ describe("planner route", () => {
     const depth = resolvePlannerDepthIpcMock();
     depth.tactic = tactic;
     setPlannerDepthIpcMock(depth);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     const ipPitch = (
       await screen.findAllByRole("group", { name: /pitch$/ })
@@ -1921,7 +1921,7 @@ describe("planner route", () => {
     const depth = resolvePlannerDepthIpcMock();
     depth.tactic = tactic;
     setPlannerDepthIpcMock(depth);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     for (const pitch of await screen.findAllByRole("group", {
       name: /pitch$/,
@@ -1936,7 +1936,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerTacticSaveError("Tactic save failed");
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
     const weight = screen.getByRole("slider", {
@@ -1959,7 +1959,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
     const viewGroup = screen.getByRole("group", {
@@ -1996,7 +1996,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
     await user.click(
@@ -2017,7 +2017,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await user.click(
       await screen.findByRole("button", {
@@ -2046,7 +2046,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await user.click(
       await screen.findByRole("button", {
@@ -2081,7 +2081,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
     await user.click(
@@ -2102,7 +2102,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
     const preferredFoot = screen.getByRole("combobox", {
@@ -2129,7 +2129,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerTacticSaveError("Tactic save failed");
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
     const preferredFoot = screen.getByRole("combobox", {
@@ -2150,7 +2150,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerTacticSaveError("Tactic save failed");
-    renderPlannerRoute({ initialEntry: "/planner?view=tactic" });
+    renderMyClubRoute({ initialEntry: "/my-club?view=tactic" });
 
     await screen.findByRole("region", { name: "Tactic controls" });
     await user.selectOptions(
@@ -2194,7 +2194,7 @@ describe("planner route", () => {
         combinedScore: 80,
       }),
     ]);
-    renderPlannerRoute({ staleTime: 60_000 });
+    renderMyClubRoute({ staleTime: 60_000 });
 
     const cell = await screen.findByRole("button", {
       name: /Senior, 1st string, IP: GK .* Empty/,
@@ -2207,7 +2207,7 @@ describe("planner route", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
-    await openPlannerWorkspace(user, "tactic");
+    await openMyClubWorkspace(user, "tactic");
 
     setPlannerSlotCandidates([
       slotCandidate({
@@ -2226,7 +2226,7 @@ describe("planner route", () => {
     await user.keyboard("{ArrowRight}");
     await user.click(screen.getByRole("button", { name: "Save tactic" }));
 
-    await openPlannerWorkspace(user, "planner");
+    await openMyClubWorkspace(user, "planner");
     await user.click(cell);
     expect(
       await screen.findByRole("option", { name: /Updated tactic fit/ }),
@@ -2237,8 +2237,8 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const { queryClient } = renderPlannerRoute({
-      initialEntry: "/planner?view=tactic",
+    const { queryClient } = renderMyClubRoute({
+      initialEntry: "/my-club?view=tactic",
     });
 
     await screen.findByRole("region", { name: "Tactic controls" });
@@ -2279,8 +2279,8 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const { queryClient } = renderPlannerRoute({
-      initialEntry: "/planner?view=tactic",
+    const { queryClient } = renderMyClubRoute({
+      initialEntry: "/my-club?view=tactic",
     });
 
     await screen.findByRole("region", { name: "Tactic controls" });
@@ -2319,8 +2319,8 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const { queryClient } = renderPlannerRoute({
-      initialEntry: "/planner?view=tactic",
+    const { queryClient } = renderMyClubRoute({
+      initialEntry: "/my-club?view=tactic",
     });
 
     await screen.findByRole("region", { name: "Tactic controls" });
@@ -2353,7 +2353,7 @@ describe("planner route", () => {
     setPlannerAvailableClubs(["Barcelona"]);
     const depth = resolvePlannerDepthIpcMock();
     setPlannerDepthIpcMock(withDepthAssignments(depth));
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const matrix = await screen.findByRole("region", {
       name: "Senior squad depth matrix",
@@ -2419,7 +2419,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerDepthIpcMock(withDepthAssignments(resolvePlannerDepthIpcMock()));
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const toolbar = await screen.findByRole("group", {
       name: "Squad controls",
@@ -2451,7 +2451,7 @@ describe("planner route", () => {
     setPlannerDepthIpcMock(
       withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
     );
-    renderPlannerRoute();
+    renderMyClubRoute();
     await setPlannerMatrixWidth(1600);
 
     const matrix = await screen.findByRole("region", {
@@ -2508,7 +2508,7 @@ describe("planner route", () => {
     setPlannerDepthIpcMock(
       withSecondStringForEveryTeam(resolvePlannerDepthIpcMock()),
     );
-    renderPlannerRoute();
+    renderMyClubRoute();
     await setPlannerMatrixWidth(1200);
 
     await user.click(await screen.findByRole("tab", { name: "Reserves" }));
@@ -2609,7 +2609,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderMyClubRoute();
     await setPlannerMatrixWidth(900);
 
     const combined = await screen.findByRole("region", {
@@ -2647,7 +2647,7 @@ describe("planner route", () => {
     setPlannerOptimizeDepth(
       withReserveGoalkeeper(resolvePlannerDepthIpcMock()),
     );
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Optimize squads" }),
@@ -2676,7 +2676,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const cell = await screen.findByRole("button", {
       name: /Senior, 1st string, IP: GK .* Empty/,
@@ -2725,7 +2725,7 @@ describe("planner route", () => {
           combinedScore: null,
         }),
       ]);
-      renderPlannerRoute();
+      renderMyClubRoute();
 
       const cell = await screen.findByRole("button", {
         name: /Senior, 1st string, IP: GK .* Empty/,
@@ -2792,7 +2792,7 @@ describe("planner route", () => {
         combinedScore: 80,
       }),
     ]);
-    renderPlannerRoute({ staleTime: 60_000 });
+    renderMyClubRoute({ staleTime: 60_000 });
 
     await user.click(
       await screen.findByRole("button", {
@@ -2866,7 +2866,7 @@ describe("planner route", () => {
         combinedScore: 80,
       }),
     ]);
-    renderPlannerRoute({ staleTime: 60_000 });
+    renderMyClubRoute({ staleTime: 60_000 });
 
     await user.click(
       await screen.findByRole("button", {
@@ -2918,7 +2918,7 @@ describe("planner route", () => {
         combinedScore: 80,
       }),
     ]);
-    renderPlannerRoute({ staleTime: 60_000 });
+    renderMyClubRoute({ staleTime: 60_000 });
 
     await user.click(await screen.findByRole("tab", { name: "Reserves" }));
     const occupiedCell = screen.getByRole("button", {
@@ -2998,7 +2998,7 @@ describe("planner route", () => {
         },
       }),
     ]);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", {
@@ -3060,7 +3060,7 @@ describe("planner route", () => {
         },
       }),
     ]);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const cell = await screen.findByRole("button", {
       name: /Senior, 1st string, IP: GK .* Empty/,
@@ -3122,7 +3122,7 @@ describe("planner route", () => {
         : team,
     );
     setPlannerDepthIpcMock(depth);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const firstHeader = await screen.findByRole("button", {
       name: "Manage 1st string",
@@ -3214,7 +3214,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const trigger = await screen.findByRole("button", {
       name: "Manage 1st string",
@@ -3234,7 +3234,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const trigger = await screen.findByRole("button", {
       name: "Manage 1st string",
@@ -3251,7 +3251,7 @@ describe("planner route", () => {
   it("opens the string menu from the whole header context menu", async () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const header = await screen.findByRole("columnheader", {
       name: "1st string",
@@ -3271,7 +3271,7 @@ describe("planner route", () => {
       withSecondSeniorString(resolvePlannerDepthIpcMock()),
     );
     setPlannerAddStringError("Add failed");
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const firstHeader = await screen.findByRole("button", {
       name: "Manage 1st string",
@@ -3295,7 +3295,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerAddStringPending(true);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Manage 1st string" }),
@@ -3318,7 +3318,7 @@ describe("planner route", () => {
       slotCandidate({ playerUid: 79, name: "Reserve Keeper" }),
       slotCandidate({ playerUid: 80, name: "Youth Keeper" }),
     ]);
-    renderPlannerRoute({ staleTime: 60_000 });
+    renderMyClubRoute({ staleTime: 60_000 });
 
     const secondSeniorCell = await screen.findByRole("button", {
       name: /Senior, 2nd string, IP: GK .* Empty/,
@@ -3415,7 +3415,7 @@ describe("planner route", () => {
         displayName: team.team === "senior" ? "First Team" : "U19",
       }));
     setPlannerDepthIpcMock(configuredDepth);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     expect(
       await screen.findByRole("tab", { name: "First Team" }),
@@ -3449,7 +3449,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Manage teams" }),
@@ -3497,7 +3497,7 @@ describe("planner route", () => {
               : "U19",
       })),
     });
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Manage teams" }),
@@ -3588,7 +3588,7 @@ describe("planner route", () => {
         displayName: team.team === "senior" ? "First Team" : "U19",
       }));
     setPlannerDepthIpcMock(depth);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Manage teams" }),
@@ -3640,7 +3640,7 @@ describe("planner route", () => {
     const depth = resolvePlannerDepthIpcMock();
     depth.teams = depth.teams.filter((team) => team.team === "senior");
     setPlannerDepthIpcMock(depth);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Manage teams" }),
@@ -3674,7 +3674,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerTeamSaveError("Team settings failed");
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Manage teams" }),
@@ -3743,7 +3743,7 @@ describe("planner route", () => {
     depth.teams = depth.teams.filter((team) => team.team === "senior");
     setPlannerDepthIpcMock(depth);
     setPlannerTeamSavePending(true);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Manage teams" }),
@@ -3775,7 +3775,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    const { queryClient } = renderPlannerRoute();
+    const { queryClient } = renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Manage teams" }),
@@ -3822,7 +3822,7 @@ describe("planner route", () => {
     setPlannerSlotCandidates([
       slotCandidate({ playerUid: 77, name: "Alex Keeper" }),
     ]);
-    renderPlannerRoute({ staleTime: 60_000 });
+    renderMyClubRoute({ staleTime: 60_000 });
 
     const seniorCell = await screen.findByRole("button", {
       name: /Senior, 1st string, IP: GK .* Empty/,
@@ -3870,7 +3870,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const reservesTab = await screen.findByRole("tab", { name: "Reserves" });
     await user.click(reservesTab);
@@ -3895,7 +3895,7 @@ describe("planner route", () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(await screen.findByRole("tab", { name: "Reserves" }));
     await setPlannerMatrixWidth(800);
@@ -3937,7 +3937,7 @@ describe("planner route", () => {
         displayName: team.team === "senior" ? "First Team" : "U19",
       }));
     setPlannerDepthIpcMock(configuredDepth);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const firstTeamTab = await screen.findByRole("tab", { name: "First Team" });
     firstTeamTab.focus();
@@ -3960,7 +3960,7 @@ describe("planner route", () => {
       .filter((team) => team.team === "senior")
       .map((team) => ({ ...team, displayName: "First Team" }));
     setPlannerDepthIpcMock(configuredDepth);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const firstTeamTab = await screen.findByRole("tab", { name: "First Team" });
     firstTeamTab.focus();
@@ -3985,7 +3985,7 @@ describe("planner route", () => {
         displayName: team.team === "senior" ? "First Team" : "U19",
       }));
     setPlannerDepthIpcMock(previousDepth);
-    const { queryClient } = renderPlannerRoute();
+    const { queryClient } = renderMyClubRoute();
 
     const previousTeamTab = await screen.findByRole("tab", { name: "U19" });
     await user.click(previousTeamTab);
@@ -4038,7 +4038,7 @@ describe("planner route", () => {
     setPlannerSlotCandidates([
       slotCandidate({ playerUid: 77, name: "Alex Keeper" }),
     ]);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(await screen.findByRole("tab", { name: "U19" }));
     const target = await screen.findByRole("button", {
@@ -4064,7 +4064,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerClearAllPending(true);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(await screen.findByRole("button", { name: "Clear all" }));
     const confirmButton = within(
@@ -4087,7 +4087,7 @@ describe("planner route", () => {
     setPlannerSlotCandidates([
       slotCandidate({ playerUid: 77, name: "Reserve Keeper" }),
     ]);
-    renderPlannerRoute({ staleTime: 60_000 });
+    renderMyClubRoute({ staleTime: 60_000 });
 
     const seniorCell = await screen.findByRole("button", {
       name: /Senior, 1st string, IP: GK .* Empty/,
@@ -4139,7 +4139,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerOptimizeError("Optimize failed");
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Optimize squads" }),
@@ -4168,7 +4168,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerOptimizePending(true);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const optimizeButton = await screen.findByRole("button", {
       name: "Optimize squads",
@@ -4193,7 +4193,7 @@ describe("planner route", () => {
     await resolveLoadDataIpcMock();
     setPlannerAvailableClubs(["Barcelona"]);
     setPlannerOptimizePending(true);
-    renderPlannerRoute();
+    renderMyClubRoute();
 
     const potentialButton = await screen.findByRole("button", {
       name: "Optimize by potential",

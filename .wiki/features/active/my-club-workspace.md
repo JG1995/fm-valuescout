@@ -147,7 +147,7 @@ Commit 1 creates canonical `/my-club`, moves the existing Squad, Planner, and Ta
 
 #### Commit 1 — Move squad planning into My Club
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(club): move squad planning into My Club`
 
@@ -243,7 +243,7 @@ Commit 1 creates canonical `/my-club`, moves the existing Squad, Planner, and Ta
 
 #### Commit 2 — Move managed-club selection into My Club
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(club): move managed club selection into My Club`
 
@@ -443,19 +443,18 @@ Commit 1 creates canonical `/my-club`, moves the existing Squad, Planner, and Ta
 
 **PR:** PR 1 — Unify managed-club workspaces
 
-**Commit:** Commit 1 — Move squad planning into My Club
+**Commit:** Commit 2 — Move managed-club selection into My Club
 
 ### RED proof
 
-Add direct route and shell tests that expect `/my-club` to exist, render Squad by default, retain explicit Planner/Tactic selection, replace workspace state, preserve Squad sort through profile Back, and canonicalize `/planner`. They must fail because current `main` has no `/my-club` route or My Club nav entry and still renders the full page at `/planner`.
+Add failing My Club selector, Settings absence, downstream invalidation, recovery-target, missing-club, late-result, and legacy-hash tests. They must fail because the selector is still owned by Settings and My Club has no saved managed-club control.
 
 ### Expected outcome
 
-`/my-club` is the canonical, nav-linked owner of Squad, Planner, and Tactic with Squad as default; all existing player-workspace behavior remains green; `/planner` redirects once to the equivalent My Club state.
+My Club owns one explicit managed-club selector in its header, Settings no longer renders the selector, and existing managed-club persistence, exact current-snapshot membership, and downstream invalidation behavior remain unchanged.
 
 ### Explicit exclusions
 
-- Managed-club selector relocation.
 - Staff and Staff Shortlist relocation.
 - Recruitment-page naming changes.
 - Backend, persistence, scoring, query-key, stored-layout, or feature behavior changes.
@@ -465,12 +464,13 @@ Add direct route and shell tests that expect `/my-club` to exist, render Squad b
 - Planning supersedes JAY-25's stale configured club-family wording with the merged JAY-27 contract: one save-scoped managed club and exact current-snapshot membership.
 - The existing route files are high-churn, and the Planner route suite and browser smoke suite are large. The plan therefore consolidates cross-feature wiring in the canonical route and separates canonical-route tests from compatibility redirects instead of duplicating routes.
 - No product or structural question blocks Commit 1. Visual fit remains an automated and native validation concern.
+- Commit 1 review found that legacy direction-only sort state could be dropped by the compatibility mapper. The mapper now preserves a valid `dir` as canonical `squadDir`, with regression coverage for absent and invalid legacy sort fields.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 | Commit 1 — Move squad planning into My Club | Pending record | Pending | Pending | None |
+| PR 1 | Commit 1 — Move squad planning into My Club | Pending record | Canonical My Club route, mounted Squad/Planner/Tactic workspaces, typed `/planner` compatibility redirect, nav and current-state docs | Sol Medium clean after one bounded compatibility correction | None |
 | PR 1 | Commit 2 — Move managed-club selection into My Club | Pending record | Pending | Pending | None |
 | PR 1 | Commit 3 — Move club staff views into My Club | Pending record | Pending | Pending | None |
 
