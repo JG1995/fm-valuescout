@@ -5,11 +5,12 @@ export type MoneyballSearchMetric = {
   id: string;
   label: string;
   category: string;
-  kind: "string" | "integer" | "number";
+  kind: "string" | "integer" | "number" | "enum";
   align: "left" | "right";
   defaultWidth: number;
   sortable: true;
   operators: readonly { id: string; label: string }[];
+  enumOptions?: readonly { value: string; label: string }[];
   metric?: MoneyballMetric;
   context?: true;
 };
@@ -23,6 +24,10 @@ const NUMBER_OPERATORS = [
 const TEXT_OPERATORS = [
   { id: "contains", label: "contains" },
   { id: "not_contains", label: "does not contain" },
+  { id: "is", label: "is" },
+  { id: "is_not", label: "is not" },
+] as const;
+const ENUM_OPERATORS = [
   { id: "is", label: "is" },
   { id: "is_not", label: "is not" },
 ] as const;
@@ -59,6 +64,22 @@ export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
   basic("nationality", "Nationality", "string"),
   basic("club", "Club", "string"),
   basic("division", "Division", "string"),
+  basic("parent_club", "Parent club", "string"),
+  {
+    id: "preferred_foot",
+    label: "Preferred foot",
+    category: "Identity",
+    kind: "enum",
+    align: "left",
+    defaultWidth: 128,
+    sortable: true,
+    operators: ENUM_OPERATORS,
+    enumOptions: [
+      { value: "left", label: "Left" },
+      { value: "right", label: "Right" },
+      { value: "either", label: "Either" },
+    ],
+  },
   basic("value", "Value", "integer"),
   basic("position", "Position", "string"),
   context("moneyball.starts", "Starts"),
@@ -84,7 +105,6 @@ export const DEFAULT_MONEYBALL_TABLE_COLUMN_IDS = [
   "nationality",
   "club",
   "division",
-  "value",
   "moneyball.minutes",
   "moneyball.average_rating",
   "moneyball.goals_per_90",

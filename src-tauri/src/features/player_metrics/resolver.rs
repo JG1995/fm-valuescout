@@ -237,7 +237,15 @@ pub fn moneyball_context_column(field: &str) -> Option<&'static str> {
 pub fn is_moneyball_search_field(field: &str) -> bool {
     matches!(
         field,
-        "name" | "age" | "nationality" | "club" | "division" | "value" | "position"
+        "name"
+            | "age"
+            | "nationality"
+            | "club"
+            | "division"
+            | "parent_club"
+            | "preferred_foot"
+            | "value"
+            | "position"
     ) || moneyball_context_column(field).is_some()
         || field
             .strip_prefix("moneyball.")
@@ -420,6 +428,13 @@ mod tests {
         assert_eq!(metric.kind(), MetricValueKind::Integer);
         assert_eq!(metric.sql_expression("players"), "moneyball.minutes");
         assert!(metric.moneyball_key().is_none());
+    }
+
+    #[test]
+    fn accepts_recruitment_fields_in_moneyball_mode() {
+        for field in ["parent_club", "preferred_foot"] {
+            assert!(MetricField::parse_for_moneyball(field, true).is_ok());
+        }
     }
 
     #[test]
