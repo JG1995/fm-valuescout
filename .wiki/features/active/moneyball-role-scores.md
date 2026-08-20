@@ -392,7 +392,7 @@ deployment, migration, or compatibility risk.
 
 #### Commit 1 — Define the built-in catalog and scorer
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(moneyball): define role score catalog`
 
@@ -524,7 +524,7 @@ weighted scorer, and explanation model without changing IPC or UI behavior.
 
 #### Commit 2 — Show profile role scores and General placeholders
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): show Moneyball role fit`
 
@@ -971,26 +971,29 @@ guidance, and prove the complete Search/Profile workflow in browser smoke.
 
 **PR:** PR 1 — Add Moneyball role scoring
 
-**Commit:** Commit 1 — Define the built-in catalog and scorer
+**Commit:** Commit 2 — Show profile role scores and General placeholders
 
 ### RED proof
 
-Add Rust tests that require catalog version 1 to contain 88 unique
-position-family identities and require the pure scorer to distinguish
-`Some(0)`, null, and an invalid zero-total definition. They must fail because no
-Moneyball role catalog or composite scorer exists.
+Add Rust query tests for the 88 full-import Moneyball role results and add
+General profile tests for mapped and unmapped presentation rows. Add route and
+component tests for summaries, disclosures, raw-panel retention, and the ready,
+no-data, and re-import states. They must fail because the profile has no role
+results or role-fit panel yet.
 
 ### Expected outcome
 
-The repository has one validated version 1 built-in definition catalog and one
-pure, explainable composite scorer. No IPC, UI, schema, or persisted behavior has
-changed yet.
+The ready Moneyball profile composes full-import role scores and explanations,
+while the General profile shows the complete presentation inventory with null
+Current/Potential values for unsupported attribute roles. Search and persisted
+attribute consumers remain unchanged.
 
 ### Explicit exclusions
 
-- Profile and Search consumers.
+- Search columns, filters, sorting, and filtered-cohort scores.
 - Attribute definition work from JAY-31.
-- Database, migration, custom-role, sample-size, and combined-score work.
+- Database, migration, custom-role, sample-size, combined-score, and Potential
+  Moneyball work.
 
 ## Discoveries and replanning
 
@@ -1011,10 +1014,13 @@ changed yet.
   Planner and other attribute consumers remain on the supported catalog.
 - 2026-08-20 — Read-time derivation removes migration, cache invalidation, and
   legacy-row backfill work while preserving deterministic replacement behavior.
+- 2026-08-20 — The pinned Markdown label `Shots on Target Ratio` is preserved
+  as source metadata and explicitly maps to the existing `shots_on_target_per_90`
+  canonical key; the JAY-19 catalog remains unchanged.
 
 ## Completed work
 
-No implementation commits are completed.
+- Commit 1 — Define the built-in catalog and scorer — Pending record.
 
 ## Final validation
 

@@ -1,0 +1,3525 @@
+{
+  "version": 1,
+  "definitions": [
+    {
+      "id": "amc_attacking_midfielder_ip",
+      "display_name": "Attacking Midfielder",
+      "phase": "in_possession",
+      "position_family": "attacking_midfielder",
+      "position_tags": ["AMC"],
+      "attribute_role_id": "attacking_midfielder_ip",
+      "metrics": [
+        {
+          "key": "xg_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "shots_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Shots per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        }
+      ]
+    },
+    {
+      "id": "amc_advanced_playmaker_ip",
+      "display_name": "Advanced Playmaker",
+      "phase": "in_possession",
+      "position_family": "attacking_midfielder",
+      "position_tags": ["AMC"],
+      "attribute_role_id": "advanced_playmaker_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        }
+      ]
+    },
+    {
+      "id": "amc_free_role_ip",
+      "display_name": "Free Role",
+      "phase": "in_possession",
+      "position_family": "attacking_midfielder",
+      "position_tags": ["AMC"],
+      "attribute_role_id": "free_role_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "possession_lost_per_90",
+          "weight": 0.15,
+          "inverted": true,
+          "source_label": "Possession Lost per 90"
+        }
+      ]
+    },
+    {
+      "id": "amc_second_striker_ip",
+      "display_name": "Second Striker",
+      "phase": "in_possession",
+      "position_family": "attacking_midfielder",
+      "position_tags": ["AMC"],
+      "attribute_role_id": "second_striker_ip",
+      "metrics": [
+        {
+          "key": "xg_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "shots_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Shots per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        }
+      ]
+    },
+    {
+      "id": "amc_channel_midfielder_ip",
+      "display_name": "Channel Midfielder",
+      "phase": "in_possession",
+      "position_family": "attacking_midfielder",
+      "position_tags": ["AMC"],
+      "attribute_role_id": "channel_midfielder_ip",
+      "metrics": [
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "xA per 90"
+        }
+      ]
+    },
+    {
+      "id": "amc_attacking_midfielder_oop",
+      "display_name": "Attacking Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "attacking_midfielder",
+      "position_tags": ["AMC"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "pressures_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Pressures Completed per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        }
+      ]
+    },
+    {
+      "id": "amc_tracking_attacking_midfielder_oop",
+      "display_name": "Tracking Attacking Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "attacking_midfielder",
+      "position_tags": ["AMC"],
+      "attribute_role_id": "tracking_attacking_midfielder_oop",
+      "metrics": [
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        }
+      ]
+    },
+    {
+      "id": "amc_central_outlet_attacking_midfielder_oop",
+      "display_name": "Central Outlet Attacking Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "attacking_midfielder",
+      "position_tags": ["AMC"],
+      "attribute_role_id": "central_outlet_attacking_midfielder_oop",
+      "metrics": [
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "amc_splitting_outlet_attacking_midfielder_oop",
+      "display_name": "Splitting Outlet Attacking Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "attacking_midfielder",
+      "position_tags": ["AMC"],
+      "attribute_role_id": "splitting_outlet_attacking_midfielder_oop",
+      "metrics": [
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_centre_back_ip",
+      "display_name": "Centre-Back",
+      "phase": "in_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": "centre_back_ip",
+      "metrics": [
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_advanced_centre_back_ip",
+      "display_name": "Advanced Centre-Back",
+      "phase": "in_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": "advanced_centre_back_ip",
+      "metrics": [
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "passes_attempted_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Passes Attempted per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_ball_playing_centre_back_ip",
+      "display_name": "Ball-Playing Centre-Back",
+      "phase": "in_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": "ball_playing_centre_back_ip",
+      "metrics": [
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.4,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "passes_attempted_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Passes Attempted per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_no_nonsense_centre_back_ip",
+      "display_name": "No-Nonsense Centre-Back",
+      "phase": "in_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": "no_nonsense_centre_back_ip",
+      "metrics": [
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "possession_lost_per_90",
+          "weight": 0.2,
+          "inverted": true,
+          "source_label": "Possession Lost per 90"
+        },
+        {
+          "key": "fouls_made_per_90",
+          "weight": 0.15,
+          "inverted": true,
+          "source_label": "Fouls Made per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_wide_centre_back_ip",
+      "display_name": "Wide Centre-Back",
+      "phase": "in_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": "wide_centre_back_ip",
+      "metrics": [
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "open_play_crosses_completed_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Open Play Crosses Completed per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "passes_attempted_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Passes Attempted per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_overlapping_centre_back_ip",
+      "display_name": "Overlapping Centre-Back",
+      "phase": "in_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": "overlapping_centre_back_ip",
+      "metrics": [
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_centre_back_oop",
+      "display_name": "Centre-Back",
+      "phase": "out_of_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_stopping_centre_back_oop",
+      "display_name": "Stopping Centre-Back",
+      "phase": "out_of_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": "stopping_centre_back_oop",
+      "metrics": [
+        {
+          "key": "pressures_completed_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Pressures Completed per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_covering_centre_back_oop",
+      "display_name": "Covering Centre-Back",
+      "phase": "out_of_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": "covering_centre_back_oop",
+      "metrics": [
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "tackle_completion_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Tackle Completion Ratio"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_wide_centre_back_oop",
+      "display_name": "Wide Centre-Back",
+      "phase": "out_of_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_wide_stopping_centre_back_oop",
+      "display_name": "Wide Stopping Centre-Back",
+      "phase": "out_of_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": "stopping_wide_centre_back_oop",
+      "metrics": [
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "pressures_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Pressures Completed per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        }
+      ]
+    },
+    {
+      "id": "dc_wide_covering_centre_back_oop",
+      "display_name": "Wide Covering Centre-Back",
+      "phase": "out_of_possession",
+      "position_family": "central_defender",
+      "position_tags": ["DC"],
+      "attribute_role_id": "covering_wide_centre_back_oop",
+      "metrics": [
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        }
+      ]
+    },
+    {
+      "id": "mc_central_midfielder_ip",
+      "display_name": "Central Midfielder",
+      "phase": "in_possession",
+      "position_family": "central_midfielder",
+      "position_tags": ["MC"],
+      "attribute_role_id": "central_midfielder_ip",
+      "metrics": [
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "mc_attacking_midfielder_ip",
+      "display_name": "Attacking Midfielder",
+      "phase": "in_possession",
+      "position_family": "central_midfielder",
+      "position_tags": ["MC"],
+      "attribute_role_id": "attacking_midfielder_ip",
+      "metrics": [
+        {
+          "key": "xg_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "shots_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Shots per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        }
+      ]
+    },
+    {
+      "id": "mc_advanced_playmaker_ip",
+      "display_name": "Advanced Playmaker",
+      "phase": "in_possession",
+      "position_family": "central_midfielder",
+      "position_tags": ["MC"],
+      "attribute_role_id": "advanced_playmaker_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        }
+      ]
+    },
+    {
+      "id": "mc_wide_central_midfielder_ip",
+      "display_name": "Wide Central Midfielder",
+      "phase": "in_possession",
+      "position_family": "central_midfielder",
+      "position_tags": ["MC"],
+      "attribute_role_id": "wide_central_midfielder_ip",
+      "metrics": [
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "mc_channel_midfielder_ip",
+      "display_name": "Channel Midfielder",
+      "phase": "in_possession",
+      "position_family": "central_midfielder",
+      "position_tags": ["MC"],
+      "attribute_role_id": "channel_midfielder_ip",
+      "metrics": [
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "xA per 90"
+        }
+      ]
+    },
+    {
+      "id": "mc_midfield_playmaker_ip",
+      "display_name": "Midfield Playmaker",
+      "phase": "in_possession",
+      "position_family": "central_midfielder",
+      "position_tags": ["MC"],
+      "attribute_role_id": "midfield_playmaker_ip",
+      "metrics": [
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        }
+      ]
+    },
+    {
+      "id": "mc_central_midfielder_oop",
+      "display_name": "Central Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "central_midfielder",
+      "position_tags": ["MC"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "pressures_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Pressures Completed per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        }
+      ]
+    },
+    {
+      "id": "mc_pressing_central_midfielder_oop",
+      "display_name": "Pressing Central Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "central_midfielder",
+      "position_tags": ["MC"],
+      "attribute_role_id": "pressing_central_midfielder_oop",
+      "metrics": [
+        {
+          "key": "pressures_completed_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Pressures Completed per 90"
+        },
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "mc_screening_central_midfielder_oop",
+      "display_name": "Screening Central Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "central_midfielder",
+      "position_tags": ["MC"],
+      "attribute_role_id": "screening_central_midfielder_oop",
+      "metrics": [
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        }
+      ]
+    },
+    {
+      "id": "mc_wide_covering_central_midfielder_oop",
+      "display_name": "Wide Covering Central Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "central_midfielder",
+      "position_tags": ["MC"],
+      "attribute_role_id": "wide_covering_central_midfielder_oop",
+      "metrics": [
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        }
+      ]
+    },
+    {
+      "id": "dm_defensive_midfielder_ip",
+      "display_name": "Defensive Midfielder",
+      "phase": "in_possession",
+      "position_family": "defensive_midfielder",
+      "position_tags": ["DM"],
+      "attribute_role_id": "defensive_midfielder_ip",
+      "metrics": [
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "passes_attempted_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Passes Attempted per 90"
+        },
+        {
+          "key": "possession_lost_per_90",
+          "weight": 0.1,
+          "inverted": true,
+          "source_label": "Possession Lost per 90"
+        },
+        {
+          "key": "fouls_made_per_90",
+          "weight": 0.1,
+          "inverted": true,
+          "source_label": "Fouls Made per 90"
+        }
+      ]
+    },
+    {
+      "id": "dm_deep_lying_playmaker_ip",
+      "display_name": "Deep-Lying Playmaker",
+      "phase": "in_possession",
+      "position_family": "defensive_midfielder",
+      "position_tags": ["DM"],
+      "attribute_role_id": "deep_lying_playmaker_ip",
+      "metrics": [
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.4,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "passes_attempted_per_90",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "Passes Attempted per 90"
+        }
+      ]
+    },
+    {
+      "id": "dm_box_to_box_midfielder_ip",
+      "display_name": "Box-to-Box Midfielder",
+      "phase": "in_possession",
+      "position_family": "defensive_midfielder",
+      "position_tags": ["DM"],
+      "attribute_role_id": "box_to_box_midfielder_ip",
+      "metrics": [
+        {
+          "key": "xg_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "shots_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Shots per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        }
+      ]
+    },
+    {
+      "id": "dm_half_back_ip",
+      "display_name": "Half-Back",
+      "phase": "in_possession",
+      "position_family": "defensive_midfielder",
+      "position_tags": ["DM"],
+      "attribute_role_id": "half_back_ip",
+      "metrics": [
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        }
+      ]
+    },
+    {
+      "id": "dm_box_to_box_playmaker_ip",
+      "display_name": "Box-to-Box Playmaker",
+      "phase": "in_possession",
+      "position_family": "defensive_midfielder",
+      "position_tags": ["DM"],
+      "attribute_role_id": "box_to_box_playmaker_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        }
+      ]
+    },
+    {
+      "id": "dm_defensive_midfielder_oop",
+      "display_name": "Defensive Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "defensive_midfielder",
+      "position_tags": ["DM"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "fouls_made_per_90",
+          "weight": 0.1,
+          "inverted": true,
+          "source_label": "Fouls Made per 90"
+        }
+      ]
+    },
+    {
+      "id": "dm_dropping_defensive_midfielder_oop",
+      "display_name": "Dropping Defensive Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "defensive_midfielder",
+      "position_tags": ["DM"],
+      "attribute_role_id": "dropping_defensive_midfielder_oop",
+      "metrics": [
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        }
+      ]
+    },
+    {
+      "id": "dm_pressing_defensive_midfielder_oop",
+      "display_name": "Pressing Defensive Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "defensive_midfielder",
+      "position_tags": ["DM"],
+      "attribute_role_id": "pressing_defensive_midfielder_oop",
+      "metrics": [
+        {
+          "key": "pressures_completed_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Pressures Completed per 90"
+        },
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "dm_screening_defensive_midfielder_oop",
+      "display_name": "Screening Defensive Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "defensive_midfielder",
+      "position_tags": ["DM"],
+      "attribute_role_id": "screening_defensive_midfielder_oop",
+      "metrics": [
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        }
+      ]
+    },
+    {
+      "id": "dm_wide_covering_defensive_midfielder_oop",
+      "display_name": "Wide Covering Defensive Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "defensive_midfielder",
+      "position_tags": ["DM"],
+      "attribute_role_id": "wide_covering_defensive_midfielder_oop",
+      "metrics": [
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        }
+      ]
+    },
+    {
+      "id": "dl_dr_full_back_ip",
+      "display_name": "Full-Back",
+      "phase": "in_possession",
+      "position_family": "full_back",
+      "position_tags": ["DL", "DR"],
+      "attribute_role_id": "full_back_ip",
+      "metrics": [
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        }
+      ]
+    },
+    {
+      "id": "dl_dr_wing_back_ip",
+      "display_name": "Wing-Back",
+      "phase": "in_possession",
+      "position_family": "full_back",
+      "position_tags": ["DL", "DR"],
+      "attribute_role_id": "wing_back_ip",
+      "metrics": [
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "xA per 90"
+        }
+      ]
+    },
+    {
+      "id": "dl_dr_inside_wing_back_ip",
+      "display_name": "Inside Wing-Back",
+      "phase": "in_possession",
+      "position_family": "full_back",
+      "position_tags": ["DL", "DR"],
+      "attribute_role_id": "inside_wing_back_ip",
+      "metrics": [
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "dl_dr_inside_full_back_ip",
+      "display_name": "Inside Full-Back",
+      "phase": "in_possession",
+      "position_family": "full_back",
+      "position_tags": ["DL", "DR"],
+      "attribute_role_id": "inside_full_back_ip",
+      "metrics": [
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        }
+      ]
+    },
+    {
+      "id": "dl_dr_playmaking_wing_back_ip",
+      "display_name": "Playmaking Wing-Back",
+      "phase": "in_possession",
+      "position_family": "full_back",
+      "position_tags": ["DL", "DR"],
+      "attribute_role_id": "playmaking_wing_back_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "passes_attempted_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Passes Attempted per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        }
+      ]
+    },
+    {
+      "id": "dl_dr_full_back_oop",
+      "display_name": "Full-Back",
+      "phase": "out_of_possession",
+      "position_family": "full_back",
+      "position_tags": ["DL", "DR"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        }
+      ]
+    },
+    {
+      "id": "dl_dr_pressing_full_back_oop",
+      "display_name": "Pressing Full-Back",
+      "phase": "out_of_possession",
+      "position_family": "full_back",
+      "position_tags": ["DL", "DR"],
+      "attribute_role_id": "pressing_full_back_oop",
+      "metrics": [
+        {
+          "key": "pressures_completed_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Pressures Completed per 90"
+        },
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "dl_dr_holding_full_back_oop",
+      "display_name": "Holding Full-Back",
+      "phase": "out_of_possession",
+      "position_family": "full_back",
+      "position_tags": ["DL", "DR"],
+      "attribute_role_id": "holding_full_back_oop",
+      "metrics": [
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        }
+      ]
+    },
+    {
+      "id": "gk_traditional_goalkeeper_ip",
+      "display_name": "Traditional Goalkeeper",
+      "phase": "in_possession",
+      "position_family": "goalkeeper",
+      "position_tags": ["GK"],
+      "attribute_role_id": "goalkeeper_ip",
+      "metrics": [
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "passes_attempted_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Passes Attempted per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        }
+      ]
+    },
+    {
+      "id": "gk_ball_playing_goalkeeper_ip",
+      "display_name": "Ball-Playing Goalkeeper",
+      "phase": "in_possession",
+      "position_family": "goalkeeper",
+      "position_tags": ["GK"],
+      "attribute_role_id": "ball_playing_goalkeeper_ip",
+      "metrics": [
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "passes_attempted_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Passes Attempted per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        }
+      ]
+    },
+    {
+      "id": "gk_no_nonsense_goalkeeper_ip",
+      "display_name": "No-Nonsense Goalkeeper",
+      "phase": "in_possession",
+      "position_family": "goalkeeper",
+      "position_tags": ["GK"],
+      "attribute_role_id": "no_nonsense_goalkeeper_ip",
+      "metrics": [
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "passes_attempted_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Passes Attempted per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "possession_lost_per_90",
+          "weight": 0.1,
+          "inverted": true,
+          "source_label": "Possession Lost per 90"
+        },
+        {
+          "key": "fouls_made_per_90",
+          "weight": 0.1,
+          "inverted": true,
+          "source_label": "Fouls Made per 90"
+        }
+      ]
+    },
+    {
+      "id": "gk_traditional_goalkeeper_oop",
+      "display_name": "Traditional Goalkeeper",
+      "phase": "out_of_possession",
+      "position_family": "goalkeeper",
+      "position_tags": ["GK"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "xgp_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xGP per 90"
+        },
+        {
+          "key": "save_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Save Ratio"
+        },
+        {
+          "key": "saves_held_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Saves Held per 90"
+        },
+        {
+          "key": "clean_sheets_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Clean Sheets per 90"
+        },
+        {
+          "key": "goals_conceded_per_90",
+          "weight": 0.15,
+          "inverted": true,
+          "source_label": "Goals Conceded per 90"
+        }
+      ]
+    },
+    {
+      "id": "gk_sweeper_keeper_oop",
+      "display_name": "Sweeper Keeper",
+      "phase": "out_of_possession",
+      "position_family": "goalkeeper",
+      "position_tags": ["GK"],
+      "attribute_role_id": "sweeper_keeper_oop",
+      "metrics": [
+        {
+          "key": "xgp_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xGP per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "high_intensity_sprints",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "High Intensity Sprints"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        }
+      ]
+    },
+    {
+      "id": "gk_line_holding_keeper_oop",
+      "display_name": "Line-Holding Keeper",
+      "phase": "out_of_possession",
+      "position_family": "goalkeeper",
+      "position_tags": ["GK"],
+      "attribute_role_id": "line_holding_keeper_oop",
+      "metrics": [
+        {
+          "key": "xgp_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "xGP per 90"
+        },
+        {
+          "key": "save_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Save Ratio"
+        },
+        {
+          "key": "saves_held_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Saves Held per 90"
+        },
+        {
+          "key": "headers_attempted_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Aerial Challenges per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        }
+      ]
+    },
+    {
+      "id": "st_deep_lying_forward_ip",
+      "display_name": "Deep-Lying Forward",
+      "phase": "in_possession",
+      "position_family": "striker",
+      "position_tags": ["ST"],
+      "attribute_role_id": "deep_lying_forward_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        }
+      ]
+    },
+    {
+      "id": "st_centre_forward_ip",
+      "display_name": "Centre Forward",
+      "phase": "in_possession",
+      "position_family": "striker",
+      "position_tags": ["ST"],
+      "attribute_role_id": "centre_forward_ip",
+      "metrics": [
+        {
+          "key": "xg_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "shots_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Shots per 90"
+        },
+        {
+          "key": "shots_on_target_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Shots on Target per 90"
+        },
+        {
+          "key": "headers_won_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Headers Won per 90"
+        }
+      ]
+    },
+    {
+      "id": "st_target_forward_ip",
+      "display_name": "Target Forward",
+      "phase": "in_possession",
+      "position_family": "striker",
+      "position_tags": ["ST"],
+      "attribute_role_id": "target_forward_ip",
+      "metrics": [
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "headers_attempted_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Aerial Challenges per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        }
+      ]
+    },
+    {
+      "id": "st_poacher_ip",
+      "display_name": "Poacher",
+      "phase": "in_possession",
+      "position_family": "striker",
+      "position_tags": ["ST"],
+      "attribute_role_id": "poacher_ip",
+      "metrics": [
+        {
+          "key": "xg_per_90",
+          "weight": 0.4,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "shots_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Shots per 90"
+        },
+        {
+          "key": "shots_on_target_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Shots on Target Ratio"
+        },
+        {
+          "key": "minutes_per_goal",
+          "weight": 0.1,
+          "inverted": true,
+          "source_label": "Average Minutes per Goal"
+        }
+      ]
+    },
+    {
+      "id": "st_channel_forward_ip",
+      "display_name": "Channel Forward",
+      "phase": "in_possession",
+      "position_family": "striker",
+      "position_tags": ["ST"],
+      "attribute_role_id": "channel_forward_ip",
+      "metrics": [
+        {
+          "key": "xg_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "shots_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Shots per 90"
+        },
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        }
+      ]
+    },
+    {
+      "id": "st_false_nine_ip",
+      "display_name": "False Nine",
+      "phase": "in_possession",
+      "position_family": "striker",
+      "position_tags": ["ST"],
+      "attribute_role_id": "false_nine_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        }
+      ]
+    },
+    {
+      "id": "st_centre_forward_oop",
+      "display_name": "Centre Forward",
+      "phase": "out_of_possession",
+      "position_family": "striker",
+      "position_tags": ["ST"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "pressures_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Pressures Completed per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        }
+      ]
+    },
+    {
+      "id": "st_tracking_centre_forward_oop",
+      "display_name": "Tracking Centre Forward",
+      "phase": "out_of_possession",
+      "position_family": "striker",
+      "position_tags": ["ST"],
+      "attribute_role_id": "tracking_centre_forward_oop",
+      "metrics": [
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        }
+      ]
+    },
+    {
+      "id": "st_central_outlet_centre_forward_oop",
+      "display_name": "Central Outlet Centre Forward",
+      "phase": "out_of_possession",
+      "position_family": "striker",
+      "position_tags": ["ST"],
+      "attribute_role_id": "central_outlet_centre_forward_oop",
+      "metrics": [
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "st_splitting_outlet_centre_forward_oop",
+      "display_name": "Splitting Outlet Centre Forward",
+      "phase": "out_of_possession",
+      "position_family": "striker",
+      "position_tags": ["ST"],
+      "attribute_role_id": "splitting_outlet_centre_forward_oop",
+      "metrics": [
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "ml_mr_wide_midfielder_ip",
+      "display_name": "Wide Midfielder",
+      "phase": "in_possession",
+      "position_family": "wide_midfielder",
+      "position_tags": ["ML", "MR"],
+      "attribute_role_id": "wide_midfielder_ip",
+      "metrics": [
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        }
+      ]
+    },
+    {
+      "id": "ml_mr_winger_ip",
+      "display_name": "Winger",
+      "phase": "in_possession",
+      "position_family": "wide_midfielder",
+      "position_tags": ["ML", "MR"],
+      "attribute_role_id": "winger_ip",
+      "metrics": [
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        }
+      ]
+    },
+    {
+      "id": "ml_mr_playmaking_winger_ip",
+      "display_name": "Playmaking Winger",
+      "phase": "in_possession",
+      "position_family": "wide_midfielder",
+      "position_tags": ["ML", "MR"],
+      "attribute_role_id": "playmaking_winger_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        }
+      ]
+    },
+    {
+      "id": "ml_mr_inside_winger_ip",
+      "display_name": "Inside Winger",
+      "phase": "in_possession",
+      "position_family": "wide_midfielder",
+      "position_tags": ["ML", "MR"],
+      "attribute_role_id": "inside_winger_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "open_play_crosses_completed_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Open Play Crosses Completed per 90"
+        }
+      ]
+    },
+    {
+      "id": "ml_mr_wide_midfielder_oop",
+      "display_name": "Wide Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "wide_midfielder",
+      "position_tags": ["ML", "MR"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        }
+      ]
+    },
+    {
+      "id": "ml_mr_tracking_wide_midfielder_oop",
+      "display_name": "Tracking Wide Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "wide_midfielder",
+      "position_tags": ["ML", "MR"],
+      "attribute_role_id": "tracking_wide_midfielder_oop",
+      "metrics": [
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        }
+      ]
+    },
+    {
+      "id": "ml_mr_wide_outlet_wide_midfielder_oop",
+      "display_name": "Wide Outlet Wide Midfielder",
+      "phase": "out_of_possession",
+      "position_family": "wide_midfielder",
+      "position_tags": ["ML", "MR"],
+      "attribute_role_id": "wide_outlet_wide_midfielder_oop",
+      "metrics": [
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "wbl_wbr_wing_back_ip",
+      "display_name": "Wing-Back",
+      "phase": "in_possession",
+      "position_family": "wing_back",
+      "position_tags": ["WBL", "WBR"],
+      "attribute_role_id": "wing_back_ip",
+      "metrics": [
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        }
+      ]
+    },
+    {
+      "id": "wbl_wbr_advanced_wing_back_ip",
+      "display_name": "Advanced Wing-Back",
+      "phase": "in_possession",
+      "position_family": "wing_back",
+      "position_tags": ["WBL", "WBR"],
+      "attribute_role_id": "advanced_wing_back_ip",
+      "metrics": [
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        }
+      ]
+    },
+    {
+      "id": "wbl_wbr_inside_wing_back_ip",
+      "display_name": "Inside Wing-Back",
+      "phase": "in_possession",
+      "position_family": "wing_back",
+      "position_tags": ["WBL", "WBR"],
+      "attribute_role_id": "inside_wing_back_ip",
+      "metrics": [
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "wbl_wbr_playmaking_wing_back_ip",
+      "display_name": "Playmaking Wing-Back",
+      "phase": "in_possession",
+      "position_family": "wing_back",
+      "position_tags": ["WBL", "WBR"],
+      "attribute_role_id": "playmaking_wing_back_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "passes_attempted_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Passes Attempted per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        }
+      ]
+    },
+    {
+      "id": "wbl_wbr_wing_back_oop",
+      "display_name": "Wing-Back",
+      "phase": "out_of_possession",
+      "position_family": "wing_back",
+      "position_tags": ["WBL", "WBR"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        }
+      ]
+    },
+    {
+      "id": "wbl_wbr_pressing_wing_back_oop",
+      "display_name": "Pressing Wing-Back",
+      "phase": "out_of_possession",
+      "position_family": "wing_back",
+      "position_tags": ["WBL", "WBR"],
+      "attribute_role_id": "pressing_wing_back_oop",
+      "metrics": [
+        {
+          "key": "pressures_completed_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Pressures Completed per 90"
+        },
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.05,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "wbl_wbr_holding_wing_back_oop",
+      "display_name": "Holding Wing-Back",
+      "phase": "out_of_possession",
+      "position_family": "wing_back",
+      "position_tags": ["WBL", "WBR"],
+      "attribute_role_id": "holding_wing_back_oop",
+      "metrics": [
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "blocks_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Blocks per 90"
+        },
+        {
+          "key": "clearances_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Clearances per 90"
+        }
+      ]
+    },
+    {
+      "id": "aml_amr_winger_ip",
+      "display_name": "Winger",
+      "phase": "in_possession",
+      "position_family": "winger",
+      "position_tags": ["AML", "AMR"],
+      "attribute_role_id": "winger_ip",
+      "metrics": [
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "xa_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        }
+      ]
+    },
+    {
+      "id": "aml_amr_inside_forward_ip",
+      "display_name": "Inside Forward",
+      "phase": "in_possession",
+      "position_family": "winger",
+      "position_tags": ["AML", "AMR"],
+      "attribute_role_id": "inside_forward_ip",
+      "metrics": [
+        {
+          "key": "xg_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "shots_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Shots per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        }
+      ]
+    },
+    {
+      "id": "aml_amr_playmaking_winger_ip",
+      "display_name": "Playmaking Winger",
+      "phase": "in_possession",
+      "position_family": "winger",
+      "position_tags": ["AML", "AMR"],
+      "attribute_role_id": "playmaking_winger_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "pass_completion_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Pass Completion Ratio"
+        }
+      ]
+    },
+    {
+      "id": "aml_amr_wide_forward_ip",
+      "display_name": "Wide Forward",
+      "phase": "in_possession",
+      "position_family": "winger",
+      "position_tags": ["AML", "AMR"],
+      "attribute_role_id": "wide_forward_ip",
+      "metrics": [
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        }
+      ]
+    },
+    {
+      "id": "aml_amr_inside_winger_ip",
+      "display_name": "Inside Winger",
+      "phase": "in_possession",
+      "position_family": "winger",
+      "position_tags": ["AML", "AMR"],
+      "attribute_role_id": "inside_winger_ip",
+      "metrics": [
+        {
+          "key": "xa_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "xA per 90"
+        },
+        {
+          "key": "key_passes_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Key Passes per 90"
+        },
+        {
+          "key": "progressive_passes_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Progressive Passes per 90"
+        },
+        {
+          "key": "dribbles_made_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Dribbles Made per 90"
+        },
+        {
+          "key": "open_play_crosses_completed_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Open Play Crosses Completed per 90"
+        }
+      ]
+    },
+    {
+      "id": "aml_amr_winger_oop",
+      "display_name": "Winger",
+      "phase": "out_of_possession",
+      "position_family": "winger",
+      "position_tags": ["AML", "AMR"],
+      "attribute_role_id": null,
+      "metrics": [
+        {
+          "key": "pressures_completed_per_90",
+          "weight": 0.3,
+          "inverted": false,
+          "source_label": "Pressures Completed per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        }
+      ]
+    },
+    {
+      "id": "aml_amr_tracking_winger_oop",
+      "display_name": "Tracking Winger",
+      "phase": "out_of_possession",
+      "position_family": "winger",
+      "position_tags": ["AML", "AMR"],
+      "attribute_role_id": "tracking_winger_oop",
+      "metrics": [
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        },
+        {
+          "key": "tackles_completed_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Tackles Completed per 90"
+        },
+        {
+          "key": "headers_won_ratio",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Headers Won Ratio"
+        }
+      ]
+    },
+    {
+      "id": "aml_amr_inside_outlet_winger_oop",
+      "display_name": "Inside Outlet Winger",
+      "phase": "out_of_possession",
+      "position_family": "winger",
+      "position_tags": ["AML", "AMR"],
+      "attribute_role_id": "inside_outlet_winger_oop",
+      "metrics": [
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "np-xg_per_90",
+          "weight": 0.2,
+          "inverted": false,
+          "source_label": "NPxG per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "interceptions_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Interceptions per 90"
+        }
+      ]
+    },
+    {
+      "id": "aml_amr_wide_outlet_winger_oop",
+      "display_name": "Wide Outlet Winger",
+      "phase": "out_of_possession",
+      "position_family": "winger",
+      "position_tags": ["AML", "AMR"],
+      "attribute_role_id": "wide_outlet_winger_oop",
+      "metrics": [
+        {
+          "key": "high_intensity_sprints_per_90",
+          "weight": 0.35,
+          "inverted": false,
+          "source_label": "High Intensity Sprints per 90"
+        },
+        {
+          "key": "crosses_completed_per_90",
+          "weight": 0.25,
+          "inverted": false,
+          "source_label": "Crosses Completed per 90"
+        },
+        {
+          "key": "xg_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "xG per 90"
+        },
+        {
+          "key": "distance_covered_per_90",
+          "weight": 0.15,
+          "inverted": false,
+          "source_label": "Distance Covered per 90"
+        },
+        {
+          "key": "possession_won_per_90",
+          "weight": 0.1,
+          "inverted": false,
+          "source_label": "Possession Won per 90"
+        }
+      ]
+    }
+  ]
+}
