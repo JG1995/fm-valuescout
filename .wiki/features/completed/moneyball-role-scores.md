@@ -36,7 +36,7 @@ Add transparent, versioned performance role scores to the existing Moneyball imp
 
 **Base:** `c7dfd983a1304026a6ddcf6f8528a1dfce19871c`
 
-There are no earlier PR merge refs and no correction commit.
+There are no earlier PR merge refs and no correction commit. The close-out documentation commit is `c05f3a1b7fae0e61bdfd2c9bfbbb0a583b4f08dd`.
 
 | Ref | Subject | Role |
 | --- | --- | --- |
@@ -45,8 +45,9 @@ There are no earlier PR merge refs and no correction commit.
 | `0678e1ba6c7d1c49ce641ac91ad142766f072972` | `feat(profile): show Moneyball role fit` | Full-import profile scores, General placeholders, and role-fit UI |
 | `527c4e0b6c66b90560bedf519460f9ff482aee05` | `feat(search): query Moneyball role scores` | Comparison-pool scoring, post-score filters, sorting, totals, and pagination |
 | `ae80761bf260a42cd42859a30fb9c4e5820f709b` | `feat(search): expose Moneyball role columns` | Search catalog mirror, columns, filters, and browser coverage |
+| `c05f3a1b7fae0e61bdfd2c9bfbbb0a583b4f08dd` | `docs(moneyball): archive role scoring feature` | Close-out documentation reconciliation |
 
-Documentation reconciliation is `Pending record` until this close-out change is committed.
+Release preparation is `Pending record` until the `0.10.0` preparation change is committed.
 
 ## Delivery status
 
@@ -65,12 +66,15 @@ branch: feature/moneyball-role-scores
 base_branch: main
 base_ref: c7dfd983a1304026a6ddcf6f8528a1dfce19871c
 publication_provider: GitHub
-release_intent: none
+release_intent: minor
+release_version: 0.10.0
+release_tag: v0.10.0
 required_check_name: check
 ci_repair_rounds: 0 of 2
 earlier_pr_merge_refs: none
 correction_ref: none
-close_out_documentation_ref: Pending record
+close_out_documentation_ref: c05f3a1b7fae0e61bdfd2c9bfbbb0a583b4f08dd
+release_preparation_ref: Pending record
 implementation_range: "c7dfd983a1304026a6ddcf6f8528a1dfce19871c..ae80761bf260a42cd42859a30fb9c4e5820f709b"
 final_pr_commit_set:
   - e041c157166fc117578aba1b35f44fb8959bb7d7
@@ -78,6 +82,8 @@ final_pr_commit_set:
   - 0678e1ba6c7d1c49ce641ac91ad142766f072972
   - 527c4e0b6c66b90560bedf519460f9ff482aee05
   - ae80761bf260a42cd42859a30fb9c4e5820f709b
+  - c05f3a1b7fae0e61bdfd2c9bfbbb0a583b4f08dd
+  - Pending record (release preparation for 0.10.0)
 ```
 
 ## Feature close-out
@@ -86,6 +92,6 @@ final_pr_commit_set:
 
 ## Follow-up
 
-- Publish only through the GitHub publication workflow when the branch is ready for review. Resolve the pending documentation ref from Git after this reconciliation is committed.
+- Publish only through the GitHub publication workflow when the branch is ready for review. Resolve the pending release-preparation ref from Git after this change is committed.
 - Run the missing 200% zoom and narrow viewport checks in a supported browser environment.
 - Add an end-to-end Rust fixture only if replacement-driven role-result regression coverage becomes necessary.
