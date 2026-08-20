@@ -10,11 +10,12 @@ import type {
   FilterRule,
   FilterValue,
 } from "../types/filter-rule";
+import type { SearchView } from "../types/search-view";
 import {
   createDefaultFilterRule,
   defaultOperatorForField,
   defaultValueForField,
-  FILTER_FIELDS,
+  filterFieldsForView,
   getFilterField,
   isFilterRuleComplete,
 } from "../utils/filter-registry";
@@ -26,6 +27,7 @@ type SearchFilterEditorModalProps = {
   rules: FilterRule[];
   combine: FilterCombineMode;
   onApply: (rules: FilterRule[], combine: FilterCombineMode) => void;
+  view?: SearchView;
 };
 
 function copyRules(rules: FilterRule[]): FilterRule[] {
@@ -36,12 +38,14 @@ function FilterRuleRow({
   rule,
   onChange,
   onRemove,
+  view,
 }: {
   rule: FilterRule;
   onChange: (next: FilterRule) => void;
   onRemove: () => void;
+  view: SearchView;
 }) {
-  const field = getFilterField(rule.field);
+  const field = getFilterField(rule.field, view);
   if (!field) {
     return null;
   }
@@ -50,8 +54,8 @@ function FilterRuleRow({
     onChange({
       ...rule,
       field: fieldId,
-      op: defaultOperatorForField(fieldId),
-      value: defaultValueForField(fieldId),
+      op: defaultOperatorForField(fieldId, view),
+      value: defaultValueForField(fieldId, view),
     });
   };
 
@@ -67,7 +71,7 @@ function FilterRuleRow({
     <div className="grid gap-3 rounded-lg border border-outline-variant bg-surface-container-high p-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
       <PlayerMetricPicker
         label="Field"
-        metrics={FILTER_FIELDS}
+        metrics={filterFieldsForView(view)}
         value={rule.field}
         onChange={handleFieldChange}
       />
@@ -108,6 +112,23 @@ function FilterRuleRow({
               const parsed = Number.parseInt(event.target.value, 10);
               handleValueChange({
                 type: "integer",
+                value: Number.isNaN(parsed) ? 0 : parsed,
+              });
+            }}
+          />
+        ) : null}
+        {field.kind === "number" ? (
+          <TextField
+            label="Value"
+            type="number"
+            inputMode="decimal"
+            value={
+              rule.value.type === "number" ? String(rule.value.value) : "0"
+            }
+            onChange={(event) => {
+              const parsed = Number(event.target.value);
+              handleValueChange({
+                type: "number",
                 value: Number.isNaN(parsed) ? 0 : parsed,
               });
             }}
@@ -164,11 +185,14 @@ export function SearchFilterEditorModal({
   rules,
   combine,
   onApply,
+  view = "general",
 }: SearchFilterEditorModalProps) {
   const [draftRules, setDraftRules] = useState(() => copyRules(rules));
   const [draftCombine, setDraftCombine] = useState(combine);
   const atCap = draftRules.length >= MAX_FILTER_RULES;
-  const draftIsComplete = draftRules.every(isFilterRuleComplete);
+  const draftIsComplete = draftRules.every((rule) =>
+    isFilterRuleComplete(rule, view),
+  );
 
   useEffect(() => {
     if (open) {
@@ -188,7 +212,13 @@ export function SearchFilterEditorModal({
       return;
     }
     setDraftRules((current) =>
-      capFilterRules([...current, createDefaultFilterRule()]),
+      capFilterRules([
+        ...current,
+        createDefaultFilterRule(
+          view === "moneyball" ? "moneyball.average_rating" : "ca",
+          view,
+        ),
+      ]),
     );
   };
 
@@ -268,6 +298,7 @@ export function SearchFilterEditorModal({
                     current.filter((item) => item.id !== rule.id),
                   );
                 }}
+                view={view}
               />
             ))
           )}

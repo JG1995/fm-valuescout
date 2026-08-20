@@ -51,7 +51,9 @@ export type ConfigurableTableHeaderProps = {
 };
 
 export type PlayerTableColumn = ConfigurableTableColumn;
-type PlayerTableHeaderProps = Omit<ConfigurableTableHeaderProps, "metrics">;
+type PlayerTableHeaderProps = Omit<ConfigurableTableHeaderProps, "metrics"> & {
+  metrics?: readonly ConfigurableTableMetric[];
+};
 
 function ColumnResizeHandle({
   label,
@@ -401,6 +403,9 @@ export function ConfigurableTableHeader({
 }
 
 /** Compatibility wrapper for existing player Search and Squad callers. */
-export function PlayerTableHeader(props: PlayerTableHeaderProps) {
-  return <ConfigurableTableHeader {...props} metrics={PLAYER_METRICS} />;
+export function PlayerTableHeader({
+  metrics = PLAYER_METRICS,
+  ...props
+}: PlayerTableHeaderProps) {
+  return <ConfigurableTableHeader {...props} metrics={metrics} />;
 }

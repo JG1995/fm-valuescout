@@ -37,6 +37,7 @@ pub struct SquadPlayerDto {
 #[serde(untagged)]
 pub enum DynamicValueDto {
     Integer(i64),
+    Real(f64),
     Text(String),
 }
 
@@ -45,6 +46,9 @@ impl From<crate::features::player_metrics::resolver::DynamicValue> for DynamicVa
         match value {
             crate::features::player_metrics::resolver::DynamicValue::Integer(number) => {
                 Self::Integer(number)
+            }
+            crate::features::player_metrics::resolver::DynamicValue::Real(number) => {
+                Self::Real(number)
             }
             crate::features::player_metrics::resolver::DynamicValue::Text(text) => Self::Text(text),
         }

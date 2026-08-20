@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use rusqlite::Row;
 
+use crate::features::moneyball::is_moneyball_statistic_key;
 use crate::features::scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS};
 
 use super::potential_cache::PROJECTION_MODEL_VERSION;
@@ -37,6 +38,7 @@ pub const MAX_REQUESTED_FIELDS: usize = 256;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MetricValueKind {
     Integer,
+    Real,
     Text,
 }
 
@@ -44,6 +46,8 @@ pub enum MetricValueKind {
 enum MetricSource {
     Column(&'static str),
     JsonInteger { column: &'static str, key: String },
+    MoneyballContext { column: &'static str },
+    MoneyballStatistic { key: String },
     Position,
     CurrentRole { role_id: &'static str },
     PotentialRole { role_id: &'static str },
@@ -59,14 +63,22 @@ pub struct MetricField {
     source: MetricSource,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DynamicValue {
     Integer(i64),
+    Real(f64),
     Text(String),
 }
 
 impl MetricField {
     pub fn parse(field: &str) -> Result<Self, String> {
+        Self::parse_for_moneyball(field, false)
+    }
+
+    pub fn parse_for_moneyball(field: &str, moneyball: bool) -> Result<Self, String> {
+        if moneyball && !is_moneyball_search_field(field) {
+            return Err(format!("unknown Moneyball search field: {field}"));
+        }
         if let Some((column, kind)) = scalar_metric(field) {
             return Ok(Self {
                 id: field.to_string(),
@@ -125,6 +137,30 @@ impl MetricField {
                 },
             });
         }
+        if moneyball {
+            if let Some(column) = moneyball_context_column(field) {
+                return Ok(Self {
+                    id: field.to_string(),
+                    kind: MetricValueKind::Integer,
+                    source: MetricSource::MoneyballContext { column },
+                });
+            }
+        }
+        if let Some(key) = field.strip_prefix("moneyball.") {
+            if !moneyball {
+                return Err(format!("unknown player metric: {field}"));
+            }
+            if !is_moneyball_statistic_key(key) {
+                return Err(format!("unknown Moneyball metric: {key}"));
+            }
+            return Ok(Self {
+                id: field.to_string(),
+                kind: MetricValueKind::Real,
+                source: MetricSource::MoneyballStatistic {
+                    key: key.to_string(),
+                },
+            });
+        }
         Err(format!("unknown player metric: {field}"))
     }
 
@@ -150,12 +186,23 @@ impl MetricField {
         }
     }
 
+    pub fn moneyball_key(&self) -> Option<&str> {
+        match &self.source {
+            MetricSource::MoneyballStatistic { key } => Some(key),
+            _ => None,
+        }
+    }
+
     /// Returns a trusted SQLite expression relative to the supplied player-table alias.
     pub fn sql_expression(&self, player_alias: &str) -> String {
         match &self.source {
             MetricSource::Column(column) => format!("{player_alias}.{column}"),
             MetricSource::JsonInteger { column, key } => {
                 format!("json_extract({player_alias}.{column}, '$.{key}')")
+            }
+            MetricSource::MoneyballContext { column } => format!("moneyball.{column}"),
+            MetricSource::MoneyballStatistic { key } => {
+                format!("json_extract(moneyball.statistics_json, '$.\"{key}\"')")
             }
             MetricSource::Position => format!(
                 "COALESCE((SELECT group_concat(position_key, ', ') FROM (SELECT entry.key AS position_key FROM json_each({player_alias}.positions_json) AS entry WHERE entry.type = 'integer' AND entry.value > 0 ORDER BY entry.value DESC, entry.key ASC)), '')"
@@ -172,14 +219,48 @@ impl MetricField {
     pub fn sql_sort_expression(&self, player_alias: &str) -> String {
         let expression = self.sql_expression(player_alias);
         match self.kind {
-            MetricValueKind::Integer => expression,
+            MetricValueKind::Integer | MetricValueKind::Real => expression,
             MetricValueKind::Text => format!("{expression} COLLATE NOCASE"),
         }
     }
 }
 
+pub fn moneyball_context_column(field: &str) -> Option<&'static str> {
+    match field {
+        "moneyball.starts" => Some("starts"),
+        "moneyball.substitute_appearances" => Some("substitute_appearances"),
+        "moneyball.minutes" => Some("minutes"),
+        _ => None,
+    }
+}
+
+pub fn is_moneyball_search_field(field: &str) -> bool {
+    matches!(
+        field,
+        "name"
+            | "age"
+            | "nationality"
+            | "club"
+            | "division"
+            | "parent_club"
+            | "preferred_foot"
+            | "value"
+            | "position"
+    ) || moneyball_context_column(field).is_some()
+        || field
+            .strip_prefix("moneyball.")
+            .is_some_and(is_moneyball_statistic_key)
+}
+
 /// Validates request fields and retains their first-seen order.
 pub fn parse_requested_fields(fields: &[String]) -> Result<Vec<MetricField>, String> {
+    parse_requested_fields_for_moneyball(fields, false)
+}
+
+pub fn parse_requested_fields_for_moneyball(
+    fields: &[String],
+    moneyball: bool,
+) -> Result<Vec<MetricField>, String> {
     if fields.len() > MAX_REQUESTED_FIELDS {
         return Err(format!(
             "requested field count exceeds maximum of {MAX_REQUESTED_FIELDS}"
@@ -188,7 +269,7 @@ pub fn parse_requested_fields(fields: &[String]) -> Result<Vec<MetricField>, Str
     let mut seen = HashSet::new();
     let mut parsed = Vec::new();
     for field in fields {
-        let metric = MetricField::parse(field)?;
+        let metric = MetricField::parse_for_moneyball(field, moneyball)?;
         if seen.insert(metric.id.clone()) {
             parsed.push(metric);
         }
@@ -205,6 +286,9 @@ pub fn read_dynamic_value(
         MetricValueKind::Integer => row
             .get::<_, Option<i64>>(index)
             .map(|value| value.map(DynamicValue::Integer)),
+        MetricValueKind::Real => row
+            .get::<_, Option<f64>>(index)
+            .map(|value| value.map(DynamicValue::Real)),
         MetricValueKind::Text => row
             .get::<_, Option<String>>(index)
             .map(|value| value.map(DynamicValue::Text)),
@@ -325,5 +409,37 @@ mod tests {
         let fields = vec!["position".to_string(); MAX_REQUESTED_FIELDS + 1];
 
         assert!(parse_requested_fields(&fields).is_err());
+    }
+
+    #[test]
+    fn accepts_a_hyphenated_moneyball_metric() {
+        let metric =
+            MetricField::parse_for_moneyball("moneyball.np-xg", true).expect("moneyball metric");
+
+        assert_eq!(metric.id(), "moneyball.np-xg");
+    }
+
+    #[test]
+    fn accepts_context_only_in_moneyball_mode() {
+        assert!(MetricField::parse("moneyball.minutes").is_err());
+        let metric =
+            MetricField::parse_for_moneyball("moneyball.minutes", true).expect("Moneyball context");
+
+        assert_eq!(metric.kind(), MetricValueKind::Integer);
+        assert_eq!(metric.sql_expression("players"), "moneyball.minutes");
+        assert!(metric.moneyball_key().is_none());
+    }
+
+    #[test]
+    fn accepts_recruitment_fields_in_moneyball_mode() {
+        for field in ["parent_club", "preferred_foot"] {
+            assert!(MetricField::parse_for_moneyball(field, true).is_ok());
+        }
+    }
+
+    #[test]
+    fn rejects_general_only_metrics_in_moneyball_mode() {
+        assert!(MetricField::parse_for_moneyball("attr.Acceleration", true).is_err());
+        assert!(MetricField::parse_for_moneyball("role.target_forward", true).is_err());
     }
 }

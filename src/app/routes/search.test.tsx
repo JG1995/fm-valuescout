@@ -18,6 +18,7 @@ import type { PlayerSummary } from "@/features/search/types/player-summary";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
+import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
@@ -101,6 +102,7 @@ function mockScrollerScrollTo(scroller: HTMLElement) {
 describe("search route", () => {
   beforeEach(() => {
     useLayoutStore.setState({ railExpanded: true });
+    useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
   });
 
   it("lists Player Search in the nav rail and opens the no-snapshot empty state", async () => {
@@ -119,6 +121,107 @@ describe("search route", () => {
     expect(
       screen.getByText("No data loaded for this save"),
     ).toBeInTheDocument();
+  });
+
+  it("opens the opt-in Moneyball workspace with its own query view and pool", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Moneyball Scout", 160),
+        dynamicValues: { "moneyball.average_rating": 7.25 },
+        moneyballPercentiles: { "moneyball.average_rating": 83 },
+      },
+    ]);
+    renderSearchRoute("/search?view=moneyball");
+
+    expect(
+      await screen.findByRole("tab", { name: "Moneyball" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "moneyball",
+        comparisonPool: "filtered",
+      });
+    });
+  });
+
+  it("uses the saved default only when Search has no explicit view", async () => {
+    await resolveLoadDataIpcMock();
+    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
+    setSearchPlayersOverride([playerNamed("Moneyball Scout", 160)]);
+
+    renderSearchRoute();
+
+    expect(
+      await screen.findByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "moneyball",
+        sortBy: "moneyball.average_rating",
+        comparisonPool: "filtered",
+      });
+    });
+  });
+
+  it("keeps an explicit General Search view above the saved default", async () => {
+    await resolveLoadDataIpcMock();
+    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
+
+    renderSearchRoute("/search?view=general");
+
+    expect(
+      await screen.findByRole("tab", { name: "General", selected: true }),
+    ).toBeInTheDocument();
+  });
+
+  it("makes General explicit when selected from an implicit Moneyball default", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
+    const { router } = renderSearchRoute();
+
+    await user.click(
+      await screen.findByRole("tab", { name: "General", selected: false }),
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search.view).toBe("general");
+      expect(
+        screen.getByRole("tab", { name: "General", selected: true }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("labels an existing Moneyball cohort as a replacement", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Existing cohort", 160),
+        dynamicValues: { "moneyball.average_rating": 7.25 },
+      },
+    ]);
+    renderSearchRoute("/search?view=moneyball");
+
+    expect(
+      await screen.findByRole("button", { name: "Replace Moneyball CSV" }),
+    ).toBeInTheDocument();
+  });
+
+  it("moves focus to the selected Search tab during keyboard navigation", async () => {
+    await resolveLoadDataIpcMock();
+    renderSearchRoute();
+
+    const general = await screen.findByRole("tab", { name: "General" });
+    general.focus();
+    fireEvent.keyDown(general, { key: "ArrowRight" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Moneyball" })).toHaveFocus();
+    });
   });
 
   it("renders a virtualized page of basic columns via search_players", async () => {
@@ -533,7 +636,7 @@ describe("search route", () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/players/160");
-      expect(router.state.location.search).toEqual({});
+      expect(router.state.location.search).toEqual({ view: "general" });
     });
   });
 

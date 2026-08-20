@@ -36,6 +36,10 @@ import {
   resolveCsvImportIpcMock,
 } from "@/testing/csv-import-ipc-mock";
 import {
+  resetPlayerMoneyballOverride,
+  resolveGetPlayerMoneyballIpcMock,
+} from "@/testing/moneyball-ipc-mock";
+import {
   resetPlannerIpcMock,
   resolveAddPlannerStringIpcMock,
   resolveAssignPlannerPlayerIpcMock,
@@ -182,6 +186,10 @@ function registerIpcMocks() {
 
     if (cmd === "get_player") {
       return resolveGetPlayerIpcMock(args);
+    }
+
+    if (cmd === "get_player_moneyball") {
+      return resolveGetPlayerMoneyballIpcMock(args);
     }
 
     if (cmd === "set_hidden_information_revealed") {
@@ -343,6 +351,7 @@ afterEach(() => {
   resetStaffIpcMock();
   resetSquadPlayersOverride();
   resetGetPlayerOverride();
+  resetPlayerMoneyballOverride();
   resetPlannerIpcMock();
   resetAcademyIpcMock();
   usePlayerTableStore.setState({ layouts: defaultPlayerTableLayouts() });

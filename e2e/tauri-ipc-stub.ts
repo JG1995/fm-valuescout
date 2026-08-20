@@ -8,6 +8,7 @@ type SmokeStubOptions = {
   squadPageFailure?: boolean;
   squadOverview?: boolean;
   playerProfile?: boolean;
+  moneyballSearch?: boolean;
   staffWorkspace?: boolean;
   staffShortlist?: boolean;
   staffFamily?: "configured" | "none";
@@ -22,6 +23,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const squadPageFailure = options.squadPageFailure ?? false;
   const squadOverview = options.squadOverview ?? false;
   const playerProfile = options.playerProfile ?? false;
+  const moneyballSearch = options.moneyballSearch ?? false;
   const staffWorkspace = options.staffWorkspace ?? false;
   const staffShortlist = options.staffShortlist ?? false;
   const staffFamilyConfigured = options.staffFamily !== "none";
@@ -39,6 +41,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const squadPageFailure = ${squadPageFailure ? "true" : "false"};
       const squadOverview = ${squadOverview ? "true" : "false"};
       const playerProfile = ${playerProfile ? "true" : "false"};
+      const moneyballSearch = ${moneyballSearch ? "true" : "false"};
       const staffWorkspace = ${staffWorkspace ? "true" : "false"};
       const staffShortlist = ${staffShortlist ? "true" : "false"};
       const staffFamilyConfigured = ${staffFamilyConfigured ? "true" : "false"};
@@ -195,6 +198,35 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           marketValueGbp: 12000000,
         },
       ] : [];
+      const moneyballPlayers = moneyballSearch ? Array.from(
+        { length: 101 },
+        (_, index) => ({
+          uid: index + 1,
+          name: "Moneyball player " + String(index + 1).padStart(3, "0"),
+          age: 20 + (index % 12),
+          birthYear: 2000,
+          birthDayOfYear: index + 1,
+          nationalities: ["ENG"],
+          club: "Moneyball FC",
+          division: "Premier Division",
+          marketValueGbp: 1000000 + index * 10000,
+          dynamicValues: {
+            "moneyball.minutes": 900 + index * 10,
+            "moneyball.average_rating": 6.5 + (index % 20) / 10,
+            "moneyball.goals_per_90": 0.1 + (index % 10) / 10,
+            "moneyball.assists_per_90": 0.05 + (index % 8) / 10,
+            "moneyball.xg_per_90": 0.08 + (index % 9) / 10,
+            "moneyball.xa_per_90": 0.04 + (index % 7) / 10,
+          },
+          moneyballPercentiles: {
+            "moneyball.average_rating": 50 + (index % 50),
+            "moneyball.goals_per_90": 50 + (index % 50),
+            "moneyball.assists_per_90": 50 + (index % 50),
+            "moneyball.xg_per_90": 50 + (index % 50),
+            "moneyball.xa_per_90": 50 + (index % 50),
+          },
+        }),
+      ) : [];
       const staffRoleIds = [
         "assistant_manager",
         "manager",
@@ -572,6 +604,24 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             const limit = Number.isInteger(args?.limit)
               ? Math.min(200, Math.max(1, args.limit))
               : 50;
+            if (args?.searchView === "moneyball") {
+              const filtered = args?.filters?.length > 0
+                ? moneyballPlayers.slice(0, 50)
+                : moneyballPlayers;
+              const players = args?.comparisonPool === "fullCsv"
+                ? filtered.map((player) => ({
+                    ...player,
+                    moneyballPercentiles: {
+                      ...player.moneyballPercentiles,
+                      "moneyball.average_rating": 71,
+                    },
+                  }))
+                : filtered;
+              return {
+                players: players.slice(offset, offset + limit),
+                total: players.length,
+              };
+            }
             return squadOverview
               ? {
                   players: squadPlayers.slice(offset, offset + limit),
@@ -840,6 +890,32 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 },
               ],
             } : null;
+          }
+
+          if (cmd === "get_player_moneyball") {
+            return moneyballSearch ? {
+              state: "ready",
+              askingPriceKind: "single",
+              askingPriceLowerEur: 1000000,
+              askingPriceUpperEur: null,
+              starts: 20,
+              substituteAppearances: 4,
+              minutes: 1200,
+              statistics: {
+                "moneyball.average_rating": 7.2,
+                "moneyball.goals_per_90": 0.5,
+                "moneyball.assists_per_90": 0.3,
+                "moneyball.xg_per_90": 0.4,
+                "moneyball.xa_per_90": 0.2,
+              },
+              percentiles: {
+                "moneyball.average_rating": 83,
+                "moneyball.goals_per_90": 76,
+                "moneyball.assists_per_90": 68,
+                "moneyball.xg_per_90": 72,
+                "moneyball.xa_per_90": 65,
+              },
+            } : { state: "noData" };
           }
 
           if (cmd === "get_staff") {

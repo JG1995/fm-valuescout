@@ -2,6 +2,7 @@ pub mod academy;
 pub mod csv_import;
 pub mod managed_club;
 pub mod memory_read;
+pub mod moneyball;
 pub mod planner;
 pub mod player;
 pub mod player_metrics;

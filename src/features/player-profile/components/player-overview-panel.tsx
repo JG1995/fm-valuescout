@@ -89,19 +89,22 @@ function BestRoleSummary({
 
 type PlayerOverviewPanelProps = {
   player: PlayerDetail;
-  actions: ReactNode;
-  hiddenInformationPending: boolean;
-  hiddenInformationError: Error | null;
-  onToggleHiddenInformation: () => void;
+  mode?: "general" | "moneyball";
+  actions?: ReactNode;
+  hiddenInformationPending?: boolean;
+  hiddenInformationError?: Error | null;
+  onToggleHiddenInformation?: () => void;
 };
 
 export function PlayerOverviewPanel({
   player,
+  mode = "general",
   actions,
   hiddenInformationPending,
   hiddenInformationError,
   onToggleHiddenInformation,
 }: PlayerOverviewPanelProps) {
+  const showGeneralAnalysis = mode === "general";
   const nationality =
     player.nationalities.length > 0 ? player.nationalities.join(", ") : "—";
   const flags = [
@@ -157,32 +160,34 @@ export function PlayerOverviewPanel({
           ) : null}
         </div>
 
-        <div className="min-w-0 lg:col-span-2 lg:flex lg:self-end lg:justify-end">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-start justify-end gap-2">
-              {actions}
-              <Button
-                icon={VisibilityIcon}
-                variant="secondary"
-                aria-label="Reveal hidden information"
-                aria-pressed={player.hiddenInformationRevealed}
-                disabled={hiddenInformationPending}
-                loading={hiddenInformationPending}
-                loadingLabel="Updating…"
-                onClick={onToggleHiddenInformation}
-              >
-                {player.hiddenInformationRevealed
-                  ? "Hide hidden info"
-                  : "Reveal hidden info"}
-              </Button>
+        {showGeneralAnalysis ? (
+          <div className="min-w-0 lg:col-span-2 lg:flex lg:self-end lg:justify-end">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-start justify-end gap-2">
+                {actions}
+                <Button
+                  icon={VisibilityIcon}
+                  variant="secondary"
+                  aria-label="Reveal hidden information"
+                  aria-pressed={player.hiddenInformationRevealed}
+                  disabled={hiddenInformationPending}
+                  loading={hiddenInformationPending}
+                  loadingLabel="Updating…"
+                  onClick={onToggleHiddenInformation}
+                >
+                  {player.hiddenInformationRevealed
+                    ? "Hide hidden info"
+                    : "Reveal hidden info"}
+                </Button>
+              </div>
+              {hiddenInformationError ? (
+                <p className="text-right text-body-sm text-error" role="alert">
+                  Could not update hidden information.
+                </p>
+              ) : null}
             </div>
-            {hiddenInformationError ? (
-              <p className="text-right text-body-sm text-error" role="alert">
-                Could not update hidden information.
-              </p>
-            ) : null}
           </div>
-        </div>
+        ) : null}
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
           <SummaryFact
@@ -205,46 +210,54 @@ export function PlayerOverviewPanel({
           />
         </dl>
 
-        <div className="grid min-w-0 grid-cols-2 gap-3 border-outline-variant lg:border-x lg:px-4">
-          <BestRoleSummary
-            label="Current IP"
-            roleName={currentIpRole?.displayName ?? null}
-            score={currentIpRole?.score ?? null}
-          />
-          <BestRoleSummary
-            label="Current OOP"
-            roleName={currentOopRole?.displayName ?? null}
-            score={currentOopRole?.score ?? null}
-          />
-          <BestRoleSummary
-            label="Potential IP"
-            roleName={potentialIpRole?.displayName ?? null}
-            score={potentialIpRole?.potentialScore ?? null}
-            concealed={!player.hiddenInformationRevealed}
-          />
-          <BestRoleSummary
-            label="Potential OOP"
-            roleName={potentialOopRole?.displayName ?? null}
-            score={potentialOopRole?.potentialScore ?? null}
-            concealed={!player.hiddenInformationRevealed}
-          />
-        </div>
+        {showGeneralAnalysis ? (
+          <div className="grid min-w-0 grid-cols-2 gap-3 border-outline-variant lg:border-x lg:px-4">
+            <BestRoleSummary
+              label="Current IP"
+              roleName={currentIpRole?.displayName ?? null}
+              score={currentIpRole?.score ?? null}
+            />
+            <BestRoleSummary
+              label="Current OOP"
+              roleName={currentOopRole?.displayName ?? null}
+              score={currentOopRole?.score ?? null}
+            />
+            <BestRoleSummary
+              label="Potential IP"
+              roleName={potentialIpRole?.displayName ?? null}
+              score={potentialIpRole?.potentialScore ?? null}
+              concealed={!player.hiddenInformationRevealed}
+            />
+            <BestRoleSummary
+              label="Potential OOP"
+              roleName={potentialOopRole?.displayName ?? null}
+              score={potentialOopRole?.potentialScore ?? null}
+              concealed={!player.hiddenInformationRevealed}
+            />
+          </div>
+        ) : null}
 
-        <dl className="grid min-w-0 grid-cols-3 gap-3">
-          <SummaryFact label="CA" value={player.ca} numeric />
-          {player.hiddenInformationRevealed ? (
-            <SummaryFact label="PA" value={formatMissable(player.pa)} numeric />
-          ) : null}
-          <SummaryFact
-            label="Value"
-            value={
-              player.marketValueGbp === null
-                ? "—"
-                : formatMoney(player.marketValueGbp)
-            }
-            numeric
-          />
-        </dl>
+        {showGeneralAnalysis ? (
+          <dl className="grid min-w-0 grid-cols-3 gap-3">
+            <SummaryFact label="CA" value={player.ca} numeric />
+            {player.hiddenInformationRevealed ? (
+              <SummaryFact
+                label="PA"
+                value={formatMissable(player.pa)}
+                numeric
+              />
+            ) : null}
+            <SummaryFact
+              label="Value"
+              value={
+                player.marketValueGbp === null
+                  ? "—"
+                  : formatMoney(player.marketValueGbp)
+              }
+              numeric
+            />
+          </dl>
+        ) : null}
       </div>
     </section>
   );

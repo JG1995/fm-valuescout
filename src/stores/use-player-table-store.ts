@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
+  DEFAULT_MONEYBALL_TABLE_COLUMN_IDS,
+  getMoneyballSearchMetric,
+} from "@/utils/moneyball-search-metrics";
+import {
   DEFAULT_PLAYER_TABLE_COLUMN_IDS,
   getPlayerMetric,
   PLAYER_TABLE_MAX_COLUMN_WIDTH,
@@ -29,6 +33,7 @@ export const PLAYER_TABLE_LAYOUT_STORAGE_KEY =
 
 export type PlayerTableId =
   | "search"
+  | "moneyball-search"
   | "squad"
   | "staff-search"
   | "my-staff"
@@ -73,11 +78,13 @@ function clampWidth(width: number): number {
 function defaultLayout(table: PlayerTableId): PlayerTableLayout {
   return {
     columnIds:
-      table === "search" || table === "squad"
-        ? [...DEFAULT_PLAYER_TABLE_COLUMN_IDS]
-        : table === "staff-shortlist"
-          ? [...DEFAULT_STAFF_SHORTLIST_COLUMN_IDS]
-          : [...DEFAULT_STAFF_TABLE_COLUMN_IDS],
+      table === "moneyball-search"
+        ? [...DEFAULT_MONEYBALL_TABLE_COLUMN_IDS]
+        : table === "search" || table === "squad"
+          ? [...DEFAULT_PLAYER_TABLE_COLUMN_IDS]
+          : table === "staff-shortlist"
+            ? [...DEFAULT_STAFF_SHORTLIST_COLUMN_IDS]
+            : [...DEFAULT_STAFF_TABLE_COLUMN_IDS],
     widths: {},
   };
 }
@@ -85,6 +92,7 @@ function defaultLayout(table: PlayerTableId): PlayerTableLayout {
 export function defaultPlayerTableLayouts(): PlayerTableLayouts {
   return {
     search: defaultLayout("search"),
+    "moneyball-search": defaultLayout("moneyball-search"),
     squad: defaultLayout("squad"),
     "staff-search": defaultLayout("staff-search"),
     "my-staff": defaultLayout("my-staff"),
@@ -102,9 +110,19 @@ function sanitizeLayout(
         if (typeof metricId !== "string" || all.indexOf(metricId) !== index) {
           return false;
         }
-        return table === "search" || table === "squad"
-          ? getPlayerMetric(metricId)?.sortable === true
-          : metricId.length > 0;
+        return table === "moneyball-search"
+          ? getMoneyballSearchMetric(metricId)?.sortable === true ||
+              [
+                "name",
+                "age",
+                "nationality",
+                "club",
+                "division",
+                "value",
+              ].includes(metricId)
+          : table === "search" || table === "squad"
+            ? getPlayerMetric(metricId)?.sortable === true
+            : metricId.length > 0;
       })
     : [];
   const visibleColumnIds =
@@ -132,6 +150,10 @@ function sanitizePersistedState(value: unknown): PersistedPlayerTableState {
   return {
     layouts: {
       search: sanitizeLayout(layouts.search, "search"),
+      "moneyball-search": sanitizeLayout(
+        layouts["moneyball-search"],
+        "moneyball-search",
+      ),
       squad: sanitizeLayout(layouts.squad, "squad"),
       "staff-search": sanitizeLayout(layouts["staff-search"], "staff-search"),
       "my-staff": sanitizeLayout(layouts["my-staff"], "my-staff"),
@@ -152,9 +174,19 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
           const layout = state.layouts[table];
           const additions = metricIds.filter(
             (metricId, index) =>
-              (table === "search" || table === "squad"
-                ? getPlayerMetric(metricId)?.sortable === true
-                : metricId.length > 0) &&
+              (table === "moneyball-search"
+                ? getMoneyballSearchMetric(metricId)?.sortable === true ||
+                  [
+                    "name",
+                    "age",
+                    "nationality",
+                    "club",
+                    "division",
+                    "value",
+                  ].includes(metricId)
+                : table === "search" || table === "squad"
+                  ? getPlayerMetric(metricId)?.sortable === true
+                  : metricId.length > 0) &&
               !layout.columnIds.includes(metricId) &&
               metricIds.indexOf(metricId) === index,
           );
@@ -237,7 +269,7 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
     }),
     {
       name: PLAYER_TABLE_LAYOUT_STORAGE_KEY,
-      version: 3,
+      version: 4,
       partialize: (state) => ({ layouts: state.layouts }),
       migrate: (persistedState) => sanitizePersistedState(persistedState),
       merge: (persistedState, currentState) => ({

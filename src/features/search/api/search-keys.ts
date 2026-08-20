@@ -4,6 +4,7 @@ import {
   DEFAULT_SEARCH_SORT_DIR,
   DEFAULT_SEARCH_SORT_FIELD,
 } from "../types/search-sort";
+import type { ComparisonPool, SearchView } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 
 export const searchKeys = {
@@ -16,6 +17,8 @@ export const searchKeys = {
     filters: FilterRule[] = [],
     filterCombine: FilterCombineMode = "and",
     requestedFields: string[] = [],
+    searchView: SearchView = "general",
+    comparisonPool: ComparisonPool = "filtered",
   ) =>
     [
       ...searchKeys.all,
@@ -25,9 +28,11 @@ export const searchKeys = {
         limit,
         sortBy,
         sortDir,
-        filters: completeFilterRules(filters),
+        filters: completeFilterRules(filters, searchView),
         filterCombine,
         requestedFields,
+        searchView,
+        comparisonPool,
       },
     ] as const,
   suggest: (query: string, limit: number) =>

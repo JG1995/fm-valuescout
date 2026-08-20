@@ -14,9 +14,7 @@ export function SquadCsvImportActions({
   snapshotId,
   onYouthImported,
 }: SquadCsvImportActionsProps) {
-  const [openFormat, setOpenFormat] = useState<
-    "moneyball" | "youthTracker" | null
-  >(null);
+  const [open, setOpen] = useState(false);
 
   return (
     <>
@@ -25,16 +23,7 @@ export function SquadCsvImportActions({
           variant="secondary"
           icon={FileUp}
           onClick={() => {
-            setOpenFormat("moneyball");
-          }}
-        >
-          Upload Moneyball CSV
-        </Button>
-        <Button
-          variant="secondary"
-          icon={FileUp}
-          onClick={() => {
-            setOpenFormat("youthTracker");
+            setOpen(true);
           }}
         >
           Upload Youth Academy CSV
@@ -43,20 +32,10 @@ export function SquadCsvImportActions({
       <SquadCsvImportModal
         activeSaveId={activeSaveId}
         snapshotId={snapshotId}
-        format="moneyball"
-        open={openFormat === "moneyball"}
-        onClose={() => {
-          setOpenFormat(null);
-        }}
-        onYouthImported={onYouthImported}
-      />
-      <SquadCsvImportModal
-        activeSaveId={activeSaveId}
-        snapshotId={snapshotId}
         format="youthTracker"
-        open={openFormat === "youthTracker"}
+        open={open}
         onClose={() => {
-          setOpenFormat(null);
+          setOpen(false);
         }}
         onYouthImported={onYouthImported}
       />

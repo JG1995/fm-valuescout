@@ -87,7 +87,7 @@ impl SquadSortDir {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SquadPlayer {
     pub uid: i64,
     pub name: String,
@@ -103,7 +103,7 @@ pub struct SquadPlayer {
     pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SquadPlayersPage {
     pub players: Vec<SquadPlayer>,
     pub total: i64,

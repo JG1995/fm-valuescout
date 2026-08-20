@@ -1,7 +1,9 @@
 use rusqlite::types::Value;
 
+use crate::features::moneyball::is_moneyball_statistic_key;
 use crate::features::player_metrics::resolver::{
-    attribute_key, catalog_role_id, hidden_attribute_key, personality_key, POSITION_KEYS,
+    attribute_key, catalog_role_id, hidden_attribute_key, is_moneyball_search_field,
+    moneyball_context_column, personality_key, POSITION_KEYS,
 };
 
 /// Maximum filter rules accepted at the trust boundary.
@@ -30,21 +32,22 @@ impl CombineMode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FilterRule {
     pub field: String,
     pub op: String,
     pub value: FilterValue,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FilterValue {
     Text(String),
     Integer(i64),
+    Real(f64),
     Bool(bool),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FilterAst {
     pub combine: CombineMode,
     pub rules: Vec<FilterRule>,
@@ -92,6 +95,12 @@ enum FieldKind {
     PotentialRoleScore {
         role_id: String,
     },
+    MoneyballReal {
+        key: String,
+    },
+    MoneyballInteger {
+        column: &'static str,
+    },
 }
 
 /// Unique potential role ids from an AST, in first-seen order.
@@ -126,7 +135,10 @@ fn resolve_position_suitability(field: &str) -> Result<Option<FieldKind>, String
     }))
 }
 
-fn resolve_field(field: &str) -> Result<FieldKind, String> {
+fn resolve_field(field: &str, moneyball: bool) -> Result<FieldKind, String> {
+    if moneyball && !is_moneyball_search_field(field) {
+        return Err(format!("unknown Moneyball search field: {field}"));
+    }
     match field {
         "name" => Ok(FieldKind::String {
             column: "name",
@@ -237,6 +249,22 @@ fn resolve_field(field: &str) -> Result<FieldKind, String> {
             if let Some(kind) = resolve_role_score(field)? {
                 return Ok(kind);
             }
+            if moneyball {
+                if let Some(column) = moneyball_context_column(field) {
+                    return Ok(FieldKind::MoneyballInteger { column });
+                }
+            }
+            if let Some(key) = field.strip_prefix("moneyball.") {
+                if !moneyball {
+                    return Err(format!("unknown filter field: {field}"));
+                }
+                if !is_moneyball_statistic_key(key) {
+                    return Err(format!("unknown Moneyball metric: {key}"));
+                }
+                return Ok(FieldKind::MoneyballReal {
+                    key: key.to_string(),
+                });
+            }
             Err(format!("unknown filter field: {field}"))
         }
     }
@@ -266,6 +294,12 @@ pub fn filter_value_from_json(value: serde_json::Value) -> Result<FilterValue, S
         serde_json::Value::Number(number) => number
             .as_i64()
             .map(FilterValue::Integer)
+            .or_else(|| {
+                number
+                    .as_f64()
+                    .filter(|value| value.is_finite())
+                    .map(FilterValue::Real)
+            })
             .ok_or_else(|| "filter value number out of range".to_string()),
         serde_json::Value::Bool(value) => Ok(FilterValue::Bool(value)),
         serde_json::Value::Null => Err("filter value cannot be null".to_string()),
@@ -293,6 +327,14 @@ pub fn parse_filter_ast(
 }
 
 pub fn compile_filters(ast: &FilterAst, start_index: usize) -> Result<CompiledFilter, String> {
+    compile_filters_for_moneyball(ast, start_index, false)
+}
+
+pub fn compile_filters_for_moneyball(
+    ast: &FilterAst,
+    start_index: usize,
+    moneyball: bool,
+) -> Result<CompiledFilter, String> {
     if ast.rules.is_empty() {
         return Ok(CompiledFilter {
             sql: String::new(),
@@ -305,7 +347,7 @@ pub fn compile_filters(ast: &FilterAst, start_index: usize) -> Result<CompiledFi
     let mut next_index = start_index;
 
     for rule in &ast.rules {
-        let field_kind = resolve_field(&rule.field)?;
+        let field_kind = resolve_field(&rule.field, moneyball)?;
         let (clause, rule_params) =
             compile_rule(field_kind, &rule.op, &rule.value, &mut next_index)?;
         clauses.push(clause);
@@ -347,6 +389,12 @@ fn compile_rule(
         }
         FieldKind::PotentialRoleScore { role_id } => {
             compile_potential_role_score_rule(&role_id, op, value, next_index)
+        }
+        FieldKind::MoneyballReal { key } => {
+            compile_moneyball_real_rule(&key, op, value, next_index)
+        }
+        FieldKind::MoneyballInteger { column } => {
+            compile_integer_rule(&format!("moneyball.{column}"), true, op, value, next_index)
         }
     }
 }
@@ -426,6 +474,26 @@ fn compile_json_integer_rule(
     let extract = json_extract_expr(column, key);
     let clause = format!("({extract} {compare} {placeholder} AND {extract} IS NOT NULL)");
     Ok((clause, vec![Value::Integer(number)]))
+}
+
+fn compile_moneyball_real_rule(
+    key: &str,
+    op: &str,
+    value: &FilterValue,
+    next_index: &mut usize,
+) -> Result<(String, Vec<Value>), String> {
+    let number = value_as_real(value)?;
+    let placeholder = next_placeholder(next_index);
+    let compare = match op {
+        "gt" => ">",
+        "lt" => "<",
+        "eq" => "=",
+        "neq" => "!=",
+        _ => return Err(format!("invalid real filter operator: {op}")),
+    };
+    let extract = format!("json_extract(moneyball.statistics_json, '$.\"{key}\"')");
+    let clause = format!("({extract} {compare} {placeholder} AND {extract} IS NOT NULL)");
+    Ok((clause, vec![Value::Real(number)]))
 }
 
 fn compile_string_list_rule(
@@ -637,6 +705,19 @@ fn value_as_integer(value: &FilterValue) -> Result<i64, String> {
     }
 }
 
+fn value_as_real(value: &FilterValue) -> Result<f64, String> {
+    match value {
+        FilterValue::Integer(number) => Ok(*number as f64),
+        FilterValue::Real(number) if number.is_finite() => Ok(*number),
+        FilterValue::Text(text) => text
+            .parse::<f64>()
+            .ok()
+            .filter(|number| number.is_finite())
+            .ok_or_else(|| format!("filter value must be a real number: {text}")),
+        _ => Err("filter value must be a real number".to_string()),
+    }
+}
+
 fn value_as_bool(value: &FilterValue) -> Result<bool, String> {
     match value {
         FilterValue::Bool(value) => Ok(*value),
@@ -650,6 +731,7 @@ fn value_as_bool(value: &FilterValue) -> Result<bool, String> {
             1 => Ok(true),
             _ => Err(format!("filter value must be a boolean: {number}")),
         },
+        FilterValue::Real(number) => Err(format!("filter value must be a boolean: {number}")),
     }
 }
 
@@ -670,6 +752,7 @@ pub(crate) fn escape_like(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn rule(field: &str, op: &str, value: FilterValue) -> FilterRule {
         FilterRule {
@@ -687,6 +770,54 @@ mod tests {
 
         let error = parse_filter_ast(rules, None).expect_err("cap");
         assert!(error.contains("filter rule count exceeds maximum"));
+    }
+
+    #[test]
+    fn accepts_fractional_filter_values() {
+        assert!(filter_value_from_json(json!(0.75)).is_ok());
+    }
+
+    #[test]
+    fn compiles_bound_moneyball_real_filters_only_in_moneyball_mode() {
+        let ast = parse_filter_ast(
+            vec![rule("moneyball.np-xg", "gt", FilterValue::Real(0.75))],
+            None,
+        )
+        .expect("parse filter");
+
+        assert!(compile_filters(&ast, 2).is_err());
+        let compiled = compile_filters_for_moneyball(&ast, 2, true).expect("compile filter");
+        assert!(compiled.sql.contains("moneyball.statistics_json"));
+        assert_eq!(compiled.params, vec![Value::Real(0.75)]);
+    }
+
+    #[test]
+    fn compiles_moneyball_context_filters_only_in_moneyball_mode() {
+        let ast = parse_filter_ast(
+            vec![rule("moneyball.minutes", "gt", FilterValue::Integer(900))],
+            None,
+        )
+        .expect("parse filter");
+
+        assert!(compile_filters(&ast, 2).is_err());
+        let compiled = compile_filters_for_moneyball(&ast, 2, true).expect("compile filter");
+        assert!(compiled.sql.contains("moneyball.minutes > ?2"));
+        assert_eq!(compiled.params, vec![Value::Integer(900)]);
+    }
+
+    #[test]
+    fn rejects_general_only_filters_in_moneyball_mode() {
+        let ast = parse_filter_ast(
+            vec![rule("attr.Acceleration", "gt", FilterValue::Integer(12))],
+            None,
+        )
+        .expect("parse filter");
+
+        assert!(compile_filters_for_moneyball(&ast, 2, true).is_err());
+
+        let ability_ast = parse_filter_ast(vec![rule("ca", "gt", FilterValue::Integer(120))], None)
+            .expect("parse filter");
+        assert!(compile_filters_for_moneyball(&ability_ast, 2, true).is_err());
     }
 
     #[test]

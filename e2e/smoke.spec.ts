@@ -1033,7 +1033,7 @@ test.describe("application smoke", () => {
     await expect(menu).toHaveCount(0);
   });
 
-  test("configured Squad exposes its format-bound CSV upload modals", async ({
+  test("Moneyball Search owns its CSV upload while Squad keeps Youth Academy", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
@@ -1041,19 +1041,16 @@ test.describe("application smoke", () => {
       squadOverview: true,
       csvImportFormat: "moneyball",
     });
-    await page.goto("/my-club");
+    await page.goto("/search?view=moneyball");
 
     const main = page.getByRole("main");
     await expect(
       main.getByRole("button", { name: "Upload Moneyball CSV" }),
     ).toBeVisible();
-    await expect(
-      main.getByRole("button", { name: "Upload Youth Academy CSV" }),
-    ).toBeVisible();
 
     await main.getByRole("button", { name: "Upload Moneyball CSV" }).click();
     const moneyballDialog = page.getByRole("dialog", {
-      name: "Upload Moneyball CSV",
+      name: /(?:Upload|Replace) Moneyball CSV/,
     });
     await expect(moneyballDialog).toContainText(
       "Drop one CSV file here, or browse your files.",
@@ -1067,12 +1064,127 @@ test.describe("application smoke", () => {
     );
     await moneyballDialog.getByRole("button", { name: "Close" }).click();
 
+    await page.goto("/my-club");
     await main
       .getByRole("button", { name: "Upload Youth Academy CSV" })
       .click();
     await expect(
       page.getByRole("dialog", { name: "Upload Youth Academy CSV" }),
     ).toContainText("Only a Youth Academy export can be imported");
+  });
+
+  test("Moneyball Search virtualizes, scores, filters, and restores its analysis state", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await stubTauriIpc(page, {
+      moneyballSearch: true,
+      plannerSnapshot: true,
+      playerProfile: true,
+    });
+    await page.goto("/search?view=moneyball");
+
+    const main = page.getByRole("main");
+    const scroller = main.getByTestId("search-results-scroller");
+    const table = scroller.getByRole("table", {
+      name: "Player search results",
+    });
+    await expect(table.getByText("Moneyball player 001")).toBeVisible();
+    await expect(
+      table.getByRole("img", { name: /average rating: 50/i }),
+    ).toBeVisible();
+    expect(await scroller.locator("tbody tr[data-index]").count()).toBeLessThan(
+      101,
+    );
+
+    await scroller.evaluate((element) => {
+      (
+        element as unknown as { scrollTo: (options: { top: number }) => void }
+      ).scrollTo({ top: 1_950 });
+    });
+    await expect(table.getByText("Moneyball player 051")).toBeVisible();
+
+    await main.getByRole("button", { name: "Full CSV" }).click();
+    await expect(
+      table.getByRole("img", { name: /average rating: 71/i }).first(),
+    ).toBeVisible();
+
+    await main.getByRole("button", { name: "Edit filters" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit filters" });
+    await dialog.getByRole("button", { name: "Add filter" }).click();
+    await dialog.getByLabel("Value").fill("7");
+    await dialog.getByRole("button", { name: "Done" }).click();
+    await expect(
+      main.getByRole("button", { name: /Remove filter/i }),
+    ).toBeVisible();
+    await expect(table.getByText("Moneyball player 001")).toBeVisible();
+
+    await table.getByText("Moneyball player 001").click();
+    await expect(page).toHaveURL(/\/players\/1\?view=moneyball$/);
+    await expect(
+      page.getByRole("heading", { name: "Potential Scout" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Moneyball" }),
+    ).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/search\?.*view=moneyball/);
+    await expect(
+      main.getByRole("button", { name: "Full CSV" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      main.getByRole("button", { name: /Remove filter/i }),
+    ).toBeVisible();
+  });
+
+  test("Moneyball default applies to silent routes while explicit General stays in history", async ({
+    page,
+  }) => {
+    await page.addInitScript({
+      content: `
+        window.localStorage.setItem(
+          "fm-valuescout-moneyball-preferences",
+          JSON.stringify({
+            state: { defaultAnalysisView: "moneyball" },
+            version: 1,
+          }),
+        );
+      `,
+    });
+    await stubTauriIpc(page, {
+      moneyballSearch: true,
+      playerProfile: true,
+    });
+
+    await page.goto("/search");
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeVisible();
+
+    await page.goto("/players/1");
+    await expect(
+      page.getByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeVisible();
+
+    await page.goto("/search");
+    await main.getByRole("tab", { name: "General" }).click();
+    await expect(page).toHaveURL(/\/search\?.*view=general/);
+    await expect(
+      main.getByRole("tab", { name: "General", selected: true }),
+    ).toBeVisible();
+
+    await page.reload();
+    await expect(
+      main.getByRole("tab", { name: "General", selected: true }),
+    ).toBeVisible();
+
+    await page.goBack();
+    await expect(page).not.toHaveURL(/view=/);
+    await expect(
+      main.getByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeVisible();
   });
 
   test("configured Squad confirms and reports a closed CA boost", async ({

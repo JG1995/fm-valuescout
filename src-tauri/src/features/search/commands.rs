@@ -5,8 +5,9 @@ use crate::db::Db;
 
 use super::filter::{self, FilterRule};
 use super::query::{
-    self, DynamicValue, PlayerSuggestHit, PlayerSummary, SearchPlayersPage, SortDir, SortField,
-    DEFAULT_PAGE_LIMIT, DEFAULT_SUGGEST_LIMIT, MAX_PAGE_LIMIT, MAX_SUGGEST_LIMIT,
+    self, ComparisonPool, DynamicValue, PlayerSuggestHit, PlayerSummary, SearchPlayersPage,
+    SearchPlayersRequest, SearchView, SortDir, SortField, DEFAULT_PAGE_LIMIT,
+    DEFAULT_SUGGEST_LIMIT, MAX_PAGE_LIMIT, MAX_SUGGEST_LIMIT,
 };
 
 #[derive(Deserialize)]
@@ -43,12 +44,14 @@ pub struct PlayerSummaryDto {
     pub pa: i64,
     pub market_value_gbp: Option<i64>,
     pub dynamic_values: std::collections::BTreeMap<String, Option<DynamicValueDto>>,
+    pub moneyball_percentiles: std::collections::BTreeMap<String, Option<u8>>,
 }
 
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum DynamicValueDto {
     Integer(i64),
+    Real(f64),
     Text(String),
 }
 
@@ -56,6 +59,7 @@ impl From<DynamicValue> for DynamicValueDto {
     fn from(value: DynamicValue) -> Self {
         match value {
             DynamicValue::Integer(number) => Self::Integer(number),
+            DynamicValue::Real(number) => Self::Real(number),
             DynamicValue::Text(text) => Self::Text(text),
         }
     }
@@ -80,6 +84,7 @@ impl From<PlayerSummary> for PlayerSummaryDto {
                 .into_iter()
                 .map(|(key, value)| (key, value.map(DynamicValueDto::from)))
                 .collect(),
+            moneyball_percentiles: row.moneyball_percentiles,
         }
     }
 }
@@ -114,6 +119,8 @@ pub fn search_players(
     filters: Option<Vec<FilterRuleInput>>,
     filter_combine: Option<String>,
     requested_fields: Option<Vec<String>>,
+    search_view: Option<String>,
+    comparison_pool: Option<String>,
     db: State<'_, Db>,
 ) -> Result<SearchPlayersPageDto, String> {
     let conn =
@@ -124,9 +131,15 @@ pub fn search_players(
         .map(|value| value as usize)
         .unwrap_or(DEFAULT_PAGE_LIMIT)
         .clamp(1, MAX_PAGE_LIMIT);
-    let sort_by = match sort_by.as_deref() {
-        None => SortField::DEFAULT,
-        Some(value) => SortField::parse(value)?,
+    let view = parse_search_view(search_view.as_deref())?;
+    let comparison_pool = parse_comparison_pool(comparison_pool.as_deref(), view)?;
+    let sort_by = match (sort_by.as_deref(), view) {
+        (None, SearchView::General) => SortField::DEFAULT,
+        (None, SearchView::Moneyball) => {
+            SortField::parse_for_moneyball("moneyball.average_rating", true)?
+        }
+        (Some(value), SearchView::General) => SortField::parse(value)?,
+        (Some(value), SearchView::Moneyball) => SortField::parse_for_moneyball(value, true)?,
     };
     let sort_dir = match sort_dir.as_deref() {
         None => SortDir::DEFAULT,
@@ -146,16 +159,39 @@ pub fn search_players(
         }
     };
     let requested_fields = requested_fields.unwrap_or_default();
-    let page = query::search_players(
+    let page = query::search_players_in_view(
         &conn,
-        offset,
-        limit,
-        sort_by,
-        sort_dir,
-        filter_ast.as_ref(),
-        &requested_fields,
+        SearchPlayersRequest {
+            offset,
+            limit,
+            sort_by,
+            sort_dir,
+            filter_ast: filter_ast.as_ref(),
+            requested_fields: &requested_fields,
+            view,
+            comparison_pool,
+        },
     )?;
     Ok(SearchPlayersPageDto::from(page))
+}
+
+fn parse_search_view(value: Option<&str>) -> Result<SearchView, String> {
+    match value.unwrap_or("general") {
+        "general" => Ok(SearchView::General),
+        "moneyball" => Ok(SearchView::Moneyball),
+        other => Err(format!("unknown search view: {other}")),
+    }
+}
+
+fn parse_comparison_pool(value: Option<&str>, view: SearchView) -> Result<ComparisonPool, String> {
+    match value.unwrap_or(match view {
+        SearchView::General => "fullCsv",
+        SearchView::Moneyball => "filtered",
+    }) {
+        "fullCsv" => Ok(ComparisonPool::FullCsv),
+        "filtered" => Ok(ComparisonPool::Filtered),
+        other => Err(format!("unknown Moneyball comparison pool: {other}")),
+    }
 }
 
 #[derive(Serialize)]
@@ -191,4 +227,57 @@ pub fn suggest_players(
         .clamp(1, MAX_SUGGEST_LIMIT);
     let hits = query::suggest_players(&conn, &query, limit)?;
     Ok(hits.into_iter().map(PlayerSuggestHitDto::from).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::*;
+
+    #[test]
+    fn parses_closed_search_view_and_comparison_pool_inputs() {
+        assert_eq!(parse_search_view(None), Ok(SearchView::General));
+        assert_eq!(
+            parse_search_view(Some("moneyball")),
+            Ok(SearchView::Moneyball)
+        );
+        assert!(parse_search_view(Some("history")).is_err());
+
+        assert_eq!(
+            parse_comparison_pool(None, SearchView::Moneyball),
+            Ok(ComparisonPool::Filtered)
+        );
+        assert_eq!(
+            parse_comparison_pool(Some("fullCsv"), SearchView::Moneyball),
+            Ok(ComparisonPool::FullCsv)
+        );
+        assert!(parse_comparison_pool(Some("allPlayers"), SearchView::Moneyball).is_err());
+    }
+
+    #[test]
+    fn serializes_real_values_and_moneyball_percentiles_in_camel_case() {
+        let dto = PlayerSummaryDto::from(PlayerSummary {
+            uid: 7,
+            name: "Scored player".to_string(),
+            age: None,
+            birth_year: 2000,
+            birth_day_of_year: 1,
+            nationalities: Vec::new(),
+            club: None,
+            division: None,
+            ca: 100,
+            pa: 120,
+            market_value_gbp: None,
+            dynamic_values: BTreeMap::from([(
+                "moneyball.np-xg".to_string(),
+                Some(DynamicValue::Real(0.75)),
+            )]),
+            moneyball_percentiles: BTreeMap::from([("moneyball.np-xg".to_string(), Some(83))]),
+        });
+
+        let value = serde_json::to_value(dto).expect("serialize DTO");
+        assert_eq!(value["dynamicValues"]["moneyball.np-xg"], 0.75);
+        assert_eq!(value["moneyballPercentiles"]["moneyball.np-xg"], 83);
+    }
 }

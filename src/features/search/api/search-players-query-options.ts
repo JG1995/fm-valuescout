@@ -5,6 +5,7 @@ import {
   DEFAULT_SEARCH_SORT_DIR,
   DEFAULT_SEARCH_SORT_FIELD,
 } from "../types/search-sort";
+import type { ComparisonPool, SearchView } from "../types/search-view";
 import { fetchSearchPlayers, SEARCH_PAGE_SIZE } from "./fetch-search-players";
 import { searchKeys } from "./search-keys";
 
@@ -18,6 +19,8 @@ export function searchPlayersQueryOptions(
   filters: FilterRule[] = [],
   filterCombine: FilterCombineMode = "and",
   requestedFields: string[] = [],
+  searchView: SearchView = "general",
+  comparisonPool: ComparisonPool = "filtered",
 ) {
   return queryOptions({
     queryKey: searchKeys.players(
@@ -28,6 +31,8 @@ export function searchPlayersQueryOptions(
       filters,
       filterCombine,
       requestedFields,
+      searchView,
+      comparisonPool,
     ),
     queryFn: () =>
       fetchSearchPlayers(
@@ -38,6 +43,8 @@ export function searchPlayersQueryOptions(
         filters,
         filterCombine,
         requestedFields,
+        searchView,
+        comparisonPool,
       ),
   });
 }

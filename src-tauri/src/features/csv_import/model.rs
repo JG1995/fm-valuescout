@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use crate::features::moneyball::{MoneyballMetricValue, MoneyballStatistics};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum YouthTrackerHiddenAttribute {
     Ambition,
@@ -98,14 +100,6 @@ pub struct MoneyballAppearances {
     pub starts: u32,
     pub substitutes: u32,
 }
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum MoneyballMetricValue {
-    Count(u32),
-    Decimal(f64),
-}
-
-pub(crate) type MoneyballStatistics = BTreeMap<String, Option<MoneyballMetricValue>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MoneyballPlayer {
