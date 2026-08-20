@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use rusqlite::Row;
 
-use crate::features::moneyball::is_moneyball_statistic_key;
+use crate::features::moneyball::{is_moneyball_statistic_key, role_catalog::builtin_catalog};
 use crate::features::scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS};
 
 use super::potential_cache::PROJECTION_MODEL_VERSION;
@@ -48,6 +48,7 @@ enum MetricSource {
     JsonInteger { column: &'static str, key: String },
     MoneyballContext { column: &'static str },
     MoneyballStatistic { key: String },
+    MoneyballRole { role_id: String },
     Position,
     CurrentRole { role_id: &'static str },
     PotentialRole { role_id: &'static str },
@@ -76,6 +77,13 @@ impl MetricField {
     }
 
     pub fn parse_for_moneyball(field: &str, moneyball: bool) -> Result<Self, String> {
+        if let Some(role_id) = parse_moneyball_role_id(field, moneyball)? {
+            return Ok(Self {
+                id: field.to_string(),
+                kind: MetricValueKind::Integer,
+                source: MetricSource::MoneyballRole { role_id },
+            });
+        }
         if moneyball && !is_moneyball_search_field(field) {
             return Err(format!("unknown Moneyball search field: {field}"));
         }
@@ -193,6 +201,13 @@ impl MetricField {
         }
     }
 
+    pub fn moneyball_role_id(&self) -> Option<&str> {
+        match &self.source {
+            MetricSource::MoneyballRole { role_id } => Some(role_id),
+            _ => None,
+        }
+    }
+
     /// Returns a trusted SQLite expression relative to the supplied player-table alias.
     pub fn sql_expression(&self, player_alias: &str) -> String {
         match &self.source {
@@ -204,6 +219,8 @@ impl MetricField {
             MetricSource::MoneyballStatistic { key } => {
                 format!("json_extract(moneyball.statistics_json, '$.\"{key}\"')")
             }
+            // Role scores are materialized by the bounded Moneyball role query path.
+            MetricSource::MoneyballRole { .. } => "NULL".to_string(),
             MetricSource::Position => format!(
                 "COALESCE((SELECT group_concat(position_key, ', ') FROM (SELECT entry.key AS position_key FROM json_each({player_alias}.positions_json) AS entry WHERE entry.type = 'integer' AND entry.value > 0 ORDER BY entry.value DESC, entry.key ASC)), '')"
             ),
@@ -234,7 +251,32 @@ pub fn moneyball_context_column(field: &str) -> Option<&'static str> {
     }
 }
 
+pub fn parse_moneyball_role_id(field: &str, moneyball: bool) -> Result<Option<String>, String> {
+    let Some(role_id) = field.strip_prefix("moneyball_role.") else {
+        return Ok(None);
+    };
+    if !moneyball {
+        return Err(format!("unknown player metric: {field}"));
+    }
+    let catalog = builtin_catalog()?;
+    if catalog
+        .definitions
+        .iter()
+        .any(|definition| definition.id == role_id)
+    {
+        Ok(Some(role_id.to_string()))
+    } else {
+        Err(format!("unknown Moneyball role: {role_id}"))
+    }
+}
+
 pub fn is_moneyball_search_field(field: &str) -> bool {
+    if field.starts_with("moneyball_role.") {
+        return parse_moneyball_role_id(field, true)
+            .ok()
+            .flatten()
+            .is_some();
+    }
     matches!(
         field,
         "name"
@@ -428,6 +470,18 @@ mod tests {
         assert_eq!(metric.kind(), MetricValueKind::Integer);
         assert_eq!(metric.sql_expression("players"), "moneyball.minutes");
         assert!(metric.moneyball_key().is_none());
+    }
+
+    #[test]
+    fn accepts_only_valid_moneyball_role_fields_in_moneyball_mode() {
+        let metric =
+            MetricField::parse_for_moneyball("moneyball_role.mc_central_midfielder_ip", true)
+                .expect("Moneyball role field");
+
+        assert_eq!(metric.kind(), MetricValueKind::Integer);
+        assert_eq!(metric.moneyball_role_id(), Some("mc_central_midfielder_ip"));
+        assert!(MetricField::parse_for_moneyball("moneyball_role.not_a_role", true).is_err());
+        assert!(MetricField::parse("moneyball_role.mc_central_midfielder_ip").is_err());
     }
 
     #[test]

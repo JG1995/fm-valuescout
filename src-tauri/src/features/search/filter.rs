@@ -1,9 +1,11 @@
+use std::collections::BTreeMap;
+
 use rusqlite::types::Value;
 
 use crate::features::moneyball::is_moneyball_statistic_key;
 use crate::features::player_metrics::resolver::{
     attribute_key, catalog_role_id, hidden_attribute_key, is_moneyball_search_field,
-    moneyball_context_column, personality_key, POSITION_KEYS,
+    moneyball_context_column, parse_moneyball_role_id, personality_key, POSITION_KEYS,
 };
 
 /// Maximum filter rules accepted at the trust boundary.
@@ -98,6 +100,7 @@ enum FieldKind {
     MoneyballReal {
         key: String,
     },
+    MoneyballRoleScore,
     MoneyballInteger {
         column: &'static str,
     },
@@ -116,6 +119,70 @@ pub fn potential_role_ids_from_ast(ast: &FilterAst) -> Result<Vec<String>, Strin
         }
     }
     Ok(role_ids)
+}
+
+pub fn moneyball_role_ids_from_ast(ast: &FilterAst) -> Result<Vec<String>, String> {
+    let mut role_ids = Vec::new();
+    for rule in &ast.rules {
+        let Some(role_id) = parse_moneyball_role_id(&rule.field, true)? else {
+            continue;
+        };
+        if !role_ids.iter().any(|existing| existing == &role_id) {
+            role_ids.push(role_id);
+        }
+    }
+    Ok(role_ids)
+}
+
+pub fn without_moneyball_role_rules(ast: &FilterAst) -> Result<Option<FilterAst>, String> {
+    let mut rules = Vec::with_capacity(ast.rules.len());
+    for rule in &ast.rules {
+        if parse_moneyball_role_id(&rule.field, true)?.is_some() {
+            continue;
+        }
+        rules.push(rule.clone());
+    }
+    Ok((!rules.is_empty()).then_some(FilterAst {
+        combine: ast.combine,
+        rules,
+    }))
+}
+
+pub fn moneyball_role_rules_match(
+    ast: &FilterAst,
+    scores: &BTreeMap<String, Option<u8>>,
+) -> Result<bool, String> {
+    let mut matches = Vec::new();
+    for rule in &ast.rules {
+        let Some(role_id) = parse_moneyball_role_id(&rule.field, true)? else {
+            continue;
+        };
+        let score = scores.get(&role_id).copied().flatten();
+        let matches_rule = score.is_some_and(|score| {
+            let Ok(target) = value_as_integer(&rule.value) else {
+                return false;
+            };
+            match rule.op.as_str() {
+                "gt" => i64::from(score) > target,
+                "lt" => i64::from(score) < target,
+                "eq" => i64::from(score) == target,
+                "neq" => i64::from(score) != target,
+                _ => false,
+            }
+        });
+        if !matches_rule && !matches!(rule.op.as_str(), "gt" | "lt" | "eq" | "neq") {
+            return Err(format!("invalid integer filter operator: {}", rule.op));
+        }
+        if !matches!(rule.value, FilterValue::Integer(_)) {
+            return Err("expected integer filter value".to_string());
+        }
+        matches.push(matches_rule);
+    }
+
+    Ok(match ast.combine {
+        CombineMode::And => matches.into_iter().all(|matches_rule| matches_rule),
+        CombineMode::Or => matches.into_iter().any(|matches_rule| matches_rule),
+    })
 }
 
 fn resolve_position_suitability(field: &str) -> Result<Option<FieldKind>, String> {
@@ -248,6 +315,9 @@ fn resolve_field(field: &str, moneyball: bool) -> Result<FieldKind, String> {
             }
             if let Some(kind) = resolve_role_score(field)? {
                 return Ok(kind);
+            }
+            if parse_moneyball_role_id(field, moneyball)?.is_some() {
+                return Ok(FieldKind::MoneyballRoleScore);
             }
             if moneyball {
                 if let Some(column) = moneyball_context_column(field) {
@@ -393,6 +463,10 @@ fn compile_rule(
         FieldKind::MoneyballReal { key } => {
             compile_moneyball_real_rule(&key, op, value, next_index)
         }
+        FieldKind::MoneyballRoleScore => Err(
+            "Moneyball role filters must be evaluated after the comparison cohort is scored"
+                .to_string(),
+        ),
         FieldKind::MoneyballInteger { column } => {
             compile_integer_rule(&format!("moneyball.{column}"), true, op, value, next_index)
         }
@@ -751,6 +825,8 @@ pub(crate) fn escape_like(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use serde_json::json;
 
@@ -1243,5 +1319,56 @@ mod tests {
 
         let error = compile_filters(&ast, 2).expect_err("unknown role");
         assert!(error.contains("unknown") || error.contains("invalid"));
+    }
+
+    #[test]
+    fn partitions_moneyball_role_rules_from_sql_rules() {
+        let ast = parse_filter_ast(
+            vec![
+                rule(
+                    "moneyball_role.mc_central_midfielder_ip",
+                    "gt",
+                    FilterValue::Integer(70),
+                ),
+                rule("moneyball.minutes", "gt", FilterValue::Integer(10)),
+            ],
+            Some("and"),
+        )
+        .expect("parse role filter");
+
+        assert_eq!(
+            moneyball_role_ids_from_ast(&ast).expect("role ids"),
+            ["mc_central_midfielder_ip"]
+        );
+        let non_role = without_moneyball_role_rules(&ast)
+            .expect("partition role rules")
+            .expect("non-role rule");
+        assert_eq!(non_role.rules.len(), 1);
+        assert_eq!(non_role.rules[0].field, "moneyball.minutes");
+        assert!(compile_filters_for_moneyball(&non_role, 2, true).is_ok());
+    }
+
+    #[test]
+    fn role_rule_matching_keeps_null_unavailable_for_neq() {
+        let ast = parse_filter_ast(
+            vec![rule(
+                "moneyball_role.mc_central_midfielder_ip",
+                "neq",
+                FilterValue::Integer(70),
+            )],
+            None,
+        )
+        .expect("parse role filter");
+
+        assert!(!moneyball_role_rules_match(
+            &ast,
+            &BTreeMap::from([("mc_central_midfielder_ip".to_string(), None)])
+        )
+        .expect("match null score"));
+        assert!(moneyball_role_rules_match(
+            &ast,
+            &BTreeMap::from([("mc_central_midfielder_ip".to_string(), Some(69))])
+        )
+        .expect("match score"));
     }
 }

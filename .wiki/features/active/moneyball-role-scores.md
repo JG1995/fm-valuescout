@@ -524,7 +524,7 @@ weighted scorer, and explanation model without changing IPC or UI behavior.
 
 #### Commit 2 — Show profile role scores and General placeholders
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): show Moneyball role fit`
 
@@ -687,7 +687,7 @@ presentation inventory with explicit attribute-score placeholders.
 
 #### Commit 3 — Query, filter, and sort Search role scores
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(search): query Moneyball role scores`
 
@@ -977,26 +977,24 @@ guidance, and prove the complete Search/Profile workflow in browser smoke.
 
 **PR:** PR 1 — Add Moneyball role scoring
 
-**Commit:** Commit 2 — Show profile role scores and General placeholders
+**Commit:** Commit 3 — Query, filter, and sort Search role scores
 
 ### RED proof
 
-Add Rust query tests for the 88 full-import Moneyball role results and add
-General profile tests for mapped and unmapped presentation rows. Add route and
-component tests for summaries, disclosures, raw-panel retention, and the ready,
-no-data, and re-import states. They must fail because the profile has no role
-results or role-fit panel yet.
+Add resolver, filter, and Search query tests for validated role fields, role-rule
+partitioning, full-import and filtered cohorts, mixed OR membership, post-score
+operators, null handling, ordering, totals, and pagination. They must fail
+because Search does not yet recognize or materialize Moneyball role fields.
 
 ### Expected outcome
 
-The ready Moneyball profile composes full-import role scores and explanations,
-while the General profile shows the complete presentation inventory with null
-Current/Potential values for unsupported attribute roles. Search and persisted
-attribute consumers remain unchanged.
+Moneyball Search accepts only validated built-in role IDs, scores the complete
+comparison cohort before filtering, sorting, totals, and pagination, and returns
+nullable integer role values while ordinary raw-only queries remain unchanged.
 
 ### Explicit exclusions
 
-- Search columns, filters, sorting, and filtered-cohort scores.
+- Frontend Search columns, filters, sorting controls, and browser smoke.
 - Attribute definition work from JAY-31.
 - Database, migration, custom-role, sample-size, combined-score, and Potential
   Moneyball work.
@@ -1026,7 +1024,10 @@ attribute consumers remain unchanged.
 
 ## Completed work
 
-- Commit 1 — Define the built-in catalog and scorer — Pending record.
+| PR | Commit | Git ref | Implementation | Review | Deviations |
+| --- | --- | --- | --- | --- | --- |
+| PR 1 — Add Moneyball role scoring | Commit 1 — Define the built-in catalog and scorer | `1a8046b` | Added the pinned 88-role catalog, validation, scorer, and explanation output. | Sol Medium accepted after source-label and finite-contribution corrections. | None |
+| PR 1 — Add Moneyball role scoring | Commit 2 — Show profile role scores and General placeholders | `0678e1b` | Added full-import profile role scores and explanations, General placeholders, and the role-fit UI. | Sol Medium accepted after catalog-version disclosure coverage. | None |
 
 ## Final validation
 
