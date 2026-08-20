@@ -566,7 +566,7 @@ test.describe("application smoke", () => {
       .first()
       .getByText("Barcelona")
       .click();
-    await expect(page).toHaveURL(/\/players\/42\?view=general$/);
+    await expect(page).toHaveURL(/\/players\/42$/);
   });
 
   test("configured Squad keeps its table inside desktop viewports", async ({
@@ -1135,6 +1135,55 @@ test.describe("application smoke", () => {
     ).toHaveAttribute("aria-pressed", "true");
     await expect(
       main.getByRole("button", { name: /Remove filter/i }),
+    ).toBeVisible();
+  });
+
+  test("Moneyball default applies to silent routes while explicit General stays in history", async ({
+    page,
+  }) => {
+    await page.addInitScript({
+      content: `
+        window.localStorage.setItem(
+          "fm-valuescout-moneyball-preferences",
+          JSON.stringify({
+            state: { defaultAnalysisView: "moneyball" },
+            version: 1,
+          }),
+        );
+      `,
+    });
+    await stubTauriIpc(page, {
+      moneyballSearch: true,
+      playerProfile: true,
+    });
+
+    await page.goto("/search");
+    const main = page.getByRole("main");
+    await expect(
+      main.getByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeVisible();
+
+    await page.goto("/players/1");
+    await expect(
+      page.getByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeVisible();
+
+    await page.goto("/search");
+    await main.getByRole("tab", { name: "General" }).click();
+    await expect(page).toHaveURL(/\/search\?.*view=general/);
+    await expect(
+      main.getByRole("tab", { name: "General", selected: true }),
+    ).toBeVisible();
+
+    await page.reload();
+    await expect(
+      main.getByRole("tab", { name: "General", selected: true }),
+    ).toBeVisible();
+
+    await page.goBack();
+    await expect(page).not.toHaveURL(/view=/);
+    await expect(
+      main.getByRole("tab", { name: "Moneyball", selected: true }),
     ).toBeVisible();
   });
 

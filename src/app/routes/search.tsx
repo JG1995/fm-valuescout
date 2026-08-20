@@ -40,6 +40,7 @@ import {
   searchFiltersForUrl,
 } from "@/features/search/utils/search-url-search";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 
 export type SearchRouteSearch = {
@@ -54,7 +55,13 @@ export type SearchRouteSearch = {
 
 export const Route = createFileRoute("/search")({
   validateSearch: (search: Record<string, unknown>): SearchRouteSearch => {
-    const view = parseSearchView(search.view);
+    const parsedView = parseSearchView(search.view);
+    const explicitView =
+      search.view === "general" || search.view === "moneyball"
+        ? parsedView
+        : undefined;
+    const view =
+      explicitView ?? useMoneyballPreferences.getState().defaultAnalysisView;
     const filters = searchFiltersForUrl(
       parseSearchFilters(search.filters, view),
     );
@@ -72,7 +79,7 @@ export const Route = createFileRoute("/search")({
       dir,
       filters,
       combine: parseSearchCombine(search.combine),
-      view: view === "moneyball" ? view : undefined,
+      view: explicitView,
       comparisonPool:
         view === "moneyball"
           ? parseComparisonPool(search.comparisonPool)
@@ -86,7 +93,7 @@ export const Route = createFileRoute("/search")({
     dir,
     filters,
     combine,
-    view: view ?? "general",
+    view: view ?? useMoneyballPreferences.getState().defaultAnalysisView,
     comparisonPool: comparisonPool ?? "filtered",
   }),
   loader: ({
@@ -161,7 +168,10 @@ function SearchPageContent() {
     view: routeView,
     comparisonPool: routeComparisonPool,
   } = Route.useSearch();
-  const view = routeView ?? "general";
+  const defaultAnalysisView = useMoneyballPreferences(
+    (state) => state.defaultAnalysisView,
+  );
+  const view = routeView ?? defaultAnalysisView;
   const comparisonPool = routeComparisonPool ?? "filtered";
   const navigate = Route.useNavigate();
   const filters = useMemo(
@@ -247,7 +257,7 @@ function SearchPageContent() {
             event.preventDefault();
             const next = views[nextIndex];
             updateSearch({
-              view: next === "moneyball" ? next : undefined,
+              view: next,
               comparisonPool: next === "moneyball" ? "filtered" : undefined,
               replace: false,
               sort: defaultSearchSort(next),
@@ -274,7 +284,7 @@ function SearchPageContent() {
               }
               onClick={() =>
                 updateSearch({
-                  view: candidate === "moneyball" ? candidate : undefined,
+                  view: candidate,
                   comparisonPool:
                     candidate === "moneyball" ? "filtered" : undefined,
                   replace: false,

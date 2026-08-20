@@ -33,6 +33,7 @@ import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-sna
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import { useLayoutStore } from "@/stores/use-layout-store";
+import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { cn } from "@/utils/cn";
 
 export type PlayerProfileSearch = {
@@ -63,8 +64,9 @@ function parseUid(raw: string): number | null {
   return Number.isInteger(uid) ? uid : null;
 }
 
-function parsePlayerProfileView(value: unknown): PlayerProfileView {
-  return value === "moneyball" ? "moneyball" : "general";
+function parsePlayerProfileView(value: unknown): PlayerProfileView | undefined {
+  if (value === "moneyball" || value === "general") return value;
+  return undefined;
 }
 
 export const Route = createFileRoute("/players/$uid")({
@@ -72,7 +74,9 @@ export const Route = createFileRoute("/players/$uid")({
     tab: parseProfileTab(search.tab),
     view: parsePlayerProfileView(search.view),
   }),
-  loaderDeps: ({ search }) => ({ view: search.view ?? "general" }),
+  loaderDeps: ({ search }) => ({
+    view: search.view ?? useMoneyballPreferences.getState().defaultAnalysisView,
+  }),
   loader: ({ context: { queryClient }, params, deps: { view } }) => {
     const uid = parseUid(params.uid);
     if (uid === null) {
@@ -480,6 +484,9 @@ function PlayerProfileContent({
 function PlayerProfileRoute() {
   const { uid: uidParam } = Route.useParams();
   const { tab, view } = Route.useSearch();
+  const defaultAnalysisView = useMoneyballPreferences(
+    (state) => state.defaultAnalysisView,
+  );
   const navigate = Route.useNavigate();
   const uid = parseUid(uidParam);
   const [analysisFocusView, setAnalysisFocusView] =
@@ -507,11 +514,13 @@ function PlayerProfileRoute() {
     <Suspense fallback={<ProfileFallback />}>
       <PlayerProfileContent
         uid={uid}
-        view={view ?? "general"}
+        view={view ?? defaultAnalysisView}
         tab={tab}
         onTabChange={onTabChange}
         onViewChange={onViewChange}
-        restoreAnalysisFocus={analysisFocusView === (view ?? "general")}
+        restoreAnalysisFocus={
+          analysisFocusView === (view ?? defaultAnalysisView)
+        }
         onAnalysisFocusRestored={() => setAnalysisFocusView(null)}
       />
     </Suspense>

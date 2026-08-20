@@ -12,6 +12,7 @@ import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
+import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
   fixturePlayerMoneyball,
   resolvePendingPlayerMoneyball,
@@ -60,6 +61,7 @@ function renderProfileRoute(initialEntry: string) {
 describe("player profile route", () => {
   beforeEach(() => {
     useLayoutStore.setState({ railExpanded: true });
+    useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
     setGetPlayerOverride(undefined);
   });
 
@@ -80,6 +82,34 @@ describe("player profile route", () => {
     expect(screen.getByText("ENG, WAL")).toBeInTheDocument();
     expect(
       screen.getByRole("tab", { name: "Outfield", selected: true }),
+    ).toBeInTheDocument();
+  });
+
+  it("uses the saved Moneyball default when the profile URL omits a view", async () => {
+    await resolveLoadDataIpcMock();
+    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+
+    renderProfileRoute("/players/42");
+
+    expect(
+      await screen.findByRole("tab", { name: "Moneyball", selected: true }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps an explicit General profile above the saved Moneyball default", async () => {
+    await resolveLoadDataIpcMock();
+    useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });
+    setGetPlayerOverride(fixturePlayerDetail());
+
+    renderProfileRoute("/players/42?view=general&tab=hidden");
+
+    expect(
+      await screen.findByRole("tab", { name: "General", selected: true }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "Hidden", selected: true }),
     ).toBeInTheDocument();
   });
 

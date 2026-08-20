@@ -1,11 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { staffKeys } from "@/features/staff/api/staff-keys";
+import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   type SnapshotMetadata,
@@ -38,6 +39,10 @@ const HISTORY: SnapshotMetadata[] = [
 ];
 
 describe("Settings", () => {
+  beforeEach(() => {
+    useMoneyballPreferences.setState({ defaultAnalysisView: "general" });
+  });
+
   it("renders Save data and Bridge without a managed-club section", async () => {
     renderWithProviders({ initialEntries: ["/settings"] });
 
@@ -56,6 +61,28 @@ describe("Settings", () => {
     expect(
       screen.getByRole("combobox", { name: "Active save" }),
     ).toBeInTheDocument();
+  });
+
+  it("sets the shared default player analysis view", async () => {
+    const user = userEvent.setup();
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    const control = await screen.findByRole("combobox", {
+      name: "Default player analysis view",
+    });
+    expect(control).toHaveValue("general");
+    expect(
+      screen.getByText(
+        "Used by Player Search and Player Profile when their URL does not specify a view.",
+      ),
+    ).toBeInTheDocument();
+
+    await user.selectOptions(control, "moneyball");
+
+    expect(control).toHaveValue("moneyball");
+    expect(useMoneyballPreferences.getState().defaultAnalysisView).toBe(
+      "moneyball",
+    );
   });
 
   it("invalidates current-only products when deleting the current snapshot", async () => {
