@@ -121,6 +121,59 @@ describe("search route", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens the opt-in Moneyball workspace with its own query view and pool", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Moneyball Scout", 160),
+        dynamicValues: { "moneyball.average_rating": 7.25 },
+        moneyballPercentiles: { "moneyball.average_rating": 83 },
+      },
+    ]);
+    renderSearchRoute("/search?view=moneyball");
+
+    expect(
+      await screen.findByRole("tab", { name: "Moneyball" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "moneyball",
+        comparisonPool: "filtered",
+      });
+    });
+  });
+
+  it("labels an existing Moneyball cohort as a replacement", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Existing cohort", 160),
+        dynamicValues: { "moneyball.average_rating": 7.25 },
+      },
+    ]);
+    renderSearchRoute("/search?view=moneyball");
+
+    expect(
+      await screen.findByRole("button", { name: "Replace Moneyball CSV" }),
+    ).toBeInTheDocument();
+  });
+
+  it("moves focus to the selected Search tab during keyboard navigation", async () => {
+    await resolveLoadDataIpcMock();
+    renderSearchRoute();
+
+    const general = await screen.findByRole("tab", { name: "General" });
+    general.focus();
+    fireEvent.keyDown(general, { key: "ArrowRight" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Moneyball" })).toHaveFocus();
+    });
+  });
+
   it("renders a virtualized page of basic columns via search_players", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride(manyPlayers(80));
@@ -533,7 +586,7 @@ describe("search route", () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/players/160");
-      expect(router.state.location.search).toEqual({});
+      expect(router.state.location.search).toEqual({ view: "general" });
     });
   });
 

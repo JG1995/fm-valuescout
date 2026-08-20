@@ -18,6 +18,11 @@ import {
   formatMoney,
   formatPlayerDob,
 } from "@/utils/format";
+import {
+  formatMoneyballMetric,
+  getMoneyballSearchMetric,
+  MONEYBALL_SEARCH_METRICS,
+} from "@/utils/moneyball-search-metrics";
 import { getPlayerMetric } from "@/utils/player-metrics";
 import {
   SEARCH_PAGE_SIZE,
@@ -32,6 +37,7 @@ import {
   defaultDirForSortField,
   isBasicSearchSortField,
 } from "../types/search-sort";
+import type { ComparisonPool, SearchView } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 
 const TEXT_CELL =
@@ -47,6 +53,8 @@ type SearchResultsPanelProps = {
   filters: FilterRule[];
   filterCombine: FilterCombineMode;
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
+  view: SearchView;
+  comparisonPool: ComparisonPool;
 };
 
 function nextSort(
@@ -135,7 +143,19 @@ function basicCell(
 function tableColumnForMetric(
   metricId: string,
   width: number | undefined,
+  view: SearchView,
 ): TableColumn | undefined {
+  if (view === "moneyball") {
+    const metric = getMoneyballSearchMetric(metricId);
+    if (metric) {
+      return {
+        id: metric.id,
+        label: metric.label,
+        align: metric.align,
+        width: width ?? metric.defaultWidth,
+      };
+    }
+  }
   const metric = getPlayerMetric(metricId);
   if (!metric) {
     return undefined;
@@ -161,6 +181,8 @@ function SearchResultsVirtualTable({
   onRemoveColumn,
   onMoveColumn,
   onResizeColumn,
+  view,
+  comparisonPool,
 }: {
   total: number;
   sortBy: SearchSortField;
@@ -174,6 +196,8 @@ function SearchResultsVirtualTable({
   onRemoveColumn: (metricId: string) => void;
   onMoveColumn: (metricId: string, targetIndex: number) => void;
   onResizeColumn: (metricId: string, width: number) => void;
+  view: SearchView;
+  comparisonPool: ComparisonPool;
 }) {
   const navigate = useNavigate();
 
@@ -195,6 +219,7 @@ function SearchResultsVirtualTable({
           onRemoveColumn={onRemoveColumn}
           onMoveColumn={onMoveColumn}
           onResizeColumn={onResizeColumn}
+          metrics={view === "moneyball" ? MONEYBALL_SEARCH_METRICS : undefined}
         />
       }
       pageQueryOptions={(offset, limit) =>
@@ -206,11 +231,49 @@ function SearchResultsVirtualTable({
           filters,
           filterCombine,
           requestedFields,
+          view,
+          comparisonPool,
         )
       }
       pageSize={SEARCH_PAGE_SIZE}
       renderCells={(player) =>
         columns.map((column) => {
+          const moneyballMetric =
+            view === "moneyball"
+              ? getMoneyballSearchMetric(column.id)
+              : undefined;
+          if (moneyballMetric?.metric || moneyballMetric?.context) {
+            const raw = player?.dynamicValues?.[column.id];
+            const value = typeof raw === "number" ? raw : null;
+            const text = moneyballMetric.metric
+              ? formatMoneyballMetric(moneyballMetric.metric, value)
+              : value === null
+                ? player === undefined
+                  ? "…"
+                  : "—"
+                : formatCount(value);
+            const score = player?.moneyballPercentiles?.[column.id];
+            return (
+              <td
+                key={column.id}
+                className={NUM_CELL}
+                title={text !== "—" && text !== "…" ? text : undefined}
+              >
+                <span className="inline-flex items-center justify-end gap-2">
+                  <span
+                    className={
+                      value === null ? "text-on-surface-variant" : undefined
+                    }
+                  >
+                    {text}
+                  </span>
+                  {moneyballMetric.metric && typeof score === "number" ? (
+                    <ScoreBadge score={score} roleName={column.label} />
+                  ) : null}
+                </span>
+              </td>
+            );
+          }
           if (!isBasicSearchSortField(column.id)) {
             if (
               column.id.startsWith("role.") ||
@@ -279,7 +342,7 @@ function SearchResultsVirtualTable({
         void navigate({
           to: "/players/$uid",
           params: { uid: String(player.uid) },
-          search: {},
+          search: { view },
         });
       }}
     />
@@ -293,8 +356,11 @@ export function SearchResultsPanel({
   filters,
   filterCombine,
   onSortChange,
+  view,
+  comparisonPool,
 }: SearchResultsPanelProps) {
-  const layout = usePlayerTableStore((state) => state.layouts.search);
+  const tableId = view === "moneyball" ? "moneyball-search" : "search";
+  const layout = usePlayerTableStore((state) => state.layouts[tableId]);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const removeStoredColumn = usePlayerTableStore((state) => state.removeColumn);
   const moveColumn = usePlayerTableStore((state) => state.moveColumn);
@@ -302,10 +368,14 @@ export function SearchResultsPanel({
   const columns = useMemo<TableColumn[]>(
     () =>
       layout.columnIds.flatMap((metricId) => {
-        const column = tableColumnForMetric(metricId, layout.widths[metricId]);
+        const column = tableColumnForMetric(
+          metricId,
+          layout.widths[metricId],
+          view,
+        );
         return column ? [column] : [];
       }),
-    [layout],
+    [layout, view],
   );
   const requestedFields = useMemo(
     () =>
@@ -325,22 +395,26 @@ export function SearchResultsPanel({
       filters,
       filterCombine,
       requestedFields,
+      view,
+      comparisonPool,
     ),
   );
   const listKey = useMemo(
     () =>
       [
+        view,
+        comparisonPool,
         filterCombine,
         ...filters.map(
           (rule) =>
             `${rule.field}:${rule.op}:${String(filterValueToIpc(rule.value))}`,
         ),
       ].join("|"),
-    [filterCombine, filters],
+    [comparisonPool, filterCombine, filters, view],
   );
 
   if (page.total === 0) {
-    const appliedFilters = completeFilterRules(filters);
+    const appliedFilters = completeFilterRules(filters, view);
     if (appliedFilters.length > 0) {
       return (
         <Panel title="Results" flush>
@@ -353,16 +427,27 @@ export function SearchResultsPanel({
 
     return (
       <Panel title="Results" flush>
-        <EmptyState icon={SearchX} title="No players in snapshot">
-          The snapshot exists but holds no player rows. Run Load Data again with
-          Football Manager in an active save.
+        <EmptyState
+          icon={SearchX}
+          title={
+            view === "moneyball"
+              ? "No players in this Moneyball import"
+              : "No players in snapshot"
+          }
+        >
+          {view === "moneyball"
+            ? "Upload a Moneyball CSV for the current snapshot to analyse its matched players."
+            : "The snapshot exists but holds no player rows. Run Load Data again with Football Manager in an active save."}
         </EmptyState>
       </Panel>
     );
   }
 
   const dirLabel = sortDir === "asc" ? "ascending" : "descending";
-  const sortMetric = getPlayerMetric(sortBy);
+  const sortMetric =
+    view === "moneyball"
+      ? getMoneyballSearchMetric(sortBy)
+      : getPlayerMetric(sortBy);
   const sortLabel = sortMetric
     ? sortMetric.id === "age"
       ? "Age / DOB"
@@ -373,13 +458,16 @@ export function SearchResultsPanel({
     if (remainingColumns.length === columns.length) {
       return;
     }
-    removeStoredColumn("search", metricId);
+    removeStoredColumn(tableId, metricId);
     if (sortBy !== metricId) {
       return;
     }
     const nextColumn =
-      remainingColumns.find((column) => column.id === "ca") ??
-      remainingColumns[0];
+      remainingColumns.find(
+        (column) =>
+          column.id ===
+          (view === "moneyball" ? "moneyball.average_rating" : "ca"),
+      ) ?? remainingColumns[0];
     if (!nextColumn) {
       return;
     }
@@ -406,14 +494,16 @@ export function SearchResultsPanel({
         filterCombine={filterCombine}
         columns={columns}
         requestedFields={requestedFields}
+        view={view}
+        comparisonPool={comparisonPool}
         onSortChange={onSortChange}
-        onAddColumn={(metricId) => addColumns("search", [metricId])}
+        onAddColumn={(metricId) => addColumns(tableId, [metricId])}
         onRemoveColumn={removeColumn}
         onMoveColumn={(metricId, targetIndex) =>
-          moveColumn("search", metricId, targetIndex)
+          moveColumn(tableId, metricId, targetIndex)
         }
         onResizeColumn={(metricId, width) =>
-          setColumnWidth("search", metricId, width)
+          setColumnWidth(tableId, metricId, width)
         }
       />
     </Panel>

@@ -1,7 +1,10 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { importCsv } from "../api/import-csv";
-import type { CsvImportFormat } from "../types/csv-import-summary";
+import type {
+  CsvImportFormat,
+  CsvImportSummary,
+} from "../types/csv-import-summary";
 import { type CsvImportState, importStateForContext } from "./import-state";
 
 type UseCsvImportOptions = {
@@ -9,6 +12,7 @@ type UseCsvImportOptions = {
   snapshotId: number | undefined;
   expectedFormat?: CsvImportFormat;
   onYouthImported: () => void;
+  onMoneyballImported?: (summary: CsvImportSummary) => void;
 };
 
 export type CsvImportSelection = {
@@ -21,6 +25,7 @@ export function useCsvImport({
   snapshotId,
   expectedFormat,
   onYouthImported,
+  onMoneyballImported,
 }: UseCsvImportOptions) {
   const contextKey = `${activeSaveId ?? "none"}:${snapshotId ?? "none"}`;
   const currentContext = useRef(contextKey);
@@ -83,6 +88,8 @@ export function useCsvImport({
         });
         if (summary.format === "youthTracker") {
           onYouthImported();
+        } else {
+          onMoneyballImported?.(summary);
         }
       }
     } catch (error) {

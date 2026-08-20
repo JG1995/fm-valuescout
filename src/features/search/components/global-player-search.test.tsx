@@ -106,7 +106,7 @@ describe("top-bar global player search", () => {
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/players/1");
-      expect(router.state.location.search).toEqual({});
+      expect(router.state.location.search).toEqual({ view: "general" });
     });
   });
 

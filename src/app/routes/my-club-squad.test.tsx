@@ -605,7 +605,7 @@ describe("My Club route", () => {
     ).toHaveAttribute("aria-sort", "descending");
   });
 
-  it("opens distinct format-bound CSV import modals from Squad", async () => {
+  it("opens the format-bound Youth Academy CSV import modal from Squad", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
@@ -617,29 +617,11 @@ describe("My Club route", () => {
 
     await screen.findByRole("table", { name: "Squad overview" });
     expect(
-      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
+    ).toBeNull();
     expect(
       screen.getByRole("button", { name: "Upload Youth Academy CSV" }),
     ).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
-    );
-    expect(
-      await screen.findByRole("dialog", { name: "Upload Moneyball CSV" }),
-    ).toHaveTextContent("Only a Moneyball export can be imported");
-    await user.click(screen.getByRole("button", { name: "Close" }));
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("dialog", { name: "Upload Moneyball CSV" }),
-      ).not.toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Upload Moneyball CSV" }),
-      ).toHaveFocus();
-    });
 
     await user.click(
       screen.getByRole("button", { name: "Upload Youth Academy CSV" }),

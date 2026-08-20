@@ -7,6 +7,7 @@ import {
   DEFAULT_SEARCH_SORT_DIR,
   DEFAULT_SEARCH_SORT_FIELD,
 } from "../types/search-sort";
+import type { ComparisonPool, SearchView } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 
 /** Matches Rust `DEFAULT_PAGE_LIMIT` — window size for virtualized fetch. */
@@ -20,14 +21,18 @@ export function fetchSearchPlayers(
   filters: FilterRule[] = [],
   filterCombine: FilterCombineMode = "and",
   requestedFields: string[] = [],
+  searchView: SearchView = "general",
+  comparisonPool: ComparisonPool = "filtered",
 ) {
-  const applied = completeFilterRules(filters);
+  const applied = completeFilterRules(filters, searchView);
   return invokeCommand<SearchPlayersPage>("search_players", {
     offset,
     limit,
     sortBy,
     sortDir,
     requestedFields,
+    searchView,
+    comparisonPool,
     ...(applied.length > 0
       ? {
           filters: applied.map(filterRuleToIpc),

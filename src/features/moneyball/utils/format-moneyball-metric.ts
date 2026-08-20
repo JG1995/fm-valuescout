@@ -1,4 +1,4 @@
-import type { MoneyballMetric } from "./moneyball-metrics";
+import type { MoneyballMetric } from "@/utils/moneyball-metrics";
 
 export function formatMoneyballMetric(
   metric: MoneyballMetric,

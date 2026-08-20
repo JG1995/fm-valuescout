@@ -14,6 +14,8 @@ export type PlayerSummary = {
   marketValueGbp: number | null;
   /** Values for requested non-basic metric fields (field id → nullable cell). */
   dynamicValues?: Record<string, DynamicCellValue | null>;
+  /** Percentile scores for requested Moneyball performance metrics only. */
+  moneyballPercentiles?: Record<string, number | null>;
 };
 
 export type SearchPlayersPage = {

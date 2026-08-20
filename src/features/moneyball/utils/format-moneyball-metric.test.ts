@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { moneyballMetric } from "@/utils/moneyball-metrics";
 import { formatMoneyballMetric } from "./format-moneyball-metric";
-import { moneyballMetric } from "./moneyball-metrics";
 
 describe("formatMoneyballMetric", () => {
   it("formats raw values without replacing a real zero or missing value", () => {

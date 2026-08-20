@@ -3,11 +3,11 @@ import type { KeyboardEvent } from "react";
 import { useId, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
-import type { MoneyballProfile } from "../types/moneyball-profile";
 import {
   MONEYBALL_METRIC_CATEGORIES,
   MONEYBALL_METRICS,
-} from "../utils/moneyball-metrics";
+} from "@/utils/moneyball-metrics";
+import type { MoneyballProfile } from "../types/moneyball-profile";
 import { MoneyballMetricValue } from "./moneyball-metric-value";
 
 function formattedNumber(value: number | null) {
@@ -114,7 +114,7 @@ export function MoneyballProfilePanel({
           title="No Moneyball data for this player"
         >
           This player was not included in the current Moneyball import. Import a
-          Moneyball CSV from My Club / Squad to analyse the current snapshot.
+          Moneyball CSV from Player Search to analyse the current snapshot.
         </EmptyState>
       </Panel>
     );
@@ -125,7 +125,7 @@ export function MoneyballProfilePanel({
       <Panel title="Moneyball">
         <EmptyState icon={DatabaseZap} title="Re-import Moneyball data">
           This import was saved before percentile scores were available.
-          Re-import the Moneyball CSV from My Club / Squad to analyse it.
+          Re-import the Moneyball CSV from Player Search to analyse it.
         </EmptyState>
       </Panel>
     );

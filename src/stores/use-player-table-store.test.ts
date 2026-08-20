@@ -207,6 +207,10 @@ describe("usePlayerTableStore", () => {
     usePlayerTableStore.setState({
       layouts: {
         search: { columnIds: ["name"], widths: {} },
+        "moneyball-search": {
+          columnIds: ["moneyball.average_rating"],
+          widths: {},
+        },
         squad: {
           columnIds: [...DEFAULT_PLAYER_TABLE_COLUMN_IDS],
           widths: {},

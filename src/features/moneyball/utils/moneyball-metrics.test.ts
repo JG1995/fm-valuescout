@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MONEYBALL_METRIC_CATEGORIES,
   MONEYBALL_METRICS,
-} from "./moneyball-metrics";
+} from "@/utils/moneyball-metrics";
 
 const CANONICAL_MONEYBALL_METRIC_IDS = [
   "goals",

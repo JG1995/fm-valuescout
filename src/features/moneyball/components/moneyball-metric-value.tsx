@@ -1,7 +1,7 @@
 import { AttributeRow } from "@/components/ui/attribute-row/attribute-row";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
+import type { MoneyballMetric } from "@/utils/moneyball-metrics";
 import { formatMoneyballMetric } from "../utils/format-moneyball-metric";
-import type { MoneyballMetric } from "../utils/moneyball-metrics";
 
 type MoneyballMetricValueProps = {
   metric: MoneyballMetric;

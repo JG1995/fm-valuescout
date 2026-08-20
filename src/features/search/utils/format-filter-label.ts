@@ -1,4 +1,5 @@
 import type { FilterRule } from "../types/filter-rule";
+import type { SearchView } from "../types/search-view";
 import { getFilterField } from "./filter-registry";
 
 function operatorSymbol(op: string): string {
@@ -16,8 +17,8 @@ function operatorSymbol(op: string): string {
   }
 }
 
-function formatValue(rule: FilterRule): string {
-  const field = getFilterField(rule.field);
+function formatValue(rule: FilterRule, view: SearchView): string {
+  const field = getFilterField(rule.field, view);
   if (!field) {
     return "";
   }
@@ -37,6 +38,8 @@ function formatValue(rule: FilterRule): string {
     return String(rule.value.value);
   }
 
+  if (rule.value.type === "number") return String(rule.value.value);
+
   if (rule.value.type === "text") {
     return rule.value.value;
   }
@@ -45,13 +48,16 @@ function formatValue(rule: FilterRule): string {
 }
 
 /** Short label for compact filter tags. */
-export function formatFilterTagLabel(rule: FilterRule): string {
-  const field = getFilterField(rule.field);
+export function formatFilterTagLabel(
+  rule: FilterRule,
+  view: SearchView = "general",
+): string {
+  const field = getFilterField(rule.field, view);
   if (!field) {
     return "Unknown filter";
   }
 
-  const value = formatValue(rule);
+  const value = formatValue(rule, view);
   const op = rule.op;
 
   if (field.kind === "string") {
@@ -59,7 +65,7 @@ export function formatFilterTagLabel(rule: FilterRule): string {
     return `${field.label} ${opLabel} ${value}`;
   }
 
-  if (field.kind === "integer") {
+  if (field.kind === "integer" || field.kind === "number") {
     return `${field.label} ${operatorSymbol(op)} ${value}`;
   }
 

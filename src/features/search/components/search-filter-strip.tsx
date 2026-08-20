@@ -2,6 +2,7 @@ import { SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
 import type { FilterCombineMode, FilterRule } from "../types/filter-rule";
+import type { SearchView } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 import { FilterTag } from "./filter-tag";
 
@@ -10,6 +11,7 @@ type SearchFilterStripProps = {
   combine: FilterCombineMode;
   onRulesChange: (rules: FilterRule[]) => void;
   onEdit: () => void;
+  view?: SearchView;
 };
 
 export function SearchFilterStrip({
@@ -17,8 +19,9 @@ export function SearchFilterStrip({
   combine,
   onRulesChange,
   onEdit,
+  view = "general",
 }: SearchFilterStripProps) {
-  const appliedRules = completeFilterRules(rules);
+  const appliedRules = completeFilterRules(rules, view);
 
   const clearAll = () => {
     onRulesChange([]);
@@ -59,6 +62,7 @@ export function SearchFilterStrip({
               <FilterTag
                 key={rule.id}
                 rule={rule}
+                view={view}
                 onRemove={() => {
                   removeRule(rule.id);
                 }}

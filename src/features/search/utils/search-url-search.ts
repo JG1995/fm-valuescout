@@ -4,6 +4,7 @@ import type {
   FilterValue,
 } from "../types/filter-rule";
 import { createFilterRuleId } from "../types/filter-rule";
+import type { SearchView } from "../types/search-view";
 import { getFilterField } from "./filter-registry";
 
 /** Mirrors Rust `MAX_FILTER_RULES` in `features/search/filter.rs`. */
@@ -29,7 +30,7 @@ function isFilterValue(value: unknown): value is FilterValue {
     return true;
   }
   if (
-    record.type === "integer" &&
+    (record.type === "integer" || record.type === "number") &&
     typeof record.value === "number" &&
     Number.isFinite(record.value)
   ) {
@@ -41,8 +42,12 @@ function isFilterValue(value: unknown): value is FilterValue {
   return false;
 }
 
-function valueFromRaw(fieldId: string, raw: unknown): FilterValue | undefined {
-  const field = getFilterField(fieldId);
+function valueFromRaw(
+  fieldId: string,
+  raw: unknown,
+  view: SearchView,
+): FilterValue | undefined {
+  const field = getFilterField(fieldId, view);
   if (!field) {
     return undefined;
   }
@@ -54,6 +59,8 @@ function valueFromRaw(fieldId: string, raw: unknown): FilterValue | undefined {
         return raw.type === "text" ? raw : undefined;
       case "integer":
         return raw.type === "integer" ? raw : undefined;
+      case "number":
+        return raw.type === "number" ? raw : undefined;
       case "boolean":
         return raw.type === "bool" ? raw : undefined;
     }
@@ -67,6 +74,10 @@ function valueFromRaw(fieldId: string, raw: unknown): FilterValue | undefined {
       return typeof raw === "number" && Number.isFinite(raw)
         ? { type: "integer", value: raw }
         : undefined;
+    case "number":
+      return typeof raw === "number" && Number.isFinite(raw)
+        ? { type: "number", value: raw }
+        : undefined;
     case "boolean":
       return typeof raw === "boolean"
         ? { type: "bool", value: raw }
@@ -74,7 +85,10 @@ function valueFromRaw(fieldId: string, raw: unknown): FilterValue | undefined {
   }
 }
 
-function parseOneFilterRule(entry: unknown): FilterRule | undefined {
+function parseOneFilterRule(
+  entry: unknown,
+  view: SearchView,
+): FilterRule | undefined {
   if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
     return undefined;
   }
@@ -86,12 +100,12 @@ function parseOneFilterRule(entry: unknown): FilterRule | undefined {
     return undefined;
   }
 
-  const fieldDef = getFilterField(field);
+  const fieldDef = getFilterField(field, view);
   if (!fieldDef?.operators.some((candidate) => candidate.id === op)) {
     return undefined;
   }
 
-  const value = valueFromRaw(field, record.value);
+  const value = valueFromRaw(field, record.value, view);
   if (!value) {
     return undefined;
   }
@@ -104,7 +118,10 @@ function parseOneFilterRule(entry: unknown): FilterRule | undefined {
   return { id, field, op, value };
 }
 
-export function parseSearchFilters(value: unknown): FilterRule[] {
+export function parseSearchFilters(
+  value: unknown,
+  view: SearchView = "general",
+): FilterRule[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -114,7 +131,7 @@ export function parseSearchFilters(value: unknown): FilterRule[] {
     if (parsed.length >= MAX_FILTER_RULES) {
       break;
     }
-    const rule = parseOneFilterRule(entry);
+    const rule = parseOneFilterRule(entry, view);
     if (rule) {
       parsed.push(rule);
     }

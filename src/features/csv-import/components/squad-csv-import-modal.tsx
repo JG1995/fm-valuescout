@@ -3,7 +3,10 @@ import { FileUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { Modal } from "@/components/ui/modal/modal";
-import type { CsvImportFormat } from "../types/csv-import-summary";
+import type {
+  CsvImportFormat,
+  CsvImportSummary,
+} from "../types/csv-import-summary";
 import { type CsvImportSelection, useCsvImport } from "../utils/use-csv-import";
 import { CsvImportOutcome } from "./csv-import-outcome";
 
@@ -14,6 +17,8 @@ type SquadCsvImportModalProps = {
   open: boolean;
   onClose: () => void;
   onYouthImported: () => void;
+  onMoneyballImported?: (summary: CsvImportSummary) => void;
+  replace?: boolean;
 };
 
 function formatName(format: CsvImportFormat) {
@@ -80,6 +85,8 @@ export function SquadCsvImportModal({
   open,
   onClose,
   onYouthImported,
+  onMoneyballImported,
+  replace = false,
 }: SquadCsvImportModalProps) {
   const {
     captureSelection,
@@ -94,6 +101,7 @@ export function SquadCsvImportModal({
     snapshotId,
     expectedFormat: format,
     onYouthImported,
+    onMoneyballImported,
   });
   const previousContextKey = useRef(contextKey);
   const wasOpen = useRef(false);
@@ -136,7 +144,7 @@ export function SquadCsvImportModal({
   return (
     <Modal
       open={open}
-      title={`Upload ${label} CSV`}
+      title={`${replace ? "Replace" : "Upload"} ${label} CSV`}
       onClose={close}
       footer={
         <>

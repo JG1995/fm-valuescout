@@ -3,6 +3,7 @@ export type FilterCombineMode = "and" | "or";
 export type FilterValue =
   | { type: "text"; value: string }
   | { type: "integer"; value: number }
+  | { type: "number"; value: number }
   | { type: "bool"; value: boolean };
 
 export type FilterRule = {
@@ -26,6 +27,8 @@ export function filterValueToIpc(
     case "text":
       return value.value;
     case "integer":
+      return value.value;
+    case "number":
       return value.value;
     case "bool":
       return value.value;
