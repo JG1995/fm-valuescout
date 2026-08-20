@@ -161,6 +161,10 @@ pub(crate) const LOWER_IS_BETTER_STATISTIC_KEYS: [&str; 19] = [
     "headers_lost_per_90",
 ];
 
+pub(crate) fn is_moneyball_statistic_key(key: &str) -> bool {
+    MONEYBALL_STATISTIC_KEYS.contains(&key)
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;

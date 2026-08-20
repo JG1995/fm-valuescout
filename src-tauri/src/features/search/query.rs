@@ -2,12 +2,15 @@ use std::collections::BTreeMap;
 
 use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Row};
 
+use crate::features::moneyball::percentile::{calculate_percentiles, MoneyballNumericStatistics};
 use crate::features::player_metrics::{
     potential_cache::{materialize_player_roles, materialize_snapshot_roles},
-    resolver::{parse_requested_fields, read_dynamic_value, MetricField},
+    resolver::{parse_requested_fields_for_moneyball, read_dynamic_value, MetricField},
 };
 
-use super::filter::{compile_filters, potential_role_ids_from_ast, FilterAst};
+use super::filter::{
+    compile_filters, compile_filters_for_moneyball, potential_role_ids_from_ast, FilterAst,
+};
 
 pub use crate::features::player_metrics::resolver::DynamicValue;
 
@@ -15,6 +18,18 @@ pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
 pub const DEFAULT_SUGGEST_LIMIT: usize = 10;
 pub const MAX_SUGGEST_LIMIT: usize = 20;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchView {
+    General,
+    Moneyball,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComparisonPool {
+    FullCsv,
+    Filtered,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlayerSuggestHit {
@@ -113,6 +128,10 @@ impl SortField {
     pub const DEFAULT: Self = Self::Ca;
 
     pub fn parse(value: &str) -> Result<Self, String> {
+        Self::parse_for_moneyball(value, false)
+    }
+
+    pub fn parse_for_moneyball(value: &str, moneyball: bool) -> Result<Self, String> {
         match value {
             "name" => Ok(Self::Name),
             "age" => Ok(Self::Age),
@@ -122,7 +141,9 @@ impl SortField {
             "ca" => Ok(Self::Ca),
             "pa" => Ok(Self::Pa),
             "value" => Ok(Self::Value),
-            other => Ok(Self::Dynamic(MetricField::parse(other)?)),
+            other => Ok(Self::Dynamic(MetricField::parse_for_moneyball(
+                other, moneyball,
+            )?)),
         }
     }
 
@@ -146,6 +167,21 @@ impl SortField {
         match self {
             Self::Dynamic(field) => field.potential_role_id(),
             _ => None,
+        }
+    }
+
+    fn is_available_in_moneyball(&self) -> bool {
+        match self {
+            Self::Name
+            | Self::Age
+            | Self::Nationality
+            | Self::Club
+            | Self::Division
+            | Self::Value => true,
+            Self::Dynamic(field) => {
+                crate::features::player_metrics::resolver::is_moneyball_search_field(field.id())
+            }
+            Self::Ca | Self::Pa => false,
         }
     }
 }
@@ -175,7 +211,7 @@ impl SortDir {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PlayerSummary {
     pub uid: i64,
     pub name: String,
@@ -190,15 +226,28 @@ pub struct PlayerSummary {
     pub market_value_gbp: Option<i64>,
     /// Values for requested non-basic metric fields (field id → nullable cell).
     pub dynamic_values: BTreeMap<String, Option<DynamicValue>>,
+    pub moneyball_percentiles: BTreeMap<String, Option<u8>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SearchPlayersPage {
     pub players: Vec<PlayerSummary>,
     pub total: i64,
 }
 
-pub fn search_players(
+pub struct SearchPlayersRequest<'a> {
+    pub offset: usize,
+    pub limit: usize,
+    pub sort_by: SortField,
+    pub sort_dir: SortDir,
+    pub filter_ast: Option<&'a FilterAst>,
+    pub requested_fields: &'a [String],
+    pub view: SearchView,
+    pub comparison_pool: ComparisonPool,
+}
+
+#[cfg(test)]
+fn search_players(
     conn: &Connection,
     offset: usize,
     limit: usize,
@@ -207,10 +256,47 @@ pub fn search_players(
     filter_ast: Option<&FilterAst>,
     requested_fields: &[String],
 ) -> Result<SearchPlayersPage, String> {
-    let requested_fields = parse_requested_fields(requested_fields)?;
+    search_players_in_view(
+        conn,
+        SearchPlayersRequest {
+            offset,
+            limit,
+            sort_by,
+            sort_dir,
+            filter_ast,
+            requested_fields,
+            view: SearchView::General,
+            comparison_pool: ComparisonPool::FullCsv,
+        },
+    )
+}
+
+pub fn search_players_in_view(
+    conn: &Connection,
+    request: SearchPlayersRequest<'_>,
+) -> Result<SearchPlayersPage, String> {
+    let SearchPlayersRequest {
+        offset,
+        limit,
+        sort_by,
+        sort_dir,
+        filter_ast,
+        requested_fields,
+        view,
+        comparison_pool,
+    } = request;
+    if view == SearchView::Moneyball && !sort_by.is_available_in_moneyball() {
+        return Err("unsupported Moneyball sort field".to_string());
+    }
+    let requested_fields =
+        parse_requested_fields_for_moneyball(requested_fields, view == SearchView::Moneyball)?;
     let dynamic_fields = requested_fields
         .into_iter()
         .filter(|field| !field.is_basic_table_field())
+        .collect::<Vec<_>>();
+    let moneyball_fields = dynamic_fields
+        .iter()
+        .filter_map(|field| field.moneyball_key().map(|key| (field.id(), key)))
         .collect::<Vec<_>>();
     let snapshot_id: Option<i64> = conn
         .query_row(
@@ -239,7 +325,10 @@ pub fn search_players(
     let compiled = match filter_ast {
         None => None,
         Some(ast) => {
-            let compiled = compile_filters(ast, 2)?;
+            let compiled = match view {
+                SearchView::General => compile_filters(ast, 2)?,
+                SearchView::Moneyball => compile_filters_for_moneyball(ast, 2, true)?,
+            };
             if compiled.sql.is_empty() {
                 None
             } else {
@@ -259,6 +348,10 @@ pub fn search_players(
         materialize_snapshot_roles(conn, snapshot_id, &full_snapshot_roles)?;
     }
 
+    let from_sql = match view {
+        SearchView::General => "FROM players".to_string(),
+        SearchView::Moneyball => "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string(),
+    };
     let mut where_sql = "players.snapshot_id = ?1".to_string();
     if let Some(compiled) = &compiled {
         where_sql.push_str(" AND ");
@@ -269,8 +362,9 @@ pub fn search_players(
     if let Some(compiled) = &compiled {
         bind_values.extend(compiled.params.clone());
     }
+    let filter_bind_values = bind_values.clone();
 
-    let count_sql = format!("SELECT COUNT(*) FROM players WHERE {where_sql}");
+    let count_sql = format!("SELECT COUNT(*) {from_sql} WHERE {where_sql}");
     let mut count_stmt = conn
         .prepare(&count_sql)
         .map_err(|error| error.to_string())?;
@@ -301,7 +395,15 @@ pub fn search_players(
     );
     let potential_display_roles = potential_role_ids(&dynamic_fields);
     if !potential_display_roles.is_empty() {
-        let page_uids = query_page_uids(conn, &where_sql, &bind_values, &order_sql, limit, offset)?;
+        let page_uids = query_page_uids(
+            conn,
+            &from_sql,
+            &where_sql,
+            &bind_values,
+            &order_sql,
+            limit,
+            offset,
+        )?;
         materialize_player_roles(conn, snapshot_id, &page_uids, &potential_display_roles)?;
     }
 
@@ -314,9 +416,17 @@ pub fn search_players(
         select_sql.push_str(", ");
         select_sql.push_str(&field.sql_expression("players"));
     }
+    if view == SearchView::Moneyball && comparison_pool == ComparisonPool::FullCsv {
+        for (_, key) in &moneyball_fields {
+            select_sql.push_str(", ");
+            select_sql.push_str(&format!(
+                "json_extract(moneyball.percentiles_json, '$.\"{key}\"')"
+            ));
+        }
+    }
     select_sql.push_str(&format!(
         "
-             FROM players
+             {from_sql}
              WHERE {where_sql}
              {order_sql}
              LIMIT ?{limit_index} OFFSET ?{offset_index}"
@@ -326,13 +436,31 @@ pub fn search_players(
         .prepare(&select_sql)
         .map_err(|error| error.to_string())?;
 
-    let players = stmt
+    let mut players = stmt
         .query_map(params_from_iter(bind_values.iter()), |row| {
-            map_player_summary(row, &dynamic_fields)
+            map_player_summary(
+                row,
+                &dynamic_fields,
+                &moneyball_fields,
+                view == SearchView::Moneyball && comparison_pool == ComparisonPool::FullCsv,
+            )
         })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
+
+    if view == SearchView::Moneyball && comparison_pool == ComparisonPool::Filtered {
+        let mut percentiles = filtered_moneyball_percentiles(
+            conn,
+            &from_sql,
+            &where_sql,
+            &filter_bind_values,
+            &moneyball_fields,
+        )?;
+        for player in &mut players {
+            player.moneyball_percentiles = percentiles.remove(&player.uid).unwrap_or_default();
+        }
+    }
 
     Ok(SearchPlayersPage { players, total })
 }
@@ -340,6 +468,8 @@ pub fn search_players(
 fn map_player_summary(
     row: &Row<'_>,
     dynamic_fields: &[MetricField],
+    moneyball_fields: &[(&str, &str)],
+    include_persisted_percentiles: bool,
 ) -> rusqlite::Result<PlayerSummary> {
     let nationalities_json: String = row.get(5)?;
     let nationalities = parse_nationalities(&nationalities_json).map_err(|message| {
@@ -359,6 +489,13 @@ fn map_player_summary(
         let cell = read_dynamic_value(row, idx, field)?;
         dynamic_values.insert(field.id().to_string(), cell);
     }
+    let mut moneyball_percentiles = BTreeMap::new();
+    if include_persisted_percentiles {
+        for (offset, (field_id, _)) in moneyball_fields.iter().enumerate() {
+            let index = 11 + dynamic_fields.len() + offset;
+            moneyball_percentiles.insert((*field_id).to_string(), row.get(index)?);
+        }
+    }
 
     Ok(PlayerSummary {
         uid: row.get(0)?,
@@ -373,7 +510,55 @@ fn map_player_summary(
         pa: row.get(9)?,
         market_value_gbp: row.get(10)?,
         dynamic_values,
+        moneyball_percentiles,
     })
+}
+
+fn filtered_moneyball_percentiles(
+    conn: &Connection,
+    from_sql: &str,
+    where_sql: &str,
+    bind_values: &[Value],
+    moneyball_fields: &[(&str, &str)],
+) -> Result<BTreeMap<i64, BTreeMap<String, Option<u8>>>, String> {
+    if moneyball_fields.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let mut sql = String::from("SELECT players.uid");
+    for (_, key) in moneyball_fields {
+        sql.push_str(", ");
+        sql.push_str(&format!(
+            "json_extract(moneyball.statistics_json, '$.\"{key}\"')"
+        ));
+    }
+    sql.push_str(&format!(" {from_sql} WHERE {where_sql}"));
+    let mut stmt = conn.prepare(&sql).map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map(params_from_iter(bind_values.iter()), |row| {
+            let uid = row.get(0)?;
+            let values = moneyball_fields
+                .iter()
+                .enumerate()
+                .map(|(offset, (_, key))| Ok(((*key).to_string(), row.get(offset + 1)?)))
+                .collect::<rusqlite::Result<MoneyballNumericStatistics>>()?;
+            Ok((uid, values))
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<BTreeMap<_, _>, _>>()
+        .map_err(|error| error.to_string())?;
+    let scores = calculate_percentiles(&rows);
+    Ok(scores
+        .into_iter()
+        .map(|(uid, scores)| {
+            (
+                uid,
+                moneyball_fields
+                    .iter()
+                    .map(|(field_id, key)| ((*field_id).to_string(), scores[*key]))
+                    .collect(),
+            )
+        })
+        .collect())
 }
 
 fn add_role_once(role_ids: &mut Vec<String>, role_id: &str) {
@@ -394,6 +579,7 @@ fn potential_role_ids(fields: &[MetricField]) -> Vec<String> {
 
 fn query_page_uids(
     conn: &Connection,
+    from_sql: &str,
     where_sql: &str,
     bind_values: &[Value],
     order_sql: &str,
@@ -403,7 +589,7 @@ fn query_page_uids(
     let limit_index = bind_values.len() + 1;
     let offset_index = bind_values.len() + 2;
     let sql = format!(
-        "SELECT players.uid FROM players WHERE {where_sql} {order_sql} LIMIT ?{limit_index} OFFSET ?{offset_index}"
+        "SELECT players.uid {from_sql} WHERE {where_sql} {order_sql} LIMIT ?{limit_index} OFFSET ?{offset_index}"
     );
     let mut values = bind_values.to_vec();
     values.push(Value::Integer(limit));
@@ -437,7 +623,19 @@ mod tests {
         sort_by: SortField,
         sort_dir: SortDir,
     ) -> Result<SearchPlayersPage, String> {
-        search_players(conn, offset, limit, sort_by, sort_dir, None, &[])
+        search_players_in_view(
+            conn,
+            SearchPlayersRequest {
+                offset,
+                limit,
+                sort_by,
+                sort_dir,
+                filter_ast: None,
+                requested_fields: &[],
+                view: SearchView::General,
+                comparison_pool: ComparisonPool::FullCsv,
+            },
+        )
     }
 
     fn search_with_filters(
@@ -450,7 +648,19 @@ mod tests {
         combine: Option<&str>,
     ) -> Result<SearchPlayersPage, String> {
         let ast = parse_filter_ast(rules, combine)?;
-        search_players(conn, offset, limit, sort_by, sort_dir, Some(&ast), &[])
+        search_players_in_view(
+            conn,
+            SearchPlayersRequest {
+                offset,
+                limit,
+                sort_by,
+                sort_dir,
+                filter_ast: Some(&ast),
+                requested_fields: &[],
+                view: SearchView::General,
+                comparison_pool: ComparisonPool::FullCsv,
+            },
+        )
     }
 
     fn open_migrated(db_path: &Path) -> rusqlite::Connection {
@@ -542,6 +752,44 @@ mod tests {
         }
     }
 
+    fn current_snapshot_id(conn: &Connection) -> i64 {
+        conn.query_row("SELECT id FROM snapshots WHERE is_current = 1", [], |row| {
+            row.get(0)
+        })
+        .expect("current snapshot")
+    }
+
+    fn insert_moneyball_row(
+        conn: &Connection,
+        snapshot_id: i64,
+        player_uid: i64,
+        percentiles_json: Option<&str>,
+    ) {
+        insert_moneyball_statistics(
+            conn,
+            snapshot_id,
+            player_uid,
+            r#"{"goals":1.5}"#,
+            percentiles_json,
+        );
+    }
+
+    fn insert_moneyball_statistics(
+        conn: &Connection,
+        snapshot_id: i64,
+        player_uid: i64,
+        statistics_json: &str,
+        percentiles_json: Option<&str>,
+    ) {
+        conn.execute(
+            "INSERT INTO player_moneyball_stats (
+                snapshot_id, player_uid, statistics_json, percentiles_json
+             ) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![snapshot_id, player_uid, statistics_json, percentiles_json],
+        )
+        .expect("insert Moneyball row");
+    }
+
     #[test]
     fn returns_empty_page_when_active_save_has_no_snapshot() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -583,6 +831,206 @@ mod tests {
 
         assert_eq!(page.total, 0);
         assert!(page.players.is_empty());
+    }
+
+    #[test]
+    fn moneyball_view_returns_only_current_scored_players() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-search.db"));
+        ingest_players_for_game_date(
+            &mut conn,
+            vec![player_template(4, "Older scored", 140)],
+            "2026-08-14",
+        );
+        let older_snapshot_id = current_snapshot_id(&conn);
+        insert_moneyball_row(&conn, older_snapshot_id, 4, Some(r#"{"goals":50}"#));
+
+        ingest_players_for_game_date(
+            &mut conn,
+            vec![
+                player_template(1, "Current scored", 160),
+                player_template(2, "Current unscored", 150),
+                player_template(3, "Current absent", 145),
+            ],
+            "2027-08-14",
+        );
+        let current_snapshot_id = current_snapshot_id(&conn);
+        insert_moneyball_row(&conn, current_snapshot_id, 1, Some(r#"{"goals":50}"#));
+        insert_moneyball_row(&conn, current_snapshot_id, 2, None);
+
+        let requested_fields = ["moneyball.goals".to_string()];
+        let page = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 0,
+                limit: DEFAULT_PAGE_LIMIT,
+                sort_by: SortField::parse_for_moneyball("moneyball.goals", true).expect("sort"),
+                sort_dir: SortDir::Desc,
+                filter_ast: None,
+                requested_fields: &requested_fields,
+                view: SearchView::Moneyball,
+                comparison_pool: ComparisonPool::FullCsv,
+            },
+        )
+        .expect("search Moneyball players");
+
+        assert_eq!(page.total, 1);
+        assert_eq!(page.players[0].uid, 1);
+        assert_eq!(
+            page.players[0].dynamic_values.get("moneyball.goals"),
+            Some(&Some(DynamicValue::Real(1.5)))
+        );
+    }
+
+    #[test]
+    fn moneyball_full_csv_pool_returns_persisted_percentiles_only_for_statistics() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-full-csv.db"));
+        ingest_players(&mut conn, vec![player_template(1, "Scored", 160)]);
+        let snapshot_id = current_snapshot_id(&conn);
+        insert_moneyball_statistics(
+            &conn,
+            snapshot_id,
+            1,
+            r#"{"goals":12}"#,
+            Some(r#"{"goals":83}"#),
+        );
+
+        let requested_fields = [
+            "moneyball.goals".to_string(),
+            "moneyball.minutes".to_string(),
+        ];
+        let page = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 0,
+                limit: DEFAULT_PAGE_LIMIT,
+                sort_by: SortField::parse_for_moneyball("moneyball.goals", true).expect("sort"),
+                sort_dir: SortDir::Desc,
+                filter_ast: None,
+                requested_fields: &requested_fields,
+                view: SearchView::Moneyball,
+                comparison_pool: ComparisonPool::FullCsv,
+            },
+        )
+        .expect("search Moneyball players");
+
+        assert_eq!(
+            page.players[0].dynamic_values.get("moneyball.goals"),
+            Some(&Some(DynamicValue::Real(12.0)))
+        );
+        assert_eq!(
+            page.players[0].moneyball_percentiles.get("moneyball.goals"),
+            Some(&Some(83))
+        );
+        assert!(!page.players[0]
+            .moneyball_percentiles
+            .contains_key("moneyball.minutes"));
+    }
+
+    #[test]
+    fn moneyball_filtered_pool_scores_the_full_filtered_cohort_across_pages() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-filtered.db"));
+        ingest_players(
+            &mut conn,
+            (1001..=1101)
+                .map(|uid| player_template(uid, &format!("Player {uid:03}"), 150))
+                .collect(),
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        for uid in 1001..=1101 {
+            let statistics_json = json!({ "goals": uid - 1001 }).to_string();
+            insert_moneyball_statistics(
+                &conn,
+                snapshot_id,
+                uid,
+                &statistics_json,
+                Some(r#"{"goals":50}"#),
+            );
+        }
+
+        let requested_fields = ["moneyball.goals".to_string()];
+        let sort_by = SortField::parse_for_moneyball("moneyball.goals", true).expect("sort");
+        let filter_ast = parse_filter_ast(
+            vec![FilterRule {
+                field: "moneyball.goals".to_string(),
+                op: "gt".to_string(),
+                value: FilterValue::Integer(0),
+            }],
+            None,
+        )
+        .expect("Moneyball filter");
+        let first_page = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 0,
+                limit: 50,
+                sort_by: sort_by.clone(),
+                sort_dir: SortDir::Asc,
+                filter_ast: Some(&filter_ast),
+                requested_fields: &requested_fields,
+                view: SearchView::Moneyball,
+                comparison_pool: ComparisonPool::Filtered,
+            },
+        )
+        .expect("first page");
+        let second_page = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 50,
+                limit: 50,
+                sort_by,
+                sort_dir: SortDir::Asc,
+                filter_ast: Some(&filter_ast),
+                requested_fields: &requested_fields,
+                view: SearchView::Moneyball,
+                comparison_pool: ComparisonPool::Filtered,
+            },
+        )
+        .expect("second page");
+
+        assert_eq!(first_page.total, 100);
+        assert_eq!(first_page.players[0].uid, 1002);
+        assert_eq!(
+            first_page.players[0]
+                .moneyball_percentiles
+                .get("moneyball.goals"),
+            Some(&Some(0))
+        );
+        assert_eq!(second_page.players[0].uid, 1052);
+        assert_eq!(
+            second_page.players[0]
+                .moneyball_percentiles
+                .get("moneyball.goals"),
+            Some(&Some(51))
+        );
+    }
+
+    #[test]
+    fn moneyball_view_rejects_ability_sort_fields() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-sort.db"));
+        ingest_players(&mut conn, vec![player_template(1, "Scored", 160)]);
+        let snapshot_id = current_snapshot_id(&conn);
+        insert_moneyball_row(&conn, snapshot_id, 1, Some(r#"{"goals":50}"#));
+
+        let error = search_players_in_view(
+            &conn,
+            SearchPlayersRequest {
+                offset: 0,
+                limit: DEFAULT_PAGE_LIMIT,
+                sort_by: SortField::Ca,
+                sort_dir: SortDir::Desc,
+                filter_ast: None,
+                requested_fields: &[],
+                view: SearchView::Moneyball,
+                comparison_pool: ComparisonPool::Filtered,
+            },
+        )
+        .expect_err("CA must not sort Moneyball Search");
+
+        assert_eq!(error, "unsupported Moneyball sort field");
     }
 
     #[test]

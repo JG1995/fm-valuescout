@@ -463,7 +463,7 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 #### Commit 3 — Query Moneyball Search cohorts
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** feat(search): query Moneyball player cohorts
 
@@ -563,7 +563,7 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 #### Commit 4 — Add the Moneyball Search view
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** feat(search): add Moneyball search view
 
@@ -773,19 +773,18 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 **PR:** PR 1 — Optional Moneyball analysis views
 
-**Commit:** Commit 3 — Query Moneyball Search cohorts
+**Commit:** Commit 4 — Add the Moneyball Search view
 
 ### RED proof
 
-Add RED command and query tests proving absent mode preserves General behavior and Moneyball mode excludes unscored, absent, and older-snapshot rows. Add resolver and filter tests for real raw values, mode rejection, and bound numeric comparisons.
+Add RED Search route, store, catalog, and import-owner tests that prove Moneyball uses an independent virtualized layout, exposes the complete metric catalog, and leaves General unchanged.
 
 ### Expected outcome
 
-The existing Search command has a closed Moneyball mode that returns only current scored cohorts, raw values, and correct full-import or full-filtered-cohort percentiles without changing General behavior.
+The Search route has an optional Moneyball workspace with its own URL state, virtualized layout, raw-plus-score cells, comparison-pool control, and sole Moneyball CSV upload action.
 
 ### Explicit exclusions
 
-- No Search tab, table layout, metric picker, or upload relocation.
 - No persisted default-view preference.
 - No JAY-20 composite scoring.
 
@@ -805,7 +804,8 @@ The existing Search command has a closed Moneyball mode that returns only curren
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 — Optional Moneyball analysis views | Commit 1 — Persist Moneyball percentile cohorts | 2a3a99b | Added v30 score storage, matched-only percentile preparation, and atomic current-snapshot cohort replacement. | Sol Medium accepted after one stale-cohort preservation coverage correction. | None |
-| PR 1 — Optional Moneyball analysis views | Commit 2 — Add the Moneyball Player Profile view | Pending record | Added a current-snapshot Moneyball profile command, 138-metric presentation catalog, score-aware profile panel, optional route view, and cache invalidation. | Sol Medium accepted after keyboard navigation, independent catalogue, precision, and delayed-focus corrections. | None |
+| PR 1 — Optional Moneyball analysis views | Commit 2 — Add the Moneyball Player Profile view | 813e3c7 | Added a current-snapshot Moneyball profile command, 138-metric presentation catalog, score-aware profile panel, optional route view, and cache invalidation. | Sol Medium accepted after keyboard navigation, independent catalogue, precision, and delayed-focus corrections. | None |
+| PR 1 — Optional Moneyball analysis views | Commit 3 — Query Moneyball Search cohorts | Pending record | Added a closed current-scored Moneyball Search mode with raw context/statistic values, Full CSV score projection, and server-side filtered-cohort percentiles. | Sol Medium accepted after CA/PA catalog correction. | None |
 
 ## Final validation
 
