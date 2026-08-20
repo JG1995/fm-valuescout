@@ -234,7 +234,7 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 ### PR 1 — Optional Moneyball analysis views
 
-**Status:** Completed
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -678,7 +678,7 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 #### Commit 5 — Choose the default player analysis view
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** feat(settings): choose default player analysis view
 
@@ -806,8 +806,8 @@ One app-local preference selects General or Moneyball as the default for both Se
 | PR 1 — Optional Moneyball analysis views | Commit 1 — Persist Moneyball percentile cohorts | 2a3a99b | Added v30 score storage, matched-only percentile preparation, and atomic current-snapshot cohort replacement. | Sol Medium accepted after one stale-cohort preservation coverage correction. | None |
 | PR 1 — Optional Moneyball analysis views | Commit 2 — Add the Moneyball Player Profile view | 813e3c7 | Added a current-snapshot Moneyball profile command, 138-metric presentation catalog, score-aware profile panel, optional route view, and cache invalidation. | Sol Medium accepted after keyboard navigation, independent catalogue, precision, and delayed-focus corrections. | None |
 | PR 1 — Optional Moneyball analysis views | Commit 3 — Query Moneyball Search cohorts | 5c8b226 | Added a closed current-scored Moneyball Search mode with raw context/statistic values, Full CSV score projection, and server-side filtered-cohort percentiles. | Sol Medium accepted after CA/PA catalog correction. | None |
-| PR 1 — Optional Moneyball analysis views | Commit 4 — Add the Moneyball Search view | Pending record | Added opt-in Search tabs, raw-plus-score virtual Moneyball cells, server-selected comparison pools, a separate persisted layout, and Search-owned CSV replacement. | Sol Medium accepted after cohort-context, accessibility, and 101-row browser-smoke corrections. | None |
-| PR 1 — Optional Moneyball analysis views | Commit 5 — Choose the default player analysis view | Pending record | Added the shared app-local default, Settings control, URL-first Search/Profile resolution, and explicit Search context navigation. | Sol Medium accepted after Search normalization, navigation, migration, accessibility, and smoke corrections. | Full-suite result requires host execution for Node child-process tests; focused and release suites passed. |
+| PR 1 — Optional Moneyball analysis views | Commit 4 — Add the Moneyball Search view | ff02931 | Added opt-in Search tabs, raw-plus-score virtual Moneyball cells, server-selected comparison pools, a separate persisted layout, and Search-owned CSV replacement. | Sol Medium accepted after cohort-context, accessibility, and 101-row browser-smoke corrections. | None |
+| PR 1 — Optional Moneyball analysis views | Commit 5 — Choose the default player analysis view | 77d1e07 | Added the shared app-local default, Settings control, URL-first Search/Profile resolution, and explicit Search context navigation. | Sol Medium accepted after Search normalization, navigation, migration, accessibility, and smoke corrections. | Full-suite result requires host execution for Node child-process tests; focused and release suites passed. |
 
 ## Final validation
 
