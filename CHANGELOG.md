@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-20
+
+### Added
+
+- Moneyball CSV imports now store a current-snapshot player cohort with computed metrics and whole-cohort percentile scores.
+- Player Search now provides an optional Moneyball view with cohort-only results, metric filters, configurable columns, and virtualized results.
+- Player Profiles now provide a Moneyball analysis view, and Settings can make it the default analysis view.
+
 ## [0.8.0] - 2026-08-19
 
 ### Added
