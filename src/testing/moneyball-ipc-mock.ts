@@ -46,6 +46,8 @@ export function fixturePlayerMoneyball(
     minutes: 1500,
     statistics: { goals: 10, goals_per_90: 0.6 },
     percentiles: { goals: 83, goals_per_90: 75 },
+    roleCatalogVersion: 1,
+    roleScores: [],
     ...overrides,
   };
 }

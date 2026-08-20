@@ -563,6 +563,8 @@ presentation inventory with explicit attribute-score placeholders.
   ready-state role results, and integration tests.
 - `src-tauri/src/features/moneyball/commands.rs` — versioned role and contribution
   DTOs with distinct field names.
+- `src-tauri/src/features/moneyball/role_score.rs` — expose null-safe explanation
+  rows while keeping weighted-score arithmetic in the Rust scorer.
 - `src-tauri/src/features/player/query.rs` — presentation inventory mapping for
   General profile only, with null unsupported Current/Potential results.
 - `src/features/moneyball/types/moneyball-profile.ts` — ready-state Moneyball
@@ -584,6 +586,10 @@ presentation inventory with explicit attribute-score placeholders.
 - `src/features/moneyball/components/moneyball-profile-panel.tsx` and test — keep
   raw metrics/context focused; coordinate the ready profile content without
   duplicating score arithmetic.
+- `src/utils/profile-position-roles.ts` and
+  `src/components/profile-position-picker/profile-position-picker.tsx` — share
+  position identity, familiarity, null-last sorting, and the accessible picker
+  between General and Moneyball role panels.
 - `src/app/routes/players.$uid.tsx` and test — ready two-panel layout, Moneyball
   summary inputs, and no-data/re-import behavior.
 

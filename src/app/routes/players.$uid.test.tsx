@@ -152,6 +152,112 @@ describe("player profile route", () => {
     });
   });
 
+  it("shows Moneyball summaries and the ready two-panel role workspace", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        positions: { MC: 20 },
+        roleScores: [
+          {
+            roleId: "attribute-best",
+            displayName: "Attribute Best Role",
+            phase: "in_possession",
+            positionTags: ["MC"],
+            score: 99,
+            potentialScore: 100,
+          },
+        ],
+      }),
+    );
+    setPlayerMoneyballOverride(
+      fixturePlayerMoneyball({
+        roleScores: [
+          {
+            roleId: "mc_moneyball_ip",
+            displayName: "Moneyball IP Specialist",
+            phase: "in_possession",
+            positionFamily: "central_midfielder",
+            positionTags: ["MC"],
+            score: 81,
+            contributions: [],
+          },
+          {
+            roleId: "mc_moneyball_oop",
+            displayName: "Moneyball OOP Specialist",
+            phase: "out_of_possession",
+            positionFamily: "central_midfielder",
+            positionTags: ["MC"],
+            score: 74,
+            contributions: [],
+          },
+        ],
+      }),
+    );
+
+    renderProfileRoute("/players/42?view=moneyball");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    expect(
+      within(summary).getByLabelText("Moneyball IP: 81, Excellent"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).getByLabelText("Moneyball OOP: 74, Good"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Moneyball IP Specialist"),
+    ).toBeInTheDocument();
+    expect(within(summary).queryByText("Current IP")).not.toBeInTheDocument();
+    expect(
+      within(summary).queryByText("Attribute Best Role"),
+    ).not.toBeInTheDocument();
+
+    expect(screen.getByText("Starts")).toBeInTheDocument();
+    const roleFit = screen.getByRole("region", {
+      name: "Moneyball role fit for MC",
+    });
+    expect(
+      within(roleFit).getByLabelText(
+        "Moneyball IP Specialist Moneyball score: 81, Excellent",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(roleFit).getByRole("columnheader", { name: "Moneyball score" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps Moneyball no-data states actionable without rendering a role panel", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride({ state: "noData" });
+    const first = renderProfileRoute("/players/42?view=moneyball");
+
+    expect(
+      await screen.findByText(/not included in the current Moneyball import/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Moneyball IP: unavailable"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Moneyball role fit for MC" }),
+    ).not.toBeInTheDocument();
+
+    first.unmount();
+    setPlayerMoneyballOverride({ state: "needsReimport" });
+    renderProfileRoute("/players/42?view=moneyball");
+
+    expect(
+      await screen.findByText(/before percentile scores were available/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Moneyball OOP: unavailable"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Moneyball role fit for MC" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("moves between analysis views with arrow keys", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());

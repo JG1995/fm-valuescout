@@ -1,27 +1,29 @@
+import {
+  PLAYABLE_POSITION_FAMILIARITY,
+  type PositionFamiliarity,
+  type PositionFamiliarityMap,
+  type PositionRoleScore,
+} from "@/utils/profile-position-roles";
 import type { PlayerRoleScore } from "../types/player-detail";
 
-export const PROFILE_POSITION_ROWS: readonly (readonly (string | null)[])[] = [
-  [null, "ST", null],
-  ["AML", "AMC", "AMR"],
-  ["ML", "MC", "MR"],
-  ["WBL", "DM", "WBR"],
-  ["DL", "DC", "DR"],
-  [null, "SW", null],
-  [null, "GK", null],
-] as const;
+export type {
+  PositionFamiliarity,
+  PositionFamiliarityMap,
+  PositionRoleScore,
+} from "@/utils/profile-position-roles";
+export {
+  defaultProfilePosition,
+  isGoalkeeper,
+  PLAYABLE_POSITION_FAMILIARITY,
+  PROFILE_POSITION_ROWS,
+  PROFILE_POSITION_TAGS,
+  rolesForScorePosition,
+} from "@/utils/profile-position-roles";
 
-export const PROFILE_POSITION_TAGS = PROFILE_POSITION_ROWS.flatMap((row) =>
-  row.filter((position): position is string => position !== null),
-);
-
-const PROFILE_POSITION_TAG_SET = new Set(PROFILE_POSITION_TAGS);
-
-export type ScoredRole = PlayerRoleScore & { score: number };
+export type ScoredRole<T extends PositionRoleScore = PositionRoleScore> = T & {
+  score: number;
+};
 export type PotentialScoredRole = PlayerRoleScore & { potentialScore: number };
-export type PositionFamiliarity = number | null;
-export type PositionFamiliarityMap = Readonly<
-  Record<string, PositionFamiliarity>
->;
 export type RolePhase = "in_possession" | "out_of_possession";
 export type RoleSort = {
   basis: "current" | "potential";
@@ -32,55 +34,6 @@ const DEFAULT_ROLE_SORT: RoleSort = {
   basis: "current",
   direction: "descending",
 };
-
-export const PLAYABLE_POSITION_FAMILIARITY = 15;
-
-export function isGoalkeeper(positions: PositionFamiliarityMap): boolean {
-  return (
-    typeof positions.GK === "number" &&
-    positions.GK >= PLAYABLE_POSITION_FAMILIARITY
-  );
-}
-
-/** Pick the player's strongest recorded position, then fall back to best-role fit. */
-export function defaultProfilePosition(
-  positions: PositionFamiliarityMap,
-  roleScores: readonly PlayerRoleScore[],
-): string {
-  let selected: string | null = null;
-  let familiarity = 0;
-
-  for (const position of PROFILE_POSITION_TAGS) {
-    const value = positions[position];
-    if (isPositiveFamiliarity(value) && value > familiarity) {
-      selected = position;
-      familiarity = value;
-    }
-  }
-
-  if (selected) {
-    return selected;
-  }
-
-  const bestRole = bestRoleScore(roleScores);
-  const bestRolePosition = bestRole?.positionTags.find((position) =>
-    PROFILE_POSITION_TAG_SET.has(position),
-  );
-  if (bestRolePosition) {
-    return bestRolePosition;
-  }
-
-  for (const role of roleScores) {
-    const rolePosition = role.positionTags.find((position) =>
-      PROFILE_POSITION_TAG_SET.has(position),
-    );
-    if (rolePosition) {
-      return rolePosition;
-    }
-  }
-
-  return "MC";
-}
 
 /** Filter to an exact pitch position and rank known scores before unavailable ones. */
 export function rolesForProfilePosition(
@@ -109,10 +62,10 @@ export function rolesForProfilePosition(
 }
 
 /** Keep roles attached to at least one position the player can play. */
-export function rolesForPlayablePositions(
-  roleScores: readonly PlayerRoleScore[],
+export function rolesForPlayablePositions<T extends PositionRoleScore>(
+  roleScores: readonly T[],
   positions: PositionFamiliarityMap,
-): PlayerRoleScore[] {
+): T[] {
   return roleScores.filter((role) =>
     role.positionTags.some(
       (position) =>
@@ -129,18 +82,18 @@ function isPositiveFamiliarity(
 }
 
 /** Keep only roles from the requested catalog phase. */
-export function rolesForPhase(
-  roleScores: readonly PlayerRoleScore[],
+export function rolesForPhase<T extends PositionRoleScore>(
+  roleScores: readonly T[],
   phase: RolePhase,
-): PlayerRoleScore[] {
+): T[] {
   return roleScores.filter((role) => role.phase === phase);
 }
 
 /** Highest non-null score; ties keep the earlier catalog entry. */
-export function bestRoleScore(
-  roleScores: readonly PlayerRoleScore[],
-): ScoredRole | null {
-  let best: ScoredRole | null = null;
+export function bestRoleScore<T extends PositionRoleScore>(
+  roleScores: readonly T[],
+): ScoredRole<T> | null {
+  let best: ScoredRole<T> | null = null;
   for (const role of roleScores) {
     if (role.score === null) {
       continue;

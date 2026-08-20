@@ -11,6 +11,7 @@ import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { getPlayerMoneyballQueryOptions } from "@/features/moneyball/api/get-player-moneyball-query-options";
 import { MoneyballProfilePanel } from "@/features/moneyball/components/moneyball-profile-panel";
+import { MoneyballRoleFitPanel } from "@/features/moneyball/components/moneyball-role-fit-panel";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { boostCurrentAbility } from "@/features/player-profile/api/boost-current-ability";
 import { boostWonderkidMentality } from "@/features/player-profile/api/boost-wonderkid-mentality";
@@ -398,15 +399,21 @@ function MoneyballPlayerProfile({
   restoreAnalysisFocus: boolean;
   onAnalysisFocusRestored: () => void;
 }) {
+  const railExpanded = useLayoutStore((state) => state.railExpanded);
   const { data: profile } = useSuspenseQuery(
     getPlayerMoneyballQueryOptions(uid),
   );
 
   if (!profile) return <PlayerNotFound />;
+  const readyProfile = profile.state === "ready" ? profile : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-gutter overflow-hidden">
-      <PlayerOverviewPanel player={player} mode="moneyball" />
+      <PlayerOverviewPanel
+        player={player}
+        mode="moneyball"
+        roleScores={readyProfile?.roleScores ?? []}
+      />
       <PlayerAnalysisTabs
         view="moneyball"
         onViewChange={onViewChange}
@@ -417,9 +424,21 @@ function MoneyballPlayerProfile({
         id="player-analysis-panel"
         role="tabpanel"
         aria-labelledby="player-analysis-tab-moneyball"
-        className="h-0 min-h-0 flex-1"
+        className={
+          readyProfile
+            ? profileWorkspaceClassName(railExpanded)
+            : "h-0 min-h-0 flex-1"
+        }
       >
         <MoneyballProfilePanel profile={profile} />
+        {readyProfile ? (
+          <MoneyballRoleFitPanel
+            key={player.uid}
+            positions={player.positions}
+            roleScores={readyProfile.roleScores}
+            catalogVersion={readyProfile.roleCatalogVersion}
+          />
+        ) : null}
       </div>
     </div>
   );

@@ -3,7 +3,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
-use super::MONEYBALL_STATISTIC_KEYS;
+use super::{
+    role_catalog::{builtin_catalog, RolePhase},
+    role_score::explain_role,
+    MONEYBALL_STATISTIC_KEYS,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MoneyballProfileState {
@@ -23,6 +27,29 @@ pub struct MoneyballProfile {
     pub minutes: Option<i64>,
     pub statistics: Option<BTreeMap<String, Option<f64>>>,
     pub percentiles: Option<BTreeMap<String, Option<u8>>>,
+    pub role_catalog_version: Option<u32>,
+    pub role_scores: Option<Vec<MoneyballRoleScore>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MoneyballRoleScore {
+    pub role_id: String,
+    pub display_name: String,
+    pub phase: String,
+    pub position_family: String,
+    pub position_tags: Vec<String>,
+    pub score: Option<u8>,
+    pub contributions: Vec<MoneyballRoleContribution>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MoneyballRoleContribution {
+    pub metric_key: String,
+    pub source_label: String,
+    pub weight: f64,
+    pub direction: String,
+    pub percentile: Option<u8>,
+    pub weighted_contribution: Option<f64>,
 }
 
 impl MoneyballProfile {
@@ -37,6 +64,8 @@ impl MoneyballProfile {
             minutes: None,
             statistics: None,
             percentiles: None,
+            role_catalog_version: None,
+            role_scores: None,
         }
     }
 
@@ -122,6 +151,59 @@ pub fn get_player_moneyball(
         return Ok(Some(MoneyballProfile::needs_reimport()));
     };
 
+    let percentiles = parse_percentiles(&percentiles_json)?;
+    let role_catalog = builtin_catalog()?;
+    let role_scores = role_catalog
+        .definitions
+        .iter()
+        .map(|definition| {
+            let details = explain_role(definition, &percentiles).ok_or_else(|| {
+                format!(
+                    "built-in Moneyball role definition `{}` cannot be scored",
+                    definition.id
+                )
+            })?;
+            let contributions = definition
+                .metrics
+                .iter()
+                .zip(details.contributions)
+                .map(|(metric, contribution)| {
+                    let source_label = metric.source_label.clone().ok_or_else(|| {
+                        format!(
+                            "built-in Moneyball metric `{}` has no source label",
+                            metric.key
+                        )
+                    })?;
+                    Ok(MoneyballRoleContribution {
+                        metric_key: contribution.key,
+                        source_label,
+                        weight: contribution.weight,
+                        direction: if contribution.lower_is_better {
+                            "lower".to_owned()
+                        } else {
+                            "higher".to_owned()
+                        },
+                        percentile: contribution.percentile,
+                        weighted_contribution: contribution.weighted_contribution,
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+
+            Ok(MoneyballRoleScore {
+                role_id: definition.id.clone(),
+                display_name: definition.display_name.clone(),
+                phase: match definition.phase {
+                    RolePhase::InPossession => "in_possession".to_owned(),
+                    RolePhase::OutOfPossession => "out_of_possession".to_owned(),
+                },
+                position_family: definition.position_family.clone(),
+                position_tags: definition.position_tags.clone(),
+                score: details.score,
+                contributions,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
     Ok(Some(MoneyballProfile {
         state: MoneyballProfileState::Ready,
         asking_price_kind,
@@ -131,7 +213,9 @@ pub fn get_player_moneyball(
         substitute_appearances,
         minutes,
         statistics: Some(parse_statistics(&statistics_json)?),
-        percentiles: Some(parse_percentiles(&percentiles_json)?),
+        percentiles: Some(percentiles),
+        role_catalog_version: Some(role_catalog.version),
+        role_scores: Some(role_scores),
     }))
 }
 
@@ -208,6 +292,7 @@ mod tests {
 
     use super::get_player_moneyball;
     use crate::db::migrations;
+    use crate::features::moneyball::role_catalog::builtin_catalog;
     use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
     use crate::features::snapshot::ingest::ingest_dump_file;
 
@@ -241,6 +326,15 @@ mod tests {
         Value::Object(values).to_string()
     }
 
+    fn percentiles_with_null(key: &str, value: u8) -> String {
+        let mut values = MONEYBALL_STATISTIC_KEYS
+            .iter()
+            .map(|metric_key| ((*metric_key).to_string(), json!(value)))
+            .collect::<Map<_, _>>();
+        values.insert(key.to_string(), Value::Null);
+        Value::Object(values).to_string()
+    }
+
     fn insert_moneyball_row(conn: &Connection, snapshot_id: i64, percentiles_json: Option<&str>) {
         conn.execute(
             "INSERT INTO player_moneyball_stats (
@@ -263,6 +357,7 @@ mod tests {
             .expect("query absent player")
             .expect("known current player");
         assert_eq!(absent.state, super::MoneyballProfileState::NoData);
+        assert!(absent.role_scores.is_none());
 
         insert_moneyball_row(&conn, snapshot_id, None);
         let legacy = get_player_moneyball(&conn, 77)
@@ -271,6 +366,7 @@ mod tests {
         assert_eq!(legacy.state, super::MoneyballProfileState::NeedsReimport);
         assert!(legacy.statistics.is_none());
         assert!(legacy.percentiles.is_none());
+        assert!(legacy.role_scores.is_none());
 
         conn.execute(
             "UPDATE player_moneyball_stats SET percentiles_json = ?1 WHERE snapshot_id = ?2 AND player_uid = 77",
@@ -292,6 +388,49 @@ mod tests {
             scored.percentiles.as_ref().expect("scores")["goals"],
             Some(83)
         );
+        assert_eq!(scored.role_catalog_version, Some(1));
+        assert_eq!(scored.role_scores.as_ref().expect("role scores").len(), 88);
+        assert!(scored
+            .role_scores
+            .as_ref()
+            .expect("role scores")
+            .iter()
+            .all(|role| role.score == Some(83)));
+    }
+
+    #[test]
+    fn identifies_a_null_metric_in_the_role_explanation() {
+        let temp_dir = tempfile::tempdir().expect("temp directory");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-role-explanation.db"));
+        let snapshot_id = ingest_current_player(&mut conn);
+        let catalog = builtin_catalog().expect("built-in catalog");
+        let first_metric = catalog.definitions[0].metrics[0].key.clone();
+        insert_moneyball_row(
+            &conn,
+            snapshot_id,
+            Some(&percentiles_with_null(&first_metric, 83)),
+        );
+
+        let profile = get_player_moneyball(&conn, 77)
+            .expect("query player")
+            .expect("known current player");
+        let role = profile
+            .role_scores
+            .as_ref()
+            .expect("role scores")
+            .iter()
+            .find(|role| role.role_id == catalog.definitions[0].id)
+            .expect("first role");
+
+        assert_eq!(role.score, None);
+        let missing = role
+            .contributions
+            .iter()
+            .find(|contribution| contribution.metric_key == first_metric)
+            .expect("missing metric contribution");
+        assert_eq!(missing.percentile, None);
+        assert_eq!(missing.weighted_contribution, None);
+        assert_eq!(missing.source_label, "xG per 90");
     }
 
     #[test]

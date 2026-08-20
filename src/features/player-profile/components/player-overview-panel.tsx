@@ -12,6 +12,7 @@ import type { PlayerDetail } from "../types/player-detail";
 import {
   bestPotentialRoleScore,
   bestRoleScore,
+  type PositionRoleScore,
   rolesForPhase,
   rolesForPlayablePositions,
 } from "../utils/position-families";
@@ -90,6 +91,7 @@ function BestRoleSummary({
 type PlayerOverviewPanelProps = {
   player: PlayerDetail;
   mode?: "general" | "moneyball";
+  roleScores?: readonly PositionRoleScore[];
   actions?: ReactNode;
   hiddenInformationPending?: boolean;
   hiddenInformationError?: Error | null;
@@ -99,12 +101,14 @@ type PlayerOverviewPanelProps = {
 export function PlayerOverviewPanel({
   player,
   mode = "general",
+  roleScores,
   actions,
   hiddenInformationPending,
   hiddenInformationError,
   onToggleHiddenInformation,
 }: PlayerOverviewPanelProps) {
   const showGeneralAnalysis = mode === "general";
+  const showMoneyballAnalysis = mode === "moneyball";
   const nationality =
     player.nationalities.length > 0 ? player.nationalities.join(", ") : "—";
   const flags = [
@@ -114,22 +118,30 @@ export function PlayerOverviewPanel({
     flagLabel(player.setForRelease, "Set for release"),
     flagLabel(player.onLoan, "On loan"),
   ].filter((label): label is string => label !== null);
-  const playableRoles = rolesForPlayablePositions(
-    player.roleScores,
+  const analysisRoles = rolesForPlayablePositions(
+    showMoneyballAnalysis ? (roleScores ?? []) : player.roleScores,
     player.positions,
   );
-  const inPossessionRoles = rolesForPhase(playableRoles, "in_possession");
+  const generalRoles = showGeneralAnalysis
+    ? rolesForPlayablePositions(player.roleScores, player.positions)
+    : [];
+  const inPossessionRoles = rolesForPhase(analysisRoles, "in_possession");
   const outOfPossessionRoles = rolesForPhase(
-    playableRoles,
+    analysisRoles,
     "out_of_possession",
   );
   const currentIpRole = bestRoleScore(inPossessionRoles);
   const currentOopRole = bestRoleScore(outOfPossessionRoles);
+  const generalInPossessionRoles = rolesForPhase(generalRoles, "in_possession");
+  const generalOutOfPossessionRoles = rolesForPhase(
+    generalRoles,
+    "out_of_possession",
+  );
   const potentialIpRole = player.hiddenInformationRevealed
-    ? bestPotentialRoleScore(inPossessionRoles)
+    ? bestPotentialRoleScore(generalInPossessionRoles)
     : null;
   const potentialOopRole = player.hiddenInformationRevealed
-    ? bestPotentialRoleScore(outOfPossessionRoles)
+    ? bestPotentialRoleScore(generalOutOfPossessionRoles)
     : null;
   const VisibilityIcon = player.hiddenInformationRevealed ? EyeOff : Eye;
 
@@ -186,6 +198,21 @@ export function PlayerOverviewPanel({
                 </p>
               ) : null}
             </div>
+          </div>
+        ) : null}
+
+        {showMoneyballAnalysis ? (
+          <div className="grid min-w-0 grid-cols-2 gap-3 border-outline-variant lg:border-x lg:px-4">
+            <BestRoleSummary
+              label="Moneyball IP"
+              roleName={currentIpRole?.displayName ?? null}
+              score={currentIpRole?.score ?? null}
+            />
+            <BestRoleSummary
+              label="Moneyball OOP"
+              roleName={currentOopRole?.displayName ?? null}
+              score={currentOopRole?.score ?? null}
+            />
           </div>
         ) : null}
 

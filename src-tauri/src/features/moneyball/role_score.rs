@@ -13,23 +13,36 @@ pub(crate) struct RoleScoreContribution {
     pub(crate) key: String,
     pub(crate) weight: f64,
     pub(crate) lower_is_better: bool,
-    pub(crate) percentile: u8,
-    pub(crate) weighted_contribution: f64,
+    pub(crate) percentile: Option<u8>,
+    pub(crate) weighted_contribution: Option<f64>,
 }
 
-pub(crate) fn score_role(
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RoleScoreDetails {
+    pub(crate) score: Option<u8>,
+    pub(crate) contributions: Vec<RoleScoreContribution>,
+}
+
+pub(crate) fn explain_role(
     definition: &RoleDefinition,
     percentiles: &BTreeMap<String, Option<u8>>,
-) -> Option<RoleScore> {
+) -> Option<RoleScoreDetails> {
     let total_weight = validate_role_definition(definition).ok()?;
     let mut weighted_sum = 0.0;
+    let mut complete = true;
     let mut contributions = Vec::with_capacity(definition.metrics.len());
 
     for metric in &definition.metrics {
-        let percentile = percentiles.get(&metric.key).and_then(|value| *value)?;
-        let percentile = percentile.min(100);
-        let weighted_contribution = f64::from(percentile) * (metric.weight / total_weight);
-        weighted_sum += weighted_contribution;
+        let percentile = percentiles
+            .get(&metric.key)
+            .and_then(|value| *value)
+            .map(|value| value.min(100));
+        let weighted_contribution = percentile.map(|value| {
+            let contribution = f64::from(value) * (metric.weight / total_weight);
+            weighted_sum += contribution;
+            contribution
+        });
+        complete &= weighted_contribution.is_some();
         contributions.push(RoleScoreContribution {
             key: metric.key.clone(),
             weight: metric.weight,
@@ -39,10 +52,21 @@ pub(crate) fn score_role(
         });
     }
 
-    let score = weighted_sum.round().clamp(0.0, 100.0) as u8;
+    Some(RoleScoreDetails {
+        score: complete.then(|| weighted_sum.round().clamp(0.0, 100.0) as u8),
+        contributions,
+    })
+}
+
+pub(crate) fn score_role(
+    definition: &RoleDefinition,
+    percentiles: &BTreeMap<String, Option<u8>>,
+) -> Option<RoleScore> {
+    let details = explain_role(definition, percentiles)?;
+    let score = details.score?;
     Some(RoleScore {
         score,
-        contributions,
+        contributions: details.contributions,
     })
 }
 
@@ -50,7 +74,7 @@ pub(crate) fn score_role(
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::score_role;
+    use super::{explain_role, score_role};
     use crate::features::moneyball::percentile::calculate_percentiles;
     use crate::features::moneyball::role_catalog::{RoleDefinition, RoleMetric, RolePhase};
 
@@ -89,9 +113,9 @@ mod tests {
         let result = score_role(&definition, &percentiles).expect("score should be calculable");
 
         assert_eq!(result.score, 70);
-        assert_eq!(result.contributions[0].percentile, 40);
-        assert_eq!(result.contributions[0].weighted_contribution, 10.0);
-        assert_eq!(result.contributions[1].weighted_contribution, 60.0);
+        assert_eq!(result.contributions[0].percentile, Some(40));
+        assert_eq!(result.contributions[0].weighted_contribution, Some(10.0));
+        assert_eq!(result.contributions[1].weighted_contribution, Some(60.0));
     }
 
     #[test]
@@ -132,7 +156,7 @@ mod tests {
         let result = score_role(&definition, &percentiles).expect("score should be calculable");
 
         assert_eq!(result.score, 20);
-        assert_eq!(result.contributions[0].percentile, 20);
+        assert_eq!(result.contributions[0].percentile, Some(20));
         assert!(result.contributions[0].lower_is_better);
     }
 
@@ -152,8 +176,11 @@ mod tests {
         let result = score_role(&definition, &percentiles).expect("score should be calculable");
 
         assert_eq!(result.score, 50);
-        assert_eq!(result.contributions[0].weighted_contribution, 50.0);
-        assert!(result.contributions[0].weighted_contribution.is_finite());
+        assert_eq!(result.contributions[0].weighted_contribution, Some(50.0));
+        assert!(result.contributions[0]
+            .weighted_contribution
+            .expect("finite contribution")
+            .is_finite());
     }
 
     #[test]
@@ -176,7 +203,25 @@ mod tests {
 
         assert_eq!(better.score, 100);
         assert_eq!(worse.score, 0);
-        assert_eq!(better.contributions[0].percentile, 100);
-        assert_eq!(worse.contributions[0].percentile, 0);
+        assert_eq!(better.contributions[0].percentile, Some(100));
+        assert_eq!(worse.contributions[0].percentile, Some(0));
+    }
+
+    #[test]
+    fn explanation_keeps_available_contributions_when_one_metric_is_null() {
+        let definition = definition(vec![
+            metric("goals", 0.5, false),
+            metric("assists", 0.5, false),
+        ]);
+        let percentiles =
+            BTreeMap::from([("goals".to_owned(), Some(80)), ("assists".to_owned(), None)]);
+
+        let result = explain_role(&definition, &percentiles).expect("valid definition");
+
+        assert_eq!(result.score, None);
+        assert_eq!(result.contributions[0].percentile, Some(80));
+        assert_eq!(result.contributions[0].weighted_contribution, Some(40.0));
+        assert_eq!(result.contributions[1].percentile, None);
+        assert_eq!(result.contributions[1].weighted_contribution, None);
     }
 }
