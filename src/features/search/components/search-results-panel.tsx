@@ -274,6 +274,23 @@ function SearchResultsVirtualTable({
               </td>
             );
           }
+          if (moneyballMetric?.role) {
+            const score = player?.dynamicValues?.[column.id];
+            return (
+              <td key={column.id} className={NUM_CELL}>
+                {typeof score === "number" ? (
+                  <ScoreBadge
+                    score={score}
+                    roleName={`Moneyball role · ${column.label}`}
+                  />
+                ) : (
+                  <span className="text-on-surface-variant">
+                    {player === undefined ? "…" : "—"}
+                  </span>
+                )}
+              </td>
+            );
+          }
           if (!isBasicSearchSortField(column.id)) {
             if (
               column.id.startsWith("role.") ||

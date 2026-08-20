@@ -1,5 +1,9 @@
 import type { MoneyballMetric } from "./moneyball-metrics";
 import { MONEYBALL_METRICS } from "./moneyball-metrics";
+import {
+  MONEYBALL_ROLE_CATALOG,
+  type MoneyballRolePositionFamily,
+} from "./moneyball-role-catalog";
 
 export type MoneyballSearchMetric = {
   id: string;
@@ -13,6 +17,8 @@ export type MoneyballSearchMetric = {
   enumOptions?: readonly { value: string; label: string }[];
   metric?: MoneyballMetric;
   context?: true;
+  role?: true;
+  roleId?: string;
 };
 
 const NUMBER_OPERATORS = [
@@ -31,6 +37,22 @@ const ENUM_OPERATORS = [
   { id: "is", label: "is" },
   { id: "is_not", label: "is not" },
 ] as const;
+
+const MONEYBALL_ROLE_FAMILY_LABELS: Record<
+  MoneyballRolePositionFamily,
+  string
+> = {
+  attacking_midfielder: "Attacking midfield",
+  central_defender: "Central defense",
+  central_midfielder: "Central midfield",
+  defensive_midfielder: "Defensive midfield",
+  full_back: "Full-back",
+  goalkeeper: "Goalkeeper",
+  striker: "Striker",
+  wide_midfielder: "Wide midfield",
+  wing_back: "Wing-back",
+  winger: "Winger",
+};
 
 const basic = (id: string, label: string, kind: "string" | "integer") => ({
   id,
@@ -56,6 +78,19 @@ const context = (id: string, label: string): MoneyballSearchMetric => ({
   sortable: true,
   operators: NUMBER_OPERATORS,
   context: true,
+});
+
+const roleMetric = (role: (typeof MONEYBALL_ROLE_CATALOG)[number]) => ({
+  id: `moneyball_role.${role.id}`,
+  label: role.label,
+  category: `Moneyball roles · ${MONEYBALL_ROLE_FAMILY_LABELS[role.positionFamily]}`,
+  kind: "integer" as const,
+  align: "right" as const,
+  defaultWidth: 128,
+  sortable: true as const,
+  operators: NUMBER_OPERATORS,
+  role: true as const,
+  roleId: role.id,
 });
 
 export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
@@ -97,6 +132,7 @@ export const MONEYBALL_SEARCH_METRICS: readonly MoneyballSearchMetric[] = [
     operators: NUMBER_OPERATORS,
     metric,
   })),
+  ...MONEYBALL_ROLE_CATALOG.map(roleMetric),
 ];
 
 export const DEFAULT_MONEYBALL_TABLE_COLUMN_IDS = [

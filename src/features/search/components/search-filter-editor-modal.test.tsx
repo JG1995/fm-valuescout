@@ -18,12 +18,14 @@ function renderEditor({
   open = true,
   rules = [],
   combine = "and" as const,
+  view = "general" as const,
   onApply = vi.fn<ApplyFilters>(),
   onClose = vi.fn<CloseEditor>(),
 }: {
   open?: boolean;
   rules?: FilterRule[];
   combine?: "and" | "or";
+  view?: "general" | "moneyball";
   onApply?: ApplyFilters;
   onClose?: CloseEditor;
 } = {}) {
@@ -35,6 +37,7 @@ function renderEditor({
         open={open}
         rules={rules}
         combine={combine}
+        view={view}
         onApply={onApply}
         onClose={onClose}
       />,
@@ -206,5 +209,25 @@ describe("SearchFilterEditorModal", () => {
     await user.keyboard("{Escape}");
 
     expect(fieldTrigger).toHaveFocus();
+  });
+
+  it("explains the post-score cohort when a Moneyball role rule is present", () => {
+    renderEditor({
+      view: "moneyball",
+      rules: [
+        {
+          id: "moneyball-role",
+          field: "moneyball_role.wbl_wbr_wing_back_ip",
+          op: "gt",
+          value: { type: "integer", value: 70 },
+        },
+      ],
+    });
+
+    expect(
+      screen.getByRole("note", {
+        name: /role filters apply after the comparison cohort is calculated/i,
+      }),
+    ).toHaveTextContent(/With AND they narrow that scored cohort/i);
   });
 });

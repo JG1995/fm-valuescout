@@ -96,6 +96,31 @@ describe("dynamicColumnFields", () => {
     expect(isVisibleSortField("attr.Acceleration", [])).toBe(true);
     expect(isVisibleSortField("unknown.metric", [])).toBe(false);
   });
+
+  it("requests and sorts Moneyball role fields in the Moneyball view only", () => {
+    const filters = [
+      {
+        id: createFilterRuleId(),
+        field: "moneyball_role.wbl_wbr_wing_back_ip",
+        op: "gt",
+        value: { type: "integer" as const, value: 70 },
+      },
+    ];
+
+    expect(dynamicColumnFields(filters, "moneyball")).toEqual([
+      "moneyball_role.wbl_wbr_wing_back_ip",
+    ]);
+    expect(
+      isVisibleSortField(
+        "moneyball_role.wbl_wbr_wing_back_ip",
+        [],
+        "moneyball",
+      ),
+    ).toBe(true);
+    expect(
+      isVisibleSortField("moneyball_role.wbl_wbr_wing_back_ip", [], "general"),
+    ).toBe(false);
+  });
 });
 
 describe("ROLE_CATALOG", () => {

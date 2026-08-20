@@ -193,6 +193,9 @@ export function SearchFilterEditorModal({
   const draftIsComplete = draftRules.every((rule) =>
     isFilterRuleComplete(rule, view),
   );
+  const hasMoneyballRoleRule =
+    view === "moneyball" &&
+    draftRules.some((rule) => rule.field.startsWith("moneyball_role."));
 
   useEffect(() => {
     if (open) {
@@ -271,6 +274,19 @@ export function SearchFilterEditorModal({
             ))}
           </fieldset>
         </div>
+
+        {hasMoneyballRoleRule ? (
+          <p
+            aria-label="Moneyball role filters apply after the comparison cohort is calculated"
+            className="text-body-sm text-on-surface-variant"
+            role="note"
+          >
+            Moneyball role filters apply after the comparison cohort is
+            calculated. With AND they narrow that scored cohort; with OR they
+            can add scored matches from the full comparison cohort alongside
+            other rules.
+          </p>
+        ) : null}
 
         {!draftIsComplete ? (
           <p className="text-body-sm text-error" role="alert">

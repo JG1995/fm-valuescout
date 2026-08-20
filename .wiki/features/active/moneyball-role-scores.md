@@ -687,7 +687,7 @@ presentation inventory with explicit attribute-score placeholders.
 
 #### Commit 3 — Query, filter, and sort Search role scores
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(search): query Moneyball role scores`
 
@@ -829,7 +829,7 @@ filtering, sorting, totals, and pagination needed by Moneyball role fields.
 
 #### Commit 4 — Expose Search role columns and filters
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(search): expose Moneyball role columns`
 
@@ -940,8 +940,8 @@ guidance, and prove the complete Search/Profile workflow in browser smoke.
 **Dependencies and sequencing:**
 
 - Commit 3 backend IDs and query behavior are final.
-- This is the final implementation commit. After its checkpoint clears, move the
-  feature to Validation and run `$workflow-finish-feature` before publication.
+- This is the final implementation commit. After its checkpoint clears, stop
+  this build loop; a separate finish-feature and publication decision remains.
 
 **Validation:**
 
@@ -977,24 +977,23 @@ guidance, and prove the complete Search/Profile workflow in browser smoke.
 
 **PR:** PR 1 — Add Moneyball role scoring
 
-**Commit:** Commit 3 — Query, filter, and sort Search role scores
+**Commit:** Commit 4 — Expose Search role columns and filters
 
 ### RED proof
 
-Add resolver, filter, and Search query tests for validated role fields, role-rule
-partitioning, full-import and filtered cohorts, mixed OR membership, post-score
-operators, null handling, ordering, totals, and pagination. They must fail
-because Search does not yet recognize or materialize Moneyball role fields.
+Add frontend catalog, registry, route, component, and browser assertions first.
+They must fail because the role fields are not yet selectable, render as neutral
+raw cells, or reach the Search request path.
 
 ### Expected outcome
 
-Moneyball Search accepts only validated built-in role IDs, scores the complete
-comparison cohort before filtering, sorting, totals, and pagination, and returns
-nullable integer role values while ordinary raw-only queries remain unchanged.
+Moneyball Search exposes all 88 validated built-in role IDs as optional grouped
+columns and numeric filters, renders nullable integer role values distinctly
+from raw percentiles, and preserves comparison-pool, URL, sort, and profile
+navigation behavior.
 
 ### Explicit exclusions
 
-- Frontend Search columns, filters, sorting controls, and browser smoke.
 - Attribute definition work from JAY-31.
 - Database, migration, custom-role, sample-size, combined-score, and Potential
   Moneyball work.
@@ -1028,6 +1027,7 @@ nullable integer role values while ordinary raw-only queries remain unchanged.
 | --- | --- | --- | --- | --- | --- |
 | PR 1 — Add Moneyball role scoring | Commit 1 — Define the built-in catalog and scorer | `1a8046b` | Added the pinned 88-role catalog, validation, scorer, and explanation output. | Sol Medium accepted after source-label and finite-contribution corrections. | None |
 | PR 1 — Add Moneyball role scoring | Commit 2 — Show profile role scores and General placeholders | `0678e1b` | Added full-import profile role scores and explanations, General placeholders, and the role-fit UI. | Sol Medium accepted after catalog-version disclosure coverage. | None |
+| PR 1 — Add Moneyball role scoring | Commit 3 — Query, filter, and sort Search role scores | `527c4e0` | Added validated role fields, comparison-pool scoring, post-score filters, sorting, totals, and pagination. | Sol Medium accepted after closed-field and response-shape corrections. | None |
 
 ## Final validation
 
