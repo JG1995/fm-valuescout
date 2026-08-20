@@ -50,6 +50,10 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 **Parallel tracks:** After player search (order 4), profiles (5) and squad planner shell (6, without optimizer) can overlap once tactic modeling is specced.
 
+## Active
+
+- [Moneyball Role Scores](./features/active/moneyball-role-scores.md) — versioned, position-family-specific performance role definitions with full-import Player Profile scores, filtered-cohort Search columns and filters, and explicit unavailable attribute placeholders (Linear JAY-20)
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
