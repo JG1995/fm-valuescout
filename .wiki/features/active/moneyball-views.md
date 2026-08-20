@@ -364,7 +364,7 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 #### Commit 2 — Add the Moneyball Player Profile view
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** feat(profile): add Moneyball analysis view
 
@@ -463,7 +463,7 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 #### Commit 3 — Query Moneyball Search cohorts
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** feat(search): query Moneyball player cohorts
 
@@ -773,21 +773,20 @@ Commits 1 and 2 form the walking skeleton. Commit 1 turns one matched current-sn
 
 **PR:** PR 1 — Optional Moneyball analysis views
 
-**Commit:** Commit 2 — Add the Moneyball Player Profile view
+**Commit:** Commit 3 — Query Moneyball Search cohorts
 
 ### RED proof
 
-Add Rust query and command tests for active-current Moneyball selection, no row, pre-feature unscored row, scored-row decoding, unknown UID rejection, and older-snapshot isolation. Add the first Profile route test proving view=moneyball is currently normalized away while General remains unchanged.
+Add RED command and query tests proving absent mode preserves General behavior and Moneyball mode excludes unscored, absent, and older-snapshot rows. Add resolver and filter tests for real raw values, mode rejection, and bound numeric comparisons.
 
 ### Expected outcome
 
-A current player's Moneyball profile reads only a complete scored row from the active save's effective current snapshot and renders raw values plus persisted full-import percentiles in a validated optional workspace. General profile behavior remains unchanged.
+The existing Search command has a closed Moneyball mode that returns only current scored cohorts, raw values, and correct full-import or full-filtered-cohort percentiles without changing General behavior.
 
 ### Explicit exclusions
 
-- No Moneyball Search, filtered-result percentiles, or table columns.
-- No Moneyball upload relocation.
-- No persisted default-view preference; an absent explicit view remains General.
+- No Search tab, table layout, metric picker, or upload relocation.
+- No persisted default-view preference.
 - No JAY-20 composite scoring.
 
 ## Discoveries and replanning
@@ -805,7 +804,8 @@ A current player's Moneyball profile reads only a complete scored row from the a
 
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
-| PR 1 — Optional Moneyball analysis views | Commit 1 — Persist Moneyball percentile cohorts | Pending record | Added v30 score storage, matched-only percentile preparation, and atomic current-snapshot cohort replacement. | Sol Medium accepted after one stale-cohort preservation coverage correction. | None |
+| PR 1 — Optional Moneyball analysis views | Commit 1 — Persist Moneyball percentile cohorts | 2a3a99b | Added v30 score storage, matched-only percentile preparation, and atomic current-snapshot cohort replacement. | Sol Medium accepted after one stale-cohort preservation coverage correction. | None |
+| PR 1 — Optional Moneyball analysis views | Commit 2 — Add the Moneyball Player Profile view | Pending record | Added a current-snapshot Moneyball profile command, 138-metric presentation catalog, score-aware profile panel, optional route view, and cache invalidation. | Sol Medium accepted after keyboard navigation, independent catalogue, precision, and delayed-focus corrections. | None |
 
 ## Final validation
 

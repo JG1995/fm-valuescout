@@ -28,6 +28,8 @@ Load the current game world from a running FM26 session. One action captures clu
 
 Optional format-specific Squad imports supplement the current snapshot with supported Youth Tracker and Moneyball CSV values that the memory pipeline does not supply. Imports use exact numeric player IDs, stay scoped to the active app save, and never create players or replace live memory data. The Staff workspace can also import one save-owned shortlist from a staff CSV; it matches exact staff IDs and keeps Preferred Job, Club Job, and qualifications as recruitment context.
 
+Player Profile has an optional Moneyball view for current-snapshot players in a scored Moneyball import. General remains the default view and keeps the familiar attribute, role-fit, concealment, and development tools. Moneyball shows playing-time context and raw performance metrics with imported-cohort percentile scores. Search support follows in a later delivery step.
+
 The app supports multiple **save slots** (separate scouting databases—for example, different FM careers). Exactly one slot is active; **Load Data** stores a new snapshot in that slot, while Search, profiles, Planner, Academy, and CSV matching use the slot's current snapshot. Slots are app-side labels, not FM save files.
 
 ### 2. Searchable databases with role scores

@@ -6,6 +6,7 @@ import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import { bridgeInstallQueryOptions } from "@/features/memory-read/api/bridge-install-query-options";
 import { bridgeStatusQueryOptions } from "@/features/memory-read/api/bridge-status-query-options";
 import { BridgeStatusPanelWithErrorBoundary } from "@/features/memory-read/components/bridge-status-panel-with-error-boundary";
+import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
@@ -47,6 +48,7 @@ function SettingsPage() {
   const invalidateCurrentContext = () => {
     void queryClient.invalidateQueries({ queryKey: searchKeys.all });
     void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+    void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
     void queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
     void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
     void queryClient.resetQueries({ queryKey: academyKeys.all });

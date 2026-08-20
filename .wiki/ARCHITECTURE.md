@@ -622,9 +622,9 @@ Profile reads the **active save's current snapshot** only. The WebView never ope
 
 ```text
 User opens /players/$uid (from Search row, Enter on focused row, or GlobalPlayerSearch hit)
-  → Route loader: ensureQueryData(current snapshot + get_player)
+  → Route loader: ensureQueryData(current snapshot + get_player); view=moneyball also prefetches get_player_moneyball
   → validateSearch accepts canonical tabs and normalizes legacy technical | mental | physical to outfield;
-      missing or invalid values remain unset until the loaded player determines the default
+      missing or invalid values remain unset until the loaded player determines the default; view is general unless exactly moneyball
   → Suspense fallback mirrors the summary plus two-panel workspace
   → summary remains visible; PlayerProfileTabs selects one attribute group
 
@@ -638,6 +638,13 @@ get_player IPC (features/player/commands.rs)
       missing player row → null response (not-found empty state)
   → Returns PlayerDetailDto (identity, current attributes, projected visible attributes,
       hidden, personality, roleScores[] with current and potential values, and the active save's hiddenInformationRevealed preference)
+
+get_player_moneyball IPC (features/moneyball/commands.rs)
+  → uid from route param
+  → query.rs resolves the active save's current snapshot and verifies the current player UID before it reads player_moneyball_stats
+  → no matching Moneyball row returns noData; a row without percentiles_json returns needsReimport and hides its old raw payload
+  → a scored row validates both persisted JSON objects against the exact 138-key Moneyball catalogue and returns asking price, starts, substitute appearances, minutes, raw values, and nullable 0–100 scores
+  → unknown UID, no active current snapshot, and older-snapshot rows return null
 
 set_hidden_information_revealed IPC
   → explicit revealed state from the profile route
@@ -672,7 +679,7 @@ Role fit panel
       unavailable scores stay last and catalog order breaks ties
   → revealed rows use card ScoreBadge pairs for Current and Potential; concealed rows use Current only; rolePhaseLabel maps in_possession/out_of_possession → IP/OOP
 
-Cache invalidation: Load Data invalidates snapshot, Search, Player, Planner, Academy, and Staff query roots. Active-save switching updates the snapshot context and invalidates Search, Player, Planner, Academy, and Staff. A verified player boost invalidates snapshot, Search, Player, Planner, and Academy. Snapshot current promotion and save replacement use the Settings route's context callback to refresh Search, Player, Planner, Academy, and Staff.
+Cache invalidation: Load Data invalidates snapshot, Search, Player, Moneyball, Planner, Academy, and Staff query roots. Active-save switching updates the snapshot context and invalidates Search, Player, Moneyball, Planner, Academy, and Staff. A verified player boost invalidates snapshot, Search, Player, Planner, and Academy. Snapshot current promotion and save replacement use the Settings route's context callback to refresh Search, Player, Moneyball, Planner, Academy, and Staff.
 ```
 
 **Invariants:** `null` dump/DB values never display as `0`. One scoring model shared with Search. No cross-feature component imports — routes compose; Search/GlobalPlayerSearch navigate by route path only.

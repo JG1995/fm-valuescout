@@ -8,6 +8,7 @@ import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import { LoadDataOutcome } from "@/features/memory-read/components/load-data-outcome";
 import { useLoadData } from "@/features/memory-read/hooks/use-load-data";
 import { useLoadDataPreferences } from "@/features/memory-read/stores/use-load-data-preferences";
+import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
@@ -40,6 +41,7 @@ export function AppTopBar() {
       void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
       void queryClient.invalidateQueries({ queryKey: searchKeys.all });
       void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+      void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
       void queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
       void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
       void queryClient.invalidateQueries({ queryKey: academyKeys.all });
@@ -71,6 +73,7 @@ export function AppTopBar() {
           onSwitched={() => {
             void queryClient.invalidateQueries({ queryKey: searchKeys.all });
             void queryClient.invalidateQueries({ queryKey: playerKeys.all });
+            void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
             void queryClient.invalidateQueries({
               queryKey: managedClubKeys.all,
             });

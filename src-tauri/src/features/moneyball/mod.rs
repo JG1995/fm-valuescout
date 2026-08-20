@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 mod catalog;
+pub(crate) mod commands;
 pub(crate) mod percentile;
+pub(crate) mod query;
 
 pub(crate) use catalog::MONEYBALL_STATISTIC_KEYS;
 

@@ -5,10 +5,12 @@ import {
 } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DatabaseZap, UserX } from "lucide-react";
-import { Suspense } from "react";
+import { type KeyboardEvent, Suspense, useEffect, useState } from "react";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import { getPlayerMoneyballQueryOptions } from "@/features/moneyball/api/get-player-moneyball-query-options";
+import { MoneyballProfilePanel } from "@/features/moneyball/components/moneyball-profile-panel";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { boostCurrentAbility } from "@/features/player-profile/api/boost-current-ability";
 import { boostWonderkidMentality } from "@/features/player-profile/api/boost-wonderkid-mentality";
@@ -19,6 +21,7 @@ import { PlayerAttributesPanel } from "@/features/player-profile/components/play
 import { PlayerDevelopmentActions } from "@/features/player-profile/components/player-development-boosts-panel";
 import { PlayerOverviewPanel } from "@/features/player-profile/components/player-overview-panel";
 import { PlayerRolesPanel } from "@/features/player-profile/components/player-roles-panel";
+import type { PlayerDetail } from "@/features/player-profile/types/player-detail";
 import { isGoalkeeper } from "@/features/player-profile/utils/position-families";
 import {
   defaultProfileTab,
@@ -34,7 +37,12 @@ import { cn } from "@/utils/cn";
 
 export type PlayerProfileSearch = {
   tab?: ProfileTab;
+  view?: PlayerProfileView;
 };
+
+type PlayerProfileView = "general" | "moneyball";
+
+const PLAYER_PROFILE_VIEWS = ["general", "moneyball"] as const;
 
 type PlayerBoostAction = "currentAbility" | "wonderkidMentality";
 
@@ -55,19 +63,31 @@ function parseUid(raw: string): number | null {
   return Number.isInteger(uid) ? uid : null;
 }
 
+function parsePlayerProfileView(value: unknown): PlayerProfileView {
+  return value === "moneyball" ? "moneyball" : "general";
+}
+
 export const Route = createFileRoute("/players/$uid")({
   validateSearch: (search: Record<string, unknown>): PlayerProfileSearch => ({
     tab: parseProfileTab(search.tab),
+    view: parsePlayerProfileView(search.view),
   }),
-  loader: ({ context: { queryClient }, params }) => {
+  loaderDeps: ({ search }) => ({ view: search.view ?? "general" }),
+  loader: ({ context: { queryClient }, params, deps: { view } }) => {
     const uid = parseUid(params.uid);
     if (uid === null) {
       return queryClient.ensureQueryData(currentSnapshotQueryOptions);
     }
-    return Promise.all([
+    const queries: Promise<unknown>[] = [
       queryClient.ensureQueryData(currentSnapshotQueryOptions),
       queryClient.ensureQueryData(getPlayerQueryOptions(uid)),
-    ]);
+    ];
+    if (view === "moneyball") {
+      queries.push(
+        queryClient.ensureQueryData(getPlayerMoneyballQueryOptions(uid)),
+      );
+    }
+    return Promise.all(queries);
   },
   component: PlayerProfileRoute,
 });
@@ -164,14 +184,91 @@ function PlayerNotFound() {
   );
 }
 
-function PlayerProfileContent({
+function PlayerAnalysisTabs({
+  view,
+  onViewChange,
+  restoreFocus,
+  onFocusRestored,
+}: {
+  view: PlayerProfileView;
+  onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
+  restoreFocus: boolean;
+  onFocusRestored: () => void;
+}) {
+  useEffect(() => {
+    if (!restoreFocus) return;
+    document.getElementById(`player-analysis-tab-${view}`)?.focus();
+    onFocusRestored();
+  }, [onFocusRestored, restoreFocus, view]);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = PLAYER_PROFILE_VIEWS.indexOf(view);
+    let nextIndex = index;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      nextIndex = (index + 1) % PLAYER_PROFILE_VIEWS.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      nextIndex =
+        (index - 1 + PLAYER_PROFILE_VIEWS.length) % PLAYER_PROFILE_VIEWS.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = PLAYER_PROFILE_VIEWS.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    const next = PLAYER_PROFILE_VIEWS[nextIndex];
+    onViewChange(next, true);
+  };
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Player analysis view"
+      className="inline-flex rounded-full bg-surface-container-high p-0.5"
+      onKeyDown={onKeyDown}
+    >
+      {PLAYER_PROFILE_VIEWS.map((candidate) => {
+        const selected = candidate === view;
+        return (
+          <button
+            key={candidate}
+            id={`player-analysis-tab-${candidate}`}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            aria-controls="player-analysis-panel"
+            tabIndex={selected ? 0 : -1}
+            className={
+              selected
+                ? "cursor-pointer rounded-full bg-primary px-3 py-1.5 text-label-md text-on-primary"
+                : "cursor-pointer rounded-full px-3 py-1.5 text-label-md text-on-surface-variant hover:text-on-surface"
+            }
+            onClick={() => onViewChange(candidate)}
+          >
+            {candidate === "general" ? "General" : "Moneyball"}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function GeneralPlayerProfile({
   uid,
   tab,
   onTabChange,
+  onViewChange,
+  restoreAnalysisFocus,
+  onAnalysisFocusRestored,
 }: {
   uid: number;
   tab?: ProfileTab;
   onTabChange: (tab: ProfileTab) => void;
+  onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
+  restoreAnalysisFocus: boolean;
+  onAnalysisFocusRestored: () => void;
 }) {
   const railExpanded = useLayoutStore((state) => state.railExpanded);
   const queryClient = useQueryClient();
@@ -208,20 +305,7 @@ function PlayerProfileContent({
     hiddenInformation.variables?.uid === uid &&
     hiddenInformation.variables.saveId === snapshot?.saveId;
 
-  if (!snapshot) {
-    return (
-      <Panel>
-        <EmptyState icon={DatabaseZap} title="No data loaded for this save">
-          No snapshot loaded for the active save. Use Load Data to scan Football
-          Manager and ingest players into the database.
-        </EmptyState>
-      </Panel>
-    );
-  }
-
-  if (!player) {
-    return <PlayerNotFound />;
-  }
+  if (!snapshot || !player) return null;
 
   const activeTab = tab ?? defaultProfileTab(isGoalkeeper(player.positions));
 
@@ -269,7 +353,18 @@ function PlayerProfileContent({
           ) : null
         }
       />
-      <div className={profileWorkspaceClassName(railExpanded)}>
+      <PlayerAnalysisTabs
+        view="general"
+        onViewChange={onViewChange}
+        restoreFocus={restoreAnalysisFocus}
+        onFocusRestored={onAnalysisFocusRestored}
+      />
+      <div
+        id="player-analysis-panel"
+        role="tabpanel"
+        aria-labelledby="player-analysis-tab-general"
+        className={profileWorkspaceClassName(railExpanded)}
+      >
         <PlayerAttributesPanel
           player={player}
           tab={activeTab}
@@ -286,15 +381,120 @@ function PlayerProfileContent({
   );
 }
 
+function MoneyballPlayerProfile({
+  uid,
+  player,
+  onViewChange,
+  restoreAnalysisFocus,
+  onAnalysisFocusRestored,
+}: {
+  uid: number;
+  player: PlayerDetail;
+  onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
+  restoreAnalysisFocus: boolean;
+  onAnalysisFocusRestored: () => void;
+}) {
+  const { data: profile } = useSuspenseQuery(
+    getPlayerMoneyballQueryOptions(uid),
+  );
+
+  if (!profile) return <PlayerNotFound />;
+
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-gutter overflow-hidden">
+      <PlayerOverviewPanel player={player} mode="moneyball" />
+      <PlayerAnalysisTabs
+        view="moneyball"
+        onViewChange={onViewChange}
+        restoreFocus={restoreAnalysisFocus}
+        onFocusRestored={onAnalysisFocusRestored}
+      />
+      <div
+        id="player-analysis-panel"
+        role="tabpanel"
+        aria-labelledby="player-analysis-tab-moneyball"
+        className="h-0 min-h-0 flex-1"
+      >
+        <MoneyballProfilePanel profile={profile} />
+      </div>
+    </div>
+  );
+}
+
+function PlayerProfileContent({
+  uid,
+  view,
+  tab,
+  onTabChange,
+  onViewChange,
+  restoreAnalysisFocus,
+  onAnalysisFocusRestored,
+}: {
+  uid: number;
+  view: PlayerProfileView;
+  tab?: ProfileTab;
+  onTabChange: (tab: ProfileTab) => void;
+  onViewChange: (view: PlayerProfileView, restoreFocus?: boolean) => void;
+  restoreAnalysisFocus: boolean;
+  onAnalysisFocusRestored: () => void;
+}) {
+  const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
+  const { data: player } = useSuspenseQuery(getPlayerQueryOptions(uid));
+
+  if (!snapshot) {
+    return (
+      <Panel>
+        <EmptyState icon={DatabaseZap} title="No data loaded for this save">
+          No snapshot loaded for the active save. Use Load Data to scan Football
+          Manager and ingest players into the database.
+        </EmptyState>
+      </Panel>
+    );
+  }
+  if (!player) return <PlayerNotFound />;
+
+  if (view === "moneyball") {
+    return (
+      <MoneyballPlayerProfile
+        uid={uid}
+        player={player}
+        onViewChange={onViewChange}
+        restoreAnalysisFocus={restoreAnalysisFocus}
+        onAnalysisFocusRestored={onAnalysisFocusRestored}
+      />
+    );
+  }
+
+  return (
+    <GeneralPlayerProfile
+      uid={uid}
+      tab={tab}
+      onTabChange={onTabChange}
+      onViewChange={onViewChange}
+      restoreAnalysisFocus={restoreAnalysisFocus}
+      onAnalysisFocusRestored={onAnalysisFocusRestored}
+    />
+  );
+}
+
 function PlayerProfileRoute() {
   const { uid: uidParam } = Route.useParams();
-  const { tab } = Route.useSearch();
+  const { tab, view } = Route.useSearch();
   const navigate = Route.useNavigate();
   const uid = parseUid(uidParam);
+  const [analysisFocusView, setAnalysisFocusView] =
+    useState<PlayerProfileView | null>(null);
 
   const onTabChange = (next: ProfileTab) => {
     void navigate({
       search: (previous) => ({ ...previous, tab: next }),
+      replace: true,
+    });
+  };
+  const onViewChange = (next: PlayerProfileView, restoreFocus = false) => {
+    setAnalysisFocusView(restoreFocus ? next : null);
+    void navigate({
+      search: (previous) => ({ ...previous, view: next }),
       replace: true,
     });
   };
@@ -305,7 +505,15 @@ function PlayerProfileRoute() {
 
   return (
     <Suspense fallback={<ProfileFallback />}>
-      <PlayerProfileContent uid={uid} tab={tab} onTabChange={onTabChange} />
+      <PlayerProfileContent
+        uid={uid}
+        view={view ?? "general"}
+        tab={tab}
+        onTabChange={onTabChange}
+        onViewChange={onViewChange}
+        restoreAnalysisFocus={analysisFocusView === (view ?? "general")}
+        onAnalysisFocusRestored={() => setAnalysisFocusView(null)}
+      />
     </Suspense>
   );
 }
