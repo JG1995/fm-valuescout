@@ -217,6 +217,10 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             "moneyball.assists_per_90": 0.05 + (index % 8) / 10,
             "moneyball.xg_per_90": 0.08 + (index % 9) / 10,
             "moneyball.xa_per_90": 0.04 + (index % 7) / 10,
+            "moneyball_role.wbl_wbr_wing_back_ip":
+              index === 0 ? 0 : index === 1 ? null : 45 + (index % 55),
+            "moneyball_role.dl_dr_wing_back_ip":
+              index === 2 ? null : 55 + (index % 45),
           },
           moneyballPercentiles: {
             "moneyball.average_rating": 50 + (index % 50),
@@ -605,18 +609,69 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               ? Math.min(200, Math.max(1, args.limit))
               : 50;
             if (args?.searchView === "moneyball") {
-              const filtered = args?.filters?.length > 0
-                ? moneyballPlayers.slice(0, 50)
+              const filterRules = Array.isArray(args?.filters)
+                ? args.filters
+                : [];
+              const filtered = filterRules.length > 0
+                ? moneyballPlayers.filter((player) => {
+                    const matches = filterRules.map((rule) => {
+                      const value = player.dynamicValues?.[rule.field];
+                      if (
+                        typeof value !== "number" ||
+                        typeof rule.value !== "number"
+                      ) {
+                        return false;
+                      }
+                      switch (rule.op) {
+                        case "gt":
+                          return value > rule.value;
+                        case "lt":
+                          return value < rule.value;
+                        case "eq":
+                          return value === rule.value;
+                        case "neq":
+                          return value !== rule.value;
+                        default:
+                          return false;
+                      }
+                    });
+                    return args?.filterCombine === "or"
+                      ? matches.some(Boolean)
+                      : matches.every(Boolean);
+                  })
                 : moneyballPlayers;
+              const sorted = [...filtered];
+              if (
+                typeof args?.sortBy === "string" &&
+                args.sortBy.startsWith("moneyball_role.")
+              ) {
+                sorted.sort((left, right) => {
+                  const leftValue = left.dynamicValues?.[args.sortBy];
+                  const rightValue = right.dynamicValues?.[args.sortBy];
+                  const leftMissing = typeof leftValue !== "number";
+                  const rightMissing = typeof rightValue !== "number";
+                  if (leftMissing || rightMissing) {
+                    if (leftMissing && rightMissing) {
+                      return left.uid - right.uid;
+                    }
+                    return leftMissing ? 1 : -1;
+                  }
+                  const comparison = leftValue - rightValue;
+                  if (comparison === 0) {
+                    return left.uid - right.uid;
+                  }
+                  return args?.sortDir === "asc" ? comparison : -comparison;
+                });
+              }
               const players = args?.comparisonPool === "fullCsv"
-                ? filtered.map((player) => ({
+                ? sorted.map((player) => ({
                     ...player,
                     moneyballPercentiles: {
                       ...player.moneyballPercentiles,
                       "moneyball.average_rating": 71,
                     },
                   }))
-                : filtered;
+                : sorted;
               return {
                 players: players.slice(offset, offset + limit),
                 total: players.length,
@@ -915,6 +970,61 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 "moneyball.xg_per_90": 72,
                 "moneyball.xa_per_90": 65,
               },
+              roleCatalogVersion: 1,
+              roleScores: [
+                {
+                  roleId: "mc_central_midfielder_ip",
+                  displayName: "Central Midfielder",
+                  phase: "in_possession",
+                  positionFamily: "central_midfielder",
+                  positionTags: ["MC"],
+                  score: 86,
+                  contributions: [
+                    {
+                      metricKey: "progressive_passes_per_90",
+                      sourceLabel: "Progressive Passes per 90",
+                      weight: 0.6,
+                      direction: "higher",
+                      percentile: 90,
+                      weightedContribution: 54,
+                    },
+                    {
+                      metricKey: "pass_completion_ratio",
+                      sourceLabel: "Pass Completion Ratio",
+                      weight: 0.4,
+                      direction: "higher",
+                      percentile: 80,
+                      weightedContribution: 32,
+                    },
+                  ],
+                },
+                {
+                  roleId: "mc_pressing_central_midfielder_oop",
+                  displayName: "Pressing Central Midfielder",
+                  phase: "out_of_possession",
+                  positionFamily: "central_midfielder",
+                  positionTags: ["MC"],
+                  score: 64,
+                  contributions: [
+                    {
+                      metricKey: "tackles_per_90",
+                      sourceLabel: "Tackles per 90",
+                      weight: 0.5,
+                      direction: "higher",
+                      percentile: 70,
+                      weightedContribution: 35,
+                    },
+                    {
+                      metricKey: "possession_lost_per_90",
+                      sourceLabel: "Possession Lost per 90",
+                      weight: 0.5,
+                      direction: "lower",
+                      percentile: 58,
+                      weightedContribution: 29,
+                    },
+                  ],
+                },
+              ],
             } : { state: "noData" };
           }
 

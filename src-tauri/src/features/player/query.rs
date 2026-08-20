@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde_json::Value;
 
+use crate::features::moneyball::role_catalog::builtin_catalog;
 use crate::features::scoring::{
     catalog::all_roles, projection::project_attributes, score::score_role,
 };
@@ -251,19 +252,45 @@ fn load_role_scores(
         scores_by_role.insert(role_id, score);
     }
 
-    let mut role_scores = Vec::with_capacity(all_roles().len());
-    for role in all_roles() {
+    let potential_by_role = all_roles()
+        .iter()
+        .map(|role| {
+            (
+                role.role_id,
+                score_role(projected_attributes, role).map(i64::from),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let catalog = builtin_catalog()?;
+    let mut role_scores = Vec::with_capacity(catalog.definitions.len());
+    for role in &catalog.definitions {
+        let mapped_scores = role.attribute_role_id.as_deref().map(|attribute_role_id| {
+            (
+                scores_by_role
+                    .get(attribute_role_id)
+                    .copied()
+                    .unwrap_or(None),
+                potential_by_role
+                    .get(attribute_role_id)
+                    .copied()
+                    .unwrap_or(None),
+            )
+        });
         role_scores.push(PlayerRoleScore {
-            role_id: role.role_id.to_string(),
-            display_name: role.display_name.to_string(),
-            phase: role.phase.as_db_str().to_string(),
-            position_tags: role
-                .position_tags
-                .iter()
-                .map(|tag| (*tag).to_string())
-                .collect(),
-            score: scores_by_role.get(role.role_id).copied().unwrap_or(None),
-            potential_score: score_role(projected_attributes, role).map(i64::from),
+            role_id: role.id.clone(),
+            display_name: role.display_name.clone(),
+            phase: match role.phase {
+                crate::features::moneyball::role_catalog::RolePhase::InPossession => {
+                    "in_possession"
+                }
+                crate::features::moneyball::role_catalog::RolePhase::OutOfPossession => {
+                    "out_of_possession"
+                }
+            }
+            .to_owned(),
+            position_tags: role.position_tags.clone(),
+            score: mapped_scores.and_then(|(score, _)| score),
+            potential_score: mapped_scores.and_then(|(_, potential_score)| potential_score),
         });
     }
 
@@ -350,6 +377,7 @@ fn parse_nullable_int_map(json: &str) -> Result<BTreeMap<String, Option<i64>>, S
 mod tests {
     use super::*;
     use crate::db::migrations;
+    use crate::features::moneyball::role_catalog::builtin_catalog;
     use crate::features::scoring::{
         catalog::{all_roles, RolePhase, DUMP_ATTRIBUTE_KEYS},
         projection::project_attributes,
@@ -492,9 +520,9 @@ mod tests {
         let goalkeeper = player
             .role_scores
             .iter()
-            .find(|row| row.role_id == "goalkeeper_ip")
+            .find(|row| row.role_id == "gk_traditional_goalkeeper_ip")
             .expect("goalkeeper_ip row");
-        assert_eq!(goalkeeper.display_name, "Goalkeeper");
+        assert_eq!(goalkeeper.display_name, "Traditional Goalkeeper");
         assert_eq!(goalkeeper.phase, RolePhase::InPossession.as_db_str());
         assert_eq!(goalkeeper.position_tags, vec!["GK".to_string()]);
         assert_eq!(
@@ -587,21 +615,73 @@ mod tests {
         let detail = get_player(&conn, 1)
             .expect("get_player")
             .expect("player present");
+        let catalog = builtin_catalog().expect("built-in catalog");
+        let unmapped_role_ids = catalog
+            .definitions
+            .iter()
+            .filter(|role| role.attribute_role_id.is_none())
+            .map(|role| role.id.as_str())
+            .collect::<std::collections::HashSet<_>>();
         assert_eq!(detail.potential_attributes, expected_potential_attributes);
-        assert_eq!(detail.role_scores.len(), all_roles().len());
+        assert_eq!(detail.role_scores.len(), 88);
+        assert!(detail.role_scores.iter().any(|role| {
+            unmapped_role_ids.contains(role.role_id.as_str())
+                && role.score.is_none()
+                && role.potential_score.is_none()
+        }));
         assert!(detail
             .role_scores
             .iter()
+            .filter(|role| !unmapped_role_ids.contains(role.role_id.as_str()))
             .all(|role| { role.score.is_some() && role.potential_score.is_some() }));
         let centre_forward = detail
             .role_scores
             .iter()
-            .find(|row| row.role_id == "centre_forward_ip")
+            .find(|row| row.role_id == "st_centre_forward_ip")
             .expect("centre forward row");
 
         assert_eq!(centre_forward.score, Some(50));
         assert_eq!(centre_forward.potential_score, expected_potential_score);
         assert_ne!(centre_forward.potential_score, centre_forward.score);
+    }
+
+    #[test]
+    fn presents_duplicate_moneyball_roles_from_one_attribute_score_and_keeps_unmapped_null() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-role-inventory.db"));
+        let dump_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/features/memory_read/fixtures/golden_dump_v8.json");
+        ingest_dump_file(&mut conn, &dump_path).expect("ingest golden dump");
+        set_role_score(&conn, 77, "wing_back_ip", Some(73));
+
+        let detail = get_player(&conn, 77)
+            .expect("get_player")
+            .expect("player present");
+        let catalog = builtin_catalog().expect("built-in catalog");
+
+        assert_eq!(detail.role_scores.len(), catalog.definitions.len());
+        let duplicate_rows = detail
+            .role_scores
+            .iter()
+            .filter(|role| {
+                role.role_id == "dl_dr_wing_back_ip" || role.role_id == "wbl_wbr_wing_back_ip"
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(duplicate_rows.len(), 2);
+        assert!(duplicate_rows.iter().all(|role| role.score == Some(73)));
+        assert_eq!(
+            duplicate_rows[0].potential_score,
+            duplicate_rows[1].potential_score
+        );
+
+        let unmapped = detail
+            .role_scores
+            .iter()
+            .find(|role| role.role_id == "amc_attacking_midfielder_oop")
+            .expect("unmapped presentation role");
+        assert_eq!(unmapped.score, None);
+        assert_eq!(unmapped.potential_score, None);
+        assert_eq!(all_roles().len(), 68);
     }
 
     #[test]
@@ -655,7 +735,7 @@ mod tests {
         let dlp = detail
             .role_scores
             .iter()
-            .find(|row| row.role_id == "deep_lying_playmaker_ip")
+            .find(|row| row.role_id == "dm_deep_lying_playmaker_ip")
             .expect("dlp row");
         assert_eq!(dlp.score, None);
     }

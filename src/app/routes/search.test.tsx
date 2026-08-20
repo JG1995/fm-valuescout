@@ -148,6 +148,136 @@ describe("search route", () => {
     });
   });
 
+  it("selects, requests, sorts, and renders Moneyball role columns without changing raw percentiles", async () => {
+    await resolveLoadDataIpcMock();
+    const wingBackIp = "moneyball_role.wbl_wbr_wing_back_ip";
+    const fullBackIp = "moneyball_role.dl_dr_wing_back_ip";
+    usePlayerTableStore
+      .getState()
+      .addColumns("moneyball-search", [wingBackIp, fullBackIp]);
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Role-fit Scout", 160),
+        dynamicValues: {
+          "moneyball.average_rating": 7.2,
+          [wingBackIp]: 0,
+          [fullBackIp]: null,
+        },
+        moneyballPercentiles: { "moneyball.average_rating": 83 },
+      },
+    ]);
+    const { router } = renderSearchRoute("/search?view=moneyball");
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    expect(
+      within(table).getByRole("columnheader", {
+        name: "Wing-Back (IP · WBL/WBR)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", {
+        name: "Wing-Back (IP · DL/DR)",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("img", {
+        name: "Moneyball role · Wing-Back (IP · WBL/WBR): 0, Weak",
+      }),
+    ).toBeInTheDocument();
+    expect(within(table).getAllByText("—").length).toBeGreaterThan(0);
+    expect(
+      within(table).getByRole("img", {
+        name: "Average Rating: 83, Excellent",
+      }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        searchView: "moneyball",
+        requestedFields: expect.arrayContaining([fullBackIp, wingBackIp]),
+      });
+    });
+
+    await userEvent.setup().click(
+      within(table).getByRole("button", {
+        name: "Wing-Back (IP · WBL/WBR)",
+      }),
+    );
+    expect(router.state.location.search).toMatchObject({
+      sort: wingBackIp,
+      dir: "desc",
+    });
+  });
+
+  it("applies a Moneyball role filter to the URL and comparison-pool request", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const roleField = "moneyball_role.wbl_wbr_wing_back_ip";
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Role-fit Scout", 160),
+        dynamicValues: {
+          "moneyball.average_rating": 7.2,
+          [roleField]: 72,
+        },
+        moneyballPercentiles: { "moneyball.average_rating": 83 },
+      },
+    ]);
+    const { router } = renderSearchRoute("/search?view=moneyball");
+
+    await screen.findByText("Role-fit Scout");
+    await user.click(screen.getByRole("button", { name: "Edit filters" }));
+    const dialog = screen.getByRole("dialog", { name: "Edit filters" });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Add filter" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: "Field: Average Rating",
+      }),
+    );
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Search fields" }),
+      "wing-back",
+    );
+    await user.click(
+      within(dialog).getByRole("option", {
+        name: "Wing-Back (IP · WBL/WBR)",
+      }),
+    );
+    expect(
+      within(dialog).getByText(
+        /role filters apply after the comparison cohort is calculated/i,
+      ),
+    ).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Value"), {
+      target: { value: "70" },
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        view: "moneyball",
+        filters: [
+          expect.objectContaining({ field: roleField, op: "gt", value: 70 }),
+        ],
+      });
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        filters: [{ field: roleField, op: "gt", value: 70 }],
+        requestedFields: expect.arrayContaining([roleField]),
+      });
+    });
+
+    await user.click(screen.getByRole("button", { name: "Full CSV" }));
+    await waitFor(() => {
+      expect(getLastSearchPlayersArgs()).toMatchObject({
+        comparisonPool: "fullCsv",
+        filters: [{ field: roleField, op: "gt", value: 70 }],
+      });
+    });
+  });
+
   it("uses the saved default only when Search has no explicit view", async () => {
     await resolveLoadDataIpcMock();
     useMoneyballPreferences.setState({ defaultAnalysisView: "moneyball" });

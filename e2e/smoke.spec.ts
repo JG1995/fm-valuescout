@@ -1073,7 +1073,7 @@ test.describe("application smoke", () => {
     ).toContainText("Only a Youth Academy export can be imported");
   });
 
-  test("Moneyball Search virtualizes, scores, filters, and restores its analysis state", async ({
+  test("Moneyball Search exposes role scores and restores its analysis state", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -1097,6 +1097,42 @@ test.describe("application smoke", () => {
       101,
     );
 
+    const averageRatingHeader = table.getByRole("columnheader", {
+      name: "Average Rating",
+    });
+    await averageRatingHeader.click({ button: "right" });
+    const columnMenu = page.getByRole("menu", {
+      name: "Average Rating column actions",
+    });
+    await columnMenu.getByRole("menuitem", { name: "Add column" }).click();
+    const columnDialog = page.getByRole("dialog", { name: "Add a column" });
+    await columnDialog
+      .getByRole("button", { name: "Column: Choose a metric" })
+      .click();
+    const columnSearch = columnDialog.getByRole("combobox", {
+      name: "Search columns",
+    });
+    await columnSearch.fill("wing-back");
+    await expect(
+      columnDialog.getByRole("option", {
+        name: "Wing-Back (IP · WBL/WBR)",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await columnSearch.press("ArrowDown");
+    await columnSearch.press("ArrowDown");
+    await columnSearch.press("ArrowDown");
+    await columnSearch.press("Enter");
+    const roleHeader = table.getByRole("columnheader", {
+      name: "Wing-Back (IP · WBL/WBR)",
+    });
+    await expect(roleHeader).toBeVisible();
+    await expect(
+      table.getByRole("img", {
+        name: /Moneyball role · Wing-Back \(IP · WBL\/WBR\): 0, Weak/,
+      }),
+    ).toBeVisible();
+
     await scroller.evaluate((element) => {
       (
         element as unknown as { scrollTo: (options: { top: number }) => void }
@@ -1112,20 +1148,71 @@ test.describe("application smoke", () => {
     await main.getByRole("button", { name: "Edit filters" }).click();
     const dialog = page.getByRole("dialog", { name: "Edit filters" });
     await dialog.getByRole("button", { name: "Add filter" }).click();
-    await dialog.getByLabel("Value").fill("7");
+    await dialog.getByRole("button", { name: "Field: Average Rating" }).click();
+    const fieldSearch = dialog.getByRole("combobox", {
+      name: "Search fields",
+    });
+    await fieldSearch.fill("wing-back");
+    await expect(
+      dialog.getByRole("option", {
+        name: "Wing-Back (IP · WBL/WBR)",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await fieldSearch.press("ArrowDown");
+    await fieldSearch.press("ArrowDown");
+    await fieldSearch.press("ArrowDown");
+    await fieldSearch.press("Enter");
+    await expect(
+      dialog.getByText(
+        /role filters apply after the comparison cohort is calculated/i,
+      ),
+    ).toBeVisible();
+    await dialog.getByLabel("Value").fill("70");
     await dialog.getByRole("button", { name: "Done" }).click();
     await expect(
       main.getByRole("button", { name: /Remove filter/i }),
     ).toBeVisible();
-    await expect(table.getByText("Moneyball player 001")).toBeVisible();
+    await expect(table.getByText("Moneyball player 001")).not.toBeVisible();
+    await expect(table.getByText("Moneyball player 027")).toBeVisible();
 
-    await table.getByText("Moneyball player 001").click();
-    await expect(page).toHaveURL(/\/players\/1\?view=moneyball$/);
+    await roleHeader
+      .getByRole("button", {
+        name: "Wing-Back (IP · WBL/WBR)",
+      })
+      .click();
+    await expect(roleHeader).toHaveAttribute("aria-sort", "descending");
+    await expect(table.getByText("Moneyball player 055")).toBeVisible();
+
+    await table.getByText("Moneyball player 055").click();
+    await expect(page).toHaveURL(/\/players\/55\?view=moneyball$/);
     await expect(
       page.getByRole("heading", { name: "Potential Scout" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: "Moneyball" }),
+      page.getByRole("heading", { name: "Moneyball", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: "Shooting", selected: true }),
+    ).toBeVisible();
+    const summary = page.getByRole("region", {
+      name: "Potential Scout summary",
+    });
+    await expect(
+      summary.getByRole("img", { name: "Moneyball IP: 86, Excellent" }),
+    ).toBeVisible();
+    await expect(
+      summary.getByRole("img", { name: "Moneyball OOP: 64, Good" }),
+    ).toBeVisible();
+    const moneyballRoleFit = page.getByRole("region", {
+      name: "Moneyball role fit for MC",
+    });
+    await expect(moneyballRoleFit).toBeVisible();
+    await moneyballRoleFit
+      .getByText("Central Midfielder", { exact: true })
+      .click();
+    await expect(
+      moneyballRoleFit.getByText("Catalog v1 · full imported cohort.").first(),
     ).toBeVisible();
 
     await page.goBack();
@@ -1133,6 +1220,11 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("button", { name: "Full CSV" }),
     ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      main.getByRole("columnheader", {
+        name: "Wing-Back (IP · WBL/WBR)",
+      }),
+    ).toBeVisible();
     await expect(
       main.getByRole("button", { name: /Remove filter/i }),
     ).toBeVisible();

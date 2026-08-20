@@ -12,7 +12,7 @@ export function dynamicColumnFields(
   view: SearchView = "general",
 ): string[] {
   const fields: string[] = [];
-  for (const rule of completeFilterRules(filters)) {
+  for (const rule of completeFilterRules(filters, view)) {
     if (BASIC_COLUMN_FIELDS.has(rule.field)) {
       continue;
     }

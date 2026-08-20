@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-20
+
+### Added
+
+- Moneyball now provides 88 versioned, position-family-specific role scores from imported performance percentiles.
+- Moneyball Player Profiles show best IP/OOP role summaries, a position-filtered role-fit panel, and score explanations.
+- Moneyball Player Search adds optional role-score columns, numeric filters, and sorting for Full CSV and filtered comparison cohorts.
+
 ## [0.9.0] - 2026-08-20
 
 ### Added

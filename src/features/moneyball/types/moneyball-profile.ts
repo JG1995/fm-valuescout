@@ -1,6 +1,25 @@
 export type MoneyballStatistics = Record<string, number | null>;
 export type MoneyballPercentiles = Record<string, number | null>;
 
+export type MoneyballRoleContribution = {
+  metricKey: string;
+  sourceLabel: string;
+  weight: number;
+  direction: "higher" | "lower";
+  percentile: number | null;
+  weightedContribution: number | null;
+};
+
+export type MoneyballRoleScore = {
+  roleId: string;
+  displayName: string;
+  phase: string;
+  positionFamily: string;
+  positionTags: string[];
+  score: number | null;
+  contributions: MoneyballRoleContribution[];
+};
+
 export type MoneyballProfile =
   | { state: "noData" }
   | { state: "needsReimport" }
@@ -14,4 +33,6 @@ export type MoneyballProfile =
       minutes: number | null;
       statistics: MoneyballStatistics;
       percentiles: MoneyballPercentiles;
+      roleCatalogVersion: number;
+      roleScores: MoneyballRoleScore[];
     };

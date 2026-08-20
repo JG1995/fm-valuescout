@@ -29,6 +29,10 @@ const DEFAULT_PLAYERS: PlayerSummary[] = [
     ca: 165,
     pa: 175,
     marketValueGbp: 16_500_000,
+    dynamicValues: {
+      "moneyball_role.wbl_wbr_wing_back_ip": 0,
+      "moneyball_role.dl_dr_wing_back_ip": 72,
+    },
   },
   {
     uid: 2,
@@ -42,6 +46,10 @@ const DEFAULT_PLAYERS: PlayerSummary[] = [
     ca: 142,
     pa: 152,
     marketValueGbp: 14_200_000,
+    dynamicValues: {
+      "moneyball_role.wbl_wbr_wing_back_ip": null,
+      "moneyball_role.dl_dr_wing_back_ip": 84,
+    },
   },
   {
     uid: 3,
@@ -55,6 +63,10 @@ const DEFAULT_PLAYERS: PlayerSummary[] = [
     ca: 178,
     pa: 188,
     marketValueGbp: 17_800_000,
+    dynamicValues: {
+      "moneyball_role.wbl_wbr_wing_back_ip": 76,
+      "moneyball_role.dl_dr_wing_back_ip": null,
+    },
   },
 ];
 
