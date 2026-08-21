@@ -17,4 +17,12 @@ export const plannerKeys = {
       laneId,
       search,
     ] as const,
+  roleReference: (activeSaveId: number, phase: string, scoreBasis: string) =>
+    [
+      ...plannerKeys.all,
+      "role-reference",
+      activeSaveId,
+      phase,
+      scoreBasis,
+    ] as const,
 };

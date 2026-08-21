@@ -4,6 +4,11 @@ import type {
   PlannerSlotCandidate,
 } from "@/features/planner/types/depth";
 import type {
+  PlannerRoleReference,
+  PlannerRoleReferencePhase,
+  PlannerRoleReferenceScoreBasis,
+} from "@/features/planner/types/role-reference";
+import type {
   PlannerTactic,
   TacticOptions,
   TacticRoleOption,
@@ -263,6 +268,12 @@ let pendingManagedClubSave: {
 } | null = null;
 let tactic: PlannerTactic = cloneTactic(DEFAULT_TACTIC);
 let depth: PlannerDepth = buildDefaultDepth();
+let roleReference: PlannerRoleReference = buildDefaultRoleReference();
+let roleReferenceError: string | null = null;
+let roleReferenceCalls: Array<{
+  phase: PlannerRoleReferencePhase;
+  scoreBasis: PlannerRoleReferenceScoreBasis;
+}> = [];
 let depthFetchCount = 0;
 let tacticSaveError: string | null = null;
 let slotCandidates: PlannerSlotCandidate[] = [];
@@ -309,6 +320,36 @@ function cloneDepth(value: PlannerDepth): PlannerDepth {
   };
 }
 
+function cloneRoleReference(value: PlannerRoleReference): PlannerRoleReference {
+  return {
+    lanes: value.lanes.map((lane) => ({
+      laneId: lane.laneId,
+      players: lane.players.map((player) => ({ ...player })),
+    })),
+    noEligible: value.noEligible.map((player) => ({ ...player })),
+  };
+}
+
+function buildDefaultRoleReference(): PlannerRoleReference {
+  return {
+    lanes: DEFAULT_TACTIC.lanes.map((lane) => ({
+      laneId: lane.laneId,
+      players:
+        lane.laneId === "goalkeeper"
+          ? [
+              {
+                playerUid: 42,
+                name: "Alex Scout",
+                currentScore: 80,
+                potentialScore: 90,
+              },
+            ]
+          : [],
+    })),
+    noEligible: [],
+  };
+}
+
 function cloneSlotCandidates(value: PlannerSlotCandidate[]) {
   return value.map((candidate) => ({
     ...candidate,
@@ -343,6 +384,9 @@ export function resetPlannerIpcMock() {
   pendingManagedClubSave = null;
   tactic = cloneTactic(DEFAULT_TACTIC);
   depth = buildDefaultDepth();
+  roleReference = buildDefaultRoleReference();
+  roleReferenceError = null;
+  roleReferenceCalls = [];
   depthFetchCount = 0;
   tacticSaveError = null;
   slotCandidates = [];
@@ -410,6 +454,39 @@ export function resolvePlannerTacticIpcMock() {
 
 export function setPlannerTacticIpcMock(value: PlannerTactic) {
   tactic = cloneTactic(value);
+}
+
+export function setPlannerRoleReference(value: PlannerRoleReference) {
+  roleReference = cloneRoleReference(value);
+}
+
+export function setPlannerRoleReferenceError(message: string | null) {
+  roleReferenceError = message;
+}
+
+export function getPlannerRoleReferenceCalls() {
+  return roleReferenceCalls.map((call) => ({ ...call }));
+}
+
+export function resolvePlannerRoleReferenceIpcMock(args: unknown) {
+  if (
+    typeof args !== "object" ||
+    args === null ||
+    !("phase" in args) ||
+    !("scoreBasis" in args) ||
+    (args.phase !== "in_possession" && args.phase !== "out_of_possession") ||
+    (args.scoreBasis !== "current" && args.scoreBasis !== "potential")
+  ) {
+    throw "Invalid planner role reference request";
+  }
+  roleReferenceCalls.push({
+    phase: args.phase,
+    scoreBasis: args.scoreBasis,
+  });
+  if (roleReferenceError) {
+    throw roleReferenceError;
+  }
+  return cloneRoleReference(roleReference);
 }
 
 export function resolvePlannerTacticOptionsIpcMock() {

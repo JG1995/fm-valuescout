@@ -1614,6 +1614,49 @@ test.describe("application smoke", () => {
     }
   });
 
+  test("planner opens the best role fit reference modal", async ({ page }) => {
+    await stubTauriIpc(page, { plannerSnapshot: true });
+    await page.goto("/my-club?view=planner");
+
+    const main = page.getByRole("main");
+    const trigger = main.getByRole("button", { name: "Best role fit" });
+    await trigger.click();
+
+    const dialog = page.getByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole("radio", { name: "In Possession" }),
+    ).toBeChecked();
+    await expect(dialog.getByRole("radio", { name: "Current" })).toBeChecked();
+    await expect(
+      dialog.getByRole("table", {
+        name: "Players best suited to GK Goalkeeper",
+      }),
+    ).toContainText("Potential Keeper");
+
+    await dialog.getByRole("button", { name: "IP: DL · Full-Back" }).click();
+    const leftBackTable = dialog.getByRole("table", {
+      name: "Players best suited to DL Full-Back",
+    });
+    await expect(leftBackTable).toContainText("Potential Full-Back");
+    const currentHeader = leftBackTable.getByRole("columnheader", {
+      name: "Current",
+    });
+    await currentHeader.getByRole("button").click();
+    await expect(currentHeader).toHaveAttribute("aria-sort", "ascending");
+
+    await dialog.getByRole("radio", { name: "Out of Possession" }).click();
+    await dialog.getByRole("radio", { name: "Potential" }).click();
+    await expect(
+      dialog.getByRole("radio", { name: "Potential" }),
+    ).toBeChecked();
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
   test("planner team management renames, removes, and restores a populated team", async ({
     page,
   }) => {

@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 ## Intent
 
@@ -109,7 +109,7 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 ### PR 1 — Add Planner best-role reference
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -313,7 +313,7 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 #### Commit 3 — Show the best-role reference Modal
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): show best-role reference`
 
@@ -420,9 +420,9 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 ## Active work
 
-**PR:** PR 1 — Add Planner best-role reference
+**PR:** PR 1 — Add Planner best-role reference (implementation complete; Validation)
 
-**Commit:** Commit 3 — Show the best-role reference Modal
+**Commit:** Commit 3 — Show the best-role reference Modal (implementation complete; Validation)
 
 ### RED proof
 
@@ -451,6 +451,7 @@ The Planner opens a read-only, two-column best-role reference Modal with IP/OOP 
 | PR 1 | Planning | Pending record | Active ledger and TODO activation | Planning-only verification | None |
 | PR 1 | Commit 1 — Share phase fit scoring rules | Pending record | Planner-private phase and linked-lane fit helpers; optimizer delegates to the shared linked-lane rule; focused characterization coverage | Sol Medium: clean after one correction round | None |
 | PR 1 | Commit 2 — Rank players by their best tactic role | Pending record | Read-only Rust role-reference service, phase/basis parsing, exact current managed-club scope, projected current/potential adjusted scores, deterministic lane grouping, DTO, command registration, and SQLite-backed coverage | Sol Medium: clean after one correction round | Read-only `load_tactic` visibility seam avoids `get_tactic` default seeding; no persistence side effects |
+| PR 1 | Commit 3 — Show the best-role reference Modal | Pending record | Typed React Query adapter, save/phase/basis cache key, Planner toolbar action, read-only two-column Modal with selectable tactic pitch, sortable score tables, no-eligible and explicit state handling, route regressions, browser smoke, and implemented design note | Sol Medium: clean after two correction rounds | One internal Modal scroll owner; native Tauri/WebView evidence remains outside browser smoke |
 
 ## Final validation
 

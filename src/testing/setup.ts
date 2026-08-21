@@ -50,6 +50,7 @@ import {
   resolveMovePlannerPlayerIpcMock,
   resolveOptimizePlannerDepthIpcMock,
   resolvePlannerDepthIpcMock,
+  resolvePlannerRoleReferenceIpcMock,
   resolvePlannerSlotCandidatesIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
@@ -294,6 +295,10 @@ function registerIpcMocks() {
 
     if (cmd === "get_planner_slot_candidates") {
       return resolvePlannerSlotCandidatesIpcMock(args);
+    }
+
+    if (cmd === "get_planner_role_reference") {
+      return resolvePlannerRoleReferenceIpcMock(args);
     }
 
     if (cmd === "save_planner_tactic") {

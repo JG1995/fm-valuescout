@@ -1214,6 +1214,47 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             return plannerDepth;
           }
 
+          if (cmd === "get_planner_role_reference") {
+            if (
+              args?.phase !== "in_possession" &&
+              args?.phase !== "out_of_possession"
+            ) {
+              throw new Error("Invalid planner role reference phase");
+            }
+            if (
+              args?.scoreBasis !== "current" &&
+              args?.scoreBasis !== "potential"
+            ) {
+              throw new Error("Invalid planner role reference score basis");
+            }
+            return {
+              lanes: plannerTactic.lanes.map((lane) => ({
+                laneId: lane.laneId,
+                players:
+                  lane.laneId === "goalkeeper"
+                    ? [
+                        {
+                          playerUid: 77,
+                          name: "Potential Keeper",
+                          currentScore: 82,
+                          potentialScore: 91,
+                        },
+                      ]
+                    : lane.laneId === "left_back"
+                      ? [
+                          {
+                            playerUid: 78,
+                            name: "Potential Full-Back",
+                            currentScore: 79,
+                            potentialScore: 88,
+                          },
+                        ]
+                      : [],
+              })),
+              noEligible: [],
+            };
+          }
+
           if (cmd === "save_planner_teams") {
             if (!Array.isArray(args?.teams) || args.teams.length < 1 || args.teams.length > 3) {
               throw new Error("Planner configuration must contain one to three teams");

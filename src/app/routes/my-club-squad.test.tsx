@@ -22,6 +22,7 @@ import type {
   PlannerDepth,
   PlannerSlotCandidate,
 } from "@/features/planner/types/depth";
+import type { PlannerRoleReference } from "@/features/planner/types/role-reference";
 import type { PlannerTactic } from "@/features/planner/types/tactic";
 import {
   phasePositionLabel,
@@ -42,6 +43,7 @@ import {
   getPlannerDepthIpcMockCalls,
   getPlannerOptimizeIpcMockBases,
   getPlannerOptimizeIpcMockCalls,
+  getPlannerRoleReferenceCalls,
   getPlannerSlotCandidateFetchCount,
   getPlannerTeamSaveIpcMockCalls,
   resolvePendingManagedClubSave,
@@ -62,6 +64,8 @@ import {
   setPlannerOptimizeDepth,
   setPlannerOptimizeError,
   setPlannerOptimizePending,
+  setPlannerRoleReference,
+  setPlannerRoleReferenceError,
   setPlannerSlotCandidates,
   setPlannerTacticIpcMock,
   setPlannerTacticSaveError,
@@ -2562,6 +2566,295 @@ describe("My Club route", () => {
     expect(within(matrix).getByRole("row", { name: /Goalkeeper/ })).toHaveClass(
       "h-table-row-height-two-line",
     );
+  });
+
+  it("opens the best role fit reference from the Planner toolbar", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Best role fit" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    expect(dialog).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("radio", { name: "In Possession" }),
+    ).toBeChecked();
+    expect(
+      within(dialog).getByRole("radio", { name: "Current" }),
+    ).toBeChecked();
+    expect(getPlannerRoleReferenceCalls()).toEqual([
+      { phase: "in_possession", scoreBasis: "current" },
+    ]);
+  });
+
+  it("switches the role reference phase and score basis without re-sorting in the client", async () => {
+    const user = userEvent.setup();
+    const reference: PlannerRoleReference = {
+      lanes: [
+        {
+          laneId: "goalkeeper",
+          players: [
+            {
+              playerUid: 2,
+              name: "Bravo Keeper",
+              currentScore: 90,
+              potentialScore: 85,
+            },
+            {
+              playerUid: 1,
+              name: "Alpha Keeper",
+              currentScore: 80,
+              potentialScore: 95,
+            },
+          ],
+        },
+      ],
+      noEligible: [
+        {
+          playerUid: 99,
+          name: "Unavailable Player",
+          currentScore: null,
+          potentialScore: null,
+        },
+      ],
+    };
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerRoleReference(reference);
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Best role fit" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    const table = await within(dialog).findByRole("table", {
+      name: "Players best suited to GK Goalkeeper",
+    });
+    expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
+      "Bravo Keeper",
+    );
+    expect(
+      within(dialog).getByRole("heading", {
+        name: "No eligible role",
+      }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(dialog).getByRole("radio", { name: "Out of Possession" }),
+    );
+    await user.click(within(dialog).getByRole("radio", { name: "Potential" }));
+    expect(
+      within(dialog).getByRole("radio", { name: "Out of Possession" }),
+    ).toBeChecked();
+    expect(
+      within(dialog).getByRole("radio", { name: "Potential" }),
+    ).toBeChecked();
+    await waitFor(() => {
+      expect(getPlannerRoleReferenceCalls()).toEqual([
+        { phase: "in_possession", scoreBasis: "current" },
+        { phase: "out_of_possession", scoreBasis: "current" },
+        { phase: "out_of_possession", scoreBasis: "potential" },
+      ]);
+    });
+    expect(
+      within(
+        within(dialog).getByRole("table", {
+          name: "Players best suited to GK Line-Holding Keeper",
+        }),
+      ).getByRole("columnheader", { name: "Potential" }),
+    ).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("selects a tactic lane and sorts its current and potential scores", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerRoleReference({
+      lanes: [
+        {
+          laneId: "goalkeeper",
+          players: [
+            {
+              playerUid: 1,
+              name: "Alpha Keeper",
+              currentScore: 80,
+              potentialScore: 95,
+            },
+            {
+              playerUid: 2,
+              name: "Bravo Keeper",
+              currentScore: 90,
+              potentialScore: 85,
+            },
+          ],
+        },
+        {
+          laneId: "left_back",
+          players: [
+            {
+              playerUid: 3,
+              name: "Charlie Full-Back",
+              currentScore: 70,
+              potentialScore: 88,
+            },
+          ],
+        },
+      ],
+      noEligible: [],
+    });
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Best role fit" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "IP: DL · Full-Back" }),
+    );
+    expect(
+      within(dialog).getByRole("heading", { name: "DL · Full-Back" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("table", {
+        name: "Players best suited to DL Full-Back",
+      }),
+    ).toHaveTextContent("Charlie Full-Back");
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "IP: GK · Goalkeeper" }),
+    );
+    const table = within(dialog).getByRole("table", {
+      name: "Players best suited to GK Goalkeeper",
+    });
+    const currentHeader = within(table).getByRole("columnheader", {
+      name: "Current",
+    });
+    expect(currentHeader).toHaveAttribute("aria-sort", "descending");
+    const callsBeforeSort = getPlannerRoleReferenceCalls().length;
+    await user.click(within(currentHeader).getByRole("button"));
+    expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
+      "Alpha Keeper",
+    );
+    expect(
+      within(table).getByRole("columnheader", { name: "Current" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+    expect(getPlannerRoleReferenceCalls()).toHaveLength(callsBeforeSort);
+
+    const nameHeader = within(table).getByRole("columnheader", {
+      name: "Name",
+    });
+    await user.click(within(nameHeader).getByRole("button"));
+    expect(nameHeader).toHaveAttribute("aria-sort", "ascending");
+    expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
+      "Alpha Keeper",
+    );
+    await user.click(within(nameHeader).getByRole("button"));
+    expect(nameHeader).toHaveAttribute("aria-sort", "descending");
+    expect(within(table).getAllByRole("row")[1]).toHaveTextContent(
+      "Bravo Keeper",
+    );
+    expect(getPlannerRoleReferenceCalls()).toHaveLength(callsBeforeSort);
+  });
+
+  it("keeps an empty selected role explicit inside the reference Modal", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerRoleReference({
+      lanes: [
+        { laneId: "goalkeeper", players: [] },
+        {
+          laneId: "left_back",
+          players: [
+            {
+              playerUid: 7,
+              name: "Full-Back Player",
+              currentScore: 70,
+              potentialScore: 80,
+            },
+          ],
+        },
+      ],
+      noEligible: [],
+    });
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Best role fit" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    expect(
+      await within(dialog).findByText("No eligible players", { exact: true }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("heading", { name: "No eligible role" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("distinguishes an empty managed-club cohort from an empty role", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerRoleReference({
+      lanes: resolvePlannerTacticIpcMock().lanes.map((lane) => ({
+        laneId: lane.laneId,
+        players: [],
+      })),
+      noEligible: [],
+    });
+    renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Best role fit" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    expect(
+      await within(dialog).findByText("No players at your managed club", {
+        exact: true,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("No eligible players", { exact: true }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a role reference error and restores focus after Escape", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerRoleReferenceError("Role reference failed");
+    renderMyClubRoute();
+
+    const trigger = await screen.findByRole("button", {
+      name: "Best role fit",
+    });
+    await user.click(trigger);
+    const dialog = await screen.findByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Role reference failed",
+    );
+
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(trigger).toHaveFocus();
   });
 
   it("groups all teams in one semantic table when the matrix fits", async () => {
