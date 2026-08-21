@@ -232,15 +232,6 @@ jobs:
         if: steps.metadata.outputs.release_required == 'true'
         shell: bash
         run: ./scripts/dev package-windows
-      - name: Store Windows release validation artifact
-        if: steps.metadata.outputs.release_required == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: windows-release-validation-${{ github.sha }}
-          path: .release/windows/
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 7
 
   check:
     if: always()
