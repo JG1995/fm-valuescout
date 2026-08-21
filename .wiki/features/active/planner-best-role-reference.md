@@ -219,7 +219,7 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 #### Commit 2 — Rank players by their best tactic role
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(planner): rank players by best tactic role`
 
@@ -281,7 +281,7 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 **Patterns to verify:**
 
-- `depth.rs::current_snapshot_id` and `tactic.rs::get_tactic` for active save and tactic reads.
+- `depth.rs::current_snapshot_id` and the read-only `tactic.rs::load_tactic` seam for snapshot and tactic reads.
 - `optimizer.rs::load_current_optimizer_candidates` and `load_potential_optimizer_candidates` for current score loading and `project_attributes` plus `score_role` use. Copy the scoring contract, not the combined-score or age-filter behavior.
 - `commands.rs` DTO conversions and `lib.rs` registration for stable IPC naming and camelCase serialization.
 - `test_support.rs::open_with_snapshot` and Planner service tests for temporary SQLite fixtures.
@@ -313,7 +313,7 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 #### Commit 3 — Show the best-role reference Modal
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): show best-role reference`
 
@@ -422,26 +422,27 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 **PR:** PR 1 — Add Planner best-role reference
 
-**Commit:** Commit 2 — Rank players by their best tactic role
+**Commit:** Commit 3 — Show the best-role reference Modal
 
 ### RED proof
 
-Add a focused SQLite-backed service test for exclusive Current/IP assignment and one no-eligible player. The first run must fail because the role-reference service and command path do not exist. A plausible wrong implementation must fail when it combines IP and OOP, assigns a player to more than one lane, filters by age or team, ignores the selected basis, or omits a player without an eligible selected-basis score.
+Add a RED route test that expects **Best role fit** to open an accessible Modal and request the current/IP grouping. The first run must fail because the typed adapter, query key, toolbar trigger, and Modal path do not exist. A plausible wrong implementation must fail when it refetches for sorting, loses the selected lane across toggles, shows stale phase/basis data, or omits the no-eligible section.
 
 ### Expected outcome
 
-The Rust Planner read model assigns every exact current managed-club player to one best selected-phase lane or No eligible role, returning both adjusted score columns without persistence or optimizer mutations.
+The Planner opens a read-only, two-column best-role reference Modal with IP/OOP and Current/Potential controls, a selectable tactic pitch, sortable score rows, and explicit loading, empty, error, and no-eligible states.
 
 ### Explicit exclusions
 
-- No React, IPC adapter, Modal, toolbar, browser test, or documentation that claims the Modal is implemented.
-- No persistence, migrations, tactic edits, Planner assignments, optimizer calls, combined scores, age limits, team settings, or multiple assignments per player.
+- No player-profile navigation, training actions, export, search, filters, URL state, persisted Modal state, or changes to the Tactic workspace or optimizer controls.
+- No client-side scoring, eligibility, lane assignment, regrouping after sorting, or new overlay/dependency primitive.
 
 ## Discoveries and replanning
 
 - Planning confirmed that the initial use case is role-training guidance, but the reference must also support broader current and future evaluation. Current/Potential therefore selects the assignment basis while both adjusted score columns remain visible.
 - Planning confirmed that IP and OOP are independent and that players without an eligible lane need a separate visible section.
 - Planning found that the current optimizer's hidden familiarity rule counts one five-point deduction per phase, even when both phase positions normalize to the same base position. Commit 1 must preserve that linked-lane behavior while the reference applies only one selected-phase deduction.
+- Commit 2 uses the Planner-private read-only `load_tactic` seam so opening the reference cannot seed or edit a missing tactic; `get_tactic` remains the existing initialization path for Planner screens.
 
 ## Completed work
 
@@ -449,6 +450,7 @@ The Rust Planner read model assigns every exact current managed-club player to o
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Planning | Pending record | Active ledger and TODO activation | Planning-only verification | None |
 | PR 1 | Commit 1 — Share phase fit scoring rules | Pending record | Planner-private phase and linked-lane fit helpers; optimizer delegates to the shared linked-lane rule; focused characterization coverage | Sol Medium: clean after one correction round | None |
+| PR 1 | Commit 2 — Rank players by their best tactic role | Pending record | Read-only Rust role-reference service, phase/basis parsing, exact current managed-club scope, projected current/potential adjusted scores, deterministic lane grouping, DTO, command registration, and SQLite-backed coverage | Sol Medium: clean after one correction round | Read-only `load_tactic` visibility seam avoids `get_tactic` default seeding; no persistence side effects |
 
 ## Final validation
 

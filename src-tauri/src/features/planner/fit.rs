@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use super::tactic::{base_position, TacticLane};
 
-#[allow(dead_code)]
 pub(super) fn phase_fit_score(
     score: Option<u8>,
     player_foot: &str,

@@ -91,6 +91,7 @@ pub fn run() {
             features::academy::commands::set_academy_member_outcome,
             features::planner::commands::list_squad_players,
             features::planner::commands::get_planner_tactic,
+            features::planner::commands::get_planner_role_reference,
             features::planner::commands::get_planner_tactic_options,
             features::planner::commands::save_planner_tactic,
             features::planner::commands::get_planner_depth,
