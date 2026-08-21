@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
 import { addPlannerString } from "../api/add-planner-string";
 import { clearPlannerDepth } from "../api/clear-planner-depth";
@@ -28,6 +29,7 @@ import {
   PlannerStringRemovalConfirmation,
 } from "./planner-depth-table";
 import { PlannerOptimizerControls } from "./planner-optimizer-controls";
+import { PlannerRoleReferenceModal } from "./planner-role-reference-modal";
 import {
   PlannerSlotFitPicker,
   type PlannerSlotTarget,
@@ -142,6 +144,9 @@ export function PlannerDepthMatrix({
   const [optimizeError, setOptimizeError] = useState<string | null>(null);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [teamManagementPending, setTeamManagementPending] = useState(false);
+  const [roleReferenceOpen, setRoleReferenceOpen] = useState(false);
+  const [roleReferenceReturnFocus, setRoleReferenceReturnFocus] =
+    useState<HTMLElement | null>(null);
   const matrixContainerRef = useRef<HTMLDivElement>(null);
   const matrixWidth = useElementWidth(matrixContainerRef);
   const queryClient = useQueryClient();
@@ -600,6 +605,16 @@ export function PlannerDepthMatrix({
             </div>
           ) : null}
           <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={(event) => {
+                setRoleReferenceReturnFocus(event.currentTarget);
+                setRoleReferenceOpen(true);
+              }}
+              className="!h-7 !px-3 !text-label-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              Best role fit
+            </Button>
             <PlannerOptimizerControls
               pendingBasis={optimizePendingBasis}
               disabled={
@@ -708,6 +723,14 @@ export function PlannerDepthMatrix({
         onConfirm={(plannerString) =>
           removeString.mutate({ plannerString, confirmPopulated: true })
         }
+      />
+      <PlannerRoleReferenceModal
+        activeSaveId={activeSaveId}
+        open={roleReferenceOpen}
+        tactic={tactic}
+        options={options}
+        onClose={() => setRoleReferenceOpen(false)}
+        returnFocusTo={roleReferenceReturnFocus}
       />
     </Panel>
   );

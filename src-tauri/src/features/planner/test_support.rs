@@ -120,6 +120,23 @@ pub(super) fn set_player_positions(
     .expect("set player positions");
 }
 
+pub(super) fn set_player_attributes(
+    conn: &Connection,
+    save_id: i64,
+    player_uid: i64,
+    attributes_json: &str,
+) {
+    conn.execute(
+        "UPDATE players SET attributes_json = ?1 WHERE snapshot_id = ?2 AND uid = ?3",
+        params![
+            attributes_json,
+            current_snapshot_id(conn, save_id),
+            player_uid
+        ],
+    )
+    .expect("set player attributes");
+}
+
 pub(super) fn set_player_preferred_foot(
     conn: &Connection,
     save_id: i64,

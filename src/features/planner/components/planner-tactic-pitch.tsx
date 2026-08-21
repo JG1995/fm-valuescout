@@ -16,6 +16,7 @@ type PlannerTacticPitchProps = {
   phase: TacticPhase;
   lanes: TacticLane[];
   options: TacticOptions;
+  selectionHint?: string;
   selectedLaneId: string;
   highlightedLaneId: string | null;
   onHighlight: (laneId: string | null) => void;
@@ -411,6 +412,7 @@ export function PlannerTacticPitch({
   phase,
   lanes,
   options,
+  selectionHint = "Focus or select this position to highlight its linked counterpart in the other phase.",
   selectedLaneId,
   highlightedLaneId,
   onHighlight,
@@ -434,8 +436,7 @@ export function PlannerTacticPitch({
         </span>
       </div>
       <p id={linkedHintId} className="sr-only">
-        Focus or select this position to highlight its linked counterpart in the
-        other phase.
+        {selectionHint}
       </p>
       <PitchBoard
         phase={phase}

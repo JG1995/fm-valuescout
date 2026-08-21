@@ -111,6 +111,9 @@ export function PlannerTacticEditor({
         queryClient.invalidateQueries({
           queryKey: plannerKeys.slotCandidates(),
         }),
+        queryClient.invalidateQueries({
+          queryKey: plannerKeys.roleReferences(),
+        }),
       ]);
     },
   });

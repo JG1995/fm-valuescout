@@ -282,7 +282,7 @@ pub fn get_tactic_options() -> TacticOptions {
     TacticOptions { placements, roles }
 }
 
-fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
+pub(super) fn load_tactic(conn: &Connection, save_id: i64) -> Result<PlannerTactic, String> {
     let mut statement = conn
         .prepare(
             "SELECT lane_id, ip_weight, importance_rank, preferred_foot, foot_preference, ip_position, ip_role_id, oop_position, oop_role_id

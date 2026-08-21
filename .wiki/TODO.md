@@ -50,12 +50,17 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 **Parallel tracks:** After player search (order 4), profiles (5) and squad planner shell (6, without optimizer) can overlap once tactic modeling is specced.
 
+## Active
+
+- None.
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
 
 ## Completed
 
+- [Planner Best-Role Reference](./features/completed/planner-best-role-reference.md) — read-only phase-specific best-lane reference for every current managed-club player, with Current/Potential assignment, adjusted scores, and a sortable Planner Modal; final PR not published.
 - [Moneyball Role Scores](./features/completed/moneyball-role-scores.md) — versioned, position-family-specific performance role definitions with full-import Player Profile scores, filtered-cohort Search columns and filters, and explicit unavailable attribute placeholders (Linear JAY-20; final PR unpublished)
 - [Optional Moneyball Analysis Views](./features/completed/moneyball-views.md) — current-snapshot Moneyball percentile cohorts, optional Search and Player Profile views, virtualized raw-metric filtering, and one shared default-view preference (Linear JAY-19)
 - [My Club Workspace](./features/completed/my-club-workspace.md) — `/my-club` unifies Squad, Planner, Tactic, managed-club Staff, and Staff Shortlist; it owns the managed-club selector while Player Search and Staff Search remain separate (Linear JAY-25, PR [#69](https://github.com/JG1995/fm-valuescout/pull/69))

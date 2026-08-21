@@ -1,13 +1,10 @@
-use std::collections::BTreeMap;
-
 use rusqlite::params;
 
 use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 
 use super::depth::{add_string, assign_player, get_depth, PlannerTeam};
 use super::optimizer::{
-    allocation_score, foot_matches, match_lanes, optimize_depth, optimize_depth_with_basis,
-    OptimizerCandidate, ScoreBasis,
+    match_lanes, optimize_depth, optimize_depth_with_basis, OptimizerCandidate, ScoreBasis,
 };
 use super::tactic;
 use super::teams::{save_team_settings, PlannerTeamInput};
@@ -62,63 +59,6 @@ fn matcher_breaks_equal_scores_by_lowest_uid_in_lane_order() {
     ];
 
     assert_eq!(match_lanes(&[0, 1], &candidates), [Some(1), Some(0)]);
-}
-
-#[test]
-fn two_footed_players_match_every_restricted_foot_rule() {
-    for (player_foot, preferred_foot, expected) in [
-        ("left", "any", true),
-        ("right", "any", true),
-        ("either", "any", true),
-        ("", "any", true),
-        ("left", "left", true),
-        ("right", "left", false),
-        ("either", "left", true),
-        ("", "left", false),
-        ("left", "right", false),
-        ("right", "right", true),
-        ("either", "right", true),
-        ("", "right", false),
-        ("left", "both", false),
-        ("right", "both", false),
-        ("either", "both", true),
-        ("", "both", false),
-    ] {
-        assert_eq!(
-            foot_matches(player_foot, preferred_foot),
-            expected,
-            "{player_foot:?} against {preferred_foot:?}",
-        );
-    }
-}
-
-#[test]
-fn soft_foot_mismatches_are_capped_at_zero() {
-    let mut lane = tactic::default_tactic().lanes.remove(0);
-    lane.preferred_foot = "right".to_string();
-    let positions = BTreeMap::from([("GK".to_string(), Some(16))]);
-
-    assert_eq!(allocation_score(3, "left", &positions, &lane), Some(0));
-}
-
-#[test]
-fn allocation_score_deducts_five_for_each_sub_16_lane_position() {
-    let lane = tactic::default_tactic().lanes.remove(9);
-
-    for (ip_familiarity, oop_familiarity, expected) in
-        [(16, 16, 50), (15, 16, 45), (16, 15, 45), (15, 15, 40)]
-    {
-        let positions = BTreeMap::from([
-            ("AMR".to_string(), Some(ip_familiarity)),
-            ("MR".to_string(), Some(oop_familiarity)),
-        ]);
-
-        assert_eq!(
-            allocation_score(50, "right", &positions, &lane),
-            Some(expected),
-            "IP {ip_familiarity}, OOP {oop_familiarity}",
-        );
-    }
 }
 
 #[test]

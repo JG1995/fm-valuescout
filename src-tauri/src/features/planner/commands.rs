@@ -9,6 +9,9 @@ use super::depth::{
     PlannerDepthTeam, PlannerSlotCandidate, PlannerString, PlannerTeam,
 };
 use super::optimizer;
+use super::role_reference::{
+    self as role_reference_service, RoleReference, RoleReferenceBasis, RoleReferencePhase,
+};
 use super::squad::{
     self as squad_service, SquadPlayer, SquadPlayersPage, SquadSortDir, SquadSortField,
     DEFAULT_SQUAD_PAGE_LIMIT, MAX_SQUAD_PAGE_LIMIT,
@@ -175,6 +178,64 @@ impl From<PlannerTactic> for PlannerTacticDto {
                     oop_position: lane.oop_position,
                     oop_role_id: lane.oop_role_id,
                 })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerRoleReferencePlayerDto {
+    pub player_uid: i64,
+    pub name: String,
+    pub current_score: Option<u8>,
+    pub potential_score: Option<u8>,
+}
+
+impl From<role_reference_service::RoleReferencePlayer> for PlannerRoleReferencePlayerDto {
+    fn from(player: role_reference_service::RoleReferencePlayer) -> Self {
+        Self {
+            player_uid: player.player_uid,
+            name: player.name,
+            current_score: player.current_score,
+            potential_score: player.potential_score,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerRoleReferenceLaneDto {
+    pub lane_id: String,
+    pub players: Vec<PlannerRoleReferencePlayerDto>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerRoleReferenceDto {
+    pub lanes: Vec<PlannerRoleReferenceLaneDto>,
+    pub no_eligible: Vec<PlannerRoleReferencePlayerDto>,
+}
+
+impl From<RoleReference> for PlannerRoleReferenceDto {
+    fn from(reference: RoleReference) -> Self {
+        Self {
+            lanes: reference
+                .lanes
+                .into_iter()
+                .map(|lane| PlannerRoleReferenceLaneDto {
+                    lane_id: lane.lane_id,
+                    players: lane
+                        .players
+                        .into_iter()
+                        .map(PlannerRoleReferencePlayerDto::from)
+                        .collect(),
+                })
+                .collect(),
+            no_eligible: reference
+                .no_eligible
+                .into_iter()
+                .map(PlannerRoleReferencePlayerDto::from)
                 .collect(),
         }
     }
@@ -400,6 +461,21 @@ pub fn get_planner_tactic(db: State<'_, Db>) -> Result<PlannerTacticDto, String>
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
     Ok(tactic_service::get_tactic(&conn, save_id)?.into())
+}
+
+#[tauri::command]
+pub fn get_planner_role_reference(
+    phase: String,
+    score_basis: String,
+    db: State<'_, Db>,
+) -> Result<PlannerRoleReferenceDto, String> {
+    let phase = RoleReferencePhase::parse(&phase)?;
+    let score_basis = RoleReferenceBasis::parse(&score_basis)?;
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    Ok(role_reference_service::get_role_reference(&conn, save_id, phase, score_basis)?.into())
 }
 
 #[tauri::command]
