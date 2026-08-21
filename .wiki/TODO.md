@@ -50,6 +50,10 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 **Parallel tracks:** After player search (order 4), profiles (5) and squad planner shell (6, without optimizer) can overlap once tactic modeling is specced.
 
+## Active
+
+- [Planner Best-Role Reference](./features/active/planner-best-role-reference.md) — assign every current managed-club player to one strongest IP or OOP tactic role by a selectable Current or Potential basis, with both adjusted scores in a sortable read-only Planner Modal.
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
