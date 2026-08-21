@@ -82,7 +82,7 @@ describe("verified-main release workflow", () => {
     expect(releaseWorkflow).not.toContain("[AllowNull()][string]$TagSha");
   });
 
-  it("requires metadata validation and the same Windows validation command in Check", () => {
+  it("requires metadata validation and packages without retaining an artifact in Check", () => {
     expect(checkWorkflow).toContain("release:");
     expect(checkWorkflow).toContain("release-validation:");
     expect(checkWorkflow).toContain(
@@ -95,7 +95,7 @@ describe("verified-main release workflow", () => {
     ).toHaveLength(1);
     expect(checkWorkflow).toContain("./scripts/dev package-windows");
     expect(checkWorkflow).toContain("RELEASE_VALIDATION:");
-    expect(checkWorkflow).toContain("include-hidden-files: true");
+    expect(checkWorkflow).not.toContain("actions/upload-artifact@");
     expect(checkWorkflow).toContain(
       "dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d",
     );
