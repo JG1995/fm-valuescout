@@ -472,6 +472,7 @@ export function PlannerRoleReferenceModal({
               phase={selectedPhase.pitch}
               lanes={tactic.lanes}
               options={options}
+              selectionHint="Focus or select this position to show its players in the reference table."
               selectedLaneId={selectedLaneId}
               highlightedLaneId={highlightedLaneId}
               onHighlight={setHighlightedLaneId}

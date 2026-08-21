@@ -2357,6 +2357,84 @@ describe("My Club route", () => {
     ).toBeInTheDocument();
   });
 
+  it("refreshes the role reference after saving a tactic", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerRoleReference({
+      lanes: [
+        {
+          laneId: "goalkeeper",
+          players: [
+            {
+              playerUid: 1,
+              name: "Before tactic save",
+              currentScore: 80,
+              potentialScore: 85,
+            },
+          ],
+        },
+      ],
+      noEligible: [],
+    });
+    renderMyClubRoute({ staleTime: 60_000 });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Best role fit" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    expect(
+      await within(dialog).findByText("Before tactic save", { exact: true }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    await openMyClubWorkspace(user, "tactic");
+    const weight = screen.getByRole("slider", {
+      name: "IP/OOP score weight",
+    });
+    weight.focus();
+    await user.keyboard("{ArrowRight}");
+    await user.click(screen.getByRole("button", { name: "Save tactic" }));
+    await waitFor(() =>
+      expect(screen.getByText("Tactic saved.")).toBeInTheDocument(),
+    );
+
+    setPlannerRoleReference({
+      lanes: [
+        {
+          laneId: "goalkeeper",
+          players: [
+            {
+              playerUid: 1,
+              name: "After tactic save",
+              currentScore: 90,
+              potentialScore: 95,
+            },
+          ],
+        },
+      ],
+      noEligible: [],
+    });
+    await openMyClubWorkspace(user, "planner");
+    await user.click(
+      await screen.findByRole("button", { name: "Best role fit" }),
+    );
+    const refreshedDialog = await screen.findByRole("dialog", {
+      name: "Best role fit reference",
+    });
+    expect(
+      await within(refreshedDialog).findByText("After tactic save", {
+        exact: true,
+      }),
+    ).toBeInTheDocument();
+    expect(getPlannerRoleReferenceCalls()).toHaveLength(2);
+  });
+
   it("resets a dirty tactic draft when the active save changes", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -2588,6 +2666,15 @@ describe("My Club route", () => {
     expect(
       within(dialog).getByRole("radio", { name: "Current" }),
     ).toBeChecked();
+    expect(
+      within(dialog).getByText(
+        "Focus or select this position to show its players in the reference table.",
+        { exact: true },
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(/linked counterpart/),
+    ).not.toBeInTheDocument();
     expect(getPlannerRoleReferenceCalls()).toEqual([
       { phase: "in_possession", scoreBasis: "current" },
     ]);

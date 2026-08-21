@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Active
 
 ## Intent
 
@@ -109,7 +109,7 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 ### PR 1 — Add Planner best-role reference
 
-**Status:** Ready for publication
+**Status:** Active
 
 **PR ref:** Not published
 
@@ -127,7 +127,7 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 **Required checks:** strict `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Not run; correction round 1 active after feature review
 
 **CI repair rounds:** `0`
 
@@ -313,7 +313,7 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 #### Commit 3 — Show the best-role reference Modal
 
-**Status:** Completed
+**Status:** Active
 
 **Provisional commit:** `feat(planner): show best-role reference`
 
@@ -420,9 +420,9 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 ## Active work
 
-**PR:** PR 1 — Add Planner best-role reference (implementation complete; Validation)
+**PR:** PR 1 — Add Planner best-role reference (correction round 1; Active)
 
-**Commit:** Commit 3 — Show the best-role reference Modal (implementation complete; Validation)
+**Commit:** Commit 3 — Show the best-role reference Modal (correction round 1; Active)
 
 ### RED proof
 
