@@ -141,7 +141,7 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 #### Commit 1 — Share phase fit scoring rules
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(planner): share tactic fit scoring rules`
 
@@ -219,7 +219,7 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 #### Commit 2 — Rank players by their best tactic role
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(planner): rank players by best tactic role`
 
@@ -422,21 +422,20 @@ Extract the existing Planner fit rules without behavior change, then prove one R
 
 **PR:** PR 1 — Add Planner best-role reference
 
-**Commit:** Commit 1 — Share phase fit scoring rules
+**Commit:** Commit 2 — Rank players by their best tactic role
 
 ### RED proof
 
-Add focused Rust characterization tests for a single-phase score and the current linked-lane score. The first run must fail because the shared Planner fit module does not exist. A plausible wrong extraction must fail when it applies the foot mismatch twice, drops one repeated-position familiarity penalty, accepts familiarity 11, or treats MCR and MCL as distinct familiarity keys.
+Add a focused SQLite-backed service test for exclusive Current/IP assignment and one no-eligible player. The first run must fail because the role-reference service and command path do not exist. A plausible wrong implementation must fail when it combines IP and OOP, assigns a player to more than one lane, filters by age or team, ignores the selected basis, or omits a player without an eligible selected-basis score.
 
 ### Expected outcome
 
-The existing optimizer uses one Planner-private fit module and produces identical allocations and deductions. The module exposes a tested single-phase fit function for commit 2, with no user-visible or persisted change.
+The Rust Planner read model assigns every exact current managed-club player to one best selected-phase lane or No eligible role, returning both adjusted score columns without persistence or optimizer mutations.
 
 ### Explicit exclusions
 
-- No role-reference service or Tauri command.
-- No React, IPC adapter, Modal, toolbar, browser test, or current-state documentation change.
-- No scoring, optimizer, persistence, migration, or eligibility behavior change.
+- No React, IPC adapter, Modal, toolbar, browser test, or documentation that claims the Modal is implemented.
+- No persistence, migrations, tactic edits, Planner assignments, optimizer calls, combined scores, age limits, team settings, or multiple assignments per player.
 
 ## Discoveries and replanning
 
@@ -449,6 +448,7 @@ The existing optimizer uses one Planner-private fit module and produces identica
 | PR | Commit | Git ref | Implementation | Review | Deviations |
 | --- | --- | --- | --- | --- | --- |
 | PR 1 | Planning | Pending record | Active ledger and TODO activation | Planning-only verification | None |
+| PR 1 | Commit 1 — Share phase fit scoring rules | Pending record | Planner-private phase and linked-lane fit helpers; optimizer delegates to the shared linked-lane rule; focused characterization coverage | Sol Medium: clean after one correction round | None |
 
 ## Final validation
 

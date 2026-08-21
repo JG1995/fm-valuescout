@@ -12,7 +12,8 @@ use super::depth::{
     current_snapshot_id, ensure_depth, get_depth, insert_assignment, AssignmentProvenance,
     PlannerDepth, PlannerTeam,
 };
-use super::tactic::{base_position, PlannerTactic, TacticLane, TACTIC_LANE_COUNT};
+use super::fit::lane_fit_score;
+use super::tactic::{PlannerTactic, TACTIC_LANE_COUNT};
 use super::teams;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -525,25 +526,19 @@ fn load_current_optimizer_candidates(
                     .lanes
                     .iter()
                     .map(|lane| {
-                        is_suitable_for_lane(&positions, lane)
-                            .then(|| {
-                                let player_scores = role_scores.get(&player_uid)?;
+                        let player_scores = role_scores.get(&player_uid);
+                        lane_fit_score(
+                            player_scores.and_then(|scores| {
                                 combine_role_scores(
-                                    player_scores
-                                        .get(lane.ip_role_id.as_str())
-                                        .copied()
-                                        .flatten(),
-                                    player_scores
-                                        .get(lane.oop_role_id.as_str())
-                                        .copied()
-                                        .flatten(),
+                                    scores.get(lane.ip_role_id.as_str()).copied().flatten(),
+                                    scores.get(lane.oop_role_id.as_str()).copied().flatten(),
                                     lane.ip_weight,
                                 )
-                                .and_then(|score| {
-                                    allocation_score(score, &preferred_foot, &positions, lane)
-                                })
-                            })
-                            .flatten()
+                            }),
+                            &preferred_foot,
+                            &positions,
+                            lane,
+                        )
                     })
                     .collect::<Vec<_>>();
                 Ok(OptimizerCandidate {
@@ -650,18 +645,16 @@ fn load_potential_optimizer_candidates(
                     .iter()
                     .zip(&lane_roles)
                     .map(|(lane, (ip_role, oop_role))| {
-                        is_suitable_for_lane(&positions, lane)
-                            .then(|| {
-                                combine_role_scores(
-                                    score_role(&projected_attributes, ip_role),
-                                    score_role(&projected_attributes, oop_role),
-                                    lane.ip_weight,
-                                )
-                                .and_then(|score| {
-                                    allocation_score(score, &preferred_foot, &positions, lane)
-                                })
-                            })
-                            .flatten()
+                        lane_fit_score(
+                            combine_role_scores(
+                                score_role(&projected_attributes, ip_role),
+                                score_role(&projected_attributes, oop_role),
+                                lane.ip_weight,
+                            ),
+                            &preferred_foot,
+                            &positions,
+                            lane,
+                        )
                     })
                     .collect::<Vec<_>>();
                 Ok(OptimizerCandidate {
@@ -681,132 +674,10 @@ fn load_potential_optimizer_candidates(
         .collect()
 }
 
-pub(super) fn allocation_score(
-    score: u8,
-    player_foot: &str,
-    positions: &std::collections::BTreeMap<String, Option<i64>>,
-    lane: &TacticLane,
-) -> Option<u8> {
-    let foot_penalty = if foot_matches(player_foot, &lane.preferred_foot) {
-        0
-    } else if lane.foot_preference == "strict" {
-        return None;
-    } else {
-        5
-    };
-    let familiarity_penalty = [&lane.ip_position, &lane.oop_position]
-        .into_iter()
-        .filter(|position| {
-            positions
-                .get(base_position(position))
-                .copied()
-                .flatten()
-                .is_some_and(|familiarity| familiarity < 16)
-        })
-        .count() as u8
-        * 5;
-    Some(score.saturating_sub(foot_penalty + familiarity_penalty))
-}
-
-pub(super) fn foot_matches(player_foot: &str, preferred_foot: &str) -> bool {
-    match preferred_foot {
-        "any" => true,
-        "left" => matches!(player_foot, "left" | "either"),
-        "right" => matches!(player_foot, "right" | "either"),
-        "both" => player_foot == "either",
-        _ => false,
-    }
-}
-
 fn is_age_eligible(team: PlannerTeam, age: Option<i64>) -> bool {
     match team {
         PlannerTeam::Senior => true,
         PlannerTeam::Reserves => age.is_some_and(|age| age <= 23),
         PlannerTeam::Youth => age.is_some_and(|age| age <= 18),
-    }
-}
-
-fn is_suitable_for_lane(
-    positions: &std::collections::BTreeMap<String, Option<i64>>,
-    lane: &TacticLane,
-) -> bool {
-    let has_suitability = |position: &str| {
-        positions
-            .get(base_position(position))
-            .copied()
-            .flatten()
-            .is_some_and(|suitability| suitability >= 12)
-    };
-    has_suitability(&lane.ip_position)
-        && (base_position(&lane.ip_position) == base_position(&lane.oop_position)
-            || has_suitability(&lane.oop_position))
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeMap;
-
-    use super::is_suitable_for_lane;
-    use crate::features::planner::tactic::TacticLane;
-
-    #[test]
-    fn sided_placements_use_base_position_familiarity() {
-        let positions = BTreeMap::from([("MC".to_string(), Some(18))]);
-        let lane = TacticLane {
-            lane_id: "midfielder".to_string(),
-            ip_weight: 0.5,
-            importance_rank: None,
-            preferred_foot: "any".to_string(),
-            foot_preference: "preferred".to_string(),
-            ip_position: "MCR".to_string(),
-            ip_role_id: "central_midfielder_ip".to_string(),
-            oop_position: "MCL".to_string(),
-            oop_role_id: "pressing_central_midfielder_oop".to_string(),
-        };
-
-        assert!(is_suitable_for_lane(&positions, &lane));
-    }
-
-    #[test]
-    fn distinct_lane_positions_allow_minimum_familiarity() {
-        let positions =
-            BTreeMap::from([("DC".to_string(), Some(12)), ("MC".to_string(), Some(12))]);
-        let lane = TacticLane {
-            lane_id: "defensive_midfielder".to_string(),
-            ip_weight: 0.5,
-            importance_rank: None,
-            preferred_foot: "any".to_string(),
-            foot_preference: "preferred".to_string(),
-            ip_position: "DC".to_string(),
-            ip_role_id: "ball_playing_defender_ip".to_string(),
-            oop_position: "MC".to_string(),
-            oop_role_id: "defensive_midfielder_oop".to_string(),
-        };
-
-        assert!(is_suitable_for_lane(&positions, &lane));
-    }
-
-    #[test]
-    fn lane_positions_require_minimum_ip_and_oop_familiarity() {
-        let lane = TacticLane {
-            lane_id: "defensive_midfielder".to_string(),
-            ip_weight: 0.5,
-            importance_rank: None,
-            preferred_foot: "any".to_string(),
-            foot_preference: "preferred".to_string(),
-            ip_position: "DC".to_string(),
-            ip_role_id: "ball_playing_defender_ip".to_string(),
-            oop_position: "MC".to_string(),
-            oop_role_id: "defensive_midfielder_oop".to_string(),
-        };
-
-        assert!(!is_suitable_for_lane(
-            &BTreeMap::from([("DC".to_string(), Some(11)), ("MC".to_string(), Some(12)),]),
-            &lane,
-        ));
-        assert!(!is_suitable_for_lane(
-            &BTreeMap::from([("DC".to_string(), Some(12)), ("MC".to_string(), Some(11)),]),
-            &lane,
-        ));
     }
 }
