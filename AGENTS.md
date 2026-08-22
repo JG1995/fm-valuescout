@@ -59,20 +59,18 @@ Do not treat `.work/` as project truth. Do not document proposed behaviour as im
 
 ## Development workflow
 
-The development cycle follows a repeating loop. Invoke a `workflow-*` skill explicitly through `/skills` or by mentioning `$workflow-<name>`. Never select a workflow skill from an ordinary natural-language request.
+Invoke a `workflow-*` skill explicitly through `/skills` or by mentioning `$workflow-<name>`. Never select a workflow skill from an ordinary natural-language request.
 
-1. **Feature plan** (`$workflow-plan-feature`) — plan one feature with PR and commit breakpoints, detailed implementation packets, and validation contracts.
-2. **Build** (`$workflow-build`) — implement the active commit test-first (RED → GREEN → REFACTOR).
-3. **Checkpoint** (`$workflow-checkpoint`) — stage exact changes, run the gate, present evidence and review, wait for approval, and commit locally.
-4. **Fix** (`$workflow-fix`) — address only the findings the developer delegates, then checkpoint again.
-5. **Reassess** — update the delivery plan and select the next commit; repeat from build until the plan is done.
-6. **Finish feature** (`$workflow-finish-feature`) — when every planned commit is done, run full tests, a Sol xhigh feature-complete review, and Terra Medium documentation reconciliation.
+The normal feature path is:
+
+1. **Feature plan** (`$workflow-plan-feature`) — plan one feature with PR and commit breakpoints, detailed implementation packets, validation contracts, one Release block, and a reviewed Delivery fingerprint.
+2. **Deliver feature** (`$workflow-deliver-feature`) — under one explicit invocation and unchanged fingerprint, activate each recorded branch; build, review, and commit every packet; publish and merge every PR; synchronize each base; finish the feature; and run its one release outcome.
+
+`$workflow-build`, `$workflow-checkpoint`, `$workflow-fix`, `$workflow-publish-pr`, and `$workflow-finish-feature` remain manual recovery paths for one bounded phase. They retain their narrower approval and Git-authority rules. Do not require them between phases of normal feature delivery.
 
 For a trivial change, the user can describe the fix without invoking a workflow skill. Follow the applicable standing rules internally.
 
-The loop variants are manual opt-ins only. Never suggest or run them automatically. Their documented local commit permissions come from this file; they do not authorize pushes, merges, or history rewrites.
-
-For broad features, `$workflow-plan-feature` produces a delivery plan before the first `$workflow-build` cycle. `$workflow-stack` and `$workflow-roadmap` precede it for new projects.
+Workflow skills are explicit opt-ins only. Never suggest or run them automatically. For broad features, `$workflow-plan-feature` produces the accepted fingerprinted plan before `$workflow-deliver-feature`. `$workflow-stack` and `$workflow-roadmap` precede planning for new projects.
 
 Use the fixed execution roles defined by the installed `workflow-core` skill; do not record them in active ledgers. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. Follow `workflow-core` and the relevant user-facing workflow skill for routing, hard floors, evidence requirements, and escalation.
 
@@ -209,9 +207,9 @@ Exceptions: commit messages (use the global `conventional-commits` skill and exp
 - Do not perform unrelated cleanup.
 - Stage exact files or hunks. Never use `git add .` or `git commit -a`.
 - Before commit, inspect status and the complete diff, run `git diff --cached --check`, review the staged diff and stat, and report tests, gate results, documentation impact, reviewer findings, risks, and the proposed commit message.
-- Wait for explicit developer approval before committing locally.
-- Explicitly invoking `$workflow-build-loop` authorizes its documented single local content commit after review clears. Explicitly invoking `$workflow-finish-feature-loop` authorizes its documented local correction and documentation commits. No other workflow invocation grants commit approval.
-- Never push, amend, rebase, squash, or otherwise rewrite history without explicit approval.
+- Wait for explicit developer approval before committing locally unless the developer explicitly invoked `$workflow-deliver-feature` with a valid recorded Delivery fingerprint. That one-time grant covers only the exact reviewed local commits, branches, non-force pushes, PRs, bounded CI repairs, verified-head merges, fast-forward-only base synchronization, and single release outcome in the unchanged fingerprint.
+- Manual recovery workflows retain their own narrow approval rules. Any authority-field or packet change invalidates delivery authority and requires replanning or fresh approval.
+- Never amend, rebase, force-push, bypass protection, delete branches, or otherwise rewrite history. Never mutate unrelated work or another ledger under feature-delivery authority.
 
 ## Project knowledge
 

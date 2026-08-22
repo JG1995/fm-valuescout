@@ -44,12 +44,14 @@ Every human-authored pull request uses the repository-local [`create-pr` skill](
 
 | Intent | Effect |
 | --- | --- |
-| `none` | No version change, dated changelog section, tag, or release. Relevant notes may remain under `Unreleased`. |
+| `none` | No version change, dated changelog section, tag, or release. Relevant notes may remain under `Unreleased`. This also applies to an intermediate PR in a valid fingerprinted feature whose final PR owns one later release outcome. |
 | `patch` | Prepare the next plain patch identity and a complete dated changelog section from all unreleased changes. |
 | `minor` | Prepare the next plain minor identity and a complete dated changelog section from all unreleased changes. |
 | `major` | Stop for a maintainer compatibility decision. |
 
-`none` is a normal answer for an ordinary pull request; it is not a different PR type. A first release uses `minor` with no prior release tag and prepares `0.1.0`. A compatible capability advances the minor version (`0.1.0` → `0.2.0`); a compatible fix advances the patch version (`0.2.0` → `0.2.1`). The historical `0.1.0-alpha.1` remains valid only as an existing release identity; there is no public alpha counter or release-candidate sequence. The procedure validates prepared release metadata before it pushes and opens the normal template-complete draft PR. It never merges, tags, or publishes.
+`none` is a normal answer for an ordinary pull request; it is not a different PR type. A user-visible intermediate PR can use `none` only when an accepted schema-2 feature ledger has an unchanged Delivery fingerprint, marks that PR's Feature close-out as `Not required`, and assigns the complete non-`none` release contract to a later final PR. Record the ledger path and fingerprint in the intermediate PR Notes. The final PR prepares the complete unreleased range from the latest reachable tag; intermediate PRs do not change any release owner.
+
+A first release uses `minor` with no prior release tag and prepares `0.1.0`. A compatible capability advances the minor version (`0.1.0` → `0.2.0`); a compatible fix advances the patch version (`0.2.0` → `0.2.1`). The historical `0.1.0-alpha.1` remains valid only as an existing release identity; there is no public alpha counter or release-candidate sequence. The procedure validates prepared release metadata before it pushes and opens the normal template-complete draft PR. It never merges, tags, or publishes.
 
 A release-bearing pull request also updates `release-preparation.json` with the matching version and intent, and increments its sequence. A `none` pull request leaves that file unchanged. The Release workflow packages and publishes only when that record changed in the exact successful Check SHA. If a release attempt fails before its draft exists, prepare a new release-bearing pull request for a new release identity; do not rely on a later `none` or Dependabot push to retry it.
 
