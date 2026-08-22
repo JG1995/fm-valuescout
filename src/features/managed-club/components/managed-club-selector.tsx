@@ -30,13 +30,17 @@ function ManagedClubPicker({
   onSearchChange,
 }: ManagedClubPickerProps) {
   const activeOptionRef = useRef<HTMLButtonElement>(null);
+  const blurTimeoutRef = useRef<number | undefined>(undefined);
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const listboxId = useId();
   const optionIdPrefix = useId();
 
-  useEffect(() => setQuery(value), [value]);
+  useEffect(() => {
+    setQuery(value);
+    return () => window.clearTimeout(blurTimeoutRef.current);
+  }, [value]);
 
   const matches = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -83,7 +87,8 @@ function ManagedClubPicker({
         type="text"
         value={query}
         onBlur={() => {
-          window.setTimeout(() => {
+          window.clearTimeout(blurTimeoutRef.current);
+          blurTimeoutRef.current = window.setTimeout(() => {
             setOpen(false);
             setQuery(value);
             onSearchChange(value);
@@ -96,7 +101,10 @@ function ManagedClubPicker({
           setOpen(true);
           setActiveIndex(0);
         }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          window.clearTimeout(blurTimeoutRef.current);
+          setOpen(true);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             setOpen(false);

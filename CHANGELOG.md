@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-08-22
+
+### Fixed
+
+- Managed-club selection no longer restores an outdated club after the active save or snapshot context refreshes.
+
 ## [0.11.0] - 2026-08-21
 
 ### Added

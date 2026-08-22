@@ -5,6 +5,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -329,16 +330,32 @@ describe("My Club route", () => {
     });
     await user.type(picker, "Bar");
     await user.click(screen.getByRole("option", { name: "Barcelona" }));
-    await user.click(screen.getByRole("button", { name: "Save managed club" }));
 
-    setManagedClubIpcMock({
-      clubName: "Second FC",
-      status: "available",
-      unclassifiedPlayerCount: 0,
-    });
-    setPlannerAvailableClubs(["Second FC"]);
-    await queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
-    await waitFor(() => expect(picker).toHaveValue("Second FC"));
+    vi.useFakeTimers();
+    fireEvent.blur(picker);
+    fireEvent.click(screen.getByRole("button", { name: "Save managed club" }));
+
+    try {
+      setManagedClubIpcMock({
+        clubName: "Second FC",
+        status: "available",
+        unclassifiedPlayerCount: 0,
+      });
+      setPlannerAvailableClubs(["Second FC"]);
+      await act(async () => {
+        const invalidation = queryClient.invalidateQueries({
+          queryKey: managedClubKeys.all,
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        await invalidation;
+      });
+      expect(picker).toHaveValue("Second FC");
+
+      act(() => vi.advanceTimersByTime(150));
+      expect(picker).toHaveValue("Second FC");
+    } finally {
+      vi.useRealTimers();
+    }
 
     resolvePendingManagedClubSave();
 
