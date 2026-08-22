@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- None.
+- [Todo UX Quality Pass](./features/active/todo-ux-quality-pass.md) — deliver the seven current Linear Todo issues as four sequential PRs covering My Club containment, app history, player-table presentation, and Moneyball profile comparisons.
 
 ## Next
 
