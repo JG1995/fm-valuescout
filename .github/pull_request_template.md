@@ -13,11 +13,4 @@
 
 <!-- Breaking changes, follow-ups, intentional deferrals. Write "None" when nothing applies. -->
 
-## Release intent
-
-<!-- Select exactly one. `none` is normal for a non-release PR. See .pi/skills/create-pr/SKILL.md. -->
-
-- [ ] none
-- [ ] patch
-- [ ] minor
-- [ ] major
+<!-- An explicit /skill:create-release invocation prepares the separate release PR. Ordinary PRs do not carry release metadata. -->

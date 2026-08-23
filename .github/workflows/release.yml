@@ -1,28 +1,24 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: ["Check"]
-    types: [completed]
+  push:
     branches: [main]
+    paths:
+      - release-preparation.json
 
 concurrency:
   group: release-main
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
   prepare:
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
     runs-on: windows-latest
     outputs:
       release_required: ${{ steps.metadata.outputs.release_required }}
-      release_source_prepared: ${{ steps.metadata.outputs.release_source_prepared }}
       version: ${{ steps.metadata.outputs.version }}
       tag: ${{ steps.metadata.outputs.tag }}
       notes_base64: ${{ steps.metadata.outputs.notes_base64 }}
@@ -30,7 +26,7 @@ jobs:
       - name: Check out verified main commit
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
@@ -45,7 +41,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          VERIFIED_SHA: ${{ github.sha }}
         run: |
           function Invoke-Gh {
             param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
@@ -54,6 +50,27 @@ jobs:
               throw "GitHub CLI failed: gh $($Arguments -join ' ')"
             }
             return $output
+          }
+
+          function Wait-ForVerifiedCheck {
+            for ($attempt = 1; $attempt -le 120; $attempt++) {
+              $output = Invoke-Gh run list --workflow Check --branch main --event push --commit $env:VERIFIED_SHA --limit 20 --json status,conclusion,headSha
+              $runs = @(($output -join "`n") | ConvertFrom-Json)
+              $run = @($runs | Where-Object { $_.headSha -ceq $env:VERIFIED_SHA } | Select-Object -First 1)[0]
+              if ($null -eq $run) {
+                Start-Sleep -Seconds 10
+                continue
+              }
+              if ($run.status -cne "completed") {
+                Start-Sleep -Seconds 10
+                continue
+              }
+              if ($run.conclusion -cne "success") {
+                throw "Exact main Check did not succeed"
+              }
+              return
+            }
+            throw "Timed out waiting for exact main Check"
           }
 
           function Get-Releases {
@@ -137,7 +154,7 @@ jobs:
           }
 
           function Get-PublicationDecision {
-            param($Metadata, $ExistingRelease, [AllowNull()][object]$TagSha, [AllowNull()][object]$VerifiedSha, [bool]$ReleaseSourcePrepared)
+            param($Metadata, $ExistingRelease, [AllowNull()][object]$TagSha, [AllowNull()][object]$VerifiedSha)
             $inputPath = Join-Path $env:RUNNER_TEMP "release-policy-$([guid]::NewGuid()).json"
             $input = @{
               expected = @{
@@ -150,7 +167,6 @@ jobs:
               metadata = $Metadata
               existingRelease = $ExistingRelease
               tagSha = $TagSha
-              releaseSourcePrepared = $ReleaseSourcePrepared
             }
             [IO.File]::WriteAllText($inputPath, ($input | ConvertTo-Json -Depth 10 -Compress), [Text.UTF8Encoding]::new($false))
             $output = & node scripts/release-publication-policy.mjs $inputPath
@@ -190,16 +206,7 @@ jobs:
             }
           }
 
-          function Test-ReleasePreparationChange {
-            git diff --quiet "$env:VERIFIED_SHA^" $env:VERIFIED_SHA -- release-preparation.json
-            if ($LASTEXITCODE -eq 0) {
-              return $false
-            }
-            if ($LASTEXITCODE -eq 1) {
-              return $true
-            }
-            throw "Could not compare release preparation for the verified commit"
-          }
+          Wait-ForVerifiedCheck
 
           $releases = @(Get-Releases)
           $latest = $releases |
@@ -218,21 +225,15 @@ jobs:
             throw "Release metadata notes differ from the dated changelog section"
           }
           $existing = Get-ReleaseByTag $releases $metadata.tag
-          $releaseSourcePrepared = $metadata.releaseRequired -and (Test-ReleasePreparationChange)
           $verifiedSha = if ($metadata.releaseRequired) { $env:VERIFIED_SHA } else { $null }
-          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $metadata.tag) -VerifiedSha $verifiedSha -ReleaseSourcePrepared $releaseSourcePrepared
+          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $metadata.tag) -VerifiedSha $verifiedSha
           if (-not $metadata.releaseRequired) {
             if ($decision.mode -ne "no-op") {
               throw "Unchanged release did not resolve to a no-op"
             }
             Assert-PublishedRelease $existing $metadata.tag "FM ValueScout $($metadata.tag)" $notes $expectedPrerelease
           }
-          if ($metadata.releaseRequired -and -not $releaseSourcePrepared) {
-            Write-Host "Release version is prepared by an earlier main commit; publication is deferred"
-          }
-          "release_required=$($releaseSourcePrepared.ToString().ToLowerInvariant())" |
-            Add-Content -Path $env:GITHUB_OUTPUT
-          "release_source_prepared=$($releaseSourcePrepared.ToString().ToLowerInvariant())" |
+          "release_required=$($metadata.releaseRequired.ToString().ToLowerInvariant())" |
             Add-Content -Path $env:GITHUB_OUTPUT
           "version=$($metadata.version)" | Add-Content -Path $env:GITHUB_OUTPUT
           "tag=$($metadata.tag)" | Add-Content -Path $env:GITHUB_OUTPUT
@@ -249,7 +250,7 @@ jobs:
       - name: Check out verified main commit
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
@@ -266,11 +267,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          VERIFIED_SHA: ${{ github.sha }}
           EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
           EXPECTED_TAG: ${{ needs.prepare.outputs.tag }}
           NOTES_BASE64: ${{ needs.prepare.outputs.notes_base64 }}
-          RELEASE_SOURCE_PREPARED: ${{ needs.prepare.outputs.release_source_prepared }}
         run: |
           function Invoke-Gh {
             param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
@@ -331,7 +331,7 @@ jobs:
           }
 
           function Get-PublicationDecision {
-            param($Metadata, $ExistingRelease, [AllowNull()][object]$TagSha, [AllowNull()][object]$VerifiedSha, [bool]$ReleaseSourcePrepared)
+            param($Metadata, $ExistingRelease, [AllowNull()][object]$TagSha, [AllowNull()][object]$VerifiedSha)
             $inputPath = Join-Path $env:RUNNER_TEMP "release-policy-$([guid]::NewGuid()).json"
             $input = @{
               expected = @{
@@ -344,7 +344,6 @@ jobs:
               metadata = $Metadata
               existingRelease = $ExistingRelease
               tagSha = $TagSha
-              releaseSourcePrepared = $ReleaseSourcePrepared
             }
             [IO.File]::WriteAllText($inputPath, ($input | ConvertTo-Json -Depth 10 -Compress), [Text.UTF8Encoding]::new($false))
             $output = & node scripts/release-publication-policy.mjs $inputPath
@@ -433,15 +432,10 @@ jobs:
           $makeLatest = if ($expectedPrerelease) { "false" } else { "true" }
           $expectedTag = $env:EXPECTED_TAG
           $expectedNotes = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:NOTES_BASE64))
-          $releaseSourcePrepared = $env:RELEASE_SOURCE_PREPARED -eq "true"
           $title = "FM ValueScout $expectedTag"
           if ($expectedTag -cne "v$expectedVersion" -or [string]::IsNullOrWhiteSpace($expectedNotes)) {
             throw "Prepared release output is malformed"
           }
-          if (-not $releaseSourcePrepared) {
-            throw "Release publication is missing exact-SHA preparation"
-          }
-
           $releases = @(Get-Releases)
           $latest = $releases |
             Where-Object { -not $_.draft } |
@@ -454,7 +448,7 @@ jobs:
           }
           $metadata = $metadataOutput | ConvertFrom-Json
           $existing = Get-ReleaseByTag $releases $expectedTag
-          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $expectedTag) -VerifiedSha $env:VERIFIED_SHA -ReleaseSourcePrepared $releaseSourcePrepared
+          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $expectedTag) -VerifiedSha $env:VERIFIED_SHA
           if ($decision.mode -eq "no-op") {
             $asset = @($existing.assets | Where-Object { $_.name -ceq "FM-ValueScout_${expectedVersion}_x64-setup.exe" })[0]
             if ($null -eq $asset -or $asset.digest -notmatch '^sha256:([0-9a-f]{64})$') {
@@ -485,7 +479,7 @@ jobs:
 
           $releases = @(Get-Releases)
           $existing = Get-ReleaseByTag $releases $expectedTag
-          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $expectedTag) -VerifiedSha $env:VERIFIED_SHA -ReleaseSourcePrepared $releaseSourcePrepared
+          $decision = Get-PublicationDecision -Metadata $metadata -ExistingRelease $existing -TagSha (Get-TagCommitIfPresent $expectedTag) -VerifiedSha $env:VERIFIED_SHA
           $draftPayload = @{
             name = $title
             body = $expectedNotes

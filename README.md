@@ -115,7 +115,7 @@ Bridge development requires the .NET 6 SDK; attaching it to FM still requires a 
 
 ## Maintainers and contributors
 
-The release procedure and the boundary between a local Windows validation artifact and an automatically published release live in the [early-alpha release runbook](.wiki/notes/early-alpha-release-runbook.md). Repository development commands, tests, and architecture are documented in [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the [project wiki](.wiki/INDEX.md).
+The repository-local [`create-release` skill](.pi/skills/create-release/SKILL.md) owns explicit release preparation and the boundary between a local Windows validation artifact and automated publication. Repository development commands, tests, and architecture are documented in [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the [project wiki](.wiki/INDEX.md).
 
 ## License
 

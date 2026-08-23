@@ -20,7 +20,7 @@ An `Active` PR records its branch and base, but ledger state alone does not gran
 
 Schema 2 requires one durable **Completed work** row for each completed commit. Record the implementation outcome, validation evidence, test-portfolio result, final review result, and fix-round count before the content commit. Keep `Pending record` as the Git ref until the next normal ledger-bearing commit can resolve it.
 
-At feature completion, reconcile documentation and move the complete ledger to [completed features](../completed/README.md). Preserve every Delivery fingerprint input through final publication and release.
+At feature completion, reconcile documentation and move the complete ledger to [completed features](../completed/README.md). Preserve every Delivery fingerprint input through final publication. An explicit later release covers the complete merged range.
 
 ## Commit sizing guidance
 
@@ -47,15 +47,15 @@ Active
 
 ## Release
 
-**Release intent:** none | patch | minor | major
+**Release intent:** none
 
-**Release target:** none | <exact SemVer without a `v` prefix>
+**Release target:** none
 
-**Release command:** none | `<exact project release command>`
+**Release command:** none
 
-**Release verification:** none | `<exact command that verifies the release and final merge ref>`
+**Release verification:** none
 
-One ledger has one release outcome. The delivery workflow always runs this phase. For `none`, set the other three fields to `none`. For another intent, instantiate the exact automatic-publication wait and verified-release commands from the [early-alpha release runbook](../../notes/early-alpha-release-runbook.md). Do not substitute a manual tag or release.
+Feature delivery does not publish a release. Set all four fields to `none`. An explicit [`create-release`](../../../.pi/skills/create-release/SKILL.md) invocation later prepares one release PR for the complete unreleased `main` range. Do not substitute a manual tag or release.
 
 ## Intent
 

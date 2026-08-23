@@ -5,26 +5,72 @@ import { describe, expect, it } from "vitest";
 const checkWorkflow = readFileSync(".github/workflows/check.yml", "utf8");
 const releaseWorkflow = readFileSync(".github/workflows/release.yml", "utf8");
 
-describe("verified-main release workflow", () => {
-  it("only follows successful Check runs from pushes to main", () => {
-    expect(releaseWorkflow).toContain("workflow_run:");
-    expect(releaseWorkflow).toContain('workflows: ["Check"]');
-    expect(releaseWorkflow).toContain(
-      "github.event.workflow_run.conclusion == 'success'",
-    );
-    expect(releaseWorkflow).toContain(
-      "github.event.workflow_run.event == 'push'",
-    );
-    expect(releaseWorkflow).toContain(
-      "github.event.workflow_run.head_branch == 'main'",
-    );
-    expect(releaseWorkflow).toContain(
-      `ref: \${{ github.event.workflow_run.head_sha }}`,
+describe("explicit release workflow", () => {
+  it("does not run release-only validation from Check", () => {
+    expect(checkWorkflow).not.toContain("release-validation:");
+    expect(checkWorkflow).not.toContain("RELEASE_VALIDATION:");
+    expect(checkWorkflow).not.toContain("./scripts/dev package-windows");
+    expect(checkWorkflow).not.toContain("./scripts/dev release-metadata");
+    expect(checkWorkflow).not.toContain("release:");
+    expect(checkWorkflow).toContain(
+      "dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d",
     );
   });
 
-  it("keeps release validation and packaging read-only", () => {
-    expect(releaseWorkflow).toContain("permissions:\n  contents: read");
+  it("starts only when an explicit release preparation reaches main", () => {
+    const trigger = releaseWorkflow.slice(
+      releaseWorkflow.indexOf("on:\n"),
+      releaseWorkflow.indexOf("\nconcurrency:"),
+    );
+
+    expect(trigger).toBe(
+      "on:\n  push:\n    branches: [main]\n    paths:\n      - release-preparation.json\n",
+    );
+  });
+
+  it("waits for the exact main Check before it validates or packages", () => {
+    expect(releaseWorkflow).toContain("actions: read");
+    const prepareWorkflow = releaseWorkflow.slice(
+      releaseWorkflow.indexOf("  prepare:"),
+      releaseWorkflow.indexOf("  publish:"),
+    );
+    const publishWorkflow = releaseWorkflow.slice(
+      releaseWorkflow.indexOf("  publish:"),
+    );
+    const waitInvocation = "\n          Wait-ForVerifiedCheck\n";
+    const waitIndex = prepareWorkflow.indexOf(waitInvocation);
+
+    expect(prepareWorkflow).toContain(
+      "Invoke-Gh run list --workflow Check --branch main --event push --commit $env:VERIFIED_SHA",
+    );
+    const waitFunction = prepareWorkflow.slice(
+      prepareWorkflow.indexOf("function Wait-ForVerifiedCheck"),
+      prepareWorkflow.indexOf("function Get-Releases"),
+    );
+
+    expect(waitFunction).toContain(
+      'if ($run.conclusion -cne "success") {\n                throw "Exact main Check did not succeed"',
+    );
+    expect(
+      waitFunction.indexOf("Exact main Check did not succeed"),
+    ).toBeLessThan(waitFunction.lastIndexOf("return"));
+    expect(prepareWorkflow).toContain("VERIFIED_SHA: $" + "{{ github.sha }}");
+    expect(prepareWorkflow).toContain(`ref: \${{ github.sha }}`);
+    expect(waitIndex).toBeGreaterThan(-1);
+    expect(prepareWorkflow.indexOf(waitInvocation, waitIndex + 1)).toBe(-1);
+    expect(waitIndex).toBeLessThan(
+      prepareWorkflow.indexOf(
+        "& bash ./scripts/dev release-metadata $latestTag",
+      ),
+    );
+    expect(publishWorkflow).toContain("needs: prepare");
+    expect(publishWorkflow).toContain("./scripts/dev package-windows");
+  });
+
+  it("keeps release validation and packaging read-only until publication", () => {
+    expect(releaseWorkflow).toContain(
+      "permissions:\n  actions: read\n  contents: read",
+    );
     expect(releaseWorkflow.match(/contents: write/g)).toHaveLength(1);
     expect(releaseWorkflow).toContain("publish:");
     expect(releaseWorkflow).toContain(
@@ -57,22 +103,6 @@ describe("verified-main release workflow", () => {
     expect(releaseWorkflow).toContain("./scripts/dev package-windows");
   });
 
-  it("requires an exact-SHA release preparation before packaging a new version", () => {
-    const prepareWorkflow = releaseWorkflow.slice(
-      releaseWorkflow.indexOf("  prepare:"),
-      releaseWorkflow.indexOf("  publish:"),
-    );
-
-    expect(releaseWorkflow).toContain("release-preparation.json");
-    expect(releaseWorkflow).toContain("release_source_prepared");
-    expect(prepareWorkflow).toContain(
-      "VERIFIED_SHA: $" + "{{ github.event.workflow_run.head_sha }}",
-    );
-    expect(prepareWorkflow).toContain(
-      "Release version is prepared by an earlier main commit; publication is deferred",
-    );
-  });
-
   it("preserves absent GitHub SHAs as JSON null in both release jobs", () => {
     expect(
       releaseWorkflow.match(
@@ -80,25 +110,6 @@ describe("verified-main release workflow", () => {
       ),
     ).toHaveLength(2);
     expect(releaseWorkflow).not.toContain("[AllowNull()][string]$TagSha");
-  });
-
-  it("requires metadata validation and packages without retaining an artifact in Check", () => {
-    expect(checkWorkflow).toContain("release:");
-    expect(checkWorkflow).toContain("release-validation:");
-    expect(checkWorkflow).toContain(
-      "& bash ./scripts/dev release-metadata $latestTag",
-    );
-    expect(
-      checkWorkflow.match(
-        /& bash \.\/scripts\/dev release-metadata \$latestTag/g,
-      ),
-    ).toHaveLength(1);
-    expect(checkWorkflow).toContain("./scripts/dev package-windows");
-    expect(checkWorkflow).toContain("RELEASE_VALIDATION:");
-    expect(checkWorkflow).not.toContain("actions/upload-artifact@");
-    expect(checkWorkflow).toContain(
-      "dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d",
-    );
   });
 
   it("stages a checked release before publishing one Windows release", () => {
