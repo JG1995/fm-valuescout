@@ -9,8 +9,7 @@ Keeping the delivery plan intact preserves the exact inputs needed to recompute 
 - every PR branch, base, provider, template, merge method, required-check rule, and title;
 - every commit packet and packet fingerprint;
 - completed-work validation and review evidence;
-- exact implementation and merge refs;
-- the historical Release block, when the record has one; and
+- exact implementation and merge refs; and
 - discoveries, deviations, documentation impact, and publication corrections.
 
 During close-out:
@@ -19,11 +18,11 @@ During close-out:
 2. Apply and review bounded corrections.
 3. Reconcile current-state documentation and TODO state.
 4. Set the final PR's `Feature close-out` to `Current`.
-5. Preserve the accepted Delivery fingerprint and any historical Release block unchanged for a delivered feature. For abandonment, follow the rule below.
+5. Preserve the accepted Delivery fingerprint. Preserve historical Release blocks unchanged.
 6. Move the complete ledger from `.wiki/features/active/` to this directory in the reviewed close-out commit.
 
 Do not remove packet fields, earlier PR metadata, or fingerprint inputs before the final PR merges and feature close-out completes. Do not create a repository-only follow-up commit to record the final PR's self-referential merge ref or an external release result. The PR URL and verified provider state are the durable external evidence.
 
-Current feature ledgers use `Release intent: none` and complete without release mutation. An explicit [`create-release`](../../../.pi/skills/create-release/SKILL.md) invocation later prepares a separate release PR for the complete unreleased `main` range. Older records retain their historical release fields unchanged.
+PI_SETUP does not require release records. This repository uses an explicit [`create-release`](../../../.pi/skills/create-release/SKILL.md) invocation to prepare a separate release PR for the complete unreleased `main` range. Older records retain their historical Release blocks unchanged.
 
-An abandoned feature also keeps its schema 2 ledger. Set status to `Abandoned`, mark unfinished PRs and commits `Removed — <reason>`, resolve retained completed refs, record the approved abandonment details, set release intent and all release fields to `none`, recompute and record the Delivery fingerprint after that developer-approved authority change, remove Active work pointers, and move the ledger here. Later work starts from a fresh plan.
+An abandoned feature also keeps its schema 2 ledger. Set status to `Abandoned`, mark unfinished PRs and commits `Removed — <reason>`, resolve retained completed refs, record the approved abandonment details, recompute and record the Delivery fingerprint after that developer-approved authority change, remove Active work pointers, and move the ledger here. Later work starts from a fresh plan.

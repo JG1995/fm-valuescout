@@ -45,18 +45,6 @@ Active
 
 **Delivery fingerprint:** <SHA-256 from `delivery_state.py` after plan review>
 
-## Release
-
-**Release intent:** none
-
-**Release target:** none
-
-**Release command:** none
-
-**Release verification:** none
-
-Feature delivery does not publish a release. Set all four fields to `none`. An explicit [`create-release`](../../../.pi/skills/create-release/SKILL.md) invocation later prepares one release PR for the complete unreleased `main` range. Do not substitute a manual tag or release.
-
 ## Intent
 
 Why the feature exists and what capability it introduces.
@@ -334,7 +322,7 @@ Record material deviations, blockers, and decisions that change remaining work. 
 
 Schema 2 requires exactly one row for every `Completed` commit. Use the exact full PR and commit headings in the first two cells; abbreviations are invalid. Escape a literal table pipe as `\|`. Use a fix-round count from `0` through `3`. Resolve `Pending record` from Git in the next normal ledger update or during feature reconciliation.
 
-Automated publication currently supports GitHub PRs and GitHub Actions. Record another provider accurately, but expect delivery to stop rather than improvise an adapter. Run `delivery_state.py` after plan review, record its exact Delivery fingerprint, and rerun it before acceptance. The fingerprint covers every PR authority field, every commit packet fingerprint, and the Release block. Any later authority change ends delivery without model judgment. Record an intermediate PR's immutable merge ref when activating its dependent PR. A completed final-feature record may retain its PR URL as the durable publication reference because its own merge ref cannot appear in the content being merged; do not create a metadata-only follow-up commit solely to record that self-referential ref.
+Automated publication currently supports GitHub PRs and GitHub Actions. Record another provider accurately, but expect delivery to stop rather than improvise an adapter. Run `delivery_state.py` after plan review, record its exact Delivery fingerprint, and rerun it before acceptance. The fingerprint covers every PR authority field and every commit packet fingerprint. Any later authority change ends delivery without model judgment. Record an intermediate PR's immutable merge ref when activating its dependent PR. A completed final-feature record may retain its PR URL as the durable publication reference because its own merge ref cannot appear in the content being merged; do not create a metadata-only follow-up commit solely to record that self-referential ref.
 
 ## Final validation
 
@@ -360,5 +348,5 @@ Include this section only when the developer explicitly abandons the feature. Se
 
 **Resume rule:** Fresh plan required
 
-Set release intent, target, command, and verification to `none`, then recompute and record the Delivery fingerprint for that developer-approved authority change. Move the complete ledger under `features/completed/` as an abandoned outcome. Do not publish it. Later work starts from a fresh plan rather than reactivating this ledger.
+Recompute and record the Delivery fingerprint for that developer-approved authority change. Move the complete ledger under `features/completed/` as an abandoned outcome. Do not publish it. Later work starts from a fresh plan rather than reactivating this ledger.
 ~~~

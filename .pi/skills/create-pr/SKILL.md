@@ -21,7 +21,7 @@ Use [`create-release`](../create-release/SKILL.md) only after a developer explic
 
 Do not edit release version owners, `CHANGELOG.md` dated sections, or `release-preparation.json` for an ordinary pull request. Do not run `release-metadata` as a pull-request classification step.
 
-A feature ledger records `Release intent: none`; an explicit release later covers the complete range from the latest published tag through synchronized `main`.
+Feature delivery has no release fields. An explicit release later covers the complete range from the latest published tag through synchronized `main`.
 
 ## Validate and create the draft
 

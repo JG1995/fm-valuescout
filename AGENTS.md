@@ -191,9 +191,9 @@ Any authority or packet change invalidates the grant. It never permits amend, re
 
 Stage exact files or hunks. Never use `git add .` or `git commit -a`. Before every commit, inspect status, the complete staged diff and stat, and run `git diff --cached --check` plus recorded validation. Report documentation impact, reviewer findings, risks, and the proposed commit message. Manual work waits for explicit developer approval before committing.
 
-## Release contract
+## Project-owned releases
 
-Every feature ledger records `Release intent: none` and no release command or target. A feature merge never publishes by default.
+PI_SETUP delivery ends after the final PR merges and the base is synchronized. A feature merge never publishes by default.
 
 Only an explicit `/skill:create-release` invocation can prepare a release. It inspects all changes since the latest published tag, proposes the SemVer scope, updates the version owners and changelog, increments `release-preparation.json`, and opens a dedicated release PR. The Release workflow creates the tag and GitHub release only after that PR merges and the exact `main` Check passes. Do not infer a version, tag, provider action, or deployment.
 
