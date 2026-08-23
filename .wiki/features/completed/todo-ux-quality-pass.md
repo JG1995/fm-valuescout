@@ -133,7 +133,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Status:** Merged
 
-**PR ref:** https://github.com/JG1995/fm-valuescout/pull/77
+**PR ref:** <https://github.com/JG1995/fm-valuescout/pull/77>
 
 **Merge ref:** 2f7bba077b8907a7671021bfedc36392c8d1804c
 
@@ -404,7 +404,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Status:** Merged
 
-**PR ref:** https://github.com/JG1995/fm-valuescout/pull/78
+**PR ref:** <https://github.com/JG1995/fm-valuescout/pull/78>
 
 **Merge ref:** 6797dc0cba262f4de251b241bf686a4537f92918
 
@@ -495,7 +495,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Status:** Merged
 
-**PR ref:** https://github.com/JG1995/fm-valuescout/pull/79
+**PR ref:** <https://github.com/JG1995/fm-valuescout/pull/79>
 
 **Merge ref:** d53b19b4acad089f748d7bc0296955dbad82acdc
 
