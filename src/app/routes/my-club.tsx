@@ -714,7 +714,7 @@ function MyClubPageContent() {
       </div>
       <div
         {...myClubWorkspacePanelProps("staff", activeWorkspace)}
-        className="min-h-0 flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col"
       >
         <Suspense fallback={<StaffWorkspaceFallback />}>
           <StaffSearchResultsPanel
@@ -734,7 +734,7 @@ function MyClubPageContent() {
       </div>
       <div
         {...myClubWorkspacePanelProps("staff-shortlist", activeWorkspace)}
-        className="min-h-0 flex-1 flex-col"
+        className="flex min-h-0 flex-1 flex-col"
       >
         <Suspense fallback={<StaffWorkspaceFallback />}>
           <MyClubStaffShortlistWorkspace
