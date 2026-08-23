@@ -357,8 +357,9 @@ export function PlayerDevelopmentActions({
         </div>
         <div
           ref={outcomeRef}
+          data-testid="player-development-outcome"
           tabIndex={-1}
-          className="rounded-sm [&:not(:empty)]:mt-2 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
+          className="max-h-16 overflow-y-auto rounded-sm [&:not(:empty)]:mt-2 focus:outline-2 focus:outline-offset-2 focus:outline-primary"
           aria-live="polite"
         >
           {!confirmationOpen ? (

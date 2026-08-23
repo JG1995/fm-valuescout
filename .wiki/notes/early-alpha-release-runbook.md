@@ -14,9 +14,17 @@ Run it on a native Windows host. It builds the locked bridge from the checked-ou
 
 The universal pull-request release-preparation procedure, read-only metadata validation, and verified-`main` publication automation exist now. The historical `0.1.0-alpha.1` release remains immutable. Future release-bearing pull requests publish ordinary SemVer releases such as `0.2.0` and `0.2.1`; do not create a tag or GitHub release manually as a substitute.
 
-## Release validation checklist
+## Routine automated release validation
 
-Complete this before merging a release-bearing pull request. Repeat the full checklist after a change to packaging, the bridge, diagnostics, or release automation. Use the data and migration checks below for data changes.
+For a release-bearing pull request, the required `Check` validates release metadata and runs `./scripts/dev package-windows` against the exact pull-request SHA. Check builds the Windows validation package, but it does not upload or retain that artifact.
+
+After merge, `Check` repeats the same metadata and package coverage on the exact `main` SHA. The workflow-run `Release` job then checks out that verified SHA, builds the publishable installer, stages and verifies the release assets, and publishes the release.
+
+Do not run a local Windows package only because release metadata or version owners changed. The automated Check and Release path covers that routine case.
+
+## Risk-triggered manual validation
+
+Run the following native Windows validation before merge only when the change affects packaging, the bridge, diagnostics, or release automation. The local artifact supports these installed-app checks; it is not a routine duplicate of the Check package.
 
 1. On Windows, run `./scripts/dev package-windows` from the exact commit under review.
 2. Verify exactly one installer and its `.sha256` sidecar. Verify the checksum from a separate command.
@@ -26,7 +34,7 @@ Complete this before merging a release-bearing pull request. Repeat the full che
 6. With BepInEx already installed, install/update the bridge, restart FM26, and run one complete men's-database Load Data flow on the supported build.
 7. Exercise Search, profiles, configurable tables, CSV enrichment, Planner, Academy, snapshot persistence, and the two guarded boost actions only after backing up the FM save.
 
-Do not merge a release-bearing pull request if a required installed-app or FM validation is missing. Its successful merge will publish automatically.
+Do not merge when a required risk-triggered installed-app or FM validation is missing. Release-bearing changes that do not meet a risk trigger use the automated validation above.
 
 ## Data and migration checks
 
@@ -65,7 +73,7 @@ Every successful required `Check` run caused by a push to `main` evaluates relea
 - A newer validated release builds the same Windows validation artifact, stages the installer and checksum in a matching temporary draft, uses the exact dated changelog section as the complete release body, verifies the assembled release, then publishes it as a normal GitHub release.
 - A mismatch among the SHA, version, tag, changelog, existing draft, or published release fails closed. A retry for the same release identity is idempotent.
 
-The `Release` workflow has read-only defaults. Only its final Windows package-and-publish job receives `contents: write`; it checks out the successful `Check` run's exact `head_sha`, rather than a later `main` commit. The required `check` also validates release metadata and, when release inputs change, stores the same Windows validation artifact and checksum for the installed-app checklist.
+The `Release` workflow has read-only defaults. Only its final Windows package-and-publish job receives `contents: write`; it checks out the successful `Check` run's exact `head_sha`, rather than a later `main` commit. The required `Check` validates release metadata and builds the Windows validation package, but it does not upload or retain that artifact. The `Release` workflow creates the publishable installer after verified `main`, stages and verifies it, and publishes it.
 
 If staging fails after a temporary draft exists, keep it unpublished. Re-run the exact failed Release workflow only when the source SHA is unchanged; it can repair that matching draft. If source correction is required, remove the unpublished temporary draft and its matching tag before a new release-bearing PR produces a different SHA. Do not retarget a draft to a different commit or delete or overwrite a published release.
 

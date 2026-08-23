@@ -166,6 +166,20 @@ export function MoneyballProfilePanel({
             </dd>
           </div>
         </dl>
+        {profile.comparisonBasis.kind === "available" ? (
+          <p className="text-body-sm text-on-surface-variant">
+            Natural positions:{" "}
+            {profile.comparisonBasis.naturalPositions.join(", ")} ·{" "}
+            {profile.comparisonBasis.comparisonPlayerCount} comparison{" "}
+            {profile.comparisonBasis.comparisonPlayerCount === 1
+              ? "player"
+              : "players"}
+          </p>
+        ) : (
+          <p role="status" className="text-body-sm text-on-surface-variant">
+            Percentile scores unavailable: this player has no natural position.
+          </p>
+        )}
         <div className="overflow-x-auto pb-0.5">
           <MoneyballTabs
             activeId={category.id}
@@ -191,7 +205,11 @@ export function MoneyballProfilePanel({
                       key={metric.id}
                       metric={metric}
                       value={profile.statistics[metric.id] ?? null}
-                      score={profile.percentiles[metric.id] ?? null}
+                      score={
+                        profile.comparisonBasis.kind === "available"
+                          ? (profile.percentiles?.[metric.id] ?? null)
+                          : null
+                      }
                     />
                   );
                 })}

@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Todo UX Quality Pass](./features/active/todo-ux-quality-pass.md) — deliver the seven current Linear Todo issues as four sequential PRs covering My Club containment, app history, player-table presentation, and Moneyball profile comparisons.
+None.
 
 ## Next
 
@@ -60,6 +60,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Completed
 
+- [Todo UX Quality Pass](./features/completed/todo-ux-quality-pass.md) — My Club containment, app history controls, shared player-table refinements, and Moneyball profile comparison improvements.
 - [Planner Best-Role Reference](./features/completed/planner-best-role-reference.md) — read-only phase-specific best-lane reference for every current managed-club player, with Current/Potential assignment, adjusted scores, and a sortable Planner Modal; final PR not published.
 - [Moneyball Role Scores](./features/completed/moneyball-role-scores.md) — versioned, position-family-specific performance role definitions with full-import Player Profile scores, filtered-cohort Search columns and filters, and explicit unavailable attribute placeholders (Linear JAY-20; final PR unpublished)
 - [Optional Moneyball Analysis Views](./features/completed/moneyball-views.md) — current-snapshot Moneyball percentile cohorts, optional Search and Player Profile views, virtualized raw-metric filtering, and one shared default-view preference (Linear JAY-19)

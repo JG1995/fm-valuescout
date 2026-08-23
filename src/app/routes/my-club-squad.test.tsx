@@ -1051,8 +1051,8 @@ describe("My Club route", () => {
     );
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByTestId("squad-boost-feedback")).toHaveFocus();
     });
-    expect(screen.getByTestId("squad-boost-feedback")).toHaveFocus();
     const action = screen.getByRole("button", { name: "Boost all CA" });
     expect(action).toBeDisabled();
     await user.click(action);
@@ -1167,8 +1167,8 @@ describe("My Club route", () => {
     );
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.getByTestId("squad-boost-feedback")).toHaveFocus();
     });
-    expect(screen.getByTestId("squad-boost-feedback")).toHaveFocus();
     expect(
       screen.getByRole("button", { name: "Make all Wonderkids" }),
     ).toBeDisabled();

@@ -11,6 +11,7 @@ import {
 } from "@/utils/profile-position-roles";
 import { rolePhaseLabel } from "@/utils/role-phase";
 import type {
+  MoneyballComparisonBasis,
   MoneyballRoleContribution,
   MoneyballRoleScore,
 } from "../types/moneyball-profile";
@@ -77,7 +78,7 @@ function RoleExplanation({
       </summary>
       <div className="pb-2">
         <p className="pb-1 text-[11px] text-on-surface-variant">
-          Catalog v{catalogVersion} · full imported cohort.
+          Catalog v{catalogVersion} · natural-position comparison cohort.
         </p>
         {role.score === null ? (
           <p className="pb-1 text-body-sm text-on-surface-variant">
@@ -85,7 +86,8 @@ function RoleExplanation({
           </p>
         ) : (
           <p className="pb-1 text-body-sm text-on-surface-variant">
-            Weighted percentile score from the full imported Moneyball cohort.
+            Weighted percentile score from the natural-position comparison
+            cohort.
           </p>
         )}
         <dl>
@@ -127,18 +129,24 @@ export function MoneyballRoleFitPanel({
   positions,
   roleScores,
   catalogVersion,
+  comparisonBasis,
 }: {
   positions: PositionFamiliarityMap;
-  roleScores: readonly MoneyballRoleScore[];
-  catalogVersion: number;
+  roleScores: readonly MoneyballRoleScore[] | null;
+  catalogVersion: number | null;
+  comparisonBasis: MoneyballComparisonBasis;
 }) {
   const [selectedPosition, setSelectedPosition] = useState(() =>
-    defaultProfilePosition(positions, roleScores),
+    defaultProfilePosition(positions, roleScores ?? []),
   );
   const [direction, setDirection] = useState<"ascending" | "descending">(
     "descending",
   );
-  const roles = rolesForScorePosition(roleScores, selectedPosition, direction);
+  const roles = rolesForScorePosition(
+    roleScores ?? [],
+    selectedPosition,
+    direction,
+  );
   const familiarity = positions[selectedPosition];
   const toggleSort = () => {
     setDirection((current) =>
@@ -146,6 +154,18 @@ export function MoneyballRoleFitPanel({
     );
   };
   const SortIcon = direction === "ascending" ? ArrowUp : ArrowDown;
+
+  if (comparisonBasis.kind === "unavailableNoNaturalPosition") {
+    return (
+      <Panel title="Moneyball role fit">
+        <p role="status" className="text-body-md text-on-surface-variant">
+          Role scores unavailable: this player has no natural position.
+        </p>
+      </Panel>
+    );
+  }
+
+  if (roleScores === null || catalogVersion === null) return null;
 
   return (
     <Panel
@@ -160,13 +180,18 @@ export function MoneyballRoleFitPanel({
     >
       <section
         aria-label={`Moneyball role fit for ${selectedPosition}`}
-        className="grid h-full min-h-0 gap-4 sm:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]"
+        className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]"
       >
-        <ProfilePositionPicker
-          positions={positions}
-          selectedPosition={selectedPosition}
-          onSelectPosition={setSelectedPosition}
-        />
+        <div
+          data-testid="moneyball-role-position-picker-scroller"
+          className="min-h-0 overflow-y-auto pr-1"
+        >
+          <ProfilePositionPicker
+            positions={positions}
+            selectedPosition={selectedPosition}
+            onSelectPosition={setSelectedPosition}
+          />
+        </div>
         <div className="flex min-h-0 min-w-0 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             <table className="w-full table-fixed border-collapse">

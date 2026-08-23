@@ -20,6 +20,14 @@ export type MoneyballRoleScore = {
   contributions: MoneyballRoleContribution[];
 };
 
+export type MoneyballComparisonBasis =
+  | {
+      kind: "available";
+      naturalPositions: string[];
+      comparisonPlayerCount: number;
+    }
+  | { kind: "unavailableNoNaturalPosition" };
+
 export type MoneyballProfile =
   | { state: "noData" }
   | { state: "needsReimport" }
@@ -32,7 +40,8 @@ export type MoneyballProfile =
       substituteAppearances: number | null;
       minutes: number | null;
       statistics: MoneyballStatistics;
-      percentiles: MoneyballPercentiles;
-      roleCatalogVersion: number;
-      roleScores: MoneyballRoleScore[];
+      percentiles: MoneyballPercentiles | null;
+      roleCatalogVersion: number | null;
+      roleScores: MoneyballRoleScore[] | null;
+      comparisonBasis: MoneyballComparisonBasis;
     };

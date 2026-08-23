@@ -48,8 +48,25 @@ export function fixturePlayerMoneyball(
     percentiles: { goals: 83, goals_per_90: 75 },
     roleCatalogVersion: 1,
     roleScores: [],
+    comparisonBasis: {
+      kind: "available",
+      naturalPositions: ["AMR"],
+      comparisonPlayerCount: 24,
+    },
     ...overrides,
   };
+}
+
+export function fixturePlayerMoneyballWithoutNaturalPosition(
+  overrides: Partial<Extract<MoneyballProfile, { state: "ready" }>> = {},
+): Extract<MoneyballProfile, { state: "ready" }> {
+  return fixturePlayerMoneyball({
+    percentiles: null,
+    roleCatalogVersion: null,
+    roleScores: null,
+    comparisonBasis: { kind: "unavailableNoNaturalPosition" },
+    ...overrides,
+  });
 }
 
 export function resolveGetPlayerMoneyballIpcMock(

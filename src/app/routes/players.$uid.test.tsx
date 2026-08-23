@@ -15,6 +15,7 @@ import { useLayoutStore } from "@/stores/use-layout-store";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
   fixturePlayerMoneyball,
+  fixturePlayerMoneyballWithoutNaturalPosition,
   resolvePendingPlayerMoneyball,
   setPlayerMoneyballOverride,
   setPlayerMoneyballPending,
@@ -258,6 +259,205 @@ describe("player profile route", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps no-natural-position raw metrics distinct from unavailable scores", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ positions: { MC: 20 } }));
+    setPlayerMoneyballOverride(
+      fixturePlayerMoneyballWithoutNaturalPosition({
+        statistics: { goals: 10 },
+        percentiles: { goals: 50 },
+        roleCatalogVersion: 1,
+        roleScores: [
+          {
+            roleId: "stale-score",
+            displayName: "Stale score",
+            phase: "in_possession",
+            positionFamily: "central_midfielder",
+            positionTags: ["MC"],
+            score: 50,
+            contributions: [],
+          },
+        ],
+      }),
+    );
+
+    renderProfileRoute("/players/42?view=moneyball");
+
+    expect(await screen.findByText("10")).toBeInTheDocument();
+    const summary = screen.getByRole("region", {
+      name: "Alex Scout summary",
+    });
+    expect(
+      within(summary).getByLabelText("Moneyball IP: unavailable"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).queryByLabelText("Moneyball IP: 50, Average"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Percentile scores unavailable: this player has no natural position.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Role scores unavailable: this player has no natural position.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: "Goals: 50, Average" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Stale score Moneyball score: 50, Average"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a shared two-band header and toggle order across analysis views", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        name: "Alexandra Maximilian Scout",
+        positions: { MC: 20, AMC: 20, AMR: 20 },
+      }),
+    );
+    setPlayerMoneyballOverride(
+      fixturePlayerMoneyball({
+        comparisonBasis: {
+          kind: "available",
+          naturalPositions: ["MC", "AMC", "AMR"],
+          comparisonPlayerCount: 24,
+        },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const generalHeader = await screen.findByTestId("player-profile-header");
+    const generalSummary = within(generalHeader).getByRole("region", {
+      name: "Alexandra Maximilian Scout summary",
+    });
+    const generalTabs = within(generalHeader).getByRole("tablist", {
+      name: "Player analysis view",
+    });
+    const generalDetails = within(generalSummary).getByTestId(
+      "player-profile-summary-details",
+    );
+
+    expect(generalHeader.firstElementChild).toBe(generalSummary);
+    expect(generalHeader.lastElementChild).toBe(generalTabs);
+    expect(
+      within(generalSummary).getByRole("heading", {
+        level: 1,
+        name: "Alexandra Maximilian Scout",
+      }),
+    ).toHaveClass("break-words");
+    expect(
+      within(generalSummary).getByRole("heading", {
+        level: 1,
+        name: "Alexandra Maximilian Scout",
+      }),
+    ).not.toHaveClass("truncate");
+    expect(generalDetails).toHaveClass("lg:grid-cols-3");
+    expect(
+      within(generalDetails).getByTestId("player-profile-role-summaries"),
+    ).toHaveClass("grid-rows-2");
+    const generalActionSlot = within(generalSummary).getByTestId(
+      "player-profile-action-slot",
+    );
+    expect(generalActionSlot).toHaveClass("h-32", "overflow-visible");
+    expect(generalActionSlot).not.toHaveClass("overflow-y-auto");
+    expect(
+      within(generalDetails).getByTestId(
+        "player-profile-summary-analysis-details",
+      ),
+    ).toHaveClass("min-h-9");
+    expect(within(generalSummary).getByText("Current IP")).toBeInTheDocument();
+    expect(
+      within(generalSummary).getByText("Potential OOP"),
+    ).toBeInTheDocument();
+    expect(within(generalSummary).getByText("CA")).toBeInTheDocument();
+    expect(within(generalSummary).getByText("PA")).toBeInTheDocument();
+    expect(within(generalSummary).getByText("Value")).toBeInTheDocument();
+    const generalRoleFit = screen.getByRole("region", {
+      name: /^Role fit for /,
+    });
+    expect(generalRoleFit).toHaveClass(
+      "lg:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]",
+    );
+    expect(
+      within(generalRoleFit).getByTestId(
+        "player-role-position-picker-scroller",
+      ),
+    ).toHaveClass("min-h-0", "overflow-y-auto");
+
+    const general = within(generalTabs).getByRole("tab", {
+      name: "General",
+      selected: true,
+    });
+    general.focus();
+    await user.keyboard("{ArrowRight}");
+
+    const moneyball = await screen.findByRole("tab", {
+      name: "Moneyball",
+      selected: true,
+    });
+    await waitFor(() => expect(moneyball).toHaveFocus());
+
+    const moneyballHeader = screen.getByTestId("player-profile-header");
+    const moneyballSummary = within(moneyballHeader).getByRole("region", {
+      name: "Alexandra Maximilian Scout summary",
+    });
+    const moneyballDetails = within(moneyballSummary).getByTestId(
+      "player-profile-summary-details",
+    );
+
+    expect(moneyballHeader.firstElementChild).toBe(moneyballSummary);
+    expect(moneyballHeader.lastElementChild).toBe(
+      within(moneyballHeader).getByRole("tablist", {
+        name: "Player analysis view",
+      }),
+    );
+    expect(moneyballDetails).toHaveClass("lg:grid-cols-3");
+    expect(
+      within(moneyballDetails).getByTestId("player-profile-role-summaries"),
+    ).toHaveClass("grid-rows-2");
+    const moneyballActionSlot = within(moneyballSummary).getByTestId(
+      "player-profile-action-slot",
+    );
+    expect(moneyballActionSlot).toHaveClass("h-32", "overflow-visible");
+    expect(moneyballActionSlot).not.toHaveClass("overflow-y-auto");
+    expect(
+      within(moneyballDetails).getByTestId(
+        "player-profile-summary-analysis-details",
+      ),
+    ).toHaveClass("min-h-9");
+    expect(within(moneyballSummary).getByText("Age / DOB")).toBeInTheDocument();
+    expect(
+      within(moneyballSummary).getByText("Nationality"),
+    ).toBeInTheDocument();
+    expect(
+      within(moneyballSummary).getByText("Moneyball IP"),
+    ).toBeInTheDocument();
+    expect(
+      within(moneyballSummary).getByText("Moneyball OOP"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Natural positions: MC, AMC, AMR · 24 comparison players",
+      ),
+    ).toBeInTheDocument();
+    const moneyballRoleFit = screen.getByRole("region", {
+      name: /^Moneyball role fit for /,
+    });
+    expect(moneyballRoleFit).toHaveClass(
+      "lg:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]",
+    );
+    expect(
+      within(moneyballRoleFit).getByTestId(
+        "moneyball-role-position-picker-scroller",
+      ),
+    ).toHaveClass("min-h-0", "overflow-y-auto");
+  });
+
   it("moves between analysis views with arrow keys", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(fixturePlayerDetail());
@@ -271,6 +471,24 @@ describe("player profile route", () => {
     });
     general.focus();
     await user.keyboard("{ArrowRight}");
+
+    const moneyball = await screen.findByRole("tab", {
+      name: "Moneyball",
+      selected: true,
+    });
+    await waitFor(() => expect(moneyball).toHaveFocus());
+  });
+
+  it("restores focus after directly clicking Moneyball", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail());
+    setPlayerMoneyballOverride(fixturePlayerMoneyball());
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    await user.click(
+      await screen.findByRole("tab", { name: "Moneyball", selected: false }),
+    );
 
     const moneyball = await screen.findByRole("tab", {
       name: "Moneyball",
@@ -1536,6 +1754,45 @@ describe("player profile route", () => {
       screen.getByText("Determination 18 → unchanged"),
     ).toBeInTheDocument();
     expect(getWonderkidMentalityBoostIpcMockCalls()).toEqual([{ uid: 42 }]);
+  });
+
+  it("keeps a completed Wonderkid outcome reachable in the fixed action band", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(
+      fixturePlayerDetail({
+        attributes: { Determination: 8 },
+        personality: { Ambition: 10, Professionalism: 15 },
+      }),
+    );
+    const user = userEvent.setup();
+    renderProfileRoute("/players/42");
+
+    const summary = await screen.findByRole("region", {
+      name: "Alex Scout summary",
+    });
+    const actionSlot = within(summary).getByTestId(
+      "player-profile-action-slot",
+    );
+    expect(actionSlot).toHaveClass("h-32");
+    expect(actionSlot).not.toHaveClass("overflow-y-auto");
+    expect(
+      within(actionSlot).getByTestId("player-development-outcome"),
+    ).toHaveClass("max-h-16", "overflow-y-auto");
+
+    await user.click(
+      within(actionSlot).getByRole("button", { name: "Wonderkid Mentality" }),
+    );
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Apply Wonderkid Mentality",
+      }),
+    );
+
+    expect(
+      await within(actionSlot).findByText(
+        "Wonderkid Mentality updated Ambition from 10 to 20, Determination from 8 to 18.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shares the pending lock across both development actions", async () => {

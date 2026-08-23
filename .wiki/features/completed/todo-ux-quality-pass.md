@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -493,11 +493,11 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 ### PR 3 — Refine shared player-table presentation
 
-**Status:** Ready for publication
+**Status:** Merged
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/79
 
-**Merge ref:** Not merged
+**Merge ref:** d53b19b4acad089f748d7bc0296955dbad82acdc
 
 **Branch:** `feature/player-table-presentation`
 
@@ -649,7 +649,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 ### PR 4 — Refine Moneyball profile comparisons and header
 
-**Status:** Awaiting prior PR merge
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -667,7 +667,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Required checks:** check
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -679,7 +679,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 1 — Compute natural-position profile cohorts
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(moneyball): compare profile metrics by natural position`
 
@@ -742,7 +742,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 2 — Explain profile comparison basis and unavailable scores
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): explain Moneyball comparison basis`
 
@@ -803,7 +803,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 3 — Stabilize General and Moneyball header geometry
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `fix(profile): stabilize analysis header layout`
 
@@ -864,7 +864,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 4 — Prepare the Todo UX minor release
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `chore(release): prepare 0.12.0`
 
@@ -909,6 +909,9 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 - 2026-08-22 — Developer accepted the reviewed plan and activated `fix/my-club-ux-containment`.
 - 2026-08-22 — Developer chose to preserve four PRs under the updated one-release contract and approved the narrow intermediate-`none` release-guidance exception.
 - 2026-08-23 — Rebased `fix/my-club-ux-containment` onto synchronized `main` at `76cc9f8dbd82504f966038583da4e332e9839c0e`. Repository-wide Pi and release-policy changes now arrive from main; this branch retains only `.wiki/TODO.md` and this ledger.
+- 2026-08-23 — Browser smoke's valid Moneyball IPC stub lacked Commit 1's required `comparisonBasis` field, so it crashed before profile assertions. It now supplies an available basis; browser smoke still does not represent the no-natural-position state.
+- 2026-08-23 — Header-layout correction found that `player-roles-panel.tsx` and `moneyball-role-fit-panel.tsx` each activate their internal two-column role workspace at `sm`. Both now use `lg` so the profile content stacks with the expanded rail at effective narrow width. This is a bounded profile-content correction; it does not change table behavior or packet authority.
+- 2026-08-23 — Profile-only geometry correction moves vertical scroll ownership to the General and Moneyball position-picker columns around their natural-height pitches. The fixed action slot now preserves tooltip overflow, while only its inline outcome scrolls. This does not change app-shell or table layout.
 
 ## Completed work
 
@@ -921,7 +924,69 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 | PR 1 — Contain My Club workspaces and compact club setup | Commit 5 — Place managed-club save inline with search | 1be1e3dc426f8cc69e49c7ce621c0487aa456378 | Grouped the managed-club picker and save action in one responsive row with feedback below | RED failed on the missing managed-club control group; focused route tests passed 109 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 0 | None |
 | PR 2 — Add app history controls | Commit 1 — Expose session Back and Forward controls | d50b4ecf5b46b1cd8a2128e7c095627d21aafd21 | Added accessible Back and Forward controls backed by subscribed TanStack Router session history with branch-aware availability | RED failed because controls were absent; focused tests passed 27 tests, affected tests passed 33 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Added Strict Mode cleanup proof and corrected scroll-restoration documentation after review |
 | PR 3 — Refine shared player-table presentation | Commit 1 — Distinguish secondary nationality flags | 3ee9b2dbaacf429f752d9c2c55ef4048bd43a703 | Stable-deduplicated shared nationality cells and reduced every unique secondary flag's size and emphasis | RED failed on duplicate retention and identical emphasis; focused nationality tests passed 6 tests and `./scripts/dev check` passed | Pass | Clear | 0 | None |
-| PR 3 — Refine shared player-table presentation | Commit 2 — Stack player identity and migrate visible layouts | Pending record | Stacked player identity in Search, Moneyball Search, and Squad and migrated pre-v5 layouts without losing other preferences | RED failed on separate identity columns and old layouts; targeted tests passed 168 tests, affected tests passed 174 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Updated obsolete smoke default-column expectations; corrected identity-only migration fallback and added current/future preservation proof after review |
+| PR 3 — Refine shared player-table presentation | Commit 2 — Stack player identity and migrate visible layouts | f2bbce83034fa53436272c8639bd7fe4143a76aa | Stacked player identity in Search, Moneyball Search, and Squad and migrated pre-v5 layouts without losing other preferences | RED failed on separate identity columns and old layouts; targeted tests passed 168 tests, affected tests passed 174 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Updated obsolete smoke default-column expectations; corrected identity-only migration fallback and added current/future preservation proof after review |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 1 — Compute natural-position profile cohorts | 4db209d2b9db530d13e5866b13c06e19b6443e51 | Recomputed Rust-owned profile percentiles and role scores from deduplicated exact-natural-position peers and exposed additive comparison-basis metadata | RED failed on missing basis contracts; `./scripts/dev check-rust` passed 553 tests with 2 ignored, affected frontend tests passed 54 tests, and `./scripts/dev check` passed | Pass | Clear | 0 | Added null-safe existing frontend consumer adaptations required by the additive unavailable state |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 2 — Explain profile comparison basis and unavailable scores | ee0a6e0ee611119c40a6eb9bd453eb72db371682 | Rendered natural-position comparison basis and explicit no-natural percentile, role-table, and summary unavailable states while retaining raw metrics | RED failed on missing basis/unavailable presentation; targeted tests passed 57 tests, `check-app` and `check` passed, smoke passed 48 tests, and a 1280×800 Chromium inspection confirmed the no-natural state without clipping | Pass | Clear | 1 | Updated the browser IPC fixture and obsolete full-import copy; gated stale summary scores and corrected singleton wording after review |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 3 — Stabilize General and Moneyball header geometry | efe01c253efcbc876f6ea7e4df7a166152685d93 | Consolidated General and Moneyball into one stable two-band header, preserved click and keyboard focus, and added bounded action-outcome and position-picker scroll ownership | RED failed on the missing shared header; 60 affected tests, `./scripts/dev check`, and 48 smoke tests passed; Chromium geometry matched at 1280×800, 1600×900, and effective 200% layout with collapsed and expanded rail | Pass | Clear | 3 | Added bounded General/Moneyball role-panel and development-outcome corrections after geometry review; native Tauri physical zoom remains unrun |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 4 — Prepare the Todo UX minor release | b4e27bf3e43cfad3423615063e07f9251382c354 | Prepared version 0.12.0 across all durable owners with complete grouped release notes and exact minor-release authorization | RED failed on release-intent mismatch; `release-metadata v0.11.1 minor`, 35 retained release tests, `./scripts/dev check`, and `./scripts/dev secrets` passed | Pass | Clear | 1 | Reclassified release notes under Added, Changed, and Fixed after review; feature-review correction recorded at `357363403d9bc2ec84ac1c10a16ef825f8e6a14e` |
+
+## Exact implementation refs
+
+**Base:** `76cc9f8dbd82504f966038583da4e332e9839c0e`
+
+Earlier PR merge refs: PR1 `2f7bba077b8907a7671021bfedc36392c8d1804c`, PR2 `6797dc0cba262f4de251b241bf686a4537f92918`, and PR3 `d53b19b4acad089f748d7bc0296955dbad82acdc`.
+
+Final PR commit set:
+
+- `4db209d2b9db530d13e5866b13c06e19b6443e51`
+- `ee0a6e0ee611119c40a6eb9bd453eb72db371682`
+- `efe01c253efcbc876f6ea7e4df7a166152685d93`
+- `b4e27bf3e43cfad3423615063e07f9251382c354`
+- `357363403d9bc2ec84ac1c10a16ef825f8e6a14e` (feature-review correction)
+- Pending documentation reconciliation ref
+
+## Final publication
+
+```yaml
+status: ready_for_publication
+pr_status: not_published
+merge_status: not_merged
+pr_ref: "Not published"
+merge_ref: "Not merged"
+branch: feature/moneyball-profile-refinements
+base_branch: main
+base_ref: d53b19b4acad089f748d7bc0296955dbad82acdc
+publication_provider: GitHub
+merge_method: squash
+required_check_name: check
+pr_template: .github/pull_request_template.md
+feature_close_out: current
+feature_review_blocking: false
+feature_review_critical: none
+feature_review_high: none
+feature_review_medium: none
+feature_review_nitpick: none
+ci_repair_rounds: 0 of 2
+earlier_pr_merge_refs:
+  - 2f7bba077b8907a7671021bfedc36392c8d1804c
+  - 6797dc0cba262f4de251b241bf686a4537f92918
+  - d53b19b4acad089f748d7bc0296955dbad82acdc
+correction_ref: 357363403d9bc2ec84ac1c10a16ef825f8e6a14e
+close_out_documentation_ref: Pending record
+release_preparation_ref: b4e27bf3e43cfad3423615063e07f9251382c354
+implementation_range: "76cc9f8dbd82504f966038583da4e332e9839c0e..b4e27bf3e43cfad3423615063e07f9251382c354"
+final_pr_commit_set:
+  - 4db209d2b9db530d13e5866b13c06e19b6443e51
+  - ee0a6e0ee611119c40a6eb9bd453eb72db371682
+  - efe01c253efcbc876f6ea7e4df7a166152685d93
+  - b4e27bf3e43cfad3423615063e07f9251382c354
+  - 357363403d9bc2ec84ac1c10a16ef825f8e6a14e
+  - Pending record (documentation reconciliation)
+```
+
+## Feature close-out
+
+**State:** Current. Validation, feature-complete review, and documentation reconciliation cleared the exact implementation set. The final PR is ready for publication but remains unpublished and unmerged.
 
 ## Final validation
 
