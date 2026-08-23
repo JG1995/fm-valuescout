@@ -6,11 +6,14 @@ import {
 import {
   createMemoryHistory,
   createRouter,
+  RouterContextProvider,
   RouterProvider,
 } from "@tanstack/react-router";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { StrictMode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AppTopBar } from "@/app/components/app-top-bar";
 import type { RouterContext } from "@/app/router-context";
 import { academyClassesQueryOptions } from "@/features/academy/api/academy-classes-query-options";
 import { setBridgeStatusIpcMockMode } from "@/features/memory-read/api/bridge-status-ipc-mock";
@@ -74,6 +77,105 @@ describe("app top bar", () => {
 
   afterEach(() => {
     resolveBusyLoadDataRequest();
+  });
+
+  it("disables session history controls before navigation", async () => {
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    expect(await screen.findByRole("button", { name: "Back" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();
+  });
+
+  it("tracks history traversal and truncates Forward after a branch", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWithProviders();
+    const back = await screen.findByRole("button", { name: "Back" });
+    const forward = screen.getByRole("button", { name: "Forward" });
+
+    await act(async () => router.history.push("/settings?tab=first#saves"));
+    await act(async () => router.history.push("/search?view=general#filters"));
+
+    expect(back).toBeEnabled();
+    expect(forward).toBeDisabled();
+
+    await user.click(back);
+    await waitFor(() =>
+      expect(router.history.location.href).toBe("/settings?tab=first#saves"),
+    );
+    expect(forward).toBeEnabled();
+
+    await user.click(back);
+    await waitFor(() => expect(router.history.location.href).toBe("/"));
+
+    await user.click(forward);
+    await waitFor(() =>
+      expect(router.history.location.href).toBe("/settings?tab=first#saves"),
+    );
+
+    await user.click(back);
+    await waitFor(() => expect(router.history.location.href).toBe("/"));
+    await act(async () => router.history.push("/academy"));
+
+    await waitFor(() => expect(forward).toBeDisabled());
+  });
+
+  it("labels session history controls and keeps them focusable", async () => {
+    renderWithProviders();
+
+    const search = await screen.findByRole("combobox", {
+      name: "Search players",
+    });
+    const back = screen.getByRole("button", { name: "Back" });
+    const forward = screen.getByRole("button", { name: "Forward" });
+
+    expect(
+      search.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      back.compareDocumentPosition(forward) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(back).toHaveAttribute("title", "Back");
+    expect(forward).toHaveAttribute("title", "Forward");
+    back.focus();
+    expect(back).toHaveFocus();
+  });
+
+  it("cleans up the history subscription after Strict Mode effect replay", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const router = createRouter({
+      routeTree,
+      context: { queryClient } satisfies RouterContext,
+      defaultPreloadStaleTime: 0,
+      history: createMemoryHistory({ initialEntries: ["/settings"] }),
+    });
+    const realSubscribe = router.history.subscribe.bind(router.history);
+    let activeSubscriptions = 0;
+    vi.spyOn(router.history, "subscribe").mockImplementation((listener) => {
+      activeSubscriptions += 1;
+      const unsubscribe = realSubscribe(listener);
+      return () => {
+        activeSubscriptions -= 1;
+        unsubscribe();
+      };
+    });
+
+    const { unmount } = render(
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <RouterContextProvider router={router}>
+            <AppTopBar />
+          </RouterContextProvider>
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+
+    await screen.findByRole("button", { name: "Back" });
+    expect(activeSubscriptions).toBe(1);
+
+    unmount();
+    expect(activeSubscriptions).toBe(0);
   });
 
   it("reports ingest success after load_data", async () => {

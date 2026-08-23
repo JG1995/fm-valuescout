@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw } from "lucide-react";
-import { useId, useState } from "react";
+import { useRouter } from "@tanstack/react-router";
+import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { Button } from "@/components/ui/button/button";
 import { fieldClasses } from "@/components/ui/field/field-styles";
 import { academyKeys } from "@/features/academy/api/academy-keys";
@@ -22,6 +23,11 @@ import { cn } from "@/utils/cn";
 
 export function AppTopBar() {
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const [historyIndexes, setHistoryIndexes] = useState(() => {
+    const index = router.history.location.state.__TSR_index;
+    return { current: index, max: index };
+  });
   const { data: saves } = useQuery(savesQueryOptions);
   const activeSave = saves?.find((save) => save.isActive);
   const capCheckboxId = useId();
@@ -62,6 +68,18 @@ export function AppTopBar() {
 
   const capValid = Number.isInteger(playerCap) && playerCap > 0;
 
+  useEffect(
+    () =>
+      router.history.subscribe(({ action, location }) => {
+        const index = location.state.__TSR_index;
+        setHistoryIndexes((previous) => ({
+          current: index,
+          max: action.type === "PUSH" ? index : Math.max(previous.max, index),
+        }));
+      }),
+    [router],
+  );
+
   return (
     <header
       data-testid="app-header"
@@ -69,6 +87,24 @@ export function AppTopBar() {
     >
       <div className="flex h-header-height items-center gap-3 px-4">
         <GlobalPlayerSearch />
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            aria-label="Back"
+            disabled={historyIndexes.current === 0}
+            icon={ArrowLeft}
+            size="icon"
+            variant="ghost"
+            onClick={() => router.history.back()}
+          />
+          <Button
+            aria-label="Forward"
+            disabled={historyIndexes.current >= historyIndexes.max}
+            icon={ArrowRight}
+            size="icon"
+            variant="ghost"
+            onClick={() => router.history.forward()}
+          />
+        </div>
         <ActiveSaveSelect
           onSwitched={() => {
             void queryClient.invalidateQueries({ queryKey: searchKeys.all });
