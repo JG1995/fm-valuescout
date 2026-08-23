@@ -742,7 +742,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 2 — Explain profile comparison basis and unavailable scores
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(profile): explain Moneyball comparison basis`
 
@@ -803,7 +803,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 3 — Stabilize General and Moneyball header geometry
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `fix(profile): stabilize analysis header layout`
 
@@ -900,19 +900,19 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **PR:** PR 4 — Refine Moneyball profile comparisons and header
 
-**Commit:** Commit 2 — Explain profile comparison basis and unavailable scores
+**Commit:** Commit 3 — Stabilize General and Moneyball header geometry
 
 ### RED or removal proof
 
-Add Moneyball panel and player-route tests that fail because valid profiles do not explain their natural-position cohort and no-natural-position profiles cannot distinguish raw metrics from unavailable percentile and role scores.
+Add player-route tests that fail because General and Moneyball summaries do not share stable header landmarks, outer bands, and toggle position across mode changes.
 
 ### Expected outcome
 
-Valid profiles show natural positions and unique comparison-player count, while no-natural-position profiles retain raw metrics and show explicit unavailable percentile and role states without stale or neutral-looking scores.
+General and Moneyball render the same two-band profile-header footprint, retain all mode-specific data and comparison basis, and keep the analysis toggle focused and stationary at supported viewport sizes and 200% zoom.
 
 ### Explicit exclusions
 
-No browser-side cohort calculation, persisted-score fallback, header-geometry change, Moneyball Search UI change, or missing-row no-data redesign.
+No information removal, hard-coded content offsets, list-table layout change, duplicated full summaries, or invention from inaccessible reference images.
 
 ## Discoveries and replanning
 
@@ -927,6 +927,7 @@ No browser-side cohort calculation, persisted-score fallback, header-geometry ch
 - 2026-08-22 — Developer accepted the reviewed plan and activated `fix/my-club-ux-containment`.
 - 2026-08-22 — Developer chose to preserve four PRs under the updated one-release contract and approved the narrow intermediate-`none` release-guidance exception.
 - 2026-08-23 — Rebased `fix/my-club-ux-containment` onto synchronized `main` at `76cc9f8dbd82504f966038583da4e332e9839c0e`. Repository-wide Pi and release-policy changes now arrive from main; this branch retains only `.wiki/TODO.md` and this ledger.
+- 2026-08-23 — Browser smoke's valid Moneyball IPC stub lacked Commit 1's required `comparisonBasis` field, so it crashed before profile assertions. It now supplies an available basis; browser smoke still does not represent the no-natural-position state.
 
 ## Completed work
 
@@ -940,7 +941,8 @@ No browser-side cohort calculation, persisted-score fallback, header-geometry ch
 | PR 2 — Add app history controls | Commit 1 — Expose session Back and Forward controls | d50b4ecf5b46b1cd8a2128e7c095627d21aafd21 | Added accessible Back and Forward controls backed by subscribed TanStack Router session history with branch-aware availability | RED failed because controls were absent; focused tests passed 27 tests, affected tests passed 33 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Added Strict Mode cleanup proof and corrected scroll-restoration documentation after review |
 | PR 3 — Refine shared player-table presentation | Commit 1 — Distinguish secondary nationality flags | 3ee9b2dbaacf429f752d9c2c55ef4048bd43a703 | Stable-deduplicated shared nationality cells and reduced every unique secondary flag's size and emphasis | RED failed on duplicate retention and identical emphasis; focused nationality tests passed 6 tests and `./scripts/dev check` passed | Pass | Clear | 0 | None |
 | PR 3 — Refine shared player-table presentation | Commit 2 — Stack player identity and migrate visible layouts | f2bbce83034fa53436272c8639bd7fe4143a76aa | Stacked player identity in Search, Moneyball Search, and Squad and migrated pre-v5 layouts without losing other preferences | RED failed on separate identity columns and old layouts; targeted tests passed 168 tests, affected tests passed 174 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Updated obsolete smoke default-column expectations; corrected identity-only migration fallback and added current/future preservation proof after review |
-| PR 4 — Refine Moneyball profile comparisons and header | Commit 1 — Compute natural-position profile cohorts | Pending record | Recomputed Rust-owned profile percentiles and role scores from deduplicated exact-natural-position peers and exposed additive comparison-basis metadata | RED failed on missing basis contracts; `./scripts/dev check-rust` passed 553 tests with 2 ignored, affected frontend tests passed 54 tests, and `./scripts/dev check` passed | Pass | Clear | 0 | Added null-safe existing frontend consumer adaptations required by the additive unavailable state |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 1 — Compute natural-position profile cohorts | 4db209d2b9db530d13e5866b13c06e19b6443e51 | Recomputed Rust-owned profile percentiles and role scores from deduplicated exact-natural-position peers and exposed additive comparison-basis metadata | RED failed on missing basis contracts; `./scripts/dev check-rust` passed 553 tests with 2 ignored, affected frontend tests passed 54 tests, and `./scripts/dev check` passed | Pass | Clear | 0 | Added null-safe existing frontend consumer adaptations required by the additive unavailable state |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 2 — Explain profile comparison basis and unavailable scores | Pending record | Rendered natural-position comparison basis and explicit no-natural percentile, role-table, and summary unavailable states while retaining raw metrics | RED failed on missing basis/unavailable presentation; targeted tests passed 57 tests, `check-app` and `check` passed, smoke passed 48 tests, and a 1280×800 Chromium inspection confirmed the no-natural state without clipping | Pass | Clear | 1 | Updated the browser IPC fixture and obsolete full-import copy; gated stale summary scores and corrected singleton wording after review |
 
 ## Final validation
 

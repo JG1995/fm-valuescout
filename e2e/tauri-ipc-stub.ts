@@ -970,6 +970,11 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                 "moneyball.xg_per_90": 72,
                 "moneyball.xa_per_90": 65,
               },
+              comparisonBasis: {
+                kind: "available",
+                naturalPositions: ["MC"],
+                comparisonPlayerCount: 24,
+              },
               roleCatalogVersion: 1,
               roleScores: [
                 {

@@ -15,6 +15,7 @@ import { useLayoutStore } from "@/stores/use-layout-store";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import {
   fixturePlayerMoneyball,
+  fixturePlayerMoneyballWithoutNaturalPosition,
   resolvePendingPlayerMoneyball,
   setPlayerMoneyballOverride,
   setPlayerMoneyballPending,
@@ -255,6 +256,58 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: "Moneyball role fit for MC" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps no-natural-position raw metrics distinct from unavailable scores", async () => {
+    await resolveLoadDataIpcMock();
+    setGetPlayerOverride(fixturePlayerDetail({ positions: { MC: 20 } }));
+    setPlayerMoneyballOverride(
+      fixturePlayerMoneyballWithoutNaturalPosition({
+        statistics: { goals: 10 },
+        percentiles: { goals: 50 },
+        roleCatalogVersion: 1,
+        roleScores: [
+          {
+            roleId: "stale-score",
+            displayName: "Stale score",
+            phase: "in_possession",
+            positionFamily: "central_midfielder",
+            positionTags: ["MC"],
+            score: 50,
+            contributions: [],
+          },
+        ],
+      }),
+    );
+
+    renderProfileRoute("/players/42?view=moneyball");
+
+    expect(await screen.findByText("10")).toBeInTheDocument();
+    const summary = screen.getByRole("region", {
+      name: "Alex Scout summary",
+    });
+    expect(
+      within(summary).getByLabelText("Moneyball IP: unavailable"),
+    ).toBeInTheDocument();
+    expect(
+      within(summary).queryByLabelText("Moneyball IP: 50, Average"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Percentile scores unavailable: this player has no natural position.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Role scores unavailable: this player has no natural position.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("img", { name: "Goals: 50, Average" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Stale score Moneyball score: 50, Average"),
     ).not.toBeInTheDocument();
   });
 

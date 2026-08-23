@@ -412,7 +412,11 @@ function MoneyballPlayerProfile({
       <PlayerOverviewPanel
         player={player}
         mode="moneyball"
-        roleScores={readyProfile?.roleScores ?? []}
+        roleScores={
+          readyProfile?.comparisonBasis.kind === "available"
+            ? (readyProfile.roleScores ?? [])
+            : []
+        }
       />
       <PlayerAnalysisTabs
         view="moneyball"
@@ -431,13 +435,13 @@ function MoneyballPlayerProfile({
         }
       >
         <MoneyballProfilePanel profile={profile} />
-        {readyProfile?.roleScores &&
-        readyProfile.roleCatalogVersion !== null ? (
+        {readyProfile ? (
           <MoneyballRoleFitPanel
             key={player.uid}
             positions={player.positions}
             roleScores={readyProfile.roleScores}
             catalogVersion={readyProfile.roleCatalogVersion}
+            comparisonBasis={readyProfile.comparisonBasis}
           />
         ) : null}
       </div>

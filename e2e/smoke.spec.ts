@@ -1208,7 +1208,9 @@ test.describe("application smoke", () => {
       .getByText("Central Midfielder", { exact: true })
       .click();
     await expect(
-      moneyballRoleFit.getByText("Catalog v1 · full imported cohort.").first(),
+      moneyballRoleFit
+        .getByText("Catalog v1 · natural-position comparison cohort.")
+        .first(),
     ).toBeVisible();
 
     await page.goBack();
