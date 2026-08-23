@@ -1,5 +1,7 @@
 # Codex workflow migration
 
+> Historical record. The repository later replaced this Codex-specific surface with the Pi workflow documented in [`AGENTS.md`](../../../AGENTS.md) and [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
+
 ## Intent
 
 Replace the repository's Cursor-specific development workflow with a Codex-native workflow. Preserve delivery discipline, validation, feature ledgers, review isolation, and local-commit approval.

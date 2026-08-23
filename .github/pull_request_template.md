@@ -15,7 +15,7 @@
 
 ## Release intent
 
-<!-- Select exactly one. `none` is normal for a non-release PR. See .agents/skills/create-pr/SKILL.md. -->
+<!-- Select exactly one. `none` is normal for a non-release PR. See .pi/skills/create-pr/SKILL.md. -->
 
 - [ ] none
 - [ ] patch

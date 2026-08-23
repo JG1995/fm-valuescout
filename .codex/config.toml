@@ -1,7 +1,0 @@
-[mcp_servers.context7]
-url = "https://mcp.context7.com/mcp"
-
-[shell_environment_policy.set]
-TMPDIR = "/tmp"
-TEMP = "/tmp"
-TMP = "/tmp"

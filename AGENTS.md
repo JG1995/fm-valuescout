@@ -1,87 +1,97 @@
-# Development Contract
+# Development contract
 
-This file contains the standing repository contract. Detailed procedures belong in installed `workflow-*` skills. Project facts belong in `.wiki/`. Hard validation belongs in repository commands, tests, and CI.
+This file contains FM ValueScout's standing repository contract. Detailed procedures belong in installed skills. Project facts belong in `.wiki/`. Repository commands, tests, and CI own hard validation.
 
 ## Project scope
 
-This template defaults to hobbyist solo-developer scope. A derived project can override this in CONCEPT.md.
+FM ValueScout is a solo-maintained hobby project. Prefer direct solutions, deletion, and consolidation. Structural quality still matters: keep the architecture clean, names clear, and logic correct. Avoid defensive complexity for failures that the supported contract does not require.
 
-Scope changes what "careful" means. Structural quality — clean architecture, clear names, correct logic — does not change. Those are always the goal. What changes is the amount of defensive padding around each path.
+Apply these calibrations:
 
-A solo dev does not need null guards on every reference, fallback for every error path, or resilience against failures that exist only in theory. These layers of paranoia take more time to write than the bug they prevent would take to fix.
+- **Correctness.** Code must satisfy its stated contract. It does not need to survive every conceivable input.
+- **Tests.** Protect critical paths, trust boundaries, data-loss risks, and realistic regressions. Skip duplicate tests for straightforward behavior already proved at a stronger seam.
+- **Review.** Give every non-trivial change a fresh reviewer pass. Use review to find structural mistakes, not to add ceremony.
+- **Abstraction.** Prefer direct code until a current need justifies an abstraction.
+- **Documentation.** Write what a maintainer needs after a long break, not a development diary.
+- **Ceremony.** Keep a practice when it improves structure or protects a demonstrated risk. Drop it when it only guards against a theoretical failure.
 
-Specific calibrations:
+Calibrate reusable prompts and skills to this scope. Safety, security, accessibility, trust boundaries, and data-loss prevention still require full rigor.
 
-- **Correctness.** The code must be correct for its stated contract. It does not need to survive every conceivable input.
-- **Tests.** Cover critical paths and data-loss risks. Skip tests for code that is straightforward and unlikely to break.
-- **Review.** Every non-trivial change gets a reviewer pass. Trivial changes (copy edit, button move, rename) do not. The reviewer exists to catch structural mistakes, not to enforce ceremony.
-- **Abstraction.** The solo dev knows the whole codebase. Premature abstraction costs more than refactoring when the need arrives.
-- **Documentation.** Write what you need after a 3-month break. Not what a new hire needs.
-- **Ceremony.** If a practice takes longer than the bug it prevents, skip it. You can fix issues when they appear.
+## Repository memory
 
-When a prompt or agent definition asks for ceremony — ADRs, ponytail comments, formal review passes, multi-layer defense-in-depth, full documentation reconciliation — calibrate it to this scope. If the practice produces cleaner structure, keep it. If it guards against a failure that will never happen in practice, drop it.
-
-## Read order
+Use the repository as the complete source of project knowledge. Do not depend on chat history, an external memory service, or an untracked index for unique facts.
 
 For broad, architectural, risky, or multi-commit work:
 
-1. Read `.wiki/INDEX.md` and relevant current-state documents.
-2. Read the active feature ledger in `.wiki/features/active/`, when one exists.
-3. Inspect the relevant implementation and tests.
+1. Read `.wiki/INDEX.md` for document ownership.
+2. Read the relevant current-state document and active feature ledger.
+3. Inspect implementation, tests, validation configuration, and focused Git history when needed.
 
-For ordinary work, inspect the relevant code and tests before changing them.
+For ordinary work, inspect the relevant code and tests before changing them. Read the installed `project-context` skill before a non-obvious decision, when resuming work, or when deciding where durable knowledge belongs. Use the installed `code-intelligence` skill when architecture, symbol relationships, impact, diagnostics, or review evidence can materially change the work; verify its results against source and deterministic checks.
 
-## Classify before changing
-
-- **Trivial:** inspect, make the focused change, run the fast gate, review.
-- **Behavioural:** state a concise work contract and impact map. Use RED → GREEN → REFACTOR. Run affected validation.
-- **Architectural:** explicitly invoke `$workflow-plan-feature`, identify risks and decisions, create one active feature ledger, and implement one commit at a time.
-
-Plans are provisional. Reassess remaining commits after each one. Ask only product questions that repository evidence or a bounded technical spike cannot answer.
-
-**Unresolved structural decisions** (persistence, schema, migration, authentication, concurrency, security, public API, or layer boundaries): read `.wiki/ARCHITECTURE.md`, relevant ADRs and debug reports, the active or completed feature records, and matching installed skills. Inspect targeted Git history when current files do not explain the rationale. If evidence is still insufficient and the question needs a **runtime probe**, the developer can explicitly invoke **`$workflow-spike`**. Otherwise, ask the developer. Do not guess and do not implement.
-
-## Guidance layers
-
-Keep guidance in the narrowest appropriate layer:
+Keep guidance in the narrowest owner:
 
 - `.wiki/CONCEPT.md` owns product purpose and boundaries.
-- `.wiki/ARCHITECTURE.md` owns the current implemented system, including its stack and operational constraints.
-- `.wiki/features/active/` owns current multi-commit feature intent and delivery plans (PRs and commits).
-- The installed `workflow-core` skill owns shared lifecycle, routing, review, escalation, and PR-boundary policy.
-- Other installed `workflow-*` skills own explicit commands such as `$workflow-plan-feature`, `$workflow-build`, and `$workflow-checkpoint`. Each command loads `workflow-core` before continuing.
-- Installed non-workflow skills own reusable task- or stack-specific operating guidance.
-- `.codex/agents/` owns specialist role prompts. It must not duplicate this contract.
+- `.wiki/ARCHITECTURE.md` owns implemented structure, data flow, persistence, trust boundaries, and operational constraints.
+- `.wiki/DESIGN.md` owns visual and interaction conventions.
+- `.wiki/TODO.md` owns committed or imminent feature work; `.wiki/BACKLOG.md` owns deferred work.
+- `.wiki/features/active/` owns current multi-commit intent, delivery plans, discoveries, and deviations.
+- Installed `workflow-*` skills own reusable procedures; `workflow-core` owns their shared lifecycle and authority rules.
+- Installed non-workflow skills own reusable task, stack, writing, and security guidance.
+- `.work/` holds temporary evidence only and is not project truth.
 
-Project-owned guidance governs project facts and constraints. When reusable skill guidance conflicts with an applicable project document, follow the project document. Skills govern procedure and provide defaults where project guidance is silent. Code, tests, and configuration remain authoritative for current executable behavior. Current-state documents take precedence over plans and historical records; ADRs explain accepted rationale until superseded but do not override current behavior.
+Project documents govern project facts and constraints. Skills govern procedure and provide defaults where project guidance is silent. Code, tests, and configuration describe executable behavior. Current-state documents take precedence over plans and historical records; ADRs explain accepted rationale but do not override current behavior.
 
-Do not treat `.work/` as project truth. Do not document proposed behaviour as implemented. Use the existing wiki ownership rules rather than duplicating facts across documents.
+Update the narrowest owner in the change that makes the information true. Create an ADR only for a durable consequential decision with meaningful alternatives. Treat regression tests as the primary record of ordinary bugs. Add a debug report only for a confirmed reusable failure pattern or diagnostic procedure that code and tests do not explain. Remove temporary `.work/` evidence during cleanup.
 
-## Development workflow
+## Work classification
 
-The development cycle follows a repeating loop. Invoke a `workflow-*` skill explicitly through `/skills` or by mentioning `$workflow-<name>`. Never select a workflow skill from an ordinary natural-language request.
+- **Trivial:** make one focused change, run the fast gate, review the diff, and ask before committing.
+- **Behavioral:** state a concise work contract and impact map, use RED → GREEN → REFACTOR for changed behavior or contract-removal proof for deletion, and run affected validation.
+- **Feature:** explicitly invoke `/skill:workflow-plan-feature`, accept one schema 2 ledger, then run `/skill:workflow-deliver-feature <ledger>`.
 
-1. **Feature plan** (`$workflow-plan-feature`) — plan one feature with PR and commit breakpoints, detailed implementation packets, and validation contracts.
-2. **Build** (`$workflow-build`) — implement the active commit test-first (RED → GREEN → REFACTOR).
-3. **Checkpoint** (`$workflow-checkpoint`) — stage exact changes, run the gate, present evidence and review, wait for approval, and commit locally.
-4. **Fix** (`$workflow-fix`) — address only the findings the developer delegates, then checkpoint again.
-5. **Reassess** — update the delivery plan and select the next commit; repeat from build until the plan is done.
-6. **Finish feature** (`$workflow-finish-feature`) — when every planned commit is done, run full tests, a Sol xhigh feature-complete review, and Terra Medium documentation reconciliation.
+Workflow skills are explicit opt-ins. Never invoke one only because an ordinary request resembles its task. Plans are provisional; reassess remaining work as repository facts change.
 
-For a trivial change, the user can describe the fix without invoking a workflow skill. Follow the applicable standing rules internally.
+For unresolved persistence, schema, migration, authentication, concurrency, security, public API, safety-critical, or architecture decisions, inspect `.wiki/ARCHITECTURE.md`, relevant ADRs and debug reports, active and completed feature records, implementation, tests, matching skills, and focused Git history. If evidence remains insufficient, ask the developer. Do not guess and do not implement.
 
-The loop variants are manual opt-ins only. Never suggest or run them automatically. Their documented local commit permissions come from this file; they do not authorize pushes, merges, or history rewrites.
+## Feature delivery
 
-For broad features, `$workflow-plan-feature` produces a delivery plan before the first `$workflow-build` cycle. `$workflow-stack` and `$workflow-roadmap` precede it for new projects.
+One accepted ledger owns feature intent, PRs, commit packets, validation, publication, and one release outcome.
 
-Use the fixed execution roles defined by the installed `workflow-core` skill; do not record them in active ledgers. Review runs in a fresh context and retains a defect only when it has a violated contract, a concrete execution path, and an observable consequence. Follow `workflow-core` and the relevant user-facing workflow skill for routing, hard floors, evidence requirements, and escalation.
+`/skill:workflow-deliver-feature` is the normal execution path. One explicit invocation uses the ledger's validated Delivery fingerprint to:
+
+1. activate each recorded branch;
+2. implement, validate, independently review, and commit every packet;
+3. publish, monitor, repair, and merge every PR;
+4. synchronize the base before dependent work;
+5. run feature validation and documentation close-out before the final merge; and
+6. run the ledger's single release phase.
+
+The workflow stops for changed authority, replanning, a developer decision, exhausted correction limits, failed required validation, missing approval, conflicts, a stale PR head, or failed release verification. It does not stop at ordinary commit, PR, or close-out boundaries.
+
+The narrower workflow skills remain available for manual recovery and isolated review. Do not require them between normal delivery phases.
+
+## Specialists
+
+The main Pi session is the supervisor. Workflow skills launch the exact globally installed PI_SETUP roles as direct subagents.
+
+- One writer may edit the active worktree.
+- Workers cannot stage, commit, switch branches, push, or mutate GitHub.
+- Every non-trivial implementation and correction receives a fresh read-only reviewer pass.
+- Any subagent may delegate a bounded subtask. The delegating agent verifies the result and cannot widen workflow authority.
+- Role boundaries are prompt instructions, not a sandbox.
+- The `documentation-steward` may edit only explicitly approved documentation paths. It must not change implementation, tests, executable scripts, CI, agent definitions, command templates, or Git state.
 
 ## Commands and validation
 
+Use the stable `./scripts/dev` surface instead of stack-native commands:
+
 ```bash
 ./scripts/dev test [target...]
+./scripts/dev check-fast
 ./scripts/dev check
 ./scripts/dev check-app
+./scripts/dev check-rust
 ./scripts/dev bridge-test
 ./scripts/dev format [paths...]
 ./scripts/dev secrets [--staged]
@@ -92,145 +102,107 @@ Use the fixed execution roles defined by the installed `workflow-core` skill; do
 ./scripts/dev release-metadata [latest-tag|none] [release-intent]
 ```
 
-`check` is the commit gate: Biome verify (`biome check`), TypeScript, secretlint, and Rust format, lint, and tests. `check-app` runs its frontend part only for CI. `bridge-test` runs the C# bridge unit suite and requires the .NET 6 SDK. Run `pnpm exec playwright install chromium` once after install, then use `smoke` for the Playwright product suite (`e2e/smoke.spec.ts`). `format` applies Biome lint and format fixes (`biome check --write`), then `cargo fmt` in `src-tauri/` — run before staging during `$workflow-build` and `$workflow-checkpoint`; it is not part of the gate. Optional path args forward to Biome only. `secrets` runs secretlint on the full tree, or on staged files with `--staged` (no lint-staged). `mutate` is unsupported until mutation tooling is wired into `scripts/dev`. Never report an unsupported command as passed. `bridge-install` builds the C# FM plugin and copies `FmDataBridge.dll` into BepInEx plugins (see `bridge/README.md`; path via `FM_BRIDGE_PLUGINS` / `FM_STEAM_ROOT` / WSL Steam default).
+`check` is the full commit gate: Biome, TypeScript, secretlint, Rust format, Clippy, and Rust tests. `check-fast` is the pre-commit frontend and staged-secret path; it does not replace `check`. `check-app` runs the frontend CI gate. `check-rust` runs the Rust gate. `bridge-test` requires the .NET 6 SDK. Install Chromium once with `pnpm exec playwright install chromium`, then use `smoke` for the Playwright product suite.
 
-`test` runs `vitest run` (full suite or forwarded args). CI selects frontend, browser, Rust, bridge, and release-validation checks from the changed paths. Release validation checks metadata and, for release-bearing input, runs `package-windows` on Windows without publication. Its required `check` status aggregates the applicable results. Verified-`main` Release runs package and publish only after that Check succeeds. `package-windows` runs only on Windows, builds one unsigned x64 NSIS validation artifact from the locked source bridge, and writes its checksum under `.release/windows/<version>/`; it does not publish.
+`format` applies Biome fixes and `cargo fmt` before staging. `mutate` is unsupported until mutation tooling is configured and must never be reported as passed. `bridge-install` builds and installs `FmDataBridge.dll` using `FM_BRIDGE_PLUGINS`, `FM_STEAM_ROOT`, or the WSL Steam default. `package-windows` runs only on Windows, creates one unsigned x64 NSIS validation artifact plus checksum under `.release/windows/<version>/`, and does not publish.
 
-For every human-authored pull request, use the repository-local `.agents/skills/create-pr` procedure with the repository template. Its explicit release intent is the only pre-merge release classification; `release-metadata` validates prepared version and changelog state without writing files or calling GitHub.
+CI selects frontend, browser, Rust, bridge, and release-validation checks from changed paths. The required `check` status aggregates applicable results. Verified-`main` Release packages and publishes only after that Check succeeds.
 
-Use stack-native commands only through the stable `scripts/dev` surface.
+For every human-authored pull request, use `.pi/skills/create-pr/SKILL.md` with `.github/pull_request_template.md`. Its explicit release intent is the only pre-merge release classification. `release-metadata` validates prepared version and changelog state without writing files or calling GitHub.
 
-For non-trivial behaviour:
+For changed behavior:
 
-- Write the smallest meaningful test first and run it RED.
-- Confirm RED fails for the expected missing behaviour, not setup or syntax.
-- Make the smallest coherent change GREEN, then refactor only while green.
-- Run affected existing tests and `./scripts/dev check`.
-- Add proportionate negative, boundary, or failure coverage.
-- Use deliberate perturbation or scoped mutation testing for critical logic when available.
+1. write the smallest meaningful test and confirm it fails for the expected missing or wrong behavior rather than setup or syntax;
+2. implement the smallest coherent change that makes the proof pass;
+3. refactor only while the focused proof stays green;
+4. add proportionate negative, boundary, or failure coverage where a realistic regression warrants it; and
+5. run affected tests and `./scripts/dev check`.
 
-Prompts guide the workflow. Deterministic commands and tests provide evidence. Do not weaken, delete, skip, or broadly rewrite tests merely to make a change pass.
+For intentional removal, remove obsolete implementation, tests, fixtures, mocks, snapshots, helpers, and compatibility paths together. Prove surviving behavior. Add an absence test only when observable reintroduction is plausible.
 
-After two failed correction attempts on the same bounded defect, stop and replan. Replan sooner when a known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes. Use `$workflow-spike` only for a genuine runtime unknown and only when the developer explicitly invokes it. Every non-trivial staged change requires a separate fresh-context read-only Sol Medium reviewer pass. Every feature-complete review uses a fresh Sol xhigh reviewer.
+Tests must protect supported behavior and fail for a realistic wrong implementation. Do not weaken, delete, skip, or broadly rewrite tests merely to make a gate pass. Commands and tests provide evidence; prompts and confidence do not.
 
-## Host execution and attachments
-
-When the developer attaches a screenshot or image to the chat, access it through its `/mnt/...` filesystem path. Do not use the default attachment path from chat metadata when it points outside the mounted filesystem. Translate a supplied Windows drive path to its WSL mount when possible, for example `C:\path\image.png` to `/mnt/c/path/image.png`. If no mounted path is available, ask the developer to attach the file again.
-
-After an action has the required developer authorization, request escalated execution on the first attempt when the command is known to need host access. Do not run a sandbox probe that is expected to fail. This rule applies to:
-
-- Git metadata writes such as `git add`, `git commit`, and approved branch operations;
-- Git remote operations such as `git fetch`, `git pull`, and `git push`;
-- GitHub CLI commands that call the API or change remote state;
-- commands that require host credentials, network access, or host port binding.
-
-Keep read-only local Git commands such as `git status`, `git diff`, `git log`, `git show`, and `git rev-parse` inside the sandbox. First-attempt escalation changes where an authorized command runs; it does not grant approval to commit, push, rebase, merge, delete, or perform another restricted action.
+After two failed correction attempts for the same bounded defect, stop and reassess. Replan sooner when a known fact, invariant, architectural seam, persisted or public contract, validation contract, PR boundary, or cross-feature dependency changes.
 
 ## Design and execution
 
-This section adds rules for how to make implementation choices, how to change existing code, and how to present results. These rules bias toward caution over speed. For trivial tasks, use judgment.
-
 ### Think first
 
-Before you implement, state your assumptions. If the request has more than one interpretation, present the options. Do not pick one in silence. If the simplest approach is not what was asked for, say so. If anything is unclear, stop and ask. Confusion costs less than rework.
+State material assumptions before implementation. When a request has more than one plausible interpretation, present the options instead of choosing silently. If the simplest approach does not satisfy the request, say so. Ask when repository evidence cannot resolve a consequential ambiguity.
 
 ### Decision ladder
 
-Every implementation choice follows an ordered protocol. Start at rung one. Descend only when the current rung does not solve the problem.
+Apply this order and stop at the first sufficient option:
 
-1. **YAGNI.** Does this need to exist? Could you remove something instead of adding something? Challenge every "should". Only "must" survives.
-2. **Standard library.** Does the language or runtime already ship with this? Check before you import anything new.
-3. **Native platform.** Does the browser, OS, or platform already provide this? The platform is free. Use it.
-4. **Existing dependency.** Does a package already in the project provide this? Do not add a new dependency when one you already have covers the need.
-5. **One line.** Can one clear line of code solve it? If it can, do not write a function, a class, or an abstraction. If the one line is unreadable — nested ternary, chained regex, three or more conditions — drop to rung six.
-6. **Minimum code that works.** Write the shortest implementation that passes all tests. No extension points. No configurability. No hooks for future needs. Add those when the need arrives.
+1. Delete or avoid the change when it is not needed.
+2. Use the standard library or native platform.
+3. Reuse an existing dependency.
+4. Use one clear line when it stays readable.
+5. Write the minimum code that satisfies the current contract.
 
-The ladder is a reflex, not a research project. Each rung takes seconds. If you spend minutes debating whether a rung applies, drop to the next one and move on.
+Do not add extension points, configurability, or abstractions for hypothetical needs. Full rigor remains mandatory for input validation at trust boundaries, error handling that prevents data loss, security controls, accessibility, hardware calibration, and anything the developer explicitly requests.
 
-Ask yourself: would a senior engineer call this overcomplicated? If yes, simplify. If you wrote 200 lines and it could be 50, rewrite it.
+When you deliberately accept a meaningful shortcut, record its limit and measurable upgrade trigger:
 
-### Scope discipline
-
-Touch only what the request requires. Every changed line must trace directly to the stated outcome.
-
-- Do not improve adjacent code, comments, or formatting. Leave surrounding code as you found it.
-- Match the existing style, even where you would do it differently.
-- When your changes make an import, variable, or function unused, remove it. Do not remove pre-existing dead code unless the request includes it.
-- If you notice unrelated dead code, mention it. Do not delete it.
-- Do not refactor things that are not broken.
-
-### Implementation rigour
-
-**Tradeoff comments.** When you accept a shortcut on purpose, name the limit and the upgrade trigger in a structured comment:
-
-```
+```text
 # ponytail: <what was skipped or simplified>
 # Upgrade to <what to build instead> if <measurable trigger condition>
 ```
 
-The ponytail is not a TODO or a permission slip for bugs. It names a ceiling. The upgrade trigger is measurable. These comments are grep-able: `grep -r "ponytail:" src/` produces a debt ledger.
+A ponytail is not a TODO or permission for a defect.
 
-**Safety carve-outs.** These domains are never subject to the ladder. Always invest full rigour:
+### Scope discipline
 
-- Input validation at trust boundaries
-- Error handling that prevents data loss
-- Security controls
-- Accessibility
-- Hardware calibration
-- Anything the user explicitly asked for
+Touch only what the requested outcome requires. Every changed line must trace to that outcome.
 
-**Goal-driven execution.** Turn each task into a verifiable goal. Write the test before the code. State a brief plan with a verification check for each step:
+- Do not improve adjacent code, comments, or formatting.
+- Match current repository style and the closest sound analogue.
+- Remove imports, variables, helpers, or tests made obsolete by the change.
+- Do not remove unrelated pre-existing dead code; report it instead.
+- Do not refactor code that the requested outcome does not require.
+- Keep each change coherent and revertible.
 
-```
-1. [step] → verify: [check]
-2. [step] → verify: [check]
-```
+### Goal and proof
 
-Strong verification lets you loop without asking for clarification.
+Turn non-trivial work into a verifiable goal. State a short plan with a proof for each step. Protect behavior at the seam where a plausible regression is observable. A stronger existing test can make a duplicate test unnecessary, but every security-critical path needs direct protection.
 
-**Tests are not bloat.** A test is the discipline that makes minimalism safe. Protect non-trivial behavior with a runnable assertion at the seam where a plausible regression would be observable. Trivial expressions and behavior already proved by a stronger test need no duplicate test. Every security-critical path must have a test.
+Preserve useful error context without exposing secrets. Validate untrusted input at its boundary. Update documentation only when a change alters a documented contract, command, architecture, operational rule, or feature state.
 
-### Output and review
+### Output and honesty
 
-**Output discipline.** When you present completed work, show the code first. Then at most three lines: what was skipped and when to add it. Do not write a paragraph describing what the code does — the code says that. Do not list every function added — the diff shows that.
+Present completed work concisely: lead with changed paths or the resulting behavior, then give validation and any remaining gap. Do not narrate code that the diff already explains.
 
-If the explanation is longer than the code, delete the explanation.
+Do not claim line savings against code that never existed, performance gains without before-and-after measurements, complete coverage from line coverage alone, or a bug fix without confirming that the prior behavior was wrong.
 
-Exceptions: commit messages (use the global `conventional-commits` skill and explain *why* in the body when the reason is not obvious from the diff), security decisions, architectural notes in durable docs, and explicit user requests for detail.
+These rules apply to edits of `AGENTS.md` itself. Before adding or removing guidance, ask whether the change reduces ambiguity, preserves repository-specific policy, and will remain accurate.
 
-**Honesty boundaries.** Do not claim per-repo line savings — the unbuilt version is imaginary, so there is no baseline. Do not claim a performance improvement without before-and-after measurements. Do not claim 100% test coverage from line coverage alone. Do not call a change a bug fix unless you confirmed the old behaviour was wrong.
+## Attachments
 
-**Self-referential.** These rules apply to changes in AGENTS.md itself. Before you add a section, ask: does it reduce ambiguity or create it? Will it age well? Is it covered by an existing rule already?
+When the developer attaches a screenshot or image, use its mounted `/mnt/...` path. Translate a supplied Windows drive path to its WSL mount when possible, for example `C:\path\image.png` to `/mnt/c/path/image.png`. If no mounted path is available, ask for the file again.
 
-## Scope and Git
+## Git and delivery authority
 
-- Keep each active commit focused on one coherent, revertible outcome.
-- Include directly related production code, tests, and documentation together.
-- Do not perform unrelated cleanup.
-- Stage exact files or hunks. Never use `git add .` or `git commit -a`.
-- Before commit, inspect status and the complete diff, run `git diff --cached --check`, review the staged diff and stat, and report tests, gate results, documentation impact, reviewer findings, risks, and the proposed commit message.
-- Wait for explicit developer approval before committing locally.
-- Explicitly invoking `$workflow-build-loop` authorizes its documented single local content commit after review clears. Explicitly invoking `$workflow-finish-feature-loop` authorizes its documented local correction and documentation commits. No other workflow invocation grants commit approval.
-- Never push, amend, rebase, squash, or otherwise rewrite history without explicit approval.
+Commit and PR titles use Conventional Commits: `type(scope): imperative description`, under 72 characters, with no trailing period. Package and release versions use Semantic Versioning without a `v` prefix; Git tags may use `v`.
 
-## Project knowledge
+Do not commit, push, create or update PRs, merge, create branches, synchronize remotes, rewrite history, or create releases without explicit authority.
 
-The repository is the complete source of project knowledge. Do not rely on chat history, an external memory service, or an untracked index for unique facts.
+The normal exception is an explicit `/skill:workflow-deliver-feature` invocation with a valid recorded Delivery fingerprint. That fingerprint covers exact PR authority fields, commit packets, and the Release block. It grants only the recorded branches, reviewed local commits, non-force pushes, exact PRs, bounded reviewed CI repairs, verified-head merges with the recorded method, fast-forward-only base synchronization, and one release outcome.
 
-- Read the installed `project-context` skill before a non-obvious decision, when resuming multi-session work, or when deciding where new durable knowledge belongs.
-- Inspect the current-state owner, relevant feature records, ADRs, debug reports, implementation, tests, and targeted Git history as needed. Search narrowly before reading broadly.
-- Use the installed `repowise` skill for indexed architecture discovery, symbol relationships, rationale, code health, defect risk, change impact, dead code, and coverage-backed test selection when the MCP or CLI is available. Treat its index and scores as advisory, respect stale warnings, verify conclusions against current repository evidence, and fall back to direct inspection without blocking the task.
-- Update the narrowest owner in the same change that makes the information true. Current product, architecture, and design facts belong in their wiki documents. Active discoveries and deviations belong in the feature ledger.
-- Create an ADR only for a consequential decision with durable effects, meaningful alternatives, and non-obvious rationale.
-- Treat regression tests as the primary record of ordinary bugs. Add `.wiki/debugging/` reports only for confirmed, reusable failure patterns or diagnostic procedures that code and tests do not explain.
-- Keep temporary evidence, failed hypotheses, raw logs, and experiment artifacts in `.work/`; remove them during cleanup.
+Any authority or packet change invalidates the grant. It never permits amend, rebase, force-push, protection bypass, self-approval, branch deletion, unrelated work, another ledger, or a second release.
 
-## Documentation boundaries
+Stage exact files or hunks. Never use `git add .` or `git commit -a`. Before every commit, inspect status, the complete staged diff and stat, and run `git diff --cached --check` plus recorded validation. Report documentation impact, reviewer findings, risks, and the proposed commit message. Manual work waits for explicit developer approval before committing.
 
-Follow `.wiki/INDEX.md` and the installed `project-context` skill for documentation ownership. Trivial changes normally need no wiki update. Update durable documentation when externally meaningful behaviour, commands, configuration, contracts, persistent-data assumptions, or architecture changes. Multi-commit work gets one active feature ledger. Architectural or schema work updates architecture and receives an ADR only when justified. Confirmed reusable failure patterns receive a short debug report only when the regression test and commit do not explain enough. Reconcile and archive feature documentation at feature completion rather than after every minor change.
+## Release contract
 
-The Documentation Steward may change documentation and feature-ledger state, but must not change implementation, tests, executable scripts, CI, Codex configuration, agent definitions, command templates, or Git state.
+Every feature ledger records one Release block:
 
-The main session plans established feature work and implements all build and fix work. Delegate planning only when the developer explicitly requests it. Dispatch the `reviewer` and `documentation-steward` specialists explicitly. Every initial review of non-trivial work uses a separate fresh Sol Medium reviewer context. Every feature-complete review uses a fresh generic Sol xhigh reviewer with the same contract. After a fix, reuse the same reviewer context when available unless the correction materially changes the review scope or architecture; otherwise dispatch a fresh reviewer at the fixed profile for that review mode. See `.codex/README.md` for role selection and MCP details.
+- `none` completes with no release mutation;
+- `patch`, `minor`, or `major` requires an exact SemVer target, exact release command, and exact verification command.
 
-When you need current library API or configuration details, use Context7 MCP (`resolve-library-id`, then `query-docs`). Use web search and fetch for bounded external research. Never put credentials in repository files.
+The release phase always runs after the final merge. Run verification first, perform the exact mutation at most once, then verify that the release points to the synchronized final merge. Do not infer a version, tag, provider action, or deployment.
+
+## Security
+
+Pi packages and tools execute with the user's operating-system privileges. Project trust and role prompts are controls, not an operating-system sandbox.
+
+Do not read or print secret values, private keys, production dumps, local authentication stores, or unrelated personal data. Keep credentials out of repository files, ledgers, templates, prompts, and logs.

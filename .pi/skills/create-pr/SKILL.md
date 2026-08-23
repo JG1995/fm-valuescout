@@ -17,12 +17,14 @@ Use one procedure for every human-authored pull request. Release intent is one t
 
 ## Choose one release intent
 
-Inspect the latest reachable `v*` release tag and the complete user-visible change set since that boundary, including relevant changes already on `main` and the complete pull-request diff. Record exactly one template checkbox:
+Inspect the latest reachable `v*` release tag and the complete user-visible change set since that boundary, including relevant changes already on `main` and the complete pull-request diff. When the PR belongs to an accepted schema-2 feature ledger, also inspect its Delivery authorization, Release block, PR order, and Feature close-out state. Record exactly one template checkbox:
 
-- `none` for documentation, tests, agent configuration, internal tooling, or an eligible Dependabot-only patch. Do not change durable version owners or create a dated changelog section.
-- `patch` for an unambiguous compatible user-visible fix. Increment the patch number (for example, `0.2.0` → `0.2.1`). If the latest published tag is the historical `0.1.0-alpha.1`, the patch release normalizes it to `0.1.0`.
-- `minor` for an unambiguous compatible capability. Increment the minor number and reset the patch number (for example, `0.1.0` → `0.2.0`). With no previous tag, use `minor` to prepare the initial `0.1.0` release.
+- `none` for documentation, tests, agent configuration, internal tooling, an eligible Dependabot-only patch, or an intermediate PR whose valid feature ledger assigns one non-`none` release outcome to a later final PR. Do not change durable version owners or create a dated changelog section.
+- `patch` for an unambiguous compatible user-visible fix that owns the release outcome. Increment the patch number (for example, `0.2.0` → `0.2.1`). If the latest published tag is the historical `0.1.0-alpha.1`, the patch release normalizes it to `0.1.0`.
+- `minor` for an unambiguous compatible capability that owns the release outcome. Increment the minor number and reset the patch number (for example, `0.1.0` → `0.2.0`). With no previous tag, use `minor` to prepare the initial `0.1.0` release.
 - `major` for a breaking behavior or durable contract. Stop and request a maintainer decision.
+
+An intermediate user-visible PR can use `none` only when the accepted ledger's unchanged Delivery fingerprint covers that exact PR and records a later final PR with the complete release intent, target, command, and verification. Confirm that the PR is not final and that its `Feature close-out` value is `Not required`. Record the ledger path and fingerprint in the PR Notes. Stop if the ledger is absent, invalid, changed, or assigns no later release.
 
 New releases are published as normal SemVer releases. The repository's historical `0.1.0-alpha.1` remains immutable for its original release, but future compatible fixes and capabilities use plain `0.x.y` versions rather than public `alpha.N` iterations or release candidates.
 
@@ -60,7 +62,7 @@ For `none`, validate against the latest tag when one exists. Leave version owner
 1. Stage exact files, inspect the complete staged diff, run the required checks, obtain the required review, and create any approved local release-preparation commit.
 2. Complete every section of `.github/pull_request_template.md`, including exactly one release-intent checkbox.
 3. Run the existing duplicate check for the branch. Do not create a duplicate pull request.
-4. Obtain separate explicit approval to push. Re-check the branch, clean worktree, unchanged `HEAD`, and `gh auth status`, then push without force.
-5. Obtain separate explicit approval to create a draft pull request. Create it against `main` with the completed repository template.
+4. Obtain separate explicit approval to push unless this procedure runs inside an explicitly invoked `/skill:workflow-deliver-feature` session whose unchanged Delivery fingerprint covers the exact branch, base, commits, and PR. Re-check the branch, clean worktree, unchanged `HEAD`, and `gh auth status`, then push without force.
+5. Obtain separate explicit approval to create a draft pull request unless the same unchanged Delivery fingerprint covers that mutation. Create it against `main` with the completed repository template.
 
 Return the draft URL, title, verified release intent, exact version/tag when release-bearing, and factual validation results. Do not merge, tag, publish a GitHub release, bypass a stop condition, or enable auto-merge.

@@ -4,7 +4,7 @@
 
 Completed — documentation reconciled; ready for publication
 
-> This record describes the original early-alpha publication path. The historical `0.1.0-alpha.1` release remains immutable, while the current workflow publishes future compatible releases as plain `0.x.y` SemVer versions. Current versioning and publication rules live in the [early-alpha release runbook](../../notes/early-alpha-release-runbook.md), [architecture guide](../../ARCHITECTURE.md), and [`create-pr` skill](../../../.agents/skills/create-pr/SKILL.md).
+> This record describes the original early-alpha publication path. The historical `0.1.0-alpha.1` release remains immutable, while the current workflow publishes future compatible releases as plain `0.x.y` SemVer versions. Current versioning and publication rules live in the [early-alpha release runbook](../../notes/early-alpha-release-runbook.md), [architecture guide](../../ARCHITECTURE.md), and [`create-pr` skill](../../../.pi/skills/create-pr/SKILL.md).
 
 ## Intent
 
