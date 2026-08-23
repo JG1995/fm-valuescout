@@ -329,6 +329,55 @@ describe("My Club route", () => {
     });
   });
 
+  it("groups managed-club controls above feedback while retaining save states", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    setManagedClubIpcMock({
+      clubName: "Legacy FC",
+      status: "missing",
+      unclassifiedPlayerCount: 0,
+    });
+    setPlannerAvailableClubs(["Legacy FC", "Barcelona"]);
+    setManagedClubSavePending(true);
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const picker = await screen.findByRole("combobox", {
+      name: "Managed club",
+    });
+    const saveButton = screen.getByRole("button", {
+      name: "Save managed club",
+    });
+    const warning = screen.getByText(
+      "Legacy FC is not in the latest snapshot. The saved selection remains active until you replace it.",
+    );
+    const controls = screen.getByRole("group", {
+      name: "Managed club controls",
+    });
+
+    expect(controls).toContainElement(picker);
+    expect(controls).toContainElement(saveButton);
+    expect(
+      picker.compareDocumentPosition(saveButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(controls).toHaveClass("flex", "flex-wrap");
+    expect(controls).not.toContainElement(warning);
+    expect(controls.compareDocumentPosition(warning)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(saveButton).toBeDisabled();
+
+    await user.clear(picker);
+    await user.type(picker, "Bar");
+    await user.click(screen.getByRole("option", { name: "Barcelona" }));
+    expect(saveButton).toBeEnabled();
+
+    await user.click(saveButton);
+    expect(saveButton).toBeDisabled();
+
+    resolvePendingManagedClubSave();
+  });
+
   it("retains a missing managed club without exposing team-level diagnostics", async () => {
     await resolveLoadDataIpcMock();
     setManagedClubIpcMock({

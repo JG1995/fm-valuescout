@@ -212,15 +212,30 @@ export function ManagedClubSelector({
         save.mutate();
       }}
     >
-      <ManagedClubPicker
-        clubs={clubOptions}
-        value={clubName}
-        onSearchChange={(query) => setSearchPending(query !== clubName)}
-        onSelect={(club) => {
-          setClubName(club);
-          setSearchPending(false);
-        }}
-      />
+      <fieldset className="m-0 flex min-w-0 flex-wrap items-end gap-2 border-0 p-0">
+        <legend className="sr-only">Managed club controls</legend>
+        <div className="min-w-64 flex-1">
+          <ManagedClubPicker
+            clubs={clubOptions}
+            value={clubName}
+            onSearchChange={(query) => setSearchPending(query !== clubName)}
+            onSelect={(club) => {
+              setClubName(club);
+              setSearchPending(false);
+            }}
+          />
+        </div>
+        <Button
+          className="shrink-0"
+          disabled={
+            !clubName || searchPending || clubName === managedClub.clubName
+          }
+          loading={save.isPending}
+          type="submit"
+        >
+          Save managed club
+        </Button>
+      </fieldset>
 
       {managedClub.status === "missing" ? (
         <p className="text-body-sm text-warning">
@@ -231,16 +246,6 @@ export function ManagedClubSelector({
       {save.error ? (
         <p className="text-body-sm text-error">{save.error.message}</p>
       ) : null}
-
-      <Button
-        disabled={
-          !clubName || searchPending || clubName === managedClub.clubName
-        }
-        loading={save.isPending}
-        type="submit"
-      >
-        Save managed club
-      </Button>
     </form>
   );
 }
