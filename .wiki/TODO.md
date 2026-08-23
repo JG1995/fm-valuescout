@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- [Club DNA](./features/active/club-dna.md) — one save-owned equal-weight attribute definition with a fixed nullable score in Search and Squad (Linear JAY-32).
 
 ## Next
 
