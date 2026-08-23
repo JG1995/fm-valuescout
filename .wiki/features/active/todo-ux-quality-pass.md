@@ -251,7 +251,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 3 — Reconcile the active ledger with current PI_SETUP
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(plan): reconcile Todo UX delivery ledger`
 
@@ -285,7 +285,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 4 — Restore bounded Staff workspace scrolling
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `fix(club): contain staff table scrolling`
 
@@ -343,7 +343,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 5 — Place managed-club save inline with search
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `style(club): align managed club save action`
 
@@ -900,19 +900,19 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **PR:** PR 1 — Contain My Club workspaces and compact club setup
 
-**Commit:** Commit 3 — Reconcile the active ledger with current PI_SETUP
+**Commit:** Commit 5 — Place managed-club save inline with search
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. `ledger_state.py`, `delivery_state.py`, exact runbook-command comparison, Markdown diagnostics, relative-link checks, and `git diff --check` prove structural consistency.
+Add a route-level test that fails because the managed-club picker and save button do not share one control row and the feedback appears between them.
 
 ### Expected outcome
 
-The rebased branch still differs from synchronized `main` only through `.wiki/TODO.md` and this ledger. The ledger records current history, complete packets, exact release authority, one active planning commit, and a valid Delivery fingerprint before implementation resumes.
+The managed-club picker and save action share one responsive control row while warning and error feedback remains below it.
 
 ### Explicit exclusions
 
-No product behavior, test, executable configuration, PR-boundary, release-intent, release-target, Linear, TODO, BACKLOG, planned-spec, ADR, or unrelated documentation change.
+No picker internals, autocomplete ownership, suggestion positioning, submit logic, state semantics, or message-copy change.
 
 **Next action:** Invoke `/skill:workflow-deliver-feature .wiki/features/active/todo-ux-quality-pass.md` with the accepted Delivery fingerprint.
 
@@ -936,6 +936,8 @@ No product behavior, test, executable configuration, PR-boundary, release-intent
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Contain My Club workspaces and compact club setup | Commit 1 — Record the active Todo UX delivery plan | 54552a7cc285c7232b8a2fddb2a254e276d51762 | Added the schema-2 ledger and activated it in `.wiki/TODO.md` | Classifier schema 2, zero errors, `runnable`; post-rebase `git diff --check` and `./scripts/dev check` passed | Not applicable | Clear | 1 | Main-session authorship after planner transport failures; rebased without changing feature behavior |
 | PR 1 — Contain My Club workspaces and compact club setup | Commit 2 — Adopt fingerprinted feature delivery | 5b657e51b84c9420639a7a64f7f2a25f8c8e6ac5 | Migrated the ledger to fingerprinted four-PR delivery with one final `0.12.0` release | Both classifiers reported `runnable`; release commands passed shell syntax validation; diagnostics, `git diff --check`, and `./scripts/dev check` passed after rebase | Not applicable | Clear | 3 | Repository-wide Pi and release guidance landed separately in main commit `76cc9f8dbd82504f966038583da4e332e9839c0e`; the rebased commit changes only this ledger |
+| PR 1 — Contain My Club workspaces and compact club setup | Commit 3 — Reconcile the active ledger with current PI_SETUP | a1815e0f4ffab67733be09045e8c001ffd42182e | Reconciled the rebased ledger with current PI_SETUP authority, packet, validation, and release requirements | Both classifiers reported `runnable` with the recorded fingerprint; `release-metadata v0.11.1 none`, `git diff --check`, and `./scripts/dev check` passed | Not applicable | Clear | 1 | None |
+| PR 1 — Contain My Club workspaces and compact club setup | Commit 4 — Restore bounded Staff workspace scrolling | Pending record | Added the missing flex containment to Staff and Staff Shortlist tabpanels so their existing virtualized tables own scrolling | RED failed on both missing flex wrappers; focused route tests passed 108 tests, affected route and shared-table tests passed 111 tests, and `./scripts/dev check` passed | Pass | Clear | 0 | None |
 
 ## Final validation
 

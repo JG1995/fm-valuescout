@@ -91,6 +91,11 @@ import {
   setSquadPlayersPageIpcMockMode,
   setSquadWonderkidMentalityBoostIpcMockMode,
 } from "@/testing/squad-ipc-mock";
+import {
+  fixtureStaff,
+  setStaffOverride,
+  setStaffShortlistOverride,
+} from "@/testing/staff-ipc-mock";
 
 function renderMyClubRoute({
   staleTime = 0,
@@ -161,6 +166,15 @@ function manySquadPlayers(count: number): SquadPlayer[] {
       index + 1,
       200 - index,
     ),
+  );
+}
+
+function manyStaff(count: number) {
+  return Array.from({ length: count }, (_, index) =>
+    fixtureStaff({
+      uid: index + 1,
+      name: `Staff member ${String(index + 1).padStart(3, "0")}`,
+    }),
   );
 }
 
@@ -237,6 +251,48 @@ describe("My Club route", () => {
       await screen.findByRole("table", { name: "Staff overview" }),
     ).toBeInTheDocument();
   });
+
+  it.each([
+    {
+      workspace: "staff",
+      caption: "Staff overview",
+      scrollerTestId: "my-staff-results-scroller",
+      setStaff: setStaffOverride,
+    },
+    {
+      workspace: "staff-shortlist",
+      caption: "Staff Shortlist",
+      scrollerTestId: "staff-shortlist-results-scroller",
+      setStaff: setStaffShortlistOverride,
+    },
+  ] as const)(
+    "keeps $caption inside its virtualized workspace",
+    async ({ workspace, caption, scrollerTestId, setStaff }) => {
+      await resolveLoadDataIpcMock();
+      setStaff(manyStaff(101));
+      renderMyClubRoute({ initialEntry: `/my-club?view=${workspace}` });
+
+      const table = await screen.findByRole("table", { name: caption });
+      const panel = document.getElementById(
+        `my-club-workspace-panel-${workspace}`,
+      );
+      expect(panel).toHaveClass("flex", "min-h-0", "flex-1", "flex-col");
+
+      const scroller = screen.getByTestId(scrollerTestId);
+      expect(scroller).toHaveClass("h-full", "min-h-0", "overflow-auto");
+      expect(scroller.parentElement).toHaveClass(
+        "relative",
+        "min-h-0",
+        "flex-1",
+      );
+
+      const virtualRows = within(table)
+        .getAllByRole("row")
+        .filter((row) => row.hasAttribute("data-index"));
+      expect(virtualRows.length).toBeGreaterThan(0);
+      expect(virtualRows.length).toBeLessThan(101);
+    },
+  );
 
   it("shows Load Data guidance when the active save has no snapshot", async () => {
     renderMyClubRoute({ initialEntry: "/my-club" });
