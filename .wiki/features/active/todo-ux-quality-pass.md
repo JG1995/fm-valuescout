@@ -131,11 +131,11 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 ### PR 1 — Contain My Club workspaces and compact club setup
 
-**Status:** Ready for publication
+**Status:** Merged
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/77
 
-**Merge ref:** Not merged
+**Merge ref:** 2f7bba077b8907a7671021bfedc36392c8d1804c
 
 **Branch:** `fix/my-club-ux-containment`
 
@@ -402,7 +402,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 ### PR 2 — Add app history controls
 
-**Status:** Awaiting prior PR merge
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -432,7 +432,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 1 — Expose session Back and Forward controls
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(navigation): add back and forward controls`
 
@@ -918,7 +918,8 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 | PR 1 — Contain My Club workspaces and compact club setup | Commit 2 — Adopt fingerprinted feature delivery | 5b657e51b84c9420639a7a64f7f2a25f8c8e6ac5 | Migrated the ledger to fingerprinted four-PR delivery with one final `0.12.0` release | Both classifiers reported `runnable`; release commands passed shell syntax validation; diagnostics, `git diff --check`, and `./scripts/dev check` passed after rebase | Not applicable | Clear | 3 | Repository-wide Pi and release guidance landed separately in main commit `76cc9f8dbd82504f966038583da4e332e9839c0e`; the rebased commit changes only this ledger |
 | PR 1 — Contain My Club workspaces and compact club setup | Commit 3 — Reconcile the active ledger with current PI_SETUP | a1815e0f4ffab67733be09045e8c001ffd42182e | Reconciled the rebased ledger with current PI_SETUP authority, packet, validation, and release requirements | Both classifiers reported `runnable` with the recorded fingerprint; `release-metadata v0.11.1 none`, `git diff --check`, and `./scripts/dev check` passed | Not applicable | Clear | 1 | None |
 | PR 1 — Contain My Club workspaces and compact club setup | Commit 4 — Restore bounded Staff workspace scrolling | aa8355c32851672f1377f5d7592634b4486a912d | Added the missing flex containment to Staff and Staff Shortlist tabpanels so their existing virtualized tables own scrolling | RED failed on both missing flex wrappers; focused route tests passed 108 tests, affected route and shared-table tests passed 111 tests, and `./scripts/dev check` passed | Pass | Clear | 0 | None |
-| PR 1 — Contain My Club workspaces and compact club setup | Commit 5 — Place managed-club save inline with search | Pending record | Grouped the managed-club picker and save action in one responsive row with feedback below | RED failed on the missing managed-club control group; focused route tests passed 109 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 0 | None |
+| PR 1 — Contain My Club workspaces and compact club setup | Commit 5 — Place managed-club save inline with search | 1be1e3dc426f8cc69e49c7ce621c0487aa456378 | Grouped the managed-club picker and save action in one responsive row with feedback below | RED failed on the missing managed-club control group; focused route tests passed 109 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 0 | None |
+| PR 2 — Add app history controls | Commit 1 — Expose session Back and Forward controls | Pending record | Added accessible Back and Forward controls backed by subscribed TanStack Router session history with branch-aware availability | RED failed because controls were absent; focused tests passed 27 tests, affected tests passed 33 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Added Strict Mode cleanup proof and corrected scroll-restoration documentation after review |
 
 ## Final validation
 

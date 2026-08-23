@@ -137,4 +137,50 @@ describe("app shell routing", () => {
       await screen.findByRole("heading", { level: 1, name: "Dashboard" }),
     ).toBeInTheDocument();
   });
+
+  it("restores pathname, search, and hash through top-bar history controls", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWithProviders();
+
+    await act(async () => {
+      await router.navigate({
+        to: "/search",
+        search: {
+          sort: "moneyball.average_rating",
+          dir: "desc",
+          filters: [],
+          combine: "and",
+          view: "moneyball",
+          comparisonPool: "filtered",
+        },
+        hash: "filters",
+      });
+    });
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
+    ).toBeInTheDocument();
+    const searchHref = router.history.location.href;
+
+    await act(async () => {
+      await router.navigate({ to: "/settings", hash: "bridge" });
+    });
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeInTheDocument();
+    const settingsHref = router.history.location.href;
+
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Player Search" }),
+    ).toBeInTheDocument();
+    expect(searchHref).toContain("view=moneyball");
+    expect(searchHref).toMatch(/#filters$/);
+    expect(router.history.location.href).toBe(searchHref);
+
+    await user.click(screen.getByRole("button", { name: "Forward" }));
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeInTheDocument();
+    expect(router.history.location.href).toBe(settingsHref);
+  });
 });
