@@ -8,12 +8,12 @@ Active
 
 > **Owner:** Main implementation session
 > **Created:** 2026-08-22
-> **Updated:** 2026-08-22
+> **Updated:** 2026-08-23
 > **Linear:** [JAY-35](https://linear.app/jaycount/issue/JAY-35), [JAY-36](https://linear.app/jaycount/issue/JAY-36), [JAY-37](https://linear.app/jaycount/issue/JAY-37), [JAY-38](https://linear.app/jaycount/issue/JAY-38), [JAY-39](https://linear.app/jaycount/issue/JAY-39), [JAY-40](https://linear.app/jaycount/issue/JAY-40), [JAY-41](https://linear.app/jaycount/issue/JAY-41)
 
 ## Delivery authorization
 
-**Delivery fingerprint:** e8d0b75224235d2e3209b9dce001669ea781fefd79cd087b0b8459a597eb7df0
+**Delivery fingerprint:** 4246559c54a277c98780c607212cdf7215ed5896f72cbf146504c6cf6fe7e38f
 
 ## Release
 
@@ -21,9 +21,9 @@ Active
 
 **Release target:** 0.12.0
 
-**Release command:** `bash -lc 'sha=$(git rev-parse HEAD); for _ in {1..120}; do run=$(gh run list --repo JG1995/fm-valuescout --workflow Release --branch main --event workflow_run --limit 20 --json databaseId,headSha --jq ".[] | select(.headSha == \"$sha\") | .databaseId" | head -n1); if [[ -n "$run" ]]; then gh run watch "$run" --repo JG1995/fm-valuescout --exit-status; exit; fi; sleep 10; done; exit 1'`
+**Release command:** `bash -lc 'set -euo pipefail; sha=$(git rev-parse HEAD); for _ in {1..120}; do run=$(gh run list --repo JG1995/fm-valuescout --workflow Release --branch main --event workflow_run --limit 20 --json databaseId,headSha --jq ".[] | select(.headSha == \"$sha\") | .databaseId" | head -n1); if [[ -n "$run" ]]; then gh run watch "$run" --repo JG1995/fm-valuescout --exit-status; exit; fi; sleep 10; done; exit 1'`
 
-**Release verification:** `bash -lc "set -euo pipefail; sha=\$(git rev-parse HEAD); tmp=\$(mktemp -d); trap 'rm -rf \"\$tmp\"' EXIT; test \"\$(gh api repos/JG1995/fm-valuescout/git/ref/tags/v0.12.0 --jq .object.sha)\" = \"\$sha\"; gh release view v0.12.0 --repo JG1995/fm-valuescout --json name,body,tagName,targetCommitish,isDraft,isPrerelease,assets > \"\$tmp/release.json\"; gh release download v0.12.0 --repo JG1995/fm-valuescout --pattern FM-ValueScout_0.12.0_x64-setup.exe.sha256 --dir \"\$tmp\"; node --input-type=module -e 'import { readFileSync } from \"node:fs\"; import { extractDatedSection } from \"./scripts/release-metadata.mjs\"; const [sha, releasePath, checksumPath] = process.argv.slice(1); const release = JSON.parse(readFileSync(releasePath, \"utf8\")); const installer = \"FM-ValueScout_0.12.0_x64-setup.exe\"; const checksum = installer + \".sha256\"; const names = release.assets.map((asset) => asset.name).sort(); const binary = release.assets.find((asset) => asset.name === installer); const notes = extractDatedSection(readFileSync(\"CHANGELOG.md\", \"utf8\"), \"0.12.0\"); const checksumText = readFileSync(checksumPath, \"utf8\").trim(); const valid = release.tagName === \"v0.12.0\" && release.name === \"FM ValueScout v0.12.0\" && release.body === notes && release.targetCommitish === sha && release.isDraft === false && release.isPrerelease === false && names.length === 2 && names[0] === installer && names[1] === checksum && /^sha256:[0-9a-f]{64}$/.test(binary?.digest ?? \"\") && checksumText === binary.digest.slice(7) + \" *\" + installer; if (!valid) process.exit(1);' \"\$sha\" \"\$tmp/release.json\" \"\$tmp/FM-ValueScout_0.12.0_x64-setup.exe.sha256\""`
+**Release verification:** `bash -lc 'set -euo pipefail; version=0.12.0; tag=v$version; sha=$(git rev-parse HEAD); tmp=$(mktemp -d); trap '\''rm -rf "$tmp"'\'' EXIT; test "$(gh api repos/JG1995/fm-valuescout/git/ref/tags/$tag --jq .object.sha)" = "$sha"; gh release view "$tag" --repo JG1995/fm-valuescout --json name,body,tagName,targetCommitish,isDraft,isPrerelease,assets > "$tmp/release.json"; gh release download "$tag" --repo JG1995/fm-valuescout --pattern "FM-ValueScout_${version}_x64-setup.exe.sha256" --dir "$tmp"; node --input-type=module -e '\''import { readFileSync } from "node:fs"; import { extractDatedSection } from "./scripts/release-metadata.mjs"; const [sha, version, releasePath, checksumPath] = process.argv.slice(1); const release = JSON.parse(readFileSync(releasePath, "utf8")); const tag = "v" + version; const installer = "FM-ValueScout_" + version + "_x64-setup.exe"; const checksum = installer + ".sha256"; const names = release.assets.map((asset) => asset.name).sort(); const binary = release.assets.find((asset) => asset.name === installer); const notes = extractDatedSection(readFileSync("CHANGELOG.md", "utf8"), version); const checksumText = readFileSync(checksumPath, "utf8").trim(); const valid = release.tagName === tag && release.name === "FM ValueScout " + tag && release.body === notes && release.targetCommitish === sha && release.isDraft === false && release.isPrerelease === false && names.length === 2 && names[0] === installer && names[1] === checksum && /^sha256:[0-9a-f]{64}$/.test(binary?.digest ?? "") && checksumText === binary.digest.slice(7) + " *" + installer; if (!valid) process.exit(1);'\'' "$sha" "$version" "$tmp/release.json" "$tmp/FM-ValueScout_${version}_x64-setup.exe.sha256"'`
 
 Intermediate PRs use release intent `none`. The final PR prepares the complete compatible capability range as `0.12.0`; verified `main` starts publication automatically, and the release command waits for that exact workflow run.
 
@@ -31,7 +31,7 @@ Intermediate PRs use release intent `none`. The final PR prepares the complete c
 
 Deliver the seven current Linear Todo issues as four sequential pull requests. The work fixes My Club containment, adds session navigation controls, refines shared table presentation, and makes Moneyball profile comparisons position-specific without mixing unrelated review surfaces in one PR.
 
-The feature starts from clean `main` at `889a9803eb70a92117688d3619ec0c09c4f419db`, synchronized with `origin/main`. Each later PR begins only after the previous PR has merged and local `main` has been synchronized, even though the four product slices have no functional dependency on one another.
+The feature branch is rebased onto clean `main` at `76cc9f8dbd82504f966038583da4e332e9839c0e`, synchronized with `origin/main`. Each later PR begins only after the previous PR has merged and local `main` has been synchronized, even though the four product slices have no functional dependency on one another.
 
 The feature covers JAY-35 through JAY-41, frontend and Rust behavior, additive IPC/type changes, focused regression coverage, browser evidence, intrinsic current-state documentation, and one persisted player-table layout migration.
 
@@ -69,7 +69,7 @@ The feature covers JAY-35 through JAY-41, frontend and Rust behavior, additive I
 - **Persistence and migrations:** JAY-39 needs one Zustand layout-version migration. No SQLite schema migration or persisted Moneyball recalculation is planned.
 - **Existing behavioral assumptions:** Staff tables already use the shared virtualizer; player DTOs carry club and division; position familiarity maps use exact value `20` for natural positions; the installed router history reports enough index/action state to derive a forward boundary.
 - **Architectural seams:** My Club owns workspace containment, the app shell owns global history controls, shared table cells/store own row presentation and migration, and Rust owns profile cohort calculations exposed through additive IPC types.
-- **Project validation commands:** `./scripts/dev test`, `./scripts/dev check-app`, `./scripts/dev check-rust`, `./scripts/dev check`, `./scripts/dev smoke`, and `./scripts/dev release-metadata <latest-tag> <intent>`.
+- **Project validation commands:** `./scripts/dev test`, `./scripts/dev check-app`, `./scripts/dev check-rust`, `./scripts/dev check`, `./scripts/dev smoke`, `./scripts/dev release-metadata v0.11.1 none` for intermediate PRs, and `./scripts/dev release-metadata v0.11.1 minor` for the final PR.
 - **Primary risks:** A false containment diagnosis, router index drift, persisted-layout loss, fixed-row overflow, cohort double counting, and misleading unavailable scores.
 
 Reference evidence includes JAY-36 and JAY-41 image uploads that returned HTTP `401`; implementation must use their acceptance criteria and current component contracts rather than invent unseen pixels. JAY-39 also references [`JG1995/fm-valuescout-react`](https://github.com/JG1995/fm-valuescout-react), whose player table and demo image establish the name-first, club/division-second grouping. Current FM ValueScout behavior and design tokens remain authoritative.
@@ -157,7 +157,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Purpose:** Fix JAY-40 and JAY-41 as one reviewable My Club route change. Publish this intermediate PR with release intent `none`.
 
-**Depends on:** None. Base ref: `889a9803eb70a92117688d3619ec0c09c4f419db`.
+**Depends on:** None. Base ref: `76cc9f8dbd82504f966038583da4e332e9839c0e`.
 
 #### Commit 1 — Record the active Todo UX delivery plan
 
@@ -167,7 +167,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Work:** Create the active delivery ledger and register it in `.wiki/TODO.md`.
 
-**Size assessment:** No implementation code; planning-only commit.
+**Size assessment:** Estimated 0 changed non-test implementation lines; planning-only commit.
 
 **Out of scope:** Runtime, test, configuration, Linear, and Git-history changes.
 
@@ -221,23 +221,23 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Provisional commit:** `docs(workflow): align feature release delivery`
 
-**Work:** Migrate the accepted feature plan to the current PI_SETUP ledger structure and align repository release guidance with its one-release contract.
+**Work:** Migrate the accepted feature plan to the current PI_SETUP ledger structure and its one-release contract.
 
-**Size assessment:** Documentation and workflow guidance only; no implementation code.
+**Size assessment:** Estimated 0 changed non-test implementation lines; ledger-only planning change.
 
-**Out of scope:** Product behavior, tests, executable release automation, version owners, release metadata, Git publication, and Linear changes.
+**Out of scope:** Product behavior, tests, executable release automation, repository-wide workflow guidance, version owners, release metadata, Git publication, and Linear changes.
 
 **Implementation packet:** Preserve JAY-35 through JAY-41 behavior and the accepted four-PR boundaries. Add the Delivery authorization and single Release blocks, complete every PR authority field, consolidate release preparation in the final PR, and permit intermediate user-visible PRs to use `none` only under an unchanged fingerprinted ledger that assigns the release to its final PR.
 
-**Files and responsibilities:** `.wiki/features/active/todo-ux-quality-pass.md` owns the migrated feature authority and packets; `AGENTS.md` owns repository Git authority; `.agents/skills/create-pr/SKILL.md` owns PR release classification and publication approval exceptions; `.wiki/notes/early-alpha-release-runbook.md` owns durable release procedure; `.github/pull_request_template.md` points authors to the intermediate-PR rule.
+**Files and responsibilities:** `.wiki/features/active/todo-ux-quality-pass.md` owns the migrated feature authority and packets. The rebased commit does not change repository-wide policy: `AGENTS.md`, `.pi/skills/create-pr/SKILL.md`, `.wiki/notes/early-alpha-release-runbook.md`, and `.github/pull_request_template.md` arrive from synchronized `main` and remain the governing sources.
 
 **Behavior and data flow:** The ledger's fingerprint binds all four PRs, remaining commit packets, one `0.12.0` Release block, and final close-out. Intermediate PRs retain unchanged release owners and use intent `none`; the final PR prepares the complete range for verified-`main` publication.
 
-**Ordered implementation steps:** Compare the active ledger and repository authority rules with the current extension templates; preserve accepted feature intent and active state; add required authority fields and section order; remove intermediate release packets; add the final `0.12.0` packet and complete release evidence; align Git and publication authority with explicit fingerprinted delivery; narrow the intermediate-`none` guidance to valid fingerprinted ledgers; run both classifiers; obtain independent review; record the exact Delivery fingerprint; rerun validation.
+**Ordered implementation steps:** Compare the active ledger with the current PI_SETUP schema 2 template and synchronized repository guidance; preserve accepted feature intent and active state; add required authority fields and section order; remove intermediate release packets; add the final `0.12.0` packet and complete release evidence; run both classifiers; obtain independent review; record the exact Delivery fingerprint; rerun validation.
 
-**Tests and proof:** `ledger_state.py` must report schema 2, `runnable`, and no errors. `delivery_state.py` must report the recorded fingerprint, `build`, the four exact PRs, ten remaining commits, and no errors. Markdown diagnostics, `git diff --check`, and `./scripts/dev check` must pass.
+**Tests and proof:** `ledger_state.py` must report schema 2, `runnable`, and no errors. `delivery_state.py` must report the recorded fingerprint, `build`, the four exact PRs, nine remaining commits, and no errors. Markdown diagnostics, `git diff --check`, and `./scripts/dev check` must pass.
 
-**Patterns to verify:** Current PI_SETUP active-ledger template, `workflow-plan-feature`, `workflow-deliver-feature`, ADR 0002, repository release automation, local create-pr procedure, and release runbook.
+**Patterns to verify:** Current PI_SETUP active-ledger template, `workflow-plan-feature`, `workflow-deliver-feature`, ADR 0003, repository release automation, local create-PR procedure, and release runbook.
 
 **Constraints and non-goals:** Do not change issue scope, product decisions, implementation order, branch names, merge method, required check, executable release automation, or the four-PR boundary approved by the developer.
 
@@ -247,17 +247,51 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Stop conditions:** Stop if either classifier reports another structural gap, repository release automation cannot support one final release, accepted product scope changes, the required PR boundary changes, or review finds an unresolved policy conflict.
 
-**Review mandate:** Verify exact template conformance, unchanged product intent, complete authority fields, four-PR sequencing, intermediate `none` safeguards, final `0.12.0` ownership, command validity, release automation compatibility, and no executable or implementation drift.
+**Review mandate:** Verify template and authority-field conformance, unchanged product intent, four-PR sequencing, intermediate `none` safeguards, final `0.12.0` ownership, command validity, release automation compatibility, and no executable or implementation drift.
 
-#### Commit 3 — Restore bounded Staff workspace scrolling
+#### Commit 3 — Reconcile the active ledger with current PI_SETUP
 
 **Status:** Active
+
+**Provisional commit:** `docs(plan): reconcile Todo UX delivery ledger`
+
+**Work:** Record the reviewed post-rebase schema 2 corrections before implementation resumes.
+
+**Size assessment:** Estimated 0 changed non-test implementation lines; planning-only commit.
+
+**Out of scope:** Product behavior, tests, executable configuration, PR boundaries, release intent or target, Linear changes, and unrelated documentation.
+
+**Implementation packet:** Commit only the reviewed ledger correction that aligns current branch evidence, release authority, packet ownership, validation commands, sizing, and delivery sequencing with synchronized `main` and current PI_SETUP.
+
+**Files and responsibilities:** `.wiki/features/active/todo-ux-quality-pass.md` owns this corrected feature authority and execution plan. `.wiki/TODO.md` remains unchanged and continues to own the active queue entry. `.wiki/BACKLOG.md`, planned specs, ADRs, implementation, tests, and repository-wide workflow guidance remain unchanged.
+
+**Behavior and data flow:** Documentation only. The correction replaces the prior fingerprint with reviewed authority for one planning commit followed by the unchanged JAY-35 through JAY-41 implementation outcomes.
+
+**Ordered implementation steps:** Verify the rebased branch and base; inspect the complete two-path branch diff; correct stale history, release commands, packet ownership, validation, size, and sequencing; run deterministic validation; obtain independent plan review; record the exact Delivery fingerprint; stage only this ledger after developer approval.
+
+**Tests and proof:** No implementation behavior changes. `ledger_state.py` and `delivery_state.py` must report schema 2, `runnable`, the exact recorded fingerprint, and no errors. The release commands must exactly match the instantiated runbook forms and pass shell syntax validation. Markdown diagnostics, relative-link checks, `git diff --check`, `release-metadata v0.11.1 none`, and the full repository gate must pass.
+
+**Patterns to verify:** `.wiki/features/active/README.md`, the current PI_SETUP schema 2 template and classifiers, ADR 0003, `.pi/skills/create-pr/SKILL.md`, and `.wiki/notes/early-alpha-release-runbook.md`.
+
+**Constraints and non-goals:** Preserve every accepted product decision, issue, PR boundary, branch name, merge method, required check, release target, and implementation order. Do not edit `.wiki/TODO.md` again or change executable files.
+
+**Dependencies and sequencing:** Commits 1–2 are complete. The branch is rebased onto synchronized `main` at `76cc9f8dbd82504f966038583da4e332e9839c0e`, and the developer requested structural reconciliation before implementation resumes.
+
+**Validation:** `python3 /home/jonas/projects/PI_SETUP/scripts/ledger_state.py .wiki/features/active/todo-ux-quality-pass.md && python3 /home/jonas/projects/PI_SETUP/scripts/delivery_state.py .wiki/features/active/todo-ux-quality-pass.md . && ./scripts/dev release-metadata v0.11.1 none && git diff --check && ./scripts/dev check`
+
+**Stop conditions:** Stop on changed product scope or PR authority, a classifier or release-command mismatch, another changed path, an uncleared review finding, base drift, or missing developer approval to commit the correction.
+
+**Review mandate:** Verify current history evidence, exact two-path branch scope, complete packet structure, release command parity, current Pi paths and roles, status consistency, unchanged product intent, and executable next action.
+
+#### Commit 4 — Restore bounded Staff workspace scrolling
+
+**Status:** Pending
 
 **Provisional commit:** `fix(club): contain staff table scrolling`
 
 **Work:** Restore a bounded flex chain for Staff and Staff Shortlist so their existing virtualizers own scrolling.
 
-**Size assessment:** Very small production change plus focused route regression coverage.
+**Size assessment:** Estimated 5 changed non-test implementation lines. Within the soft target.
 
 **Out of scope:** Virtualizer, row-height, page-size, and Staff query rewrites.
 
@@ -275,7 +309,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Constraints and non-goals:** Preserve hidden-panel, query, paging, and shared-table behavior.
 
-**Dependencies and sequencing:** Commit 2 complete.
+**Dependencies and sequencing:** Commit 3 complete.
 
 **Validation:** Run the focused route test, shared table contract, and full commit gate recorded below.
 
@@ -286,16 +320,16 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 - **Provisional subject:** `fix(club): contain staff table scrolling`
 - **Outcome:** Keep My Club Staff and Staff Shortlist tables within their available workspace height so their existing virtualizers own scrolling.
 - **Files and symbols:**
-  - `src/app/routes/my-club.tsx`: Staff and Staff Shortlist tabpanel wrapper class chains around `MyClubStaffWorkspace` and `MyClubStaffShortlistWorkspace`.
+  - `src/app/routes/my-club.tsx`: Staff and Staff Shortlist tabpanel wrapper class chains around `StaffSearchResultsPanel` and `MyClubStaffShortlistWorkspace`.
   - `src/app/routes/my-club-squad.test.tsx`: route-level containment and bounded-row regression scenarios for both workspaces.
-  - `.wiki/DESIGN.md`: Staff/My Club scrolling statement, only if the existing current-state text needs correction after the implementation is true.
+  - `.wiki/DESIGN.md`: retain the existing full-height table and no-page-scroll contract unchanged; the implementation restores that documented behavior.
 - **Behavior and data flow:** The active tabpanel becomes a real `flex min-h-0 flex-1 flex-col` container. The existing `StaffSearchResultsPanel` and `ConfigurableVirtualizedTable` then receive a bounded ancestor height and continue to fetch/render only the visible page range.
 - **RED:** Add route tests that activate Staff and Staff Shortlist with totals larger than a viewport, assert the tabpanel/table has the containment contract, and assert the DOM contains a bounded subset rather than every result. Run the focused test and confirm failure because the tabpanel lacks the flex containment.
 - **GREEN:** Add only the missing flex containment classes. Re-run both new scenarios, then the complete route test.
 - **Test assets:** Modified: `src/app/routes/my-club-squad.test.tsx`. Added/deleted: none. Retained: virtualizer contract tests and Staff query behavior.
 - **Patterns and constraints:** Reuse the existing Squad/Planner bounded flex chain and existing table test helpers. Do not change `ConfigurableVirtualizedTable`, row height, page size, or Staff data queries unless the RED evidence disproves the diagnosed ancestor break.
-- **Dependencies:** Commit 2 complete.
-- **Soft-size assessment:** Expected to be a very small production diff plus focused regression coverage; split only if evidence reveals a separate virtualizer defect.
+- **Dependencies:** Commit 3 complete.
+- **Soft-size assessment:** Estimated 5 changed non-test implementation lines. Within the soft target.
 - **Targeted validation:** `./scripts/dev test src/app/routes/my-club-squad.test.tsx`
 - **Affected validation:** `./scripts/dev test src/app/routes/my-club-squad.test.tsx src/components/player-table/configurable-table-contract.test.tsx`
 - **Commit gate:** `./scripts/dev check`
@@ -307,7 +341,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
   - The document no longer becomes the table scroll container.
   - No shared virtualization behavior changes incidentally.
 
-#### Commit 4 — Place managed-club save inline with search
+#### Commit 5 — Place managed-club save inline with search
 
 **Status:** Pending
 
@@ -315,7 +349,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Work:** Place managed-club search and save controls on one responsive row with feedback below.
 
-**Size assessment:** Small layout-only production change plus one focused regression scenario.
+**Size assessment:** Estimated 15 changed non-test implementation lines. Within the soft target.
 
 **Out of scope:** Picker internals, suggestion ownership, submit logic, and message copy.
 
@@ -333,7 +367,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Constraints and non-goals:** Preserve autocomplete positioning, keyboard order, Enter submit, and narrow-width usability.
 
-**Dependencies and sequencing:** Commit 3 complete; no functional dependency beyond the shared route surface.
+**Dependencies and sequencing:** Commit 4 complete; no functional dependency beyond the shared route surface.
 
 **Validation:** Run the focused route test, full gate, and browser evidence recorded below.
 
@@ -346,14 +380,14 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 - **Files and symbols:**
   - `src/features/managed-club/components/managed-club-selector.tsx`: form layout around `ManagedClubPicker`, `Button`, and feedback paragraphs.
   - `src/app/routes/my-club-squad.test.tsx`: layout semantics, tab order, pending/disabled, and feedback placement scenario.
-  - `.wiki/DESIGN.md`: managed-club control composition if current-state text needs the new arrangement recorded.
+  - `.wiki/DESIGN.md`: record the managed-club picker/save control row and feedback placement after implementation.
 - **Behavior and data flow:** Form submission and selection state remain unchanged. Only the control wrapper becomes a responsive row at supported widths; the picker retains its positioned suggestion anchor and messages remain block content beneath the row.
 - **RED:** Add a focused test asserting picker then submit control order inside a shared control group, with status/alert content outside that row. Preserve existing pending and validation assertions. Confirm failure against the vertical form.
 - **GREEN:** Introduce the smallest wrapper/class change that supports inline desktop layout and narrow-width fallback. Re-run route tests and browser smoke.
 - **Test assets:** Modified: `src/app/routes/my-club-squad.test.tsx`. Added/deleted: none. Retained: existing managed-club blur, duplicate-save, and suggestion behavior coverage.
 - **Patterns and constraints:** Use existing Tailwind tokens and form semantics. Do not change picker internals, suggestion positioning ownership, submit logic, or messages.
-- **Dependencies:** Commit 3 complete; no functional dependency beyond the shared route test surface.
-- **Soft-size assessment:** Small layout-only production change with one regression scenario.
+- **Dependencies:** Commit 4 complete; no functional dependency beyond the shared route test surface.
+- **Soft-size assessment:** Estimated 15 changed non-test implementation lines. Within the soft target.
 - **Targeted validation:** `./scripts/dev test src/app/routes/my-club-squad.test.tsx`
 - **Affected validation:** `./scripts/dev test src/app/routes/my-club-squad.test.tsx`
 - **Commit gate:** `./scripts/dev check`
@@ -404,7 +438,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Work:** Add accessible Back and Forward controls synchronized with current-session TanStack Router history.
 
-**Size assessment:** One coherent frontend commit below the soft production-code target.
+**Size assessment:** Estimated 80 changed non-test implementation lines. Within the soft target.
 
 **Out of scope:** Restart persistence, custom shortcuts, explicit scroll restoration, and a parallel URL stack.
 
@@ -433,17 +467,17 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 - **Provisional subject:** `feat(navigation): add back and forward controls`
 - **Outcome:** Add accessible Back and Forward controls immediately after global player search, with availability synchronized to current-session router history.
 - **Files and symbols:**
-  - `src/app/components/app-top-bar.tsx`: controls, labels/tooltips, history subscription, and session index boundary ownership; extract a small hook beside the component only if tests or hook rules require it.
+  - `src/app/components/app-top-bar.tsx`: controls, labels/tooltips, history subscription, cleanup, and session index boundary ownership; keep this state beside the component without adding another URL-history abstraction.
   - `src/app/app-top-bar.test.tsx`: initial disabled state, push/back/forward transitions, forward reset after a new push, click behavior, labels, and focus.
   - `src/app/app-shell-routing.test.tsx`: route pathname/search/hash restoration through actual app navigation.
   - `.wiki/DESIGN.md`: app-header control order and session-history scope after implementation.
 - **Behavior and data flow:** Subscribe to the installed TanStack history. Read the current history index, retain the highest reachable index for the active branch, and derive Back/Forward disabled states. Button activation delegates to `history.back()` and `history.forward()`; normal route navigation continues to push into the same history and truncates the derived forward boundary when it branches.
 - **RED:** Add top-bar unit tests and one routing integration path covering A → B → C → Back → Back → Forward, then Back → new route with Forward disabled. Include a URL with search parameters and hash. Confirm failures because controls and forward availability do not exist.
 - **GREEN:** Add the minimal subscribed state and two existing-design-system icon buttons in the required order. Re-run focused tests and smoke.
-- **Test assets:** Modified: `src/app/app-top-bar.test.tsx`, `src/app/app-shell-routing.test.tsx`. Added/deleted: none unless a focused local hook test is demonstrably clearer. Retained: GlobalPlayerSearch and existing route-history tests.
+- **Test assets:** Modified: `src/app/app-top-bar.test.tsx`, `src/app/app-shell-routing.test.tsx`. Added/deleted: none. Retained: GlobalPlayerSearch and existing route-history tests.
 - **Patterns and constraints:** Use TanStack history as the sole source of navigation actions. Unsubscribe on cleanup. Preserve global-search behavior and top-bar responsive layout. Do not add localStorage, a second URL stack, shortcut listeners, or scroll restoration.
 - **Dependencies:** PR 1 merge for workflow activation only.
-- **Soft-size assessment:** One coherent frontend commit; expected production code remains well below the soft target.
+- **Soft-size assessment:** Estimated 80 changed non-test implementation lines. Within the soft target.
 - **Targeted validation:** `./scripts/dev test src/app/app-top-bar.test.tsx src/app/app-shell-routing.test.tsx`
 - **Affected validation:** `./scripts/dev test src/app/app-top-bar.test.tsx src/app/app-shell-routing.test.tsx src/features/search/components/global-player-search.test.tsx`
 - **Commit gate:** `./scripts/dev check`
@@ -495,7 +529,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Work:** Deduplicate nationality names and visually distinguish all secondary flags in every shared flag-table consumer.
 
-**Size assessment:** Small shared-component change plus focused component coverage.
+**Size assessment:** Estimated 25 changed non-test implementation lines. Within the soft target.
 
 **Out of scope:** Profile/Academy nationality text, sorting, capping, and row-identity changes.
 
@@ -526,17 +560,17 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 - **Files and symbols:**
   - `src/components/player-table/nationality-cell.tsx`: stable deduplication, primary/secondary presentation, accessible labels/titles.
   - `src/components/player-table/nationality-cell.test.tsx`: single, multiple, duplicate, and order-preservation cases.
-  - `src/components/player-table/configurable-table-contract.test.tsx`: retain or extend consumer contract only where needed to prove shared integration.
+  - `src/components/player-table/configurable-table-contract.test.tsx`: retain its generic caller-owned catalog, action-cell, and row-activation contract unchanged.
   - `.wiki/DESIGN.md`: nationality-cell visual hierarchy and shared table scope after implementation.
 - **Behavior and data flow:** The component receives the existing nationality-name array, removes later exact duplicates, maps each retained name through the existing flag source, and styles index zero as primary and later entries as secondary. All current consumers inherit the behavior without adapter changes.
 - **RED:** Add component tests proving duplicate removal, stable order, unchanged primary emphasis, reduced secondary emphasis, and readable accessible names. Confirm the current identical rendering fails the hierarchy assertions.
 - **GREEN:** Apply stable first-occurrence deduplication and index-based styles in the shared component. Re-run its tests and the shared table contract.
-- **Test assets:** Modified: `src/components/player-table/nationality-cell.test.tsx`; optionally modified: configurable table contract if it adds meaningful integration proof. Added/deleted: none. Retained: existing flag lookup and empty-state tests.
+- **Test assets:** Modified: `src/components/player-table/nationality-cell.test.tsx`. Added/deleted: none. Retained: `src/components/player-table/configurable-table-contract.test.tsx` plus existing flag lookup and empty-state tests.
 - **Patterns and constraints:** Keep the current flag asset/emoji mechanism and row-height budget. Do not cap secondary flags, reorder by country, or change profile/Academy text surfaces.
 - **Dependencies:** PR 2 merge for workflow activation only.
-- **Soft-size assessment:** Small shared-component commit.
+- **Soft-size assessment:** Estimated 25 changed non-test implementation lines. Within the soft target.
 - **Targeted validation:** `./scripts/dev test src/components/player-table/nationality-cell.test.tsx`
-- **Affected validation:** `./scripts/dev test src/components/player-table/nationality-cell.test.tsx src/components/player-table/configurable-table-contract.test.tsx`
+- **Affected validation:** `./scripts/dev test src/components/player-table/nationality-cell.test.tsx`
 - **Commit gate:** `./scripts/dev check`
 - **Stop conditions:** Stop if secondary flags overflow the fixed row height, current data can contain non-name identifiers that break exact deduplication, or shared application changes a non-table surface.
 - **Review concerns:**
@@ -554,7 +588,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Work:** Stack name over club/division in three player tables and migrate duplicate visible identity columns without losing other preferences.
 
-**Size assessment:** Near the soft target because presentation and persisted migration must land atomically; split only if both outcomes remain independently safe.
+**Size assessment:** Estimated 160 changed non-test implementation lines. Within the soft target; presentation and persisted migration remain atomic.
 
 **Out of scope:** Staff row grouping, variable heights, metric removal, server sorting/filtering changes, and unrelated layout resets.
 
@@ -566,7 +600,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Ordered implementation steps:** Add failing migration/render/activation tests, implement minimal render and migration changes, then validate persistence and virtualization.
 
-**Tests and proof:** Prove custom order/width preservation and picker availability in the store; prove name-first grouping, clean missing-value formatting, and one activation in both Search modes and Squad; keep fixed-height and bounded-row assertions in the generic table contract.
+**Tests and proof:** Prove custom order/width preservation and picker availability in the store. In the Search and My Club route suites, prove name-first grouping, clean missing-value formatting, one activation in both Search modes and Squad, fixed `40px` identity rows, keyboard focus, and bounded virtual rendering.
 
 **Patterns to verify:** Match existing two-line row tokens, configurable-column sanitizer, and the old-app visual grouping.
 
@@ -589,18 +623,18 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
   - `src/stores/use-player-table-store.test.ts`: old-version migration fixtures, preserved custom order/widths, removed duplicate visible identity columns, and picker availability.
   - `src/app/routes/search.test.tsx`: General and Moneyball Search identity grouping, missing-value formatting, and whole-row activation.
   - `src/app/routes/my-club-squad.test.tsx`: Squad identity grouping, missing-value formatting, and whole-row activation.
-  - `src/components/player-table/configurable-table-contract.test.tsx`: fixed-height virtualization, whole-row focus, and bounded rendered rows.
+  - `src/components/player-table/configurable-table-contract.test.tsx`: retain its generic caller-owned catalog, action-cell, and row-activation contract unchanged; route tests own identity layout, fixed-height, focus, and bounded-rendering proof.
   - `.wiki/DESIGN.md`: Data Table identity hierarchy and configuration behavior.
-  - `.wiki/ARCHITECTURE.md`: persisted table-layout version/current defaults if its current-state description becomes stale.
+  - `.wiki/ARCHITECTURE.md`: update the persisted table-layout version and the Search, Moneyball Search, and Squad default visible columns.
 - **Behavior and data flow:** Existing page DTOs continue to carry name, club, and division. The Name renderer displays the three fields as one fixed-height identity cell. Store hydration detects the prior persisted version, removes `club` and `division` from only the three player-table visible arrays, removes their stored widths, preserves all other IDs/order/widths, and leaves the metrics valid for later picker re-addition. New defaults start in the same nonduplicated state.
-- **RED:** Add migration fixtures for default-like and custom layouts. Add route-level assertions for General Search, Moneyball Search, and Squad covering two-line identity, absent/null club or division, and one activation from either line. Keep generic table assertions for one `40px` row, whole-record focus, and bounded rendering. Confirm failures against current separate-column rendering/version.
-- **GREEN:** Update the identity renderers, defaults, and one-time migration with the smallest shared presentation helper only if three call sites would otherwise diverge. Re-run store, table, and smoke coverage.
-- **Test assets:** Modified: `src/stores/use-player-table-store.test.ts`, `src/app/routes/search.test.tsx`, `src/app/routes/my-club-squad.test.tsx`, and `src/components/player-table/configurable-table-contract.test.tsx`. Added: a small identity-cell component test only if a shared component is introduced. Deleted: none. Retained: dynamic column, sorting, query paging, and virtualizer tests.
+- **RED:** Add migration fixtures for default-like and custom layouts. Add route-level assertions for General Search, Moneyball Search, and Squad covering two-line identity, absent/null club or division, one `40px` row, whole-record focus, bounded rendering, and one activation from either line. Confirm failures against current separate-column rendering/version.
+- **GREEN:** Update both existing name renderers, defaults, and the one-time migration directly. Do not add a shared identity component. Re-run store, table, and smoke coverage.
+- **Test assets:** Modified: `src/stores/use-player-table-store.test.ts`, `src/app/routes/search.test.tsx`, and `src/app/routes/my-club-squad.test.tsx`. Added/deleted: none. Retained: `src/components/player-table/configurable-table-contract.test.tsx` and existing dynamic-column, sorting, query-paging, and virtualizer tests.
 - **Patterns and constraints:** Follow the existing two-line row token and the referenced visual grouping. Do not make row height variable, remove Club/Division from metric registries, reset unrelated saved layouts, or migrate Staff tables.
 - **Dependencies:** Commit 1 complete so final table visuals can be reviewed together.
-- **Soft-size assessment:** Expected near the soft limit because presentation and persisted migration must land atomically. Split migration tests from rendering only if either interim commit remains independently correct and user-safe.
+- **Soft-size assessment:** Estimated 160 changed non-test implementation lines. Within the soft target; presentation and persisted migration remain atomic.
 - **Targeted validation:** `./scripts/dev test src/stores/use-player-table-store.test.ts src/app/routes/search.test.tsx src/app/routes/my-club-squad.test.tsx src/components/player-table/configurable-table-contract.test.tsx`
-- **Affected validation:** `./scripts/dev test src/stores/use-player-table-store.test.ts src/app/routes/search.test.tsx src/app/routes/my-club-squad.test.tsx src/components/player-table/configurable-table-contract.test.tsx src/components/player-table/nationality-cell.test.tsx`
+- **Affected validation:** `./scripts/dev test src/stores/use-player-table-store.test.ts src/app/routes/search.test.tsx src/app/routes/my-club-squad.test.tsx src/components/player-table/nationality-cell.test.tsx`
 - **Commit gate:** `./scripts/dev check`
 - **Browser evidence:** `./scripts/dev smoke`, plus visual inspection against the old-app reference for General Search, Moneyball Search, and Squad.
 - **Stop conditions:** Stop if current DTOs omit club/division when their visible columns are absent, migration cannot distinguish prior layouts safely, a two-line cell exceeds fixed row height, or one activation causes duplicate navigation.
@@ -651,7 +685,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Work:** Recompute profile percentiles/role scores over deduplicated exact-natural-position peers and expose basis metadata.
 
-**Size assessment:** May exceed the soft target because query behavior, additive DTOs, and frontend contracts form one atomic boundary; keep helper extraction minimal.
+**Size assessment:** Estimated 220–280 changed non-test implementation lines. This may exceed the soft target because the query behavior, additive IPC contract, and frontend type/mock boundary must land atomically.
 
 **Out of scope:** Search cohorts, persisted recalculation, schema migration, new scoring rules, and frontend basis rendering.
 
@@ -663,7 +697,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Ordered implementation steps:** Add failing Rust cohort/state tests, implement one bounded load and recomputation, update additive contracts, then run Rust/frontend validation.
 
-**Tests and proof:** Cover one/multiple positions, overlap dedupe, partial exclusion, snapshot isolation, null/tie/inversion/singleton rules, and no-natural unavailable output.
+**Tests and proof:** Cover one/multiple positions, overlap dedupe, partial exclusion, snapshot isolation, null/tie/inversion/singleton rules, and no-natural unavailable output. Add inline `commands.rs` conversion and serialization tests for available and unavailable comparison-basis responses, including exact camelCase field names.
 
 **Patterns to verify:** Reuse positions parsing, parameterized query patterns, `calculate_percentiles`, role explanation logic, and additive IPC serialization.
 
@@ -681,17 +715,18 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 - **Outcome:** Recompute a profiled player's Moneyball percentiles and role scores from the active imported snapshot's deduplicated natural-position peer union, and expose the comparison basis over IPC.
 - **Files and symbols:**
   - `src-tauri/src/features/moneyball/query.rs`: `get_player_moneyball`, targeted row loaders/helpers, and inline query tests.
-  - `src-tauri/src/features/moneyball/percentile.rs`: reuse `calculate_percentiles`; change only if a test proves a reusable input contract is missing.
-  - `src-tauri/src/features/moneyball/commands.rs`: additive profile response metadata for natural positions, cohort count, and score availability.
-  - `src/features/moneyball/types/moneyball-profile.ts` and `src/features/player-profile/types/player-moneyball.ts`: mirror the additive IPC contract.
+  - `src-tauri/src/features/moneyball/percentile.rs`: retain `calculate_percentiles` and its existing tie, null, inversion, and singleton rules unchanged.
+  - `src-tauri/src/features/moneyball/commands.rs`: add profile response metadata for natural positions, cohort count, and score availability.
+  - `src/features/moneyball/types/moneyball-profile.ts`: mirror the additive IPC contract as the sole frontend type owner.
+  - `src/testing/moneyball-ipc-mock.ts`: extend the ready-profile fixture with the comparison basis and unavailable-score state.
   - `.wiki/ARCHITECTURE.md`: replace the full-import Profile percentile claim with current natural-position cohort behavior after implementation.
 - **Behavior and data flow:** After the existing query confirms a subject Moneyball row, load the subject's exact-20 positions from `positions_json`. If nonempty, query current-snapshot Moneyball rows joined to players whose parsed familiarity map contains at least one of those positions; deduplicate by player identity before building metric samples. Feed each metric sample through the existing percentile function, then derive role explanations/scores from those recomputed percentiles. Return an explicit available basis with positions and unique cohort count. If that existing subject row has no natural positions, return raw imported metrics with absent percentile/role-score values and an explicit unavailable-no-natural-position basis. Preserve the current no-data response when no subject Moneyball row exists; distinguishing no import from a missing subject row is not part of JAY-35.
-- **RED:** Add Rust tests for one natural position, overlapping two-position union without duplicate peers, exclusion of partial-familiarity players, lower-is-better and null preservation through the new population, snapshot/import isolation, singleton neutrality, and no-natural-position unavailable output. Confirm failures because the query returns persisted full-import percentiles.
+- **RED:** Add Rust query tests for one natural position, overlapping two-position union without duplicate peers, exclusion of partial-familiarity players, lower-is-better and null preservation through the new population, snapshot/import isolation, singleton neutrality, and no-natural-position unavailable output. Add `commands.rs` tests that fail until available and unavailable basis metadata converts and serializes with the exact camelCase fields. Confirm query failures because the current path returns persisted full-import percentiles and boundary failures because the additive DTO fields do not exist.
 - **GREEN:** Add the smallest cohort loader/recomputation path and additive response fields, reusing parser and percentile functions. Update TypeScript contracts without rendering the new metadata yet. Run Rust and TypeScript gates.
-- **Test assets:** Modified: inline tests in `query.rs`. Added/deleted: none unless a small fixture helper is needed. Retained: `percentile.rs` tie/null/inversion tests and Moneyball Search query tests, which must continue proving full Search population behavior.
+- **Test assets:** Modified: inline tests in `src-tauri/src/features/moneyball/query.rs`, inline conversion/serialization tests in `src-tauri/src/features/moneyball/commands.rs`, and the shared ready-profile fixture in `src/testing/moneyball-ipc-mock.ts`. Added/deleted: none. Retained: `percentile.rs` tie/null/inversion tests and Moneyball Search query tests, which continue to prove full Search population behavior.
 - **Patterns and constraints:** Keep SQL parameterized and snapshot-scoped. Do not write recalculated profile values back to SQLite. Avoid one query per player/metric; load the bounded comparison set once and compute in memory using existing logic.
 - **Dependencies:** PR 3 merge for workflow activation only.
-- **Soft-size assessment:** Likely near or above the soft production target because query, DTO, and contracts form one atomic behavior. Keep helper extraction minimal and split only if the additive contract remains backward-compatible and each commit is testable.
+- **Soft-size assessment:** Estimated 220–280 changed non-test implementation lines. The atomic Rust query, IPC DTO, frontend type, and shared mock contract justify exceeding the soft target.
 - **Targeted validation:** `./scripts/dev check-rust`
 - **Affected validation:** `./scripts/dev check-rust && ./scripts/dev test src/features/moneyball/components/moneyball-profile-panel.test.tsx src/features/moneyball/components/moneyball-role-fit-panel.test.tsx src/app/routes/players.\$uid.test.tsx`
 - **Commit gate:** `./scripts/dev check`
@@ -713,7 +748,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Work:** Render natural positions/cohort count and honest unavailable percentile/role states while retaining raw metrics.
 
-**Size assessment:** One focused frontend integration commit below the soft target.
+**Size assessment:** Estimated 90 changed non-test implementation lines. Within the soft target.
 
 **Out of scope:** Browser-side cohort calculation, fallback to persisted scores, header geometry, and Search UI changes.
 
@@ -752,9 +787,9 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 - **Test assets:** Modified: `moneyball-profile-panel.test.tsx`, `moneyball-role-fit-panel.test.tsx`, `players.$uid.test.tsx`. Added/deleted: none. Retained: profile mode toggle, loading, no-data, and role explanation tests.
 - **Patterns and constraints:** Use existing data-honesty wording and status components. Do not synthesize a cohort count in the browser or fall back to persisted import-wide scores.
 - **Dependencies:** Commit 1 additive contract complete.
-- **Soft-size assessment:** One focused frontend integration commit below the soft target.
+- **Soft-size assessment:** Estimated 90 changed non-test implementation lines. Within the soft target.
 - **Targeted validation:** `./scripts/dev test src/features/moneyball/components/moneyball-profile-panel.test.tsx src/features/moneyball/components/moneyball-role-fit-panel.test.tsx src/app/routes/players.\$uid.test.tsx`
-- **Affected validation:** Same focused set plus `./scripts/dev check-app`.
+- **Affected validation:** `./scripts/dev test src/features/moneyball/components/moneyball-profile-panel.test.tsx src/features/moneyball/components/moneyball-role-fit-panel.test.tsx src/app/routes/players.\$uid.test.tsx && ./scripts/dev check-app`.
 - **Commit gate:** `./scripts/dev check`
 - **Browser evidence:** `./scripts/dev smoke`, plus manual valid-cohort and no-natural-position profile inspection if smoke data cannot represent both.
 - **Stop conditions:** Stop if additive contract fields cannot distinguish an existing subject Moneyball row with no natural position from the current no-data response for a missing row.
@@ -774,7 +809,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Work:** Give General and Moneyball profile summaries one stable two-band footprint and toggle position.
 
-**Size assessment:** Small-to-medium presentation refactor below the soft target.
+**Size assessment:** Estimated 80 changed non-test implementation lines. Within the soft target.
 
 **Out of scope:** Information removal, hard-coded content offsets, table layout, and unseen reference-image invention.
 
@@ -786,7 +821,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Ordered implementation steps:** Add failing shared-landmark/focus tests and visual proof, refactor minimal composition, then run profile validation.
 
-**Tests and proof:** Prove invariant order/landmarks, retained data, focus, long-content wrapping, and equal supported-viewport geometry.
+**Tests and proof:** Prove invariant order/landmarks, retained data, focus, long-content wrapping, and equal supported-viewport geometry. Manually compare General and Moneyball at 1280×800 and 1600×900 at normal scale and actual 200% browser zoom; the header, toggle, and content must remain usable without clipping or overlap.
 
 **Patterns to verify:** Reuse current profile cards, grids, spacing tokens, and accessible analysis-tab conventions.
 
@@ -804,7 +839,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 - **Outcome:** Give General and Moneyball Player Profile overview modes one stable two-band footprint so the analysis toggle no longer shifts.
 - **Files and symbols:**
   - `src/app/routes/players.$uid.tsx`: shared profile-header composition around `GeneralPlayerProfile`, `MoneyballPlayerProfile`, and `PlayerAnalysisTabs`.
-  - `src/features/player-profile/components/player-overview-panel.tsx`: General/Moneyball summary-grid geometry only if the shared route wrapper cannot establish equal footprint cleanly.
+  - `src/features/player-profile/components/player-overview-panel.tsx`: align General and Moneyball summary-grid bands while preserving each mode's content.
   - `src/app/routes/players.$uid.test.tsx`: stable landmarks/order, retained information, toggle focus, and both-mode states.
   - `.wiki/DESIGN.md`: common two-band profile header geometry after implementation.
 - **Behavior and data flow:** Both profile modes render the same outer header bands and reserve the same summary footprint. Mode-specific content changes inside those bands; the toggle remains in one DOM/layout position and keeps focus when switching.
@@ -813,18 +848,18 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 - **Test assets:** Modified: `src/app/routes/players.$uid.test.tsx`. Added/deleted: none. Retained: General profile, Moneyball panel, information controls, and routing tests.
 - **Patterns and constraints:** Follow current `PlayerOverviewPanel` card and spacing tokens. Do not hide existing data, hard-code content-specific pixel offsets, or infer inaccessible reference-image detail.
 - **Dependencies:** Commit 2 complete so the final Moneyball basis content participates in the stable footprint.
-- **Soft-size assessment:** Small-to-medium presentation refactor below the soft target.
+- **Soft-size assessment:** Estimated 80 changed non-test implementation lines. Within the soft target.
 - **Targeted validation:** `./scripts/dev test src/app/routes/players.\$uid.test.tsx`
 - **Affected validation:** `./scripts/dev test src/app/routes/players.\$uid.test.tsx src/features/moneyball/components/moneyball-profile-panel.test.tsx src/features/moneyball/components/moneyball-role-fit-panel.test.tsx`
 - **Commit gate:** `./scripts/dev check`
-- **Browser evidence:** `./scripts/dev smoke` and manual side-by-side General/Moneyball inspection at the supported viewport.
-- **Stop conditions:** Stop if equal footprint requires dropping information, if focus moves on toggle after two corrections, or if the current component boundary would duplicate whole profile summaries.
+- **Browser evidence:** `./scripts/dev smoke`, then manual side-by-side General/Moneyball inspection at 1280×800 and 1600×900 at normal scale and actual 200% browser zoom.
+- **Stop conditions:** Stop if equal footprint requires dropping information, focus moves on toggle after two corrections, either mode clips or overlaps at 200% zoom or 1280×800, or the current component boundary would duplicate whole profile summaries.
 - **Review concerns:**
   - Toggle position is stable between modes.
   - Both modes retain every current datum plus the new Moneyball basis.
   - Shared height works for long names and multiple natural positions.
   - Focus stays on the activated toggle and accessible tab semantics remain correct.
-  - Narrow layout wraps without overlap or clipped content.
+  - The 1280×800 layout and actual 200% browser zoom remain usable without overlap, clipping, or toggle movement.
   - The change does not leak profile-specific spacing into list tables.
 
 #### Commit 4 — Prepare the Todo UX minor release
@@ -835,49 +870,49 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Work:** Prepare durable release metadata for the complete Todo UX Quality Pass.
 
-**Size assessment:** No implementation code; seven release metadata and documentation owners change atomically.
+**Size assessment:** Estimated 10 changed non-test configuration lines, excluding documentation and the lockfile. Within the soft target.
 
 **Out of scope:** Publishing, tagging, GitHub release creation, unrelated changelog entries, implementation, and feature-ledger archival.
 
-**Implementation packet:** After Commits 1–3 are complete, inspect the latest reachable tag and the complete unreleased range across all four feature PRs. If `minor` remains correct and the latest tag is `v0.11.1`, propose `0.12.0`, the publication date, exact changelog text, and exact files before editing. Then update the durable version, changelog, and release-authorization owners in the final PR and collect every native Windows, installed-app, recovery, bridge, live-FM, and product-flow result required by the release runbook before merge.
+**Implementation packet:** After Commits 1–3 are complete, inspect the latest reachable tag and the complete unreleased range across all four feature PRs. If `minor` remains correct and the latest tag is `v0.11.1`, propose `0.12.0`, the publication date, exact changelog text, and exact files before editing. Then update the durable version, changelog, and release-authorization owners in the final PR. Native Windows, installed-app, recovery, bridge, live-FM, and product-flow evidence runs after feature close-out on the exact final PR head.
 
 **Files and responsibilities:** `package.json`, `src-tauri/Cargo.toml`, the root `app` entry in `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, and `bridge/FmDataBridge.csproj` agree on `0.12.0`; `CHANGELOG.md` keeps `Unreleased` and records the complete JAY-35 through JAY-41 user-visible range; `release-preparation.json` records `0.12.0`, intent `minor`, and the next positive sequence.
 
 **Behavior and data flow:** The final reviewed PR carries exact-SHA authorization for verified-`main` publication. Intermediate PRs leave release metadata unchanged and use release intent `none`.
 
-**Ordered implementation steps:** Confirm `v0.11.1` remains the latest reachable tag; inspect the full unreleased range; run RED metadata validation; propose exact metadata changes; update only the seven owners; run GREEN metadata validation and the full gate. After feature review, corrections, and the documentation close-out commit establish the exact final PR head, run native Windows packaging and independently verify the installer/checksum; install it and complete the runbook's startup/log, recovery, bridge, live-FM Load Data, and supported product-flow checks; record the exact evidence before publication.
+**Ordered implementation steps:** Confirm `v0.11.1` remains the latest reachable tag; inspect the full unreleased range; run RED metadata validation; propose exact metadata changes; update only the seven owners; run GREEN metadata validation and the full gate. Defer native Windows packaging and every installed-app runbook item to post-close-out exact-head validation.
 
-**Tests and proof:** `./scripts/dev release-metadata v0.11.1 minor` must fail before preparation for the expected version mismatch and pass afterward with machine-readable `0.12.0` evidence and the exact dated changelog section. After all final-PR content, correction, and close-out commits, `./scripts/dev package-windows` must pass on the unchanged exact head; the installer checksum, bundled bridge/version, installed-app logs, backup/restore/update/uninstall flow, supported FM26 bridge Load Data flow, and Search/Profile/Table/CSV/Planner/Academy/boost checks must satisfy `.wiki/notes/early-alpha-release-runbook.md`.
+**Tests and proof:** `./scripts/dev release-metadata v0.11.1 minor` must fail before preparation for the expected version mismatch and pass afterward with machine-readable `0.12.0` evidence and the exact dated changelog section. Retain `scripts/release-metadata.test.ts`, `scripts/release-workflow.test.ts`, and `scripts/release-publication-policy.test.ts` unchanged because this packet changes release inputs, not release logic. Add, modify, or delete no test files.
 
-**Patterns to verify:** Follow `.agents/skills/create-pr/SKILL.md`, the early-alpha release runbook, Keep a Changelog ordering, and the prior release-preparation commit.
+**Patterns to verify:** Follow `.pi/skills/create-pr/SKILL.md`, the early-alpha release runbook, Keep a Changelog ordering, and the prior release-preparation commit.
 
 **Constraints and non-goals:** Do not regenerate Cargo.lock, change a non-root package lock entry, prepare separate releases for intermediate PRs, archive the ledger early, or proceed if the complete range requires another intent or target.
 
 **Dependencies and sequencing:** Commits 1–3 and all earlier PRs are validated, reviewed, merged, and represented in synchronized `main`; the latest reachable tag remains `v0.11.1`.
 
-**Validation:** `./scripts/dev release-metadata v0.11.1 minor && ./scripts/dev check`, plus native Windows `./scripts/dev package-windows` and every manual item in `.wiki/notes/early-alpha-release-runbook.md` on the exact final PR head.
+**Validation:** `./scripts/dev release-metadata v0.11.1 minor && ./scripts/dev check`.
 
-**Stop conditions:** Stop on latest-tag drift, intent or target ambiguity, an incomplete changelog range, missing release-owner evidence, any unavailable or failed release-runbook item, a final PR head change after installed-app evidence, or a changed publication contract.
+**Stop conditions:** Stop on latest-tag drift, intent or target ambiguity, an incomplete changelog range, missing release-owner evidence, metadata validation failure, or a changed publication contract.
 
-**Review mandate:** Verify range-based intent, all five version owners, root-only lock edit, complete JAY-35 through JAY-41 changelog, authorization sequence, metadata output, exact-head native Windows and installed-app evidence, bridge/live-FM/product-flow results, Release command and verification parity with the workflow, and no manual publication side effects.
+**Review mandate:** Verify range-based intent, all five version owners, root-only lock edit, complete JAY-35 through JAY-41 changelog, authorization sequence, metadata output, Release command and verification parity with the workflow, and no publication side effects.
 
 ## Active work
 
 **PR:** PR 1 — Contain My Club workspaces and compact club setup
 
-**Commit:** Commit 3 — Restore bounded Staff workspace scrolling
+**Commit:** Commit 3 — Reconcile the active ledger with current PI_SETUP
 
 ### RED or removal proof
 
-Add route-level scenarios for both Staff workspaces with totals larger than the viewport. They must fail against the current tabpanels because their `flex-col` class does not establish a bounded flex container for the existing virtualized table.
+Not applicable — independently reviewed planning documents only. `ledger_state.py`, `delivery_state.py`, exact runbook-command comparison, Markdown diagnostics, relative-link checks, and `git diff --check` prove structural consistency.
 
 ### Expected outcome
 
-Staff and Staff Shortlist each retain a bounded DOM row set and scroll inside the active My Club workspace.
+The rebased branch still differs from synchronized `main` only through `.wiki/TODO.md` and this ledger. The ledger records current history, complete packets, exact release authority, one active planning commit, and a valid Delivery fingerprint before implementation resumes.
 
 ### Explicit exclusions
 
-No shared virtualizer, row-height, page-size, Staff query, unrelated My Club, or release-metadata change.
+No product behavior, test, executable configuration, PR-boundary, release-intent, release-target, Linear, TODO, BACKLOG, planned-spec, ADR, or unrelated documentation change.
 
 **Next action:** Invoke `/skill:workflow-deliver-feature .wiki/features/active/todo-ux-quality-pass.md` with the accepted Delivery fingerprint.
 
@@ -893,13 +928,14 @@ No shared virtualizer, row-height, page-size, Staff query, unrelated My Club, or
 - 2026-08-22 — Planned four sequential PRs because the batch spans four independent review surfaces.
 - 2026-08-22 — Developer accepted the reviewed plan and activated `fix/my-club-ux-containment`.
 - 2026-08-22 — Developer chose to preserve four PRs under the updated one-release contract and approved the narrow intermediate-`none` release-guidance exception.
+- 2026-08-23 — Rebased `fix/my-club-ux-containment` onto synchronized `main` at `76cc9f8dbd82504f966038583da4e332e9839c0e`. Repository-wide Pi and release-policy changes now arrive from main; this branch retains only `.wiki/TODO.md` and this ledger.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Contain My Club workspaces and compact club setup | Commit 1 — Record the active Todo UX delivery plan | 1d2f6ae1d0a92a50d2699e9e980b46dbd58d16fb | Added the schema-2 ledger and activated it in `.wiki/TODO.md` | Classifier schema 2, zero errors, `runnable`; `git diff --check` and `./scripts/dev check` passed | Not applicable | Clear | 1 | Main-session authorship after planner transport failures; later migrated to the fingerprinted delivery structure without changing feature behavior |
-| PR 1 — Contain My Club workspaces and compact club setup | Commit 2 — Adopt fingerprinted feature delivery | Pending record | Migrated the ledger and repository authority/release guidance to fingerprinted four-PR delivery with one final `0.12.0` release | Both classifiers `runnable` with zero errors and exact fingerprint; release commands passed shell syntax validation; diagnostics, `git diff --check`, and `./scripts/dev check` passed | Not applicable | Clear | 2 | Added narrow repository guidance changes after the developer chose four PRs under the updated one-release contract |
+| PR 1 — Contain My Club workspaces and compact club setup | Commit 1 — Record the active Todo UX delivery plan | 54552a7cc285c7232b8a2fddb2a254e276d51762 | Added the schema-2 ledger and activated it in `.wiki/TODO.md` | Classifier schema 2, zero errors, `runnable`; post-rebase `git diff --check` and `./scripts/dev check` passed | Not applicable | Clear | 1 | Main-session authorship after planner transport failures; rebased without changing feature behavior |
+| PR 1 — Contain My Club workspaces and compact club setup | Commit 2 — Adopt fingerprinted feature delivery | 5b657e51b84c9420639a7a64f7f2a25f8c8e6ac5 | Migrated the ledger to fingerprinted four-PR delivery with one final `0.12.0` release | Both classifiers reported `runnable`; release commands passed shell syntax validation; diagnostics, `git diff --check`, and `./scripts/dev check` passed after rebase | Not applicable | Clear | 3 | Repository-wide Pi and release guidance landed separately in main commit `76cc9f8dbd82504f966038583da4e332e9839c0e`; the rebased commit changes only this ledger |
 
 ## Final validation
 
@@ -908,17 +944,16 @@ No shared virtualizer, row-height, page-size, Staff query, unrelated My Club, or
 1. Run the packet's focused RED test and confirm that it fails for the expected missing behavior.
 2. Make the minimum coherent GREEN change.
 3. Run the packet's affected tests.
-4. Run `./scripts/dev format <changed frontend paths>` for frontend paths and `./scripts/dev format` when Rust changes.
-5. Run LSP and diagnostics on edited source before the build gate.
-6. Run `./scripts/dev check` before checkpoint.
-7. Obtain a fresh read-only Sol Medium review for every non-trivial staged change.
+4. Run LSP and diagnostics on edited source before the build gate.
+5. Run `./scripts/dev check` before checkpoint.
+6. Obtain a fresh `commit-reviewer` pass for every non-trivial staged change.
 
 ### Per PR
 
 - Inspect `git status`, the complete diff, `git diff --check`, and staged diff/stat.
 - Run `./scripts/dev check-app` for frontend-only PRs; PR 4 also runs `./scripts/dev check-rust`.
 - Run `./scripts/dev smoke` for route and layout behavior in every PR.
-- Use `.agents/skills/create-pr` and `.github/pull_request_template.md` for publication.
+- Use `.pi/skills/create-pr/SKILL.md` and `.github/pull_request_template.md` for publication.
 - Validate intermediate PRs with `./scripts/dev release-metadata v0.11.1 none`; leave all release owners unchanged.
 - Validate the final PR with `./scripts/dev release-metadata v0.11.1 minor`; prepare exactly `0.12.0` and the complete dated JAY-35 through JAY-41 changelog range.
 - Wait for required strict status `check` before each squash merge and record each predecessor's immutable merge ref before activating the next PR.
@@ -931,7 +966,7 @@ No shared virtualizer, row-height, page-size, Staff query, unrelated My Club, or
 - [ ] JAY-38 all shared flag tables distinguish deduplicated secondary nationalities.
 - [ ] JAY-39 General Search, Moneyball Search, and Squad use stacked player identity without losing configurable metrics.
 - [ ] JAY-35 Moneyball Player Profile uses deduplicated exact-natural-position cohorts and explains or withholds scores honestly.
-- [ ] JAY-36 General and Moneyball overview headers keep one stable footprint and toggle position.
+- [ ] JAY-36 General and Moneyball overview headers keep one stable footprint and toggle position at 1280×800, 1600×900, and actual 200% browser zoom.
 
 ### Feature close-out and release
 
@@ -939,7 +974,7 @@ Before the final PR merges:
 
 1. Confirm all acceptance criteria and the immutable merge refs for PRs 1–3.
 2. Run `./scripts/dev test`, `./scripts/dev check-rust`, `./scripts/dev check`, and `./scripts/dev smoke`.
-3. Run the fresh Sol xhigh feature-complete review and resolve accepted findings.
+3. Run a fresh `feature-reviewer` pass and resolve accepted findings.
 4. Reconcile ARCHITECTURE and DESIGN, update TODO, move this complete ledger to `.wiki/features/completed/`, create the reviewed close-out commit, and set the final PR's Feature close-out to `Current`.
 5. From that exact post-close-out final PR head, run native Windows `./scripts/dev package-windows` and every installed-app, recovery, bridge, live-FM, and supported product-flow check in `.wiki/notes/early-alpha-release-runbook.md`. Any later head change invalidates this evidence and requires the complete checklist again.
 6. Validate the completed ledger and unchanged Delivery fingerprint without changing the head, then publish and merge the final PR.
@@ -948,9 +983,9 @@ After synchronized `main` reaches the final immutable merge ref, run the recorde
 
 ## Documentation impact
 
-- `AGENTS.md`, `.agents/skills/create-pr/SKILL.md`, `.wiki/notes/early-alpha-release-runbook.md`, and `.github/pull_request_template.md`: record fingerprinted delivery authority and the narrow intermediate-PR exception to normal release classification in this migration commit.
+- `AGENTS.md`, `.pi/skills/create-pr/SKILL.md`, `.wiki/notes/early-alpha-release-runbook.md`, and `.github/pull_request_template.md`: inherit fingerprinted delivery authority, direct-subagent guidance, and the intermediate-PR release exception from synchronized `main`; this feature does not modify them.
 - `.wiki/TODO.md`: remove the active item and select the next state during feature reconciliation.
 - `.wiki/ARCHITECTURE.md`: update with the persisted player-table layout version/defaults and natural-position profile cohort behavior when each implementation becomes true.
-- `.wiki/DESIGN.md`: update with My Club containment/setup controls, app-header history controls, nationality hierarchy, stacked player identity, Moneyball basis/unavailable state, and stable profile header as each UI contract becomes true.
+- `.wiki/DESIGN.md`: retain the existing My Club containment contract, then update managed-club setup controls, app-header history controls, nationality hierarchy, stacked player identity, Moneyball basis/unavailable state, and stable profile header as each new UI contract becomes true.
 - The final release-preparation commit updates `package.json`, `src-tauri/Cargo.toml`, the root `app` entry in `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `bridge/FmDataBridge.csproj`, `CHANGELOG.md`, and `release-preparation.json`.
 - No `.wiki/CONCEPT.md`, `.wiki/BACKLOG.md`, ADR, or debug report change is planned.
