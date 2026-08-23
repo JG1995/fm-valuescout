@@ -128,13 +128,18 @@ export function PlayerRolesPanel({
     >
       <section
         aria-label={`Role fit for ${selectedPosition}`}
-        className="grid h-full min-h-0 gap-4 sm:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]"
+        className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(180px,0.8fr)_minmax(240px,1.2fr)]"
       >
-        <ProfilePositionPicker
-          positions={player.positions}
-          selectedPosition={selectedPosition}
-          onSelectPosition={setSelectedPosition}
-        />
+        <div
+          data-testid="player-role-position-picker-scroller"
+          className="min-h-0 overflow-y-auto pr-1"
+        >
+          <ProfilePositionPicker
+            positions={player.positions}
+            selectedPosition={selectedPosition}
+            onSelectPosition={setSelectedPosition}
+          />
+        </div>
         <div className="flex min-h-0 min-w-0 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto pr-1">
             <table className="w-full table-fixed border-collapse">

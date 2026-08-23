@@ -803,7 +803,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 3 — Stabilize General and Moneyball header geometry
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `fix(profile): stabilize analysis header layout`
 
@@ -864,7 +864,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 4 — Prepare the Todo UX minor release
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `chore(release): prepare 0.12.0`
 
@@ -900,19 +900,19 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **PR:** PR 4 — Refine Moneyball profile comparisons and header
 
-**Commit:** Commit 3 — Stabilize General and Moneyball header geometry
+**Commit:** Commit 4 — Prepare the Todo UX minor release
 
 ### RED or removal proof
 
-Add player-route tests that fail because General and Moneyball summaries do not share stable header landmarks, outer bands, and toggle position across mode changes.
+Run `./scripts/dev release-metadata v0.11.1 minor` before editing and confirm it fails for the expected unprepared `0.11.1` version and missing `0.12.0` changelog metadata.
 
 ### Expected outcome
 
-General and Moneyball render the same two-band profile-header footprint, retain all mode-specific data and comparison basis, and keep the analysis toggle focused and stationary at supported viewport sizes and 200% zoom.
+All five version owners, the root Cargo lock entry, changelog, and release-preparation authorization agree on `0.12.0`, and release metadata validates the complete JAY-35 through JAY-41 minor range without publishing.
 
 ### Explicit exclusions
 
-No information removal, hard-coded content offsets, list-table layout change, duplicated full summaries, or invention from inaccessible reference images.
+No tag, release publication, implementation change, unrelated changelog entry, non-root lockfile edit, ledger archival, or post-close-out native validation.
 
 ## Discoveries and replanning
 
@@ -928,6 +928,8 @@ No information removal, hard-coded content offsets, list-table layout change, du
 - 2026-08-22 — Developer chose to preserve four PRs under the updated one-release contract and approved the narrow intermediate-`none` release-guidance exception.
 - 2026-08-23 — Rebased `fix/my-club-ux-containment` onto synchronized `main` at `76cc9f8dbd82504f966038583da4e332e9839c0e`. Repository-wide Pi and release-policy changes now arrive from main; this branch retains only `.wiki/TODO.md` and this ledger.
 - 2026-08-23 — Browser smoke's valid Moneyball IPC stub lacked Commit 1's required `comparisonBasis` field, so it crashed before profile assertions. It now supplies an available basis; browser smoke still does not represent the no-natural-position state.
+- 2026-08-23 — Header-layout correction found that `player-roles-panel.tsx` and `moneyball-role-fit-panel.tsx` each activate their internal two-column role workspace at `sm`. Both now use `lg` so the profile content stacks with the expanded rail at effective narrow width. This is a bounded profile-content correction; it does not change table behavior or packet authority.
+- 2026-08-23 — Profile-only geometry correction moves vertical scroll ownership to the General and Moneyball position-picker columns around their natural-height pitches. The fixed action slot now preserves tooltip overflow, while only its inline outcome scrolls. This does not change app-shell or table layout.
 
 ## Completed work
 
@@ -942,7 +944,8 @@ No information removal, hard-coded content offsets, list-table layout change, du
 | PR 3 — Refine shared player-table presentation | Commit 1 — Distinguish secondary nationality flags | 3ee9b2dbaacf429f752d9c2c55ef4048bd43a703 | Stable-deduplicated shared nationality cells and reduced every unique secondary flag's size and emphasis | RED failed on duplicate retention and identical emphasis; focused nationality tests passed 6 tests and `./scripts/dev check` passed | Pass | Clear | 0 | None |
 | PR 3 — Refine shared player-table presentation | Commit 2 — Stack player identity and migrate visible layouts | f2bbce83034fa53436272c8639bd7fe4143a76aa | Stacked player identity in Search, Moneyball Search, and Squad and migrated pre-v5 layouts without losing other preferences | RED failed on separate identity columns and old layouts; targeted tests passed 168 tests, affected tests passed 174 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Updated obsolete smoke default-column expectations; corrected identity-only migration fallback and added current/future preservation proof after review |
 | PR 4 — Refine Moneyball profile comparisons and header | Commit 1 — Compute natural-position profile cohorts | 4db209d2b9db530d13e5866b13c06e19b6443e51 | Recomputed Rust-owned profile percentiles and role scores from deduplicated exact-natural-position peers and exposed additive comparison-basis metadata | RED failed on missing basis contracts; `./scripts/dev check-rust` passed 553 tests with 2 ignored, affected frontend tests passed 54 tests, and `./scripts/dev check` passed | Pass | Clear | 0 | Added null-safe existing frontend consumer adaptations required by the additive unavailable state |
-| PR 4 — Refine Moneyball profile comparisons and header | Commit 2 — Explain profile comparison basis and unavailable scores | Pending record | Rendered natural-position comparison basis and explicit no-natural percentile, role-table, and summary unavailable states while retaining raw metrics | RED failed on missing basis/unavailable presentation; targeted tests passed 57 tests, `check-app` and `check` passed, smoke passed 48 tests, and a 1280×800 Chromium inspection confirmed the no-natural state without clipping | Pass | Clear | 1 | Updated the browser IPC fixture and obsolete full-import copy; gated stale summary scores and corrected singleton wording after review |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 2 — Explain profile comparison basis and unavailable scores | ee0a6e0ee611119c40a6eb9bd453eb72db371682 | Rendered natural-position comparison basis and explicit no-natural percentile, role-table, and summary unavailable states while retaining raw metrics | RED failed on missing basis/unavailable presentation; targeted tests passed 57 tests, `check-app` and `check` passed, smoke passed 48 tests, and a 1280×800 Chromium inspection confirmed the no-natural state without clipping | Pass | Clear | 1 | Updated the browser IPC fixture and obsolete full-import copy; gated stale summary scores and corrected singleton wording after review |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 3 — Stabilize General and Moneyball header geometry | Pending record | Consolidated General and Moneyball into one stable two-band header, preserved click and keyboard focus, and added bounded action-outcome and position-picker scroll ownership | RED failed on the missing shared header; 60 affected tests, `./scripts/dev check`, and 48 smoke tests passed; Chromium geometry matched at 1280×800, 1600×900, and effective 200% layout with collapsed and expanded rail | Pass | Clear | 3 | Added bounded General/Moneyball role-panel and development-outcome corrections after geometry review; native Tauri physical zoom remains unrun |
 
 ## Final validation
 
