@@ -20,7 +20,7 @@ An `Active` PR records its branch and base, but ledger state alone does not gran
 
 Schema 2 requires one durable **Completed work** row for each completed commit. Record the implementation outcome, validation evidence, test-portfolio result, final review result, and fix-round count before the content commit. Keep `Pending record` as the Git ref until the next normal ledger-bearing commit can resolve it.
 
-At feature completion, reconcile documentation and move the complete ledger to [completed features](../completed/README.md). Preserve every Delivery fingerprint input through final publication and release.
+At feature completion, reconcile documentation and move the complete ledger to [completed features](../completed/README.md). Preserve every Delivery fingerprint input through final publication. An explicit later release covers the complete merged range.
 
 ## Commit sizing guidance
 
@@ -44,18 +44,6 @@ Active
 ## Delivery authorization
 
 **Delivery fingerprint:** <SHA-256 from `delivery_state.py` after plan review>
-
-## Release
-
-**Release intent:** none | patch | minor | major
-
-**Release target:** none | <exact SemVer without a `v` prefix>
-
-**Release command:** none | `<exact project release command>`
-
-**Release verification:** none | `<exact command that verifies the release and final merge ref>`
-
-One ledger has one release outcome. The delivery workflow always runs this phase. For `none`, set the other three fields to `none`. For another intent, instantiate the exact automatic-publication wait and verified-release commands from the [early-alpha release runbook](../../notes/early-alpha-release-runbook.md). Do not substitute a manual tag or release.
 
 ## Intent
 
@@ -334,7 +322,7 @@ Record material deviations, blockers, and decisions that change remaining work. 
 
 Schema 2 requires exactly one row for every `Completed` commit. Use the exact full PR and commit headings in the first two cells; abbreviations are invalid. Escape a literal table pipe as `\|`. Use a fix-round count from `0` through `3`. Resolve `Pending record` from Git in the next normal ledger update or during feature reconciliation.
 
-Automated publication currently supports GitHub PRs and GitHub Actions. Record another provider accurately, but expect delivery to stop rather than improvise an adapter. Run `delivery_state.py` after plan review, record its exact Delivery fingerprint, and rerun it before acceptance. The fingerprint covers every PR authority field, every commit packet fingerprint, and the Release block. Any later authority change ends delivery without model judgment. Record an intermediate PR's immutable merge ref when activating its dependent PR. A completed final-feature record may retain its PR URL as the durable publication reference because its own merge ref cannot appear in the content being merged; do not create a metadata-only follow-up commit solely to record that self-referential ref.
+Automated publication currently supports GitHub PRs and GitHub Actions. Record another provider accurately, but expect delivery to stop rather than improvise an adapter. Run `delivery_state.py` after plan review, record its exact Delivery fingerprint, and rerun it before acceptance. The fingerprint covers every PR authority field and every commit packet fingerprint. Any later authority change ends delivery without model judgment. Record an intermediate PR's immutable merge ref when activating its dependent PR. A completed final-feature record may retain its PR URL as the durable publication reference because its own merge ref cannot appear in the content being merged; do not create a metadata-only follow-up commit solely to record that self-referential ref.
 
 ## Final validation
 
@@ -360,5 +348,5 @@ Include this section only when the developer explicitly abandons the feature. Se
 
 **Resume rule:** Fresh plan required
 
-Set release intent, target, command, and verification to `none`, then recompute and record the Delivery fingerprint for that developer-approved authority change. Move the complete ledger under `features/completed/` as an abandoned outcome. Do not publish it. Later work starts from a fresh plan rather than reactivating this ledger.
+Recompute and record the Delivery fingerprint for that developer-approved authority change. Move the complete ledger under `features/completed/` as an abandoned outcome. Do not publish it. Later work starts from a fresh plan rather than reactivating this ledger.
 ~~~

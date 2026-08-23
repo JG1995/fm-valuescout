@@ -56,7 +56,7 @@ For unresolved persistence, schema, migration, authentication, concurrency, secu
 
 ## Feature delivery
 
-One accepted ledger owns feature intent, PRs, commit packets, validation, publication, and one release outcome.
+One accepted ledger owns feature intent, PRs, commit packets, validation, publication, and close-out. Releases are separate, explicit work.
 
 `/skill:workflow-deliver-feature` is the normal execution path. One explicit invocation uses the ledger's validated Delivery fingerprint to:
 
@@ -64,10 +64,9 @@ One accepted ledger owns feature intent, PRs, commit packets, validation, public
 2. implement, validate, independently review, and commit every packet;
 3. publish, monitor, repair, and merge every PR;
 4. synchronize the base before dependent work;
-5. run feature validation and documentation close-out before the final merge; and
-6. run the ledger's single release phase.
+5. run feature validation and documentation close-out before the final merge.
 
-The workflow stops for changed authority, replanning, a developer decision, exhausted correction limits, failed required validation, missing approval, conflicts, a stale PR head, or failed release verification. It does not stop at ordinary commit, PR, or close-out boundaries.
+The workflow stops for changed authority, replanning, a developer decision, exhausted correction limits, failed required validation, missing approval, conflicts, or a stale PR head. It does not stop at ordinary commit, PR, or close-out boundaries.
 
 The narrower workflow skills remain available for manual recovery and isolated review. Do not require them between normal delivery phases.
 
@@ -106,9 +105,9 @@ Use the stable `./scripts/dev` surface instead of stack-native commands:
 
 `format` applies Biome fixes and `cargo fmt` before staging. `mutate` is unsupported until mutation tooling is configured and must never be reported as passed. `bridge-install` builds and installs `FmDataBridge.dll` using `FM_BRIDGE_PLUGINS`, `FM_STEAM_ROOT`, or the WSL Steam default. `package-windows` runs only on Windows, creates one unsigned x64 NSIS validation artifact plus checksum under `.release/windows/<version>/`, and does not publish.
 
-CI selects frontend, browser, Rust, bridge, and release-validation checks from changed paths. The required `check` status aggregates applicable results. Verified-`main` Release packages and publishes only after that Check succeeds.
+CI selects frontend, browser, Rust, bridge, and CI checks from changed paths. The required `check` status aggregates applicable results. It does not validate release metadata or package Windows installers. The Release workflow starts only after an explicit release-preparation change reaches `main`; it waits for that exact `check` before packaging and publishing.
 
-For every human-authored pull request, use `.pi/skills/create-pr/SKILL.md` with `.github/pull_request_template.md`. Its explicit release intent is the only pre-merge release classification. `release-metadata` validates prepared version and changelog state without writing files or calling GitHub.
+For every human-authored pull request, use `.pi/skills/create-pr/SKILL.md` with `.github/pull_request_template.md`. Ordinary pull requests do not classify or prepare a release. Use `.pi/skills/create-release/SKILL.md` only when the developer explicitly requests a release. `release-metadata` validates prepared version and changelog state without writing files or calling GitHub.
 
 For changed behavior:
 
@@ -186,20 +185,17 @@ Commit and PR titles use Conventional Commits: `type(scope): imperative descript
 
 Do not commit, push, create or update PRs, merge, create branches, synchronize remotes, rewrite history, or create releases without explicit authority.
 
-The normal exception is an explicit `/skill:workflow-deliver-feature` invocation with a valid recorded Delivery fingerprint. That fingerprint covers exact PR authority fields, commit packets, and the Release block. It grants only the recorded branches, reviewed local commits, non-force pushes, exact PRs, bounded reviewed CI repairs, verified-head merges with the recorded method, fast-forward-only base synchronization, and one release outcome.
+The normal exception is an explicit `/skill:workflow-deliver-feature` invocation with a valid recorded Delivery fingerprint. That fingerprint covers exact PR authority fields and commit packets. It grants only the recorded branches, reviewed local commits, non-force pushes, exact PRs, bounded reviewed CI repairs, verified-head merges with the recorded method, and fast-forward-only base synchronization. It does not authorize a release.
 
 Any authority or packet change invalidates the grant. It never permits amend, rebase, force-push, protection bypass, self-approval, branch deletion, unrelated work, another ledger, or a second release.
 
 Stage exact files or hunks. Never use `git add .` or `git commit -a`. Before every commit, inspect status, the complete staged diff and stat, and run `git diff --cached --check` plus recorded validation. Report documentation impact, reviewer findings, risks, and the proposed commit message. Manual work waits for explicit developer approval before committing.
 
-## Release contract
+## Project-owned releases
 
-Every feature ledger records one Release block:
+PI_SETUP delivery ends after the final PR merges and the base is synchronized. A feature merge never publishes by default.
 
-- `none` completes with no release mutation;
-- `patch`, `minor`, or `major` requires an exact SemVer target, exact release command, and exact verification command.
-
-The release phase always runs after the final merge. Run verification first, perform the exact mutation at most once, then verify that the release points to the synchronized final merge. Do not infer a version, tag, provider action, or deployment.
+Only an explicit `/skill:create-release` invocation can prepare a release. It inspects all changes since the latest published tag, proposes the SemVer scope, updates the version owners and changelog, increments `release-preparation.json`, and opens a dedicated release PR. The Release workflow creates the tag and GitHub release only after that PR merges and the exact `main` Check passes. Do not infer a version, tag, provider action, or deployment.
 
 ## Security
 

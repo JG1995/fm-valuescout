@@ -66,7 +66,7 @@ React `features/planner` owns query, picker, confirmation, focus, menu, and pres
 
 **Auth:** None — FM ValueScout is a local desktop application with no account or remote authorization boundary.
 
-**Distribution:** One unsigned Windows x64 NSIS installer and checksum. After the required `Check` succeeds for a push to `main`, the verified-main `Release` workflow builds, verifies, and publishes an exact-SHA release when release metadata changed; version-tag pushes are not a publication trigger. See the [early-alpha release runbook](./notes/early-alpha-release-runbook.md).
+**Distribution:** One unsigned Windows x64 NSIS installer and checksum. An explicit release-preparation PR changes `release-preparation.json`; after it merges, the Release workflow waits for that exact `main` Check, then builds, verifies, and publishes the exact-SHA release. Ordinary and version-tag pushes are not publication triggers. See the repository-local [`create-release` skill](../.pi/skills/create-release/SKILL.md).
 
 **Testing:** Vitest + jsdom + React Testing Library with `mockIPC` (`./scripts/dev test`); Playwright smoke with IPC stub (`./scripts/dev smoke`, `e2e/smoke.spec.ts`); Rust unit tests (`cargo test` inside `./scripts/dev check`); C# bridge unit tests (`./scripts/dev bridge-test` in Windows CI)
 
@@ -331,11 +331,12 @@ Bypass for one commit: `git commit --no-verify`. Do not disable hooks globally.
 | `src-tauri/tauri.conf.json` | Product identity, CSP, build hooks |
 | `src-tauri/capabilities/default.json` | Main-window capability ACL |
 | `src-tauri/Cargo.toml` | Rust crate dependencies and features |
-| `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, bridge, and release-validation checks from changed paths; required `check` aggregates applicable results |
-| `.github/workflows/release.yml` | Verified-`main` Windows release publication after a successful required `Check` run |
+| `.github/workflows/check.yml` | CI — selects frontend, browser, Rust, bridge, and CI checks from changed paths; required `check` aggregates applicable results |
+| `.github/workflows/release.yml` | Explicit Windows release publication after a `release-preparation.json` change reaches `main` and its exact `Check` succeeds |
 | `scripts/dev` | Stable `test` / `check` / `check-app` / `bridge-test` / `format` / `secrets` / `smoke` / `mutate` surface |
 | `.pi/settings.json` | Project Pi settings; machine package and preference settings remain global |
-| `.pi/skills/create-pr/SKILL.md` | Repository pull-request preparation and release-intent procedure |
+| `.pi/skills/create-pr/SKILL.md` | Repository ordinary pull-request preparation procedure |
+| `.pi/skills/create-release/SKILL.md` | Explicit release preparation and verification procedure |
 | `.vscode/extensions.json` | Recommended Biome, rust-analyzer, Even Better TOML, and Repowise extensions |
 | `.vscode/settings.json` | Format on save (Biome / rust-analyzer); rust-analyzer linked to `src-tauri` |
 | `.gitignore` | Build, test, and tool artifacts; generated or local Pi state; `.tanstack/` and `.repowise/` caches; `.env.*` except `.env.example`; `src-tauri/target/`; editor noise (`.idea/`, vim swap) |
@@ -768,8 +769,8 @@ Green smoke does **not** prove SQLite persistence works in production. Rust unit
 ## 7. Deployable Artifacts
 
 - **Development** — Install Node 24, pnpm, and the Rust toolchain, then `pnpm install`, `pnpm exec playwright install chromium` (once), then `pnpm tauri dev`. On Linux/WSL, install WebKitGTK and related system packages (see §11). WSLg or an X server is required for the native window on WSL.
-- **Release validation (Windows)** — `./scripts/dev package-windows` runs only on Windows. It restores the locked bridge, validates its managed DLL and shared version, bundles one unsigned x64 NSIS installer from that source-built DLL, and writes the installer plus SHA-256 sidecar under `.release/windows/<version>/`. It never publishes anything. The required Check workflow runs this same validation path when release inputs change and stores it for acceptance.
-- **Published release (Windows)** — `.github/workflows/release.yml` follows only a successful required `Check` run caused by a push to `main`, checks out that run's exact SHA, and makes unchanged metadata a no-op. A newer version also needs a changed `release-preparation.json` record that matches its version and explicit intent; later `none` or Dependabot pushes defer publication. The same package command stages and verifies one matching draft release with the exact dated changelog section and checksum, then publishes the Windows x64 asset as a normal GitHub release. The historical `0.1.0-alpha.1` remains an unchanged prerelease identity. Only the final job has `contents: write`.
+- **Release validation (Windows)** — `./scripts/dev package-windows` runs only on Windows. It restores the locked bridge, validates its managed DLL and shared version, bundles one unsigned x64 NSIS installer from that source-built DLL, and writes the installer plus SHA-256 sidecar under `.release/windows/<version>/`. It never publishes anything. The required Check does not run this release-only validation.
+- **Published release (Windows)** — `.github/workflows/release.yml` starts only when an explicit release PR changes `release-preparation.json` on `main`. Its read-only job waits for the exact `Check` run for that SHA before it validates the version and changelog. Its final job uses the same package command to stage and verify one matching draft release with the exact dated changelog section and checksum, then publishes the Windows x64 asset as a normal GitHub release. Only the final job has `contents: write`.
 - **WebView bundle only** — `pnpm build` produces static files in `dist/` for frontend-only checks; this is not the shipped desktop artifact.
 - **Source maps** — default `build.sourcemap: "hidden"` for plain Vite builds (maps on disk, not linked from the public bundle). Tauri production builds use platform-conditional settings when `TAURI_ENV_PLATFORM` is set.
 - **Signing** — not configured in the template. Unsigned installers trigger OS security warnings on first run. Add platform signing secrets before shipping a real product.

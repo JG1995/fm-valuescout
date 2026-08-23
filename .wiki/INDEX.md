@@ -20,7 +20,7 @@ This directory contains durable, version-controlled knowledge about this reposit
 
 1. **New project bootstrap** — fill `CONCEPT.md`, then explicitly invoke `/skill:workflow-stack` and `/skill:workflow-roadmap` when MVP direction is set.
 2. **Per-feature planning** — explicitly invoke `/skill:workflow-plan-feature`, move accepted planned-spec detail into one schema 2 active ledger, obtain independent plan review, and accept its Delivery fingerprint.
-3. **Delivery** — explicitly invoke `/skill:workflow-deliver-feature <ledger>` for the normal end-to-end path. It implements, validates, reviews, commits, publishes, merges, synchronizes, closes out, and releases only the fingerprinted work. Use narrower workflow skills only for manual recovery.
+3. **Delivery** — explicitly invoke `/skill:workflow-deliver-feature <ledger>` for the normal end-to-end path. It implements, validates, reviews, commits, publishes, merges, synchronizes, and closes out the fingerprinted work. Use the repository-local `create-release` skill only when the maintainer explicitly requests a release. Use narrower workflow skills only for manual recovery.
 4. **Per commit** — update only documentation intrinsic to each atomic outcome. Add an ADR or debug report only when its documented threshold is met.
 5. **Feature completion** — before the final merge, run full validation, bounded feature review and correction, documentation reconciliation, and the reviewed close-out commit.
 6. **Archive** — move the complete schema 2 ledger to `features/completed/` without removing Delivery fingerprint inputs. Preserve records from earlier workflows in their historical format.
