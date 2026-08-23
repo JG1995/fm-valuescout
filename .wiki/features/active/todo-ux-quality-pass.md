@@ -493,7 +493,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 ### PR 3 — Refine shared player-table presentation
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -582,7 +582,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 2 — Stack player identity and migrate visible layouts
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(tables): stack player identity records`
 
@@ -896,24 +896,6 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Review mandate:** Verify range-based intent, all five version owners, root-only lock edit, complete JAY-35 through JAY-41 changelog, authorization sequence, metadata output, Release command and verification parity with the workflow, and no publication side effects.
 
-## Active work
-
-**PR:** PR 3 — Refine shared player-table presentation
-
-**Commit:** Commit 2 — Stack player identity and migrate visible layouts
-
-### RED or removal proof
-
-Add store migration and route tests that fail because Club and Division remain duplicate visible columns and Search, Moneyball Search, and Squad do not group player name over club and division.
-
-### Expected outcome
-
-Search, Moneyball Search, and Squad render one fixed-height stacked identity cell, while a one-time layout migration removes duplicate visible Club and Division columns without losing unrelated preferences or metric availability.
-
-### Explicit exclusions
-
-No Staff identity grouping, variable row heights, metric removal, query/filter/sort behavior change, unrelated layout reset, or shared identity abstraction.
-
 ## Discoveries and replanning
 
 - The feature-scoped planner failed closed repeatedly. At the developer's direction, the main session authored the same approved schema-2 artifact; an independent fresh-context review found three issues, all were corrected, and the focused re-review returned clear.
@@ -938,7 +920,8 @@ No Staff identity grouping, variable row heights, metric removal, query/filter/s
 | PR 1 — Contain My Club workspaces and compact club setup | Commit 4 — Restore bounded Staff workspace scrolling | aa8355c32851672f1377f5d7592634b4486a912d | Added the missing flex containment to Staff and Staff Shortlist tabpanels so their existing virtualized tables own scrolling | RED failed on both missing flex wrappers; focused route tests passed 108 tests, affected route and shared-table tests passed 111 tests, and `./scripts/dev check` passed | Pass | Clear | 0 | None |
 | PR 1 — Contain My Club workspaces and compact club setup | Commit 5 — Place managed-club save inline with search | 1be1e3dc426f8cc69e49c7ce621c0487aa456378 | Grouped the managed-club picker and save action in one responsive row with feedback below | RED failed on the missing managed-club control group; focused route tests passed 109 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 0 | None |
 | PR 2 — Add app history controls | Commit 1 — Expose session Back and Forward controls | d50b4ecf5b46b1cd8a2128e7c095627d21aafd21 | Added accessible Back and Forward controls backed by subscribed TanStack Router session history with branch-aware availability | RED failed because controls were absent; focused tests passed 27 tests, affected tests passed 33 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Added Strict Mode cleanup proof and corrected scroll-restoration documentation after review |
-| PR 3 — Refine shared player-table presentation | Commit 1 — Distinguish secondary nationality flags | Pending record | Stable-deduplicated shared nationality cells and reduced every unique secondary flag's size and emphasis | RED failed on duplicate retention and identical emphasis; focused nationality tests passed 6 tests and `./scripts/dev check` passed | Pass | Clear | 0 | None |
+| PR 3 — Refine shared player-table presentation | Commit 1 — Distinguish secondary nationality flags | 3ee9b2dbaacf429f752d9c2c55ef4048bd43a703 | Stable-deduplicated shared nationality cells and reduced every unique secondary flag's size and emphasis | RED failed on duplicate retention and identical emphasis; focused nationality tests passed 6 tests and `./scripts/dev check` passed | Pass | Clear | 0 | None |
+| PR 3 — Refine shared player-table presentation | Commit 2 — Stack player identity and migrate visible layouts | Pending record | Stacked player identity in Search, Moneyball Search, and Squad and migrated pre-v5 layouts without losing other preferences | RED failed on separate identity columns and old layouts; targeted tests passed 168 tests, affected tests passed 174 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Updated obsolete smoke default-column expectations; corrected identity-only migration fallback and added current/future preservation proof after review |
 
 ## Final validation
 

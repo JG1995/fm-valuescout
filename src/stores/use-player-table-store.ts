@@ -31,6 +31,8 @@ const DEFAULT_STAFF_SHORTLIST_COLUMN_IDS = [
 export const PLAYER_TABLE_LAYOUT_STORAGE_KEY =
   "fm-valuescout-player-table-layouts";
 
+const PLAYER_TABLE_LAYOUT_VERSION = 5;
+
 export type PlayerTableId =
   | "search"
   | "moneyball-search"
@@ -75,13 +77,19 @@ function clampWidth(width: number): number {
   );
 }
 
+function withoutDuplicateIdentityColumns(columnIds: readonly string[]) {
+  return columnIds.filter(
+    (columnId) => columnId !== "club" && columnId !== "division",
+  );
+}
+
 function defaultLayout(table: PlayerTableId): PlayerTableLayout {
   return {
     columnIds:
       table === "moneyball-search"
-        ? [...DEFAULT_MONEYBALL_TABLE_COLUMN_IDS]
+        ? withoutDuplicateIdentityColumns(DEFAULT_MONEYBALL_TABLE_COLUMN_IDS)
         : table === "search" || table === "squad"
-          ? [...DEFAULT_PLAYER_TABLE_COLUMN_IDS]
+          ? withoutDuplicateIdentityColumns(DEFAULT_PLAYER_TABLE_COLUMN_IDS)
           : table === "staff-shortlist"
             ? [...DEFAULT_STAFF_SHORTLIST_COLUMN_IDS]
             : [...DEFAULT_STAFF_TABLE_COLUMN_IDS],
@@ -103,6 +111,7 @@ export function defaultPlayerTableLayouts(): PlayerTableLayouts {
 function sanitizeLayout(
   value: unknown,
   table: PlayerTableId,
+  identityOnlyFallback = false,
 ): PlayerTableLayout {
   const record = isRecord(value) ? value : {};
   const columnIds = Array.isArray(record.columnIds)
@@ -125,42 +134,89 @@ function sanitizeLayout(
             : metricId.length > 0;
       })
     : [];
-  const visibleColumnIds =
-    columnIds.length > 0
+  const useNameFallback =
+    identityOnlyFallback &&
+    (table === "search" || table === "moneyball-search" || table === "squad") &&
+    columnIds.length > 0 &&
+    withoutDuplicateIdentityColumns(columnIds).length === 0;
+  const visibleColumnIds = useNameFallback
+    ? ["name"]
+    : columnIds.length > 0
       ? columnIds
-      : table === "search" || table === "squad"
-        ? [...DEFAULT_PLAYER_TABLE_COLUMN_IDS]
-        : [...defaultLayout(table).columnIds];
+      : [...defaultLayout(table).columnIds];
   const rawWidths = isRecord(record.widths) ? record.widths : {};
-  const widths = Object.fromEntries(
-    visibleColumnIds.flatMap((metricId) => {
-      const width = rawWidths[metricId];
-      return typeof width === "number" && Number.isFinite(width)
-        ? [[metricId, clampWidth(width)]]
-        : [];
-    }),
-  );
+  const widths = useNameFallback
+    ? {}
+    : Object.fromEntries(
+        visibleColumnIds.flatMap((metricId) => {
+          const width = rawWidths[metricId];
+          return typeof width === "number" && Number.isFinite(width)
+            ? [[metricId, clampWidth(width)]]
+            : [];
+        }),
+      );
 
   return { columnIds: visibleColumnIds, widths };
 }
 
-function sanitizePersistedState(value: unknown): PersistedPlayerTableState {
+function sanitizePersistedState(
+  value: unknown,
+  identityOnlyFallback = false,
+): PersistedPlayerTableState {
   const record = isRecord(value) ? value : {};
   const layouts = isRecord(record.layouts) ? record.layouts : {};
   return {
     layouts: {
-      search: sanitizeLayout(layouts.search, "search"),
+      search: sanitizeLayout(layouts.search, "search", identityOnlyFallback),
       "moneyball-search": sanitizeLayout(
         layouts["moneyball-search"],
         "moneyball-search",
+        identityOnlyFallback,
       ),
-      squad: sanitizeLayout(layouts.squad, "squad"),
+      squad: sanitizeLayout(layouts.squad, "squad", identityOnlyFallback),
       "staff-search": sanitizeLayout(layouts["staff-search"], "staff-search"),
       "my-staff": sanitizeLayout(layouts["my-staff"], "my-staff"),
       "staff-shortlist": sanitizeLayout(
         layouts["staff-shortlist"],
         "staff-shortlist",
       ),
+    },
+  };
+}
+
+function removeDuplicateIdentityColumns(
+  layout: PlayerTableLayout,
+): PlayerTableLayout {
+  const columnIds = withoutDuplicateIdentityColumns(layout.columnIds);
+  return {
+    columnIds,
+    widths: Object.fromEntries(
+      Object.entries(layout.widths).filter(([metricId]) =>
+        columnIds.includes(metricId),
+      ),
+    ),
+  };
+}
+
+function migratePersistedState(
+  persistedState: unknown,
+  version: number,
+): PersistedPlayerTableState {
+  const state = sanitizePersistedState(
+    persistedState,
+    version < PLAYER_TABLE_LAYOUT_VERSION,
+  );
+  if (version >= PLAYER_TABLE_LAYOUT_VERSION) {
+    return state;
+  }
+  return {
+    layouts: {
+      ...state.layouts,
+      search: removeDuplicateIdentityColumns(state.layouts.search),
+      "moneyball-search": removeDuplicateIdentityColumns(
+        state.layouts["moneyball-search"],
+      ),
+      squad: removeDuplicateIdentityColumns(state.layouts.squad),
     },
   };
 }
@@ -269,9 +325,9 @@ export const usePlayerTableStore = create<PlayerTableStore>()(
     }),
     {
       name: PLAYER_TABLE_LAYOUT_STORAGE_KEY,
-      version: 4,
+      version: PLAYER_TABLE_LAYOUT_VERSION,
       partialize: (state) => ({ layouts: state.layouts }),
-      migrate: (persistedState) => sanitizePersistedState(persistedState),
+      migrate: migratePersistedState,
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...sanitizePersistedState(persistedState),

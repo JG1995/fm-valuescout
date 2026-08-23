@@ -334,6 +334,27 @@ function SearchResultsVirtualTable({
               </td>
             );
           }
+          if (column.id === "name" && player) {
+            const identityContext = [player.club, player.division]
+              .filter(
+                (value): value is string => value !== null && value !== "",
+              )
+              .join(" · ");
+            return (
+              <td
+                key={column.id}
+                className={`${TEXT_CELL} text-on-surface`}
+                title={player.name}
+              >
+                <span className="block truncate">{player.name}</span>
+                {identityContext ? (
+                  <span className="block truncate text-[11px] leading-4 text-on-surface-variant">
+                    {identityContext}
+                  </span>
+                ) : null}
+              </td>
+            );
+          }
           const cell = basicCell(
             player,
             column.id as (typeof BASIC_SEARCH_SORT_FIELDS)[number],

@@ -613,10 +613,8 @@ describe("search route", () => {
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual([
       "name",
       "age",
-      "nationality",
-      "club",
       "ca",
-      "division",
+      "nationality",
       "pa",
       "value",
     ]);
@@ -752,6 +750,104 @@ describe("search route", () => {
       expect(screen.queryByRole("columnheader", { name: "Name" })).toBeNull();
     });
   });
+
+  it.each([
+    { view: "general" as const, entry: "/search?view=general" },
+    { view: "moneyball" as const, entry: "/search?view=moneyball" },
+  ])(
+    "stacks fixed-height player identity without duplicate columns in $view Search",
+    async ({ view, entry }) => {
+      const user = userEvent.setup();
+      await resolveLoadDataIpcMock();
+      setSearchPlayersOverride([
+        {
+          ...playerNamed("Identity Player", 250),
+          club: "Test FC",
+          division: "Premier Division",
+          dynamicValues: { "moneyball.average_rating": 9.9 },
+        },
+        {
+          ...playerNamed("No context", 249),
+          club: null,
+          division: null,
+          dynamicValues: { "moneyball.average_rating": 9.8 },
+        },
+        {
+          ...playerNamed("Club only", 248),
+          club: "Test FC",
+          division: null,
+          dynamicValues: { "moneyball.average_rating": 9.7 },
+        },
+        {
+          ...playerNamed("Division only", 247),
+          club: null,
+          division: "Premier Division",
+          dynamicValues: { "moneyball.average_rating": 9.6 },
+        },
+        ...manyPlayers(99),
+      ]);
+      const { router } = renderSearchRoute(entry);
+
+      const table = await screen.findByRole("table", {
+        name: "Player search results",
+      });
+      expect(
+        within(table).queryByRole("columnheader", { name: "Club" }),
+      ).toBeNull();
+      expect(
+        within(table).queryByRole("columnheader", { name: "Division" }),
+      ).toBeNull();
+      const rows = within(table)
+        .getAllByRole("row")
+        .filter((row) => row.hasAttribute("data-index"));
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.length).toBeLessThan(101);
+
+      const identityRow = within(table)
+        .getByText("Identity Player")
+        .closest("tr");
+      const missingContextRow = within(table)
+        .getByText("No context")
+        .closest("tr");
+      const clubOnlyRow = within(table).getByText("Club only").closest("tr");
+      const divisionOnlyRow = within(table)
+        .getByText("Division only")
+        .closest("tr");
+      if (
+        !identityRow ||
+        !missingContextRow ||
+        !clubOnlyRow ||
+        !divisionOnlyRow
+      ) {
+        throw new Error("Expected stacked player identity rows.");
+      }
+      const identityCell = within(identityRow).getAllByRole("cell")[0];
+      const missingContextCell =
+        within(missingContextRow).getAllByRole("cell")[0];
+      const clubOnlyCell = within(clubOnlyRow).getAllByRole("cell")[0];
+      const divisionOnlyCell = within(divisionOnlyRow).getAllByRole("cell")[0];
+      expect(identityRow).toHaveStyle({ height: "40px" });
+      expect(identityCell).toHaveTextContent("Test FC · Premier Division");
+      expect(missingContextCell).toHaveTextContent("No context");
+      expect(missingContextCell).not.toHaveTextContent("—");
+      expect(missingContextCell).not.toHaveTextContent(" · ");
+      expect(clubOnlyCell).toHaveTextContent("Test FC");
+      expect(clubOnlyCell).not.toHaveTextContent(" · ");
+      expect(divisionOnlyCell).toHaveTextContent("Premier Division");
+      expect(divisionOnlyCell).not.toHaveTextContent(" · ");
+      identityRow.focus();
+      expect(identityRow).toHaveFocus();
+
+      await user.click(
+        within(identityRow).getByText("Test FC · Premier Division"),
+      );
+
+      await waitFor(() => {
+        expect(router.state.location.pathname).toBe("/players/250");
+        expect(router.state.location.search).toEqual({ view });
+      });
+    },
+  );
 
   it("navigates to /players/$uid when a results row is clicked", async () => {
     const user = userEvent.setup();
