@@ -13,17 +13,19 @@ This directory contains durable, version-controlled knowledge about this reposit
 - [Debug reports](debugging/README.md) own confirmed, reusable failure patterns and diagnostic procedures that code and regression tests do not explain well enough. They are not a bug log.
 - [Active features](features/active/README.md) own the intent, delivery plan (PRs and commits), and material discoveries for multi-commit work.
 - [Planned feature specs](features/planned/README.md) own pre-implementation behavioral detail for MVP features not yet in active development.
-- [Completed features](features/completed/README.md) own condensed records of finished feature behavior and implications. They are not development diaries.
+- [Completed features](features/completed/README.md) preserve historical completion records and complete schema 2 ledgers for newly delivered or explicitly abandoned outcomes. Do not rewrite legacy records only to match the current schema.
 - [Wiki notes](notes/README.md) own durable runbooks and cross-project procedures that do not fit another wiki owner.
 
 ## Documentation lifecycle
 
-1. **New project bootstrap** — fill `CONCEPT.md`, use `$workflow-roadmap` when MVP direction is set (`$workflow-stack` only when changing defaults), and approve wiki updates before building.
-2. **Per-feature planning** — create one active feature ledger with `$workflow-plan-feature` and mark exactly one commit `Active`.
-3. **Per commit** — update documentation intrinsic to the atomic outcome during `$workflow-build` and `$workflow-checkpoint`. Add an ADR or debug report only when its documented threshold is met.
-4. **Feature completion** — use `$workflow-finish-feature`, or manually opt into `$workflow-finish-feature-loop`, for tests, a Sol xhigh feature-complete review, and Terra Medium documentation reconciliation.
-5. **Archive** — condense and move a completed ledger to `features/completed/`.
-6. **Cleanup** — remove disposable notes, raw logs, failed hypotheses, and experiment artifacts from `.work/`.
+1. **New project bootstrap** — fill `CONCEPT.md`, then explicitly invoke `/skill:workflow-stack` and `/skill:workflow-roadmap` when MVP direction is set.
+2. **Per-feature planning** — explicitly invoke `/skill:workflow-plan-feature`, move accepted planned-spec detail into one schema 2 active ledger, obtain independent plan review, and accept its Delivery fingerprint.
+3. **Delivery** — explicitly invoke `/skill:workflow-deliver-feature <ledger>` for the normal end-to-end path. It implements, validates, reviews, commits, publishes, merges, synchronizes, closes out, and releases only the fingerprinted work. Use narrower workflow skills only for manual recovery.
+4. **Per commit** — update only documentation intrinsic to each atomic outcome. Add an ADR or debug report only when its documented threshold is met.
+5. **Feature completion** — before the final merge, run full validation, bounded feature review and correction, documentation reconciliation, and the reviewed close-out commit.
+6. **Archive** — move the complete schema 2 ledger to `features/completed/` without removing Delivery fingerprint inputs. Preserve records from earlier workflows in their historical format.
+7. **Abandonment** — after explicit developer approval, validate the abandoned ledger state, preserve completed evidence, archive without publication, and require a fresh plan before later work.
+8. **Cleanup** — remove disposable notes, raw logs, failed hypotheses, and experiment artifacts from `.work/`.
 
 Update durable documentation only when an externally meaningful behavior, command, configuration, contract, or persistent-data assumption changes.
 

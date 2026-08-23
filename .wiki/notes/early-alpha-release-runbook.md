@@ -40,16 +40,18 @@ Run the full release validation checklist only when the data change also affects
 
 ## Pull-request procedure
 
-Every human-authored pull request uses the repository-local [`create-pr` skill](../../.agents/skills/create-pr/SKILL.md) and the repository template. Record exactly one release intent:
+Every human-authored pull request uses the repository-local [`create-pr` skill](../../.pi/skills/create-pr/SKILL.md) and the repository template. Record exactly one release intent:
 
 | Intent | Effect |
 | --- | --- |
-| `none` | No version change, dated changelog section, tag, or release. Relevant notes may remain under `Unreleased`. |
+| `none` | No version change, dated changelog section, tag, or release. Relevant notes may remain under `Unreleased`. This also applies to an intermediate PR in a valid fingerprinted feature whose final PR owns one later release outcome. |
 | `patch` | Prepare the next plain patch identity and a complete dated changelog section from all unreleased changes. |
 | `minor` | Prepare the next plain minor identity and a complete dated changelog section from all unreleased changes. |
 | `major` | Stop for a maintainer compatibility decision. |
 
-`none` is a normal answer for an ordinary pull request; it is not a different PR type. A first release uses `minor` with no prior release tag and prepares `0.1.0`. A compatible capability advances the minor version (`0.1.0` → `0.2.0`); a compatible fix advances the patch version (`0.2.0` → `0.2.1`). The historical `0.1.0-alpha.1` remains valid only as an existing release identity; there is no public alpha counter or release-candidate sequence. The procedure validates prepared release metadata before it pushes and opens the normal template-complete draft PR. It never merges, tags, or publishes.
+`none` is a normal answer for an ordinary pull request; it is not a different PR type. A user-visible intermediate PR can use `none` only when an accepted schema 2 feature ledger has an unchanged Delivery fingerprint, marks that PR's Feature close-out as `Not required`, and assigns the complete non-`none` release contract to a later final PR. Record the ledger path and fingerprint in the intermediate PR Notes. The final PR prepares the complete unreleased range from the latest reachable tag; intermediate PRs do not change any release owner.
+
+A first release uses `minor` with no prior release tag and prepares `0.1.0`. A compatible capability advances the minor version (`0.1.0` → `0.2.0`); a compatible fix advances the patch version (`0.2.0` → `0.2.1`). The historical `0.1.0-alpha.1` remains valid only as an existing release identity; there is no public alpha counter or release-candidate sequence. The procedure validates prepared release metadata before it pushes and opens the normal template-complete draft PR. It never merges, tags, or publishes.
 
 A release-bearing pull request also updates `release-preparation.json` with the matching version and intent, and increments its sequence. A `none` pull request leaves that file unchanged. The Release workflow packages and publishes only when that record changed in the exact successful Check SHA. If a release attempt fails before its draft exists, prepare a new release-bearing pull request for a new release identity; do not rely on a later `none` or Dependabot push to retry it.
 
@@ -66,6 +68,24 @@ Every successful required `Check` run caused by a push to `main` evaluates relea
 The `Release` workflow has read-only defaults. Only its final Windows package-and-publish job receives `contents: write`; it checks out the successful `Check` run's exact `head_sha`, rather than a later `main` commit. The required `check` also validates release metadata and, when release inputs change, stores the same Windows validation artifact and checksum for the installed-app checklist.
 
 If staging fails after a temporary draft exists, keep it unpublished. Re-run the exact failed Release workflow only when the source SHA is unchanged; it can repair that matching draft. If source correction is required, remove the unpublished temporary draft and its matching tag before a new release-bearing PR produces a different SHA. Do not retarget a draft to a different commit or delete or overwrite a published release.
+
+### Schema 2 release commands
+
+A release-bearing schema 2 ledger must bind its post-merge Release phase to the synchronized final merge. The merge already triggers publication through verified `main`; the ledger's release command waits for that exact automatic workflow run instead of creating a tag or release.
+
+Use this exact release-command shape:
+
+```bash
+bash -lc 'set -euo pipefail; sha=$(git rev-parse HEAD); for _ in {1..120}; do run=$(gh run list --repo JG1995/fm-valuescout --workflow Release --branch main --event workflow_run --limit 20 --json databaseId,headSha --jq ".[] | select(.headSha == \"$sha\") | .databaseId" | head -n1); if [[ -n "$run" ]]; then gh run watch "$run" --repo JG1995/fm-valuescout --exit-status; exit; fi; sleep 10; done; exit 1'
+```
+
+The Release verification must hard-code the ledger's exact SemVer target before plan review. Copy the command below into the ledger, replace `<exact-version>` once, and record the fully instantiated command in the Delivery fingerprint. It verifies that the tag points to synchronized `HEAD`, the published release has the exact title and changelog body, exactly one installer and checksum exist, GitHub reports the installer digest, and the downloaded checksum matches it.
+
+```bash
+bash -lc 'set -euo pipefail; version=<exact-version>; tag=v$version; sha=$(git rev-parse HEAD); tmp=$(mktemp -d); trap '\''rm -rf "$tmp"'\'' EXIT; test "$(gh api repos/JG1995/fm-valuescout/git/ref/tags/$tag --jq .object.sha)" = "$sha"; gh release view "$tag" --repo JG1995/fm-valuescout --json name,body,tagName,targetCommitish,isDraft,isPrerelease,assets > "$tmp/release.json"; gh release download "$tag" --repo JG1995/fm-valuescout --pattern "FM-ValueScout_${version}_x64-setup.exe.sha256" --dir "$tmp"; node --input-type=module -e '\''import { readFileSync } from "node:fs"; import { extractDatedSection } from "./scripts/release-metadata.mjs"; const [sha, version, releasePath, checksumPath] = process.argv.slice(1); const release = JSON.parse(readFileSync(releasePath, "utf8")); const tag = "v" + version; const installer = "FM-ValueScout_" + version + "_x64-setup.exe"; const checksum = installer + ".sha256"; const names = release.assets.map((asset) => asset.name).sort(); const binary = release.assets.find((asset) => asset.name === installer); const notes = extractDatedSection(readFileSync("CHANGELOG.md", "utf8"), version); const checksumText = readFileSync(checksumPath, "utf8").trim(); const valid = release.tagName === tag && release.name === "FM ValueScout " + tag && release.body === notes && release.targetCommitish === sha && release.isDraft === false && release.isPrerelease === false && names.length === 2 && names[0] === installer && names[1] === checksum && /^sha256:[0-9a-f]{64}$/.test(binary?.digest ?? "") && checksumText === binary.digest.slice(7) + " *" + installer; if (!valid) process.exit(1);'\'' "$sha" "$version" "$tmp/release.json" "$tmp/FM-ValueScout_${version}_x64-setup.exe.sha256"'
+```
+
+Run release verification first. If it passes, adopt the existing exact release and do not rerun publication. Otherwise run the release command once, then run verification again. Stop if the workflow fails, the exact run does not appear within 20 minutes, or any release evidence differs; do not create a manual substitute.
 
 ## Emergency withdrawal
 

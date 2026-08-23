@@ -32,7 +32,7 @@ Superseded by v2 capabilities model, plugin APIs, and documentation. v2 is the c
 
 ### Dual web + desktop mode
 
-Ship HTTP alongside IPC so one codebase targets browser and desktop. Rejected — doubles the boundary, testing surface, and security model. Forks choose one primary mode with `$workflow-stack`.
+Ship HTTP alongside IPC so one codebase targets browser and desktop. Rejected — doubles the boundary, testing surface, and security model. Forks choose one primary mode with `/skill:workflow-stack`.
 
 ## Consequences
 

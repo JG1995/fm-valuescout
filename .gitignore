@@ -3,6 +3,11 @@
 .repowise/
 .release/
 
+# Pi generated and local state
+.pi/npm/
+.pi/git/
+.pi/sessions/
+
 # Dependencies (pnpm)
 node_modules/
 .pnpm-store/

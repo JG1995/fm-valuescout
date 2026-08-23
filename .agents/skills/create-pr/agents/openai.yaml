@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create pull request"
-  short_description: "Prepare a release-aware template PR"
-  default_prompt: "Use $create-pr to prepare this branch with the repository template."

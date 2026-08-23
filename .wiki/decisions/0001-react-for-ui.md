@@ -20,11 +20,11 @@ Angular ships a full framework with modules, dependency injection, and RxJS-heav
 
 ### Svelte
 
-Svelte compiles components and often produces smaller bundles with less runtime code. The ecosystem and hiring pool are smaller than React. Codex skills, TanStack integrations, and third-party component libraries skew toward React for web dashboards and internal tools.
+Svelte compiles components and often produces smaller bundles with less runtime code. The ecosystem and hiring pool are smaller than React. Installed skills, TanStack integrations, and third-party component libraries skew toward React for web dashboards and internal tools.
 
 ### Vue
 
-Vue is mature and approachable. This template already commits to the React-focused Codex workflow and TanStack Router/Query integrations that assume React. A Vue fork would be a different template repository.
+Vue is mature and approachable. This repository already commits to a React-focused development workflow and TanStack Router/Query integrations that assume React. A Vue fork would be a different template repository.
 
 ## Consequences
 

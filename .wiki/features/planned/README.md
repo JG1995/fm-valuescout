@@ -1,12 +1,12 @@
 # Planned Feature Specs
 
-> **Authority:** These files own pre-implementation feature intent and behavioral detail for sequencing (`$workflow-roadmap`) and later planning (`$workflow-plan-feature`). They do not own delivery order — that lives in [TODO.md](../../TODO.md) after `$workflow-roadmap` approval. They do not own PR and commit delivery plans — those live in [active ledgers](../active/README.md) once work begins.
+> **Authority:** These files own pre-implementation feature intent and behavioral detail for sequencing (`/skill:workflow-roadmap`) and later planning (`/skill:workflow-plan-feature`). They do not own delivery order — that lives in [TODO.md](../../TODO.md) after `/skill:workflow-roadmap` approval. They do not own PR and commit delivery plans — those live in [active ledgers](../active/README.md) once work begins.
 
 ## When to create a spec
 
 Create a spec when you can describe user-visible behavior, data touched, and integrations — even if details are still provisional.
 
-**Bullet-only MVP items in CONCEPT.md are enough to use `$workflow-roadmap`** — the skill still produces a dependency-aware sequence, with lower confidence until planned specs ground the dependencies. Add specs later to firm up ordering before `$workflow-plan-feature`.
+**Bullet-only MVP items in CONCEPT.md are enough to use `/skill:workflow-roadmap`** — the skill still produces a dependency-aware sequence, with lower confidence until planned specs ground the dependencies. Add specs later to firm up ordering before `/skill:workflow-plan-feature`.
 
 ## Filename
 
@@ -54,4 +54,4 @@ One paragraph: what capability this adds and why it matters for MVP.
 Concrete scenarios that prove the feature works — not full test cases.
 ~~~
 
-When `$workflow-plan-feature` promotes the feature, copy all accepted detail into the matching active ledger sections, update links to target the ledger, and delete the planned spec in the same planning change. The active ledger becomes the sole owner of feature intent and delivery state.
+When `/skill:workflow-plan-feature` promotes the feature, copy all accepted detail into the matching active ledger sections, update links to target the ledger, and delete the planned spec in the same planning change. The active ledger becomes the sole owner of feature intent and delivery state.

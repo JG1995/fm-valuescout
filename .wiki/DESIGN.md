@@ -620,7 +620,7 @@ Dedicated route `/academy`. The page tracks save-scoped youth cohorts against th
 
 ### Deferred specs
 
-These surfaces are not specced because their features are not planned yet. Spec them in this document during `$workflow-plan-feature` for the relevant feature, not before.
+These surfaces are not specced because their features are not planned yet. Spec them in this document during `/skill:workflow-plan-feature` for the relevant feature, not before.
 
 - **Optimizer extensions:** formation comparison, best-and-worst candidate highlighting, and gap recommendations.
 - **Profile extensions:** position suitability map, attribute/role radar, comparison inspector, snapshot history on the profile.
