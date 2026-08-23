@@ -644,7 +644,10 @@ get_player_moneyball IPC (features/moneyball/commands.rs)
   → uid from route param
   → query.rs resolves the active save's current snapshot and verifies the current player UID before it reads player_moneyball_stats
   → no matching Moneyball row returns noData; a row without percentiles_json returns needsReimport and hides its old raw payload
-  → a scored row validates both persisted JSON objects against the exact 138-key Moneyball catalogue and returns asking price, starts, substitute appearances, minutes, raw values, nullable 0–100 metric percentiles, and 88 version-1 role scores with contribution details
+  → for a scored row, query.rs parses the player's `positions_json` familiarity map. Exact familiarity 20 selects natural positions.
+  → no natural position returns raw imported context and metrics with null percentile and role-score fields plus an `unavailableNoNaturalPosition` comparison basis.
+  → natural positions load one active-snapshot scored Moneyball-row set joined to player familiarity maps. Rust keeps peers that share at least one exact-20 natural position, deduplicates by player UID, calculates the existing null-aware metric percentiles in memory, then derives the 88 version-1 role scores and explanations from those values. The `available` basis returns natural positions and the unique comparison-player count.
+  → persisted import-wide percentiles remain the Moneyball Search basis; profile recomputation never writes SQLite.
   → unknown UID, no active current snapshot, and older-snapshot rows return null
 
 set_hidden_information_revealed IPC
@@ -681,8 +684,8 @@ Role fit panel
   → revealed rows use card ScoreBadge pairs for Current and Potential; concealed rows use Current only; rolePhaseLabel maps in_possession/out_of_possession → IP/OOP
 
 Moneyball role fit panel
-  → the Rust-owned version-1 catalog defines 88 position-family-specific IP/OOP roles; each score is the rounded weighted mean of five persisted full-import metric percentiles
-  → the Moneyball summary selects best playable IP and OOP scores; the position picker filters the role table, unavailable scores render `—`, and a disclosure shows metric direction, weight, percentile contribution, catalog version, and full-import basis
+  → the Rust-owned version-1 catalog defines 88 position-family-specific IP/OOP roles; each profile score is the rounded weighted mean of five natural-position-cohort metric percentiles
+  → the Moneyball summary selects best playable IP and OOP scores; the position picker filters the role table, unavailable scores render `—`, and a disclosure shows metric direction, weight, percentile contribution, and catalog version. The IPC response carries the current comparison basis.
   → General profile presentation can show the same inventory, but the 11 entries without an attribute-role mapping remain unavailable and do not enter ingest scoring, General Search, Planner, tactics, or potential-score materialization
 
 Cache invalidation: Load Data invalidates snapshot, Search, Player, Moneyball, Planner, Academy, and Staff query roots. Active-save switching updates the snapshot context and invalidates Search, Player, Moneyball, Planner, Academy, and Staff. A verified player boost invalidates snapshot, Search, Player, Planner, and Academy. Snapshot current promotion and save replacement use the Settings route's context callback to refresh Search, Player, Moneyball, Planner, Academy, and Staff.

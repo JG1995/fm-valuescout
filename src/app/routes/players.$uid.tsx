@@ -431,7 +431,8 @@ function MoneyballPlayerProfile({
         }
       >
         <MoneyballProfilePanel profile={profile} />
-        {readyProfile ? (
+        {readyProfile?.roleScores &&
+        readyProfile.roleCatalogVersion !== null ? (
           <MoneyballRoleFitPanel
             key={player.uid}
             positions={player.positions}

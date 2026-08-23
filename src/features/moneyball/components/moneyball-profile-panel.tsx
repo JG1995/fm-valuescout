@@ -191,7 +191,7 @@ export function MoneyballProfilePanel({
                       key={metric.id}
                       metric={metric}
                       value={profile.statistics[metric.id] ?? null}
-                      score={profile.percentiles[metric.id] ?? null}
+                      score={profile.percentiles?.[metric.id] ?? null}
                     />
                   );
                 })}

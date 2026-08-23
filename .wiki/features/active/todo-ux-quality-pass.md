@@ -493,11 +493,11 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 ### PR 3 — Refine shared player-table presentation
 
-**Status:** Ready for publication
+**Status:** Merged
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/79
 
-**Merge ref:** Not merged
+**Merge ref:** d53b19b4acad089f748d7bc0296955dbad82acdc
 
 **Branch:** `feature/player-table-presentation`
 
@@ -649,7 +649,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 ### PR 4 — Refine Moneyball profile comparisons and header
 
-**Status:** Awaiting prior PR merge
+**Status:** Active
 
 **PR ref:** Not published
 
@@ -679,7 +679,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 1 — Compute natural-position profile cohorts
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(moneyball): compare profile metrics by natural position`
 
@@ -742,7 +742,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 2 — Explain profile comparison basis and unavailable scores
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(profile): explain Moneyball comparison basis`
 
@@ -896,6 +896,24 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 **Review mandate:** Verify range-based intent, all five version owners, root-only lock edit, complete JAY-35 through JAY-41 changelog, authorization sequence, metadata output, Release command and verification parity with the workflow, and no publication side effects.
 
+## Active work
+
+**PR:** PR 4 — Refine Moneyball profile comparisons and header
+
+**Commit:** Commit 2 — Explain profile comparison basis and unavailable scores
+
+### RED or removal proof
+
+Add Moneyball panel and player-route tests that fail because valid profiles do not explain their natural-position cohort and no-natural-position profiles cannot distinguish raw metrics from unavailable percentile and role scores.
+
+### Expected outcome
+
+Valid profiles show natural positions and unique comparison-player count, while no-natural-position profiles retain raw metrics and show explicit unavailable percentile and role states without stale or neutral-looking scores.
+
+### Explicit exclusions
+
+No browser-side cohort calculation, persisted-score fallback, header-geometry change, Moneyball Search UI change, or missing-row no-data redesign.
+
 ## Discoveries and replanning
 
 - The feature-scoped planner failed closed repeatedly. At the developer's direction, the main session authored the same approved schema-2 artifact; an independent fresh-context review found three issues, all were corrected, and the focused re-review returned clear.
@@ -921,7 +939,8 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 | PR 1 — Contain My Club workspaces and compact club setup | Commit 5 — Place managed-club save inline with search | 1be1e3dc426f8cc69e49c7ce621c0487aa456378 | Grouped the managed-club picker and save action in one responsive row with feedback below | RED failed on the missing managed-club control group; focused route tests passed 109 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 0 | None |
 | PR 2 — Add app history controls | Commit 1 — Expose session Back and Forward controls | d50b4ecf5b46b1cd8a2128e7c095627d21aafd21 | Added accessible Back and Forward controls backed by subscribed TanStack Router session history with branch-aware availability | RED failed because controls were absent; focused tests passed 27 tests, affected tests passed 33 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Added Strict Mode cleanup proof and corrected scroll-restoration documentation after review |
 | PR 3 — Refine shared player-table presentation | Commit 1 — Distinguish secondary nationality flags | 3ee9b2dbaacf429f752d9c2c55ef4048bd43a703 | Stable-deduplicated shared nationality cells and reduced every unique secondary flag's size and emphasis | RED failed on duplicate retention and identical emphasis; focused nationality tests passed 6 tests and `./scripts/dev check` passed | Pass | Clear | 0 | None |
-| PR 3 — Refine shared player-table presentation | Commit 2 — Stack player identity and migrate visible layouts | Pending record | Stacked player identity in Search, Moneyball Search, and Squad and migrated pre-v5 layouts without losing other preferences | RED failed on separate identity columns and old layouts; targeted tests passed 168 tests, affected tests passed 174 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Updated obsolete smoke default-column expectations; corrected identity-only migration fallback and added current/future preservation proof after review |
+| PR 3 — Refine shared player-table presentation | Commit 2 — Stack player identity and migrate visible layouts | f2bbce83034fa53436272c8639bd7fe4143a76aa | Stacked player identity in Search, Moneyball Search, and Squad and migrated pre-v5 layouts without losing other preferences | RED failed on separate identity columns and old layouts; targeted tests passed 168 tests, affected tests passed 174 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Updated obsolete smoke default-column expectations; corrected identity-only migration fallback and added current/future preservation proof after review |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 1 — Compute natural-position profile cohorts | Pending record | Recomputed Rust-owned profile percentiles and role scores from deduplicated exact-natural-position peers and exposed additive comparison-basis metadata | RED failed on missing basis contracts; `./scripts/dev check-rust` passed 553 tests with 2 ignored, affected frontend tests passed 54 tests, and `./scripts/dev check` passed | Pass | Clear | 0 | Added null-safe existing frontend consumer adaptations required by the additive unavailable state |
 
 ## Final validation
 
