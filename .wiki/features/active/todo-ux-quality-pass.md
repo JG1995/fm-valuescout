@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -649,7 +649,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 ### PR 4 — Refine Moneyball profile comparisons and header
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -864,7 +864,7 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 
 #### Commit 4 — Prepare the Todo UX minor release
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `chore(release): prepare 0.12.0`
 
@@ -895,24 +895,6 @@ Restore bounded Staff and Staff Shortlist scrolling through the existing My Club
 **Stop conditions:** Stop on latest-tag drift, intent or target ambiguity, an incomplete changelog range, missing release-owner evidence, metadata validation failure, or a changed publication contract.
 
 **Review mandate:** Verify range-based intent, all five version owners, root-only lock edit, complete JAY-35 through JAY-41 changelog, authorization sequence, metadata output, Release command and verification parity with the workflow, and no publication side effects.
-
-## Active work
-
-**PR:** PR 4 — Refine Moneyball profile comparisons and header
-
-**Commit:** Commit 4 — Prepare the Todo UX minor release
-
-### RED or removal proof
-
-Run `./scripts/dev release-metadata v0.11.1 minor` before editing and confirm it fails for the expected unprepared `0.11.1` version and missing `0.12.0` changelog metadata.
-
-### Expected outcome
-
-All five version owners, the root Cargo lock entry, changelog, and release-preparation authorization agree on `0.12.0`, and release metadata validates the complete JAY-35 through JAY-41 minor range without publishing.
-
-### Explicit exclusions
-
-No tag, release publication, implementation change, unrelated changelog entry, non-root lockfile edit, ledger archival, or post-close-out native validation.
 
 ## Discoveries and replanning
 
@@ -945,7 +927,8 @@ No tag, release publication, implementation change, unrelated changelog entry, n
 | PR 3 — Refine shared player-table presentation | Commit 2 — Stack player identity and migrate visible layouts | f2bbce83034fa53436272c8639bd7fe4143a76aa | Stacked player identity in Search, Moneyball Search, and Squad and migrated pre-v5 layouts without losing other preferences | RED failed on separate identity columns and old layouts; targeted tests passed 168 tests, affected tests passed 174 tests, `./scripts/dev check` passed, and `./scripts/dev smoke` passed 48 browser tests | Pass | Clear | 1 | Updated obsolete smoke default-column expectations; corrected identity-only migration fallback and added current/future preservation proof after review |
 | PR 4 — Refine Moneyball profile comparisons and header | Commit 1 — Compute natural-position profile cohorts | 4db209d2b9db530d13e5866b13c06e19b6443e51 | Recomputed Rust-owned profile percentiles and role scores from deduplicated exact-natural-position peers and exposed additive comparison-basis metadata | RED failed on missing basis contracts; `./scripts/dev check-rust` passed 553 tests with 2 ignored, affected frontend tests passed 54 tests, and `./scripts/dev check` passed | Pass | Clear | 0 | Added null-safe existing frontend consumer adaptations required by the additive unavailable state |
 | PR 4 — Refine Moneyball profile comparisons and header | Commit 2 — Explain profile comparison basis and unavailable scores | ee0a6e0ee611119c40a6eb9bd453eb72db371682 | Rendered natural-position comparison basis and explicit no-natural percentile, role-table, and summary unavailable states while retaining raw metrics | RED failed on missing basis/unavailable presentation; targeted tests passed 57 tests, `check-app` and `check` passed, smoke passed 48 tests, and a 1280×800 Chromium inspection confirmed the no-natural state without clipping | Pass | Clear | 1 | Updated the browser IPC fixture and obsolete full-import copy; gated stale summary scores and corrected singleton wording after review |
-| PR 4 — Refine Moneyball profile comparisons and header | Commit 3 — Stabilize General and Moneyball header geometry | Pending record | Consolidated General and Moneyball into one stable two-band header, preserved click and keyboard focus, and added bounded action-outcome and position-picker scroll ownership | RED failed on the missing shared header; 60 affected tests, `./scripts/dev check`, and 48 smoke tests passed; Chromium geometry matched at 1280×800, 1600×900, and effective 200% layout with collapsed and expanded rail | Pass | Clear | 3 | Added bounded General/Moneyball role-panel and development-outcome corrections after geometry review; native Tauri physical zoom remains unrun |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 3 — Stabilize General and Moneyball header geometry | efe01c253efcbc876f6ea7e4df7a166152685d93 | Consolidated General and Moneyball into one stable two-band header, preserved click and keyboard focus, and added bounded action-outcome and position-picker scroll ownership | RED failed on the missing shared header; 60 affected tests, `./scripts/dev check`, and 48 smoke tests passed; Chromium geometry matched at 1280×800, 1600×900, and effective 200% layout with collapsed and expanded rail | Pass | Clear | 3 | Added bounded General/Moneyball role-panel and development-outcome corrections after geometry review; native Tauri physical zoom remains unrun |
+| PR 4 — Refine Moneyball profile comparisons and header | Commit 4 — Prepare the Todo UX minor release | Pending record | Prepared version 0.12.0 across all durable owners with complete grouped release notes and exact minor-release authorization | RED failed on release-intent mismatch; `release-metadata v0.11.1 minor`, 35 retained release tests, `./scripts/dev check`, and `./scripts/dev secrets` passed | Pass | Clear | 1 | Reclassified release notes under Added, Changed, and Fixed after review |
 
 ## Final validation
 

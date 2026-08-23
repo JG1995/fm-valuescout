@@ -6,6 +6,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-23
+
+### Added
+
+- The app header now provides Back and Forward controls for the current session's route history.
+- Moneyball Player Profiles now show their natural-position comparison basis and clearly mark unavailable scores.
+
+### Changed
+
+- Managed-club search and save controls share one responsive row.
+- Shared player tables now deduplicate secondary nationalities and stack player identity above club and division; saved layouts migrate duplicate identity columns.
+- Moneyball Player Profile scoring now uses natural-position cohorts, and General and Moneyball headers keep stable geometry.
+
+### Fixed
+
+- Staff and Staff Shortlist scrolling remains contained in My Club workspaces.
+
 ## [0.11.1] - 2026-08-22
 
 ### Fixed
