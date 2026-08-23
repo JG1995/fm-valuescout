@@ -547,8 +547,6 @@ describe("My Club route", () => {
       "Name",
       "Age / DOB",
       "Nationality",
-      "Club",
-      "Division",
       "CA",
       "PA",
       "Value",
@@ -561,7 +559,7 @@ describe("My Club route", () => {
       within(table).getByRole("columnheader", { name: "CA" }),
     ).toHaveAttribute("aria-sort", "descending");
     expect(
-      within(table).getByRole("link", { name: "Alex Scout" }),
+      within(table).getByRole("link", { name: /Alex Scout/ }),
     ).toHaveAttribute("href", "/players/42");
     expect(
       screen.getByText(
@@ -1441,7 +1439,102 @@ describe("My Club route", () => {
     });
   });
 
-  it("opens a Squad player from a non-name cell", async () => {
+  it("stacks fixed-height Squad identity without duplicate columns", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("Identity Player", 501, 250),
+        club: "Metro FC",
+        division: "Premier Division",
+      },
+      {
+        ...squadPlayerNamed("No context", 502, 249),
+        club: null,
+        division: null,
+      },
+      {
+        ...squadPlayerNamed("Club only", 503, 248),
+        club: "Metro FC",
+        division: null,
+      },
+      {
+        ...squadPlayerNamed("Division only", 504, 247),
+        club: null,
+        division: "Premier Division",
+      },
+      ...manySquadPlayers(99),
+    ]);
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    expect(
+      within(table).queryByRole("columnheader", { name: "Club" }),
+    ).toBeNull();
+    expect(
+      within(table).queryByRole("columnheader", { name: "Division" }),
+    ).toBeNull();
+    const rows = within(table)
+      .getAllByRole("row")
+      .filter((row) => row.hasAttribute("data-index"));
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.length).toBeLessThan(101);
+
+    const identityRow = within(table)
+      .getByText("Identity Player")
+      .closest("tr");
+    const missingContextRow = within(table)
+      .getByText("No context")
+      .closest("tr");
+    const clubOnlyRow = within(table).getByText("Club only").closest("tr");
+    const divisionOnlyRow = within(table)
+      .getByText("Division only")
+      .closest("tr");
+    if (
+      !identityRow ||
+      !missingContextRow ||
+      !clubOnlyRow ||
+      !divisionOnlyRow
+    ) {
+      throw new Error("Expected stacked Squad identity rows.");
+    }
+    expect(identityRow).toHaveStyle({ height: "40px" });
+    expect(identityRow).toHaveTextContent("Metro FC · Premier Division");
+    expect(missingContextRow).toHaveTextContent("No context");
+    expect(missingContextRow).not.toHaveTextContent("—");
+    expect(missingContextRow).not.toHaveTextContent(" · ");
+    expect(within(clubOnlyRow).getAllByRole("cell")[0]).toHaveTextContent(
+      "Metro FC",
+    );
+    expect(within(clubOnlyRow).getAllByRole("cell")[0]).not.toHaveTextContent(
+      " · ",
+    );
+    expect(within(divisionOnlyRow).getAllByRole("cell")[0]).toHaveTextContent(
+      "Premier Division",
+    );
+    expect(
+      within(divisionOnlyRow).getAllByRole("cell")[0],
+    ).not.toHaveTextContent(" · ");
+    identityRow.focus();
+    expect(identityRow).toHaveFocus();
+
+    await user.click(
+      within(identityRow).getByText("Metro FC · Premier Division"),
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/players/501");
+      expect(router.state.location.search).toEqual({});
+    });
+  });
+
+  it("opens a Squad player from a metric cell", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
@@ -1454,7 +1547,7 @@ describe("My Club route", () => {
     const table = await screen.findByRole("table", {
       name: "Squad overview",
     });
-    await user.click(within(table).getByText("Metro FC"));
+    await user.click(within(table).getByText("160"));
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe("/players/42");

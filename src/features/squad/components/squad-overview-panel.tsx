@@ -249,6 +249,11 @@ function SquadOverviewTable({
           }
           const cell = basicCell(player, column.id as BasicSquadSortField);
           if (column.id === "name" && player) {
+            const identityContext = [player.club, player.division]
+              .filter(
+                (value): value is string => value !== null && value !== "",
+              )
+              .join(" · ");
             return (
               <td
                 key={column.id}
@@ -260,13 +265,18 @@ function SquadOverviewTable({
                   params={{ uid: String(player.uid) }}
                   search={{}}
                   tabIndex={-1}
-                  className="block truncate text-on-surface underline decoration-outline-variant underline-offset-2 transition-colors duration-150 ease-out hover:text-primary"
+                  className="block text-on-surface underline decoration-outline-variant underline-offset-2 transition-colors duration-150 ease-out hover:text-primary"
                   title={player.name}
                   onClick={(event) => {
                     event.stopPropagation();
                   }}
                 >
-                  {cell.text}
+                  <span className="block truncate">{cell.text}</span>
+                  {identityContext ? (
+                    <span className="block truncate text-[11px] leading-4 text-on-surface-variant">
+                      {identityContext}
+                    </span>
+                  ) : null}
                 </Link>
               </td>
             );
