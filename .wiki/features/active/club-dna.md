@@ -207,7 +207,7 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 #### Commit 2 — Persist one save-owned Club DNA definition
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(club-dna): persist save-owned definition`
 
@@ -277,7 +277,7 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 #### Commit 3 — Resolve Club DNA in Search and Squad
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(club-dna): derive table metric in Rust`
 
@@ -576,19 +576,19 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 **PR:** PR 1 — Add user-defined Club DNA scoring
 
-**Commit:** Commit 2 — Persist one save-owned Club DNA definition
+**Commit:** Commit 3 — Resolve Club DNA in Search and Squad
 
 ### RED or removal proof
 
-Add migration and service tests that fail before v31 and the Club DNA service exist. The tests must prove save ownership, context binding, validation, create-versus-edit behavior, restart persistence, snapshot independence, removal, and save cascade.
+Add resolver and query tests that fail while `club_dna` is unknown. The tests must prove one formula across display, filter, and sort; strict null behavior; deterministic rounding; active-save isolation; and full-catalog performance.
 
 ### Expected outcome
 
-Migration v31 and the Rust Club DNA command/service boundary store one validated definition per save and reject stale active-save contexts before reads or writes.
+Rust derives one nullable Club DNA score through the existing Search and Squad metric paths, with trusted SQL, equal weighting, one rounding step, and measured interactive query behavior.
 
 ### Explicit exclusions
 
-Score calculation, player-metric resolution, Search and Squad query changes, frontend adapters, UI, layout mutation, caches, and current-state documentation.
+Frontend metric metadata, form UI, app-local layout changes, Player Profile, Moneyball, caching, generated columns, expression indexes, and ingest-time scores.
 
 ## Discoveries and replanning
 
@@ -600,7 +600,8 @@ Score calculation, player-metric resolution, Search and Squad query changes, fro
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Add user-defined Club DNA scoring | Commit 1 — Record the approved feature plan | Pending record | Recorded the reviewed schema 2 ledger and TODO activation. | `ledger_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 1 — Record the approved feature plan | ddd4961e6d90ca24faa435955c6ae7eb5a716f0b | Recorded the reviewed schema 2 ledger and TODO activation. | `ledger_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 2 — Persist one save-owned Club DNA definition | Pending record | Added migration v31 and context-bound Rust CRUD for one validated definition per save. | RED failed because v31 was absent; `./scripts/dev check-rust` passed 561 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 0 | None. |
 
 ## Final validation
 

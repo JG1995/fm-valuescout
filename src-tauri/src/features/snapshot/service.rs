@@ -952,6 +952,12 @@ mod tests {
         )
         .expect("insert inactive planner setting");
         conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.Acceleration\"]')",
+            [inactive.id],
+        )
+        .expect("insert inactive Club DNA definition");
+        conn.execute(
             "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
              VALUES (?1, 77, 3)",
             [inactive.id],
@@ -975,6 +981,7 @@ mod tests {
         );
         for table in [
             "managed_club_settings",
+            "club_dna_definitions",
             "player_youth_career_stats",
             "academy_classes",
         ] {
@@ -1045,6 +1052,12 @@ mod tests {
         )
         .expect("insert planner setting");
         conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.Acceleration\"]')",
+            [save.id],
+        )
+        .expect("insert Club DNA definition");
+        conn.execute(
             "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
              VALUES (?1, 77, 3)",
             [save.id],
@@ -1081,6 +1094,7 @@ mod tests {
         assert_eq!(retained_player_count, 1);
         for table in [
             "managed_club_settings",
+            "club_dna_definitions",
             "player_youth_career_stats",
             "academy_classes",
         ] {
