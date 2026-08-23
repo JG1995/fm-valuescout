@@ -45,18 +45,43 @@ describe("NationalityCell", () => {
     );
   });
 
-  it("renders two and three nationalities in stored order", () => {
-    const { rerender } = render(
-      <NationalityCell nationalities={["England", "Wales"]} />,
+  it("keeps a single nationality at the primary emphasis", () => {
+    render(<NationalityCell nationalities={["England"]} />);
+
+    const flag = screen.getByRole("img", { name: "England" });
+    expect(flag).toHaveAttribute("title", "England");
+    expect(flag).toHaveClass("[--CountryFlagIcon-height:0.875rem]");
+    expect(flag).not.toHaveClass("opacity-70");
+  });
+
+  it("renders later nationalities with reduced emphasis and readable names", () => {
+    render(
+      <NationalityCell nationalities={["England", "Zanzibar", "Wales"]} />,
     );
 
-    expect(screen.getAllByRole("img").map((flag) => flag.ariaLabel)).toEqual([
+    const flags = screen.getAllByRole("img");
+    expect(flags.map((flag) => flag.ariaLabel)).toEqual([
       "England",
+      "Zanzibar",
       "Wales",
     ]);
+    expect(flags[0]).toHaveClass("[--CountryFlagIcon-height:0.875rem]");
+    expect(flags[0]).not.toHaveClass("opacity-70");
+    expect(flags[1]).toHaveClass("h-3", "opacity-70");
+    expect(flags[2]).toHaveClass(
+      "[--CountryFlagIcon-height:0.75rem]",
+      "opacity-70",
+    );
+    for (const flag of flags.slice(1)) {
+      expect(flag).toHaveAttribute("title", flag.ariaLabel);
+    }
+  });
 
-    rerender(
-      <NationalityCell nationalities={["England", "Wales", "South Korea"]} />,
+  it("removes duplicate nationalities without reordering first occurrences", () => {
+    render(
+      <NationalityCell
+        nationalities={["England", "Wales", "England", "South Korea", "Wales"]}
+      />,
     );
 
     expect(screen.getAllByRole("img").map((flag) => flag.ariaLabel)).toEqual([

@@ -249,14 +249,24 @@ export function NationalityCell({
     return "—";
   }
 
+  const uniqueNationalities = [...new Set(nationalities)];
+
   return (
     <span className="flex h-full min-w-0 items-center gap-1">
-      {nationalities.map((nationality, index) => {
-        const key = `${nationality}-${index}`;
+      {uniqueNationalities.map((nationality, index) => {
+        const isPrimary = index === 0;
         const flag = nationalityFlagFor(nationality);
         if (!flag) {
           return (
-            <span key={key} className="min-w-0 truncate" title={nationality}>
+            <span
+              key={nationality}
+              className={
+                isPrimary
+                  ? "min-w-0 truncate"
+                  : "min-w-0 truncate text-xs text-on-surface-variant"
+              }
+              title={nationality}
+            >
               {nationality}
             </span>
           );
@@ -264,10 +274,14 @@ export function NationalityCell({
         if (flag.type === "asset") {
           return (
             <img
-              key={key}
+              key={nationality}
               alt={nationality}
               aria-label={nationality}
-              className="block h-3.5 w-auto shrink-0"
+              className={
+                isPrimary
+                  ? "block h-3.5 w-auto shrink-0"
+                  : "block h-3 w-auto shrink-0 opacity-70"
+              }
               src={flag.source}
               title={nationality}
             />
@@ -275,9 +289,13 @@ export function NationalityCell({
         }
         return (
           <span
-            key={key}
+            key={nationality}
             aria-label={nationality}
-            className={`flag:${flag.countryCode} block shrink-0 [--CountryFlagIcon-height:0.875rem]`}
+            className={
+              isPrimary
+                ? `flag:${flag.countryCode} block shrink-0 [--CountryFlagIcon-height:0.875rem]`
+                : `flag:${flag.countryCode} block shrink-0 opacity-70 [--CountryFlagIcon-height:0.75rem]`
+            }
             role="img"
             title={nationality}
           />

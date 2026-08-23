@@ -506,7 +506,7 @@ Progressive filtering on the Search screen — Genie Scout / FM-style operator r
 
 ### Nationality flags
 
-Player-table nationality cells render each stored nationality in its original array order. Known FM names use the bundled `country-flag-icons` SVG package, including the four UK home nations; `Zanzibar` uses the checked-in public-domain SVG because the package has no matching asset. Every flag exposes the full stored name through its accessible name and title. An unmapped future value stays as that text, and an empty nationality list renders `—`. The app performs no runtime network request and never substitutes a guessed country or a league flag.
+Shared player-table nationality cells remove later exact duplicate names while preserving first-occurrence order. The first unique nationality is the primary flag at the standard size. Later unique nationalities render as smaller, muted secondary flags. Known FM names use the bundled `country-flag-icons` SVG package, including the four UK home nations; `Zanzibar` uses the checked-in public-domain SVG because the package has no matching asset. Every flag exposes the full stored name through its accessible name and title. An unmapped future value stays as text with the same primary or secondary hierarchy, and an empty nationality list renders `—`. This treatment applies to shared player and Staff tables only. The app performs no runtime network request and never substitutes a guessed country or a league flag.
 
 ### Modal
 
