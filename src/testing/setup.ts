@@ -31,6 +31,15 @@ import {
   resolveSetAcademyMemberOutcomeIpcMock,
 } from "@/testing/academy-ipc-mock";
 import {
+  resetClubDnaIpcMock,
+  resolveBusyClubDnaGetRequest,
+  resolveBusyClubDnaRemoveRequest,
+  resolveBusyClubDnaSetRequest,
+  resolveClubDnaGetIpcMock,
+  resolveClubDnaRemoveIpcMock,
+  resolveClubDnaSetIpcMock,
+} from "@/testing/club-dna-ipc-mock";
+import {
   resetCsvImportIpcMock,
   resolveBusyCsvImportRequest,
   resolveCsvImportIpcMock,
@@ -151,6 +160,18 @@ function registerIpcMocks() {
 
     if (cmd === "import_csv") {
       return resolveCsvImportIpcMock(args);
+    }
+
+    if (cmd === "get_club_dna") {
+      return resolveClubDnaGetIpcMock(args);
+    }
+
+    if (cmd === "set_club_dna") {
+      return resolveClubDnaSetIpcMock(args);
+    }
+
+    if (cmd === "remove_club_dna") {
+      return resolveClubDnaRemoveIpcMock(args);
     }
 
     if (cmd === "search_players") {
@@ -344,6 +365,9 @@ afterEach(() => {
   resolveBusyLoadDataRequest();
   resolveBusySnapshotDeleteRequest();
   resolveBusyCsvImportRequest();
+  resolveBusyClubDnaGetRequest();
+  resolveBusyClubDnaSetRequest();
+  resolveBusyClubDnaRemoveRequest();
   cleanup();
   clearMocks();
   setBridgeStatusIpcMockMode("ready");
@@ -352,6 +376,7 @@ afterEach(() => {
   resetBridgeInstallIpcMock();
   resetSnapshotIpcMock();
   resetCsvImportIpcMock();
+  resetClubDnaIpcMock();
   resetSearchPlayersOverride();
   resetStaffIpcMock();
   resetSquadPlayersOverride();

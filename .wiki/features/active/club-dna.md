@@ -825,7 +825,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 #### Commit 11 — Add the frontend Club DNA domain and fixed metric
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(club-dna): add frontend metric foundation`
 
@@ -900,7 +900,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 #### Commit 12 — Build the Club DNA definition Modal
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(club-dna): build definition modal`
 
@@ -1050,19 +1050,19 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 **PR:** PR 1 — Add user-defined Club DNA scoring
 
-**Commit:** Commit 11 — Add the frontend Club DNA domain and fixed metric
+**Commit:** Commit 12 — Build the Club DNA definition Modal
 
 ### RED or removal proof
 
-Add shared-catalog, metric, layout, API, and table-rendering tests that fail while `club_dna` is unknown, frontend attribute groups remain duplicated, and context-bound definition adapters do not exist.
+Add component and IPC-mock tests that fail while users cannot open an accessible definition form, select the complete catalog, save/edit/remove one definition, or survive stale-context and destructive-confirmation transitions safely.
 
 ### Expected outcome
 
-One canonical frontend attribute catalog feeds Player Profile and metric metadata; typed context-bound Club DNA adapters exist; Search and Squad can request, persist, and render the fixed nullable score metric without defaulting it into layouts.
+A single accessible Modal supports create/edit/remove Club DNA with every approved attribute, minimum-one validation, exact formula explanation and selected summary, pending/error guards, draft preservation, focus return, and captured-context stale-result suppression.
 
 ### Explicit exclusions
 
-My Club action, Modal, mutation UI, automatic layout append, active-context invalidation wiring, backend changes, Moneyball, Player Profile score display, current-state documentation, and unrelated Git mutations.
+My Club placement, route composition, automatic layout append, active-save invalidation wiring, backend changes, score computation/profile display, current-state documentation, and unrelated Git mutations.
 
 ## Discoveries and replanning
 
@@ -1092,6 +1092,7 @@ My Club action, Modal, mutation UI, automatic layout append, active-context inva
 | PR 1 — Add user-defined Club DNA scoring | Commit 8 — Record the eager score architecture replan | aa5e097c66692bab1aac4444a4df0b02878b7994 | Recorded ADR-0024, superseded the lazy decision, and split eager writers from persisted reads. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 1 | Replaced the breached lazy architecture after the developer chose role-like eager persistence; corrected the post-acceptance authority narrative. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 9 — Install the eager Club DNA writer lifecycle | b3ccf37f9a1b23b334d235605b91db681d57bb13 | Added bounded eager definition, ingest, and boost score writers; removed lazy ownership; and proved promotion needs no backfill. | `./scripts/dev check-rust` passed 574 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 2 | Review corrections bounded retained-snapshot memory and added exact CA and mentality rollback proof. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 10 — Expose persisted Club DNA queries | cf7cc027c6a7058f10635c9e8ee7cd69cb6ba0c1 | Added exact-identity read-only Club DNA display/filter/sort in Search and display/sort in Squad. | `./scripts/dev check-rust` passed 581 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 0 | None. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 11 — Add the frontend Club DNA domain and fixed metric | b7c947efedacf27dcda27478d2c0b744e4a4210b | Added the canonical frontend attribute catalog, typed context adapters, fixed metric, layout retention, and score rendering. | `./scripts/dev test` passed 577 tests; `./scripts/dev check-app` and `./scripts/dev check` passed. | Pass | Clear | 1 | Review corrections anchored full catalog order and exact save/token Query-key isolation. |
 
 ## Final validation
 
