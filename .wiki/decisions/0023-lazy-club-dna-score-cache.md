@@ -4,7 +4,7 @@
 
 Accepted
 
-Implementation status: Planned in the active [Club DNA](../features/active/club-dna.md) feature. Committed migration v31 stores definitions without versioning. Planned migration v32 adds definition versions and the disposable score cache.
+Implementation status: The v31/v32 cache foundation is implemented at `d78f97f25497409f6c895a8ac5cdeb74ea5301eb`; indexed Search and Squad integration is pending Commit 6 in the active [Club DNA](../features/active/club-dna.md) feature.
 
 ## Context
 
