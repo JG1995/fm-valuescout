@@ -8,7 +8,7 @@ Active
 
 ## Delivery authorization
 
-**Delivery fingerprint:** eb82c2be41d53ec22d539a67dfdef25745fe8d8e3e16f694493d09eb4a2d4bc7
+**Delivery fingerprint:** 8b255cb0d43d34e6023ffc26c1e194aaa24e765e99ae1ebca1a639c0810fade8
 
 ## Intent
 
@@ -21,9 +21,10 @@ Let the user define one save-owned Club DNA score from selected Football Manager
 - The Modal is the only explanation surface. It lists the selected attributes and states that Club DNA scales each selected 1–20 value by 5, gives every selected attribute equal weight, averages the values, and rounds to a whole 0–100 score.
 - Each app save owns at most one definition with the fixed label **Club DNA**. A later managed-club change keeps the definition because the definition is not keyed to a club name.
 - The user can create, view, edit or replace, and remove the definition. Removing it does not remove the fixed metric from saved table layouts, filters, sort state, or navigation history.
-- A player receives Club DNA only when every selected attribute has a value. If one selected value is missing or null, or the active save has no definition, the metric is unavailable and renders `—`.
+- A player receives Club DNA only when every selected attribute is an integer from 1 through 20. If one selected value is missing, null, non-integer, or outside 1–20, or the active save has no definition, the metric is unavailable and renders `—`.
 - On initial creation, the app appends `club_dna` once to the existing app-local Search and Squad layouts. Editing does not restore a column that the user removed. Re-creating a definition after deletion is a new creation and can append a missing column again.
 - General Search can display, sort, and filter Club DNA. Squad can display and sort it. Both use the shared score presentation and retain unavailable values as null rather than zero.
+- The first request for an uncached Club DNA page or cohort can take longer while Rust materializes scores. The existing table query-loading state stays visible, no partial filtered or sorted result appears, and later warm requests use the cache. Cold duration is measured and reported separately from warm interaction latency.
 - Hidden and personality attributes remain eligible even when profile concealment is on. Concealment is a presentation preference, not authorization.
 
 ## Invariants
@@ -32,7 +33,7 @@ Let the user define one save-owned Club DNA score from selected Football Manager
 - Definition attribute IDs use the existing closed metric forms: `attr.<PascalCase>`, `hidden.<PascalCase>`, and `personality.<PascalCase>`. Goalkeeper attributes use `attr.*` because they are stored in `players.attributes_json`.
 - A definition contains at least one unique supported attribute ID. The user maximum is the complete closed catalog; no lower implementation cap may reject selecting all supported attributes.
 - The formula is deterministic: for `n` selected values, calculate `round((sum(value × 5)) / n)` as one integer from 0 through 100. The same definition and player JSON produce the same result in Search and Squad.
-- Missing definition, missing key, explicit JSON null, or any non-integer selected value makes the complete score null. Partial averages and zero substitution are forbidden.
+- Missing definition, missing key, explicit JSON null, or any selected value that is non-integer or outside integer 1–20 makes the complete score null. Partial averages, clamping, and zero substitution are forbidden.
 - The definition belongs to `saves`, survives snapshot replacement and restart, changes with the active save, and cascades when its save is deleted. Snapshot deletion does not delete it.
 - The fixed `club_dna` metric remains in the frontend and Rust catalogs independently of definition existence. Definition removal does not rewrite app-local layouts or URL-backed Search filter/sort state.
 - Authoritative attribute-ID validation occurs in Rust at the command/service boundary. SQL is built only from the fixed metric and validated stored IDs; the WebView cannot supply SQL or arbitrary JSON paths.
@@ -46,52 +47,62 @@ Let the user define one save-owned Club DNA score from selected Football Manager
 - Club-name ownership, automatic definition changes after a managed-club change, or a definition per club.
 - Player Profile display, per-player contribution disclosure, or any explanation outside the definition Modal.
 - A new hidden-information concealment or authorization rule.
-- Materialized Club DNA scores, a score cache, ingest-time computation, or changes to snapshot player data unless measured read-time behavior crosses the recorded stop condition.
+- Eager ingest or promotion-time score computation, an in-memory-only cache, or a request-local full-cohort calculation that is discarded after each query.
 - New table layout ownership, a new table component, or global removal of saved layout, filter, sort, or history state.
 
 ## Current-state map
 
 - Relevant components: `src/app/routes/my-club.tsx::MyClubPageContent` composes the My Club header and `ManagedClubSelector`; `src/features/managed-club/components/managed-club-selector.tsx::ManagedClubSelector` owns the selector form and **Save managed club** action; `src/components/ui/modal/modal.tsx::Modal` owns dialog focus and dismissal; `src/features/player-profile/utils/attribute-groups.ts` owns the current FM-style frontend attribute grouping.
-- Data model: `players` stores visible and goalkeeper values in `attributes_json`, hidden values in `hidden_attributes_json`, and personality values in `personality_json`. `managed_club_settings` has one save-keyed row but Club DNA has no current table or command.
-- Persistence and migrations: `src-tauri/src/db/migrations.rs` ends at v30. Save-owned tables use `save_id REFERENCES saves(id) ON DELETE CASCADE`. `src-tauri/src/features/managed_club/service.rs` is the closest one-row-per-save CRUD and cascade analogue.
+- Data model: `players` stores visible and goalkeeper values in `attributes_json`, hidden values in `hidden_attributes_json`, and personality values in `personality_json`. Committed v31 and `src-tauri/src/features/club_dna/` now provide one save-keyed definition plus context-bound get/set/remove commands. No definition version or Club DNA score cache exists yet.
+- Persistence and migrations: committed migration v31 adds `club_dna_definitions(save_id, attribute_ids_json)` with one save-owned row and no definition version. Save-owned tables use `save_id REFERENCES saves(id) ON DELETE CASCADE`. Migration v21 and `src-tauri/src/features/player_metrics/potential_cache.rs` are the closest disposable-cache, bounded-batch, nullable-row, model-version, page/cohort-scope, and player-boost invalidation analogues.
 - Existing behavioral assumptions: most React query keys omit save IDs because app-shell and Settings context changes invalidate feature roots, but save-owned Club DNA cannot rely on invalidation alone. The established saves query exposes each active save's ID and immutable `contextToken`. Search filters and sort live in URL state. Search and Squad column IDs, order, and widths live app-locally in Zustand key `fm-valuescout-player-table-layouts`, version 5. `addColumns` validates IDs and appends only missing columns.
-- Architectural seams: `src/utils/player-metrics.ts` and `src/components/ui/player-metric-picker.tsx` own the frontend fixed metric catalog and picker. `src-tauri/src/features/player_metrics/resolver.rs::MetricField` owns the independent Rust catalog, dynamic display expressions, and dynamic sort expressions. `src-tauri/src/features/search/filter.rs` owns trusted Search filter compilation. `src-tauri/src/features/search/query.rs` and `src-tauri/src/features/planner/squad.rs` own the current-snapshot Search and managed-club Squad query paths.
+- Architectural seams: `src/utils/player-metrics.ts` and `src/components/ui/player-metric-picker.tsx` own the frontend fixed metric catalog and picker. `src-tauri/src/features/player_metrics/resolver.rs::MetricField` owns the independent Rust catalog and dynamic value/sort expressions. `src-tauri/src/features/player_metrics/potential_cache.rs` shows the established lazy materialization boundary. `src-tauri/src/features/search/filter.rs` owns trusted Search filter compilation. `src-tauri/src/features/search/query.rs` and `src-tauri/src/features/planner/squad.rs` own the current-snapshot Search and exact managed-club Squad cohorts.
 - Shared table adapters: `src/features/search/components/search-results-panel.tsx` and `src/features/squad/components/squad-overview-panel.tsx` request visible dynamic fields and render nullable values. `src/components/player-table/` owns table interaction. Existing dynamic DTO maps already carry nullable integers.
 - Command boundary: `src/lib/tauri-client.ts` is the sole frontend invoke wrapper. `src-tauri/src/lib.rs` registers Tauri commands, and `src-tauri/src/features/mod.rs` registers feature modules.
 - Project validation commands: `./scripts/dev test <targets>`, `./scripts/dev check-app`, `./scripts/dev check-rust`, `./scripts/dev check`, and `./scripts/dev smoke`. `./scripts/dev mutate` is unsupported and cannot be evidence.
-- Primary risks: cross-language catalog drift, accepting an empty or unknown definition, partial averages, stale active-save Query data, re-adding a user-removed column on edit, removing saved state with the definition, and a correlated JSON aggregate that is too slow for a representative Search filter or sort.
+- Primary risks: cross-language catalog drift, accepting an empty or unknown definition, partial averages, stale or mixed-version cache rows, incomplete cohort materialization before global filter/sort, long first-use database lock time, stale active-save Query data, re-adding a user-removed column on edit, and removing saved layout state with the definition.
 
 ## Feature architecture
 
-Add a save-owned `club_dna_definitions` table with one row per save and one JSON array of canonical selected attribute IDs. A Rust `club_dna` feature owns get, upsert, remove, and closed-catalog validation. Upsert returns whether it inserted a new row so React can distinguish creation from edit without inferring from stale UI state. The row cascades with `saves`; no snapshot or managed-club foreign key exists.
+Committed migration v31 remains unchanged and continues to own one validated definition per save. Migration v32 adds `definition_version` to that definition and adds a disposable `club_dna_scores` cache. The cache identity is `(snapshot_id, uid, definition_version, score_model_version)`. Each row stores a nullable score constrained by `score IS NULL OR score BETWEEN 0 AND 100`, references the owning player/snapshot with cascade deletion, and has an index for snapshot/version score lookup. Cache rows are derived data and are safe to delete or rebuild.
 
-The fixed `club_dna` metric extends the established player-metric boundary. `player_metrics::club_dna` owns the fixed score SQL expression. `MetricField` recognizes only that exact ID and delegates display and sort SQL to that metric-private owner. Search filter compilation delegates to the same expression and adds the existing integer comparison and null guard. The expression resolves the player's save through `snapshots`, reads that save's definition, resolves each canonical ID against the appropriate player JSON column, requires one non-null integer for every selected ID, scales by 5, averages, and rounds once. No definition produces an empty aggregate and therefore null. Search and Squad keep their current page, DTO, filter, and sort flows.
+`player_metrics::club_dna` owns one pure Rust score function and one lazy materializer. Rust reads and validates the active save's definition once per request. It loads player JSON in bounded batches, calculates one nullable score per player, and writes each batch in its own short transaction. A display-only request materializes only the requested page UIDs. Search filter or sort materializes the complete current-snapshot Search cohort before count, filter, or ordering. Squad sort materializes the exact configured managed-club cohort before ordering. After materialization, Search and Squad resolve `club_dna` only through the versioned cache and keep bounded result pages.
 
-React adds one fixed integer metric with score presentation. It consolidates the already duplicated frontend attribute lists into a shared utility used by Player Profile grouping, player metric metadata, and the Club DNA form. The Club DNA feature owns typed IPC adapters, context-bearing Query data, local Modal draft state, create/edit/remove mutations, validation feedback, selected-attribute summary, and formula copy. Every get, set, and remove adapter sends the expected active save ID and immutable save context token. Rust verifies that the pair still identifies the active save before it reads or writes. `clubDnaKeys.definition(saveId, contextToken)` isolates cached definitions by save incarnation rather than relying on invalidation. The My Club route derives that context from `savesQueryOptions`, keys the Club DNA feature by the pair, closes and discards its draft when the pair changes, and keeps the trigger and submission disabled while managed-club or Club DNA state is refreshing, mismatched, or errored. Mutation callbacks compare their captured context with the current route context before they show feedback, invalidate current data, or append layouts. Rust remains the authoritative stale-context rejection seam. Only a current-context successful response with `created: true` calls `addColumns("search", ["club_dna"])` and `addColumns("squad", ["club_dna"])`; edit and remove never alter layouts.
+The materializer validates the request, snapshot, definition, and cohort before it opens a write transaction. It does no work for an invalid request or a missing definition. The existing synchronous Search or Squad command keeps its current `Db` mutex guard for the request, including materialization, so another database command cannot observe or interleave an incomplete global cohort. Each batch transaction owns only that batch's cache writes and releases the SQLite write lock before the next batch. No transaction or mutex guard crosses an async wait. Partial derived rows after an error are safe and resumable, but a global filter or sort does not run until its complete required cohort is materialized. The unique cache identity and idempotent upsert keep retries safe. Cold first use can therefore delay other database commands and must remain explicit in UX and validation.
 
-This extends established save-owned SQLite and dynamic metric boundaries, so no ADR is warranted. ADR-0019 concerns minute-scale CA-to-PA projection for roughly 183,000 players and does not require caching for existing direct JSON metrics. The direct Club DNA expression remains provisional until the recorded performance proof passes. Crossing that threshold stops delivery for a cache/materialization decision and possible ADR rather than silently adding a cache.
+Definition edits increment `definition_version` and delete all stale Club DNA rows owned by that save in the same transaction. Definition removal deletes the definition and all save-owned cache rows atomically. Re-creation inserts a new definition with a fresh version lineage and reports `created: true`. Ingest and current-snapshot promotion do not precompute scores. Snapshot/player deletion cascades cache rows. Every successful supported player boost deletes that player's Club DNA rows in the same reconciliation transaction. A formula change increments `score_model_version`; stale model rows behave as misses and are replaced lazily.
+
+React behavior stays as planned. One fixed integer metric uses backend-supplied cached values and shared score presentation. Typed definition adapters carry the expected active save ID and immutable save context token. The context-bearing Query key, route remount, callback guards, and Rust stale-context verification prevent cross-save data or effects. Only a current-context successful create appends `club_dna` to Search and Squad layouts. Edit and remove do not rewrite layouts or URL state.
+
+[ADR-0023](../../decisions/0023-lazy-club-dna-score-cache.md) records the cache decision, invalidation owners, and measured thresholds. No current-state architecture or design document changes during this replan because v32 and cache-backed queries are not implemented yet.
 
 ## Uncertainty register
 
 ### Known
 
-- Linear JAY-32 is the external work item. There is no planned feature spec to promote and no current Club DNA implementation.
-- The approved definition is one fixed-label save-owned record, independent of managed-club name and current snapshot.
-- All visible, goalkeeper, hidden, and personality catalog attributes are selectable with equal weight and no user maximum.
+- Linear JAY-32 is the external work item. There is no planned feature spec to promote.
+- Commit 1 recorded the original plan at `ddd4961e6d90ca24faa435955c6ae7eb5a716f0b`. Commit 2 implemented v31 definition persistence at `d2682ee5c50cb99cd0b7f9facf5fd4f9060d5001`.
+- The discarded direct-SQL experiment used a complete-catalog 2,000-player Search cohort. Search filter samples were `[1875,1860,1862,1865,1902,1913,1881,1878,1865,1858,1863,1868,1877,1895,1889,1880,1900,1859,1896,1855]` ms with nearest-rank p95 1902 ms. Search sort samples were `[914,918,920,917,923,920,923,922,923,922,920,913,904,912,902,908,907,911,916,922]` ms with nearest-rank p95 923 ms. Both breach the required `<500 ms` guard.
+- No representative roughly 180,000-player run was attempted. The failed code experiment was discarded cleanly; only its evidence and contract-level test cases remain planning inputs.
 - Search supports display, sort, and filter. Squad supports display and sort. Both already carry nullable integer dynamic values.
-- Existing raw attribute filters use direct `json_extract`. Their recorded upgrade trigger is about 200 ms p95 on a full roughly 180,000-player snapshot, with a 2,000-player Rust guard below 500 ms. Club DNA must measure Search filter and Search sort as separate query shapes, plus Squad sort if its SQL shape materially differs.
+- ADR-0019 and `player_metrics::potential_cache` establish lazy page/cohort materialization, nullable cache rows, model versioning, bounded transactions, cascade deletion, and same-transaction player-boost invalidation.
 
 ### Assumptions
 
-- Canonical metric-style IDs are the narrowest persisted representation because they encode both the closed attribute and its JSON source without another schema column.
-- SQLite `round` on positive values and the existing whole-score presentation match the required whole-number rounding. The Rust tests must characterize tie cases before UI integration.
+- Canonical metric-style IDs remain the narrowest persisted definition because they encode the closed attribute and JSON source.
+- A per-definition monotonic integer version plus a constant score-model version is sufficient cache identity; no timestamp or content hash is required.
 - A route-owned action slot in `ManagedClubSelector` is sufficient to place **Define DNA** beside **Save managed club** without a cross-feature import.
 - The existing `ScoreBadge` is the correct 0–100 presentation in both tables.
 
 ### Decisions
 
-- Store only selected canonical attribute IDs. Do not persist name, club name, formula version, weights, or derived scores.
-- Use direct read-time SQL derivation through the shared Rust metric boundary. Do not add a score cache or ingest work without measured evidence.
+- Keep committed v31 unchanged. Add definition versioning and the nullable disposable score cache only in migration v32.
+- Use cache identity `(snapshot_id, uid, definition_version, score_model_version)` and an index suitable for snapshot/version score filtering and ordering.
+- Read and validate the definition once, compute in Rust in bounded batches, and persist null rows so incomplete players are not recalculated on every read.
+- Materialize requested page UIDs for display, the complete Search cohort for filter/sort, and the exact managed-club cohort for Squad sort.
+- Missing definition and invalid requests perform no cache writes and return the existing safe null/error contract. First use remains an explicit cold operation; warm latency is the interactive gate.
+- Definition edit increments the version and clears save-owned rows atomically. Remove clears definition and rows atomically. Re-create starts a new definition. Ingest and promotion remain lazy.
+- Supported player boosts invalidate that player's Club DNA rows in the same reconciliation transaction. Formula changes bump `score_model_version`.
 - Keep `club_dna` permanently valid in both catalogs. No-definition and post-removal queries return null rather than an unknown-field error.
 - Let the backend report create versus replace. Do not let React infer creation from its Query cache.
 - Consolidate the frontend attribute catalogs into a shared utility. Keep a separate Rust closed catalog because Rust is the authoritative trust boundary.
@@ -100,22 +111,25 @@ This extends established save-owned SQLite and dynamic metric boundaries, so no 
 ### Unknowns
 
 - Native Tauri/WebView density and focus behavior for selecting the full catalog cannot be proved in headless Chromium.
-- Representative full-cohort Club DNA p95 is not yet measured. Publication requires either the recorded representative measurements or an explicit developer decision that accepts the unavailable-environment gap; a measured threshold breach cannot be accepted as a gap.
+- Representative roughly 180,000-player cold first-use and warm filter/sort timings remain unavailable. Publication stops until they are measured or the developer explicitly accepts the unavailable-environment gap. A measured warm breach cannot be accepted as a gap.
+- Cold materialization duration and perceived first-use responsiveness are not yet measured. The implementation must report cold timing separately instead of hiding it inside warm samples.
 
 ### Risks
 
-- A formula assembled independently in filter, display, and sort paths can drift. One Rust score-expression owner and cross-path tests must prevent it.
-- A stored malformed or unsupported ID could turn every score null or make JSON extraction unsafe. Rust must validate all writes and migration constraints must preserve a valid JSON-array shape.
-- A missing selected value can be mistaken for zero or omitted from the denominator. Tests must include missing keys, explicit nulls, mixed JSON sources, and a valid zero-free 1–20 case.
-- The same app-local layouts serve every save. Creation on one save can expose the fixed metric on another save with no definition; the backend must return null without errors.
-- Definition mutations can leave cached Search or Squad pages stale. Mutation success must invalidate both query roots.
-- Invalidation alone cannot bind a late definition response to the save that requested it. Every get/set/remove request must carry the expected save ID and immutable context token, Rust must reject a pair that is no longer active, Query keys must include the pair, and current-context UI effects must ignore late prior-context results. App top-bar and Settings context paths must still invalidate the Club DNA root and their tests must prove that wiring.
-- Automatic append can override user customization if edit is mistaken for create. The backend-created flag and store tests must distinguish create, edit, delete, and re-create.
-- Correlated JSON aggregation can exceed the established table-interaction budget. The deterministic 2,000-player guard must use the complete selected catalog and complete representative JSON for every player, then run 3 warm-ups and 20 measured executions per relevant query shape and assert nearest-rank p95 below 500 ms. Representative roughly 180,000-player Search filter and sort measurements use the same run counts and require each nearest-rank p95 at or below about 200 ms. A threshold breach stops for replan/cache decision; an unavailable representative environment stops publication for an explicit developer gap decision.
+- A cache lookup that omits either version can return stale scores after definition or formula changes. Migration, resolver, and query tests must prove exact identity use.
+- A materializer can expose incomplete global results if filter or sort runs before every required cohort row exists. Search and Squad tests must prove full-cohort completion before count/order while display remains page-only.
+- A long transaction can block unrelated SQLite work. Use bounded player batches and one short write transaction per batch; record cold duration and review lock scope.
+- Cold materialization holds the existing command-level `Db` mutex while it computes batches, so other database commands wait even though each SQLite write transaction is short. Cold timing and native first-use behavior determine whether a later background-job decision is required.
+- A stored malformed or unsupported ID could poison a full cohort. Validate the definition once before any cache work and fail safely without partial new-version writes.
+- A missing or out-of-domain selected value can be mistaken for zero, clamped, or omitted from the denominator. Pure-scoring tests must include missing keys, explicit nulls, non-integers, mixed JSON sources, valid 1 and 20 boundaries, and invalid 0 and 21 boundaries in each applicable JSON source.
+- Definition edit/remove and player boosts can leave stale rows. Each owning mutation must delete the exact rows in its existing transaction, with rollback tests.
+- The same app-local layouts serve every save. A save with no definition must return null without query or materialization errors.
+- Invalidation alone cannot bind a late definition response to the requesting save. All definition IPC calls, Query keys, route effects, and Rust checks retain the exact save ID/context-token contract.
+- Automatic append can override user customization if edit is mistaken for create. Backend `created`, store tests, and route tests must distinguish create, edit, delete, and re-create.
 
 ## Walking skeleton
 
-Migration v31 stores one validated definition for the active save; the fixed Rust `club_dna` metric derives one nullable score through the existing Search query; the frontend form creates the definition and appends the fixed metric to Search and Squad. Later packets complete the full filter/sort, edit/remove, active-save, layout-retention, and browser proofs without changing that path.
+Migration v31 remains the trusted definition record. Migration v32 adds definition versions and the disposable score cache. Rust materializes one Search page for display and a complete Search cohort for filter/sort, then resolves the cached nullable score through the existing bounded table path. Later packets add Squad proof and the unchanged frontend definition and layout behavior.
 
 ## Delivery plan
 
@@ -275,81 +289,215 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 **Review mandate:** Verify (1) one row per save and cascade ownership, (2) mandatory save ID/token on all three commands and authoritative still-active verification, (3) no snapshot or club-name coupling, (4) all approved catalogs with non-empty/duplicate/unknown rejection, (5) create-versus-edit accuracy, (6) stale get/set/remove cannot read or mutate either save and errors stay safe, (7) no backfill or derived score persistence, and (8) migration, switch, and deletion tests protect realistic wrong-save and data-loss paths.
 
-#### Commit 3 — Resolve Club DNA in Search and Squad
+#### Commit 3 — Record the approved cache replan
 
-**Status:** Active
+**Status:** Completed
 
-**Provisional commit:** `feat(club-dna): derive table metric in Rust`
+**Provisional commit:** `docs(club-dna): record lazy cache replan`
 
-**Work:** Add the fixed `club_dna` metric to Rust display, Search filter/sort, and Squad sort paths with strict null behavior and direct read-time derivation.
+**Work:** Commit the independently reviewed bounded replan and accepted ADR before cache implementation resumes.
 
-**Size assessment:** About 180–230 changed non-test implementation lines. The shared expression plus three established query seams may slightly exceed the soft target; keep them atomic because separate commits would temporarily give the same fixed metric inconsistent display, filter, or sort behavior.
+**Size assessment:** No implementation code; planning-only commit.
 
 **Out of scope:**
 
-- React metric metadata, form UI, app-local layout changes, Player Profile, Moneyball, caching, generated columns, expression indexes, and ingest-time scores.
+- Implementation, tests, executable configuration, generated files, TODO, BACKLOG, current-state architecture, design documentation, and unrelated decisions.
 
 **Implementation packet:**
 
-- Let one Club DNA SQL-expression owner map validated stored IDs to the three player JSON columns, require complete values, and produce a nullable integer. Reuse it from resolver and Search filter compilation so display, filter, and sort cannot drift.
+- Preserve completed Commits 1–2 and record only the approved lazy-cache architecture, failed direct-SQL evidence, replacement packets, invalidated prior fingerprint, and ADR index entry. Before delivery resumes, record the fingerprint that independent review clears and the developer accepts.
 
 **Files and responsibilities:**
 
-- `src-tauri/src/features/player_metrics/club_dna.rs` — own the fixed score SQL expression and formula contract relative to a supplied player alias; keep the expression independent of WebView input.
-- `src-tauri/src/features/player_metrics/mod.rs` — register the metric-private Club DNA expression module.
-- `src-tauri/src/features/player_metrics/resolver.rs::MetricSource`, `MetricField::parse`, `sql_expression`, and `sql_sort_expression` — recognize only `club_dna` as a nullable integer dynamic metric and delegate to the shared expression.
-- `src-tauri/src/features/search/filter.rs::FieldKind`, `resolve_field`, and `compile_rule` — compile integer Club DNA comparisons with the shared expression and an explicit null guard, including `neq`.
-- `src-tauri/src/features/search/query.rs` — add integration tests for display, deterministic rounding, filter, sort, active-save definition changes, missing definition, mixed sources, and strict null behavior; production flow should remain the existing dynamic path unless evidence requires a narrow alias/context adjustment.
-- `src-tauri/src/features/planner/squad.rs` — add Squad display/sort/no-definition integration coverage through the existing dynamic path and exact managed-club cohort.
+- `.wiki/features/active/club-dna.md` — bounded replan, measured stop evidence, delivery packets 3–8, validation, and immutable completed refs.
+- `.wiki/decisions/0023-lazy-club-dna-score-cache.md` — accepted cache decision, alternatives, consequences, owners, and thresholds.
+- `.wiki/decisions/README.md` — index ADR-0023.
+- `.wiki/TODO.md` — deliberately unchanged because its active Club DNA link remains correct.
 
 **Behavior and data flow:**
 
-- Search or Squad validates `club_dna` as a fixed metric. The SQL expression resolves the player's save from `players.snapshot_id`, reads that save's one definition, iterates its canonical IDs, selects each value from `attributes_json`, `hidden_attributes_json`, or `personality_json`, and returns null unless every selected item is an integer. For a complete row it averages `value × 5` and rounds once to an integer. Search uses the expression for requested display, integer filters, and sort. Squad uses it for display and sort. A missing definition or removed row leaves the metric valid and returns null, so persisted layouts and URL state do not cause unknown-field or SQL errors.
+- Replace the invalid direct-SQL delivery packet with one reviewed planning commit, one cache foundation commit, and one cached query integration commit. Keep the existing frontend product behavior and one-PR authority unchanged. The planning diff remains pre-acceptance evidence while the Delivery fingerprint is pending. After independent review clears the correction and the developer accepts the plan, record the accepted fingerprint before this artifact is delivered or implementation resumes.
 
 **Ordered implementation steps:**
 
-1. Add RED resolver and integration tests for exact-ID acceptance, unsafe/unknown rejection, 1 and 20 boundaries, a half-step rounding case, equal weighting across all three JSON sources, missing key, explicit null, missing definition, and active-save isolation.
-2. Implement one trusted expression owner with the minimum alias/context support needed by both `players` and `p` query aliases.
-3. Extend `MetricField` and prove display and both sort directions remain deterministic when all or some values are null.
-4. Extend Search filter compilation with the same expression and explicit null exclusion for all integer operators.
-5. Prove Search display/filter/sort against the current snapshot and Squad display/sort against the exact managed-club cohort.
-6. Add deterministic 2,000-player timing guards. Select the complete supported visible/goalkeeper, hidden, and personality catalog, populate every player with complete representative JSON for all selected keys, and measure Search filter and Search sort separately. Measure Squad sort separately if inspection shows a materially different SQL shape. For each relevant shape, run 3 unmeasured warm-ups followed by 20 measured executions, sort the 20 durations ascending, take the 19th duration (`sorted[ceil(0.95 × 20) - 1]`, zero-based index 18) as nearest-rank p95, and assert that p95 is below 500 ms in the Rust test environment.
-7. On a representative roughly 180,000-player snapshot, run 3 warm-ups and 20 measured executions for Search filter and Search sort separately, record nearest-rank p95 for each, and require each p95 at or below about 200 ms. Include Squad sort if its SQL shape materially differs. Do not add a cache in this packet.
-8. Run Rust validation and the full gate.
+1. Verify branch `feature/club-dna`, clean starting HEAD `d2682ee5c50cb99cd0b7f9facf5fd4f9060d5001`, and completed refs without changing Git state.
+2. Confirm that only the ledger, ADR-0023, and ADR index changed and that `.wiki/TODO.md` is unchanged.
+3. Before acceptance, run `ledger_state.py`, `delivery_state.py`, and Markdown/diff checks. Treat the pending-fingerprint delivery failure as review evidence, not execution authority.
+4. Submit the exact planning diff for independent plan review. After review clears and the developer accepts the plan, record the accepted Delivery fingerprint.
+5. Rerun both classifiers and require a valid delivery state. Stage only the three reviewed planning paths, run `git diff --cached --check`, and inspect the complete cached diff for all three paths before checkpoint review.
 
 **Tests and proof:**
 
-- RED: `MetricField::parse("club_dna")` fails before implementation; Search and Squad tests either reject the field or cannot return a score. A partial-average mutant must fail because a player with one missing selected value must return null and fail even `neq` filters.
-- GREEN: assert `(10, 20)` produces `75`, a rounding tie uses the characterized whole-score rule, mixed visible/hidden/personality values produce one equal-weight result, and missing/null inputs produce `None`. Assert a no-definition display/sort request returns rows with null dynamic values and no query error. Assert filter/sort changes immediately after edit/remove without materialized invalidation work.
-- Performance proof: the deterministic 2,000-player fixtures must give every player complete representative visible/goalkeeper, hidden, and personality JSON for the complete selected-attribute catalog. Search filter and Search sort each receive 3 warm-ups and 20 measured runs; Squad sort receives the same proof if its SQL shape materially differs. Compute nearest-rank p95 from the sorted 20 samples and assert every relevant p95 is below 500 ms in the Rust test environment. For a representative roughly 180,000-player snapshot, use 3 warm-ups and 20 measured runs for filter and sort separately, record nearest-rank p95, and require each relevant p95 at or below about 200 ms. If that environment or evidence is unavailable, publication stops for an explicit developer decision that accepts the recorded validation gap. Any measured threshold breach requires replan/cache decision and cannot be accepted as a gap.
-- Add/modify: resolver, filter, Search query, and Squad query Rust tests, full-catalog timing fixtures, and nearest-rank timing helpers local to the tests. Deliberately retain golden dump fixtures and existing raw attribute, role, potential-role, current-snapshot, and managed-club tests because they protect independent contracts. Delete no fixtures, mocks, snapshots, helpers, caches, or compatibility paths.
+- Not applicable — planning documents only. Before acceptance, `ledger_state.py` proves schema and ledger-state consistency; only `delivery_state.py` reports that the pending fingerprint is invalid. After the accepted fingerprint is recorded, both classifiers must pass before delivery resumes. Markdown and cached-diff checks prove formatting and exact three-path scope. No fixtures, mocks, snapshots, helpers, or compatibility paths change.
 
 **Patterns to verify:**
 
-- `MetricSource::JsonInteger`, `MetricField::sql_expression`, and `compile_json_integer_rule` for trusted direct JSON metrics and null guards.
-- `src-tauri/src/features/search/query.rs::attribute_filter_on_two_thousand_players_stays_interactive` for the current timing threshold.
-- Current role and potential role integration tests for nullable dynamic DTO behavior, without copying their cache boundary.
-- `src-tauri/src/features/planner/squad.rs::list_squad_players` for fixed managed-club membership and bounded pages.
+- `.wiki/features/active/README.md` schema 2, ADR-0019's cache rationale and structure, and `.wiki/decisions/README.md` indexing style.
 
 **Constraints and non-goals:**
 
-- Never accept a formula, JSON path, column name, or SQL fragment from React.
-- Never average available values only and never coerce null to zero.
-- Do not materialize, cache, index, or write scores during ingest.
-- Keep the metric out of Moneyball mode and Player Profile.
-- Preserve the 256 requested-field and 32 filter-rule bounds.
+- Preserve product intent, completed Git refs, one PR, branch/base, provider, title, merge method, checks, and publication boundaries.
+- Do not resume delivery with a pending, unreviewed, or unaccepted Delivery fingerprint. Do not change `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, `.wiki/TODO.md`, implementation, or tests.
 
 **Dependencies and sequencing:**
 
-- Depends on Commit 2's table, validation, and service module. It must land before the frontend can expose `club_dna`.
+- Depends on the developer's explicit lazy-cache decision and clean completed Commit 2 HEAD. Independent plan review must clear this material replan before implementation resumes.
+
+**Validation:** `python3 /home/jonas/projects/PI_SETUP/scripts/ledger_state.py .wiki/features/active/club-dna.md`; `python3 /home/jonas/projects/PI_SETUP/scripts/delivery_state.py .wiki/features/active/club-dna.md .`; `git diff --cached --check`; `git diff --cached -- .wiki/features/active/club-dna.md .wiki/decisions/0023-lazy-club-dna-score-cache.md .wiki/decisions/README.md`; `git status --short`
+
+**Stop conditions:** Stop on a branch/HEAD mismatch, changed implementation or tests, changed TODO content, missing completed ref, classifier schema error, a pending or invalid fingerprint at execution time, uncleared independent review, missing developer acceptance, or any substantive architecture or authority change.
+
+**Review mandate:** Verify (1) exact measured samples and nearest-rank p95 values, (2) accepted cache identity/scopes/invalidation, (3) completed refs and one-PR authority remain exact, (4) exactly Commit 3 is Active, (5) packets 4–8 are execution-ready and retain product behavior, (6) the pending fingerprint is only pre-acceptance review evidence and delivery requires the independently reviewed, developer-accepted value, (7) ADR-0023 matches the ledger, and (8) no unapproved path changed.
+
+#### Commit 4 — Add the versioned Club DNA score cache
+
+**Status:** Active
+
+**Provisional commit:** `feat(club-dna): add lazy score cache`
+
+**Work:** Add migration v32, definition versioning and invalidation, pure scoring, bounded lazy materialization, and supported player-boost invalidation.
+
+**Size assessment:** About 220–300 changed non-test implementation lines. This may exceed the soft target because schema identity, atomic invalidation, pure scoring, materialization, and boost reconciliation form one persisted consistency boundary; query exposure remains in Commit 5.
+
+**Out of scope:**
+
+- Search filter/sort SQL, Squad query resolution, frontend code, eager ingest/promotion work, background jobs, global process locks, current-state documentation, Moneyball, and Player Profile display.
+
+**Implementation packet:**
+
+- Follow ADR-0019's disposable-cache pattern with Club DNA-specific definition versioning. Keep v31 immutable. Add one pure formula owner and materialize requested UIDs in bounded batches while every cache read/write identity includes both versions.
+
+**Files and responsibilities:**
+
+- `src-tauri/src/db/migrations.rs` — add v32 without modifying v31; add positive `definition_version` to `club_dna_definitions`; add nullable `club_dna_scores(snapshot_id, uid, definition_version, score_model_version, score)` with `CHECK (score IS NULL OR score BETWEEN 0 AND 100)`; add composite player ownership with `ON DELETE CASCADE`, unique identity `(snapshot_id, uid, definition_version, score_model_version)`, and an index ordered for snapshot/version/score lookup; update fresh and v31-upgrade schema/version/index/cascade/score-domain tests.
+- `src-tauri/src/features/club_dna/service.rs` — return definition version internally; atomically increment version and delete all save-owned cache rows on edit; atomically delete rows and definition on remove; preserve `created`; ensure re-create starts a new definition; add rollback and no-cross-save tests.
+- `src-tauri/src/features/player_metrics/club_dna.rs` — own `SCORE_MODEL_VERSION`, pure closed-catalog JSON scoring, request validation, cache-miss lookup, bounded player loading, nullable scoring, and idempotent batch persistence under the caller's existing synchronous `Db` mutex guard.
+- `src-tauri/src/features/player_metrics/mod.rs` — register the Club DNA metric owner.
+- `src-tauri/src/features/player_metrics/potential_cache.rs` — retain existing behavior; reuse its bounded transaction pattern rather than coupling the caches.
+- `src-tauri/src/features/player/service.rs::reconcile_verified_boost` — invalidate the reconciled player's Club DNA cache rows in the same transaction as player and potential-cache reconciliation.
+
+**Behavior and data flow:**
+
+- A caller supplies a validated snapshot and bounded UID cohort. The materializer reads the save-owned definition once, validates every canonical ID before writes, and returns without work when no definition exists. It loads missing/stale players in bounded batches and requires every selected JSON value to be an integer from 1 through 20. A missing key, explicit null, non-integer, 0, 21, or any other out-of-domain value makes the whole score null. For a valid complete player it calculates `round((sum(value × 5)) / n)` in pure Rust with equal weighting and one rounding step. It stores a row even when the score is null and commits one batch at a time. Existing matching rows are reused. Stale definition/model rows are misses.
+- Definition edit validates the replacement, increments `definition_version`, deletes all cache rows whose snapshots belong to that save, and updates the definition in one transaction. Remove deletes the cache rows and definition in one transaction. Re-create inserts a new definition version lineage and still returns `created: true`. Snapshot/player deletion cascades rows. Successful player boost reconciliation deletes rows for only that snapshot/player before commit. Ingest and promotion write no Club DNA scores.
+- Request validation and definition validation finish before the first cache transaction. A batch failure rolls back only that batch; prior derived batches remain safe and later work can resume. The command retains the established `Db` mutex for the synchronous materialization and dependent query, but no SQLite write transaction spans calculation of a different batch and no lock crosses an async wait. Do not add another feature-wide lock.
+
+**Ordered implementation steps:**
+
+1. Add RED v31→v32 migration tests for new definition version, exact cache columns/key/index, `score IS NULL OR score BETWEEN 0 AND 100`, accepted null/0/100 cache rows, rejected out-of-range cache rows, player/snapshot cascade, and preservation of v31 definition data.
+2. Add RED pure-scoring tests for valid 1 and 20 boundaries, tie rounding, mixed visible/goalkeeper/hidden/personality sources, missing key, explicit null, non-integer value, and deterministic equal weighting. Prove that selected 0 and 21 values each make the whole score null in `attributes_json`, `hidden_attributes_json`, and `personality_json`; include both visible and goalkeeper examples in the shared `attributes_json` source.
+3. Add RED materializer tests for no-definition/no-write, invalid request/no-write, page UID scope, complete nullable rows, matching-version reuse, stale model/definition replacement, bounded multi-batch commits, resumable partial derived state, and idempotent repeat.
+4. Implement v32 and the minimum version-aware definition changes without rewriting v31.
+5. Implement pure scoring and bounded cache materialization. Validate before writes; compute outside each short batch transaction; use exact version identity in lookup and upsert.
+6. Add edit/remove/re-create atomic invalidation and rollback proofs, including another save's retained rows.
+7. Extend supported player-boost reconciliation and its existing potential-cache test to prove both caches invalidate in the same successful transaction and both survive reconciliation rollback.
+8. Prove ingest and current-snapshot promotion remain lazy, then run Rust and full gates.
+
+**Tests and proof:**
+
+- RED: migration tests fail at version 31; no Club DNA cache owner exists; edit leaves no version/invalidation contract; a seeded Club DNA row survives a supported boost.
+- GREEN: upgrading a v31 database preserves the definition at a positive starting version; fresh and upgraded schemas accept only null or 0–100 cache scores; the scorer accepts selected 1 and 20 values but returns null for missing, null, non-integer, 0, 21, or other out-of-domain selected values; exact matching-version rows are reused; null scores are persisted; stale versions are not returned; edits/removes/boosts clear only owned rows atomically; re-create reports creation; snapshot/player cascade works; no definition or invalid request writes zero rows.
+- Batch/lock proof: use a fixture larger than one materialization batch. Prove every UID receives exactly one current-version row, injected batch failure does not expose a complete cohort, committed prior batches remain disposable/resumable, and no SQLite transaction spans scoring of the next batch. Review that the synchronous command retains only the established `Db` mutex through materialization and its dependent query, with no async wait or second feature lock; do not infer lock safety from elapsed time alone.
+- Add/modify: v32 migration tests, Club DNA service tests, new pure-scoring/materializer tests, and player boost reconciliation tests. Deliberately retain v31 definition tests, potential-cache tests, snapshot ingest/promotion tests, role-score tests, and boost recovery fixtures because they protect adjacent persisted and rollback contracts. Delete only direct-SQL experiment test helpers if any survived; the developer states the experiment was discarded cleanly.
+
+**Patterns to verify:**
+
+- `PLAYER_POTENTIAL_ROLE_SCORES_SQL`, `player_metrics::potential_cache::{materialize_snapshot_roles,materialize_player_roles,persist_scores,invalidate_player_cache}`, and ADR-0019.
+- `club_dna::service::{set_club_dna,remove_club_dna}` for current transaction boundaries.
+- `player::service::reconcile_verified_boost` for same-transaction derived-cache invalidation.
+- Fresh migration and exact registry/index tests in `src-tauri/src/db/migrations.rs`.
+
+**Constraints and non-goals:**
+
+- Do not change committed migration v31. Do not backfill scores or compute during ingest/promotion.
+- Cache data is nullable, versioned, derived, disposable, constrained to null or 0–100, and never an authoritative definition or player value.
+- Never accept JSON paths, SQL, formula, or versions from React. Keep score/model version constants in Rust.
+- Do not add a dependency, background worker, cancellation framework, progress IPC, or lock beyond the established command-level `Db` mutex in this packet.
+
+**Dependencies and sequencing:**
+
+- Depends on completed Commit 2 and reviewed Commit 3/ADR-0023. Commit 5 is the only consumer that may expose cached scores to Search and Squad.
 
 **Validation:** `./scripts/dev check-rust` then `./scripts/dev check`
 
-**Stop conditions:** Stop if direct SQL cannot share one formula across display/filter/sort, if SQLite/Rust rounding semantics cannot meet the approved deterministic rule, if no-definition requests error, if any deterministic 2,000-player relevant-shape nearest-rank p95 is 500 ms or more, if any representative roughly 180,000-player relevant-shape p95 exceeds about 200 ms, or if correctness requires a cache/materialization boundary. A measured breach requires replanning and may cross the ADR threshold; it cannot become an accepted gap. If the representative environment or evidence is unavailable, stop publication for an explicit developer decision on the recorded gap.
+**Stop conditions:** Stop if v32 cannot preserve existing v31 definitions, exact cache identity needs another durable field, save-owned invalidation cannot be atomic, player boost invalidation cannot share reconciliation rollback, scoring requires untrusted dynamic SQL/JSON paths, a SQLite write transaction must span an unbounded cohort, the established synchronous `Db` mutex cannot protect materialization plus the dependent global query, or correctness requires an unapproved job/lock architecture.
 
-**Review mandate:** Verify (1) one formula owner across all query paths, (2) complete-value null semantics including `neq`, (3) exact equal weighting and one rounding step, (4) active-save/snapshot resolution, (5) fixed-ID SQL safety, (6) Search filter/sort and Squad sort correctness with no definition, (7) deterministic full-catalog fixtures plus 3-warm-up/20-sample separate-shape nearest-rank p95 proof, and (8) unavailable representative evidence and measured breaches follow their distinct stop paths without hidden caching.
+**Review mandate:** Verify (1) v31 is immutable and v32 upgrades safely, (2) exact four-part identity/index, nullable cascade ownership, and the null-or-0–100 schema check, (3) pure formula semantics require every selected value to be integer 1–20 across all three JSON sources, with 1/20 valid and 0/21 null proofs, equal weighting, and one rounding step, (4) short batch transactions under only the established synchronous `Db` mutex with safe resumability and no async wait, (5) atomic edit/remove/re-create ownership, (6) model-version misses, (7) same-transaction player-boost invalidation and rollback, and (8) no ingest/eager/background or query-exposure scope creep.
 
-#### Commit 4 — Add the frontend Club DNA domain and fixed metric
+#### Commit 5 — Resolve cached Club DNA in Search and Squad
+
+**Status:** Pending
+
+**Provisional commit:** `feat(club-dna): resolve cached table scores`
+
+**Work:** Route fixed `club_dna` display, Search filter/sort, and Squad sort through the versioned cache with separate page and full-cohort correctness and performance proof.
+
+**Size assessment:** About 180–240 changed non-test implementation lines. The resolver plus Search and Squad seams may exceed the soft target; keep them atomic so the fixed metric cannot ship with inconsistent display/filter/sort semantics.
+
+**Out of scope:**
+
+- Cache schema or definition mutation changes, frontend metric metadata or UI, eager ingest/promotion, Moneyball, Player Profile, background progress/cancellation, and current-state documentation.
+
+**Implementation packet:**
+
+- Validate requests before materialization. Use Commit 4's materializer for page-only display and complete global cohorts. Resolve all score reads, filters, and sorts from exact current-version cache rows, then preserve existing bounded page DTOs and null-last behavior.
+
+**Files and responsibilities:**
+
+- `src-tauri/src/features/player_metrics/resolver.rs::MetricSource`, `MetricField::parse`, display expression, and sort expression — recognize only `club_dna` and read a nullable score from the exact snapshot/definition/model cache identity.
+- `src-tauri/src/features/search/filter.rs::FieldKind`, `resolve_field`, and `compile_rule` — compile trusted integer comparisons against the exact cache identity with explicit null exclusion, including `neq`; expose needed validated Club DNA intent without materializing during parse failure.
+- `src-tauri/src/features/search/query.rs::search_players_in_view` — after all request/filter validation, materialize complete current-snapshot Club DNA rows for a Club DNA filter or sort; for display only, query requested page UIDs first and materialize only those UIDs before final select; add correctness, scope, invalid-request, no-definition, cold, warm, and full-catalog tests.
+- `src-tauri/src/features/planner/squad.rs::list_squad_players` — for Club DNA sort, materialize the exact managed-club UID cohort before ordering; for display only, materialize requested page UIDs; retain empty/unconfigured safe paths and add separate Squad sort timing proof.
+
+**Behavior and data flow:**
+
+- Invalid field/filter/sort/page requests fail through existing validation before cache work. A valid request with no definition returns bounded rows with null `club_dna` values and writes no cache rows. Display-only Search or Squad first selects the requested page UIDs under existing non-Club-DNA order, materializes only those UIDs, and then returns their cached values. Search Club DNA filter/sort materializes every player in the active current snapshot before count/filter/order. Squad Club DNA sort materializes only the exact current managed-club cohort before order. All reads require the current definition and score-model versions.
+- Cold first use may take longer while Rust fills the cohort. The existing Search or Squad query-loading state remains the user-visible first-use surface until the complete dependent result returns; no partial global result appears. Tests and manual evidence record cold duration separately. Warm interaction is measured only after prefill and must meet the thresholds below. The WebView still receives only bounded pages.
+
+**Ordered implementation steps:**
+
+1. Add RED resolver/filter tests for exact fixed-ID acceptance, unsafe/unknown rejection, current-version cache lookup, null guards for every integer operator, deterministic null-last sort, and stale-version exclusion.
+2. Add RED Search tests proving display materializes only page UIDs, filter/sort materialize the complete current snapshot before query, missing definition and invalid requests write nothing, and edit/remove/re-create results cannot reuse stale rows.
+3. Add RED Squad tests proving display is page-only, sort materializes the exact managed-club cohort, unconfigured/no-definition requests are safe, and non-members never materialize for Squad sort.
+4. Wire the resolver and filter compiler only to exact cache rows. Add page/full-cohort materialization after validation and before the dependent select/count/order operation.
+5. Reuse complete-catalog 2,000-player fixtures. Clear Club DNA rows, run one cold Search filter, Search sort, and Squad sort first-use measurement separately, and record each cold duration without treating it as warm evidence.
+6. Prefill the current-version cache. For each materially distinct Search filter, Search sort, and Squad sort shape, run 3 unmeasured warm-ups and 20 warm measured executions. Sort samples and use nearest-rank p95 at index 18; require each p95 `<500 ms`.
+7. On a representative roughly 180,000-player environment, clear rows and record cold first use separately. Prefill current-version rows, then run 3 warm-ups and 20 warm executions for each materially distinct filter/sort shape; require nearest-rank p95 `<= about 200 ms`.
+8. Run Rust and full gates. Publication remains stopped if representative evidence is unavailable until the developer explicitly accepts that gap.
+
+**Tests and proof:**
+
+- RED: `MetricField::parse("club_dna")` fails; no query can resolve cached values; a page-only request cannot distinguish page from cohort work. A stale-version or partial-cohort mutant must fail.
+- GREEN correctness: `(10, 20)` resolves as `75`; mixed sources and tie rounding use Commit 4's pure scorer; missing/null inputs stay null; `neq` excludes null; exact current versions control every display/filter/sort; display writes only page rows; Search filter/sort and Squad sort write every and only required cohort row before returning ordered results.
+- Safe-path proof: unsupported fields/operators, malformed requests, absent snapshots, absent definitions, and unconfigured Squad return their existing safe error/empty/null outcomes without Club DNA cache writes. Do not materialize before filter and requested-field validation succeeds.
+- Performance proof: use the complete supported catalog and complete representative JSON for all 2,000 players. Clear the cache and record cold duration for each distinct first-use shape separately. Prefill, then run 3 warm-ups plus 20 warm samples for Search filter, Search sort, and Squad sort; nearest-rank p95 is sorted index 18 and must be `<500 ms`. Representative roughly 180,000-player cold first use is recorded separately; warm 3+20 filter/sort p95 must be `<= about 200 ms`. Missing representative access stops publication for explicit developer gap acceptance. Any measured warm breach requires replan and cannot be accepted as a gap.
+- Add/modify: resolver, filter, Search query, Squad query, page/cohort scope fixtures, complete-catalog timing helpers, and cold/warm reports in test output or captured delivery evidence. Deliberately retain raw attribute, role, potential-role, current-snapshot, managed-club, pagination, null-ordering, and request-bound tests because they protect independent behavior. Delete no fixtures, mocks, snapshots, helpers, or compatibility paths.
+
+**Patterns to verify:**
+
+- `search_players_in_view` potential-role full-snapshot materialization followed by page UID materialization.
+- `list_squad_players` exact managed-club potential-role sort and page-display scopes.
+- `MetricSource::PotentialRole` and `compile_potential_role_rule` for versioned cache lookup and null guards.
+- `attribute_filter_on_two_thousand_players_stays_interactive` for test-environment timing style, with the stricter cold-versus-warm contract in this packet.
+
+**Constraints and non-goals:**
+
+- Never derive a full cohort in SQL or React. Never return the full cohort to the WebView.
+- Never filter or sort a partial cohort. Never treat a cold duration as a warm sample or hide first-use cost.
+- Do not materialize on invalid requests or missing definitions. Preserve 256 requested-field and 32 filter-rule bounds.
+- Keep `club_dna` out of Moneyball mode and Player Profile.
+
+**Dependencies and sequencing:**
+
+- Depends on Commit 4's v32 identity, pure scorer, materializer, and invalidation. Commit 6 may expose the fixed metric only after this packet passes correctness and 2,000-player warm gates.
+
+**Validation:** `./scripts/dev check-rust` then `./scripts/dev check`
+
+**Stop conditions:** Stop if any global query can run against an incomplete cohort, display requires full-cohort work, invalid/no-definition paths write rows, exact version joins cannot support all operators and null-last sort, each batch cannot close its SQLite write transaction before the next batch's calculation, any 2,000-player warm nearest-rank p95 is `>=500 ms`, or any representative warm p95 exceeds about 200 ms. Missing representative evidence stops publication for explicit developer acceptance; a measured warm breach requires replan. Stop and make first-use progress/cancellation a developer decision if measured cold behavior makes the app unusable rather than merely delayed.
+
+**Review mandate:** Verify (1) validation precedes materialization, (2) page display versus complete Search/exact Squad cohort scopes, (3) exact version/null semantics across display/filter/sort including `neq`, (4) bounded DTOs and no WebView calculation, (5) safe missing-definition/unconfigured/invalid paths with zero writes, (6) cold timing is separate and user-visible first-use cost is explicit, (7) 2,000 and representative warm methodology/thresholds are exact, and (8) warm breach and missing-environment stop paths remain distinct.
+
+#### Commit 6 — Add the frontend Club DNA domain and fixed metric
 
 **Status:** Pending
 
@@ -382,7 +530,7 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 **Behavior and data flow:**
 
-- Frontend callers receive an explicit context from the established saves query and can fetch that context's nullable definition or invoke set/remove with the same save ID and immutable token. The definition Query key contains both values, so save A data cannot satisfy save B or a replacement save incarnation. Adapters return results to their caller but do not infer currentness; Commit 5/6 UI compares the captured context before applying results, while Rust rejects a context that is no longer active. The shared catalog exposes canonical IDs and FM grouping but no score function. The fixed `club_dna` metadata flows through the existing picker, filter registry, sort validation, requested-field adapter, nullable dynamic DTO, and table cell. Search and Squad render a backend-supplied integer with `ScoreBadge`; null stays `—`.
+- Frontend callers receive an explicit context from the established saves query and can fetch that context's nullable definition or invoke set/remove with the same save ID and immutable token. The definition Query key contains both values, so save A data cannot satisfy save B or a replacement save incarnation. Adapters return results to their caller but do not infer currentness; Commits 7–8 UI compares the captured context before applying results, while Rust rejects a context that is no longer active. The shared catalog exposes canonical IDs and FM grouping but no score function. The fixed `club_dna` metadata flows through the existing picker, filter registry, sort validation, requested-field adapter, nullable dynamic DTO, and table cell. Search and Squad render a backend-supplied integer with `ScoreBadge`; null stays `—`.
 
 **Ordered implementation steps:**
 
@@ -416,7 +564,7 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 **Dependencies and sequencing:**
 
-- Depends on Commit 3 so every exposed metric request is already accepted by Rust. The later Modal and route packets consume these adapters and shared groups.
+- Depends on Commit 5 so every exposed metric request is already accepted and cache-backed in Rust. The later Modal and route packets consume these adapters and shared groups.
 
 **Validation:** `./scripts/dev test src/features/player-profile/utils/attribute-groups.test.ts src/utils/player-metrics.test.ts src/features/club-dna/api/club-dna-api.test.ts src/features/search/utils/dynamic-columns.test.ts src/stores/use-player-table-store.test.ts src/app/routes/search.test.tsx src/app/routes/my-club-squad.test.tsx`; `./scripts/dev check-app`; `./scripts/dev check`
 
@@ -424,7 +572,7 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 **Review mandate:** Verify (1) exact catalog parity and no cross-feature import, (2) Player Profile grouping stays unchanged, (3) fixed label/ID and integer filter metadata, (4) no default layout insertion and persisted layout retention, (5) ScoreBadge/null presentation in both tables, (6) context-bearing definition key isolates save IDs and tokens, (7) all typed invoke requests carry the exact expected context, and (8) no frontend score, stale-context authority, or validation duplicates Rust.
 
-#### Commit 5 — Build the Club DNA definition Modal
+#### Commit 7 — Build the Club DNA definition Modal
 
 **Status:** Pending
 
@@ -486,7 +634,7 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 **Dependencies and sequencing:**
 
-- Depends on Commit 4's typed API and shared catalog. Commit 6 provides route placement and cross-query/layout effects.
+- Depends on Commit 6's typed API and shared catalog. Commit 8 provides route placement and cross-query/layout effects.
 
 **Validation:** `./scripts/dev test src/features/club-dna/components/club-dna-definition.test.tsx`; `./scripts/dev check-app`; `./scripts/dev check`
 
@@ -494,7 +642,7 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 **Review mandate:** Verify (1) full approved catalog and no maximum, (2) minimum-one/current-context guards plus Rust stale-context authority, (3) selected summary and exact formula copy only in Modal, (4) context change closes/discards and late get/set/remove results cannot update current UI, (5) the Planner-style single Modal preserves draft across confirmation and implements exact Cancel/Escape/pending/error transitions, (6) keyboard/focus/accessibility behavior including successful-remove focus return, (7) no score computation or profile surface, and (8) deferred mocks test observable stale-result suppression without duplicating Rust mutation authority.
 
-#### Commit 6 — Integrate Club DNA with My Club and layouts
+#### Commit 8 — Integrate Club DNA with My Club and layouts
 
 **Status:** Pending
 
@@ -564,7 +712,7 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 **Dependencies and sequencing:**
 
-- Depends on Commits 2–5. It is the final implementation packet and moves the feature to Validation only after its full checkpoint clears.
+- Depends on Commits 2–7. It is the final implementation packet and moves the feature to Validation only after its full checkpoint clears.
 
 **Validation:** `./scripts/dev test src/features/club-dna/components/club-dna-definition.test.tsx src/app/routes/my-club-squad.test.tsx src/app/app-top-bar.test.tsx src/app/routes/settings.test.tsx src/stores/use-player-table-store.test.ts src/app/routes/search.test.tsx`; `./scripts/dev test`; `./scripts/dev check`; `./scripts/dev smoke`
 
@@ -576,44 +724,49 @@ Migration v31 stores one validated definition for the active save; the fixed Rus
 
 **PR:** PR 1 — Add user-defined Club DNA scoring
 
-**Commit:** Commit 3 — Resolve Club DNA in Search and Squad
+**Commit:** Commit 4 — Add the versioned Club DNA score cache
 
 ### RED or removal proof
 
-Add resolver and query tests that fail while `club_dna` is unknown. The tests must prove one formula across display, filter, and sort; strict null behavior; deterministic rounding; active-save isolation; and full-catalog performance.
+Add v31-to-v32 migration, pure-scoring, materialization, invalidation, and rollback tests that fail while the cache schema and owner are absent. A seeded Club DNA row must also survive the existing supported player-boost path before invalidation is implemented.
 
 ### Expected outcome
 
-Rust derives one nullable Club DNA score through the existing Search and Squad metric paths, with trusted SQL, equal weighting, one rounding step, and measured interactive query behavior.
+Migration v32, definition versioning, pure Rust scoring, bounded lazy materialization, atomic definition invalidation, and supported player-boost invalidation establish one consistent disposable cache boundary.
 
 ### Explicit exclusions
 
-Frontend metric metadata, form UI, app-local layout changes, Player Profile, Moneyball, caching, generated columns, expression indexes, and ingest-time scores.
+Search and Squad query exposure, frontend code, eager ingest or promotion work, background jobs, extra locks, current-state documentation, Moneyball, and Player Profile display.
 
 ## Discoveries and replanning
 
-- Source evidence confirms direct raw JSON metrics already display, filter, and sort through `MetricField` and Search filter compilation. ADR-0019 applies to expensive CA-to-PA projection, not every derived table expression. Club DNA therefore starts as a direct read-time metric with an explicit performance stop condition.
-- The frontend attribute catalogs are duplicated between Player Profile grouping and player metric metadata. The plan consolidates them into a shared utility so the Club DNA form cannot silently omit a currently supported attribute; Rust retains its independent authoritative catalog.
-- No planned spec, accepted BACKLOG non-goal, or ADR needs a planning-path change. The first commit contains exactly this ledger and `.wiki/TODO.md`.
+- The direct read-time SQL plan was disproved by measured complete-catalog 2,000-player behavior. Search filter nearest-rank p95 was 1902 ms and Search sort p95 was 923 ms, both above the `<500 ms` stop condition. No roughly 180,000-player run was attempted. The failed code experiment was discarded cleanly.
+- The developer explicitly chose the recommended lazy persistent cache. ADR-0023 now owns that durable decision and follows ADR-0019's disposable versioned cache pattern with Club DNA-specific definition ownership.
+- The material replan invalidated Delivery fingerprint `eb82c2be41d53ec22d539a67dfdef25745fe8d8e3e16f694493d09eb4a2d4bc7`. Independent review cleared packets 3–8, the developer accepted the replan and re-invoked delivery, and the ledger records replacement fingerprint `8b255cb0d43d34e6023ffc26c1e194aaa24e765e99ae1ebca1a639c0810fade8`.
+- Commit 3 is now the planning-artifact packet. Commit 4 adds v32, scoring, materialization, and invalidation. Commit 5 integrates cached values and proves page/full-cohort correctness and performance. Existing frontend foundation, Modal, and integration behavior moves unchanged to Commits 6–8.
+- The frontend attribute catalogs remain duplicated between Player Profile grouping and player metric metadata. Commit 6 still consolidates them into a shared utility; Rust retains its independent authoritative catalog.
+- `.wiki/TODO.md` remains factually correct and unchanged. There is no planned spec or BACKLOG disposition. `.wiki/ARCHITECTURE.md` and `.wiki/DESIGN.md` remain unchanged until implementation makes the new state true.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Add user-defined Club DNA scoring | Commit 1 — Record the approved feature plan | ddd4961e6d90ca24faa435955c6ae7eb5a716f0b | Recorded the reviewed schema 2 ledger and TODO activation. | `ledger_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
-| PR 1 — Add user-defined Club DNA scoring | Commit 2 — Persist one save-owned Club DNA definition | Pending record | Added migration v31 and context-bound Rust CRUD for one validated definition per save. | RED failed because v31 was absent; `./scripts/dev check-rust` passed 561 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 0 | None. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 2 — Persist one save-owned Club DNA definition | d2682ee5c50cb99cd0b7f9facf5fd4f9060d5001 | Added migration v31 and context-bound Rust CRUD for one validated definition per save. | RED failed because v31 was absent; `./scripts/dev check-rust` passed 561 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 0 | None. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 3 — Record the approved cache replan | Pending record | Recorded ADR-0023 and the reviewed lazy-cache packets after measured direct-SQL failure. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 0 | Replaced the direct-SQL packet after measured 2,000-player threshold breaches. |
 
 ## Final validation
 
 - `./scripts/dev test` — all frontend component, route, store, catalog, adapter, and IPC-mock tests pass and discover the new Club DNA tests.
-- `./scripts/dev check` — Biome, TypeScript, full-tree secretlint, Rust format, Clippy, and all Rust tests pass, including migration, service, formula, Search, filter, Squad, active-save, null, and performance guards.
+- `./scripts/dev check` — Biome, TypeScript, full-tree secretlint, Rust format, Clippy, and all Rust tests pass, including v32 upgrade, definition/version invalidation, pure scoring, materialization scope, boost rollback, Search, filter, Squad, active-save, null, and performance guards.
 - `./scripts/dev smoke` — Chromium proves the My Club create flow, Modal explanation/selection, and fixed table-column integration through the browser IPC stub.
-- Inspect the exact feature diff with `git diff --check <accepted-base>...HEAD` and the delivery workflow's exact recorded commit set.
-- For deterministic 2,000-player Rust guards, select the complete supported attribute catalog and populate complete representative visible/goalkeeper, hidden, and personality JSON for every player. Run 3 warm-ups plus 20 measured executions for Search filter and Search sort separately, and for Squad sort if its SQL shape materially differs. Compute nearest-rank p95 from each 20-sample set and require every relevant p95 below 500 ms.
-- On a representative roughly 180,000-player snapshot, run 3 warm-ups plus 20 measured executions for Search filter and Search sort separately, and Squad sort if materially different. Record nearest-rank p95 and require each relevant value at or below about 200 ms. If the representative environment or evidence is unavailable, publication stops for an explicit developer decision that accepts the recorded gap; this is not an automatic pass. A measured breach always requires replan/cache decision and cannot be accepted as a gap.
+- Inspect the exact feature diff with `git diff --check b573420893da93d91ddaee66ff9a4038f800b6d9...HEAD` and the delivery workflow's exact recorded commit set.
+- For the deterministic complete-catalog 2,000-player proof, populate complete representative visible/goalkeeper, hidden, and personality JSON for every player. For each materially distinct Search filter, Search sort, and Squad sort, clear Club DNA rows and record cold first-use materialization duration separately. Prefill the current-version cache, then run 3 unmeasured warm-ups plus 20 warm measured queries. Compute nearest-rank p95 from sorted sample index 18 and require each p95 `<500 ms`.
+- On a representative roughly 180,000-player environment, clear Club DNA rows and record cold first-use duration separately. Prefill current-version rows, then run 3 warm-ups plus 20 warm measured executions for each materially distinct Search filter/sort and Squad sort. Require nearest-rank p95 `<= about 200 ms`. If the environment remains unavailable, publication stops for explicit developer gap acceptance. Any measured warm breach requires replan and cannot be accepted as a gap.
+- Manually verify first-use behavior in the native app. Record the visible duration and confirm the UI does not falsely appear warm or return partial filter/sort results while materialization is in progress. If cold work makes the app unusable rather than delayed, stop for a progress/cancellation architecture decision.
 - Manually verify the native Modal at 1280×800 and 1600×900: full-catalog scrolling, keyboard selection, edit ↔ remove-confirmation transitions in one Modal, confirmation Cancel/Escape return, edit Cancel/Escape discard, pending-removal dismissal blocking, remove-error return path, successful-removal focus return, and no layout shift. Chromium does not replace this check.
 - `./scripts/dev bridge-test` is outside the affected bridge path. `./scripts/dev mutate` remains unsupported. Neither may be reported as passed.
 
 ## Documentation impact
 
-Complete during reconciliation. Expected current-state owners after implementation are `.wiki/ARCHITECTURE.md` for v31 save-owned Club DNA persistence and the dynamic metric path, `.wiki/DESIGN.md` for the implemented My Club action and definition Modal, `.wiki/TODO.md` for completion state, and this ledger moved to `.wiki/features/completed/club-dna.md`. Create no ADR unless measured evidence forces a consequential cache/materialization decision.
+During this replan, add only ADR-0023 and its index entry; leave `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, and `.wiki/TODO.md` unchanged. During feature reconciliation after implementation, update `.wiki/ARCHITECTURE.md` for v31/v32 definition persistence, lazy versioned Club DNA materialization, query scopes, and invalidation owners; update `.wiki/DESIGN.md` for the implemented My Club action and definition Modal; update `.wiki/TODO.md` for completion; preserve ADR-0023; and move this ledger to `.wiki/features/completed/club-dna.md`.
