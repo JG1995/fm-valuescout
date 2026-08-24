@@ -646,6 +646,33 @@ mod tests {
     }
 
     #[test]
+    fn age_twenty_nine_returns_current_attributes_and_role_scores_as_potential() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("age-capped-potential.db"));
+        let mut player = player_template(1, "Mature Player", 80);
+        player["pa"] = json!(170);
+        player["age"] = json!(29);
+        player["positions"] = json!({ "ST": 20 });
+        player["attributes"] = Value::Object(
+            DUMP_ATTRIBUTE_KEYS
+                .iter()
+                .map(|key| ((*key).to_string(), json!(10)))
+                .collect(),
+        );
+        ingest_players(&mut conn, vec![player]);
+
+        let detail = get_player(&conn, 1)
+            .expect("get_player")
+            .expect("player present");
+
+        assert_eq!(detail.potential_attributes, detail.attributes);
+        assert!(detail
+            .role_scores
+            .iter()
+            .all(|role| role.potential_score == role.score));
+    }
+
+    #[test]
     fn presents_duplicate_moneyball_roles_from_one_attribute_score_and_keeps_unmapped_null() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("moneyball-role-inventory.db"));

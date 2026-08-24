@@ -15,7 +15,7 @@ pub fn project_attributes<'a>(
     age: Option<i64>,
     position_familiarity: impl IntoIterator<Item = (&'a str, Option<i64>)>,
 ) -> HashMap<String, Option<u8>> {
-    if pa <= ca {
+    if pa <= ca || age.is_some_and(|age| age >= 29) {
         return attributes.clone();
     }
 
@@ -170,16 +170,13 @@ fn physical_growth_factor(age: Option<i64>) -> f64 {
     match age {
         None | Some(..=23) => 1.0,
         Some(24..=26) => 0.55,
-        Some(27..=29) => 0.30,
-        Some(30..=32) => 0.12,
-        Some(_) => 0.05,
+        Some(_) => 0.30,
     }
 }
 
 fn mental_growth_factor(age: Option<i64>) -> f64 {
     match age {
-        Some(32..) => 1.25,
-        Some(28..) => 1.15,
+        Some(28) => 1.15,
         _ => 1.0,
     }
 }
@@ -282,15 +279,18 @@ mod tests {
     }
 
     #[test]
-    fn mental_growth_factor_increases_again_at_age_thirty_two() {
-        let attributes = attributes(&[("OffTheBall", Some(1))]);
-        let at_thirty_one =
-            project_attributes(&attributes, 110, 140, Some(31), [("UNKNOWN", Some(20))]);
-        let at_thirty_two =
-            project_attributes(&attributes, 110, 140, Some(32), [("UNKNOWN", Some(20))]);
+    fn age_twenty_nine_and_older_keep_every_attribute_unchanged() {
+        let attributes = attributes(&[
+            ("OffTheBall", Some(10)),
+            ("Pace", Some(10)),
+            ("Finishing", Some(10)),
+        ]);
 
-        assert_eq!(at_thirty_one["OffTheBall"], Some(2));
-        assert_eq!(at_thirty_two["OffTheBall"], Some(3));
+        for age in [29, 32] {
+            let projected = project_attributes(&attributes, 80, 170, Some(age), [("ST", Some(20))]);
+
+            assert_eq!(projected, attributes, "age {age}");
+        }
     }
 
     #[test]
@@ -415,21 +415,16 @@ mod tests {
     }
 
     #[test]
-    fn age_growth_factors_change_at_each_documented_boundary() {
+    fn growth_factors_cover_ages_that_can_still_improve() {
         assert_eq!(physical_growth_factor(None), 1.0);
         assert_eq!(physical_growth_factor(Some(23)), 1.0);
         assert_eq!(physical_growth_factor(Some(24)), 0.55);
         assert_eq!(physical_growth_factor(Some(26)), 0.55);
         assert_eq!(physical_growth_factor(Some(27)), 0.30);
-        assert_eq!(physical_growth_factor(Some(29)), 0.30);
-        assert_eq!(physical_growth_factor(Some(30)), 0.12);
-        assert_eq!(physical_growth_factor(Some(32)), 0.12);
-        assert_eq!(physical_growth_factor(Some(33)), 0.05);
+        assert_eq!(physical_growth_factor(Some(28)), 0.30);
         assert_eq!(mental_growth_factor(None), 1.0);
         assert_eq!(mental_growth_factor(Some(27)), 1.0);
         assert_eq!(mental_growth_factor(Some(28)), 1.15);
-        assert_eq!(mental_growth_factor(Some(31)), 1.15);
-        assert_eq!(mental_growth_factor(Some(32)), 1.25);
     }
 
     #[test]

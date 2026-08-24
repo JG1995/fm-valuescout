@@ -88,7 +88,6 @@ export function AppTopBar() {
       className="z-10 shrink-0 border-b border-outline-variant bg-surface-container"
     >
       <div className="flex h-header-height items-center gap-3 px-4">
-        <GlobalPlayerSearch />
         <div className="flex shrink-0 items-center gap-1">
           <Button
             aria-label="Back"
@@ -107,6 +106,7 @@ export function AppTopBar() {
             onClick={() => router.history.forward()}
           />
         </div>
+        <GlobalPlayerSearch />
         <ActiveSaveSelect
           onSwitched={() => {
             void queryClient.invalidateQueries({ queryKey: searchKeys.all });

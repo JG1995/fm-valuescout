@@ -80,7 +80,14 @@ describe("player profile route", () => {
     expect(screen.getByText("160")).toBeInTheDocument();
     expect(screen.getByText("182 cm")).toBeInTheDocument();
     expect(screen.getByText("Right")).toBeInTheDocument();
-    expect(screen.getByText("ENG, WAL")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "England" })).toHaveAttribute(
+      "title",
+      "England",
+    );
+    expect(screen.getByRole("img", { name: "Wales" })).toHaveAttribute(
+      "title",
+      "Wales",
+    );
     expect(
       screen.getByRole("tab", { name: "Outfield", selected: true }),
     ).toBeInTheDocument();
@@ -316,6 +323,7 @@ describe("player profile route", () => {
     setGetPlayerOverride(
       fixturePlayerDetail({
         name: "Alexandra Maximilian Scout",
+        nationalities: ["England", "Wales"],
         positions: { MC: 20, AMC: 20, AMR: 20 },
       }),
     );
@@ -363,13 +371,20 @@ describe("player profile route", () => {
     const generalActionSlot = within(generalSummary).getByTestId(
       "player-profile-action-slot",
     );
-    expect(generalActionSlot).toHaveClass("h-32", "overflow-visible");
+    expect(generalActionSlot).toHaveClass("min-h-10", "overflow-visible");
     expect(generalActionSlot).not.toHaveClass("overflow-y-auto");
     expect(
       within(generalDetails).getByTestId(
         "player-profile-summary-analysis-details",
       ),
     ).toHaveClass("min-h-9");
+    expect(
+      within(generalSummary).getByRole("img", { name: "England" }),
+    ).toHaveAttribute("title", "England");
+    expect(
+      within(generalSummary).getByRole("img", { name: "Wales" }),
+    ).toHaveAttribute("title", "Wales");
+    expect(within(generalSummary).queryByText("England, Wales")).toBeNull();
     expect(within(generalSummary).getByText("Current IP")).toBeInTheDocument();
     expect(
       within(generalSummary).getByText("Potential OOP"),
@@ -423,7 +438,7 @@ describe("player profile route", () => {
     const moneyballActionSlot = within(moneyballSummary).getByTestId(
       "player-profile-action-slot",
     );
-    expect(moneyballActionSlot).toHaveClass("h-32", "overflow-visible");
+    expect(moneyballActionSlot).toHaveClass("min-h-10", "overflow-visible");
     expect(moneyballActionSlot).not.toHaveClass("overflow-y-auto");
     expect(
       within(moneyballDetails).getByTestId(
@@ -871,7 +886,7 @@ describe("player profile route", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders complete nullable familiarity with SW without lowering playable thresholds", async () => {
+  it("omits SW and de-emphasizes tier-one familiarity without lowering playable thresholds", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -879,6 +894,8 @@ describe("player profile route", () => {
           AMR: 20,
           MR: 17,
           AMC: 14,
+          DL: 5,
+          DC: 6,
           SW: 18,
           GK: 14,
           ST: 0,
@@ -902,15 +919,36 @@ describe("player profile route", () => {
       screen.getByRole("button", { name: "AMC, familiarity 14" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "SW, familiarity 18" }),
-    ).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: "SW, familiarity 18" }),
+      screen.queryByRole("button", { name: "SW, familiarity 18" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "DL, familiarity 5" }),
+    ).toHaveClass(
+      "border-outline-variant",
+      "bg-surface-container/50",
+      "text-score-1",
     );
     expect(
-      screen.getByRole("region", { name: "Role fit for SW" }),
-    ).toHaveTextContent("No catalog roles use this position.");
+      screen.getByRole("button", { name: "DC, familiarity 6" }),
+    ).not.toHaveClass("bg-surface-container/50");
+    const lowFamiliarityPosition = screen.getByRole("button", {
+      name: "DL, familiarity 5",
+    });
+    expect(lowFamiliarityPosition).not.toHaveClass("opacity-45");
+
+    await user.click(lowFamiliarityPosition);
+
+    expect(lowFamiliarityPosition).toHaveAttribute("aria-pressed", "true");
+    expect(lowFamiliarityPosition).toHaveClass(
+      "border-primary",
+      "bg-primary-container",
+      "text-on-primary-container",
+    );
+    expect(lowFamiliarityPosition).not.toHaveClass(
+      "border-outline-variant",
+      "bg-surface-container/50",
+      "text-score-1",
+    );
   });
 
   it("shows not-found empty state for an unknown uid", async () => {
@@ -1773,7 +1811,7 @@ describe("player profile route", () => {
     const actionSlot = within(summary).getByTestId(
       "player-profile-action-slot",
     );
-    expect(actionSlot).toHaveClass("h-32");
+    expect(actionSlot).toHaveClass("min-h-10");
     expect(actionSlot).not.toHaveClass("overflow-y-auto");
     expect(
       within(actionSlot).getByTestId("player-development-outcome"),

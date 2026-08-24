@@ -116,7 +116,7 @@ export function fixturePlayerDetail(
     age: 25,
     birthYear: 2001,
     birthDayOfYear: 80,
-    nationalities: ["ENG", "WAL"],
+    nationalities: ["England", "Wales"],
     heightCm: 182,
     preferredFoot: "right",
     positions: {

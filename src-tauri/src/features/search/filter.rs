@@ -1354,7 +1354,7 @@ mod tests {
             "expected potential cache SQL, got {}",
             compiled.sql
         );
-        assert!(compiled.sql.contains("projection_model_version = 1"));
+        assert!(compiled.sql.contains("projection_model_version = 2"));
         assert_eq!(
             compiled.params,
             vec![Value::Text("goalkeeper_ip".to_string()), Value::Integer(70),]

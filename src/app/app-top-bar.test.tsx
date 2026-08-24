@@ -130,10 +130,11 @@ describe("app top bar", () => {
     const forward = screen.getByRole("button", { name: "Forward" });
 
     expect(
-      search.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING,
+      back.compareDocumentPosition(forward) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      back.compareDocumentPosition(forward) & Node.DOCUMENT_POSITION_FOLLOWING,
+      forward.compareDocumentPosition(search) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(back).toHaveAttribute("title", "Back");
     expect(forward).toHaveAttribute("title", "Forward");

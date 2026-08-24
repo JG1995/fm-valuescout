@@ -8,7 +8,7 @@ use crate::features::scoring::{
     score::score_role,
 };
 
-pub const PROJECTION_MODEL_VERSION: i64 = 1;
+pub const PROJECTION_MODEL_VERSION: i64 = 2;
 
 const MATERIALIZATION_BATCH_SIZE: usize = 250;
 

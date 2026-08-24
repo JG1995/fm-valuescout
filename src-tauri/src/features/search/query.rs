@@ -2922,7 +2922,7 @@ mod tests {
 
         conn.execute(
             "UPDATE player_potential_role_scores
-             SET score = 99, projection_model_version = 2
+             SET score = 99, projection_model_version = 1
              WHERE role_id = 'line_holding_keeper_oop'",
             [],
         )
@@ -2948,7 +2948,7 @@ mod tests {
             )
             .expect("read refreshed cache row");
         assert!(score.is_some_and(|value| value < 99));
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
     }
 
     #[test]
