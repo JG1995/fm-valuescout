@@ -43,6 +43,7 @@ describe("explicit release workflow", () => {
     expect(prepareWorkflow).toContain(
       "Invoke-Gh run list --workflow Check --branch main --event push --commit $env:VERIFIED_SHA",
     );
+    expect(prepareWorkflow).toContain('--json "status,conclusion,headSha"');
     const waitFunction = prepareWorkflow.slice(
       prepareWorkflow.indexOf("function Wait-ForVerifiedCheck"),
       prepareWorkflow.indexOf("function Get-Releases"),
