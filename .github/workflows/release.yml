@@ -54,7 +54,7 @@ jobs:
 
           function Wait-ForVerifiedCheck {
             for ($attempt = 1; $attempt -le 120; $attempt++) {
-              $output = Invoke-Gh run list --workflow Check --branch main --event push --commit $env:VERIFIED_SHA --limit 20 --json status,conclusion,headSha
+              $output = Invoke-Gh run list --workflow Check --branch main --event push --commit $env:VERIFIED_SHA --limit 20 --json "status,conclusion,headSha"
               $runs = @(($output -join "`n") | ConvertFrom-Json)
               $run = @($runs | Where-Object { $_.headSha -ceq $env:VERIFIED_SHA } | Select-Object -First 1)[0]
               if ($null -eq $run) {
