@@ -140,7 +140,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/84
 
 **Merge ref:** Not merged
 
