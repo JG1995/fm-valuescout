@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded
 
-Implementation status: The v31/v32 cache and exact-count planning foundation is implemented through `8250dbe9aac7853ed90ba674f83a67da870a8ecb`. Indexed Search/Squad integration remains planned from that clean HEAD in the active [Club DNA](../features/active/club-dna.md) ledger.
+Superseded by [ADR-0024](./0024-eager-persisted-club-dna-scores.md). The measured lazy query design breached the representative workload after its final indexed attempt. ADR-0024 retains migration v32 and the score table but moves calculation to definition, ingest, and player-boost transactions. The historical decision and evidence below remain unchanged.
 
 ## Context
 
