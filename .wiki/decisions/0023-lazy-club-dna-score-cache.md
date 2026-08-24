@@ -4,7 +4,7 @@
 
 Accepted
 
-Implementation status: The v31/v32 cache foundation is implemented at `d78f97f25497409f6c895a8ac5cdeb74ea5301eb`; indexed Search and Squad integration is pending Commit 6 in the active [Club DNA](../features/active/club-dna.md) feature.
+Implementation status: The v31/v32 foundation is implemented at `d78f97f25497409f6c895a8ac5cdeb74ea5301eb`; indexed Search/Squad integration remains planned in the linked active [Club DNA](../features/active/club-dna.md) ledger.
 
 ## Context
 
