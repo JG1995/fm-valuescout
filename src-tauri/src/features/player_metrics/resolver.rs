@@ -52,6 +52,30 @@ enum MetricSource {
     Position,
     CurrentRole { role_id: &'static str },
     PotentialRole { role_id: &'static str },
+    ClubDna,
+}
+
+/// Bound parameter positions for an exact persisted Club DNA score identity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClubDnaSqlBindings {
+    pub(crate) definition_version: usize,
+    pub(crate) score_model_version: usize,
+}
+
+impl ClubDnaSqlBindings {
+    pub fn new(definition_version: usize, score_model_version: usize) -> Self {
+        Self {
+            definition_version,
+            score_model_version,
+        }
+    }
+
+    fn score_expression(self, player_alias: &str) -> String {
+        format!(
+            "(SELECT cds.score FROM club_dna_scores cds WHERE cds.snapshot_id = {player_alias}.snapshot_id AND cds.uid = {player_alias}.uid AND cds.definition_version = ?{} AND cds.score_model_version = ?{})",
+            self.definition_version, self.score_model_version,
+        )
+    }
 }
 
 /// One Rust-validated display or sort metric.
@@ -86,6 +110,13 @@ impl MetricField {
         }
         if moneyball && !is_moneyball_search_field(field) {
             return Err(format!("unknown Moneyball search field: {field}"));
+        }
+        if field == "club_dna" {
+            return Ok(Self {
+                id: field.to_string(),
+                kind: MetricValueKind::Integer,
+                source: MetricSource::ClubDna,
+            });
         }
         if let Some((column, kind)) = scalar_metric(field) {
             return Ok(Self {
@@ -208,8 +239,20 @@ impl MetricField {
         }
     }
 
+    pub fn is_club_dna(&self) -> bool {
+        matches!(self.source, MetricSource::ClubDna)
+    }
+
     /// Returns a trusted SQLite expression relative to the supplied player-table alias.
     pub fn sql_expression(&self, player_alias: &str) -> String {
+        self.sql_expression_with_club_dna(player_alias, None)
+    }
+
+    pub fn sql_expression_with_club_dna(
+        &self,
+        player_alias: &str,
+        club_dna_bindings: Option<ClubDnaSqlBindings>,
+    ) -> String {
         match &self.source {
             MetricSource::Column(column) => format!("{player_alias}.{column}"),
             MetricSource::JsonInteger { column, key } => {
@@ -230,11 +273,18 @@ impl MetricField {
             MetricSource::PotentialRole { role_id } => format!(
                 "(SELECT pprs.score FROM player_potential_role_scores pprs WHERE pprs.snapshot_id = {player_alias}.snapshot_id AND pprs.uid = {player_alias}.uid AND pprs.role_id = '{role_id}' AND pprs.projection_model_version = {PROJECTION_MODEL_VERSION})"
             ),
+            MetricSource::ClubDna => club_dna_bindings
+                .map(|bindings| bindings.score_expression(player_alias))
+                .unwrap_or_else(|| "NULL".to_string()),
         }
     }
 
-    pub fn sql_sort_expression(&self, player_alias: &str) -> String {
-        let expression = self.sql_expression(player_alias);
+    pub fn sql_sort_expression_with_club_dna(
+        &self,
+        player_alias: &str,
+        club_dna_bindings: Option<ClubDnaSqlBindings>,
+    ) -> String {
+        let expression = self.sql_expression_with_club_dna(player_alias, club_dna_bindings);
         match self.kind {
             MetricValueKind::Integer | MetricValueKind::Real => expression,
             MetricValueKind::Text => format!("{expression} COLLATE NOCASE"),
@@ -444,6 +494,20 @@ mod tests {
         assert!(MetricField::parse("hidden.NotARealMetric").is_err());
         assert!(MetricField::parse("personality.NotARealMetric").is_err());
         assert!(MetricField::parse("role.not_a_role").is_err());
+    }
+
+    #[test]
+    fn exposes_club_dna_as_a_nullable_integer_metric() {
+        let metric = MetricField::parse("club_dna").expect("parse Club DNA metric");
+        let expression =
+            metric.sql_expression_with_club_dna("players", Some(ClubDnaSqlBindings::new(2, 3)));
+
+        assert_eq!(metric.kind(), MetricValueKind::Integer);
+        assert!(metric.is_club_dna());
+        assert!(expression.contains("club_dna_scores"));
+        assert!(expression.contains("cds.snapshot_id = players.snapshot_id"));
+        assert!(expression.contains("cds.definition_version = ?2"));
+        assert!(expression.contains("cds.score_model_version = ?3"));
     }
 
     #[test]

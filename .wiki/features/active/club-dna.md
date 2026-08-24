@@ -674,7 +674,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 #### Commit 9 — Install the eager Club DNA writer lifecycle
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(club-dna): persist eager scores`
 
@@ -752,7 +752,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 #### Commit 10 — Expose persisted Club DNA queries
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(club-dna): expose persisted scores`
 
@@ -1050,19 +1050,19 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 **PR:** PR 1 — Add user-defined Club DNA scoring
 
-**Commit:** Commit 9 — Install the eager Club DNA writer lifecycle
+**Commit:** Commit 10 — Expose persisted Club DNA queries
 
 ### RED or removal proof
 
-Add focused definition, ingest, boost, and promotion tests that fail while set/edit deletes without rebuilding scores, ingest skips eager scoring, boosts invalidate rows, and promotion proves only lazy emptiness. Remove obsolete lazy materializer/invalidation tests together with their implementation.
+Add resolver, filter, Search, and Squad tests that fail while fixed `club_dna` is rejected. Prove exact identity, read-only behavior, every integer filter, and Club DNA-only null-last ordering in both directions across present, computed-null, missing, stale, and missing-definition rows.
 
 ### Expected outcome
 
-Definition changes, ingest, and supported boosts maintain exact nullable Club DNA rows in their owning SQLite transactions; promotion exposes already-persisted rows; all lazy materialization and invalidation ownership is removed without exposing query reads yet.
+Search displays, filters, and sorts persisted Club DNA while Squad displays and sorts it through bounded read-only queries with exact bound definition/model identity, unavailable values last, and deterministic UID ties.
 
 ### Explicit exclusions
 
-Resolver, filter, Search, Squad, frontend, migrations, indexes, dependencies, background work, performance gates, general role sorting, current-state documentation, and unrelated Git mutations.
+Definition, ingest, boost, removal, promotion, scorer, migrations, indexes, dependencies, frontend, performance gates, current/potential-role ordering, general role sorting, current-state documentation, and unrelated Git mutations.
 
 ## Discoveries and replanning
 
@@ -1089,7 +1089,8 @@ Resolver, filter, Search, Squad, frontend, migrations, indexes, dependencies, ba
 | PR 1 — Add user-defined Club DNA scoring | Commit 5 — Record the indexed query-shape correction | df074b9da78bec038960e2be7c851dcb5879dbdd | Recorded the representative correlated-query breach, indexed cache-first correction, and ADR implementation status. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 0 | Replaced the correlated cache-read packet after the 184,000-player warm threshold breach. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 6 — Record the warm-cache completeness correction | 8250dbe9aac7853ed90ba674f83a67da870a8ecb | Recorded the representative warm materializer overhead and exact-count completeness fast path. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 0 | Replaced warm full-cohort UID enumeration and batch probes after all 184,000-player shapes breached. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 7 — Record the representative latency decision | 2c6943f68fdfaf9311977f024a0d59192a4aed58 | Recorded the developer-chosen one-second representative threshold and rejected v33 index alternative. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 0 | Replaced the former 200 ms representative gate after exact v32/count-fast-path measurements. |
-| PR 1 — Add user-defined Club DNA scoring | Commit 8 — Record the eager score architecture replan | Pending record | Recorded ADR-0024, superseded the lazy decision, and split eager writers from persisted reads. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 1 | Replaced the breached lazy architecture after the developer chose role-like eager persistence; corrected the post-acceptance authority narrative. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 8 — Record the eager score architecture replan | aa5e097c66692bab1aac4444a4df0b02878b7994 | Recorded ADR-0024, superseded the lazy decision, and split eager writers from persisted reads. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 1 | Replaced the breached lazy architecture after the developer chose role-like eager persistence; corrected the post-acceptance authority narrative. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 9 — Install the eager Club DNA writer lifecycle | b3ccf37f9a1b23b334d235605b91db681d57bb13 | Added bounded eager definition, ingest, and boost score writers; removed lazy ownership; and proved promotion needs no backfill. | `./scripts/dev check-rust` passed 574 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 2 | Review corrections bounded retained-snapshot memory and added exact CA and mentality rollback proof. |
 
 ## Final validation
 

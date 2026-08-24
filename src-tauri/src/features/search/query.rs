@@ -5,15 +5,18 @@ use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Ro
 
 use crate::features::moneyball::percentile::{calculate_percentiles, MoneyballNumericStatistics};
 use crate::features::moneyball::{role_catalog::builtin_catalog, role_score::score_role};
+use crate::features::player_metrics::club_dna::SCORE_MODEL_VERSION;
 use crate::features::player_metrics::{
     potential_cache::{materialize_player_roles, materialize_snapshot_roles},
-    resolver::{parse_requested_fields_for_moneyball, read_dynamic_value, MetricField},
+    resolver::{
+        parse_requested_fields_for_moneyball, read_dynamic_value, ClubDnaSqlBindings, MetricField,
+    },
 };
 
 use super::filter::{
-    compile_filters, compile_filters_for_moneyball, moneyball_role_ids_from_ast,
-    moneyball_role_rules_match, potential_role_ids_from_ast, without_moneyball_role_rules,
-    CombineMode, CompiledFilter, FilterAst,
+    compile_filters, compile_filters_for_moneyball, compile_filters_with_club_dna,
+    moneyball_role_ids_from_ast, moneyball_role_rules_match, potential_role_ids_from_ast,
+    without_moneyball_role_rules, CombineMode, CompiledFilter, FilterAst,
 };
 
 pub use crate::features::player_metrics::resolver::DynamicValue;
@@ -151,7 +154,7 @@ impl SortField {
         }
     }
 
-    fn sql_expr(&self) -> String {
+    fn sql_expr(&self, club_dna_bindings: Option<ClubDnaSqlBindings>) -> String {
         match self {
             Self::Name => "name COLLATE NOCASE".to_string(),
             Self::Age => "age".to_string(),
@@ -163,8 +166,14 @@ impl SortField {
             Self::Ca => "ca".to_string(),
             Self::Pa => "pa".to_string(),
             Self::Value => "market_value_gbp".to_string(),
-            Self::Dynamic(field) => field.sql_sort_expression("players"),
+            Self::Dynamic(field) => {
+                field.sql_sort_expression_with_club_dna("players", club_dna_bindings)
+            }
         }
+    }
+
+    fn is_club_dna(&self) -> bool {
+        matches!(self, Self::Dynamic(field) if field.is_club_dna())
     }
 
     fn potential_role_id(&self) -> Option<&'static str> {
@@ -313,6 +322,11 @@ pub fn search_players_in_view(
         .iter()
         .filter_map(|field| field.moneyball_key().map(|key| (field.id(), key)))
         .collect::<Vec<_>>();
+    let club_dna_filter =
+        filter_ast.is_some_and(|ast| ast.rules.iter().any(|rule| rule.field == "club_dna"));
+    let club_dna_requested = club_dna_filter
+        || sort_by.is_club_dna()
+        || dynamic_fields.iter().any(MetricField::is_club_dna);
     let snapshot_id: Option<i64> = conn
         .query_row(
             "SELECT s.id
@@ -341,6 +355,9 @@ pub fn search_players_in_view(
         None => None,
         Some(ast) => {
             let compiled = match view {
+                SearchView::General if club_dna_filter => {
+                    compile_filters_with_club_dna(ast, 4, ClubDnaSqlBindings::new(2, 3))?
+                }
                 SearchView::General => compile_filters(ast, 2)?,
                 SearchView::Moneyball => compile_filters_for_moneyball(ast, 2, true)?,
             };
@@ -351,6 +368,25 @@ pub fn search_players_in_view(
             }
         }
     };
+
+    let club_dna_bindings = club_dna_requested.then(|| {
+        if club_dna_filter {
+            ClubDnaSqlBindings::new(2, 3)
+        } else {
+            ClubDnaSqlBindings::new(
+                compiled
+                    .as_ref()
+                    .map_or(2, |filter| filter.params.len() + 2),
+                compiled
+                    .as_ref()
+                    .map_or(3, |filter| filter.params.len() + 3),
+            )
+        }
+    });
+    let club_dna_definition_version = club_dna_requested
+        .then(|| current_club_dna_definition_version(conn, snapshot_id))
+        .transpose()?
+        .flatten();
 
     let mut full_snapshot_roles = filter_ast
         .map(potential_role_ids_from_ast)
@@ -374,10 +410,19 @@ pub fn search_players_in_view(
     }
 
     let mut bind_values = vec![Value::Integer(snapshot_id)];
+    if club_dna_filter {
+        bind_values.push(club_dna_definition_version.map_or(Value::Null, Value::Integer));
+        bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
+    }
     if let Some(compiled) = &compiled {
         bind_values.extend(compiled.params.clone());
     }
     let filter_bind_values = bind_values.clone();
+    let mut select_bind_values = bind_values.clone();
+    if club_dna_requested && !club_dna_filter {
+        select_bind_values.push(club_dna_definition_version.map_or(Value::Null, Value::Integer));
+        select_bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
+    }
 
     let count_sql = format!("SELECT COUNT(*) {from_sql} WHERE {where_sql}");
     let mut count_stmt = conn
@@ -388,11 +433,18 @@ pub fn search_players_in_view(
         .map_err(|error| error.to_string())?;
 
     // Whitelisted expr + dir only — never interpolate raw client strings.
-    let order_sql = format!(
-        "ORDER BY {} {}, players.uid ASC",
-        sort_by.sql_expr(),
-        sort_dir.sql_keyword()
-    );
+    let sort_expression = sort_by.sql_expr(club_dna_bindings);
+    let order_sql = if sort_by.is_club_dna() {
+        format!(
+            "ORDER BY ({sort_expression}) IS NULL ASC, {sort_expression} {}, players.uid ASC",
+            sort_dir.sql_keyword()
+        )
+    } else {
+        format!(
+            "ORDER BY {sort_expression} {}, players.uid ASC",
+            sort_dir.sql_keyword()
+        )
+    };
 
     let mut select_sql = String::from(
         "SELECT
@@ -414,7 +466,7 @@ pub fn search_players_in_view(
             conn,
             &from_sql,
             &where_sql,
-            &bind_values,
+            &select_bind_values,
             &order_sql,
             limit,
             offset,
@@ -422,14 +474,14 @@ pub fn search_players_in_view(
         materialize_player_roles(conn, snapshot_id, &page_uids, &potential_display_roles)?;
     }
 
-    let limit_index = bind_values.len() + 1;
-    let offset_index = bind_values.len() + 2;
-    bind_values.push(Value::Integer(limit));
-    bind_values.push(Value::Integer(offset));
+    let limit_index = select_bind_values.len() + 1;
+    let offset_index = select_bind_values.len() + 2;
+    select_bind_values.push(Value::Integer(limit));
+    select_bind_values.push(Value::Integer(offset));
 
     for field in &dynamic_fields {
         select_sql.push_str(", ");
-        select_sql.push_str(&field.sql_expression("players"));
+        select_sql.push_str(&field.sql_expression_with_club_dna("players", club_dna_bindings));
     }
     if view == SearchView::Moneyball && comparison_pool == ComparisonPool::FullCsv {
         for (_, key) in &moneyball_fields {
@@ -452,7 +504,7 @@ pub fn search_players_in_view(
         .map_err(|error| error.to_string())?;
 
     let mut players = stmt
-        .query_map(params_from_iter(bind_values.iter()), |row| {
+        .query_map(params_from_iter(select_bind_values.iter()), |row| {
             map_player_summary(
                 row,
                 &dynamic_fields,
@@ -478,6 +530,21 @@ pub fn search_players_in_view(
     }
 
     Ok(SearchPlayersPage { players, total })
+}
+
+fn current_club_dna_definition_version(
+    conn: &Connection,
+    snapshot_id: i64,
+) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT definition_version
+         FROM club_dna_definitions
+         WHERE save_id = (SELECT save_id FROM snapshots WHERE id = ?1)",
+        [snapshot_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|error| error.to_string())
 }
 
 fn request_uses_moneyball_role(request: &SearchPlayersRequest<'_>) -> bool {
@@ -644,7 +711,7 @@ fn search_players_with_roles(
     } else {
         format!(
             "ORDER BY {} {}, players.uid ASC",
-            sort_by.sql_expr(),
+            sort_by.sql_expr(None),
             sort_dir.sql_keyword()
         )
     };
@@ -1024,6 +1091,7 @@ mod tests {
     use super::*;
     use crate::db::migrations;
     use crate::features::moneyball::role_catalog::builtin_catalog;
+    use crate::features::player_metrics::club_dna::SCORE_MODEL_VERSION;
     use crate::features::search::filter::{parse_filter_ast, FilterRule, FilterValue};
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service::{create_save, set_active_save};
@@ -1202,6 +1270,81 @@ mod tests {
             rusqlite::params![snapshot_id, player_uid, statistics_json, percentiles_json],
         )
         .expect("insert Moneyball row");
+    }
+
+    fn club_dna_score_rows(conn: &Connection) -> Vec<(i64, i64, i64, i64, Option<i64>)> {
+        let mut statement = conn
+            .prepare(
+                "SELECT snapshot_id, uid, definition_version, score_model_version, score
+                 FROM club_dna_scores
+                 ORDER BY snapshot_id, uid, definition_version, score_model_version",
+            )
+            .expect("prepare Club DNA score rows");
+        statement
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .expect("read Club DNA score rows")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect Club DNA score rows")
+    }
+
+    fn seed_club_dna_query_players() -> (tempfile::TempDir, Connection) {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("club-dna-query.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(10, "Present low", 100),
+                player_template(20, "Present high", 100),
+                player_template(30, "Computed null", 100),
+                player_template(40, "Missing", 100),
+                player_template(50, "Stale definition", 100),
+                player_template(60, "Stale model", 100),
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        let save_id: i64 = conn
+            .query_row(
+                "SELECT save_id FROM snapshots WHERE id = ?1",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("snapshot save");
+        conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json, definition_version)
+             VALUES (?1, '[\"attr.Acceleration\"]', 2)",
+            [save_id],
+        )
+        .expect("insert Club DNA definition");
+        for (uid, definition_version, score_model_version, score) in [
+            (10, 2, SCORE_MODEL_VERSION, Some(20)),
+            (20, 2, SCORE_MODEL_VERSION, Some(80)),
+            (30, 2, SCORE_MODEL_VERSION, None),
+            (50, 1, SCORE_MODEL_VERSION, Some(95)),
+            (60, 2, SCORE_MODEL_VERSION + 1, Some(90)),
+        ] {
+            conn.execute(
+                "INSERT INTO club_dna_scores (
+                    snapshot_id, uid, definition_version, score_model_version, score
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    snapshot_id,
+                    uid,
+                    definition_version,
+                    score_model_version,
+                    score
+                ],
+            )
+            .expect("insert Club DNA score");
+        }
+        (temp_dir, conn)
     }
 
     fn insert_role_row(
@@ -1552,6 +1695,209 @@ mod tests {
         assert!(suggest_players(&conn, "Removed", DEFAULT_SUGGEST_LIMIT)
             .expect("suggest latest snapshot")
             .is_empty());
+    }
+
+    #[test]
+    fn searches_club_dna_ascending_with_nullable_exact_identity_and_read_only_pages() {
+        let (_temp_dir, conn) = seed_club_dna_query_players();
+        let score_rows_before = club_dna_score_rows(&conn);
+        let requested_fields = vec!["club_dna".to_string()];
+
+        let page = search_players(
+            &conn,
+            0,
+            6,
+            SortField::parse("club_dna").expect("parse Club DNA sort"),
+            SortDir::Asc,
+            None,
+            &requested_fields,
+        )
+        .expect("search Club DNA ascending");
+        assert_eq!(page.total, 6);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [10, 20, 30, 40, 50, 60]
+        );
+        assert_eq!(
+            page.players[0].dynamic_values.get("club_dna"),
+            Some(&Some(DynamicValue::Integer(20)))
+        );
+        assert_eq!(page.players[2].dynamic_values.get("club_dna"), Some(&None));
+        assert_eq!(page.players[3].dynamic_values.get("club_dna"), Some(&None));
+        assert_eq!(page.players[4].dynamic_values.get("club_dna"), Some(&None));
+        assert_eq!(page.players[5].dynamic_values.get("club_dna"), Some(&None));
+
+        let bounded_page = search_players(
+            &conn,
+            1,
+            2,
+            SortField::parse("club_dna").expect("parse Club DNA sort"),
+            SortDir::Asc,
+            None,
+            &requested_fields,
+        )
+        .expect("page Club DNA ascending");
+        assert_eq!(bounded_page.total, 6);
+        assert_eq!(
+            bounded_page
+                .players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [20, 30]
+        );
+        assert_eq!(club_dna_score_rows(&conn), score_rows_before);
+    }
+
+    #[test]
+    fn searches_club_dna_descending_filters_every_operator_and_keeps_scores_read_only() {
+        let (_temp_dir, conn) = seed_club_dna_query_players();
+        let score_rows_before = club_dna_score_rows(&conn);
+        let expected = [
+            ("gt", vec![20]),
+            ("lt", vec![10]),
+            ("eq", vec![10]),
+            ("neq", vec![20]),
+        ];
+        for (operator, expected_uids) in expected {
+            let threshold = if operator == "lt" { 30 } else { 20 };
+            let ast = parse_filter_ast(
+                vec![filter_rule(
+                    "club_dna",
+                    operator,
+                    FilterValue::Integer(threshold),
+                )],
+                None,
+            )
+            .expect("parse Club DNA filter");
+            let page = search_players(
+                &conn,
+                0,
+                6,
+                SortField::parse("club_dna").expect("parse Club DNA sort"),
+                SortDir::Desc,
+                Some(&ast),
+                &[],
+            )
+            .expect("filter Club DNA");
+            assert_eq!(
+                page.players
+                    .iter()
+                    .map(|player| player.uid)
+                    .collect::<Vec<_>>(),
+                expected_uids,
+                "{operator} must ignore null, missing, and stale scores"
+            );
+        }
+
+        let and_ast = parse_filter_ast(
+            vec![
+                filter_rule("club_dna", "gt", FilterValue::Integer(20)),
+                filter_rule("name", "contains", FilterValue::Text("Present".to_string())),
+            ],
+            Some("and"),
+        )
+        .expect("parse Club DNA AND filter");
+        let and_page = search_players(
+            &conn,
+            0,
+            6,
+            SortField::parse("club_dna").expect("parse Club DNA sort"),
+            SortDir::Desc,
+            Some(&and_ast),
+            &[],
+        )
+        .expect("filter Club DNA with AND");
+        assert_eq!(
+            and_page
+                .players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [20]
+        );
+
+        let or_ast = parse_filter_ast(
+            vec![
+                filter_rule("club_dna", "eq", FilterValue::Integer(20)),
+                filter_rule("name", "contains", FilterValue::Text("Missing".to_string())),
+            ],
+            Some("or"),
+        )
+        .expect("parse Club DNA OR filter");
+        let or_page = search_players(
+            &conn,
+            0,
+            6,
+            SortField::parse("club_dna").expect("parse Club DNA sort"),
+            SortDir::Desc,
+            Some(&or_ast),
+            &[],
+        )
+        .expect("filter Club DNA with OR");
+        assert_eq!(
+            or_page
+                .players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [10, 40]
+        );
+
+        let descending = search_players(
+            &conn,
+            0,
+            6,
+            SortField::parse("club_dna").expect("parse Club DNA sort"),
+            SortDir::Desc,
+            None,
+            &[],
+        )
+        .expect("search Club DNA descending");
+        assert_eq!(
+            descending
+                .players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [20, 10, 30, 40, 50, 60]
+        );
+        assert_eq!(club_dna_score_rows(&conn), score_rows_before);
+    }
+
+    #[test]
+    fn searches_missing_club_dna_definition_as_a_uid_stable_all_null_page() {
+        let (_temp_dir, conn) = seed_club_dna_query_players();
+        let score_rows_before = club_dna_score_rows(&conn);
+        conn.execute("DELETE FROM club_dna_definitions", [])
+            .expect("remove Club DNA definition");
+
+        let page = search_players(
+            &conn,
+            0,
+            6,
+            SortField::parse("club_dna").expect("parse Club DNA sort"),
+            SortDir::Desc,
+            None,
+            &["club_dna".to_string()],
+        )
+        .expect("search without Club DNA definition");
+        assert_eq!(page.total, 6);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [10, 20, 30, 40, 50, 60]
+        );
+        assert!(page
+            .players
+            .iter()
+            .all(|player| player.dynamic_values.get("club_dna") == Some(&None)));
+        assert_eq!(club_dna_score_rows(&conn), score_rows_before);
     }
 
     #[test]
