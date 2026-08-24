@@ -87,7 +87,7 @@ Add query-specific indexes for score direction, null ordering, and player joins 
 
 ## Related work
 
-- Feature plan: [Club DNA](../features/active/club-dna.md)
+- Feature record: [Club DNA](../features/completed/club-dna.md)
 - Prior cache decision: [ADR-0019](./0019-lazy-potential-role-score-cache.md)
 - Completed definition commits: `ddd4961e6d90ca24faa435955c6ae7eb5a716f0b`, `d2682ee5c50cb99cd0b7f9facf5fd4f9060d5001`
 - Supersedes: the active Club DNA plan's direct read-time SQL derivation decision; no implemented current-state architecture is superseded

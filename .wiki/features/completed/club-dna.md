@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -156,7 +156,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 **Required checks:** GitHub required strict status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -1048,9 +1048,11 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 ## Active work
 
-**PR:** PR 1 — Add user-defined Club DNA scoring
+**PR:** Ready for publication — PR 1 remains unpublished
 
-**Commit:** None — feature validation
+**Commit:** None — documentation close-out
+
+**Next action:** publish
 
 ### RED or removal proof
 
@@ -1058,7 +1060,7 @@ Not applicable. All planned implementation packets are completed and independent
 
 ### Expected outcome
 
-All ledger validation passes, a fresh feature reviewer clears the complete implementation and test portfolio, durable documentation is reconciled, and the ledger is ready to move to completed features before publication.
+All ledger validation and feature review are complete, durable documentation is reconciled, and this archived ledger is ready to support publication.
 
 ### Explicit exclusions
 
@@ -1115,4 +1117,4 @@ New behavior, scope expansion, release preparation, unreviewed corrections, and 
 
 ## Documentation impact
 
-During this bounded replan, change `.wiki/features/active/club-dna.md`, supersede ADR-0023 with a concise pointer while preserving its historical text, create ADR-0024, and update `.wiki/decisions/README.md`. Leave `.wiki/TODO.md`, `.wiki/BACKLOG.md`, `.wiki/ARCHITECTURE.md`, and `.wiki/DESIGN.md` unchanged. During feature reconciliation after implementation, update `.wiki/ARCHITECTURE.md` for v31/v32 definition persistence, atomic eager definition/ingest/boost score lifecycle, persisted query behavior, and cascade owners; update `.wiki/DESIGN.md` for the implemented My Club action and definition Modal; update `.wiki/TODO.md` for completion; preserve both ADRs; and move this ledger to `.wiki/features/completed/club-dna.md`.
+During feature reconciliation, `.wiki/ARCHITECTURE.md` now records v31/v32 definition persistence, atomic eager definition/ingest/boost score lifecycle, persisted query behavior, cascade owners, the context-token trust boundary, and the absence of lazy or frontend scoring. `.wiki/DESIGN.md` now records the My Club action, grouped accessible Modal, state behavior, create-only layout append, and unavailable-score treatment. `.wiki/TODO.md` removes the completed active item without adding backlog work. ADR-0024 records the implementation as current at HEAD `7d21fa8e73666979862153246ac441f15fc90dfc`. Feature review accepted the implementation with no CRITICAL, HIGH, or MEDIUM findings after the reviewed correction; `check-rust` passed 581 tests with 2 ignored, frontend checks passed 602 tests, the full check passed, and smoke passed 49 tests. The developer accepted the unavailable native Tauri/WebView manual-validation gap. The PR remains Ready for publication with no invented URL or merge ref. This ledger is archived at `.wiki/features/completed/club-dna.md`; the PR remains unpublished and unmerged until publication completes.

@@ -4,7 +4,7 @@
 
 Accepted
 
-Implementation status: Planned in the active [Club DNA](../features/active/club-dna.md) ledger. Migration v32 and `club_dna_scores` already exist. No migration v33, new index, or dependency is planned.
+Implementation status: Current at feature branch HEAD `7d21fa8e73666979862153246ac441f15fc90dfc`, across Commits 1–13 plus the reviewed correction. Migration v32 and `club_dna_scores` are implemented. No migration v33, new index, or dependency was added.
 
 ## Context
 
@@ -72,7 +72,7 @@ Calculate the current snapshot and defer historical work until promotion. This r
 
 ## Related work
 
-- Feature plan: [Club DNA](../features/active/club-dna.md)
+- Feature record: [Club DNA](../features/completed/club-dna.md)
 - Supersedes: [ADR-0023](./0023-lazy-club-dna-score-cache.md)
 - Reuses: migration v32 and `club_dna_scores` from `d78f97f25497409f6c895a8ac5cdeb74ea5301eb`
 - Decision context: discarded final 184,000-player p95 of 514.287/611.003/1596.226 ms and 2,000-player p95 of 4.129/6.527/11.339 ms
