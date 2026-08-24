@@ -893,6 +893,12 @@ mod tests {
             .into_iter()
             .find(|save| save.is_active)
             .expect("active save");
+        conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.Acceleration\"]')",
+            [save.id],
+        )
+        .expect("set Club DNA definition");
         let promoted = insert_snapshot(
             &conn,
             save.id,
@@ -912,6 +918,12 @@ mod tests {
             delete_snapshot(&mut conn, current, &current_token).expect("delete current snapshot");
         assert_eq!(promoted_result.current_snapshot_id, Some(promoted));
         assert_eq!(current_snapshot_id(&conn, save.id), Some(promoted));
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM club_dna_scores", [], |row| row
+                .get::<_, i64>(0))
+                .expect("count lazy Club DNA cache rows"),
+            0
+        );
         assert_eq!(
             conn.query_row(
                 "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2026 AND is_automatic = 1",

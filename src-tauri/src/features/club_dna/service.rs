@@ -8,6 +8,7 @@ use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClubDnaDefinition {
     pub attribute_ids: Vec<String>,
+    pub(crate) version: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,15 +28,19 @@ pub fn get_club_dna(
     ensure_active_save_context(&tx, save_id, context_token)?;
     let definition = tx
         .query_row(
-            "SELECT attribute_ids_json FROM club_dna_definitions WHERE save_id = ?1",
+            "SELECT attribute_ids_json, definition_version
+             FROM club_dna_definitions WHERE save_id = ?1",
             [save_id],
-            |row| row.get::<_, String>(0),
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
         )
         .optional()
         .map_err(|_| "Unable to access Club DNA".to_string())?
-        .map(|attribute_ids_json| {
+        .map(|(attribute_ids_json, version)| {
             serde_json::from_str::<Vec<String>>(&attribute_ids_json)
-                .map(|attribute_ids| ClubDnaDefinition { attribute_ids })
+                .map(|attribute_ids| ClubDnaDefinition {
+                    attribute_ids,
+                    version,
+                })
                 .map_err(|_| "Stored Club DNA definition is invalid".to_string())
         })
         .transpose()?;
@@ -65,17 +70,35 @@ pub fn set_club_dna(
         )
         .map_err(|_| "Unable to save Club DNA".to_string())?;
     tx.execute(
+        "DELETE FROM club_dna_scores
+         WHERE snapshot_id IN (SELECT id FROM snapshots WHERE save_id = ?1)",
+        [save_id],
+    )
+    .map_err(|_| "Unable to save Club DNA".to_string())?;
+    tx.execute(
         "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
          VALUES (?1, ?2)
-         ON CONFLICT(save_id) DO UPDATE SET attribute_ids_json = excluded.attribute_ids_json",
+         ON CONFLICT(save_id) DO UPDATE SET
+             attribute_ids_json = excluded.attribute_ids_json,
+             definition_version = club_dna_definitions.definition_version + 1",
         params![save_id, attribute_ids_json],
     )
     .map_err(|_| "Unable to save Club DNA".to_string())?;
+    let definition_version: i64 = tx
+        .query_row(
+            "SELECT definition_version FROM club_dna_definitions WHERE save_id = ?1",
+            [save_id],
+            |row| row.get(0),
+        )
+        .map_err(|_| "Unable to save Club DNA".to_string())?;
     tx.commit()
         .map_err(|_| "Unable to save Club DNA".to_string())?;
 
     Ok(ClubDnaUpsertResult {
-        definition: ClubDnaDefinition { attribute_ids },
+        definition: ClubDnaDefinition {
+            attribute_ids,
+            version: definition_version,
+        },
         created,
     })
 }
@@ -89,6 +112,12 @@ pub fn remove_club_dna(
         .unchecked_transaction()
         .map_err(|_| "Unable to remove Club DNA".to_string())?;
     ensure_active_save_context(&tx, save_id, context_token)?;
+    tx.execute(
+        "DELETE FROM club_dna_scores
+         WHERE snapshot_id IN (SELECT id FROM snapshots WHERE save_id = ?1)",
+        [save_id],
+    )
+    .map_err(|_| "Unable to remove Club DNA".to_string())?;
     let removed = tx
         .execute(
             "DELETE FROM club_dna_definitions WHERE save_id = ?1",
@@ -122,7 +151,7 @@ fn ensure_active_save_context(
         .ok_or_else(|| "Save changed or is no longer active".to_string())
 }
 
-fn validate_attribute_ids(attribute_ids: &[String]) -> Result<(), String> {
+pub(crate) fn validate_attribute_ids(attribute_ids: &[String]) -> Result<(), String> {
     if attribute_ids.is_empty() {
         return Err("Club DNA requires at least one attribute".to_string());
     }
@@ -207,6 +236,19 @@ mod tests {
         .expect("insert snapshot")
     }
 
+    fn insert_player(conn: &Connection, snapshot_id: i64, uid: i64) {
+        conn.execute(
+            "INSERT INTO players (
+                snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
+                nationalities_json, preferred_foot, positions_json, attributes_json,
+                hidden_attributes_json, personality_json
+             ) VALUES (?1, ?2, 100, 120, 'Player', 2000, 1, '[]', 'Right',
+                '{}', '{}', '{}', '{}')",
+            params![snapshot_id, uid],
+        )
+        .expect("insert player");
+    }
+
     #[test]
     fn accepts_the_complete_supported_catalog_in_canonical_order() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -234,7 +276,10 @@ mod tests {
         assert_eq!(result.definition.attribute_ids, attribute_ids);
         assert_eq!(
             get_club_dna(&conn, save_id, &context_token).expect("read definition"),
-            Some(ClubDnaDefinition { attribute_ids })
+            Some(ClubDnaDefinition {
+                attribute_ids,
+                version: 1,
+            })
         );
     }
 
@@ -293,6 +338,7 @@ mod tests {
             get_club_dna(&conn, second_save, &second_token).expect("read second definition"),
             Some(ClubDnaDefinition {
                 attribute_ids: vec!["attr.Handling".to_string()],
+                version: 1,
             })
         );
 
@@ -313,6 +359,7 @@ mod tests {
             get_club_dna(&conn, first_save, &first_token).expect("read replaced definition"),
             Some(ClubDnaDefinition {
                 attribute_ids: replacement.clone(),
+                version: 2,
             })
         );
 
@@ -322,6 +369,7 @@ mod tests {
             get_club_dna(&reopened, first_save, &first_token).expect("read reopened definition"),
             Some(ClubDnaDefinition {
                 attribute_ids: replacement,
+                version: 2,
             })
         );
         activate_save(&reopened, second_save);
@@ -329,6 +377,7 @@ mod tests {
             get_club_dna(&reopened, second_save, &second_token).expect("read isolated definition"),
             Some(ClubDnaDefinition {
                 attribute_ids: vec!["attr.Handling".to_string()],
+                version: 1,
             })
         );
     }
@@ -374,6 +423,7 @@ mod tests {
             get_club_dna(&conn, second_save, &second_token).expect("read active definition"),
             Some(ClubDnaDefinition {
                 attribute_ids: vec!["attr.Handling".to_string()],
+                version: 1,
             })
         );
         activate_save(&conn, first_save);
@@ -381,7 +431,143 @@ mod tests {
             get_club_dna(&conn, first_save, &first_token).expect("read retained definition"),
             Some(ClubDnaDefinition {
                 attribute_ids: vec!["attr.Acceleration".to_string()],
+                version: 1,
             })
+        );
+    }
+
+    #[test]
+    fn edits_and_removals_atomically_own_only_their_save_cache_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = connection(&temp_dir.path().join("club-dna-invalidation.db"));
+        let (first_save, first_token) = insert_save(&conn, "First", true);
+        let (second_save, second_token) = insert_save(&conn, "Second", false);
+        set_club_dna(
+            &conn,
+            first_save,
+            &first_token,
+            vec!["attr.Acceleration".to_string()],
+        )
+        .expect("create first definition");
+        let first_snapshot = insert_snapshot(&conn, first_save, true);
+        insert_player(&conn, first_snapshot, 1);
+        activate_save(&conn, second_save);
+        set_club_dna(
+            &conn,
+            second_save,
+            &second_token,
+            vec!["attr.Handling".to_string()],
+        )
+        .expect("create second definition");
+        let second_snapshot = insert_snapshot(&conn, second_save, true);
+        insert_player(&conn, second_snapshot, 2);
+        conn.execute(
+            "INSERT INTO club_dna_scores (
+                snapshot_id, uid, definition_version, score_model_version, score
+             ) VALUES (?1, ?2, 1, 1, 50), (?3, ?4, 1, 1, 60)",
+            params![first_snapshot, 1, second_snapshot, 2],
+        )
+        .expect("seed cache rows");
+
+        activate_save(&conn, first_save);
+        let edited = set_club_dna(
+            &conn,
+            first_save,
+            &first_token,
+            vec!["hidden.Consistency".to_string()],
+        )
+        .expect("edit definition");
+        assert!(!edited.created);
+        assert_eq!(edited.definition.version, 2);
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1",
+                [first_snapshot],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("count cleared first cache"),
+            0
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1",
+                [second_snapshot],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("count retained second cache"),
+            1
+        );
+        conn.execute(
+            "INSERT INTO club_dna_scores (
+                snapshot_id, uid, definition_version, score_model_version, score
+             ) VALUES (?1, 1, 2, 1, 50)",
+            [first_snapshot],
+        )
+        .expect("seed first cache for rollback");
+        conn.execute_batch(
+            "CREATE TRIGGER reject_club_dna_update
+             BEFORE UPDATE ON club_dna_definitions
+             BEGIN
+                 SELECT RAISE(ABORT, 'forced definition update failure');
+             END;",
+        )
+        .expect("create update failure trigger");
+        assert!(set_club_dna(
+            &conn,
+            first_save,
+            &first_token,
+            vec!["attr.Pace".to_string()],
+        )
+        .is_err());
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1",
+                [first_snapshot],
+                |row| row.get::<_, i64>(0)
+            )
+            .expect("count rolled-back cache"),
+            1
+        );
+        conn.execute("DROP TRIGGER reject_club_dna_update", [])
+            .expect("drop update trigger");
+        conn.execute_batch(
+            "CREATE TRIGGER reject_club_dna_delete
+             BEFORE DELETE ON club_dna_definitions
+             BEGIN
+                 SELECT RAISE(ABORT, 'forced definition delete failure');
+             END;",
+        )
+        .expect("create delete failure trigger");
+        assert!(remove_club_dna(&conn, first_save, &first_token).is_err());
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1",
+                [first_snapshot],
+                |row| row.get::<_, i64>(0)
+            )
+            .expect("count rolled-back removal cache"),
+            1
+        );
+        conn.execute("DROP TRIGGER reject_club_dna_delete", [])
+            .expect("drop delete trigger");
+        assert!(remove_club_dna(&conn, first_save, &first_token).expect("remove definition"));
+        let recreated = set_club_dna(
+            &conn,
+            first_save,
+            &first_token,
+            vec!["personality.Ambition".to_string()],
+        )
+        .expect("recreate definition");
+        assert!(recreated.created);
+        assert_eq!(recreated.definition.version, 1);
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1",
+                [first_snapshot],
+                |row| row.get::<_, i64>(0)
+            )
+            .expect("count clean recreated cache"),
+            0
         );
     }
 

@@ -305,6 +305,12 @@ pub(super) fn reconcile_verified_boost(
         i64::from(prepared.player_uid),
     )
     .map_err(database_sync_error)?;
+    crate::features::player_metrics::club_dna::invalidate_player_cache(
+        &tx,
+        prepared.snapshot_id,
+        i64::from(prepared.player_uid),
+    )
+    .map_err(database_sync_error)?;
 
     tx.commit().map_err(database_sync_error)?;
     Ok(verified)
@@ -1274,7 +1280,7 @@ mod tests {
     }
 
     #[test]
-    fn successful_player_boost_invalidates_that_players_potential_role_cache() {
+    fn successful_player_boost_invalidates_that_players_derived_caches() {
         let mut fixture = seeded_player(
             Some(20),
             150,
@@ -1294,6 +1300,23 @@ mod tests {
                 params![fixture.snapshot_id, PLAYER_UID],
             )
             .expect("seed potential cache");
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+                 VALUES (?1, '[\"attr.Acceleration\"]')",
+                [fixture.save_id],
+            )
+            .expect("seed Club DNA definition");
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_scores (
+                    snapshot_id, uid, definition_version, score_model_version, score
+                 ) VALUES (?1, ?2, 1, 1, 80)",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed Club DNA cache");
         let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
             .expect("prepare CA boost");
 
@@ -1314,6 +1337,15 @@ mod tests {
             )
             .expect("count invalidated potential cache rows");
         assert_eq!(cache_rows, 0);
+        let club_dna_cache_rows: i64 = fixture
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1 AND uid = ?2",
+                params![fixture.snapshot_id, PLAYER_UID],
+                |row| row.get(0),
+            )
+            .expect("count invalidated Club DNA cache rows");
+        assert_eq!(club_dna_cache_rows, 0);
     }
 
     #[test]
@@ -1770,6 +1802,108 @@ mod tests {
             )
             .expect("count original role scores");
         assert_eq!(scores as usize, all_roles().len());
+    }
+
+    #[test]
+    fn determination_reconciliation_rolls_back_when_club_dna_invalidation_fails() {
+        let mut fixture = seeded_player(
+            Some(19),
+            150,
+            170,
+            Mentality {
+                ambition: Some(11),
+                professionalism: Some(12),
+                determination: Some(10),
+            },
+        );
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO player_potential_role_scores (
+                    snapshot_id, uid, role_id, score, projection_model_version
+                 ) VALUES (?1, ?2, 'goalkeeper_ip', 80, 1)",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed potential cache");
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+                 VALUES (?1, '[\"attr.Acceleration\"]')",
+                [fixture.save_id],
+            )
+            .expect("seed Club DNA definition");
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_scores (
+                    snapshot_id, uid, definition_version, score_model_version, score
+                 ) VALUES (?1, ?2, 1, 1, 80)",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed Club DNA cache");
+        fixture
+            .conn
+            .execute_batch(&format!(
+                "CREATE TRIGGER fail_club_dna_cache_delete
+                 AFTER DELETE ON club_dna_scores
+                 WHEN OLD.snapshot_id = {} AND OLD.uid = {}
+                 BEGIN
+                     SELECT RAISE(ABORT, 'forced Club DNA cache failure');
+                 END;",
+                fixture.snapshot_id, PLAYER_UID
+            ))
+            .expect("create failing Club DNA cache trigger");
+        let prepared = super::prepare_wonderkid_mentality_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare Wonderkid Mentality");
+        let previous = Mentality {
+            ambition: Some(11),
+            professionalism: Some(12),
+            determination: Some(10),
+        };
+        let current = Mentality {
+            ambition: Some(11),
+            professionalism: Some(12),
+            determination: Some(20),
+        };
+
+        let error = super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_mentality_result(150, 170, previous, current),
+        )
+        .expect_err("Club DNA cache error must roll back the player update");
+
+        assert_snapshot_sync(error);
+        assert_eq!(
+            player_mentality(&fixture.conn, fixture.snapshot_id),
+            previous
+        );
+        let scores: i64 = fixture
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_role_scores WHERE snapshot_id = ?1 AND uid = ?2",
+                params![fixture.snapshot_id, PLAYER_UID],
+                |row| row.get(0),
+            )
+            .expect("count original role scores");
+        assert_eq!(scores as usize, all_roles().len());
+        for table in ["player_potential_role_scores", "club_dna_scores"] {
+            assert_eq!(
+                fixture
+                    .conn
+                    .query_row(
+                        &format!(
+                            "SELECT COUNT(*) FROM {table} WHERE snapshot_id = ?1 AND uid = ?2"
+                        ),
+                        params![fixture.snapshot_id, PLAYER_UID],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .expect("count rolled-back derived cache"),
+                1,
+                "{table} must roll back with player reconciliation"
+            );
+        }
     }
 
     #[test]

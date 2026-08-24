@@ -351,7 +351,7 @@ Migration v31 remains the trusted definition record. Migration v32 adds definiti
 
 #### Commit 4 — Add the versioned Club DNA score cache
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(club-dna): add lazy score cache`
 
@@ -426,7 +426,7 @@ Migration v31 remains the trusted definition record. Migration v32 adds definiti
 
 #### Commit 5 — Resolve cached Club DNA in Search and Squad
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(club-dna): resolve cached table scores`
 
@@ -724,19 +724,19 @@ Migration v31 remains the trusted definition record. Migration v32 adds definiti
 
 **PR:** PR 1 — Add user-defined Club DNA scoring
 
-**Commit:** Commit 4 — Add the versioned Club DNA score cache
+**Commit:** Commit 5 — Resolve cached Club DNA in Search and Squad
 
 ### RED or removal proof
 
-Add v31-to-v32 migration, pure-scoring, materialization, invalidation, and rollback tests that fail while the cache schema and owner are absent. A seeded Club DNA row must also survive the existing supported player-boost path before invalidation is implemented.
+Add resolver, filter, Search, and Squad tests that fail while `club_dna` is unknown and no query can distinguish page-only from complete-cohort materialization. Add cold and warm complete-catalog timing proofs at the recorded query seams.
 
 ### Expected outcome
 
-Migration v32, definition versioning, pure Rust scoring, bounded lazy materialization, atomic definition invalidation, and supported player-boost invalidation establish one consistent disposable cache boundary.
+Search and Squad expose exact-version cached Club DNA values with page-scoped display, complete Search and exact managed-club sort/filter cohorts, strict null behavior, and measured warm interaction latency.
 
 ### Explicit exclusions
 
-Search and Squad query exposure, frontend code, eager ingest or promotion work, background jobs, extra locks, current-state documentation, Moneyball, and Player Profile display.
+Cache schema or definition mutation changes, frontend metadata or UI, eager ingest or promotion, Moneyball, Player Profile, background progress or cancellation, and current-state documentation.
 
 ## Discoveries and replanning
 
@@ -753,7 +753,8 @@ Search and Squad query exposure, frontend code, eager ingest or promotion work, 
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Add user-defined Club DNA scoring | Commit 1 — Record the approved feature plan | ddd4961e6d90ca24faa435955c6ae7eb5a716f0b | Recorded the reviewed schema 2 ledger and TODO activation. | `ledger_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 2 — Persist one save-owned Club DNA definition | d2682ee5c50cb99cd0b7f9facf5fd4f9060d5001 | Added migration v31 and context-bound Rust CRUD for one validated definition per save. | RED failed because v31 was absent; `./scripts/dev check-rust` passed 561 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 0 | None. |
-| PR 1 — Add user-defined Club DNA scoring | Commit 3 — Record the approved cache replan | Pending record | Recorded ADR-0023 and the reviewed lazy-cache packets after measured direct-SQL failure. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 0 | Replaced the direct-SQL packet after measured 2,000-player threshold breaches. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 3 — Record the approved cache replan | 7cf5e5924af8a9c54852f5037e17ffe4b2c58cc0 | Recorded ADR-0023 and the reviewed lazy-cache packets after measured direct-SQL failure. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 0 | Replaced the direct-SQL packet after measured 2,000-player threshold breaches. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 4 — Add the versioned Club DNA score cache | Pending record | Added v32 definition versioning, pure scoring, bounded nullable materialization, and atomic definition and player-boost invalidation. | RED failed because the cache owner was absent; focused rollback tests passed; `./scripts/dev check-rust` and `./scripts/dev check` passed 569 tests with 2 ignored. | Pass | Clear | 2 | Review corrections removed repeated definition validation, strengthened batch and late invalidation rollback proof, and restored adjacent role-score rollback coverage. |
 
 ## Final validation
 

@@ -791,6 +791,33 @@ mod tests {
     }
 
     #[test]
+    fn ingest_does_not_prefill_club_dna_scores_when_a_definition_exists() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-club-dna-lazy.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.Acceleration\"]')",
+            [save.id],
+        )
+        .expect("set Club DNA definition");
+
+        let dump_path = write_dump(&temp_dir, "club-dna-lazy.json", GOLDEN_FIXTURE);
+        ingest_dump_file(&mut conn, &dump_path).expect("ingest snapshot");
+
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM club_dna_scores", [], |row| row
+                .get::<_, i64>(0))
+                .expect("count lazy cache rows"),
+            0
+        );
+    }
+
+    #[test]
     fn ingest_writes_null_role_scores_when_required_attributes_are_missing() {
         use crate::features::scoring::catalog::all_roles;
 
