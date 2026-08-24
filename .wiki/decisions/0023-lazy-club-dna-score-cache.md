@@ -4,13 +4,15 @@
 
 Accepted
 
-Implementation status: The v31/v32 foundation is implemented at `d78f97f25497409f6c895a8ac5cdeb74ea5301eb`; indexed Search/Squad integration remains planned in the linked active [Club DNA](../features/active/club-dna.md) ledger.
+Implementation status: The v31/v32 cache and exact-count planning foundation is implemented through `8250dbe9aac7853ed90ba674f83a67da870a8ecb`. Indexed Search/Squad integration remains planned from that clean HEAD in the active [Club DNA](../features/active/club-dna.md) ledger.
 
 ## Context
 
 Club DNA averages a user-selected set of visible, goalkeeper, hidden, and personality player attributes into one nullable 0–100 score. Search must display, filter, and sort that score across the active current snapshot. Squad must display and sort it across the exact managed-club cohort. Both interfaces must continue to return bounded pages.
 
 The initial plan derived the score directly in SQLite from player JSON. A discarded complete-catalog 2,000-player experiment measured 20 Search filter samples of `[1875,1860,1862,1865,1902,1913,1881,1878,1865,1858,1863,1868,1877,1895,1889,1880,1900,1859,1896,1855]` ms. Its nearest-rank p95 was 1902 ms. The 20 Search sort samples were `[914,918,920,917,923,920,923,922,923,922,920,913,904,912,902,908,907,911,916,922]` ms. Their nearest-rank p95 was 923 ms. Both breached the required `<500 ms` 2,000-player threshold. No representative roughly 180,000-player run was attempted, and the failed code was discarded.
+
+A discarded exact-count/indexed implementation then measured all required shapes. At 2,000 players, Search filter measured 22.367 ms cold and 3.575 ms warm p95, Search sort measured 25.969/5.841 ms, and Squad sort measured 25.543/7.280 ms. At 184,000 players, the same shapes measured 2496.594/373.344 ms, 2644.854/509.068 ms, and 2904.600/856.517 ms. Cold measurements describe delayed first use and do not count toward warm acceptance. Exact-count completeness removed warm cache scans; the remaining representative cost is sorting and joining large exact queries.
 
 The score is derived and disposable. Current ingest can retain numeric player attribute values outside Football Manager's integer 1–20 score domain, so the scorer and cache schema must enforce the Club DNA domain instead of trusting stored JSON. Definitions can change, the formula can change, snapshots can be deleted, and supported player boosts can update one current player after ingest. The cache must not become authoritative player data or add mandatory Load Data work.
 
@@ -42,11 +44,16 @@ Calculate Club DNA for every player during Load Data or current-snapshot promoti
 
 Load the required players into Rust, calculate the cohort for one request, then discard it. This avoids a migration and persisted invalidation rules. It repeats the same full-cohort work after every filter, sort, page revisit, app restart, or Query cache eviction. It also makes first-use cost the cost of every use. Rejected because the measured direct path already breaches the interaction budget and the derived result has clear version and invalidation owners.
 
+### Migration v33 directional, null-ordering, and player-join indexes
+
+Add query-specific indexes for score direction, null ordering, and player joins to reduce the remaining large exact-query sort/join cost. The measured v32 index plus exact-count completeness already keeps every representative warm shape within the accepted one-second contract. The developer rejected v33 because it would add persistent storage, write amplification, query-specific variants, another migration, broader EXPLAIN obligations, and maintenance complexity without a required product gain.
+
 ## Consequences
 
 ### Positive
 
 - Warm Search and Squad queries use indexed nullable scores instead of repeated JSON aggregation.
+- The v32/count-fast-path design meets one shared representative warm contract without v33 query-specific indexes.
 - Display remains page-lazy while global filter and sort remain correct over complete cohorts.
 - Ingest and promotion do not pay for an unused definition or metric.
 - Definition and formula versions make stale rows unambiguous misses.
@@ -57,6 +64,7 @@ Load the required players into Rust, calculate the cohort for one request, then 
 ### Negative
 
 - Migration v32 adds another potentially large derived table and index.
+- Representative warm Search filter, Search sort, and Squad sort operations may approach one second at 184,000 players.
 - First use of a new definition, score-model version, page, or full cohort has a visible cold materialization cost.
 - Cold global work holds the established command-level `Db` mutex, so other database commands wait even though each SQLite write transaction is bounded.
 - Definition mutation and supported player boosts gain explicit cache invalidation responsibilities.
@@ -73,9 +81,9 @@ Load the required players into Rust, calculate the cohort for one request, then 
 ### Thresholds and follow-up
 
 - Complete-catalog 2,000-player validation clears the cache and records cold first-use duration separately for each materially distinct Search filter, Search sort, and Squad sort. After prefill, each shape runs 3 warm-ups and 20 warm measured queries. Nearest-rank p95 is sorted sample index 18 and must be `<500 ms`.
-- A representative roughly 180,000-player validation records cold first use separately. After prefill, each materially distinct filter/sort shape runs 3 warm-ups and 20 warm measured queries. Nearest-rank p95 must be `<= about 200 ms`.
-- An unavailable representative environment stops publication until the developer explicitly accepts that validation gap. A measured warm breach requires replanning and cannot be accepted as a gap.
-- The existing Search or Squad query-loading state remains visible during cold materialization, and no partial global result appears. Cold duration is reported separately from warm measurements. If measured cold behavior makes the app unusable, choose a progress and cancellation design in a new decision instead of weakening complete-cohort correctness.
+- A representative 184,000-player validation records cold first use separately. After prefill, each Search filter, Search sort, and Squad sort shape runs 3 warm-ups and 20 warm measured queries. Nearest-rank p95 must be `<=1,000 ms` for each shape.
+- An unavailable representative environment stops publication until the developer explicitly accepts that validation gap. A measured warm breach requires replanning and cannot be accepted as a gap. Do not add v33 indexes after a breach without a new developer decision.
+- The existing Search or Squad query-loading state remains visible during cold materialization, and no partial global result appears. The measured representative cold range of 2496.594–2904.600 ms is delayed first-use evidence and remains separate from warm measurements. If measured cold behavior makes the app unusable, choose a progress and cancellation design in a new decision instead of weakening complete-cohort correctness.
 
 ## Related work
 
