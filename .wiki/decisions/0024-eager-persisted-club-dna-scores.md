@@ -4,7 +4,7 @@
 
 Accepted
 
-Implementation status: Current at feature branch HEAD `7d21fa8e73666979862153246ac441f15fc90dfc`, across Commits 1–13 plus the reviewed correction. Migration v32 and `club_dna_scores` are implemented. No migration v33, new index, or dependency was added.
+Implementation status: Implemented through reviewed correction `7d21fa8e73666979862153246ac441f15fc90dfc`, across Commits 1–13 plus that correction. Migration v32 and `club_dna_scores` are implemented. No migration v33, new index, or dependency was added.
 
 ## Context
 
