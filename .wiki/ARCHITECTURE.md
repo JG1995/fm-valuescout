@@ -682,7 +682,7 @@ Attributes panel
 Role fit panel
   → pitch defaults to the strongest recorded position, then the best current role position
   → selected exact positionTags filter the bounded 68-role DTO in React
-  → the pitch omits unsupported SW and fades familiarity 1;
+  → the pitch omits unsupported SW and de-emphasizes red-tier familiarity values 1–5;
       revealed role rows expose sortable Current and Potential headers; concealed rows expose Current only;
       unavailable scores stay last and catalog order breaks ties
   → revealed rows use card ScoreBadge pairs for Current and Potential; concealed rows use Current only; rolePhaseLabel maps in_possession/out_of_possession → IP/OOP

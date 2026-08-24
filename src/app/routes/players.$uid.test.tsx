@@ -886,7 +886,7 @@ describe("player profile route", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("omits SW and de-emphasizes familiarity one without lowering playable thresholds", async () => {
+  it("omits SW and de-emphasizes tier-one familiarity without lowering playable thresholds", async () => {
     await resolveLoadDataIpcMock();
     setGetPlayerOverride(
       fixturePlayerDetail({
@@ -894,7 +894,8 @@ describe("player profile route", () => {
           AMR: 20,
           MR: 17,
           AMC: 14,
-          DL: 1,
+          DL: 5,
+          DC: 6,
           SW: 18,
           GK: 14,
           ST: 0,
@@ -921,14 +922,17 @@ describe("player profile route", () => {
       screen.queryByRole("button", { name: "SW, familiarity 18" }),
     ).toBeNull();
     expect(
-      screen.getByRole("button", { name: "DL, familiarity 1" }),
+      screen.getByRole("button", { name: "DL, familiarity 5" }),
     ).toHaveClass(
       "border-outline-variant",
       "bg-surface-container/50",
       "text-score-1",
     );
+    expect(
+      screen.getByRole("button", { name: "DC, familiarity 6" }),
+    ).not.toHaveClass("bg-surface-container/50");
     const lowFamiliarityPosition = screen.getByRole("button", {
-      name: "DL, familiarity 1",
+      name: "DL, familiarity 5",
     });
     expect(lowFamiliarityPosition).not.toHaveClass("opacity-45");
 
