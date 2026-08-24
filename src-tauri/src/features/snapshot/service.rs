@@ -885,7 +885,7 @@ mod tests {
     }
 
     #[test]
-    fn deleting_the_current_snapshot_promotes_the_next_date_and_leaves_no_final_current_row() {
+    fn deleting_the_current_snapshot_promotes_retained_club_dna_rows_without_backfill() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("promote-snapshot.db"));
         let save = list_saves(&conn)
@@ -911,7 +911,29 @@ mod tests {
             Some("2027-05-01"),
             "2026-08-11T11:00:00.000Z",
         );
+        insert_player(&conn, promoted, 77);
+        insert_player(&conn, current, 77);
+        conn.execute(
+            "INSERT INTO club_dna_scores (
+                snapshot_id, uid, definition_version, score_model_version, score
+             ) VALUES (?1, 77, 1, 1, 55), (?2, 77, 1, 1, 70)",
+            params![promoted, current],
+        )
+        .expect("seed exact Club DNA rows");
         select_current_snapshot_for_test(&mut conn, save.id);
+        conn.execute_batch(
+            "CREATE TRIGGER reject_club_dna_backfill
+             BEFORE INSERT ON club_dna_scores
+             BEGIN
+                 SELECT RAISE(ABORT, 'Club DNA promotion must not backfill');
+             END;
+             CREATE TRIGGER reject_club_dna_rewrite
+             BEFORE UPDATE ON club_dna_scores
+             BEGIN
+                 SELECT RAISE(ABORT, 'Club DNA promotion must not rewrite');
+             END;",
+        )
+        .expect("reject promotion score writes");
 
         let current_token = snapshot_token(&conn, current);
         let promoted_result =
@@ -919,10 +941,29 @@ mod tests {
         assert_eq!(promoted_result.current_snapshot_id, Some(promoted));
         assert_eq!(current_snapshot_id(&conn, save.id), Some(promoted));
         assert_eq!(
-            conn.query_row("SELECT COUNT(*) FROM club_dna_scores", [], |row| row
-                .get::<_, i64>(0))
-                .expect("count lazy Club DNA cache rows"),
+            conn.query_row(
+                "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1",
+                [current],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("confirm current score cascade"),
             0
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT definition_version, score_model_version, score
+                 FROM club_dna_scores WHERE snapshot_id = ?1 AND uid = 77",
+                [promoted],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                    ))
+                },
+            )
+            .expect("read unchanged promoted score"),
+            (1, 1, Some(55))
         );
         assert_eq!(
             conn.query_row(

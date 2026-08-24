@@ -1515,7 +1515,7 @@ mod tests {
     }
 
     #[test]
-    fn profile_recovery_requires_load_data_before_a_later_squad_boost() {
+    fn club_dna_reconciliation_failure_requires_load_data_before_a_later_squad_boost() {
         let _test_guard = PLAYER_BOOST_TEST_GATE
             .lock()
             .unwrap_or_else(|error| error.into_inner());
@@ -1523,13 +1523,19 @@ mod tests {
         {
             let conn = db.0.lock().expect("lock db");
             conn.execute_batch(
-                "CREATE TRIGGER fail_profile_ca_reconciliation
-                 BEFORE UPDATE OF ca ON players
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+                 SELECT id, '[\"attr.Acceleration\"]' FROM saves WHERE is_active = 1;
+                 INSERT INTO club_dna_scores (
+                    snapshot_id, uid, definition_version, score_model_version, score
+                 )
+                 SELECT snapshot_id, uid, 1, 1, 70 FROM players WHERE uid = 77;
+                 CREATE TRIGGER fail_profile_club_dna_reconciliation
+                 BEFORE UPDATE ON club_dna_scores
                  BEGIN
-                   SELECT RAISE(FAIL, 'test reconciliation failure');
+                   SELECT RAISE(FAIL, 'test Club DNA reconciliation failure');
                  END;",
             )
-            .expect("make reconciliation fail");
+            .expect("make eager Club DNA reconciliation fail");
         }
 
         let profile_error = match execute_player_boost_with(

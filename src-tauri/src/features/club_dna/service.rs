@@ -2,7 +2,10 @@ use std::collections::HashSet;
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 
-use crate::features::player_metrics::resolver::{HIDDEN_ATTRIBUTE_KEYS, PERSONALITY_KEYS};
+use crate::features::player_metrics::{
+    club_dna as club_dna_scores,
+    resolver::{HIDDEN_ATTRIBUTE_KEYS, PERSONALITY_KEYS},
+};
 use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,14 +94,17 @@ pub fn set_club_dna(
             |row| row.get(0),
         )
         .map_err(|_| "Unable to save Club DNA".to_string())?;
+    let definition = ClubDnaDefinition {
+        attribute_ids,
+        version: definition_version,
+    };
+    club_dna_scores::persist_save_scores(&tx, save_id, &definition)
+        .map_err(|_| "Unable to save Club DNA".to_string())?;
     tx.commit()
         .map_err(|_| "Unable to save Club DNA".to_string())?;
 
     Ok(ClubDnaUpsertResult {
-        definition: ClubDnaDefinition {
-            attribute_ids,
-            version: definition_version,
-        },
+        definition,
         created,
     })
 }
@@ -243,10 +249,34 @@ mod tests {
                 nationalities_json, preferred_foot, positions_json, attributes_json,
                 hidden_attributes_json, personality_json
              ) VALUES (?1, ?2, 100, 120, 'Player', 2000, 1, '[]', 'Right',
-                '{}', '{}', '{}', '{}')",
+                '{}', '{\"Acceleration\":14,\"Pace\":15}', '{\"Consistency\":12}',
+                '{\"Ambition\":14}')",
             params![snapshot_id, uid],
         )
         .expect("insert player");
+    }
+
+    fn score_rows(conn: &Connection) -> Vec<(i64, i64, i64, i64, Option<i64>)> {
+        let mut statement = conn
+            .prepare(
+                "SELECT snapshot_id, uid, definition_version, score_model_version, score
+                 FROM club_dna_scores
+                 ORDER BY snapshot_id, uid, definition_version, score_model_version",
+            )
+            .expect("prepare score rows");
+        statement
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .expect("query score rows")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read score rows")
     }
 
     #[test]
@@ -437,7 +467,58 @@ mod tests {
     }
 
     #[test]
-    fn edits_and_removals_atomically_own_only_their_save_cache_rows() {
+    fn set_scores_every_retained_snapshot_and_rolls_back_a_failed_replacement() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = connection(&temp_dir.path().join("club-dna-eager-history.db"));
+        let (save_id, context_token) = insert_save(&conn, "Save", true);
+        let first_snapshot = insert_snapshot(&conn, save_id, false);
+        let second_snapshot = insert_snapshot(&conn, save_id, true);
+        insert_player(&conn, first_snapshot, 1);
+        insert_player(&conn, second_snapshot, 2);
+
+        let created = set_club_dna(
+            &conn,
+            save_id,
+            &context_token,
+            vec!["attr.Acceleration".to_string()],
+        )
+        .expect("create definition across retained history");
+        assert!(created.created);
+        let original_definition = created.definition.clone();
+        let original_score_rows = score_rows(&conn);
+        assert_eq!(
+            original_score_rows,
+            vec![
+                (first_snapshot, 1, 1, 1, Some(70)),
+                (second_snapshot, 2, 1, 1, Some(70)),
+            ]
+        );
+        conn.execute_batch(
+            "CREATE TRIGGER reject_club_dna_replacement
+             BEFORE INSERT ON club_dna_scores
+             WHEN NEW.definition_version = 2
+             BEGIN
+                 SELECT RAISE(ABORT, 'forced eager score failure');
+             END;",
+        )
+        .expect("reject replacement score write");
+
+        assert!(set_club_dna(
+            &conn,
+            save_id,
+            &context_token,
+            vec!["attr.Pace".to_string()],
+        )
+        .is_err());
+        assert_eq!(
+            get_club_dna(&conn, save_id, &context_token).expect("read rolled-back definition"),
+            Some(original_definition)
+        );
+        assert_eq!(score_rows(&conn), original_score_rows);
+    }
+
+    #[test]
+    fn edits_and_removals_atomically_own_only_their_save_eager_score_rows() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = connection(&temp_dir.path().join("club-dna-invalidation.db"));
         let (first_save, first_token) = insert_save(&conn, "First", true);
@@ -485,8 +566,8 @@ mod tests {
                 [first_snapshot],
                 |row| row.get::<_, i64>(0),
             )
-            .expect("count cleared first cache"),
-            0
+            .expect("count eager first score"),
+            1
         );
         assert_eq!(
             conn.query_row(
@@ -497,13 +578,6 @@ mod tests {
             .expect("count retained second cache"),
             1
         );
-        conn.execute(
-            "INSERT INTO club_dna_scores (
-                snapshot_id, uid, definition_version, score_model_version, score
-             ) VALUES (?1, 1, 2, 1, 50)",
-            [first_snapshot],
-        )
-        .expect("seed first cache for rollback");
         conn.execute_batch(
             "CREATE TRIGGER reject_club_dna_update
              BEFORE UPDATE ON club_dna_definitions
@@ -566,8 +640,8 @@ mod tests {
                 [first_snapshot],
                 |row| row.get::<_, i64>(0)
             )
-            .expect("count clean recreated cache"),
-            0
+            .expect("count eager recreated score"),
+            1
         );
     }
 
