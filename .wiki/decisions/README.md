@@ -36,6 +36,8 @@ Use a short, numbered filename such as `0001-decision-title.md`.
 | [0020](./0020-action-specific-fm26-staff-ca-boost.md) | Action-specific FM26 staff CA boost |
 | [0021](./0021-sequential-club-family-staff-ca-boost.md) | Sequential club-family staff CA boost |
 | [0022](./0022-explicit-release-preparation.md) | Explicit release preparation |
+| [0023](./0023-lazy-club-dna-score-cache.md) | Lazy persistent Club DNA score cache (superseded by ADR-0024) |
+| [0024](./0024-eager-persisted-club-dna-scores.md) | Eager persisted Club DNA scores |
 
 ## ADR format
 

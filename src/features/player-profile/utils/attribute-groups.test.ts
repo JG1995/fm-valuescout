@@ -3,17 +3,23 @@ import {
   attributeTierLabel,
   attributeValueTier,
 } from "@/components/ui/attribute-value/attribute-value";
+import { VISIBLE_ATTRIBUTE_GROUPS as CANONICAL_VISIBLE_ATTRIBUTE_GROUPS } from "@/utils/player-attributes";
 import {
   attributeRows,
   GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS,
   GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS,
   HIDDEN_ATTRIBUTE_KEYS,
   labelFromPascal,
+  OUTFIELD_ATTRIBUTE_GROUPS,
   PERSONALITY_ATTRIBUTE_KEYS,
   VISIBLE_ATTRIBUTE_GROUPS,
 } from "./attribute-groups";
 
 describe("attribute-groups", () => {
+  it("uses the canonical visible attribute groups", () => {
+    expect(VISIBLE_ATTRIBUTE_GROUPS).toBe(CANONICAL_VISIBLE_ATTRIBUTE_GROUPS);
+  });
+
   it("exposes Technical Mental Physical and Goalkeeping with known dump keys", () => {
     const titles = VISIBLE_ATTRIBUTE_GROUPS.map((group) => group.title);
     expect(titles).toEqual(["Technical", "Mental", "Physical", "Goalkeeping"]);
@@ -25,6 +31,20 @@ describe("attribute-groups", () => {
     expect(new Set(keys).size).toBe(keys.length);
     expect(HIDDEN_ATTRIBUTE_KEYS).toContain("Consistency");
     expect(PERSONALITY_ATTRIBUTE_KEYS).toContain("Ambition");
+  });
+
+  it("keeps the Profile group order", () => {
+    expect(OUTFIELD_ATTRIBUTE_GROUPS.map((group) => group.id)).toEqual([
+      "technical",
+      "mental",
+      "physical",
+    ]);
+    expect(
+      GOALKEEPER_PRIMARY_ATTRIBUTE_GROUPS.map((group) => group.id),
+    ).toEqual(["goalkeeping", "mental", "physical"]);
+    expect(
+      GOALKEEPER_OUTFIELD_ATTRIBUTE_GROUPS.map((group) => group.id),
+    ).toEqual(["technical"]);
   });
 
   it("keeps outfield groups together and separates technical set pieces", () => {

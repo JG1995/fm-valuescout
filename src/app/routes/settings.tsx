@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense } from "react";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import { bridgeInstallQueryOptions } from "@/features/memory-read/api/bridge-install-query-options";
 import { bridgeStatusQueryOptions } from "@/features/memory-read/api/bridge-status-query-options";
@@ -56,6 +57,7 @@ function SettingsPage() {
     void queryClient.invalidateQueries({ queryKey: searchKeys.all });
     void queryClient.invalidateQueries({ queryKey: playerKeys.all });
     void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
+    void queryClient.invalidateQueries({ queryKey: clubDnaKeys.all });
     void queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
     void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
     void queryClient.resetQueries({ queryKey: academyKeys.all });

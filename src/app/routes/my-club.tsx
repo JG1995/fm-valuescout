@@ -1,6 +1,7 @@
 import {
   useIsFetching,
   useMutation,
+  useQuery,
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
@@ -12,6 +13,13 @@ import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
+import { ClubDnaDefinition } from "@/features/club-dna/components/club-dna-definition";
+import type {
+  ClubDnaContext,
+  ClubDnaRemoveResult,
+  ClubDnaUpsertResult,
+} from "@/features/club-dna/types/club-dna";
 import { SquadCsvImportActions } from "@/features/csv-import/components/squad-csv-import-actions";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import {
@@ -34,9 +42,11 @@ import { PlannerTacticEditor } from "@/features/planner/components/planner-tacti
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { boostSquadCurrentAbility } from "@/features/squad/api/boost-squad-current-ability";
 import { boostSquadWonderkidMentality } from "@/features/squad/api/boost-squad-wonderkid-mentality";
+import { squadKeys } from "@/features/squad/api/squad-keys";
 import { squadPlayersQueryOptions } from "@/features/squad/api/squad-players-query-options";
 import { SquadOverviewPanel } from "@/features/squad/components/squad-overview-panel";
 import {
@@ -77,6 +87,7 @@ import {
   isStaffSortField,
 } from "@/features/staff/types/staff-sort";
 import { staffShortlistPresentation } from "@/features/staff/utils/staff-shortlist-presentation";
+import { usePlayerTableStore } from "@/stores/use-player-table-store";
 
 export type MyClubSearch = {
   view?: MyClubWorkspace;
@@ -307,6 +318,17 @@ function ManagedClubError({
 
 function MyClubPageContent() {
   const queryClient = useQueryClient();
+  const addColumns = usePlayerTableStore((state) => state.addColumns);
+  const savesQuery = useQuery(savesQueryOptions);
+  const activeSave = savesQuery.data?.find((save) => save.isActive);
+  const activeClubDnaContext =
+    savesQuery.isSuccess && !savesQuery.isFetching && activeSave
+      ? { saveId: activeSave.id, contextToken: activeSave.contextToken }
+      : null;
+  const activeClubDnaContextRef = useRef<ClubDnaContext | null>(
+    activeClubDnaContext,
+  );
+  activeClubDnaContextRef.current = activeClubDnaContext;
   const [latestSquadBoostAction, setLatestSquadBoostAction] =
     useState<SquadPlayerBoostAction | null>(null);
   const [openSquadBoostAction, setOpenSquadBoostAction] =
@@ -314,7 +336,8 @@ function MyClubPageContent() {
   const squadBoostFeedbackRef = useRef<HTMLDivElement>(null);
   const { data: snapshot, isRefetchError: snapshotRefreshError } =
     useSuspenseQuery(currentSnapshotQueryOptions);
-  const { data: managedClub } = useSuspenseQuery(managedClubQueryOptions);
+  const { data: managedClub, isRefetchError: managedClubRefreshError } =
+    useSuspenseQuery(managedClubQueryOptions);
   const { data: tactic, isRefetchError: tacticRefreshError } = useSuspenseQuery(
     plannerTacticQueryOptions,
   );
@@ -337,6 +360,38 @@ function MyClubPageContent() {
     void queryClient.resetQueries({ queryKey: academyKeys.all });
     void queryClient.invalidateQueries({ queryKey: staffKeys.all });
   };
+  const clubDnaContextIsCurrent = (context: ClubDnaContext) =>
+    activeClubDnaContextRef.current?.saveId === context.saveId &&
+    activeClubDnaContextRef.current?.contextToken === context.contextToken;
+  const invalidateClubDnaConsumers = (context: ClubDnaContext) => {
+    if (!clubDnaContextIsCurrent(context)) {
+      return;
+    }
+    void queryClient.invalidateQueries({
+      queryKey: clubDnaKeys.definition(context),
+    });
+    void queryClient.invalidateQueries({ queryKey: searchKeys.all });
+    void queryClient.invalidateQueries({ queryKey: squadKeys.all });
+  };
+  const onClubDnaSaved = (
+    result: ClubDnaUpsertResult,
+    context: ClubDnaContext,
+  ) => {
+    if (!clubDnaContextIsCurrent(context)) {
+      return;
+    }
+    if (result.created) {
+      addColumns("search", ["club_dna"]);
+      addColumns("squad", ["club_dna"]);
+    }
+    invalidateClubDnaConsumers(context);
+  };
+  const onClubDnaRemoved = (
+    _result: ClubDnaRemoveResult,
+    context: ClubDnaContext,
+  ) => {
+    invalidateClubDnaConsumers(context);
+  };
   const squadCurrentAbilityBoost = useMutation({
     mutationFn: ({ onProgress }: SquadBoostMutationVariables) =>
       boostSquadCurrentAbility(onProgress),
@@ -350,13 +405,27 @@ function MyClubPageContent() {
   const isPlannerRefreshing = useIsFetching({ queryKey: plannerKeys.all }) > 0;
   const isSnapshotRefreshing =
     useIsFetching({ queryKey: snapshotKeys.all }) > 0;
+  const isSavesRefreshing = savesQuery.isFetching;
+  const isManagedClubRefreshing =
+    useIsFetching({ queryKey: managedClubKeys.all }) > 0;
   const activeSaveRefreshError =
+    savesQuery.isError ||
     snapshotRefreshError ||
+    managedClubRefreshError ||
     tacticRefreshError ||
     tacticOptionsRefreshError ||
     depthRefreshError;
   const isActiveSaveUnavailable =
-    isPlannerRefreshing || isSnapshotRefreshing || activeSaveRefreshError;
+    isPlannerRefreshing ||
+    isSnapshotRefreshing ||
+    isSavesRefreshing ||
+    isManagedClubRefreshing ||
+    activeSaveRefreshError;
+  const clubDnaAvailable =
+    activeClubDnaContext !== null &&
+    snapshot?.saveId === activeClubDnaContext.saveId &&
+    managedClub.clubName !== null &&
+    !isActiveSaveUnavailable;
   const search = Route.useSearch();
   const { view } = search;
   const { sort: squadSort, dir: squadDir } = squadSortForSearch(search);
@@ -545,7 +614,24 @@ function MyClubPageContent() {
                   </div>
                 }
               >
-                <ManagedClubSelector onSaved={onManagedClubSaved} />
+                <ManagedClubSelector
+                  action={
+                    activeClubDnaContext ? (
+                      <ClubDnaDefinition
+                        key={`${activeClubDnaContext.saveId}:${activeClubDnaContext.contextToken}`}
+                        context={activeClubDnaContext}
+                        available={clubDnaAvailable}
+                        onSaved={onClubDnaSaved}
+                        onRemoved={onClubDnaRemoved}
+                      />
+                    ) : (
+                      <Button variant="secondary" disabled>
+                        Define DNA
+                      </Button>
+                    )
+                  }
+                  onSaved={onManagedClubSaved}
+                />
               </Suspense>
             </ErrorBoundary>
           ) : null}

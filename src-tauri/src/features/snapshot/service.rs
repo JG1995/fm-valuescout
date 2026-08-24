@@ -885,7 +885,7 @@ mod tests {
     }
 
     #[test]
-    fn deleting_the_current_snapshot_promotes_the_next_date_and_leaves_no_final_current_row() {
+    fn deleting_the_current_snapshot_promotes_retained_club_dna_rows_without_backfill() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("promote-snapshot.db"));
         let save = list_saves(&conn)
@@ -893,6 +893,12 @@ mod tests {
             .into_iter()
             .find(|save| save.is_active)
             .expect("active save");
+        conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.Acceleration\"]')",
+            [save.id],
+        )
+        .expect("set Club DNA definition");
         let promoted = insert_snapshot(
             &conn,
             save.id,
@@ -905,13 +911,60 @@ mod tests {
             Some("2027-05-01"),
             "2026-08-11T11:00:00.000Z",
         );
+        insert_player(&conn, promoted, 77);
+        insert_player(&conn, current, 77);
+        conn.execute(
+            "INSERT INTO club_dna_scores (
+                snapshot_id, uid, definition_version, score_model_version, score
+             ) VALUES (?1, 77, 1, 1, 55), (?2, 77, 1, 1, 70)",
+            params![promoted, current],
+        )
+        .expect("seed exact Club DNA rows");
         select_current_snapshot_for_test(&mut conn, save.id);
+        conn.execute_batch(
+            "CREATE TRIGGER reject_club_dna_backfill
+             BEFORE INSERT ON club_dna_scores
+             BEGIN
+                 SELECT RAISE(ABORT, 'Club DNA promotion must not backfill');
+             END;
+             CREATE TRIGGER reject_club_dna_rewrite
+             BEFORE UPDATE ON club_dna_scores
+             BEGIN
+                 SELECT RAISE(ABORT, 'Club DNA promotion must not rewrite');
+             END;",
+        )
+        .expect("reject promotion score writes");
 
         let current_token = snapshot_token(&conn, current);
         let promoted_result =
             delete_snapshot(&mut conn, current, &current_token).expect("delete current snapshot");
         assert_eq!(promoted_result.current_snapshot_id, Some(promoted));
         assert_eq!(current_snapshot_id(&conn, save.id), Some(promoted));
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1",
+                [current],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("confirm current score cascade"),
+            0
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT definition_version, score_model_version, score
+                 FROM club_dna_scores WHERE snapshot_id = ?1 AND uid = 77",
+                [promoted],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                    ))
+                },
+            )
+            .expect("read unchanged promoted score"),
+            (1, 1, Some(55))
+        );
         assert_eq!(
             conn.query_row(
                 "SELECT COUNT(*) FROM academy_classes WHERE save_id = ?1 AND class_year = 2026 AND is_automatic = 1",
@@ -952,6 +1005,12 @@ mod tests {
         )
         .expect("insert inactive planner setting");
         conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.Acceleration\"]')",
+            [inactive.id],
+        )
+        .expect("insert inactive Club DNA definition");
+        conn.execute(
             "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
              VALUES (?1, 77, 3)",
             [inactive.id],
@@ -975,6 +1034,7 @@ mod tests {
         );
         for table in [
             "managed_club_settings",
+            "club_dna_definitions",
             "player_youth_career_stats",
             "academy_classes",
         ] {
@@ -1045,6 +1105,12 @@ mod tests {
         )
         .expect("insert planner setting");
         conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.Acceleration\"]')",
+            [save.id],
+        )
+        .expect("insert Club DNA definition");
+        conn.execute(
             "INSERT INTO player_youth_career_stats (save_id, player_uid, career_appearances)
              VALUES (?1, 77, 3)",
             [save.id],
@@ -1081,6 +1147,7 @@ mod tests {
         assert_eq!(retained_player_count, 1);
         for table in [
             "managed_club_settings",
+            "club_dna_definitions",
             "player_youth_career_stats",
             "academy_classes",
         ] {

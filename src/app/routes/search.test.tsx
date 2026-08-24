@@ -409,13 +409,14 @@ describe("search route", () => {
     ]);
   });
 
-  it("colors current and potential role scores while leaving other dynamic metrics neutral", async () => {
+  it("renders current, potential, and Club DNA scores while leaving other dynamic metrics neutral", async () => {
     await resolveLoadDataIpcMock();
     usePlayerTableStore
       .getState()
       .addColumns("search", [
         "role.goalkeeper_ip",
         "potential_role.goalkeeper_ip",
+        "club_dna",
         "attr.Acceleration",
       ]);
     setSearchPlayersOverride([
@@ -429,12 +430,13 @@ describe("search route", () => {
         dynamicValues: {
           "role.goalkeeper_ip": Number(score),
           "potential_role.goalkeeper_ip": Number(score),
+          club_dna: Number(score),
           "attr.Acceleration": 16,
         },
       })),
       {
         ...playerNamed("Missing fit", 160),
-        dynamicValues: { "attr.Acceleration": 16 },
+        dynamicValues: { "attr.Acceleration": 16, club_dna: null },
       },
     ]);
     renderSearchRoute();
@@ -458,6 +460,11 @@ describe("search route", () => {
           name: `Potential role · Goalkeeper (IP): ${score}, ${tier}`,
         }),
       ).toHaveClass(scoreClass);
+      expect(
+        within(table).getByRole("img", {
+          name: `Club DNA: ${score}, ${tier}`,
+        }),
+      ).toHaveClass(scoreClass);
     }
 
     const missingRow = within(table).getByText("Missing fit").closest("tr");
@@ -465,7 +472,7 @@ describe("search route", () => {
       throw new Error("Expected the missing-score player row.");
     }
     expect(within(missingRow).queryAllByRole("img")).toHaveLength(0);
-    expect(within(missingRow).getAllByText("—")).toHaveLength(2);
+    expect(within(missingRow).getAllByText("—")).toHaveLength(3);
     expect(within(missingRow).getByText("16")).not.toHaveAttribute(
       "role",
       "img",

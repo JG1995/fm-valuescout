@@ -327,6 +327,35 @@ describe("usePlayerTableStore", () => {
     });
   });
 
+  it("retains Club DNA in current Search and Squad layouts without defaulting it", async () => {
+    const store = usePlayerTableStore.getState();
+    store.addColumns("search", ["club_dna"]);
+    store.addColumns("squad", ["club_dna"]);
+
+    expect(defaultPlayerTableLayouts().search.columnIds).not.toContain(
+      "club_dna",
+    );
+    expect(defaultPlayerTableLayouts().squad.columnIds).not.toContain(
+      "club_dna",
+    );
+
+    localStorage.setItem(
+      PLAYER_TABLE_LAYOUT_STORAGE_KEY,
+      JSON.stringify({
+        state: { layouts: usePlayerTableStore.getState().layouts },
+        version: 5,
+      }),
+    );
+    await usePlayerTableStore.persist.rehydrate();
+
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
+      "club_dna",
+    );
+    expect(usePlayerTableStore.getState().layouts.squad.columnIds).toContain(
+      "club_dna",
+    );
+  });
+
   it("keeps table layouts independent while appending columns once and clamping widths", () => {
     const store = usePlayerTableStore.getState();
 

@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppTopBar } from "@/app/components/app-top-bar";
 import type { RouterContext } from "@/app/router-context";
 import { academyClassesQueryOptions } from "@/features/academy/api/academy-classes-query-options";
+import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { setBridgeStatusIpcMockMode } from "@/features/memory-read/api/bridge-status-ipc-mock";
 import {
   DEFAULT_PLAYER_CAP,
@@ -324,19 +325,24 @@ describe("app top bar", () => {
     );
   });
 
-  it("invalidates cached Staff data after Load Data", async () => {
+  it("invalidates cached Staff and Club DNA data after Load Data", async () => {
     const user = userEvent.setup();
     const { queryClient } = renderWithProviders();
     const staffProbeKey = [...staffKeys.all, "probe"];
+    const clubDnaProbeKey = [...clubDnaKeys.all, "probe"];
     queryClient.setQueryData(staffProbeKey, []);
+    queryClient.setQueryData(clubDnaProbeKey, []);
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
 
-    await waitFor(() =>
+    await waitFor(() => {
       expect(queryClient.getQueryState(staffProbeKey)?.isInvalidated).toBe(
         true,
-      ),
-    );
+      );
+      expect(queryClient.getQueryState(clubDnaProbeKey)?.isInvalidated).toBe(
+        true,
+      );
+    });
   });
 
   it("refetches an active Academy query after switching saves", async () => {
@@ -374,13 +380,15 @@ describe("app top bar", () => {
     );
   });
 
-  it("invalidates cached Staff data after switching saves", async () => {
+  it("invalidates cached Staff and Club DNA data after switching saves", async () => {
     const user = userEvent.setup();
     const { queryClient } = renderWithProviders({
       initialEntries: ["/settings"],
     });
     const staffProbeKey = [...staffKeys.all, "probe"];
+    const clubDnaProbeKey = [...clubDnaKeys.all, "probe"];
     queryClient.setQueryData(staffProbeKey, []);
+    queryClient.setQueryData(clubDnaProbeKey, []);
 
     await user.type(await screen.findByLabelText("New save"), "Youth intake");
     await user.click(screen.getByRole("button", { name: "Create save" }));
@@ -389,10 +397,13 @@ describe("app top bar", () => {
       "2",
     );
 
-    await waitFor(() =>
+    await waitFor(() => {
       expect(queryClient.getQueryState(staffProbeKey)?.isInvalidated).toBe(
         true,
-      ),
-    );
+      );
+      expect(queryClient.getQueryState(clubDnaProbeKey)?.isInvalidated).toBe(
+        true,
+      );
+    });
   });
 });

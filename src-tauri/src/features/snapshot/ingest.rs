@@ -9,6 +9,7 @@ use serde_json::Value;
 
 use crate::features::academy::service as academy_service;
 use crate::features::memory_read::dump_validation::parse_and_validate_dump;
+use crate::features::player_metrics::club_dna as club_dna_scores;
 use crate::features::scoring::catalog::all_roles;
 use crate::features::scoring::score::score_role;
 use crate::features::staff::scoring::{all_staff_roles, score_staff_role};
@@ -143,6 +144,9 @@ fn ingest_dump_json_for_save(
     // ponytail: score every catalog role synchronously during ingest (one INSERT per role × player)
     // Upgrade to lazy/on-demand or batched scoring if ingest scoring time dominates Load Data
     insert_role_scores(&tx, snapshot_id, object)?;
+    if let Some(definition) = club_dna_scores::definition_for_save(&tx, save_id)? {
+        club_dna_scores::persist_snapshot_scores(&tx, snapshot_id, &definition)?;
+    }
     let effective_snapshot_id = service::select_current_snapshot(&tx, save_id)?
         .ok_or_else(|| "ingest did not select a current snapshot".to_string())?;
     if effective_snapshot_id == snapshot_id {
@@ -696,6 +700,26 @@ mod tests {
         .expect("count role scores")
     }
 
+    fn club_dna_score_rows(
+        conn: &Connection,
+        snapshot_id: i64,
+    ) -> Vec<(i64, i64, i64, Option<i64>)> {
+        let mut statement = conn
+            .prepare(
+                "SELECT uid, definition_version, score_model_version, score
+                 FROM club_dna_scores WHERE snapshot_id = ?1
+                 ORDER BY uid, definition_version, score_model_version",
+            )
+            .expect("prepare Club DNA score query");
+        statement
+            .query_map([snapshot_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .expect("query Club DNA scores")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read Club DNA scores")
+    }
+
     fn role_scores_for_player(
         conn: &Connection,
         snapshot_id: i64,
@@ -788,6 +812,167 @@ mod tests {
         root["gameDate"] = game_date.map(Value::from).unwrap_or(Value::Null);
         root["players"][0]["name"] = Value::from(player_name);
         root.to_string()
+    }
+
+    #[test]
+    fn ingest_persists_scores_for_each_retained_snapshot_when_a_definition_exists() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-club-dna-eager.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.Acceleration\"]')",
+            [save.id],
+        )
+        .expect("set Club DNA definition");
+
+        let first_path = write_dump(&temp_dir, "club-dna-first.json", GOLDEN_FIXTURE);
+        let first = ingest_dump_file(&mut conn, &first_path).expect("ingest first snapshot");
+        let mut second_dump: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
+        second_dump["gameDate"] = Value::from("2027-08-14");
+        let second_path = write_dump(&temp_dir, "club-dna-second.json", &second_dump.to_string());
+        let second = ingest_dump_file(&mut conn, &second_path).expect("ingest retained snapshot");
+
+        assert_eq!(
+            club_dna_score_rows(&conn, first.id),
+            vec![(77, 1, 1, Some(70))]
+        );
+        assert_eq!(
+            club_dna_score_rows(&conn, second.id),
+            vec![(77, 1, 1, Some(70))]
+        );
+    }
+
+    #[test]
+    fn ingest_persists_a_computed_null_club_dna_row() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-club-dna-null.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.Handling\"]')",
+            [save.id],
+        )
+        .expect("set nullable Club DNA definition");
+
+        let dump_path = write_dump(&temp_dir, "club-dna-null.json", GOLDEN_FIXTURE);
+        let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest nullable score");
+
+        assert_eq!(
+            club_dna_score_rows(&conn, snapshot.id),
+            vec![(77, 1, 1, None)]
+        );
+    }
+
+    #[test]
+    fn ingest_skips_club_dna_work_without_a_definition() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-club-dna-absent.db"));
+        let dump_path = write_dump(&temp_dir, "club-dna-absent.json", GOLDEN_FIXTURE);
+
+        ingest_dump_file(&mut conn, &dump_path).expect("ingest without definition");
+
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM club_dna_scores", [], |row| row
+                .get::<_, i64>(0))
+                .expect("count absent-definition scores"),
+            0
+        );
+    }
+
+    #[test]
+    fn failed_club_dna_score_write_rolls_back_the_new_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-club-dna-rollback.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.Acceleration\"]')",
+            [save.id],
+        )
+        .expect("set Club DNA definition");
+        let first_path = write_dump(&temp_dir, "club-dna-first.json", GOLDEN_FIXTURE);
+        let first = ingest_dump_file(&mut conn, &first_path).expect("ingest retained snapshot");
+        let prior_score_rows = club_dna_score_rows(&conn, first.id);
+        conn.execute_batch(
+            "CREATE TRIGGER reject_club_dna_insert
+             BEFORE INSERT ON club_dna_scores
+             BEGIN
+                 SELECT RAISE(ABORT, 'forced Club DNA score failure');
+             END;",
+        )
+        .expect("reject Club DNA writes");
+        let rejected_path = write_dump(&temp_dir, "club-dna-rejected.json", GOLDEN_FIXTURE);
+
+        let error = ingest_dump_file(&mut conn, &rejected_path)
+            .expect_err("reject eager Club DNA score write");
+
+        assert!(error.contains("forced Club DNA score failure"));
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(first.id));
+        assert_eq!(snapshot_count(&conn, save.id), 1);
+        assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
+        assert_eq!(
+            role_score_count_for_snapshot(&conn, first.id),
+            all_roles().len() as i64
+        );
+        assert_eq!(club_dna_score_rows(&conn, first.id), prior_score_rows);
+    }
+
+    #[test]
+    fn invalid_stored_club_dna_definition_rolls_back_the_new_snapshot() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(
+            &temp_dir
+                .path()
+                .join("ingest-club-dna-invalid-definition.db"),
+        );
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        conn.execute(
+            "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+             VALUES (?1, '[\"attr.NotARealAttribute\"]')",
+            [save.id],
+        )
+        .expect("seed invalid stored definition");
+        let dump_path = write_dump(
+            &temp_dir,
+            "club-dna-invalid-definition.json",
+            GOLDEN_FIXTURE,
+        );
+
+        let error = ingest_dump_file(&mut conn, &dump_path)
+            .expect_err("invalid stored definition must reject ingest");
+
+        assert!(error.contains("Stored Club DNA definition is invalid"));
+        assert_eq!(snapshot_count(&conn, save.id), 0);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM players", [], |row| row
+                .get::<_, i64>(0))
+                .expect("count rolled-back players"),
+            0
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM player_role_scores", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("count rolled-back role scores"),
+            0
+        );
     }
 
     #[test]

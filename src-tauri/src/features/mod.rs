@@ -1,4 +1,5 @@
 pub mod academy;
+pub mod club_dna;
 pub mod csv_import;
 pub mod managed_club;
 pub mod memory_read;

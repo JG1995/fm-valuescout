@@ -47,6 +47,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const staffFamilyConfigured = ${staffFamilyConfigured ? "true" : "false"};
       const snapshotHistoryEnabled = ${snapshotHistory ? "true" : "false"};
       let nextSaveId = 2;
+      let clubDnaDefinition = null;
       let saves = [{
         id: 1,
         contextToken: "save-token-1",
@@ -572,7 +573,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           if (cmd === "get_current_snapshot") {
             const snapshot = currentSnapshot();
             if (snapshot) return snapshotSummary(snapshot);
-            return plannerSnapshot || playerProfile || staffWorkspace
+            return plannerSnapshot || squadOverview || playerProfile || staffWorkspace
               ? {
                   id: 1,
                   saveId: 1,
@@ -1141,6 +1142,26 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
               recoveryRequired: false,
               recoveryMessage: null,
             };
+          }
+
+          if (cmd === "get_club_dna") {
+            return clubDnaDefinition;
+          }
+
+          if (cmd === "set_club_dna") {
+            const created = clubDnaDefinition === null;
+            clubDnaDefinition = {
+              attributeIds: Array.isArray(args?.attributeIds)
+                ? [...args.attributeIds]
+                : [],
+            };
+            return { definition: clubDnaDefinition, created };
+          }
+
+          if (cmd === "remove_club_dna") {
+            const removed = clubDnaDefinition !== null;
+            clubDnaDefinition = null;
+            return { removed };
           }
 
           if (cmd === "get_managed_club") {

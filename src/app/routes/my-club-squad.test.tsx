@@ -16,6 +16,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
 import type { MyClubWorkspace } from "@/features/my-club/components/my-club-workspace-tabs";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
@@ -32,12 +33,23 @@ import {
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
+import type { SaveSummary } from "@/features/snapshot/types/save";
 import type { SnapshotSummary } from "@/features/snapshot/types/snapshot";
+import { squadKeys } from "@/features/squad/api/squad-keys";
 import type { SquadPlayer } from "@/features/squad/types/squad-player";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import { routeTree } from "@/routeTree.gen";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
+import {
+  rejectBusyClubDnaRemoveRequest,
+  resolveBusyClubDnaSetRequest,
+  setClubDnaGetIpcMockMode,
+  setClubDnaIpcMockDefinition,
+  setClubDnaRemoveIpcMockMode,
+  setClubDnaSetIpcMockMode,
+} from "@/testing/club-dna-ipc-mock";
 import {
   getPlannerAddStringIpcMockCalls,
   getPlannerClearAllIpcMockCalls,
@@ -100,13 +112,14 @@ import {
 function renderMyClubRoute({
   staleTime = 0,
   initialEntry = "/my-club?view=planner",
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime } },
+  }),
 }: {
   staleTime?: number;
   initialEntry?: string;
+  queryClient?: QueryClient;
 } = {}) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime } },
-  });
   const history = createMemoryHistory({ initialEntries: [initialEntry] });
   const router = createRouter({
     routeTree,
@@ -222,6 +235,30 @@ function mockScrollerScrollTo(scroller: HTMLElement) {
   });
 }
 
+const CLUB_DNA_CONTEXT = { saveId: 1, contextToken: "save-token-1" };
+const SECOND_SAVE: SaveSummary = {
+  id: 2,
+  contextToken: "save-token-2",
+  name: "Second save",
+  isActive: true,
+  createdAtUtc: "2026-07-28T16:00:00.000Z",
+  updatedAtUtc: "2026-07-28T16:00:00.000Z",
+};
+
+function savesFor(activeSaveId: number): SaveSummary[] {
+  return [
+    {
+      id: CLUB_DNA_CONTEXT.saveId,
+      contextToken: CLUB_DNA_CONTEXT.contextToken,
+      name: "Default save",
+      isActive: activeSaveId === 1,
+      createdAtUtc: "2026-07-28T12:00:00.000Z",
+      updatedAtUtc: "2026-07-28T12:00:00.000Z",
+    },
+    ...(activeSaveId === SECOND_SAVE.id ? [SECOND_SAVE] : []),
+  ];
+}
+
 describe("My Club route", () => {
   it("exposes the five My Club workspaces in order", async () => {
     await resolveLoadDataIpcMock();
@@ -329,6 +366,396 @@ describe("My Club route", () => {
     });
   });
 
+  it("disables Club DNA until a managed club is selected", async () => {
+    await resolveLoadDataIpcMock();
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    expect(
+      await screen.findByRole("button", { name: "Define DNA" }),
+    ).toBeDisabled();
+  });
+
+  it("keeps a disabled Define DNA placeholder while saves initially load", async () => {
+    await resolveLoadDataIpcMock();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    let resolveSaves!: (saves: SaveSummary[]) => void;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0 } },
+    });
+    const pendingSaves = queryClient.fetchQuery({
+      ...savesQueryOptions,
+      queryFn: () =>
+        new Promise<SaveSummary[]>((resolve) => {
+          resolveSaves = resolve;
+        }),
+    });
+
+    renderMyClubRoute({ initialEntry: "/my-club", queryClient });
+
+    expect(
+      await screen.findByRole("button", { name: "Define DNA" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("dialog", { name: "Define Club DNA" }),
+    ).toBeNull();
+
+    resolveSaves(savesFor(CLUB_DNA_CONTEXT.saveId));
+    await pendingSaves;
+  });
+
+  it("keeps a disabled Define DNA placeholder after an initial saves error", async () => {
+    await resolveLoadDataIpcMock();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, refetchOnMount: false, staleTime: 0 },
+      },
+    });
+    const savesError = queryClient.fetchQuery({
+      ...savesQueryOptions,
+      queryFn: () => Promise.reject(new Error("Could not load saves")),
+    });
+    await expect(savesError).rejects.toThrow("Could not load saves");
+
+    renderMyClubRoute({ initialEntry: "/my-club", queryClient });
+
+    expect(
+      await screen.findByRole("button", { name: "Define DNA" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("dialog", { name: "Define Club DNA" }),
+    ).toBeNull();
+  });
+
+  it("keeps the visible Define DNA action disabled after a Club DNA query error", async () => {
+    await resolveLoadDataIpcMock();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    setClubDnaGetIpcMockMode("error");
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const trigger = await screen.findByRole("button", { name: "Define DNA" });
+    await waitFor(() => expect(trigger).toBeDisabled());
+    expect(
+      screen.queryByRole("dialog", { name: "Define Club DNA" }),
+    ).toBeNull();
+  });
+
+  it("places Club DNA beside the managed-club save and appends it on creation", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    setPlannerAvailableClubs(["Barcelona"]);
+    const { queryClient, router } = renderMyClubRoute({
+      initialEntry: "/my-club?squadSort=club_dna&squadDir=asc",
+    });
+
+    const controls = await screen.findByRole("group", {
+      name: "Managed club controls",
+    });
+    const saveButton = within(controls).getByRole("button", {
+      name: "Save managed club",
+    });
+    const defineButton = within(controls).getByRole("button", {
+      name: "Define DNA",
+    });
+    expect(saveButton.compareDocumentPosition(defineButton)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    await waitFor(() => expect(defineButton).toBeEnabled());
+
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    await user.click(defineButton);
+    const dialog = await screen.findByRole("dialog", {
+      name: "Define Club DNA",
+    });
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Acceleration" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save Club DNA" }),
+    );
+
+    await waitFor(() => {
+      expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
+        "club_dna",
+      );
+      expect(usePlayerTableStore.getState().layouts.squad.columnIds).toContain(
+        "club_dna",
+      );
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: clubDnaKeys.definition(CLUB_DNA_CONTEXT),
+      });
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: searchKeys.all,
+      });
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: squadKeys.all,
+      });
+    });
+
+    const store = usePlayerTableStore.getState();
+    invalidateQueries.mockClear();
+    store.removeColumn("search", "club_dna");
+    store.removeColumn("squad", "club_dna");
+    await user.click(defineButton);
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Define Club DNA",
+    });
+    await user.click(
+      within(editDialog).getByRole("button", { name: "Save Club DNA" }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Define Club DNA" }),
+      ).toBeNull();
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: clubDnaKeys.definition(CLUB_DNA_CONTEXT),
+      });
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: searchKeys.all,
+      });
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: squadKeys.all,
+      });
+    });
+    expect(
+      usePlayerTableStore.getState().layouts.search.columnIds,
+    ).not.toContain("club_dna");
+    expect(
+      usePlayerTableStore.getState().layouts.squad.columnIds,
+    ).not.toContain("club_dna");
+
+    store.addColumns("search", ["club_dna"]);
+    store.addColumns("squad", ["club_dna"]);
+    const layoutsBeforeRemoval = {
+      search: [...usePlayerTableStore.getState().layouts.search.columnIds],
+      squad: [...usePlayerTableStore.getState().layouts.squad.columnIds],
+    };
+    expect(layoutsBeforeRemoval.search).toContain("club_dna");
+    expect(layoutsBeforeRemoval.squad).toContain("club_dna");
+
+    invalidateQueries.mockClear();
+    await user.click(defineButton);
+    const removeDialog = await screen.findByRole("dialog", {
+      name: "Define Club DNA",
+    });
+    await user.click(
+      within(removeDialog).getByRole("button", { name: "Remove Club DNA" }),
+    );
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: "Remove Club DNA?" }),
+      ).getByRole("button", { name: "Remove definition" }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Remove Club DNA?" }),
+      ).toBeNull();
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: clubDnaKeys.definition(CLUB_DNA_CONTEXT),
+      });
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: searchKeys.all,
+      });
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: squadKeys.all,
+      });
+    });
+    expect(usePlayerTableStore.getState().layouts.search.columnIds).toEqual(
+      layoutsBeforeRemoval.search,
+    );
+    expect(usePlayerTableStore.getState().layouts.squad.columnIds).toEqual(
+      layoutsBeforeRemoval.squad,
+    );
+    expect(router.state.location.search).toEqual({
+      squadSort: "club_dna",
+      squadDir: "asc",
+    });
+
+    store.removeColumn("search", "club_dna");
+    store.removeColumn("squad", "club_dna");
+
+    await user.click(defineButton);
+    const recreateDialog = await screen.findByRole("dialog", {
+      name: "Define Club DNA",
+    });
+    await user.click(
+      within(recreateDialog).getByRole("checkbox", { name: "Acceleration" }),
+    );
+    await user.click(
+      within(recreateDialog).getByRole("button", { name: "Save Club DNA" }),
+    );
+    await waitFor(() => {
+      expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
+        "club_dna",
+      );
+      expect(usePlayerTableStore.getState().layouts.squad.columnIds).toContain(
+        "club_dna",
+      );
+    });
+  });
+
+  it("keeps the visible Define DNA action disabled while its mounted definition query is pending", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    setClubDnaGetIpcMockMode("busy");
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const trigger = await screen.findByRole("button", { name: "Define DNA" });
+    expect(trigger).toBeDisabled();
+    await user.click(trigger);
+    expect(
+      screen.queryByRole("dialog", { name: "Define Club DNA" }),
+    ).toBeNull();
+  });
+
+  it("blocks a stale A create from appending or invalidating during a saves refresh", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+    await screen.findByRole("button", { name: "Define DNA" });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Define DNA" })).toBeEnabled(),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Define DNA" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Define Club DNA",
+    });
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Acceleration" }),
+    );
+    setClubDnaSetIpcMockMode("busy");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save Club DNA" }),
+    );
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+
+    let resolveSaves!: (saves: SaveSummary[]) => void;
+    const savesRefresh = queryClient.fetchQuery({
+      ...savesQueryOptions,
+      queryFn: () =>
+        new Promise<SaveSummary[]>((resolve) => {
+          resolveSaves = resolve;
+        }),
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Define DNA" })).toBeDisabled(),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Define Club DNA" }),
+    ).toBeNull();
+
+    resolveBusyClubDnaSetRequest(CLUB_DNA_CONTEXT);
+    await waitFor(() => {
+      expect(
+        usePlayerTableStore.getState().layouts.search.columnIds,
+      ).not.toContain("club_dna");
+      expect(
+        usePlayerTableStore.getState().layouts.squad.columnIds,
+      ).not.toContain("club_dna");
+      expect(invalidateQueries).not.toHaveBeenCalledWith({
+        queryKey: clubDnaKeys.definition(CLUB_DNA_CONTEXT),
+      });
+      expect(invalidateQueries).not.toHaveBeenCalledWith({
+        queryKey: searchKeys.all,
+      });
+      expect(invalidateQueries).not.toHaveBeenCalledWith({
+        queryKey: squadKeys.all,
+      });
+    });
+
+    resolveSaves(savesFor(SECOND_SAVE.id));
+    await savesRefresh;
+    expect(screen.getByRole("button", { name: "Define DNA" })).toBeDisabled();
+  });
+
+  it("blocks stale A remove feedback after a failed saves refresh", async () => {
+    await resolveLoadDataIpcMock();
+    const user = userEvent.setup();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    setClubDnaIpcMockDefinition(CLUB_DNA_CONTEXT, ["attr.Acceleration"]);
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    await screen.findByRole("button", { name: "Define DNA" });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Define DNA" })).toBeEnabled(),
+    );
+    await user.click(screen.getByRole("button", { name: "Define DNA" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Define Club DNA",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Remove Club DNA" }),
+    );
+    setClubDnaRemoveIpcMockMode("busy");
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: "Remove Club DNA?" }),
+      ).getByRole("button", { name: "Remove definition" }),
+    );
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+
+    const savesRefresh = queryClient.fetchQuery({
+      ...savesQueryOptions,
+      queryFn: () => Promise.reject(new Error("Could not refresh saves")),
+    });
+    await expect(savesRefresh).rejects.toThrow("Could not refresh saves");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Define DNA" })).toBeDisabled(),
+    );
+
+    rejectBusyClubDnaRemoveRequest(
+      CLUB_DNA_CONTEXT,
+      new Error("Could not remove Club DNA"),
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Remove Club DNA?" }),
+      ).toBeNull();
+      expect(screen.queryByText("Could not remove Club DNA")).toBeNull();
+      expect(invalidateQueries).not.toHaveBeenCalledWith({
+        queryKey: clubDnaKeys.definition(CLUB_DNA_CONTEXT),
+      });
+      expect(invalidateQueries).not.toHaveBeenCalledWith({
+        queryKey: searchKeys.all,
+      });
+      expect(invalidateQueries).not.toHaveBeenCalledWith({
+        queryKey: squadKeys.all,
+      });
+    });
+  });
+
   it("groups managed-club controls above feedback while retaining save states", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
@@ -361,6 +788,7 @@ describe("My Club route", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(controls).toHaveClass("flex", "flex-wrap");
+    expect(controls.closest("form")).toHaveClass("max-w-2xl");
     expect(controls).not.toContainElement(warning);
     expect(controls.compareDocumentPosition(warning)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
@@ -657,6 +1085,40 @@ describe("My Club route", () => {
     expect(usePlayerTableStore.getState().layouts.search.columnIds).toContain(
       "attr.Acceleration",
     );
+  });
+
+  it("renders nullable Club DNA scores through ScoreBadge", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    usePlayerTableStore.getState().addColumns("squad", ["club_dna"]);
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("DNA fit", 42),
+        dynamicValues: { club_dna: 82 },
+      },
+      {
+        ...squadPlayerNamed("DNA unavailable", 43),
+        dynamicValues: { club_dna: null },
+      },
+    ]);
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+    expect(
+      within(table).getByRole("img", {
+        name: "Club DNA: 82, Excellent",
+      }),
+    ).toBeInTheDocument();
+    const unavailableRow = within(table)
+      .getByText("DNA unavailable")
+      .closest("tr");
+    if (!unavailableRow) {
+      throw new Error("Expected the unavailable-score player row.");
+    }
+    expect(within(unavailableRow).getByText("—")).toBeInTheDocument();
   });
 
   it("reorders Squad columns from the menu without changing its query, virtual row, or widths", async () => {

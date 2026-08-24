@@ -5,7 +5,8 @@ use rusqlite::types::Value;
 use crate::features::moneyball::is_moneyball_statistic_key;
 use crate::features::player_metrics::resolver::{
     attribute_key, catalog_role_id, hidden_attribute_key, is_moneyball_search_field,
-    moneyball_context_column, parse_moneyball_role_id, personality_key, POSITION_KEYS,
+    moneyball_context_column, parse_moneyball_role_id, personality_key, ClubDnaSqlBindings,
+    POSITION_KEYS,
 };
 
 /// Maximum filter rules accepted at the trust boundary.
@@ -97,6 +98,7 @@ enum FieldKind {
     PotentialRoleScore {
         role_id: String,
     },
+    ClubDnaScore,
     MoneyballReal {
         key: String,
     },
@@ -288,6 +290,7 @@ fn resolve_field(field: &str, moneyball: bool) -> Result<FieldKind, String> {
             column: "nationalities_json",
         }),
         "position" => Ok(FieldKind::PositionPresence),
+        "club_dna" => Ok(FieldKind::ClubDnaScore),
         _ => {
             if let Some(key) = attribute_key(field)? {
                 return Ok(FieldKind::JsonInteger {
@@ -397,13 +400,30 @@ pub fn parse_filter_ast(
 }
 
 pub fn compile_filters(ast: &FilterAst, start_index: usize) -> Result<CompiledFilter, String> {
-    compile_filters_for_moneyball(ast, start_index, false)
+    compile_filters_internal(ast, start_index, false, None)
+}
+
+pub fn compile_filters_with_club_dna(
+    ast: &FilterAst,
+    start_index: usize,
+    club_dna_bindings: ClubDnaSqlBindings,
+) -> Result<CompiledFilter, String> {
+    compile_filters_internal(ast, start_index, false, Some(club_dna_bindings))
 }
 
 pub fn compile_filters_for_moneyball(
     ast: &FilterAst,
     start_index: usize,
     moneyball: bool,
+) -> Result<CompiledFilter, String> {
+    compile_filters_internal(ast, start_index, moneyball, None)
+}
+
+fn compile_filters_internal(
+    ast: &FilterAst,
+    start_index: usize,
+    moneyball: bool,
+    club_dna_bindings: Option<ClubDnaSqlBindings>,
 ) -> Result<CompiledFilter, String> {
     if ast.rules.is_empty() {
         return Ok(CompiledFilter {
@@ -418,8 +438,13 @@ pub fn compile_filters_for_moneyball(
 
     for rule in &ast.rules {
         let field_kind = resolve_field(&rule.field, moneyball)?;
-        let (clause, rule_params) =
-            compile_rule(field_kind, &rule.op, &rule.value, &mut next_index)?;
+        let (clause, rule_params) = compile_rule(
+            field_kind,
+            &rule.op,
+            &rule.value,
+            &mut next_index,
+            club_dna_bindings,
+        )?;
         clauses.push(clause);
         params.extend(rule_params);
     }
@@ -436,6 +461,7 @@ fn compile_rule(
     op: &str,
     value: &FilterValue,
     next_index: &mut usize,
+    club_dna_bindings: Option<ClubDnaSqlBindings>,
 ) -> Result<(String, Vec<Value>), String> {
     match field {
         FieldKind::String {
@@ -460,6 +486,13 @@ fn compile_rule(
         FieldKind::PotentialRoleScore { role_id } => {
             compile_potential_role_score_rule(&role_id, op, value, next_index)
         }
+        FieldKind::ClubDnaScore => compile_club_dna_score_rule(
+            op,
+            value,
+            next_index,
+            club_dna_bindings
+                .ok_or_else(|| "Club DNA query identity is unavailable".to_string())?,
+        ),
         FieldKind::MoneyballReal { key } => {
             compile_moneyball_real_rule(&key, op, value, next_index)
         }
@@ -496,6 +529,28 @@ fn compile_role_score_rule(
         clause,
         vec![Value::Text(role_id.to_string()), Value::Integer(number)],
     ))
+}
+
+fn compile_club_dna_score_rule(
+    op: &str,
+    value: &FilterValue,
+    next_index: &mut usize,
+    bindings: ClubDnaSqlBindings,
+) -> Result<(String, Vec<Value>), String> {
+    let number = value_as_integer(value)?;
+    let compare = match op {
+        "gt" => ">",
+        "lt" => "<",
+        "eq" => "=",
+        "neq" => "!=",
+        _ => return Err(format!("invalid integer filter operator: {op}")),
+    };
+    let score_placeholder = next_placeholder(next_index);
+    let clause = format!(
+        "EXISTS (SELECT 1 FROM club_dna_scores cds WHERE cds.snapshot_id = players.snapshot_id AND cds.uid = players.uid AND cds.definition_version = ?{} AND cds.score_model_version = ?{} AND cds.score IS NOT NULL AND cds.score {compare} {score_placeholder})",
+        bindings.definition_version, bindings.score_model_version,
+    );
+    Ok((clause, vec![Value::Integer(number)]))
 }
 
 fn compile_potential_role_score_rule(
@@ -1262,6 +1317,23 @@ mod tests {
                 Value::Integer(70),
             ]
         );
+    }
+
+    #[test]
+    fn compiles_club_dna_filters_with_a_bound_exact_identity() {
+        for (op, expected) in [("gt", ">"), ("lt", "<"), ("eq", "="), ("neq", "!=")] {
+            let ast = parse_filter_ast(vec![rule("club_dna", op, FilterValue::Integer(70))], None)
+                .expect("parse Club DNA filter");
+            let compiled = compile_filters_with_club_dna(&ast, 4, ClubDnaSqlBindings::new(2, 3))
+                .expect("compile Club DNA filter");
+
+            assert!(compiled.sql.contains("club_dna_scores"));
+            assert!(compiled.sql.contains("cds.definition_version = ?2"));
+            assert!(compiled.sql.contains("cds.score_model_version = ?3"));
+            assert!(compiled.sql.contains("cds.score IS NOT NULL"));
+            assert!(compiled.sql.contains(&format!("cds.score {expected} ?4")));
+            assert_eq!(compiled.params, vec![Value::Integer(70)]);
+        }
     }
 
     #[test]

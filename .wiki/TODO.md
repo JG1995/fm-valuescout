@@ -60,6 +60,7 @@ None.
 
 ## Completed
 
+- [Club DNA](./features/completed/club-dna.md) — save-owned full-catalog attribute definitions with eager nullable 0–100 scores, Search and Squad table integration, and a context-safe My Club definition Modal (Linear JAY-32).
 - [Todo UX Quality Pass](./features/completed/todo-ux-quality-pass.md) — My Club containment, app history controls, shared player-table refinements, and Moneyball profile comparison improvements.
 - [Planner Best-Role Reference](./features/completed/planner-best-role-reference.md) — read-only phase-specific best-lane reference for every current managed-club player, with Current/Potential assignment, adjusted scores, and a sortable Planner Modal; final PR not published.
 - [Moneyball Role Scores](./features/completed/moneyball-role-scores.md) — versioned, position-family-specific performance role definitions with full-import Player Profile scores, filtered-cohort Search columns and filters, and explicit unavailable attribute placeholders (Linear JAY-20; final PR unpublished)

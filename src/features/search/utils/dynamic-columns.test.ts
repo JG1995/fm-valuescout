@@ -38,6 +38,20 @@ describe("dynamicColumnFields", () => {
     ]);
   });
 
+  it("requests Club DNA filters and accepts the fixed metric for sorting", () => {
+    const fields = dynamicColumnFields([
+      {
+        id: createFilterRuleId(),
+        field: "club_dna",
+        op: "gt",
+        value: { type: "integer", value: 70 },
+      },
+    ]);
+
+    expect(fields).toEqual(["club_dna"]);
+    expect(isVisibleSortField("club_dna", [])).toBe(true);
+  });
+
   it("allows sorting by known metrics whether or not they are requested", () => {
     const filters = [
       {

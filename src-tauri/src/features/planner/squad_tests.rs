@@ -5,7 +5,7 @@ use super::squad::{list_squad_players, SquadSortDir, SquadSortField, DEFAULT_SQU
 use super::test_support::{
     add_picker_candidates, current_snapshot_id, open_with_snapshot, set_role_score,
 };
-use crate::features::player_metrics::resolver::DynamicValue;
+use crate::features::player_metrics::{club_dna::SCORE_MODEL_VERSION, resolver::DynamicValue};
 
 #[test]
 fn lists_the_exact_current_managed_club() {
@@ -369,6 +369,246 @@ fn returns_requested_metrics_with_the_shared_search_value_contract() {
         player.dynamic_values.get("role.deep_lying_playmaker_ip"),
         Some(&Some(DynamicValue::Integer(82)))
     );
+}
+
+fn club_dna_score_rows(conn: &rusqlite::Connection) -> Vec<(i64, i64, i64, i64, Option<i64>)> {
+    let mut statement = conn
+        .prepare(
+            "SELECT snapshot_id, uid, definition_version, score_model_version, score
+             FROM club_dna_scores
+             ORDER BY snapshot_id, uid, definition_version, score_model_version",
+        )
+        .expect("prepare Club DNA score rows");
+    statement
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        })
+        .expect("read Club DNA score rows")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect Club DNA score rows")
+}
+
+fn seed_club_dna_squad() -> (tempfile::TempDir, rusqlite::Connection, i64) {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "INSERT INTO club_dna_definitions (save_id, attribute_ids_json, definition_version)
+         VALUES (?1, '[\"attr.Acceleration\"]', 2)",
+        [save_id],
+    )
+    .expect("insert Club DNA definition");
+    for uid in [81, 82, 99] {
+        conn.execute(
+            "INSERT INTO players (
+                snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
+                nationalities_json, preferred_foot, positions_json, attributes_json,
+                hidden_attributes_json, personality_json, current_club
+             ) VALUES (?1, ?2, 100, 120, 'Extra', 2000, 1, '[]', 'right', '{}', '{}', '{}', '{}', ?3)",
+            params![snapshot_id, uid, if uid == 99 { "Elsewhere FC" } else { "Loan FC" }],
+        )
+        .expect("insert Club DNA test player");
+    }
+    for (uid, definition_version, score_model_version, score) in [
+        (77, 2, SCORE_MODEL_VERSION, Some(20)),
+        (78, 2, SCORE_MODEL_VERSION, Some(80)),
+        (79, 2, SCORE_MODEL_VERSION, None),
+        (81, 2, SCORE_MODEL_VERSION, Some(20)),
+        (80, 1, SCORE_MODEL_VERSION, Some(95)),
+        (82, 2, SCORE_MODEL_VERSION + 1, Some(90)),
+        (99, 2, SCORE_MODEL_VERSION, Some(100)),
+    ] {
+        conn.execute(
+            "INSERT INTO club_dna_scores (
+                snapshot_id, uid, definition_version, score_model_version, score
+             ) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                snapshot_id,
+                uid,
+                definition_version,
+                score_model_version,
+                score
+            ],
+        )
+        .expect("insert Club DNA score");
+    }
+    conn.execute(
+        "CREATE INDEX club_dna_squad_test_order
+         ON players(snapshot_id, current_club, uid DESC)",
+        [],
+    )
+    .expect("create non-UID scan order");
+    (temp_dir, conn, save_id)
+}
+
+#[test]
+fn sorts_club_dna_squad_ascending_with_exact_membership_and_read_only_pages() {
+    let (_temp_dir, conn, save_id) = seed_club_dna_squad();
+    conn.pragma_update(None, "reverse_unordered_selects", true)
+        .expect("reverse unordered ties");
+    let score_rows_before = club_dna_score_rows(&conn);
+    let requested_fields = vec!["club_dna".to_string()];
+
+    let page = list_squad_players(
+        &conn,
+        save_id,
+        0,
+        6,
+        SquadSortField::parse("club_dna").expect("parse Club DNA sort"),
+        SquadSortDir::Asc,
+        &requested_fields,
+    )
+    .expect("sort Club DNA squad ascending");
+    assert_eq!(page.total, 6);
+    assert_eq!(
+        page.players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [77, 81, 78, 79, 80, 82]
+    );
+    assert_eq!(
+        page.players[0].dynamic_values.get("club_dna"),
+        Some(&Some(DynamicValue::Integer(20)))
+    );
+    assert!(page.players[3..]
+        .iter()
+        .all(|player| player.dynamic_values.get("club_dna") == Some(&None)));
+
+    let bounded_page = list_squad_players(
+        &conn,
+        save_id,
+        1,
+        2,
+        SquadSortField::parse("club_dna").expect("parse Club DNA sort"),
+        SquadSortDir::Asc,
+        &requested_fields,
+    )
+    .expect("page Club DNA squad ascending");
+    assert_eq!(bounded_page.total, 6);
+    assert_eq!(
+        bounded_page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [81, 78]
+    );
+    let unavailable_page = list_squad_players(
+        &conn,
+        save_id,
+        3,
+        3,
+        SquadSortField::parse("club_dna").expect("parse Club DNA sort"),
+        SquadSortDir::Asc,
+        &requested_fields,
+    )
+    .expect("page unavailable Club DNA ties");
+    assert_eq!(
+        unavailable_page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [79, 80, 82]
+    );
+    assert_eq!(club_dna_score_rows(&conn), score_rows_before);
+}
+
+#[test]
+fn sorts_club_dna_squad_descending_and_missing_definition_as_uid_stable_all_null() {
+    let (_temp_dir, conn, save_id) = seed_club_dna_squad();
+    conn.pragma_update(None, "reverse_unordered_selects", true)
+        .expect("reverse unordered ties");
+    let score_rows_before = club_dna_score_rows(&conn);
+
+    let descending = list_squad_players(
+        &conn,
+        save_id,
+        0,
+        6,
+        SquadSortField::parse("club_dna").expect("parse Club DNA sort"),
+        SquadSortDir::Desc,
+        &[],
+    )
+    .expect("sort Club DNA squad descending");
+    assert_eq!(
+        descending
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [78, 77, 81, 79, 80, 82]
+    );
+    let bounded_page = list_squad_players(
+        &conn,
+        save_id,
+        1,
+        2,
+        SquadSortField::parse("club_dna").expect("parse Club DNA sort"),
+        SquadSortDir::Desc,
+        &[],
+    )
+    .expect("page Club DNA descending ties");
+    assert_eq!(
+        bounded_page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [77, 81]
+    );
+    let unavailable_page = list_squad_players(
+        &conn,
+        save_id,
+        3,
+        3,
+        SquadSortField::parse("club_dna").expect("parse Club DNA sort"),
+        SquadSortDir::Desc,
+        &[],
+    )
+    .expect("page unavailable Club DNA ties");
+    assert_eq!(
+        unavailable_page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [79, 80, 82]
+    );
+
+    conn.execute("DELETE FROM club_dna_definitions", [])
+        .expect("remove Club DNA definition");
+    let missing_definition = list_squad_players(
+        &conn,
+        save_id,
+        0,
+        6,
+        SquadSortField::parse("club_dna").expect("parse Club DNA sort"),
+        SquadSortDir::Desc,
+        &["club_dna".to_string()],
+    )
+    .expect("sort squad without Club DNA definition");
+    assert_eq!(missing_definition.total, 6);
+    assert_eq!(
+        missing_definition
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [77, 78, 79, 80, 81, 82]
+    );
+    assert!(missing_definition
+        .players
+        .iter()
+        .all(|player| player.dynamic_values.get("club_dna") == Some(&None)));
+    assert_eq!(club_dna_score_rows(&conn), score_rows_before);
 }
 
 #[test]
