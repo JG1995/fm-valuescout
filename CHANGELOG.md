@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-24
+
+### Added
+
+- My Club now provides one save-owned Club DNA definition with configurable player attributes.
+- Player Search and Squad can display and sort Club DNA scores, and Player Search can filter them.
+
+### Changed
+
+- Back and Forward controls now sit before global search in the app header.
+- Player profiles now use accessible nationality flags, compact identity and action layouts, and omit the unsupported sweeper position.
+- Potential attributes and role scores now match current values for players aged 29 and older.
+- Red-tier position familiarity values use muted surfaces while preserving readable and selected-state contrast.
+
 ## [0.12.0] - 2026-08-23
 
 ### Added
