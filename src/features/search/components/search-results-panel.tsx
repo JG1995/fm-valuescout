@@ -293,6 +293,7 @@ function SearchResultsVirtualTable({
           }
           if (!isBasicSearchSortField(column.id)) {
             if (
+              column.id === "club_dna" ||
               column.id.startsWith("role.") ||
               column.id.startsWith("potential_role.")
             ) {

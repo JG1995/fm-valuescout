@@ -659,6 +659,40 @@ describe("My Club route", () => {
     );
   });
 
+  it("renders nullable Club DNA scores through ScoreBadge", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    usePlayerTableStore.getState().addColumns("squad", ["club_dna"]);
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("DNA fit", 42),
+        dynamicValues: { club_dna: 82 },
+      },
+      {
+        ...squadPlayerNamed("DNA unavailable", 43),
+        dynamicValues: { club_dna: null },
+      },
+    ]);
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const table = await screen.findByRole("table", { name: "Squad overview" });
+    expect(
+      within(table).getByRole("img", {
+        name: "Club DNA: 82, Excellent",
+      }),
+    ).toBeInTheDocument();
+    const unavailableRow = within(table)
+      .getByText("DNA unavailable")
+      .closest("tr");
+    if (!unavailableRow) {
+      throw new Error("Expected the unavailable-score player row.");
+    }
+    expect(within(unavailableRow).getByText("—")).toBeInTheDocument();
+  });
+
   it("reorders Squad columns from the menu without changing its query, virtual row, or widths", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();

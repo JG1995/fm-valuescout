@@ -1,3 +1,9 @@
+import {
+  HIDDEN_ATTRIBUTE_KEYS,
+  labelFromPascal,
+  PERSONALITY_ATTRIBUTE_KEYS,
+  VISIBLE_ATTRIBUTE_KEYS,
+} from "@/utils/player-attributes";
 import { ROLE_CATALOG } from "@/utils/role-catalog";
 
 export type PlayerMetricKind = "string" | "integer" | "boolean" | "enum";
@@ -123,75 +129,6 @@ const ENUM_OPERATORS: readonly PlayerMetricOperator[] = [
   { id: "is_not", label: "is not" },
 ];
 
-const ATTR_KEYS = [
-  "Crossing",
-  "Dribbling",
-  "Finishing",
-  "Heading",
-  "LongShots",
-  "Marking",
-  "OffTheBall",
-  "Passing",
-  "PenaltyTaking",
-  "Tackling",
-  "Vision",
-  "Handling",
-  "AerialReach",
-  "CommandOfArea",
-  "Communication",
-  "Kicking",
-  "Throwing",
-  "Anticipation",
-  "Decisions",
-  "OneOnOnes",
-  "Positioning",
-  "Reflexes",
-  "FirstTouch",
-  "Technique",
-  "Flair",
-  "Corners",
-  "Teamwork",
-  "WorkRate",
-  "LongThrows",
-  "Eccentricity",
-  "RushingOut",
-  "Punching",
-  "Acceleration",
-  "FreeKicks",
-  "Strength",
-  "Stamina",
-  "Pace",
-  "JumpingReach",
-  "Leadership",
-  "Balance",
-  "Bravery",
-  "Aggression",
-  "Agility",
-  "NaturalFitness",
-  "Determination",
-  "Composure",
-  "Concentration",
-] as const;
-
-const HIDDEN_ATTR_KEYS = [
-  "Dirtiness",
-  "Consistency",
-  "ImportantMatches",
-  "InjuryProneness",
-  "Versatility",
-] as const;
-
-const PERSONALITY_KEYS = [
-  "Adaptability",
-  "Ambition",
-  "Loyalty",
-  "Pressure",
-  "Professionalism",
-  "Sportsmanship",
-  "Temperament",
-  "Controversy",
-] as const;
-
 const POSITION_KEYS = [
   "GK",
   "SW",
@@ -209,10 +146,6 @@ const POSITION_KEYS = [
   "WBL",
   "WBR",
 ] as const;
-
-function labelFromPascal(key: string): string {
-  return key.replaceAll(/([a-z])([A-Z])/g, "$1 $2");
-}
 
 type RoleId = (typeof ROLE_CATALOG)[number]["id"];
 
@@ -287,7 +220,7 @@ const ROLE_FAMILY_BY_ID = {
   tracking_centre_forward_oop: "Forwards",
 } as const satisfies Record<RoleId, PlayerMetricRoleFamily>;
 
-const ATTRIBUTE_METRICS: PlayerMetric[] = ATTR_KEYS.map((key) =>
+const ATTRIBUTE_METRICS: PlayerMetric[] = VISIBLE_ATTRIBUTE_KEYS.map((key) =>
   playerMetric({
     id: `attr.${key}`,
     label: labelFromPascal(key),
@@ -297,7 +230,7 @@ const ATTRIBUTE_METRICS: PlayerMetric[] = ATTR_KEYS.map((key) =>
   }),
 );
 
-const HIDDEN_METRICS: PlayerMetric[] = HIDDEN_ATTR_KEYS.map((key) =>
+const HIDDEN_METRICS: PlayerMetric[] = HIDDEN_ATTRIBUTE_KEYS.map((key) =>
   playerMetric({
     id: `hidden.${key}`,
     label: `Hidden · ${labelFromPascal(key)}`,
@@ -307,14 +240,15 @@ const HIDDEN_METRICS: PlayerMetric[] = HIDDEN_ATTR_KEYS.map((key) =>
   }),
 );
 
-const PERSONALITY_METRICS: PlayerMetric[] = PERSONALITY_KEYS.map((key) =>
-  playerMetric({
-    id: `personality.${key}`,
-    label: `Personality · ${labelFromPascal(key)}`,
-    category: "personality",
-    kind: "integer",
-    operators: INTEGER_OPERATORS,
-  }),
+const PERSONALITY_METRICS: PlayerMetric[] = PERSONALITY_ATTRIBUTE_KEYS.map(
+  (key) =>
+    playerMetric({
+      id: `personality.${key}`,
+      label: `Personality · ${labelFromPascal(key)}`,
+      category: "personality",
+      kind: "integer",
+      operators: INTEGER_OPERATORS,
+    }),
 );
 
 const POSITION_SUITABILITY_METRICS: PlayerMetric[] = POSITION_KEYS.map((key) =>
@@ -499,6 +433,14 @@ const PLAYER_METRIC_DEFINITIONS: readonly PlayerMetricDefinition[] = [
     category: "ability-reputation",
     kind: "integer",
     defaultWidth: 72,
+    operators: INTEGER_OPERATORS,
+  },
+  {
+    id: "club_dna",
+    label: "Club DNA",
+    category: "ability-reputation",
+    kind: "integer",
+    defaultWidth: 88,
     operators: INTEGER_OPERATORS,
   },
   {

@@ -752,7 +752,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 #### Commit 10 — Expose persisted Club DNA queries
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(club-dna): expose persisted scores`
 
@@ -825,7 +825,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 #### Commit 11 — Add the frontend Club DNA domain and fixed metric
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(club-dna): add frontend metric foundation`
 
@@ -1050,19 +1050,19 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 **PR:** PR 1 — Add user-defined Club DNA scoring
 
-**Commit:** Commit 10 — Expose persisted Club DNA queries
+**Commit:** Commit 11 — Add the frontend Club DNA domain and fixed metric
 
 ### RED or removal proof
 
-Add resolver, filter, Search, and Squad tests that fail while fixed `club_dna` is rejected. Prove exact identity, read-only behavior, every integer filter, and Club DNA-only null-last ordering in both directions across present, computed-null, missing, stale, and missing-definition rows.
+Add shared-catalog, metric, layout, API, and table-rendering tests that fail while `club_dna` is unknown, frontend attribute groups remain duplicated, and context-bound definition adapters do not exist.
 
 ### Expected outcome
 
-Search displays, filters, and sorts persisted Club DNA while Squad displays and sorts it through bounded read-only queries with exact bound definition/model identity, unavailable values last, and deterministic UID ties.
+One canonical frontend attribute catalog feeds Player Profile and metric metadata; typed context-bound Club DNA adapters exist; Search and Squad can request, persist, and render the fixed nullable score metric without defaulting it into layouts.
 
 ### Explicit exclusions
 
-Definition, ingest, boost, removal, promotion, scorer, migrations, indexes, dependencies, frontend, performance gates, current/potential-role ordering, general role sorting, current-state documentation, and unrelated Git mutations.
+My Club action, Modal, mutation UI, automatic layout append, active-context invalidation wiring, backend changes, Moneyball, Player Profile score display, current-state documentation, and unrelated Git mutations.
 
 ## Discoveries and replanning
 
@@ -1091,6 +1091,7 @@ Definition, ingest, boost, removal, promotion, scorer, migrations, indexes, depe
 | PR 1 — Add user-defined Club DNA scoring | Commit 7 — Record the representative latency decision | 2c6943f68fdfaf9311977f024a0d59192a4aed58 | Recorded the developer-chosen one-second representative threshold and rejected v33 index alternative. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 0 | Replaced the former 200 ms representative gate after exact v32/count-fast-path measurements. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 8 — Record the eager score architecture replan | aa5e097c66692bab1aac4444a4df0b02878b7994 | Recorded ADR-0024, superseded the lazy decision, and split eager writers from persisted reads. | Both classifiers were runnable with the accepted fingerprint; staged diff and Markdown checks passed. | Not applicable | Clear | 1 | Replaced the breached lazy architecture after the developer chose role-like eager persistence; corrected the post-acceptance authority narrative. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 9 — Install the eager Club DNA writer lifecycle | b3ccf37f9a1b23b334d235605b91db681d57bb13 | Added bounded eager definition, ingest, and boost score writers; removed lazy ownership; and proved promotion needs no backfill. | `./scripts/dev check-rust` passed 574 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 2 | Review corrections bounded retained-snapshot memory and added exact CA and mentality rollback proof. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 10 — Expose persisted Club DNA queries | cf7cc027c6a7058f10635c9e8ee7cd69cb6ba0c1 | Added exact-identity read-only Club DNA display/filter/sort in Search and display/sort in Squad. | `./scripts/dev check-rust` passed 581 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 0 | None. |
 
 ## Final validation
 

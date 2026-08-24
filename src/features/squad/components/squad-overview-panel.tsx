@@ -10,6 +10,7 @@ import {
 import { VirtualizedPlayerTable } from "@/components/player-table/virtualized-player-table";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
+import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import {
   formatCount,
@@ -222,6 +223,20 @@ function SquadOverviewTable({
       renderCells={(player) =>
         columns.map((column) => {
           if (!(SQUAD_SORT_FIELDS as readonly string[]).includes(column.id)) {
+            if (column.id === "club_dna") {
+              const score = player?.dynamicValues?.[column.id];
+              return (
+                <td key={column.id} className={NUM_CELL}>
+                  {typeof score === "number" ? (
+                    <ScoreBadge score={score} roleName={column.label} />
+                  ) : (
+                    <span className="text-on-surface-variant">
+                      {player === undefined ? "…" : "—"}
+                    </span>
+                  )}
+                </td>
+              );
+            }
             const text = formatDynamicCell(player, column.id);
             return (
               <td
