@@ -4,7 +4,6 @@ export const PROFILE_POSITION_ROWS: readonly (readonly (string | null)[])[] = [
   ["ML", "MC", "MR"],
   ["WBL", "DM", "WBR"],
   ["DL", "DC", "DR"],
-  [null, "SW", null],
   [null, "GK", null],
 ] as const;
 

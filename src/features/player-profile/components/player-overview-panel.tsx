@@ -1,5 +1,6 @@
 import { Eye, EyeOff } from "lucide-react";
 import type { ReactNode } from "react";
+import { NationalityCell } from "@/components/player-table/nationality-cell";
 import { Button } from "@/components/ui/button/button";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import {
@@ -19,7 +20,7 @@ import {
 
 type SummaryFactProps = {
   label: string;
-  value: string | number;
+  value: ReactNode;
   numeric?: boolean;
 };
 
@@ -109,8 +110,6 @@ export function PlayerOverviewPanel({
 }: PlayerOverviewPanelProps) {
   const showGeneralAnalysis = mode === "general";
   const showMoneyballAnalysis = mode === "moneyball";
-  const nationality =
-    player.nationalities.length > 0 ? player.nationalities.join(", ") : "—";
   const flags = [
     flagLabel(player.transferListed, "Transfer listed"),
     flagLabel(player.loanListed, "Loan listed"),
@@ -148,9 +147,9 @@ export function PlayerOverviewPanel({
   return (
     <section
       aria-label={`${player.name} summary`}
-      className="rounded-lg border border-outline-variant bg-surface-container p-4"
+      className="rounded-lg border border-outline-variant bg-surface-container px-4 py-3"
     >
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div className="grid gap-x-4 gap-y-2 lg:grid-cols-[minmax(260px,1.15fr)_minmax(300px,1fr)_minmax(260px,0.9fr)] lg:items-start">
           <div className="min-w-0">
             <h1 className="break-words text-headline-lg text-on-surface">
@@ -172,7 +171,7 @@ export function PlayerOverviewPanel({
 
           <div
             data-testid="player-profile-action-slot"
-            className="h-32 min-w-0 overflow-visible lg:col-span-2 lg:flex lg:items-end lg:self-end lg:justify-end"
+            className="min-h-10 min-w-0 overflow-visible lg:col-span-2 lg:flex lg:items-end lg:self-end lg:justify-end"
           >
             {showGeneralAnalysis ? (
               <div className="space-y-2">
@@ -219,7 +218,10 @@ export function PlayerOverviewPanel({
                 player.age,
               )}
             />
-            <SummaryFact label="Nationality" value={nationality} />
+            <SummaryFact
+              label="Nationality"
+              value={<NationalityCell nationalities={player.nationalities} />}
+            />
             <SummaryFact
               label="Height"
               value={player.heightCm === null ? "—" : `${player.heightCm} cm`}

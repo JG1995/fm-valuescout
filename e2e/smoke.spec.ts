@@ -1940,8 +1940,11 @@ test.describe("application smoke", () => {
       await expect(attributes).toBeVisible();
       await expect(roleFit).toBeVisible();
       await expect(
-        main.getByRole("button", { name: "SW, familiarity 18" }),
+        main.getByRole("button", { name: "DL, familiarity 1" }),
       ).toBeVisible();
+      await expect(
+        main.getByRole("button", { name: "SW, familiarity 18" }),
+      ).toHaveCount(0);
       await expect(currentIp).toBeVisible();
       await expect(currentOop).toBeVisible();
       await expect(potentialIp).toBeVisible();

@@ -148,7 +148,7 @@ describe("profile position selection", () => {
     expect(defaultProfilePosition({ MC: 20, ST: 15 }, scores)).toBe("MC");
   });
 
-  it("keeps complete nullable maps positive-only and includes SW in the pitch", () => {
+  it("keeps complete nullable maps positive-only and excludes SW from the pitch", () => {
     const positions = {
       AMR: 20,
       MR: 17,
@@ -157,12 +157,10 @@ describe("profile position selection", () => {
       GK: 0,
     };
 
-    expect(PROFILE_POSITION_TAGS).toContain("SW");
+    expect(PROFILE_POSITION_TAGS).not.toContain("SW");
     expect(defaultProfilePosition(positions, scores)).toBe("AMR");
     expect(isGoalkeeper({ ...positions, GK: 14 })).toBe(false);
-    expect(defaultProfilePosition({ ...positions, SW: 18 }, scores)).toBe(
-      "AMR",
-    );
+    expect(defaultProfilePosition({ SW: 20 }, scores)).toBe("DM");
   });
 
   it("recognizes goalkeeper profiles at the playable familiarity threshold", () => {
