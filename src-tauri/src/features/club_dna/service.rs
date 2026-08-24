@@ -413,57 +413,56 @@ mod tests {
     }
 
     #[test]
-    fn stale_context_get_set_and_remove_cannot_read_or_mutate_a_previous_active_save() {
+    fn wrong_token_cannot_access_an_active_reused_save_id_or_change_its_definition_or_scores() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = connection(&temp_dir.path().join("club-dna-stale-context.db"));
-        let (first_save, first_token) = insert_save(&conn, "First", true);
-        let (second_save, second_token) = insert_save(&conn, "Second", false);
-        set_club_dna(
+        let (deleted_save_id, stale_token) = insert_save(&conn, "Deleted", true);
+        conn.execute("DELETE FROM saves WHERE id = ?1", [deleted_save_id])
+            .expect("delete original save");
+        let (save_id, context_token) = insert_save(&conn, "Recreated", true);
+        assert_eq!(save_id, deleted_save_id, "SQLite must reuse the deleted ID");
+
+        let snapshot_id = insert_snapshot(&conn, save_id, true);
+        insert_player(&conn, snapshot_id, 1);
+        let definition = set_club_dna(
             &conn,
-            first_save,
-            &first_token,
+            save_id,
+            &context_token,
             vec!["attr.Acceleration".to_string()],
         )
-        .expect("create first definition");
-        activate_save(&conn, second_save);
-        set_club_dna(
-            &conn,
-            second_save,
-            &second_token,
-            vec!["attr.Handling".to_string()],
-        )
-        .expect("create second definition");
+        .expect("create recreated-save definition")
+        .definition;
+        let scores = score_rows(&conn);
+        assert_eq!(scores, vec![(snapshot_id, 1, 1, 1, Some(70))]);
 
-        for result in [
-            get_club_dna(&conn, first_save, &first_token).map(|_| ()),
-            set_club_dna(
-                &conn,
-                first_save,
-                &first_token,
-                vec!["attr.Pace".to_string()],
-            )
-            .map(|_| ()),
-            remove_club_dna(&conn, first_save, &first_token).map(|_| ()),
-        ] {
-            assert!(result
-                .expect_err("reject stale context")
-                .contains("changed"));
-        }
+        assert!(get_club_dna(&conn, save_id, &stale_token)
+            .expect_err("reject matching active ID with stale token")
+            .contains("changed"));
         assert_eq!(
-            get_club_dna(&conn, second_save, &second_token).expect("read active definition"),
-            Some(ClubDnaDefinition {
-                attribute_ids: vec!["attr.Handling".to_string()],
-                version: 1,
-            })
+            get_club_dna(&conn, save_id, &context_token).expect("read retained definition"),
+            Some(definition.clone())
         );
-        activate_save(&conn, first_save);
+        assert_eq!(score_rows(&conn), scores);
+
+        assert!(
+            set_club_dna(&conn, save_id, &stale_token, vec!["attr.Pace".to_string()],)
+                .expect_err("reject matching active ID with stale token")
+                .contains("changed")
+        );
         assert_eq!(
-            get_club_dna(&conn, first_save, &first_token).expect("read retained definition"),
-            Some(ClubDnaDefinition {
-                attribute_ids: vec!["attr.Acceleration".to_string()],
-                version: 1,
-            })
+            get_club_dna(&conn, save_id, &context_token).expect("read retained definition"),
+            Some(definition.clone())
         );
+        assert_eq!(score_rows(&conn), scores);
+
+        assert!(remove_club_dna(&conn, save_id, &stale_token)
+            .expect_err("reject matching active ID with stale token")
+            .contains("changed"));
+        assert_eq!(
+            get_club_dna(&conn, save_id, &context_token).expect("read retained definition"),
+            Some(definition)
+        );
+        assert_eq!(score_rows(&conn), scores);
     }
 
     #[test]

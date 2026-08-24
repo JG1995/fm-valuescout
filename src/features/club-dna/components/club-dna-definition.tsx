@@ -94,10 +94,7 @@ export function ClubDnaDefinition({
   const currentKeyRef = useRef(key);
   const previousKeyRef = useRef(key);
   currentKeyRef.current = key;
-  const definition = useQuery({
-    ...clubDnaQueryOptions(context),
-    enabled: open,
-  });
+  const definition = useQuery(clubDnaQueryOptions(context));
   const setDefinition = useMutation({
     mutationFn: ({
       requestContext,
@@ -219,7 +216,7 @@ export function ClubDnaDefinition({
   const save = () => {
     if (
       !available ||
-      definition.isPending ||
+      definition.isFetching ||
       definition.isError ||
       draft.length === 0
     ) {
@@ -232,7 +229,7 @@ export function ClubDnaDefinition({
   };
 
   const remove = () => {
-    if (!available || pending) {
+    if (!available || pending || definition.isFetching || definition.isError) {
       return;
     }
     removeDefinition.mutate({ ...context });
@@ -249,7 +246,7 @@ export function ClubDnaDefinition({
   const canSave =
     available &&
     !pending &&
-    !definition.isPending &&
+    !definition.isFetching &&
     !definition.isError &&
     draft.length > 0;
 
@@ -257,7 +254,9 @@ export function ClubDnaDefinition({
     <>
       <Button
         variant="secondary"
-        disabled={!available || pending}
+        disabled={
+          !available || pending || definition.isFetching || definition.isError
+        }
         onClick={() => setOpen(true)}
       >
         Define DNA
@@ -282,7 +281,12 @@ export function ClubDnaDefinition({
                 variant="destructive"
                 loading={removeDefinition.isPending}
                 loadingLabel="Removing…"
-                disabled={!available || pending}
+                disabled={
+                  !available ||
+                  pending ||
+                  definition.isFetching ||
+                  definition.isError
+                }
                 onClick={remove}
               >
                 Remove definition
@@ -303,7 +307,7 @@ export function ClubDnaDefinition({
                   disabled={
                     pending ||
                     !available ||
-                    definition.isPending ||
+                    definition.isFetching ||
                     definition.isError
                   }
                   onClick={() => setConfirmRemoval(true)}
@@ -356,7 +360,7 @@ export function ClubDnaDefinition({
             ) : null}
             <fieldset
               className="space-y-4"
-              disabled={pending || definition.isPending || definition.isError}
+              disabled={pending || definition.isFetching || definition.isError}
             >
               <legend className="text-label-lg text-on-surface">
                 Attributes

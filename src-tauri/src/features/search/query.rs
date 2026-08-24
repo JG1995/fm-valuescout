@@ -1301,12 +1301,13 @@ mod tests {
         ingest_players(
             &mut conn,
             vec![
-                player_template(10, "Present low", 100),
-                player_template(20, "Present high", 100),
-                player_template(30, "Computed null", 100),
-                player_template(40, "Missing", 100),
-                player_template(50, "Stale definition", 100),
                 player_template(60, "Stale model", 100),
+                player_template(10, "Present low", 100),
+                player_template(50, "Stale definition", 100),
+                player_template(30, "Computed null", 100),
+                player_template(20, "Present high", 100),
+                player_template(40, "Missing", 100),
+                player_template(15, "Present low tie", 100),
             ],
         );
         let snapshot_id = current_snapshot_id(&conn);
@@ -1325,6 +1326,7 @@ mod tests {
         .expect("insert Club DNA definition");
         for (uid, definition_version, score_model_version, score) in [
             (10, 2, SCORE_MODEL_VERSION, Some(20)),
+            (15, 2, SCORE_MODEL_VERSION, Some(20)),
             (20, 2, SCORE_MODEL_VERSION, Some(80)),
             (30, 2, SCORE_MODEL_VERSION, None),
             (50, 1, SCORE_MODEL_VERSION, Some(95)),
@@ -1700,35 +1702,37 @@ mod tests {
     #[test]
     fn searches_club_dna_ascending_with_nullable_exact_identity_and_read_only_pages() {
         let (_temp_dir, conn) = seed_club_dna_query_players();
+        conn.pragma_update(None, "reverse_unordered_selects", true)
+            .expect("reverse unordered ties");
         let score_rows_before = club_dna_score_rows(&conn);
         let requested_fields = vec!["club_dna".to_string()];
 
         let page = search_players(
             &conn,
             0,
-            6,
+            7,
             SortField::parse("club_dna").expect("parse Club DNA sort"),
             SortDir::Asc,
             None,
             &requested_fields,
         )
         .expect("search Club DNA ascending");
-        assert_eq!(page.total, 6);
+        assert_eq!(page.total, 7);
         assert_eq!(
             page.players
                 .iter()
                 .map(|player| player.uid)
                 .collect::<Vec<_>>(),
-            [10, 20, 30, 40, 50, 60]
+            [10, 15, 20, 30, 40, 50, 60]
         );
         assert_eq!(
             page.players[0].dynamic_values.get("club_dna"),
             Some(&Some(DynamicValue::Integer(20)))
         );
-        assert_eq!(page.players[2].dynamic_values.get("club_dna"), Some(&None));
         assert_eq!(page.players[3].dynamic_values.get("club_dna"), Some(&None));
         assert_eq!(page.players[4].dynamic_values.get("club_dna"), Some(&None));
         assert_eq!(page.players[5].dynamic_values.get("club_dna"), Some(&None));
+        assert_eq!(page.players[6].dynamic_values.get("club_dna"), Some(&None));
 
         let bounded_page = search_players(
             &conn,
@@ -1740,14 +1744,32 @@ mod tests {
             &requested_fields,
         )
         .expect("page Club DNA ascending");
-        assert_eq!(bounded_page.total, 6);
+        assert_eq!(bounded_page.total, 7);
         assert_eq!(
             bounded_page
                 .players
                 .iter()
                 .map(|player| player.uid)
                 .collect::<Vec<_>>(),
-            [20, 30]
+            [15, 20]
+        );
+        let unavailable_page = search_players(
+            &conn,
+            3,
+            4,
+            SortField::parse("club_dna").expect("parse Club DNA sort"),
+            SortDir::Asc,
+            None,
+            &requested_fields,
+        )
+        .expect("page unavailable Club DNA ties");
+        assert_eq!(
+            unavailable_page
+                .players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [30, 40, 50, 60]
         );
         assert_eq!(club_dna_score_rows(&conn), score_rows_before);
     }
@@ -1755,11 +1777,13 @@ mod tests {
     #[test]
     fn searches_club_dna_descending_filters_every_operator_and_keeps_scores_read_only() {
         let (_temp_dir, conn) = seed_club_dna_query_players();
+        conn.pragma_update(None, "reverse_unordered_selects", true)
+            .expect("reverse unordered ties");
         let score_rows_before = club_dna_score_rows(&conn);
         let expected = [
             ("gt", vec![20]),
-            ("lt", vec![10]),
-            ("eq", vec![10]),
+            ("lt", vec![10, 15]),
+            ("eq", vec![10, 15]),
             ("neq", vec![20]),
         ];
         for (operator, expected_uids) in expected {
@@ -1844,13 +1868,13 @@ mod tests {
                 .iter()
                 .map(|player| player.uid)
                 .collect::<Vec<_>>(),
-            [10, 40]
+            [10, 15, 40]
         );
 
         let descending = search_players(
             &conn,
             0,
-            6,
+            7,
             SortField::parse("club_dna").expect("parse Club DNA sort"),
             SortDir::Desc,
             None,
@@ -1863,7 +1887,43 @@ mod tests {
                 .iter()
                 .map(|player| player.uid)
                 .collect::<Vec<_>>(),
-            [20, 10, 30, 40, 50, 60]
+            [20, 10, 15, 30, 40, 50, 60]
+        );
+        let bounded_page = search_players(
+            &conn,
+            1,
+            2,
+            SortField::parse("club_dna").expect("parse Club DNA sort"),
+            SortDir::Desc,
+            None,
+            &[],
+        )
+        .expect("page Club DNA descending ties");
+        assert_eq!(
+            bounded_page
+                .players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [10, 15]
+        );
+        let unavailable_page = search_players(
+            &conn,
+            3,
+            4,
+            SortField::parse("club_dna").expect("parse Club DNA sort"),
+            SortDir::Desc,
+            None,
+            &[],
+        )
+        .expect("page unavailable Club DNA ties");
+        assert_eq!(
+            unavailable_page
+                .players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [30, 40, 50, 60]
         );
         assert_eq!(club_dna_score_rows(&conn), score_rows_before);
     }
@@ -1871,6 +1931,8 @@ mod tests {
     #[test]
     fn searches_missing_club_dna_definition_as_a_uid_stable_all_null_page() {
         let (_temp_dir, conn) = seed_club_dna_query_players();
+        conn.pragma_update(None, "reverse_unordered_selects", true)
+            .expect("reverse unordered ties");
         let score_rows_before = club_dna_score_rows(&conn);
         conn.execute("DELETE FROM club_dna_definitions", [])
             .expect("remove Club DNA definition");
@@ -1878,20 +1940,20 @@ mod tests {
         let page = search_players(
             &conn,
             0,
-            6,
+            7,
             SortField::parse("club_dna").expect("parse Club DNA sort"),
             SortDir::Desc,
             None,
             &["club_dna".to_string()],
         )
         .expect("search without Club DNA definition");
-        assert_eq!(page.total, 6);
+        assert_eq!(page.total, 7);
         assert_eq!(
             page.players
                 .iter()
                 .map(|player| player.uid)
                 .collect::<Vec<_>>(),
-            [10, 20, 30, 40, 50, 60]
+            [10, 15, 20, 30, 40, 50, 60]
         );
         assert!(page
             .players

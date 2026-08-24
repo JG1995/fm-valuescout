@@ -17,6 +17,7 @@ import {
   setClubDnaRemoveIpcMockMode,
   setClubDnaSetIpcMockMode,
 } from "@/testing/club-dna-ipc-mock";
+import { clubDnaKeys } from "../api/club-dna-keys";
 import { ClubDnaDefinition } from "./club-dna-definition";
 
 const contextA = { saveId: 1, contextToken: "save-token-a" };
@@ -45,6 +46,7 @@ function renderDefinition(overrides: Partial<DefinitionProps> = {}) {
 
   return {
     ...result,
+    queryClient,
     onSaved,
     onRemoved,
     rerenderDefinition(nextProps: Partial<DefinitionProps>) {
@@ -66,6 +68,9 @@ async function reopenDefinitionFor(
   rerenderDefinition({ context });
   await waitFor(() =>
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Define DNA" })).toBeEnabled(),
   );
   await user.click(screen.getByRole("button", { name: "Define DNA" }));
 }
@@ -198,18 +203,117 @@ describe("ClubDnaDefinition", () => {
     );
   });
 
-  it("disables saving while the context definition cannot load", async () => {
+  it("fetches the definition on mount and enables the trigger only after it settles", async () => {
     const user = userEvent.setup();
+    setClubDnaGetIpcMockMode("busy");
+    renderDefinition();
+
+    const trigger = await screen.findByRole("button", { name: "Define DNA" });
+    expect(trigger).toBeDisabled();
+    await user.click(trigger);
+    expect(
+      screen.queryByRole("dialog", { name: "Define Club DNA" }),
+    ).toBeNull();
+
+    resolveBusyClubDnaGetRequest(contextA);
+    await waitFor(() => expect(trigger).toBeEnabled());
+    await user.click(trigger);
+    expect(
+      await screen.findByRole("dialog", { name: "Define Club DNA" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the trigger disabled after the definition query errors", async () => {
     setClubDnaGetIpcMockMode("error");
     renderDefinition();
 
-    await user.click(screen.getByRole("button", { name: "Define DNA" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Could not load Club DNA",
+    const trigger = await screen.findByRole("button", { name: "Define DNA" });
+    await waitFor(() => expect(trigger).toBeDisabled());
+    expect(
+      screen.queryByRole("dialog", { name: "Define Club DNA" }),
+    ).toBeNull();
+  });
+
+  it("disables save and removal while the definition refetches", async () => {
+    const user = userEvent.setup();
+    setClubDnaIpcMockDefinition(contextA, ["attr.Acceleration"]);
+    const { queryClient } = renderDefinition();
+
+    const trigger = await screen.findByRole("button", { name: "Define DNA" });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    await user.click(trigger);
+    await screen.findByRole("checkbox", { name: "Acceleration" });
+    await user.click(screen.getByRole("checkbox", { name: "Pace" }));
+
+    setClubDnaGetIpcMockMode("busy");
+    void queryClient.invalidateQueries({
+      queryKey: clubDnaKeys.definition(contextA),
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Save Club DNA" }),
+      ).toBeDisabled(),
     );
+    expect(screen.getByRole("button", { name: "Define DNA" })).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Save Club DNA" }),
     ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Remove Club DNA" }),
+    ).toBeDisabled();
+
+    resolveBusyClubDnaGetRequest(contextA, {
+      attributeIds: ["attr.Acceleration"],
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Define DNA" })).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: "Save Club DNA" }),
+      ).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: "Remove Club DNA" }),
+      ).toBeEnabled();
+    });
+  });
+
+  it("keeps definition controls disabled when a same-context refetch errors", async () => {
+    const user = userEvent.setup();
+    setClubDnaIpcMockDefinition(contextA, ["attr.Acceleration"]);
+    const { queryClient } = renderDefinition();
+
+    await user.click(screen.getByRole("button", { name: "Define DNA" }));
+    await screen.findByRole("checkbox", { name: "Acceleration" });
+    await user.click(screen.getByRole("checkbox", { name: "Pace" }));
+
+    setClubDnaGetIpcMockMode("busy");
+    void queryClient.invalidateQueries({
+      queryKey: clubDnaKeys.definition(contextA),
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Save Club DNA" }),
+      ).toBeDisabled(),
+    );
+
+    rejectBusyClubDnaGetRequest(contextA);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not load Club DNA",
+    );
+
+    const trigger = screen.getByRole("button", { name: "Define DNA" });
+    const save = screen.getByRole("button", { name: "Save Club DNA" });
+    const remove = screen.getByRole("button", { name: "Remove Club DNA" });
+    expect(trigger).toBeDisabled();
+    expect(save).toBeDisabled();
+    expect(remove).toBeDisabled();
+
+    await user.click(save);
+    await user.click(remove);
+    expect(getLastClubDnaSetIpcArgs()).toBeUndefined();
+    expect(getLastClubDnaRemoveIpcArgs()).toBeUndefined();
+    expect(
+      screen.queryByRole("dialog", { name: "Remove Club DNA?" }),
+    ).toBeNull();
   });
 
   it("preserves the edit draft through one destructive confirmation and returns focus to save", async () => {
@@ -299,7 +403,15 @@ describe("ClubDnaDefinition", () => {
       await waitFor(() =>
         expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
       );
+      expect(screen.getByRole("button", { name: "Define DNA" })).toBeDisabled();
+      resolveBusyClubDnaGetRequest(contextB, { attributeIds: ["attr.Pace"] });
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Define DNA" }),
+        ).toBeEnabled(),
+      );
       await user.click(screen.getByRole("button", { name: "Define DNA" }));
+      await screen.findByRole("checkbox", { name: "Pace" });
 
       if (outcome === "success") {
         resolveBusyClubDnaGetRequest(contextA, {
@@ -308,7 +420,6 @@ describe("ClubDnaDefinition", () => {
       } else {
         rejectBusyClubDnaGetRequest(contextA);
       }
-      resolveBusyClubDnaGetRequest(contextB, { attributeIds: ["attr.Pace"] });
 
       await waitFor(expectOnlyBDefinition);
     },

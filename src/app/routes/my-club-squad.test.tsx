@@ -44,7 +44,6 @@ import { routeTree } from "@/routeTree.gen";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 import {
   rejectBusyClubDnaRemoveRequest,
-  resolveBusyClubDnaGetRequest,
   resolveBusyClubDnaSetRequest,
   setClubDnaGetIpcMockMode,
   setClubDnaIpcMockDefinition,
@@ -436,6 +435,23 @@ describe("My Club route", () => {
     ).toBeNull();
   });
 
+  it("keeps the visible Define DNA action disabled after a Club DNA query error", async () => {
+    await resolveLoadDataIpcMock();
+    setManagedClubIpcMock({
+      clubName: "Barcelona",
+      status: "available",
+      unclassifiedPlayerCount: 0,
+    });
+    setClubDnaGetIpcMockMode("error");
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const trigger = await screen.findByRole("button", { name: "Define DNA" });
+    await waitFor(() => expect(trigger).toBeDisabled());
+    expect(
+      screen.queryByRole("dialog", { name: "Define Club DNA" }),
+    ).toBeNull();
+  });
+
   it("places Club DNA beside the managed-club save and appends it on creation", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
@@ -461,7 +477,7 @@ describe("My Club route", () => {
     expect(saveButton.compareDocumentPosition(defineButton)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    expect(defineButton).toBeEnabled();
+    await waitFor(() => expect(defineButton).toBeEnabled());
 
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
     await user.click(defineButton);
@@ -595,7 +611,7 @@ describe("My Club route", () => {
     });
   });
 
-  it("unmounts an open A definition while saves refresh before accepting its result", async () => {
+  it("keeps the visible Define DNA action disabled while its mounted definition query is pending", async () => {
     await resolveLoadDataIpcMock();
     const user = userEvent.setup();
     setManagedClubIpcMock({
@@ -604,42 +620,14 @@ describe("My Club route", () => {
       unclassifiedPlayerCount: 0,
     });
     setClubDnaGetIpcMockMode("busy");
-    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+    renderMyClubRoute({ initialEntry: "/my-club" });
 
-    await screen.findByRole("button", { name: "Define DNA" });
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Define DNA" })).toBeEnabled(),
-    );
-    await user.click(screen.getByRole("button", { name: "Define DNA" }));
-    expect(await screen.findByText("Loading Club DNA…")).toBeInTheDocument();
-
-    let resolveSaves!: (saves: SaveSummary[]) => void;
-    const savesRefresh = queryClient.fetchQuery({
-      ...savesQueryOptions,
-      queryFn: () =>
-        new Promise<SaveSummary[]>((resolve) => {
-          resolveSaves = resolve;
-        }),
-    });
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Define DNA" })).toBeDisabled(),
-    );
+    const trigger = await screen.findByRole("button", { name: "Define DNA" });
+    expect(trigger).toBeDisabled();
+    await user.click(trigger);
     expect(
       screen.queryByRole("dialog", { name: "Define Club DNA" }),
     ).toBeNull();
-
-    resolveBusyClubDnaGetRequest(CLUB_DNA_CONTEXT, {
-      attributeIds: ["attr.Acceleration"],
-    });
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("dialog", { name: "Define Club DNA" }),
-      ).toBeNull(),
-    );
-
-    resolveSaves(savesFor(SECOND_SAVE.id));
-    await savesRefresh;
-    expect(screen.getByRole("button", { name: "Define DNA" })).toBeDisabled();
   });
 
   it("blocks a stale A create from appending or invalidating during a saves refresh", async () => {

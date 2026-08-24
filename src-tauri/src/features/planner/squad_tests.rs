@@ -419,6 +419,7 @@ fn seed_club_dna_squad() -> (tempfile::TempDir, rusqlite::Connection, i64) {
         (77, 2, SCORE_MODEL_VERSION, Some(20)),
         (78, 2, SCORE_MODEL_VERSION, Some(80)),
         (79, 2, SCORE_MODEL_VERSION, None),
+        (81, 2, SCORE_MODEL_VERSION, Some(20)),
         (80, 1, SCORE_MODEL_VERSION, Some(95)),
         (82, 2, SCORE_MODEL_VERSION + 1, Some(90)),
         (99, 2, SCORE_MODEL_VERSION, Some(100)),
@@ -437,12 +438,20 @@ fn seed_club_dna_squad() -> (tempfile::TempDir, rusqlite::Connection, i64) {
         )
         .expect("insert Club DNA score");
     }
+    conn.execute(
+        "CREATE INDEX club_dna_squad_test_order
+         ON players(snapshot_id, current_club, uid DESC)",
+        [],
+    )
+    .expect("create non-UID scan order");
     (temp_dir, conn, save_id)
 }
 
 #[test]
 fn sorts_club_dna_squad_ascending_with_exact_membership_and_read_only_pages() {
     let (_temp_dir, conn, save_id) = seed_club_dna_squad();
+    conn.pragma_update(None, "reverse_unordered_selects", true)
+        .expect("reverse unordered ties");
     let score_rows_before = club_dna_score_rows(&conn);
     let requested_fields = vec!["club_dna".to_string()];
 
@@ -462,13 +471,13 @@ fn sorts_club_dna_squad_ascending_with_exact_membership_and_read_only_pages() {
             .iter()
             .map(|player| player.uid)
             .collect::<Vec<_>>(),
-        [77, 78, 79, 80, 81, 82]
+        [77, 81, 78, 79, 80, 82]
     );
     assert_eq!(
         page.players[0].dynamic_values.get("club_dna"),
         Some(&Some(DynamicValue::Integer(20)))
     );
-    assert!(page.players[2..]
+    assert!(page.players[3..]
         .iter()
         .all(|player| player.dynamic_values.get("club_dna") == Some(&None)));
 
@@ -489,7 +498,25 @@ fn sorts_club_dna_squad_ascending_with_exact_membership_and_read_only_pages() {
             .iter()
             .map(|player| player.uid)
             .collect::<Vec<_>>(),
-        [78, 79]
+        [81, 78]
+    );
+    let unavailable_page = list_squad_players(
+        &conn,
+        save_id,
+        3,
+        3,
+        SquadSortField::parse("club_dna").expect("parse Club DNA sort"),
+        SquadSortDir::Asc,
+        &requested_fields,
+    )
+    .expect("page unavailable Club DNA ties");
+    assert_eq!(
+        unavailable_page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [79, 80, 82]
     );
     assert_eq!(club_dna_score_rows(&conn), score_rows_before);
 }
@@ -497,6 +524,8 @@ fn sorts_club_dna_squad_ascending_with_exact_membership_and_read_only_pages() {
 #[test]
 fn sorts_club_dna_squad_descending_and_missing_definition_as_uid_stable_all_null() {
     let (_temp_dir, conn, save_id) = seed_club_dna_squad();
+    conn.pragma_update(None, "reverse_unordered_selects", true)
+        .expect("reverse unordered ties");
     let score_rows_before = club_dna_score_rows(&conn);
 
     let descending = list_squad_players(
@@ -515,7 +544,43 @@ fn sorts_club_dna_squad_descending_and_missing_definition_as_uid_stable_all_null
             .iter()
             .map(|player| player.uid)
             .collect::<Vec<_>>(),
-        [78, 77, 79, 80, 81, 82]
+        [78, 77, 81, 79, 80, 82]
+    );
+    let bounded_page = list_squad_players(
+        &conn,
+        save_id,
+        1,
+        2,
+        SquadSortField::parse("club_dna").expect("parse Club DNA sort"),
+        SquadSortDir::Desc,
+        &[],
+    )
+    .expect("page Club DNA descending ties");
+    assert_eq!(
+        bounded_page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [77, 81]
+    );
+    let unavailable_page = list_squad_players(
+        &conn,
+        save_id,
+        3,
+        3,
+        SquadSortField::parse("club_dna").expect("parse Club DNA sort"),
+        SquadSortDir::Desc,
+        &[],
+    )
+    .expect("page unavailable Club DNA ties");
+    assert_eq!(
+        unavailable_page
+            .players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        [79, 80, 82]
     );
 
     conn.execute("DELETE FROM club_dna_definitions", [])

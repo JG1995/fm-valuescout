@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -138,7 +138,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 ### PR 1 — Add user-defined Club DNA scoring
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -970,7 +970,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 #### Commit 13 — Integrate Club DNA with My Club and layouts
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(club-dna): connect My Club and table layouts`
 
@@ -1050,19 +1050,19 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 **PR:** PR 1 — Add user-defined Club DNA scoring
 
-**Commit:** Commit 13 — Integrate Club DNA with My Club and layouts
+**Commit:** None — feature validation
 
 ### RED or removal proof
 
-Add route, invalidation, and smoke tests that fail while **Define DNA** is absent beside the managed-club save action, creation cannot append both layouts, stale save-context completions can mutate current UI, and save/snapshot changes omit Club DNA invalidation.
+Not applicable. All planned implementation packets are completed and independently reviewed. Feature validation now proves the complete supported contract across Rust, frontend, Chromium, documentation, and the exact recorded commit set.
 
 ### Expected outcome
 
-My Club composes the context-keyed definition Modal beside **Save managed club**, enables it only for a selected managed club and current settled context, appends Club DNA once to Search and Squad on matching-context creation, preserves layouts on edit/remove, and suppresses every stale side effect.
+All ledger validation passes, a fresh feature reviewer clears the complete implementation and test portfolio, durable documentation is reconciled, and the ledger is ready to move to completed features before publication.
 
 ### Explicit exclusions
 
-New persistence/formula behavior, store migration/reset, layout/filter/sort/history removal, Player Profile, Moneyball, new workspaces, release work, and unrelated Git mutations.
+New behavior, scope expansion, release preparation, unreviewed corrections, and unrelated repository changes.
 
 ## Discoveries and replanning
 
@@ -1076,7 +1076,8 @@ New persistence/formula behavior, store migration/reset, layout/filter/sort/hist
 - Commit 9 installs the complete eager writer lifecycle, removes lazy materialization/invalidation/completeness ownership, and adds exact no-backfill promotion and SnapshotSync recovery proof without resolver/filter/Search/Squad exposure. Commit 10 then adds exact-identity read-only exposure and a Club DNA-only null-last sort wrapper. Both add no v33, index, dependency, background work, performance gate, current/potential-role ordering change, or general role-sort optimization.
 - The architecture and packet change invalidated Delivery fingerprint `3fea871899c7615d5449aaddb1ac13d0395b5d8473fa146389c2f734cfb0ca18`. Independent review cleared the eager replan, the developer accepted it and re-invoked delivery, and both classifiers report runnable under replacement fingerprint `f3b0d9469bdad80e388af3cdb915383af95005bcc7abc3777059f44aecfee49b`.
 - The frontend attribute catalogs remain duplicated between Player Profile grouping and player metric metadata. Renumbered Commit 11 still consolidates them into a shared utility; Rust retains its independent authoritative catalog. Commits 11–13 otherwise retain their substantive content.
-- `.wiki/TODO.md`, `.wiki/BACKLOG.md`, `.wiki/ARCHITECTURE.md`, and `.wiki/DESIGN.md` remain unchanged during this bounded replan.
+- `.wiki/TODO.md`, `.wiki/BACKLOG.md`, `.wiki/ARCHITECTURE.md`, and `.wiki/DESIGN.md` remained unchanged during the bounded replan.
+- Feature review cleared the complete implementation after two correction rounds covering immutable token proof, explicit UID ties, eager definition-query availability, and same-context refetch-error guards. The developer explicitly accepted the unavailable native Tauri/WebView validation gap after the supported Rust, frontend, full repository, and Chromium gates passed.
 
 ## Completed work
 
@@ -1094,6 +1095,7 @@ New persistence/formula behavior, store migration/reset, layout/filter/sort/hist
 | PR 1 — Add user-defined Club DNA scoring | Commit 10 — Expose persisted Club DNA queries | cf7cc027c6a7058f10635c9e8ee7cd69cb6ba0c1 | Added exact-identity read-only Club DNA display/filter/sort in Search and display/sort in Squad. | `./scripts/dev check-rust` passed 581 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 0 | None. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 11 — Add the frontend Club DNA domain and fixed metric | b7c947efedacf27dcda27478d2c0b744e4a4210b | Added the canonical frontend attribute catalog, typed context adapters, fixed metric, layout retention, and score rendering. | `./scripts/dev test` passed 577 tests; `./scripts/dev check-app` and `./scripts/dev check` passed. | Pass | Clear | 1 | Review corrections anchored full catalog order and exact save/token Query-key isolation. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 12 — Build the Club DNA definition Modal | c78fc85062d547b923572b6fae6edbaaf4e3ae56 | Added the full-catalog accessible definition Modal, edit/remove lifecycle, context-safe pending/error handling, and bounded IPC mocks. | `./scripts/dev test` passed 591 tests; `./scripts/dev check-app` and `./scripts/dev check` passed. | Pass | Clear | 1 | Review corrections strengthened stale success/error isolation, unavailable confirmation guards, and edit `created: false` proof. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 13 — Integrate Club DNA with My Club and layouts | 45b4bc60727a605367749051cf35b50a6909c222 | Composed Define DNA beside managed-club controls, guarded save-context side effects, appended both layouts on creation, wired invalidation, and added smoke coverage. | `./scripts/dev test` passed 598 tests; `./scripts/dev check-app`, `./scripts/dev check`, and `./scripts/dev smoke` passed 49 Chromium tests. | Pass | Clear | 2 | Review corrections closed the save-refresh race, proved mutation invalidation, kept the disabled action visible, widened the responsive control group, and strengthened removal retention proof. |
 
 ## Final validation
 
