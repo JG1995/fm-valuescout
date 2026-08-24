@@ -900,7 +900,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 #### Commit 12 — Build the Club DNA definition Modal
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(club-dna): build definition modal`
 
@@ -970,7 +970,7 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 #### Commit 13 — Integrate Club DNA with My Club and layouts
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(club-dna): connect My Club and table layouts`
 
@@ -1050,19 +1050,19 @@ Completed Commits 1–7 establish v31/v32 persistence, the pure scorer, and the 
 
 **PR:** PR 1 — Add user-defined Club DNA scoring
 
-**Commit:** Commit 12 — Build the Club DNA definition Modal
+**Commit:** Commit 13 — Integrate Club DNA with My Club and layouts
 
 ### RED or removal proof
 
-Add component and IPC-mock tests that fail while users cannot open an accessible definition form, select the complete catalog, save/edit/remove one definition, or survive stale-context and destructive-confirmation transitions safely.
+Add route, invalidation, and smoke tests that fail while **Define DNA** is absent beside the managed-club save action, creation cannot append both layouts, stale save-context completions can mutate current UI, and save/snapshot changes omit Club DNA invalidation.
 
 ### Expected outcome
 
-A single accessible Modal supports create/edit/remove Club DNA with every approved attribute, minimum-one validation, exact formula explanation and selected summary, pending/error guards, draft preservation, focus return, and captured-context stale-result suppression.
+My Club composes the context-keyed definition Modal beside **Save managed club**, enables it only for a selected managed club and current settled context, appends Club DNA once to Search and Squad on matching-context creation, preserves layouts on edit/remove, and suppresses every stale side effect.
 
 ### Explicit exclusions
 
-My Club placement, route composition, automatic layout append, active-save invalidation wiring, backend changes, score computation/profile display, current-state documentation, and unrelated Git mutations.
+New persistence/formula behavior, store migration/reset, layout/filter/sort/history removal, Player Profile, Moneyball, new workspaces, release work, and unrelated Git mutations.
 
 ## Discoveries and replanning
 
@@ -1093,6 +1093,7 @@ My Club placement, route composition, automatic layout append, active-save inval
 | PR 1 — Add user-defined Club DNA scoring | Commit 9 — Install the eager Club DNA writer lifecycle | b3ccf37f9a1b23b334d235605b91db681d57bb13 | Added bounded eager definition, ingest, and boost score writers; removed lazy ownership; and proved promotion needs no backfill. | `./scripts/dev check-rust` passed 574 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 2 | Review corrections bounded retained-snapshot memory and added exact CA and mentality rollback proof. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 10 — Expose persisted Club DNA queries | cf7cc027c6a7058f10635c9e8ee7cd69cb6ba0c1 | Added exact-identity read-only Club DNA display/filter/sort in Search and display/sort in Squad. | `./scripts/dev check-rust` passed 581 tests with 2 ignored; `./scripts/dev check` passed. | Pass | Clear | 0 | None. |
 | PR 1 — Add user-defined Club DNA scoring | Commit 11 — Add the frontend Club DNA domain and fixed metric | b7c947efedacf27dcda27478d2c0b744e4a4210b | Added the canonical frontend attribute catalog, typed context adapters, fixed metric, layout retention, and score rendering. | `./scripts/dev test` passed 577 tests; `./scripts/dev check-app` and `./scripts/dev check` passed. | Pass | Clear | 1 | Review corrections anchored full catalog order and exact save/token Query-key isolation. |
+| PR 1 — Add user-defined Club DNA scoring | Commit 12 — Build the Club DNA definition Modal | c78fc85062d547b923572b6fae6edbaaf4e3ae56 | Added the full-catalog accessible definition Modal, edit/remove lifecycle, context-safe pending/error handling, and bounded IPC mocks. | `./scripts/dev test` passed 591 tests; `./scripts/dev check-app` and `./scripts/dev check` passed. | Pass | Clear | 1 | Review corrections strengthened stale success/error isolation, unavailable confirmation guards, and edit `created: false` proof. |
 
 ## Final validation
 

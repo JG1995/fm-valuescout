@@ -42,6 +42,25 @@ test.describe("application smoke", () => {
     await expect(main.getByText("Stored value:")).toHaveCount(0);
   });
 
+  test("My Club creates Club DNA and exposes its Squad column", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, { squadOverview: true });
+    await page.goto("/my-club");
+
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Define DNA" }).click();
+    const dialog = page.getByRole("dialog", { name: "Define Club DNA" });
+    await expect(dialog).toContainText("scales each selected 1–20 value by 5");
+    await dialog.getByRole("checkbox", { name: "Acceleration" }).check();
+    await expect(dialog.getByText("Selected attributes (1)")).toBeVisible();
+    await dialog.getByRole("button", { name: "Save Club DNA" }).click();
+
+    await expect(
+      main.getByRole("columnheader", { name: "Club DNA" }),
+    ).toBeVisible();
+  });
+
   test("Settings renames and removes a historical snapshot", async ({
     page,
   }) => {

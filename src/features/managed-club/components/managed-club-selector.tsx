@@ -3,7 +3,14 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "@tanstack/react-query";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
 import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
@@ -169,8 +176,10 @@ function ManagedClubPicker({
 }
 
 export function ManagedClubSelector({
+  action,
   onSaved,
 }: {
+  action?: ReactNode;
   onSaved?: () => void;
 } = {}) {
   const queryClient = useQueryClient();
@@ -206,7 +215,7 @@ export function ManagedClubSelector({
 
   return (
     <form
-      className="w-full max-w-md space-y-2"
+      className="w-full max-w-2xl space-y-2"
       onSubmit={(event) => {
         event.preventDefault();
         save.mutate();
@@ -235,6 +244,7 @@ export function ManagedClubSelector({
         >
           Save managed club
         </Button>
+        {action}
       </fieldset>
 
       {managedClub.status === "missing" ? (

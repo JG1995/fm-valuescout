@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { academyKeys } from "@/features/academy/api/academy-keys";
+import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import { playerKeys } from "@/features/player-profile/api/player-keys";
 import { searchKeys } from "@/features/search/api/search-keys";
@@ -93,6 +94,7 @@ describe("Settings", () => {
     });
     queryClient.setQueryData(searchKeys.all, []);
     queryClient.setQueryData(playerKeys.all, []);
+    queryClient.setQueryData(clubDnaKeys.all, []);
     queryClient.setQueryData(plannerKeys.all, []);
     queryClient.setQueryData(staffKeys.all, []);
     queryClient.setQueryData(academyKeys.classes(), []);
@@ -115,6 +117,9 @@ describe("Settings", () => {
         true,
       );
       expect(queryClient.getQueryState(playerKeys.all)?.isInvalidated).toBe(
+        true,
+      );
+      expect(queryClient.getQueryState(clubDnaKeys.all)?.isInvalidated).toBe(
         true,
       );
       expect(queryClient.getQueryState(plannerKeys.all)?.isInvalidated).toBe(
