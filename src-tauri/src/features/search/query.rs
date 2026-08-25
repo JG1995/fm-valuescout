@@ -1162,7 +1162,9 @@ mod tests {
     use super::*;
     use crate::db::migrations;
     use crate::features::moneyball::role_catalog::builtin_catalog;
-    use crate::features::player_metrics::club_dna::SCORE_MODEL_VERSION;
+    use crate::features::player_metrics::{
+        club_dna::SCORE_MODEL_VERSION, potential_cache::PROJECTION_MODEL_VERSION,
+    };
     use crate::features::search::filter::{parse_filter_ast, FilterRule, FilterValue};
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service::{create_save, set_active_save};
@@ -3579,6 +3581,99 @@ mod tests {
         assert!(query.contains("potential_role_sort.uid = players.uid"));
         assert!(query.contains("potential_role_sort.projection_model_version"));
         assert!(query.contains("ORDER BY potential_role_sort.score"));
+    }
+
+    #[test]
+    fn potential_sort_orders_nullable_ties_and_materializes_only_the_distinct_visible_page_role() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("warm-potential-sort.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "First score tie", 180),
+                player_template(2, "Second score tie", 170),
+                player_template(3, "Lower score", 160),
+                player_template(4, "Nullable score", 150),
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        let sort_role = "line_holding_keeper_oop";
+        let sort_metric = format!("potential_role.{sort_role}");
+        let distinct_visible_role = "sweeper_keeper_oop";
+        let distinct_visible_metric = format!("potential_role.{distinct_visible_role}");
+        for (uid, score) in [(1, Some(80)), (2, Some(80)), (3, Some(40)), (4, None)] {
+            conn.execute(
+                "INSERT INTO player_potential_role_scores (
+                     snapshot_id, uid, role_id, score, projection_model_version
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![snapshot_id, uid, sort_role, score, PROJECTION_MODEL_VERSION],
+            )
+            .expect("seed exact-version potential sort score");
+        }
+        let sort_by = SortField::parse(&sort_metric).expect("parse potential sort");
+
+        for (direction, expected) in [
+            (SortDir::Asc, vec![4, 3, 1, 2]),
+            (SortDir::Desc, vec![1, 2, 3, 4]),
+        ] {
+            let page = search_players(&conn, 0, 4, sort_by.clone(), direction, None, &[])
+                .expect("sort warm potential scores");
+            assert_eq!(page.total, 4);
+            assert_eq!(
+                page.players
+                    .iter()
+                    .map(|player| player.uid)
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+
+        let page = search_players(
+            &conn,
+            1,
+            2,
+            sort_by,
+            SortDir::Asc,
+            None,
+            &[sort_metric, distinct_visible_metric],
+        )
+        .expect("page warm potential scores with a distinct visible role");
+        assert_eq!(page.total, 4);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [3, 1]
+        );
+        let sorted_role_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1
+                   AND role_id = ?2
+                   AND projection_model_version = ?3",
+                rusqlite::params![snapshot_id, sort_role, PROJECTION_MODEL_VERSION],
+                |row| row.get(0),
+            )
+            .expect("count globally sorted role rows");
+        assert_eq!(sorted_role_rows, 4);
+        let distinct_visible_uids = conn
+            .prepare(
+                "SELECT uid FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1
+                   AND role_id = ?2
+                   AND projection_model_version = ?3
+                 ORDER BY uid ASC",
+            )
+            .expect("prepare distinct visible role query")
+            .query_map(
+                rusqlite::params![snapshot_id, distinct_visible_role, PROJECTION_MODEL_VERSION],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("query distinct visible role rows")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect distinct visible role rows");
+        assert_eq!(distinct_visible_uids, [1, 3]);
     }
 
     #[test]

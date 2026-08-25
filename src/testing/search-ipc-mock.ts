@@ -78,6 +78,7 @@ let pendingSearchPlayersPage: {
   args: unknown;
   promise: Promise<SearchPlayersPage>;
   resolve: (page: SearchPlayersPage) => void;
+  reject: (error: Error) => void;
 } | null = null;
 let rejectedReplacement = false;
 let suggestOverride: PlayerSuggestHit[] | null = null;
@@ -136,6 +137,16 @@ export function resolvePendingSearchPlayersPageIpcMock() {
   pendingSearchPlayersPage = null;
   searchPlayersPageMode = "success";
   pending.resolve(searchPlayersPage(pending.args));
+}
+
+export function rejectPendingSearchPlayersPageIpcMock(message: string) {
+  const pending = pendingSearchPlayersPage;
+  if (!pending) {
+    return;
+  }
+  pendingSearchPlayersPage = null;
+  searchPlayersPageMode = "success";
+  pending.reject(new Error(message));
 }
 
 export function getLastSuggestPlayersArgs(): Record<string, unknown> | null {
@@ -475,10 +486,12 @@ export function resolveSearchPlayersIpcMock(
   ) {
     if (!pendingSearchPlayersPage) {
       let resolve!: (page: SearchPlayersPage) => void;
-      const promise = new Promise<SearchPlayersPage>((next) => {
+      let reject!: (error: Error) => void;
+      const promise = new Promise<SearchPlayersPage>((next, fail) => {
         resolve = next;
+        reject = fail;
       });
-      pendingSearchPlayersPage = { args, promise, resolve };
+      pendingSearchPlayersPage = { args, promise, resolve, reject };
     }
     return pendingSearchPlayersPage.promise;
   }

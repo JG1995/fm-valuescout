@@ -25,6 +25,7 @@ let pendingSquadPlayersPage: {
   args: unknown;
   promise: Promise<SquadPlayersPage>;
   resolve: (page: SquadPlayersPage) => void;
+  reject: (error: Error) => void;
 } | null = null;
 let rejectedSecondPage = false;
 let rejectedReplacement = false;
@@ -126,6 +127,16 @@ export function resolvePendingSquadPlayersPageIpcMock() {
   pendingSquadPlayersPage = null;
   squadPlayersPageMode = "success";
   pending.resolve(squadPlayersPage(pending.args));
+}
+
+export function rejectPendingSquadPlayersPageIpcMock(message: string) {
+  const pending = pendingSquadPlayersPage;
+  if (!pending) {
+    return;
+  }
+  pendingSquadPlayersPage = null;
+  squadPlayersPageMode = "success";
+  pending.reject(new Error(message));
 }
 
 export function setSquadCurrentAbilityBoostIpcMockMode(
@@ -496,10 +507,12 @@ export function resolveSquadPlayersIpcMock(
   ) {
     if (!pendingSquadPlayersPage) {
       let resolve!: (page: SquadPlayersPage) => void;
-      const promise = new Promise<SquadPlayersPage>((next) => {
+      let reject!: (error: Error) => void;
+      const promise = new Promise<SquadPlayersPage>((next, fail) => {
         resolve = next;
+        reject = fail;
       });
-      pendingSquadPlayersPage = { args, promise, resolve };
+      pendingSquadPlayersPage = { args, promise, resolve, reject };
     }
     return pendingSquadPlayersPage.promise;
   }

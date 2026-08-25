@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { UsersRound } from "lucide-react";
 import {
@@ -6,6 +6,7 @@ import {
   type RefObject,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
@@ -401,6 +402,20 @@ export function SquadOverviewPanel({
   );
   const committedQuery = useQuery(committedOptions);
   const requestedQuery = useQuery(requestedOptions);
+  const queryClient = useQueryClient();
+  const requestedKey = JSON.stringify(requestedOptions.queryKey);
+  const requestedDataUpdateCount =
+    queryClient.getQueryState(requestedOptions.queryKey)?.dataUpdateCount ?? 0;
+  const requestedVersion = useRef({
+    key: requestedKey,
+    dataUpdateCount: requestedDataUpdateCount,
+  });
+  if (requestedVersion.current.key !== requestedKey) {
+    requestedVersion.current = {
+      key: requestedKey,
+      dataUpdateCount: requestedDataUpdateCount,
+    };
+  }
   const requestMatchesCommitted =
     JSON.stringify(committedOptions.queryKey) ===
     JSON.stringify(requestedOptions.queryKey);
@@ -415,7 +430,7 @@ export function SquadOverviewPanel({
         pageContext: requested.pageContext,
       });
   const isReplacementActive = !requestMatchesCommitted;
-  const isReplacementPending = isSortReplacement && requestedQuery.isPending;
+  const isReplacementPending = isSortReplacement && requestedQuery.isFetching;
   const replacementError =
     isSortReplacement && requestedQuery.isError ? requestedQuery.error : null;
   const replacementLabel = requested.sortBy.startsWith("potential_role.")
@@ -423,10 +438,23 @@ export function SquadOverviewPanel({
     : "Sorting…";
 
   useEffect(() => {
-    if (requestedQuery.isSuccess && !requestMatchesCommitted) {
+    if (
+      requestedQuery.isSuccess &&
+      !requestedQuery.isFetching &&
+      (!requestedQuery.isStale ||
+        requestedDataUpdateCount > requestedVersion.current.dataUpdateCount) &&
+      !requestMatchesCommitted
+    ) {
       setCommitted(requested);
     }
-  }, [requestMatchesCommitted, requested, requestedQuery.isSuccess]);
+  }, [
+    requestMatchesCommitted,
+    requested,
+    requestedDataUpdateCount,
+    requestedQuery.isFetching,
+    requestedQuery.isStale,
+    requestedQuery.isSuccess,
+  ]);
 
   const page =
     requestMatchesCommitted || isSortReplacement

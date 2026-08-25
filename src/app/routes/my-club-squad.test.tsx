@@ -95,6 +95,7 @@ import {
   getSquadCurrentAbilityBoostIpcMockCalls,
   getSquadPlayersCallCount,
   getSquadWonderkidMentalityBoostIpcMockCalls,
+  rejectPendingSquadPlayersPageIpcMock,
   resolvePendingSquadCurrentAbilityBoostIpcMock,
   resolvePendingSquadPlayersPageIpcMock,
   resolvePendingSquadWonderkidMentalityBoostIpcMock,
@@ -1792,6 +1793,93 @@ describe("My Club route", () => {
       ),
     ).toHaveAttribute("aria-sort", "ascending");
     expect(screen.getByText("Alex Scout")).toBeInTheDocument();
+  });
+
+  it("retains A until a stale cached Squad sort refetch succeeds", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      squadPlayerNamed("Zara", 1, 200),
+      squadPlayerNamed("Alice", 2, 100),
+    ]);
+    const { queryClient, router } = renderMyClubRoute({
+      initialEntry: "/my-club",
+    });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "Name" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
+    await user.click(within(table).getByRole("button", { name: "CA" }));
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "CA" }),
+      ).toHaveAttribute("aria-sort", "descending"),
+    );
+    const cachedNameSort = queryClient
+      .getQueryCache()
+      .findAll({ queryKey: squadKeys.playerPages() })
+      .find((query) => {
+        const descriptor = query.queryKey.at(-1);
+        return (
+          typeof descriptor === "object" &&
+          descriptor !== null &&
+          (descriptor as { sortBy?: unknown }).sortBy === "name"
+        );
+      });
+    if (!cachedNameSort) {
+      throw new Error("expected a cached Squad name sort");
+    }
+    await queryClient.invalidateQueries({ queryKey: cachedNameSort.queryKey });
+    setSquadPlayersPageIpcMockMode("pendingReplacement");
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+
+    await screen.findByRole("status");
+    expect(within(table).getByText("Zara")).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent === "2 players · sorted by CA (descending)",
+      ),
+    ).toBeInTheDocument();
+    const retainedRow = within(table)
+      .getAllByRole("row")
+      .find((row) => row.hasAttribute("data-index"));
+    if (!retainedRow) {
+      throw new Error("expected a retained Squad row");
+    }
+    fireEvent.click(retainedRow);
+    fireEvent.keyDown(retainedRow, { key: "Enter" });
+    expect(router.state.location.pathname).toBe("/my-club");
+
+    rejectPendingSquadPlayersPageIpcMock("Could not refresh sorted squad.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not sort squad. Could not refresh sorted squad.",
+    );
+    expect(within(table).getByText("Zara")).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "Name" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
   });
 
   it("retains committed Squad rows, blocks stale activation, and promotes only the latest sort", async () => {

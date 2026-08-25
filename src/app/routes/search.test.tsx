@@ -15,6 +15,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import { searchKeys } from "@/features/search/api/search-keys";
 import type { PlayerSummary } from "@/features/search/types/player-summary";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
@@ -26,6 +27,7 @@ import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   getLastSearchPlayersArgs,
   getSearchPlayersCallCount,
+  rejectPendingSearchPlayersPageIpcMock,
   resolvePendingSearchPlayersPageIpcMock,
   setSearchPlayersOverride,
   setSearchPlayersPageIpcMockMode,
@@ -1287,6 +1289,87 @@ describe("search route", () => {
         .getState()
         .removeColumn("search", "attr.Acceleration");
     });
+  });
+
+  it("retains A until a stale cached Search sort refetch succeeds", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Zara", 200),
+      playerNamed("Alice", 100),
+    ]);
+    const { queryClient, router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "Name" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
+    await user.click(within(table).getByRole("button", { name: "CA" }));
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "CA" }),
+      ).toHaveAttribute("aria-sort", "descending"),
+    );
+    const cachedNameSort = queryClient
+      .getQueryCache()
+      .findAll({ queryKey: searchKeys.playerPages() })
+      .find((query) => {
+        const descriptor = query.queryKey.at(-1);
+        return (
+          typeof descriptor === "object" &&
+          descriptor !== null &&
+          (descriptor as { sortBy?: unknown }).sortBy === "name"
+        );
+      });
+    if (!cachedNameSort) {
+      throw new Error("expected a cached Search name sort");
+    }
+    await queryClient.invalidateQueries({ queryKey: cachedNameSort.queryKey });
+    setSearchPlayersPageIpcMockMode("pendingReplacement");
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+
+    await screen.findByRole("status");
+    expect(within(table).getByText("Zara")).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent === "2 players · sorted by CA (descending)",
+      ),
+    ).toBeInTheDocument();
+    const retainedRow = within(table)
+      .getAllByRole("row")
+      .find((row) => row.hasAttribute("data-index"));
+    if (!retainedRow) {
+      throw new Error("expected a retained Search row");
+    }
+    fireEvent.click(retainedRow);
+    fireEvent.keyDown(retainedRow, { key: "Enter" });
+    expect(router.state.location.pathname).toBe("/search");
+
+    rejectPendingSearchPlayersPageIpcMock("Could not refresh sorted players.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not sort players. Could not refresh sorted players.",
+    );
+    expect(within(table).getByText("Zara")).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "Name" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
   });
 
   it("retains committed Search rows and blocks activation while a replacement sort loads", async () => {
