@@ -4,7 +4,7 @@
 
 Accepted
 
-Implementation status: Planned in [Player Table Sort Performance](../features/active/player-table-sort-performance.md). No controller, migration, or query optimization is implemented yet.
+Implementation status: Implemented and completed in [Player Table Sort Performance](../features/completed/player-table-sort-performance.md).
 
 ## Context
 

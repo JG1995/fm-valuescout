@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Player Table Sort Performance](./features/active/player-table-sort-performance.md) — keep sort-only Search and Squad replacements visible, clear results before supported context changes, retain Name/CA controls, and make targeted scalar and persisted-score sorts acceptably responsive on a representative approximately 250,000-player save.
+None.
 
 ## Next
 
@@ -60,6 +60,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Completed
 
+- [Player Table Sort Performance](./features/completed/player-table-sort-performance.md) — truthful sort replacement, context-bound result clearing, targeted player indexes, and relation-driven Search and Squad sorts.
 - [Club DNA](./features/completed/club-dna.md) — save-owned full-catalog attribute definitions with eager nullable 0–100 scores, Search and Squad table integration, and a context-safe My Club definition Modal (Linear JAY-32).
 - [Todo UX Quality Pass](./features/completed/todo-ux-quality-pass.md) — My Club containment, app history controls, shared player-table refinements, and Moneyball profile comparison improvements.
 - [Planner Best-Role Reference](./features/completed/planner-best-role-reference.md) — read-only phase-specific best-lane reference for every current managed-club player, with Current/Potential assignment, adjusted scores, and a sortable Planner Modal; final PR not published.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -157,7 +157,7 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 ### PR 1 — Improve player table sort performance
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -175,7 +175,7 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 **Required checks:** GitHub required strict status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -541,7 +541,7 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 #### Commit 6 — Drive Club DNA sorts from score rows
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `perf(tables): drive Club DNA sorts from scores`
 
@@ -609,24 +609,6 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 5. Verify the manual checklist covers both directions for Search Name/CA, PA/Age/Value, current role, warm potential role, and Club DNA plus Squad CA over the configured managed-club cohort, current role, warm potential role, and Club DNA.
 6. Verify the handoff records only `Pass` or `Fail` and makes no quantified performance claim.
 
-## Active work
-
-**PR:** PR 1 — Improve player table sort performance
-
-**Commit:** Commit 6 — Drive Club DNA sorts from score rows
-
-### RED or removal proof
-
-Focused Search and Squad tests fail the relation-shape contract because Club DNA sorting still uses a correlated scalar lookup instead of exact definition/model score rows.
-
-### Expected outcome
-
-Search and Squad order exact cohorts through missing-preserving, read-only Club DNA relations with nulls last, both directions, UID ties, totals, and pages; automated gates and representative-save manual acceptance pass before feature validation.
-
-### Explicit exclusions
-
-Club DNA writer/schema/index/version/formula/filter changes, current-role or potential changes, performance infrastructure or evidence files, and quantified performance claims.
-
 ## Discoveries and replanning
 
 - Current-source inspection confirmed duplicate Search/Squad result ownership in route loaders and panels, keyed Squad sort remounting, the single Db mutex, v32 indexes, correlated persisted-score expressions, and the redundant selected potential-role page pass.
@@ -639,7 +621,7 @@ Club DNA writer/schema/index/version/formula/filter changes, current-role or pot
 - The replan preserves the one-PR schema-2 structure, planning-only first packet, seven-index scope, committed/requested observers, duplicate-owner removal, relation-driven current/potential/Club-DNA sorts, warm potential optimization, cold lazy correctness, bounded IPC, one SQLite connection, exact SQL semantics, normal checks, review, and manual representative-save judgment.
 - Delivery now has exactly six commits. Every implementation packet has a new fingerprint because packet scope, proof, dependencies, validation, stop conditions, and review concerns changed materially.
 - The exact planning scope remains `.wiki/features/active/player-table-sort-performance.md`, `.wiki/TODO.md`, `.wiki/decisions/0025-selective-index-driven-player-sorts.md`, and `.wiki/decisions/README.md` only if its existing row needs adjustment. BACKLOG and planned specs remain unchanged.
-- Delivery fingerprint remains `Pending review`. This planning-only replan makes no implementation or performance claim.
+- Delivery fingerprint remains `fdf0376491139cf1da0cf2e84d5fa5a0d0921dab9c10f7583f5ad2f304e1ce79`.
 
 ## Completed work
 
@@ -649,7 +631,8 @@ Club DNA writer/schema/index/version/formula/filter changes, current-role or pot
 | PR 1 — Improve player table sort performance | Commit 2 — Add seven targeted player indexes | 5985da86ab02abbb80df7c252f5e418167483a73 | Added migration v33 with exactly six directional PA, Age, and Value indexes plus one managed-club membership index; retained Name and CA indexes and unchanged query behavior. | `./scripts/dev check-rust` passed with 584 tests and 2 ignored; `./scripts/dev check` passed; Rust LSP and staged diff checks passed. | Pass | Clear | 0 | None |
 | PR 1 — Improve player table sort performance | Commit 3 — Retain rows and clear context-bound results | 1ed1f17bae6f0a8c401301a7e82d53062c014adc | Added exact player-page roots and app-owned cancellation/removal, injected context transitions, committed/requested result controllers, truthful sort-only retention, projection/context clearing, and stale-row activation denial. | Focused frontend validation passed 231 tests; `./scripts/dev check-app`, 49-test smoke, `./scripts/dev check`, LSP, and staged diff checks passed. | Pass | Clear | 2 | None |
 | PR 1 — Improve player table sort performance | Commit 4 — Drive current-role sorts from score rows | 812aa46f0e0dffc68dd55c3d6de8f588c2eb942a | Replaced correlated current-role sort lookup with exact missing-preserving Search and Squad joins to validated `player_role_scores` identities, including the potential-display page path. | `./scripts/dev check-rust` passed with 591 tests and 2 ignored; `./scripts/dev check`, Rust LSP, and staged diff checks passed. | Pass | Clear | 1 | None |
-| PR 1 — Improve player table sort performance | Commit 5 — Streamline warm potential-role sorts | Pending record | Replaced nested warm probes with exact-version completeness counts, retained bounded cold recheck, added exact relation ordering, and skipped only the selected role's redundant page pass. | `./scripts/dev check-rust` passed with 597 tests and 2 ignored; `./scripts/dev check`, Rust LSP, and staged diff checks passed. | Pass | Clear | 0 | None |
+| PR 1 — Improve player table sort performance | Commit 5 — Streamline warm potential-role sorts | db65160bdd0a6e5a598efdcc2606679db2894454 | Replaced nested warm probes with exact-version completeness counts, retained bounded cold recheck, added exact relation ordering, and skipped only the selected role's redundant page pass. | `./scripts/dev check-rust` passed with 597 tests and 2 ignored; `./scripts/dev check`, Rust LSP, and staged diff checks passed. | Pass | Clear | 0 | None |
+| PR 1 — Improve player table sort performance | Commit 6 — Drive Club DNA sorts from score rows | 0111f0835a25bb24211e1254635c027a09c83a39 | Replaced correlated Club DNA sort lookup with exact missing-preserving, null-last Search and Squad score relations while keeping reads bounded and read-only. | `./scripts/dev check-rust` passed with 599 tests and 2 ignored; `./scripts/dev check` passed; exact smoke rerun passed 49 tests; manual representative-save acceptance: Pass. | Pass | Clear | 0 | None |
 
 ## Final validation
 
@@ -664,4 +647,54 @@ Club DNA writer/schema/index/version/formula/filter changes, current-role or pot
 
 ## Documentation impact
 
-No current-state document changes during planning. Implementation commits update current-state documentation only if delivered behavior creates a durable contract that the existing architecture owner must describe. Feature reconciliation updates TODO and archives this ledger. BACKLOG and planned specs remain unchanged. No performance evidence, command documentation, or performance architecture document is created.
+Feature completion reconciled the implemented architecture in `.wiki/ARCHITECTURE.md`, moved this complete ledger to the completed-features owner, and updated `.wiki/TODO.md` to remove the active pointer and add the completed record. ADR-0025 now records the implemented decision. BACKLOG and planned specs remain unchanged. No performance evidence, command documentation, or performance architecture document was created.
+
+## Exact implementation refs
+
+- Base: `f8b511693cc879c2f64f4e267637e3b8744007a0`
+- Planned content refs: `a1bf86feeddfc89fc0c3b0d3328ac9bc971b8ed7`, `5985da86ab02abbb80df7c252f5e418167483a73`, `1ed1f17bae6f0a8c401301a7e82d53062c014adc`, `812aa46f0e0dffc68dd55c3d6de8f588c2eb942a`, `db65160bdd0a6e5a598efdcc2606679db2894454`, `0111f0835a25bb24211e1254635c027a09c83a39`
+- Correction ref: `b5a5dc688e59fcd5f9e9a567c4387705ddedff30`
+- Documentation reconciliation ref: Pending record
+
+## Final publication
+
+```yaml
+status: ready_for_publication
+pr_status: not_published
+merge_status: not_merged
+pr_ref: "Not published"
+merge_ref: "Not merged"
+branch: feature/player-table-sort-performance
+base_branch: main
+base_ref: f8b511693cc879c2f64f4e267637e3b8744007a0
+publication_provider: GitHub
+merge_method: squash
+required_check_name: check
+pr_template: .github/pull_request_template.md
+feature_close_out: current
+feature_review_blocking: false
+feature_review_critical: none
+feature_review_high: none
+feature_review_medium: none
+feature_review_nitpick: none
+ci_repair_rounds: 0 of 2
+earlier_pr_merge_refs: []
+correction_ref: b5a5dc688e59fcd5f9e9a567c4387705ddedff30
+close_out_documentation_ref: Pending record
+implementation_range: "f8b511693cc879c2f64f4e267637e3b8744007a0..0111f0835a25bb24211e1254635c027a09c83a39"
+final_pr_commit_set:
+  - a1bf86feeddfc89fc0c3b0d3328ac9bc971b8ed7
+  - 5985da86ab02abbb80df7c252f5e418167483a73
+  - 1ed1f17bae6f0a8c401301a7e82d53062c014adc
+  - 812aa46f0e0dffc68dd55c3d6de8f588c2eb942a
+  - db65160bdd0a6e5a598efdcc2606679db2894454
+  - 0111f0835a25bb24211e1254635c027a09c83a39
+  - b5a5dc688e59fcd5f9e9a567c4387705ddedff30
+  - Pending record
+```
+
+## Feature close-out
+
+**State:** Current.
+
+The feature-review correction round at `b5a5dc688e59fcd5f9e9a567c4387705ddedff30` fixed stale cached replacement promotion and incomplete potential-sort proof. Correction review: Blocking No, no remaining findings, Test portfolio Pass, Project fit Conforms. Final validation passed: exact focused frontend 233 tests; `./scripts/dev check-rust` 601 tests and 2 ignored; full `./scripts/dev check`; smoke 49 tests; and developer manual representative-save checklist `Pass`. The PR remains unpublished and unmerged, with zero of two CI repair rounds used.
