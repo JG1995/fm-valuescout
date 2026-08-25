@@ -199,6 +199,110 @@ fn orders_every_fixed_column_and_pages_deterministically() {
 }
 
 #[test]
+fn orders_targeted_scalar_sorts_in_the_exact_managed_club_cohort() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    let previous_snapshot_id = current_snapshot_id(&conn, save_id);
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    for (uid, pa, age, market_value_gbp) in [
+        (77, 100, Some(20), Some(100)),
+        (78, 100, Some(20), Some(100)),
+        (79, 150, Some(22), Some(300)),
+        (80, 150, None, None),
+    ] {
+        conn.execute(
+            "UPDATE players
+             SET pa = ?1, age = ?2, market_value_gbp = ?3
+             WHERE snapshot_id = ?4 AND uid = ?5",
+            params![pa, age, market_value_gbp, snapshot_id, uid],
+        )
+        .expect("set targeted scalar values");
+    }
+    conn.execute(
+        "INSERT INTO players (
+             snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
+             nationalities_json, preferred_foot, positions_json, attributes_json,
+             hidden_attributes_json, personality_json, current_club
+         ) VALUES (?1, 99, 100, 999, 'Other club', 2000, 1,
+                   '[]', 'right', '{}', '{}', '{}', '{}', 'Other FC')",
+        params![snapshot_id],
+    )
+    .expect("insert current non-cohort player");
+    conn.execute(
+        "INSERT INTO players (
+             snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
+             nationalities_json, preferred_foot, positions_json, attributes_json,
+             hidden_attributes_json, personality_json, current_club
+         ) VALUES (?1, 999, 100, 999, 'Archived club player', 2000, 1,
+                   '[]', 'right', '{}', '{}', '{}', '{}', 'Loan FC')",
+        params![previous_snapshot_id],
+    )
+    .expect("insert archived cohort player");
+
+    for (field, direction, expected, expected_page) in [
+        (
+            SquadSortField::Pa,
+            SquadSortDir::Asc,
+            vec![77, 78, 79, 80],
+            vec![78, 79],
+        ),
+        (
+            SquadSortField::Pa,
+            SquadSortDir::Desc,
+            vec![79, 80, 77, 78],
+            vec![80, 77],
+        ),
+        (
+            SquadSortField::Age,
+            SquadSortDir::Asc,
+            vec![80, 77, 78, 79],
+            vec![77, 78],
+        ),
+        (
+            SquadSortField::Age,
+            SquadSortDir::Desc,
+            vec![79, 77, 78, 80],
+            vec![77, 78],
+        ),
+        (
+            SquadSortField::Value,
+            SquadSortDir::Asc,
+            vec![80, 77, 78, 79],
+            vec![77, 78],
+        ),
+        (
+            SquadSortField::Value,
+            SquadSortDir::Desc,
+            vec![79, 77, 78, 80],
+            vec![77, 78],
+        ),
+    ] {
+        let page = list_squad_players(&conn, save_id, 0, 4, field.clone(), direction, &[])
+            .expect("sort targeted squad scalar values");
+        assert_eq!(page.total, 4);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            expected
+        );
+
+        let bounded_page = list_squad_players(&conn, save_id, 1, 2, field, direction, &[])
+            .expect("page targeted squad scalar values");
+        assert_eq!(bounded_page.total, 4);
+        assert_eq!(
+            bounded_page
+                .players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            expected_page
+        );
+    }
+}
+
+#[test]
 fn returns_no_players_without_a_configuration_or_matching_current_players() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     conn.execute(

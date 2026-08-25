@@ -2105,29 +2105,94 @@ mod tests {
     }
 
     #[test]
-    fn orders_by_pa_ascending_when_requested() {
+    fn orders_targeted_scalar_sorts_with_nulls_ties_totals_and_pages() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("sort-pa.db"));
+        let mut conn = open_migrated(&temp_dir.path().join("targeted-scalar-sorts.db"));
         ingest_players(
             &mut conn,
-            vec![
-                player_template(1, "Low", 100),
-                player_template(2, "High", 180),
-                player_template(3, "Mid", 140),
-            ],
+            [10, 20, 30, 40, 50]
+                .into_iter()
+                .map(|uid| player_template(uid, &format!("Player {uid}"), 100))
+                .collect(),
         );
+        let snapshot_id = current_snapshot_id(&conn);
+        for (uid, pa, age, market_value_gbp) in [
+            (10, 100, Some(20), Some(100)),
+            (20, 100, Some(20), Some(100)),
+            (30, 150, Some(22), Some(300)),
+            (40, 150, None, None),
+            (50, 200, Some(22), None),
+        ] {
+            conn.execute(
+                "UPDATE players
+                 SET pa = ?1, age = ?2, market_value_gbp = ?3
+                 WHERE snapshot_id = ?4 AND uid = ?5",
+                rusqlite::params![pa, age, market_value_gbp, snapshot_id, uid],
+            )
+            .expect("set targeted scalar values");
+        }
 
-        let page =
-            search_without_filters(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Pa, SortDir::Asc)
-                .expect("sort by pa");
+        for (field, direction, expected, expected_page) in [
+            (
+                SortField::Pa,
+                SortDir::Asc,
+                vec![10, 20, 30, 40, 50],
+                vec![20, 30],
+            ),
+            (
+                SortField::Pa,
+                SortDir::Desc,
+                vec![50, 30, 40, 10, 20],
+                vec![30, 40],
+            ),
+            (
+                SortField::Age,
+                SortDir::Asc,
+                vec![40, 10, 20, 30, 50],
+                vec![10, 20],
+            ),
+            (
+                SortField::Age,
+                SortDir::Desc,
+                vec![30, 50, 10, 20, 40],
+                vec![50, 10],
+            ),
+            (
+                SortField::Value,
+                SortDir::Asc,
+                vec![40, 50, 10, 20, 30],
+                vec![50, 10],
+            ),
+            (
+                SortField::Value,
+                SortDir::Desc,
+                vec![30, 10, 20, 40, 50],
+                vec![10, 20],
+            ),
+        ] {
+            let page = search_without_filters(&conn, 0, 5, field.clone(), direction)
+                .expect("sort targeted scalar values");
+            assert_eq!(page.total, 5);
+            assert_eq!(
+                page.players
+                    .iter()
+                    .map(|player| player.uid)
+                    .collect::<Vec<_>>(),
+                expected
+            );
 
-        assert_eq!(
-            page.players
-                .iter()
-                .map(|player| player.pa)
-                .collect::<Vec<_>>(),
-            vec![110, 150, 190]
-        );
+            let bounded_page = search_without_filters(&conn, 1, 2, field, direction)
+                .expect("page targeted scalar values");
+            assert_eq!(bounded_page.total, 5);
+            assert_eq!(
+                bounded_page
+                    .players
+                    .iter()
+                    .map(|player| player.uid)
+                    .collect::<Vec<_>>(),
+                expected_page
+            );
+        }
     }
 
     fn filter_rule(field: &str, op: &str, value: FilterValue) -> FilterRule {

@@ -251,7 +251,7 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 #### Commit 2 — Add seven targeted player indexes
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `perf(database): index targeted player sorts`
 
@@ -318,7 +318,7 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 #### Commit 3 — Retain rows and clear context-bound results
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `fix(tables): retain rows while sorting`
 
@@ -613,19 +613,19 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 **PR:** PR 1 — Improve player table sort performance
 
-**Commit:** Commit 2 — Add seven targeted player indexes
+**Commit:** Commit 3 — Retain rows and clear context-bound results
 
 ### RED or removal proof
 
-Fresh-schema and v32→v33 migration tests fail because migration v33 and the seven approved indexes do not exist. Focused Search and Squad query tests characterize the current scalar sort and managed-club cohort behavior before the migration is added.
+Focused frontend tests fail because Search and Squad lack stable player-page roots and an app-owned clearing coordinator, supported context mutations invoke Tauri without the injected pre-mutation callback, routes do not share a neutral transition key, and sort changes replace or remount the result panel instead of retaining one committed request.
 
 ### Expected outcome
 
-Fresh and upgraded databases reach v33 with data intact; exactly six directional PA, Age, and Value indexes plus one managed-club membership index exist; Name and CA indexes remain unchanged; and Search/Squad ordering semantics stay stable.
+Search and Squad own one committed result during sort-only replacement, supported app-owned context mutations cancel and remove exact player-page roots before Tauri, routes stay blocked through owner refresh, late fulfillment cannot restore stale rows, and retained rows cannot activate until the latest requested sort commits.
 
 ### Explicit exclusions
 
-Score-relation rewrites, frontend behavior, performance tooling, additional indexes, prior-migration changes, and dependency changes.
+Backend DTO or SQL changes, response-generation metadata, new IPC arguments, copied Query data, global result state, broad cache eviction, and non-sort row retention.
 
 ## Discoveries and replanning
 
@@ -645,7 +645,8 @@ Score-relation rewrites, frontend behavior, performance tooling, additional inde
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Improve player table sort performance | Commit 1 — Record the approved feature plan | Pending record | Recorded the accepted schema 2 ledger, TODO activation, ADR-0025, and ADR index entry; BACKLOG stayed unchanged. | Both classifiers were runnable; Markdown/LSP diagnostics and exact staged diff checks passed. | Not applicable | Clear | 0 | None |
+| PR 1 — Improve player table sort performance | Commit 1 — Record the approved feature plan | a1bf86feeddfc89fc0c3b0d3328ac9bc971b8ed7 | Recorded the accepted schema 2 ledger, TODO activation, ADR-0025, and ADR index entry; BACKLOG stayed unchanged. | Both classifiers were runnable; Markdown/LSP diagnostics and exact staged diff checks passed. | Not applicable | Clear | 0 | None |
+| PR 1 — Improve player table sort performance | Commit 2 — Add seven targeted player indexes | Pending record | Added migration v33 with exactly six directional PA, Age, and Value indexes plus one managed-club membership index; retained Name and CA indexes and unchanged query behavior. | `./scripts/dev check-rust` passed with 584 tests and 2 ignored; `./scripts/dev check` passed; Rust LSP and staged diff checks passed. | Pass | Clear | 0 | None |
 
 ## Final validation
 
