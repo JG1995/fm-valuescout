@@ -4,7 +4,7 @@ use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExten
 
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
-    potential_cache::materialize_player_roles,
+    potential_cache::{materialize_player_roles, squad_role_rows_are_complete},
     resolver::{
         parse_requested_fields, read_dynamic_value, ClubDnaSqlBindings, DynamicValue, MetricField,
     },
@@ -61,9 +61,28 @@ impl SquadSortField {
         matches!(self, Self::Dynamic(field) if field.is_club_dna())
     }
 
-    fn potential_role_id(&self) -> Option<&'static str> {
+    fn potential_role_sort_identity(
+        &self,
+    ) -> Option<crate::features::player_metrics::resolver::PotentialRoleSortIdentity> {
         match self {
-            Self::Dynamic(field) => field.potential_role_id(),
+            Self::Dynamic(field) => field.potential_role_sort_identity(),
+            _ => None,
+        }
+    }
+
+    fn current_role_id(&self) -> Option<&'static str> {
+        match self {
+            Self::Dynamic(field) => field.current_role_id(),
+            _ => None,
+        }
+    }
+
+    fn club_dna_sort_identity(
+        &self,
+        definition_version: Option<i64>,
+    ) -> Option<crate::features::player_metrics::resolver::ClubDnaSortIdentity> {
+        match self {
+            Self::Dynamic(field) => field.club_dna_sort_identity(definition_version),
             _ => None,
         }
     }
@@ -176,9 +195,17 @@ pub fn list_squad_players(
         .then(|| current_club_dna_definition_version(conn, snapshot_id))
         .transpose()?
         .flatten();
+    let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
     let club_dna_bindings = club_dna_requested.then(|| ClubDnaSqlBindings::new(3, 4));
     let mut query_bind_values = vec![Value::Integer(snapshot_id), Value::Integer(save_id)];
-    if club_dna_requested {
+    if let Some(identity) = club_dna_sort {
+        query_bind_values.push(
+            identity
+                .definition_version
+                .map_or(Value::Null, Value::Integer),
+        );
+        query_bind_values.push(Value::Integer(identity.score_model_version));
+    } else if club_dna_requested {
         query_bind_values.push(club_dna_definition_version.map_or(Value::Null, Value::Integer));
         query_bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
     }
@@ -191,31 +218,102 @@ pub fn list_squad_players(
             SELECT club_name FROM managed_club_settings WHERE save_id = ?2
         )";
 
-    if let Some(role_id) = sort_by.potential_role_id() {
-        let player_uids = list_squad_player_uids(conn, save_id, snapshot_id)?;
-        materialize_player_roles(conn, snapshot_id, &player_uids, &[role_id.to_string()])?;
+    let potential_role_sort = sort_by.potential_role_sort_identity();
+    if let Some(identity) = potential_role_sort {
+        if !squad_role_rows_are_complete(
+            conn,
+            snapshot_id,
+            save_id,
+            identity.role_id,
+            identity.projection_model_version,
+        )? {
+            let player_uids = list_squad_player_uids(conn, save_id, snapshot_id)?;
+            materialize_player_roles(
+                conn,
+                snapshot_id,
+                &player_uids,
+                &[identity.role_id.to_string()],
+            )?;
+            if !squad_role_rows_are_complete(
+                conn,
+                snapshot_id,
+                save_id,
+                identity.role_id,
+                identity.projection_model_version,
+            )? {
+                return Err(
+                    "potential role materialization did not complete the squad cohort".to_string(),
+                );
+            }
+        }
     }
 
     let count_sql = format!("SELECT COUNT(*) FROM players p WHERE {membership_sql}");
     let total = conn
         .query_row(&count_sql, params![snapshot_id, save_id], |row| row.get(0))
         .map_err(|error| error.to_string())?;
-    let sort_expression = sort_by.sql_expr(club_dna_bindings);
-    let order_sql = if sort_by.is_club_dna() {
+    let current_role_sort = sort_by.current_role_id();
+    let mut from_sql = if let Some(role_id) = current_role_sort {
         format!(
-            "ORDER BY ({sort_expression}) IS NULL ASC, {sort_expression} {}, p.uid ASC",
+            "FROM players p
+             LEFT JOIN player_role_scores current_role_sort
+               ON current_role_sort.snapshot_id = p.snapshot_id
+              AND current_role_sort.role_id = '{role_id}'
+              AND current_role_sort.uid = p.uid"
+        )
+    } else {
+        "FROM players p".to_string()
+    };
+    if let Some(identity) = potential_role_sort {
+        from_sql.push_str(&format!(
+            " LEFT JOIN player_potential_role_scores potential_role_sort
+              ON potential_role_sort.snapshot_id = p.snapshot_id
+              AND potential_role_sort.uid = p.uid
+              AND potential_role_sort.role_id = '{}'
+              AND potential_role_sort.projection_model_version = {}",
+            identity.role_id, identity.projection_model_version
+        ));
+    }
+    if let Some((_, bindings)) = club_dna_sort.zip(club_dna_bindings) {
+        from_sql.push_str(&format!(
+            " LEFT JOIN club_dna_scores club_dna_sort
+              ON club_dna_sort.snapshot_id = p.snapshot_id
+              AND club_dna_sort.uid = p.uid
+              AND club_dna_sort.definition_version = ?{}
+              AND club_dna_sort.score_model_version = ?{}",
+            bindings.definition_version, bindings.score_model_version
+        ));
+    }
+    let order_sql = if current_role_sort.is_some() {
+        format!(
+            "ORDER BY current_role_sort.score {}, p.uid ASC",
+            sort_dir.sql_keyword()
+        )
+    } else if potential_role_sort.is_some() {
+        format!(
+            "ORDER BY potential_role_sort.score {}, p.uid ASC",
+            sort_dir.sql_keyword()
+        )
+    } else if club_dna_sort.is_some() {
+        format!(
+            "ORDER BY club_dna_sort.score IS NULL ASC, club_dna_sort.score {}, p.uid ASC",
             sort_dir.sql_keyword()
         )
     } else {
+        let sort_expression = sort_by.sql_expr(club_dna_bindings);
         format!(
             "ORDER BY {sort_expression} {}, p.uid ASC",
             sort_dir.sql_keyword()
         )
     };
-    let potential_display_roles = potential_role_ids(&dynamic_fields);
+    let mut potential_display_roles = potential_role_ids(&dynamic_fields);
+    if let Some(identity) = potential_role_sort {
+        potential_display_roles.retain(|role_id| role_id != identity.role_id);
+    }
     if !potential_display_roles.is_empty() {
         let page_uids = query_page_uids(
             conn,
+            &from_sql,
             membership_sql,
             &query_bind_values,
             &order_sql,
@@ -237,7 +335,7 @@ pub fn list_squad_players(
              p.ca,
              p.pa,
              p.market_value_gbp{}
-         FROM players p
+         {from_sql}
          WHERE {membership_sql}
              {order_sql}
              LIMIT ?{} OFFSET ?{}",
@@ -349,6 +447,7 @@ fn current_club_dna_definition_version(
 
 fn query_page_uids(
     conn: &Connection,
+    from_sql: &str,
     membership_sql: &str,
     bind_values: &[Value],
     order_sql: &str,
@@ -358,7 +457,7 @@ fn query_page_uids(
     let limit_index = bind_values.len() + 1;
     let offset_index = bind_values.len() + 2;
     let sql = format!(
-        "SELECT p.uid FROM players p WHERE {membership_sql} {order_sql} LIMIT ?{limit_index} OFFSET ?{offset_index}"
+        "SELECT p.uid {from_sql} WHERE {membership_sql} {order_sql} LIMIT ?{limit_index} OFFSET ?{offset_index}"
     );
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let mut values = bind_values.to_vec();

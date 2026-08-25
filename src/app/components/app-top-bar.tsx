@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 import { useEffect, useId, useState } from "react";
+import { clearPlayerResultContext } from "@/app/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { fieldClasses } from "@/components/ui/field/field-styles";
 import { academyKeys } from "@/features/academy/api/academy-keys";
@@ -43,7 +44,9 @@ export function AppTopBar() {
   );
   const setPlayerCap = useLoadDataPreferences((state) => state.setPlayerCap);
 
+  const clearResults = () => clearPlayerResultContext(queryClient);
   const load = useLoadData({
+    onBeforeContextChange: clearResults,
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
       void queryClient.invalidateQueries({ queryKey: searchKeys.all });
@@ -108,6 +111,7 @@ export function AppTopBar() {
         </div>
         <GlobalPlayerSearch />
         <ActiveSaveSelect
+          onBeforeContextChange={clearResults}
           onSwitched={() => {
             void queryClient.invalidateQueries({ queryKey: searchKeys.all });
             void queryClient.invalidateQueries({ queryKey: playerKeys.all });

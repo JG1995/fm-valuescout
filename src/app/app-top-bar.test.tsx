@@ -15,6 +15,7 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppTopBar } from "@/app/components/app-top-bar";
 import type { RouterContext } from "@/app/router-context";
+import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { academyClassesQueryOptions } from "@/features/academy/api/academy-classes-query-options";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { setBridgeStatusIpcMockMode } from "@/features/memory-read/api/bridge-status-ipc-mock";
@@ -22,6 +23,8 @@ import {
   DEFAULT_PLAYER_CAP,
   useLoadDataPreferences,
 } from "@/features/memory-read/stores/use-load-data-preferences";
+import { searchKeys } from "@/features/search/api/search-keys";
+import { squadKeys } from "@/features/squad/api/squad-keys";
 import { staffKeys } from "@/features/staff/api/staff-keys";
 import { routeTree } from "@/routeTree.gen";
 import {
@@ -31,7 +34,9 @@ import {
 import { renderWithProviders } from "@/testing/render-with-providers";
 import {
   getLastLoadDataIpcArgs,
+  observeSnapshotIpcCall,
   resolveBusyLoadDataRequest,
+  resolveCreateSaveIpcMock,
   setLoadDataIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
 
@@ -220,6 +225,57 @@ describe("app top bar", () => {
     await screen.findByText(/Loaded 3 players into the database/i);
 
     expect(getLastLoadDataIpcArgs()).toEqual({ maxAccepted: 250 });
+  });
+
+  it("clears player pages and exposes the transition before Load Data invokes Tauri", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders();
+    const searchPage = searchKeys.players(0, 50);
+    const squadPage = squadKeys.players(0, 50);
+    queryClient.setQueryData(searchPage, { players: ["search"] });
+    queryClient.setQueryData(squadPage, { players: ["squad"] });
+    let mutationWasVisible = false;
+    observeSnapshotIpcCall("loadData", () => {
+      expect(queryClient.getQueryData(searchPage)).toBeUndefined();
+      expect(queryClient.getQueryData(squadPage)).toBeUndefined();
+      mutationWasVisible =
+        queryClient.isMutating({
+          mutationKey: playerResultContextMutationKey,
+        }) > 0;
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+    await screen.findByText(/Loaded 3 players into the database/i);
+
+    expect(mutationWasVisible).toBe(true);
+  });
+
+  it("clears player pages and exposes the transition before switching active saves", async () => {
+    const user = userEvent.setup();
+    const { queryClient } = renderWithProviders();
+    const second = resolveCreateSaveIpcMock({ name: "Second save" });
+    await queryClient.invalidateQueries({ queryKey: ["snapshot", "saves"] });
+    const searchPage = searchKeys.players(0, 50);
+    const squadPage = squadKeys.players(0, 50);
+    queryClient.setQueryData(searchPage, { players: ["search"] });
+    queryClient.setQueryData(squadPage, { players: ["squad"] });
+    let mutationWasVisible = false;
+    observeSnapshotIpcCall("setActiveSave", () => {
+      expect(queryClient.getQueryData(searchPage)).toBeUndefined();
+      expect(queryClient.getQueryData(squadPage)).toBeUndefined();
+      mutationWasVisible =
+        queryClient.isMutating({
+          mutationKey: playerResultContextMutationKey,
+        }) > 0;
+    });
+
+    await screen.findByRole("option", { name: "Second save" });
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Active save" }),
+      String(second.id),
+    );
+
+    await waitFor(() => expect(mutationWasVisible).toBe(true));
   });
 
   it("warns that a capped scan produced a partial ingest", async () => {

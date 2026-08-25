@@ -32,6 +32,7 @@ export type LoadDataIpcMockMode =
   | "busy";
 
 export type SnapshotManagementIpcMockMode = "success" | "failure" | "busy";
+export type ActiveSaveIpcMockMode = "success" | "busy";
 
 const DEFAULT_SAVE: SaveSummary = {
   id: 1,
@@ -50,6 +51,7 @@ let snapshotHistory: SnapshotMetadata[] = [];
 let loadDataMode: LoadDataIpcMockMode = "success";
 let snapshotDeleteMode: SnapshotManagementIpcMockMode = "success";
 let snapshotRenameMode: SnapshotManagementIpcMockMode = "success";
+let activeSaveMode: ActiveSaveIpcMockMode = "success";
 let lastLoadDataArgs: unknown;
 let lastSnapshotManagementArgs: unknown;
 let busyDeferred: {
@@ -60,8 +62,16 @@ let busySnapshotDeleteDeferred: {
   promise: Promise<SnapshotDeleteResult>;
   resolve: (value: SnapshotDeleteResult) => void;
 } | null = null;
+let busyActiveSaveDeferred: {
+  promise: Promise<SaveSummary>;
+  resolve: () => void;
+} | null = null;
 let nextSaveId = 2;
 let nextSnapshotId = 1;
+let onLoadDataCall: (() => void) | undefined;
+let onSetActiveSaveCall: (() => void) | undefined;
+let onDeleteSnapshotCall: (() => void) | undefined;
+let onDeleteSaveCall: (() => void) | undefined;
 
 function buildSnapshot(overrides?: Partial<SnapshotSummary>): SnapshotSummary {
   const activeSave = saves.find((save) => save.isActive) ?? saves[0];
@@ -209,12 +219,18 @@ export function resetSnapshotIpcMock() {
   loadDataMode = "success";
   snapshotDeleteMode = "success";
   snapshotRenameMode = "success";
+  activeSaveMode = "success";
   lastLoadDataArgs = undefined;
   lastSnapshotManagementArgs = undefined;
   busyDeferred = null;
   busySnapshotDeleteDeferred = null;
+  busyActiveSaveDeferred = null;
   nextSaveId = 2;
   nextSnapshotId = 1;
+  onLoadDataCall = undefined;
+  onSetActiveSaveCall = undefined;
+  onDeleteSnapshotCall = undefined;
+  onDeleteSaveCall = undefined;
 }
 
 export function getLastLoadDataIpcArgs() {
@@ -225,11 +241,33 @@ export function getLastSnapshotManagementIpcArgs() {
   return lastSnapshotManagementArgs;
 }
 
+export function observeSnapshotIpcCall(
+  command: "loadData" | "setActiveSave" | "deleteSnapshot" | "deleteSave",
+  observer: (() => void) | undefined,
+) {
+  if (command === "loadData") onLoadDataCall = observer;
+  if (command === "setActiveSave") onSetActiveSaveCall = observer;
+  if (command === "deleteSnapshot") onDeleteSnapshotCall = observer;
+  if (command === "deleteSave") onDeleteSaveCall = observer;
+}
+
 export function setLoadDataIpcMockMode(mode: LoadDataIpcMockMode) {
   loadDataMode = mode;
   if (mode !== "busy") {
     busyDeferred = null;
   }
+}
+
+export function setActiveSaveIpcMockMode(mode: ActiveSaveIpcMockMode) {
+  activeSaveMode = mode;
+  if (mode !== "busy") {
+    busyActiveSaveDeferred = null;
+  }
+}
+
+export function resolvePendingSetActiveSaveIpcMock() {
+  busyActiveSaveDeferred?.resolve();
+  busyActiveSaveDeferred = null;
 }
 
 export function setSnapshotHistoryIpcMock(snapshots: SnapshotMetadata[]) {
@@ -353,6 +391,7 @@ export function resolveRenameSaveIpcMock(args: unknown) {
 }
 
 export function resolveSetActiveSaveIpcMock(args: unknown) {
+  onSetActiveSaveCall?.();
   const saveId =
     typeof args === "object" && args !== null && "saveId" in args
       ? Number(args.saveId)
@@ -363,14 +402,28 @@ export function resolveSetActiveSaveIpcMock(args: unknown) {
     throw `Save ${saveId} not found`;
   }
 
-  saves = saves.map((save) => ({
-    ...save,
-    isActive: save.id === saveId,
-    updatedAtUtc:
-      save.id === saveId ? "2026-07-28T16:10:00.000Z" : save.updatedAtUtc,
-  }));
+  const setActiveSave = () => {
+    saves = saves.map((save) => ({
+      ...save,
+      isActive: save.id === saveId,
+      updatedAtUtc:
+        save.id === saveId ? "2026-07-28T16:10:00.000Z" : save.updatedAtUtc,
+    }));
+    return saves.find((save) => save.id === saveId) ?? target;
+  };
 
-  return saves.find((save) => save.id === saveId) ?? target;
+  if (activeSaveMode === "busy") {
+    if (!busyActiveSaveDeferred) {
+      let resolve!: () => void;
+      const promise = new Promise<SaveSummary>((res) => {
+        resolve = () => res(setActiveSave());
+      });
+      busyActiveSaveDeferred = { promise, resolve };
+    }
+    return busyActiveSaveDeferred.promise;
+  }
+
+  return setActiveSave();
 }
 
 export function resolveRenameSnapshotIpcMock(args: unknown) {
@@ -409,6 +462,7 @@ export function resolveRenameSnapshotIpcMock(args: unknown) {
 export function resolveDeleteSnapshotIpcMock(
   args: unknown,
 ): Promise<SnapshotDeleteResult> {
+  onDeleteSnapshotCall?.();
   lastSnapshotManagementArgs = args;
   if (snapshotDeleteMode === "failure") {
     return Promise.reject("Snapshot deletion failed");
@@ -453,6 +507,7 @@ export function resolveDeleteSnapshotIpcMock(
 }
 
 export function resolveDeleteSaveIpcMock(args: unknown): SaveDeleteResult {
+  onDeleteSaveCall?.();
   lastSnapshotManagementArgs = args;
   const { saveId, contextToken } = parseSaveDeleteArgs(args);
   const target = saves.find(
@@ -498,6 +553,7 @@ export function resolveDeleteSaveIpcMock(args: unknown): SaveDeleteResult {
 export function resolveLoadDataIpcMock(
   args?: unknown,
 ): Promise<LoadDataResult> {
+  onLoadDataCall?.();
   lastLoadDataArgs = args;
 
   if (loadDataMode === "busy") {

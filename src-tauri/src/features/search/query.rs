@@ -176,9 +176,28 @@ impl SortField {
         matches!(self, Self::Dynamic(field) if field.is_club_dna())
     }
 
-    fn potential_role_id(&self) -> Option<&'static str> {
+    fn potential_role_sort_identity(
+        &self,
+    ) -> Option<crate::features::player_metrics::resolver::PotentialRoleSortIdentity> {
         match self {
-            Self::Dynamic(field) => field.potential_role_id(),
+            Self::Dynamic(field) => field.potential_role_sort_identity(),
+            _ => None,
+        }
+    }
+
+    fn current_role_id(&self) -> Option<&'static str> {
+        match self {
+            Self::Dynamic(field) => field.current_role_id(),
+            _ => None,
+        }
+    }
+
+    fn club_dna_sort_identity(
+        &self,
+        definition_version: Option<i64>,
+    ) -> Option<crate::features::player_metrics::resolver::ClubDnaSortIdentity> {
+        match self {
+            Self::Dynamic(field) => field.club_dna_sort_identity(definition_version),
             _ => None,
         }
     }
@@ -387,22 +406,53 @@ pub fn search_players_in_view(
         .then(|| current_club_dna_definition_version(conn, snapshot_id))
         .transpose()?
         .flatten();
+    let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
 
     let mut full_snapshot_roles = filter_ast
         .map(potential_role_ids_from_ast)
         .transpose()?
         .unwrap_or_default();
-    if let Some(role_id) = sort_by.potential_role_id() {
-        add_role_once(&mut full_snapshot_roles, role_id);
+    let potential_role_sort = sort_by.potential_role_sort_identity();
+    if let Some(identity) = potential_role_sort {
+        add_role_once(&mut full_snapshot_roles, identity.role_id);
     }
     if !full_snapshot_roles.is_empty() {
         materialize_snapshot_roles(conn, snapshot_id, &full_snapshot_roles)?;
     }
 
-    let from_sql = match view {
+    let current_role_sort = sort_by.current_role_id();
+    let mut from_sql = match view {
         SearchView::General => "FROM players".to_string(),
         SearchView::Moneyball => "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string(),
     };
+    if let Some(role_id) = current_role_sort {
+        from_sql.push_str(&format!(
+            " LEFT JOIN player_role_scores current_role_sort
+              ON current_role_sort.snapshot_id = players.snapshot_id
+              AND current_role_sort.role_id = '{role_id}'
+              AND current_role_sort.uid = players.uid"
+        ));
+    }
+    if let Some(identity) = potential_role_sort {
+        from_sql.push_str(&format!(
+            " LEFT JOIN player_potential_role_scores potential_role_sort
+              ON potential_role_sort.snapshot_id = players.snapshot_id
+              AND potential_role_sort.uid = players.uid
+              AND potential_role_sort.role_id = '{}'
+              AND potential_role_sort.projection_model_version = {}",
+            identity.role_id, identity.projection_model_version
+        ));
+    }
+    if let Some((_, bindings)) = club_dna_sort.zip(club_dna_bindings) {
+        from_sql.push_str(&format!(
+            " LEFT JOIN club_dna_scores club_dna_sort
+              ON club_dna_sort.snapshot_id = players.snapshot_id
+              AND club_dna_sort.uid = players.uid
+              AND club_dna_sort.definition_version = ?{}
+              AND club_dna_sort.score_model_version = ?{}",
+            bindings.definition_version, bindings.score_model_version
+        ));
+    }
     let mut where_sql = "players.snapshot_id = ?1".to_string();
     if let Some(compiled) = &compiled {
         where_sql.push_str(" AND ");
@@ -417,9 +467,17 @@ pub fn search_players_in_view(
     if let Some(compiled) = &compiled {
         bind_values.extend(compiled.params.clone());
     }
+    if let Some(identity) = club_dna_sort.filter(|_| !club_dna_filter) {
+        bind_values.push(
+            identity
+                .definition_version
+                .map_or(Value::Null, Value::Integer),
+        );
+        bind_values.push(Value::Integer(identity.score_model_version));
+    }
     let filter_bind_values = bind_values.clone();
     let mut select_bind_values = bind_values.clone();
-    if club_dna_requested && !club_dna_filter {
+    if club_dna_requested && !club_dna_filter && club_dna_sort.is_none() {
         select_bind_values.push(club_dna_definition_version.map_or(Value::Null, Value::Integer));
         select_bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
     }
@@ -433,13 +491,23 @@ pub fn search_players_in_view(
         .map_err(|error| error.to_string())?;
 
     // Whitelisted expr + dir only — never interpolate raw client strings.
-    let sort_expression = sort_by.sql_expr(club_dna_bindings);
-    let order_sql = if sort_by.is_club_dna() {
+    let order_sql = if current_role_sort.is_some() {
         format!(
-            "ORDER BY ({sort_expression}) IS NULL ASC, {sort_expression} {}, players.uid ASC",
+            "ORDER BY current_role_sort.score {}, players.uid ASC",
+            sort_dir.sql_keyword()
+        )
+    } else if potential_role_sort.is_some() {
+        format!(
+            "ORDER BY potential_role_sort.score {}, players.uid ASC",
+            sort_dir.sql_keyword()
+        )
+    } else if club_dna_sort.is_some() {
+        format!(
+            "ORDER BY club_dna_sort.score IS NULL ASC, club_dna_sort.score {}, players.uid ASC",
             sort_dir.sql_keyword()
         )
     } else {
+        let sort_expression = sort_by.sql_expr(club_dna_bindings);
         format!(
             "ORDER BY {sort_expression} {}, players.uid ASC",
             sort_dir.sql_keyword()
@@ -460,7 +528,10 @@ pub fn search_players_in_view(
                 players.pa,
                 players.market_value_gbp",
     );
-    let potential_display_roles = potential_role_ids(&dynamic_fields);
+    let mut potential_display_roles = potential_role_ids(&dynamic_fields);
+    if let Some(identity) = potential_role_sort {
+        potential_display_roles.retain(|role_id| role_id != identity.role_id);
+    }
     if !potential_display_roles.is_empty() {
         let page_uids = query_page_uids(
             conn,
@@ -1091,7 +1162,9 @@ mod tests {
     use super::*;
     use crate::db::migrations;
     use crate::features::moneyball::role_catalog::builtin_catalog;
-    use crate::features::player_metrics::club_dna::SCORE_MODEL_VERSION;
+    use crate::features::player_metrics::{
+        club_dna::SCORE_MODEL_VERSION, potential_cache::PROJECTION_MODEL_VERSION,
+    };
     use crate::features::search::filter::{parse_filter_ast, FilterRule, FilterValue};
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service::{create_save, set_active_save};
@@ -1705,6 +1778,7 @@ mod tests {
         conn.pragma_update(None, "reverse_unordered_selects", true)
             .expect("reverse unordered ties");
         let score_rows_before = club_dna_score_rows(&conn);
+        let score_row_count_before = score_rows_before.len();
         let requested_fields = vec!["club_dna".to_string()];
 
         let page = search_players(
@@ -1771,6 +1845,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [30, 40, 50, 60]
         );
+        assert_eq!(club_dna_score_rows(&conn).len(), score_row_count_before);
         assert_eq!(club_dna_score_rows(&conn), score_rows_before);
     }
 
@@ -2105,29 +2180,94 @@ mod tests {
     }
 
     #[test]
-    fn orders_by_pa_ascending_when_requested() {
+    fn orders_targeted_scalar_sorts_with_nulls_ties_totals_and_pages() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("sort-pa.db"));
+        let mut conn = open_migrated(&temp_dir.path().join("targeted-scalar-sorts.db"));
         ingest_players(
             &mut conn,
-            vec![
-                player_template(1, "Low", 100),
-                player_template(2, "High", 180),
-                player_template(3, "Mid", 140),
-            ],
+            [10, 20, 30, 40, 50]
+                .into_iter()
+                .map(|uid| player_template(uid, &format!("Player {uid}"), 100))
+                .collect(),
         );
+        let snapshot_id = current_snapshot_id(&conn);
+        for (uid, pa, age, market_value_gbp) in [
+            (10, 100, Some(20), Some(100)),
+            (20, 100, Some(20), Some(100)),
+            (30, 150, Some(22), Some(300)),
+            (40, 150, None, None),
+            (50, 200, Some(22), None),
+        ] {
+            conn.execute(
+                "UPDATE players
+                 SET pa = ?1, age = ?2, market_value_gbp = ?3
+                 WHERE snapshot_id = ?4 AND uid = ?5",
+                rusqlite::params![pa, age, market_value_gbp, snapshot_id, uid],
+            )
+            .expect("set targeted scalar values");
+        }
 
-        let page =
-            search_without_filters(&conn, 0, DEFAULT_PAGE_LIMIT, SortField::Pa, SortDir::Asc)
-                .expect("sort by pa");
+        for (field, direction, expected, expected_page) in [
+            (
+                SortField::Pa,
+                SortDir::Asc,
+                vec![10, 20, 30, 40, 50],
+                vec![20, 30],
+            ),
+            (
+                SortField::Pa,
+                SortDir::Desc,
+                vec![50, 30, 40, 10, 20],
+                vec![30, 40],
+            ),
+            (
+                SortField::Age,
+                SortDir::Asc,
+                vec![40, 10, 20, 30, 50],
+                vec![10, 20],
+            ),
+            (
+                SortField::Age,
+                SortDir::Desc,
+                vec![30, 50, 10, 20, 40],
+                vec![50, 10],
+            ),
+            (
+                SortField::Value,
+                SortDir::Asc,
+                vec![40, 50, 10, 20, 30],
+                vec![50, 10],
+            ),
+            (
+                SortField::Value,
+                SortDir::Desc,
+                vec![30, 10, 20, 40, 50],
+                vec![10, 20],
+            ),
+        ] {
+            let page = search_without_filters(&conn, 0, 5, field.clone(), direction)
+                .expect("sort targeted scalar values");
+            assert_eq!(page.total, 5);
+            assert_eq!(
+                page.players
+                    .iter()
+                    .map(|player| player.uid)
+                    .collect::<Vec<_>>(),
+                expected
+            );
 
-        assert_eq!(
-            page.players
-                .iter()
-                .map(|player| player.pa)
-                .collect::<Vec<_>>(),
-            vec![110, 150, 190]
-        );
+            let bounded_page = search_without_filters(&conn, 1, 2, field, direction)
+                .expect("page targeted scalar values");
+            assert_eq!(bounded_page.total, 5);
+            assert_eq!(
+                bounded_page
+                    .players
+                    .iter()
+                    .map(|player| player.uid)
+                    .collect::<Vec<_>>(),
+                expected_page
+            );
+        }
     }
 
     fn filter_rule(field: &str, op: &str, value: FilterValue) -> FilterRule {
@@ -3326,6 +3466,246 @@ mod tests {
             )
             .expect("count sorted cohort cache rows");
         assert_eq!(cache_rows, 2);
+        let unrelated_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE role_id = 'sweeper_keeper_oop'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count unrelated cache rows");
+        assert_eq!(
+            unrelated_rows, 0,
+            "sorting one role must not cache another role"
+        );
+
+        let snapshot_id = current_snapshot_id(&conn);
+        conn.execute(
+            "UPDATE player_potential_role_scores
+             SET score = 99, projection_model_version = 1
+             WHERE snapshot_id = ?1
+               AND uid = 2
+               AND role_id = 'line_holding_keeper_oop'",
+            [snapshot_id],
+        )
+        .expect("mark selected cache row stale");
+        let stale_page = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::parse("potential_role.line_holding_keeper_oop")
+                .expect("parse potential sort"),
+            SortDir::Desc,
+            None,
+            &[],
+        )
+        .expect("rebuild stale potential sort row");
+        assert_eq!(
+            stale_page
+                .players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Higher potential", "Lower potential"]
+        );
+        let exact_version_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1
+                   AND role_id = 'line_holding_keeper_oop'
+                   AND projection_model_version = 2",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("count rebuilt exact-version rows");
+        assert_eq!(exact_version_rows, 2);
+
+        conn.execute(
+            "DELETE FROM player_potential_role_scores
+             WHERE snapshot_id = ?1
+               AND uid = 1
+               AND role_id = 'line_holding_keeper_oop'",
+            [snapshot_id],
+        )
+        .expect("remove selected cache row");
+        search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::parse("potential_role.line_holding_keeper_oop")
+                .expect("parse potential sort"),
+            SortDir::Desc,
+            None,
+            &[],
+        )
+        .expect("rebuild missing potential sort row");
+
+        conn.execute(
+            "UPDATE players SET attributes_json = '{invalid JSON}' WHERE snapshot_id = ?1",
+            [snapshot_id],
+        )
+        .expect("make unnecessary warm materialization observable");
+        let warm_page = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::parse("potential_role.line_holding_keeper_oop")
+                .expect("parse potential sort"),
+            SortDir::Asc,
+            None,
+            &[],
+        )
+        .expect("reuse complete warm potential sort rows");
+        assert_eq!(
+            warm_page
+                .players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Lower potential", "Higher potential"]
+        );
+    }
+
+    #[test]
+    fn potential_sort_uses_a_missing_preserving_exact_version_relation() {
+        let source = include_str!("query.rs");
+        let query = &source[source
+            .find("pub fn search_players_in_view")
+            .expect("search query function")
+            ..source
+                .find("fn current_club_dna_definition_version")
+                .expect("following helper")];
+
+        assert!(query.contains("LEFT JOIN player_potential_role_scores potential_role_sort"));
+        assert!(query.contains("potential_role_sort.snapshot_id = players.snapshot_id"));
+        assert!(query.contains("potential_role_sort.uid = players.uid"));
+        assert!(query.contains("potential_role_sort.projection_model_version"));
+        assert!(query.contains("ORDER BY potential_role_sort.score"));
+    }
+
+    #[test]
+    fn potential_sort_orders_nullable_ties_and_materializes_only_the_distinct_visible_page_role() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("warm-potential-sort.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "First score tie", 180),
+                player_template(2, "Second score tie", 170),
+                player_template(3, "Lower score", 160),
+                player_template(4, "Nullable score", 150),
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        let sort_role = "line_holding_keeper_oop";
+        let sort_metric = format!("potential_role.{sort_role}");
+        let distinct_visible_role = "sweeper_keeper_oop";
+        let distinct_visible_metric = format!("potential_role.{distinct_visible_role}");
+        for (uid, score) in [(1, Some(80)), (2, Some(80)), (3, Some(40)), (4, None)] {
+            conn.execute(
+                "INSERT INTO player_potential_role_scores (
+                     snapshot_id, uid, role_id, score, projection_model_version
+                 ) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![snapshot_id, uid, sort_role, score, PROJECTION_MODEL_VERSION],
+            )
+            .expect("seed exact-version potential sort score");
+        }
+        let sort_by = SortField::parse(&sort_metric).expect("parse potential sort");
+
+        for (direction, expected) in [
+            (SortDir::Asc, vec![4, 3, 1, 2]),
+            (SortDir::Desc, vec![1, 2, 3, 4]),
+        ] {
+            let page = search_players(&conn, 0, 4, sort_by.clone(), direction, None, &[])
+                .expect("sort warm potential scores");
+            assert_eq!(page.total, 4);
+            assert_eq!(
+                page.players
+                    .iter()
+                    .map(|player| player.uid)
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+
+        let page = search_players(
+            &conn,
+            1,
+            2,
+            sort_by,
+            SortDir::Asc,
+            None,
+            &[sort_metric, distinct_visible_metric],
+        )
+        .expect("page warm potential scores with a distinct visible role");
+        assert_eq!(page.total, 4);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            [3, 1]
+        );
+        let sorted_role_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1
+                   AND role_id = ?2
+                   AND projection_model_version = ?3",
+                rusqlite::params![snapshot_id, sort_role, PROJECTION_MODEL_VERSION],
+                |row| row.get(0),
+            )
+            .expect("count globally sorted role rows");
+        assert_eq!(sorted_role_rows, 4);
+        let distinct_visible_uids = conn
+            .prepare(
+                "SELECT uid FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1
+                   AND role_id = ?2
+                   AND projection_model_version = ?3
+                 ORDER BY uid ASC",
+            )
+            .expect("prepare distinct visible role query")
+            .query_map(
+                rusqlite::params![snapshot_id, distinct_visible_role, PROJECTION_MODEL_VERSION],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("query distinct visible role rows")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect distinct visible role rows");
+        assert_eq!(distinct_visible_uids, [1, 3]);
+    }
+
+    #[test]
+    fn potential_sort_skips_its_visible_role_page_pass() {
+        let source = include_str!("query.rs");
+        let query = &source[source
+            .find("pub fn search_players_in_view")
+            .expect("search query function")
+            ..source
+                .find("fn current_club_dna_definition_version")
+                .expect("following helper")];
+
+        assert!(query.contains("potential_display_roles.retain"));
+        assert!(query.contains("role_id != identity.role_id"));
+    }
+
+    #[test]
+    fn club_dna_sort_uses_a_missing_preserving_exact_identity_relation() {
+        let source = include_str!("query.rs");
+        let query = &source[source
+            .find("pub fn search_players_in_view")
+            .expect("search query function")
+            ..source
+                .find("fn current_club_dna_definition_version")
+                .expect("following helper")];
+
+        assert!(query.contains("LEFT JOIN club_dna_scores club_dna_sort"));
+        assert!(query.contains("club_dna_sort.snapshot_id = players.snapshot_id"));
+        assert!(query.contains("club_dna_sort.uid = players.uid"));
+        assert!(query.contains("club_dna_sort.definition_version"));
+        assert!(query.contains("club_dna_sort.score_model_version"));
+        assert!(query.contains("ORDER BY club_dna_sort.score IS NULL ASC"));
     }
 
     #[test]
@@ -3382,6 +3762,140 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["High Role", "Low Role"]
         );
+    }
+
+    #[test]
+    fn current_role_sort_retains_missing_nullable_duplicate_and_tied_scores() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("current-role-sort.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "First score tie", 180),
+                player_template(2, "Second score tie", 170),
+                player_template(3, "Nullable score", 160),
+                player_template(4, "Missing score", 150),
+            ],
+        );
+        let role_id = "deep_lying_playmaker_ip";
+        set_role_score(&conn, 1, role_id, Some(80));
+        set_role_score(&conn, 2, role_id, Some(80));
+        set_role_score(&conn, 3, role_id, None);
+        conn.execute(
+            "DELETE FROM player_role_scores
+             WHERE snapshot_id = (SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1)
+               AND uid = 4
+               AND role_id = ?1",
+            [role_id],
+        )
+        .expect("remove current role score");
+        let sort_by = SortField::parse(&format!("role.{role_id}")).expect("parse role sort");
+
+        for (direction, expected) in [
+            (SortDir::Asc, vec![3, 4, 1, 2]),
+            (SortDir::Desc, vec![1, 2, 3, 4]),
+        ] {
+            let page = search_without_filters(&conn, 0, 4, sort_by.clone(), direction)
+                .expect("sort current roles");
+            assert_eq!(page.total, 4);
+            assert_eq!(
+                page.players
+                    .iter()
+                    .map(|player| player.uid)
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+
+        let page =
+            search_without_filters(&conn, 1, 2, sort_by, SortDir::Asc).expect("page current roles");
+        assert_eq!(page.total, 4);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            vec![4, 1]
+        );
+    }
+
+    #[test]
+    fn current_role_sort_uses_a_missing_preserving_relation() {
+        let source = include_str!("query.rs");
+        let query = &source[source
+            .find("pub fn search_players_in_view")
+            .expect("search query function")
+            ..source
+                .find("fn current_club_dna_definition_version")
+                .expect("following helper")];
+
+        assert!(query.contains("LEFT JOIN player_role_scores current_role_sort"));
+        assert!(query.contains("current_role_sort.snapshot_id = players.snapshot_id"));
+        assert!(query.contains("current_role_sort.role_id = '{role_id}'"));
+        assert!(query.contains("current_role_sort.uid = players.uid"));
+        assert!(query.contains("ORDER BY current_role_sort.score"));
+    }
+
+    #[test]
+    fn current_role_sort_materializes_requested_potential_page_fields() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("current-role-potential-page.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "First score tie", 180),
+                player_template(2, "Second score tie", 170),
+                player_template(3, "Nullable score", 160),
+                player_template(4, "Missing score", 150),
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        conn.execute(
+            "UPDATE players
+             SET positions_json = ?1, attributes_json = ?2
+             WHERE snapshot_id = ?3 AND uid IN (1, 4)",
+            rusqlite::params![
+                json!({ "GK": 20 }).to_string(),
+                json!({ "Positioning": 16, "Concentration": 16 }).to_string(),
+                snapshot_id,
+            ],
+        )
+        .expect("set potential source values");
+        let role_id = "deep_lying_playmaker_ip";
+        set_role_score(&conn, 1, role_id, Some(80));
+        set_role_score(&conn, 2, role_id, Some(80));
+        set_role_score(&conn, 3, role_id, None);
+        conn.execute(
+            "DELETE FROM player_role_scores
+             WHERE snapshot_id = ?1 AND uid = 4 AND role_id = ?2",
+            rusqlite::params![snapshot_id, role_id],
+        )
+        .expect("remove current role score");
+
+        let potential_field = "potential_role.line_holding_keeper_oop".to_string();
+        let page = search_players(
+            &conn,
+            1,
+            2,
+            SortField::parse(&format!("role.{role_id}")).expect("parse role sort"),
+            SortDir::Asc,
+            None,
+            std::slice::from_ref(&potential_field),
+        )
+        .expect("query current role page with potential field");
+
+        assert_eq!(page.total, 4);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            vec![4, 1]
+        );
+        assert!(matches!(
+            page.players[0].dynamic_values.get(&potential_field),
+            Some(Some(DynamicValue::Integer(_)))
+        ));
     }
 
     #[test]

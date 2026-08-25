@@ -1,5 +1,6 @@
 import {
   useIsFetching,
+  useIsMutating,
   useMutation,
   useQuery,
   useQueryClient,
@@ -8,7 +9,9 @@ import {
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { CircleAlert, DatabaseZap, UsersRound } from "lucide-react";
 import { Suspense, useRef, useState } from "react";
+import { clearPlayerResultContext } from "@/app/player-result-context";
 import { ErrorBoundary } from "@/components/error-boundary/error-boundary";
+import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
@@ -47,7 +50,6 @@ import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { boostSquadCurrentAbility } from "@/features/squad/api/boost-squad-current-ability";
 import { boostSquadWonderkidMentality } from "@/features/squad/api/boost-squad-wonderkid-mentality";
 import { squadKeys } from "@/features/squad/api/squad-keys";
-import { squadPlayersQueryOptions } from "@/features/squad/api/squad-players-query-options";
 import { SquadOverviewPanel } from "@/features/squad/components/squad-overview-panel";
 import {
   SquadBoostOutcome,
@@ -181,8 +183,6 @@ export const Route = createFileRoute("/my-club")({
     context: { queryClient },
     deps: {
       view,
-      sort,
-      dir,
       staffSort,
       staffDir,
       shortlistSort,
@@ -229,9 +229,6 @@ export const Route = createFileRoute("/my-club")({
       queryClient.ensureQueryData(plannerTacticQueryOptions),
       queryClient.ensureQueryData(plannerTacticOptionsQueryOptions),
       queryClient.ensureQueryData(plannerDepthQueryOptions),
-      queryClient.ensureQueryData(
-        squadPlayersQueryOptions(0, undefined, sort, dir),
-      ),
       staffQuery,
     ]);
   },
@@ -355,6 +352,7 @@ function MyClubPageContent() {
       queryClient.invalidateQueries({ queryKey: academyKeys.all }),
     ]);
   };
+  const clearResults = () => clearPlayerResultContext(queryClient);
   const onManagedClubSaved = () => {
     void queryClient.invalidateQueries({ queryKey: plannerKeys.all });
     void queryClient.resetQueries({ queryKey: academyKeys.all });
@@ -421,6 +419,17 @@ function MyClubPageContent() {
     isSavesRefreshing ||
     isManagedClubRefreshing ||
     activeSaveRefreshError;
+  const isPlayerResultContextMutating =
+    useIsMutating({ mutationKey: playerResultContextMutationKey }) > 0;
+  const isSquadResultBlocked =
+    !activeSave ||
+    isSavesRefreshing ||
+    isSnapshotRefreshing ||
+    isManagedClubRefreshing ||
+    savesQuery.isError ||
+    snapshotRefreshError ||
+    managedClubRefreshError ||
+    isPlayerResultContextMutating;
   const clubDnaAvailable =
     activeClubDnaContext !== null &&
     snapshot?.saveId === activeClubDnaContext.saveId &&
@@ -630,6 +639,7 @@ function MyClubPageContent() {
                       </Button>
                     )
                   }
+                  onBeforeContextChange={clearResults}
                   onSaved={onManagedClubSaved}
                 />
               </Suspense>
@@ -668,15 +678,25 @@ function MyClubPageContent() {
         className="flex min-h-0 flex-1 flex-col"
       >
         {managedClub.clubName ? (
-          <Suspense
-            fallback={
-              <div className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-outline-variant bg-surface-container text-body-md text-on-surface-variant">
+          isSquadResultBlocked ? (
+            <Panel title="Squad overview" flush>
+              <p className="p-4 text-body-md text-on-surface-variant">
                 Loading squad overview…
-              </div>
-            }
-          >
+              </p>
+            </Panel>
+          ) : (
             <SquadOverviewPanel
-              key={`${squadSort}:${squadDir}`}
+              key={`${activeSave?.id}:${activeSave?.contextToken}:${snapshot.id}:${snapshot.saveId}:${managedClub.clubName}:${managedClub.status}`}
+              pageContext={{
+                activeSave: activeSave
+                  ? { id: activeSave.id, contextToken: activeSave.contextToken }
+                  : null,
+                currentSnapshot: { id: snapshot.id, saveId: snapshot.saveId },
+                managedClub: {
+                  clubName: managedClub.clubName,
+                  status: managedClub.status,
+                },
+              }}
               feedback={squadBoostFeedback}
               feedbackRef={squadBoostFeedbackRef}
               actions={
@@ -752,7 +772,7 @@ function MyClubPageContent() {
               sortDir={squadDir}
               onSortChange={onSquadSortChange}
             />
-          </Suspense>
+          )
         ) : (
           <Panel title="Squad" flush>
             <EmptyState

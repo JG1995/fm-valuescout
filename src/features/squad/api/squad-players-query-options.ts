@@ -5,7 +5,7 @@ import {
   DEFAULT_SQUAD_SORT_FIELD,
 } from "../types/squad-sort";
 import { fetchSquadPlayers, SQUAD_PAGE_SIZE } from "./fetch-squad-players";
-import { squadKeys } from "./squad-keys";
+import { type SquadPlayerPageContext, squadKeys } from "./squad-keys";
 
 export { SQUAD_PAGE_SIZE };
 
@@ -15,6 +15,7 @@ export function squadPlayersQueryOptions(
   sortBy: SquadSortField = DEFAULT_SQUAD_SORT_FIELD,
   sortDir: SquadSortDir = DEFAULT_SQUAD_SORT_DIR,
   requestedFields: string[] = [],
+  context?: SquadPlayerPageContext,
 ) {
   return queryOptions({
     queryKey: squadKeys.players(
@@ -23,6 +24,7 @@ export function squadPlayersQueryOptions(
       sortBy,
       sortDir,
       requestedFields,
+      context,
     ),
     queryFn: () =>
       fetchSquadPlayers(offset, limit, sortBy, sortDir, requestedFields),

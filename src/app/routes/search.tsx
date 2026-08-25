@@ -1,14 +1,18 @@
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { DatabaseZap, FileUp } from "lucide-react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
 import { SquadCsvImportModal } from "@/features/csv-import/components/squad-csv-import-modal";
 import type { CsvImportSummary } from "@/features/csv-import/types/csv-import-summary";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
-import { searchKeys } from "@/features/search/api/search-keys";
+import {
+  type SearchPlayerPageContext,
+  searchKeys,
+} from "@/features/search/api/search-keys";
 import { searchPlayersQueryOptions } from "@/features/search/api/search-players-query-options";
 import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
@@ -40,6 +44,7 @@ import {
   searchFiltersForUrl,
 } from "@/features/search/utils/search-url-search";
 import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
+import { savesQueryOptions } from "@/features/snapshot/api/saves-query-options";
 import { useMoneyballPreferences } from "@/stores/use-moneyball-preferences";
 import { usePlayerTableStore } from "@/stores/use-player-table-store";
 
@@ -96,27 +101,8 @@ export const Route = createFileRoute("/search")({
     view: view ?? useMoneyballPreferences.getState().defaultAnalysisView,
     comparisonPool: comparisonPool ?? "filtered",
   }),
-  loader: ({
-    context: { queryClient },
-    deps: { sort, dir, filters, combine, view, comparisonPool },
-  }) => {
-    return Promise.all([
-      queryClient.ensureQueryData(currentSnapshotQueryOptions),
-      queryClient.ensureQueryData(
-        searchPlayersQueryOptions(
-          0,
-          undefined,
-          sort,
-          dir,
-          parseSearchFilters(filters, view),
-          combine,
-          [],
-          view,
-          comparisonPool,
-        ),
-      ),
-    ]);
-  },
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(currentSnapshotQueryOptions),
   component: SearchPage,
 });
 
@@ -130,12 +116,12 @@ function PanelFallback() {
 
 function MoneyballCohortPresence({
   onChange,
-  snapshotContext,
+  pageContext,
 }: {
   onChange: (hasCohort: boolean) => void;
-  snapshotContext: string | null;
+  pageContext: SearchPlayerPageContext;
 }) {
-  const { data } = useSuspenseQuery(
+  const { data } = useQuery(
     searchPlayersQueryOptions(
       0,
       1,
@@ -146,18 +132,29 @@ function MoneyballCohortPresence({
       [],
       "moneyball",
       "fullCsv",
+      pageContext,
     ),
   );
   useEffect(() => {
-    if (snapshotContext) {
+    if (data) {
       onChange(data.total > 0);
     }
-  }, [data.total, onChange, snapshotContext]);
+  }, [data, onChange]);
   return null;
 }
 
 function SearchPageContent() {
-  const { data: snapshot } = useSuspenseQuery(currentSnapshotQueryOptions);
+  const snapshotQuery = useQuery(currentSnapshotQueryOptions);
+  const savesQuery = useQuery(savesQueryOptions);
+  const snapshot = snapshotQuery.data;
+  const activeSave =
+    savesQuery.data?.find((save) => save.isActive) ?? savesQuery.data?.[0];
+  const isResultContextChanging =
+    useIsMutating({ mutationKey: playerResultContextMutationKey }) > 0 ||
+    snapshotQuery.isFetching ||
+    savesQuery.isFetching ||
+    snapshotQuery.isError ||
+    savesQuery.isError;
   const queryClient = useQueryClient();
   const addColumns = usePlayerTableStore((state) => state.addColumns);
   const {
@@ -183,6 +180,18 @@ function SearchPageContent() {
   const [lastMoneyballImport, setLastMoneyballImport] =
     useState<CsvImportSummary | null>(null);
   const snapshotContext = snapshot ? `${snapshot.saveId}:${snapshot.id}` : null;
+  const pageContext =
+    !isResultContextChanging && activeSave
+      ? {
+          activeSave: {
+            id: activeSave.id,
+            contextToken: activeSave.contextToken,
+          },
+          currentSnapshot: snapshot
+            ? { id: snapshot.id, saveId: snapshot.saveId }
+            : null,
+        }
+      : null;
   const tabRefs = useRef<Record<SearchView, HTMLButtonElement | null>>({
     general: null,
     moneyball: null,
@@ -300,12 +309,12 @@ function SearchPageContent() {
         </div>
         {view === "moneyball" ? (
           <div className="flex flex-wrap items-center gap-2">
-            <Suspense fallback={null}>
+            {pageContext ? (
               <MoneyballCohortPresence
                 onChange={setHasMoneyballCohort}
-                snapshotContext={snapshotContext}
+                pageContext={pageContext}
               />
-            </Suspense>
+            ) : null}
             <fieldset className="inline-flex rounded-full border border-outline bg-surface-container-high p-0.5">
               <legend className="sr-only">Comparison pool</legend>
               {(["filtered", "fullCsv"] as const).map((pool) => (
@@ -329,7 +338,7 @@ function SearchPageContent() {
               icon={FileUp}
               onClick={() => setImportOpen(true)}
             >
-              {hasMoneyballCohort
+              {!isResultContextChanging && hasMoneyballCohort
                 ? "Replace Moneyball CSV"
                 : "Upload Moneyball CSV"}
             </Button>
@@ -359,19 +368,32 @@ function SearchPageContent() {
         view={view}
       />
       <div className="flex min-h-0 flex-1 flex-col">
-        <Suspense fallback={<PanelFallback />}>
+        {isResultContextChanging ? (
+          <Panel title="Results" flush>
+            <p className="p-4 text-body-md text-on-surface-variant">
+              Loading player results…
+            </p>
+          </Panel>
+        ) : (
           <SearchResultsPanel
+            key={`${activeSave?.id}:${activeSave?.contextToken}:${snapshot.id}:${snapshot.saveId}:${view}:${comparisonPool}:${combine}:${JSON.stringify(filters)}`}
             sortBy={sort}
             sortDir={dir}
             filters={filters}
             filterCombine={combine}
             view={view}
             comparisonPool={comparisonPool}
+            pageContext={{
+              activeSave: activeSave
+                ? { id: activeSave.id, contextToken: activeSave.contextToken }
+                : null,
+              currentSnapshot: { id: snapshot.id, saveId: snapshot.saveId },
+            }}
             onSortChange={(nextSort, nextDir) => {
               updateSearch({ sort: nextSort, dir: nextDir });
             }}
           />
-        </Suspense>
+        )}
       </div>
       <SquadCsvImportModal
         activeSaveId={snapshot.saveId}
@@ -386,7 +408,7 @@ function SearchPageContent() {
           void queryClient.invalidateQueries({ queryKey: searchKeys.all });
           void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
         }}
-        replace={hasMoneyballCohort}
+        replace={!isResultContextChanging && hasMoneyballCohort}
       />
     </>
   );

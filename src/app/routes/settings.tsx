@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense } from "react";
+import { clearPlayerResultContext } from "@/app/player-result-context";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
@@ -106,6 +107,7 @@ function SettingsPage() {
         </h2>
         <Suspense fallback={<SectionFallback label="Loading save data…" />}>
           <SnapshotPanelsWithErrorBoundary
+            onBeforeContextChange={() => clearPlayerResultContext(queryClient)}
             onCurrentContextChanged={invalidateCurrentContext}
           />
         </Suspense>

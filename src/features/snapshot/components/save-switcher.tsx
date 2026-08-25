@@ -4,6 +4,10 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import {
+  type ClearPlayerResultContext,
+  playerResultContextMutationKey,
+} from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
@@ -27,6 +31,7 @@ function saveTargetLabel(save: SaveSummary) {
 type SaveSwitcherProps = {
   /** Route-owned invalidation for products that only read the current snapshot. */
   onCurrentContextChanged?: () => void;
+  onBeforeContextChange: ClearPlayerResultContext;
 };
 
 type SaveDeletionModalProps = {
@@ -36,6 +41,7 @@ type SaveDeletionModalProps = {
   onClose: () => void;
   onDeleted: (save: SaveSummary, result: SaveDeleteResult) => void;
   fallbackFocusTo: () => HTMLElement | null;
+  onBeforeContextChange: ClearPlayerResultContext;
 };
 
 function SaveDeletionModal({
@@ -45,14 +51,23 @@ function SaveDeletionModal({
   onClose,
   onDeleted,
   fallbackFocusTo,
+  onBeforeContextChange,
 }: SaveDeletionModalProps) {
   const [visibleTarget, setVisibleTarget] = useState<SaveSummary | null>(
     target,
   );
   const [visibleSaveCount, setVisibleSaveCount] = useState(saveCount);
   const remove = useMutation({
-    mutationFn: () =>
-      deleteSave(visibleTarget?.id ?? 0, visibleTarget?.contextToken ?? ""),
+    mutationKey: targetIsActive ? playerResultContextMutationKey : undefined,
+    mutationFn: async () => {
+      if (targetIsActive) {
+        await onBeforeContextChange();
+      }
+      return deleteSave(
+        visibleTarget?.id ?? 0,
+        visibleTarget?.contextToken ?? "",
+      );
+    },
     onSuccess: (result) => {
       if (visibleTarget) {
         onDeleted(visibleTarget, result);
@@ -130,7 +145,10 @@ function SaveDeletionModal({
 
 // Switching the active save lives in the top bar, where it stays reachable from
 // every screen. This panel keeps the rarer management actions.
-export function SaveSwitcher({ onCurrentContextChanged }: SaveSwitcherProps) {
+export function SaveSwitcher({
+  onBeforeContextChange,
+  onCurrentContextChanged,
+}: SaveSwitcherProps) {
   const queryClient = useQueryClient();
   const panelRef = useRef<HTMLDivElement>(null);
   const { data: saves } = useSuspenseQuery(savesQueryOptions);
@@ -250,6 +268,7 @@ export function SaveSwitcher({ onCurrentContextChanged }: SaveSwitcherProps) {
         saveCount={saves.length}
         onClose={() => setDeleteTarget(null)}
         fallbackFocusTo={() => panelRef.current}
+        onBeforeContextChange={onBeforeContextChange}
         onDeleted={(save, result) => {
           if (result.deletedWasActive) {
             void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });

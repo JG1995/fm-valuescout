@@ -261,6 +261,7 @@ let managedClub: ManagedClubStatus = { ...DEFAULT_MANAGED_CLUB };
 let availableClubs: string[] = [];
 let managedClubOptionsError: Error | null = null;
 let managedClubSaveCalls = 0;
+let onManagedClubSaveCall: (() => void) | undefined;
 let managedClubSavePending = false;
 let pendingManagedClubSave: {
   result: ManagedClubStatus;
@@ -380,6 +381,7 @@ export function resetPlannerIpcMock() {
   availableClubs = [];
   managedClubOptionsError = null;
   managedClubSaveCalls = 0;
+  onManagedClubSaveCall = undefined;
   managedClubSavePending = false;
   pendingManagedClubSave = null;
   tactic = cloneTactic(DEFAULT_TACTIC);
@@ -439,6 +441,10 @@ export function resolveManagedClubIpcMock(): ManagedClubStatus {
 
 export function getManagedClubSaveCalls() {
   return managedClubSaveCalls;
+}
+
+export function observeManagedClubSaveCall(observer: (() => void) | undefined) {
+  onManagedClubSaveCall = observer;
 }
 
 export function resolveManagedClubOptionsIpcMock() {
@@ -961,6 +967,7 @@ export function resolveSetManagedClubIpcMock(
   args: unknown,
 ): ManagedClubStatus | Promise<ManagedClubStatus> {
   managedClubSaveCalls += 1;
+  onManagedClubSaveCall?.();
   const clubName = (args as { clubName?: unknown }).clubName;
   if (typeof clubName !== "string" || !clubName.trim()) {
     throw "Managed club must not be empty";

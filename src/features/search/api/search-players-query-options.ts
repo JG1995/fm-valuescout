@@ -7,7 +7,7 @@ import {
 } from "../types/search-sort";
 import type { ComparisonPool, SearchView } from "../types/search-view";
 import { fetchSearchPlayers, SEARCH_PAGE_SIZE } from "./fetch-search-players";
-import { searchKeys } from "./search-keys";
+import { type SearchPlayerPageContext, searchKeys } from "./search-keys";
 
 export { SEARCH_PAGE_SIZE };
 
@@ -21,6 +21,7 @@ export function searchPlayersQueryOptions(
   requestedFields: string[] = [],
   searchView: SearchView = "general",
   comparisonPool: ComparisonPool = "filtered",
+  context?: SearchPlayerPageContext,
 ) {
   return queryOptions({
     queryKey: searchKeys.players(
@@ -33,6 +34,7 @@ export function searchPlayersQueryOptions(
       requestedFields,
       searchView,
       comparisonPool,
+      context,
     ),
     queryFn: () =>
       fetchSearchPlayers(

@@ -1,9 +1,13 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { Suspense } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { renderWithProviders as renderApp } from "@/testing/render-with-providers";
 import {
   getLastSnapshotManagementIpcArgs,
+  observeSnapshotIpcCall,
   resolveBusyLoadDataRequest,
   resolveBusySnapshotDeleteRequest,
   type SnapshotMetadata,
@@ -12,6 +16,7 @@ import {
   setSnapshotHistoryIpcMock,
   setSnapshotRenameIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
+import { SnapshotPanelsWithErrorBoundary } from "./snapshot-panels-with-error-boundary";
 
 const HISTORY: SnapshotMetadata[] = [
   {
@@ -55,6 +60,22 @@ function seedHistory() {
 
 function renderWithProviders() {
   return renderApp({ initialEntries: ["/settings"] });
+}
+
+function renderPanels(onBeforeContextChange: () => Promise<void>) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <Suspense fallback={null}>
+        <SnapshotPanelsWithErrorBoundary
+          onBeforeContextChange={onBeforeContextChange}
+        />
+      </Suspense>
+    </QueryClientProvider>,
+  );
+  return queryClient;
 }
 
 describe("snapshot panels", () => {
@@ -302,6 +323,71 @@ describe("snapshot panels", () => {
     ).toBeInTheDocument();
   });
 
+  it("waits for the injected callback before deleting the current snapshot", async () => {
+    seedHistory();
+    const user = userEvent.setup();
+    let releaseContextChange!: () => void;
+    const onBeforeContextChange = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseContextChange = resolve;
+        }),
+    );
+    const queryClient = renderPanels(onBeforeContextChange);
+    let tauriWasCalled = false;
+    observeSnapshotIpcCall("deleteSnapshot", () => {
+      tauriWasCalled = true;
+    });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Delete snapshot Transfer window/,
+      }),
+    );
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: /^Delete snapshot/ }),
+      ).getByRole("button", { name: "Delete snapshot" }),
+    );
+
+    await waitFor(() => expect(onBeforeContextChange).toHaveBeenCalledOnce());
+    expect(tauriWasCalled).toBe(false);
+    expect(
+      queryClient.isMutating({ mutationKey: playerResultContextMutationKey }),
+    ).toBe(1);
+
+    releaseContextChange();
+    await waitFor(() => expect(tauriWasCalled).toBe(true));
+  });
+
+  it("deletes a non-current snapshot without the callback or shared key", async () => {
+    seedHistory();
+    const user = userEvent.setup();
+    const onBeforeContextChange = vi.fn(async () => undefined);
+    const queryClient = renderPanels(onBeforeContextChange);
+    let tauriWasCalled = false;
+    observeSnapshotIpcCall("deleteSnapshot", () => {
+      tauriWasCalled = true;
+    });
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: /^Delete snapshot 2026-06-01/,
+      }),
+    );
+    await user.click(
+      within(
+        screen.getByRole("dialog", { name: /^Delete snapshot/ }),
+      ).getByRole("button", { name: "Delete snapshot" }),
+    );
+
+    await waitFor(() => expect(tauriWasCalled).toBe(true));
+    expect(onBeforeContextChange).not.toHaveBeenCalled();
+    expect(
+      queryClient.isMutating({ mutationKey: playerResultContextMutationKey }),
+    ).toBe(0);
+  });
+
   it("promotes the next in-game-date snapshot when deleting the current one", async () => {
     seedHistory();
     const user = userEvent.setup();
@@ -382,6 +468,69 @@ describe("snapshot panels", () => {
         name: "Delete save Archive (save 2)?",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("waits for the injected callback before deleting the active save", async () => {
+    const user = userEvent.setup();
+    let releaseContextChange!: () => void;
+    const onBeforeContextChange = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseContextChange = resolve;
+        }),
+    );
+    const queryClient = renderPanels(onBeforeContextChange);
+    let tauriWasCalled = false;
+    observeSnapshotIpcCall("deleteSave", () => {
+      tauriWasCalled = true;
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: /^Delete save Default save/ }),
+    );
+    await user.click(
+      within(screen.getByRole("dialog", { name: /^Delete save/ })).getByRole(
+        "button",
+        { name: "Delete save" },
+      ),
+    );
+
+    await waitFor(() => expect(onBeforeContextChange).toHaveBeenCalledOnce());
+    expect(tauriWasCalled).toBe(false);
+    expect(
+      queryClient.isMutating({ mutationKey: playerResultContextMutationKey }),
+    ).toBe(1);
+
+    releaseContextChange();
+    await waitFor(() => expect(tauriWasCalled).toBe(true));
+  });
+
+  it("deletes an inactive save without the callback or shared key", async () => {
+    const user = userEvent.setup();
+    const onBeforeContextChange = vi.fn(async () => undefined);
+    const queryClient = renderPanels(onBeforeContextChange);
+    await user.type(await screen.findByLabelText("New save"), "Archive");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    let tauriWasCalled = false;
+    observeSnapshotIpcCall("deleteSave", () => {
+      tauriWasCalled = true;
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: /^Delete save Archive/ }),
+    );
+    await user.click(
+      within(screen.getByRole("dialog", { name: /^Delete save/ })).getByRole(
+        "button",
+        { name: "Delete save" },
+      ),
+    );
+
+    await waitFor(() => expect(tauriWasCalled).toBe(true));
+    expect(onBeforeContextChange).not.toHaveBeenCalled();
+    expect(
+      queryClient.isMutating({ mutationKey: playerResultContextMutationKey }),
+    ).toBe(0);
   });
 
   it("switches to another save after deleting the active save", async () => {

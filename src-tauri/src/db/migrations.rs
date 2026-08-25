@@ -734,6 +734,29 @@ CREATE INDEX idx_club_dna_scores_snapshot_definition_model_score
     ON club_dna_scores(snapshot_id, definition_version, score_model_version, score);
 ";
 
+pub const PLAYER_TARGETED_SORT_INDEXES_SQL: &str = "
+CREATE INDEX idx_players_snapshot_pa_asc_uid
+    ON players(snapshot_id, pa ASC, uid ASC);
+
+CREATE INDEX idx_players_snapshot_pa_desc_uid
+    ON players(snapshot_id, pa DESC, uid ASC);
+
+CREATE INDEX idx_players_snapshot_age_asc_uid
+    ON players(snapshot_id, age ASC, uid ASC);
+
+CREATE INDEX idx_players_snapshot_age_desc_uid
+    ON players(snapshot_id, age DESC, uid ASC);
+
+CREATE INDEX idx_players_snapshot_value_asc_uid
+    ON players(snapshot_id, market_value_gbp ASC, uid ASC);
+
+CREATE INDEX idx_players_snapshot_value_desc_uid
+    ON players(snapshot_id, market_value_gbp DESC, uid ASC);
+
+CREATE INDEX idx_players_snapshot_current_club_uid
+    ON players(snapshot_id, current_club, uid);
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -896,6 +919,11 @@ pub fn all() -> &'static [Migration] {
             description: "create_club_dna_score_cache",
             sql: CLUB_DNA_SCORE_CACHE_SQL,
         },
+        Migration {
+            version: 33,
+            description: "index_targeted_player_sorts",
+            sql: PLAYER_TARGETED_SORT_INDEXES_SQL,
+        },
     ]
 }
 
@@ -1021,6 +1049,112 @@ mod tests {
             .expect("read preserved rows")
     }
 
+    fn player_sort_index_inventory(conn: &Connection) -> Vec<(String, Vec<(String, i64)>)> {
+        let index_names = conn
+            .prepare(
+                "SELECT name
+                 FROM sqlite_master
+                 WHERE type = 'index' AND name LIKE 'idx_players_snapshot_%'
+                 ORDER BY name",
+            )
+            .expect("prepare player index inventory")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query player index inventory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read player index inventory");
+
+        index_names
+            .into_iter()
+            .map(|index_name| {
+                let columns = conn
+                    .prepare(
+                        "SELECT name, \"desc\"
+                         FROM pragma_index_xinfo(?1)
+                         WHERE \"key\" = 1
+                         ORDER BY seqno",
+                    )
+                    .expect("prepare player index columns")
+                    .query_map([&index_name], |row| Ok((row.get(0)?, row.get(1)?)))
+                    .expect("query player index columns")
+                    .collect::<Result<Vec<_>, _>>()
+                    .expect("read player index columns");
+                (index_name, columns)
+            })
+            .collect()
+    }
+
+    fn assert_player_sort_index_inventory(conn: &Connection) {
+        assert_eq!(
+            player_sort_index_inventory(conn),
+            [
+                (
+                    "idx_players_snapshot_age_asc_uid".to_string(),
+                    vec![
+                        ("snapshot_id".to_string(), 0),
+                        ("age".to_string(), 0),
+                        ("uid".to_string(), 0),
+                    ],
+                ),
+                (
+                    "idx_players_snapshot_age_desc_uid".to_string(),
+                    vec![
+                        ("snapshot_id".to_string(), 0),
+                        ("age".to_string(), 1),
+                        ("uid".to_string(), 0),
+                    ],
+                ),
+                (
+                    "idx_players_snapshot_ca".to_string(),
+                    vec![("snapshot_id".to_string(), 0), ("ca".to_string(), 1)],
+                ),
+                (
+                    "idx_players_snapshot_current_club_uid".to_string(),
+                    vec![
+                        ("snapshot_id".to_string(), 0),
+                        ("current_club".to_string(), 0),
+                        ("uid".to_string(), 0),
+                    ],
+                ),
+                (
+                    "idx_players_snapshot_name".to_string(),
+                    vec![("snapshot_id".to_string(), 0), ("name".to_string(), 0)],
+                ),
+                (
+                    "idx_players_snapshot_pa_asc_uid".to_string(),
+                    vec![
+                        ("snapshot_id".to_string(), 0),
+                        ("pa".to_string(), 0),
+                        ("uid".to_string(), 0),
+                    ],
+                ),
+                (
+                    "idx_players_snapshot_pa_desc_uid".to_string(),
+                    vec![
+                        ("snapshot_id".to_string(), 0),
+                        ("pa".to_string(), 1),
+                        ("uid".to_string(), 0),
+                    ],
+                ),
+                (
+                    "idx_players_snapshot_value_asc_uid".to_string(),
+                    vec![
+                        ("snapshot_id".to_string(), 0),
+                        ("market_value_gbp".to_string(), 0),
+                        ("uid".to_string(), 0),
+                    ],
+                ),
+                (
+                    "idx_players_snapshot_value_desc_uid".to_string(),
+                    vec![
+                        ("snapshot_id".to_string(), 0),
+                        ("market_value_gbp".to_string(), 1),
+                        ("uid".to_string(), 0),
+                    ],
+                ),
+            ]
+        );
+    }
+
     #[test]
     fn opening_fresh_db_applies_all_migrations_without_demo_value() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -1030,7 +1164,8 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
+        assert_player_sort_index_inventory(&conn);
 
         let demo_value_exists: bool = conn
             .query_row(
@@ -1109,6 +1244,70 @@ mod tests {
             })
             .expect("count definitions");
         assert_eq!(definition_count, 0);
+    }
+
+    #[test]
+    fn migrates_v32_players_to_targeted_sort_indexes_without_changing_rows() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn =
+            Connection::open(temp_dir.path().join("player-indexes-v32.db")).expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 32) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migrations through v32");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set v32 version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES ('Existing save')", [])
+            .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+        insert_player(&conn, snapshot_id, 42);
+        conn.execute(
+            "UPDATE players
+             SET age = 24, market_value_gbp = 12_000_000, current_club = 'Existing FC'
+             WHERE snapshot_id = ?1 AND uid = 42",
+            [snapshot_id],
+        )
+        .expect("seed v32 player values");
+
+        apply(&conn).expect("apply v33");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user_version");
+        assert_eq!(version, 33);
+        assert_player_sort_index_inventory(&conn);
+        assert_eq!(
+            conn.query_row(
+                "SELECT uid, pa, age, market_value_gbp, current_club
+                 FROM players WHERE snapshot_id = ?1",
+                [snapshot_id],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                        row.get::<_, Option<i64>>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                    ))
+                },
+            )
+            .expect("read preserved player"),
+            (
+                42,
+                100,
+                Some(24),
+                Some(12_000_000),
+                Some("Existing FC".to_string())
+            )
+        );
     }
 
     #[test]
@@ -1617,7 +1816,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         let settings: Vec<(i64, String, String)> = conn
             .prepare(
                 "SELECT save_id, team, display_name
@@ -1844,7 +2043,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         type MoneyballRow = (
             Option<String>,
             Option<i64>,
@@ -2030,7 +2229,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         let existing: i64 = conn
             .query_row("SELECT reveal_hidden_information FROM saves", [], |row| {
                 row.get(0)
@@ -2133,7 +2332,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -2214,7 +2413,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         assert_eq!(
             table_columns(&conn, "player_potential_role_scores"),
             [
@@ -2767,7 +2966,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, managed_club_settings.club_name
@@ -2847,7 +3046,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -3034,7 +3233,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         let primary_club: String = conn
             .query_row(
                 "SELECT club_name FROM managed_club_settings WHERE save_id = ?1",
@@ -3082,7 +3281,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -3323,7 +3522,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -3429,7 +3628,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
 
         let table_name: String = conn
             .query_row(
@@ -3664,7 +3863,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -3728,7 +3927,7 @@ mod tests {
                 row.get(0)
             })
             .expect("count absent backfill");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         assert_eq!(staff_count, 1);
         assert_eq!(score_count, 0);
     }
@@ -3879,8 +4078,15 @@ mod tests {
                 "idx_planner_teams_save_team",
                 "idx_player_potential_role_scores_snapshot_role_score",
                 "idx_player_role_scores_snapshot_role",
+                "idx_players_snapshot_age_asc_uid",
+                "idx_players_snapshot_age_desc_uid",
                 "idx_players_snapshot_ca",
+                "idx_players_snapshot_current_club_uid",
                 "idx_players_snapshot_name",
+                "idx_players_snapshot_pa_asc_uid",
+                "idx_players_snapshot_pa_desc_uid",
+                "idx_players_snapshot_value_asc_uid",
+                "idx_players_snapshot_value_desc_uid",
                 "idx_saves_context_token",
                 "idx_saves_one_active",
                 "idx_snapshots_context_token",
@@ -3974,7 +4180,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
     }
 
     #[test]
@@ -4008,7 +4214,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 32);
+        assert_eq!(version, 33);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -4048,7 +4254,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 32, "legacy version {legacy_version}");
+            assert_eq!(version, 33, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -4061,7 +4267,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 32);
+        assert_eq!(migrations.len(), 33);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -4198,6 +4404,9 @@ mod tests {
         assert_eq!(migrations[31].version, 32);
         assert_eq!(migrations[31].description, "create_club_dna_score_cache");
         assert_eq!(migrations[31].sql, CLUB_DNA_SCORE_CACHE_SQL);
+        assert_eq!(migrations[32].version, 33);
+        assert_eq!(migrations[32].description, "index_targeted_player_sorts");
+        assert_eq!(migrations[32].sql, PLAYER_TARGETED_SORT_INDEXES_SQL);
     }
 
     #[test]

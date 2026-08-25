@@ -1,7 +1,14 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { UsersRound } from "lucide-react";
-import { type ReactNode, type RefObject, useMemo } from "react";
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
   type PlayerTableColumn,
@@ -19,6 +26,7 @@ import {
   formatPlayerDob,
 } from "@/utils/format";
 import { getPlayerMetric } from "@/utils/player-metrics";
+import type { SquadPlayerPageContext } from "../api/squad-keys";
 import {
   SQUAD_PAGE_SIZE,
   squadPlayersQueryOptions,
@@ -45,6 +53,7 @@ type SquadOverviewPanelProps = {
   sortBy: SquadSortField;
   sortDir: SquadSortDir;
   onSortChange: (sortBy: SquadSortField, sortDir: SquadSortDir) => void;
+  pageContext: SquadPlayerPageContext;
 };
 
 function SquadFeedbackSlot({
@@ -176,6 +185,9 @@ function SquadOverviewTable({
   onRemoveColumn,
   onMoveColumn,
   onResizeColumn,
+  pageContext,
+  firstPageQueryOptions,
+  isReplacementActive,
 }: {
   total: number;
   sortBy: SquadSortField;
@@ -187,6 +199,9 @@ function SquadOverviewTable({
   onRemoveColumn: (metricId: string) => void;
   onMoveColumn: (metricId: string, targetIndex: number) => void;
   onResizeColumn: (metricId: string, width: number) => void;
+  pageContext: SquadPlayerPageContext;
+  firstPageQueryOptions: ReturnType<typeof squadPlayersQueryOptions>;
+  isReplacementActive: boolean;
 }) {
   const navigate = useNavigate();
 
@@ -210,6 +225,8 @@ function SquadOverviewTable({
           onResizeColumn={onResizeColumn}
         />
       }
+      firstPageQueryOptions={firstPageQueryOptions}
+      isReplacementActive={isReplacementActive}
       pageQueryOptions={(offset, limit) =>
         squadPlayersQueryOptions(
           offset,
@@ -217,6 +234,7 @@ function SquadOverviewTable({
           sortBy,
           sortDir,
           requestedFields,
+          pageContext,
         )
       }
       pageSize={SQUAD_PAGE_SIZE}
@@ -275,24 +293,28 @@ function SquadOverviewTable({
                 className={`${TEXT_CELL} text-on-surface`}
                 title={cell.title}
               >
-                <Link
-                  to="/players/$uid"
-                  params={{ uid: String(player.uid) }}
-                  search={{}}
-                  tabIndex={-1}
-                  className="block text-on-surface underline decoration-outline-variant underline-offset-2 transition-colors duration-150 ease-out hover:text-primary"
-                  title={player.name}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                  }}
-                >
-                  <span className="block truncate">{cell.text}</span>
-                  {identityContext ? (
-                    <span className="block truncate text-[11px] leading-4 text-on-surface-variant">
-                      {identityContext}
-                    </span>
-                  ) : null}
-                </Link>
+                {isReplacementActive ? (
+                  <span className="block text-on-surface">{cell.text}</span>
+                ) : (
+                  <Link
+                    to="/players/$uid"
+                    params={{ uid: String(player.uid) }}
+                    search={{}}
+                    tabIndex={-1}
+                    className="block text-on-surface underline decoration-outline-variant underline-offset-2 transition-colors duration-150 ease-out hover:text-primary"
+                    title={player.name}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
+                    <span className="block truncate">{cell.text}</span>
+                    {identityContext ? (
+                      <span className="block truncate text-[11px] leading-4 text-on-surface-variant">
+                        {identityContext}
+                      </span>
+                    ) : null}
+                  </Link>
+                )}
               </td>
             );
           }
@@ -331,6 +353,7 @@ export function SquadOverviewPanel({
   sortBy,
   sortDir,
   onSortChange,
+  pageContext,
 }: SquadOverviewPanelProps) {
   const layout = usePlayerTableStore((state) => state.layouts.squad);
   const addColumns = usePlayerTableStore((state) => state.addColumns);
@@ -356,15 +379,114 @@ export function SquadOverviewPanel({
         .sort(),
     [columns],
   );
-  const { data: page } = useSuspenseQuery(
-    squadPlayersQueryOptions(
-      0,
-      SQUAD_PAGE_SIZE,
-      sortBy,
-      sortDir,
-      requestedFields,
-    ),
+  const requested = useMemo(
+    () => ({ sortBy, sortDir, requestedFields, pageContext }),
+    [pageContext, requestedFields, sortBy, sortDir],
   );
+  const [committed, setCommitted] = useState(requested);
+  const committedOptions = squadPlayersQueryOptions(
+    0,
+    SQUAD_PAGE_SIZE,
+    committed.sortBy,
+    committed.sortDir,
+    committed.requestedFields,
+    committed.pageContext,
+  );
+  const requestedOptions = squadPlayersQueryOptions(
+    0,
+    SQUAD_PAGE_SIZE,
+    requested.sortBy,
+    requested.sortDir,
+    requested.requestedFields,
+    requested.pageContext,
+  );
+  const committedQuery = useQuery(committedOptions);
+  const requestedQuery = useQuery(requestedOptions);
+  const queryClient = useQueryClient();
+  const requestedKey = JSON.stringify(requestedOptions.queryKey);
+  const requestedDataUpdateCount =
+    queryClient.getQueryState(requestedOptions.queryKey)?.dataUpdateCount ?? 0;
+  const requestedVersion = useRef({
+    key: requestedKey,
+    dataUpdateCount: requestedDataUpdateCount,
+  });
+  if (requestedVersion.current.key !== requestedKey) {
+    requestedVersion.current = {
+      key: requestedKey,
+      dataUpdateCount: requestedDataUpdateCount,
+    };
+  }
+  const requestMatchesCommitted =
+    JSON.stringify(committedOptions.queryKey) ===
+    JSON.stringify(requestedOptions.queryKey);
+  const isSortReplacement =
+    !requestMatchesCommitted &&
+    JSON.stringify({
+      requestedFields: committed.requestedFields,
+      pageContext: committed.pageContext,
+    }) ===
+      JSON.stringify({
+        requestedFields: requested.requestedFields,
+        pageContext: requested.pageContext,
+      });
+  const isReplacementActive = !requestMatchesCommitted;
+  const isReplacementPending = isSortReplacement && requestedQuery.isFetching;
+  const replacementError =
+    isSortReplacement && requestedQuery.isError ? requestedQuery.error : null;
+  const replacementLabel = requested.sortBy.startsWith("potential_role.")
+    ? "Calculating and sorting…"
+    : "Sorting…";
+
+  useEffect(() => {
+    if (
+      requestedQuery.isSuccess &&
+      !requestedQuery.isFetching &&
+      (!requestedQuery.isStale ||
+        requestedDataUpdateCount > requestedVersion.current.dataUpdateCount) &&
+      !requestMatchesCommitted
+    ) {
+      setCommitted(requested);
+    }
+  }, [
+    requestMatchesCommitted,
+    requested,
+    requestedDataUpdateCount,
+    requestedQuery.isFetching,
+    requestedQuery.isStale,
+    requestedQuery.isSuccess,
+  ]);
+
+  const page =
+    requestMatchesCommitted || isSortReplacement
+      ? committedQuery.data
+      : undefined;
+  if (!page) {
+    return (
+      <Panel title="Squad overview" actions={actions} flush>
+        <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
+        <EmptyState
+          icon={UsersRound}
+          title={
+            requestedQuery.isError ? "Could not load squad" : "Loading squad"
+          }
+          action={
+            requestedQuery.isError ? (
+              <button
+                type="button"
+                onClick={() => void requestedQuery.refetch()}
+              >
+                Retry
+              </button>
+            ) : undefined
+          }
+        >
+          {requestedQuery.isError
+            ? requestedQuery.error.message
+            : "Loading squad overview…"}
+        </EmptyState>
+      </Panel>
+    );
+  }
 
   if (page.total === 0) {
     return (
@@ -377,20 +499,20 @@ export function SquadOverviewPanel({
     );
   }
 
-  const dirLabel = sortDir === "asc" ? "ascending" : "descending";
-  const sortMetric = getPlayerMetric(sortBy);
+  const dirLabel = committed.sortDir === "asc" ? "ascending" : "descending";
+  const sortMetric = getPlayerMetric(committed.sortBy);
   const sortLabel = sortMetric
     ? sortMetric.id === "age"
       ? "Age / DOB"
       : sortMetric.label
-    : sortBy;
+    : committed.sortBy;
   const removeColumn = (metricId: string) => {
     const remainingColumns = columns.filter((column) => column.id !== metricId);
     if (remainingColumns.length === columns.length) {
       return;
     }
     removeStoredColumn("squad", metricId);
-    if (sortBy !== metricId) {
+    if (requested.sortBy !== metricId) {
       return;
     }
     const nextColumn =
@@ -415,13 +537,39 @@ export function SquadOverviewPanel({
         {page.total === 1 ? "player" : "players"} · sorted by {sortLabel} (
         {dirLabel})
       </p>
+      {isReplacementPending ? (
+        <p
+          className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
+          role="status"
+        >
+          {replacementLabel}
+        </p>
+      ) : null}
+      {replacementError ? (
+        <div
+          className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
+          role="alert"
+        >
+          <span>Could not sort squad. {replacementError.message}</span>
+          <button
+            type="button"
+            className="shrink-0 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            onClick={() => void requestedQuery.refetch()}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       <SquadFeedbackSlot feedback={feedback} feedbackRef={feedbackRef} />
       <SquadOverviewTable
         total={page.total}
-        sortBy={sortBy}
-        sortDir={sortDir}
+        sortBy={committed.sortBy}
+        sortDir={committed.sortDir}
         columns={columns}
-        requestedFields={requestedFields}
+        requestedFields={committed.requestedFields}
+        pageContext={committed.pageContext}
+        firstPageQueryOptions={committedOptions}
+        isReplacementActive={isReplacementActive}
         onSortChange={onSortChange}
         onAddColumn={(metricId) => addColumns("squad", [metricId])}
         onRemoveColumn={removeColumn}

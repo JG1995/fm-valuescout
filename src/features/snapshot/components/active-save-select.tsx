@@ -1,4 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type ClearPlayerResultContext,
+  playerResultContextMutationKey,
+} from "@/components/player-table/player-result-context";
 import { fieldClasses } from "@/components/ui/field/field-styles";
 import { cn } from "@/utils/cn";
 import { savesQueryOptions } from "../api/saves-query-options";
@@ -9,6 +13,7 @@ type ActiveSaveSelectProps = {
   className?: string;
   /** Shell composition — invalidate non-snapshot query trees (e.g. search). */
   onSwitched?: () => void;
+  onBeforeContextChange: ClearPlayerResultContext;
 };
 
 // Shell chrome, so this uses useQuery rather than the route loader's suspense
@@ -17,13 +22,18 @@ type ActiveSaveSelectProps = {
 export function ActiveSaveSelect({
   className,
   onSwitched,
+  onBeforeContextChange,
 }: ActiveSaveSelectProps) {
   const queryClient = useQueryClient();
   const { data: saves } = useQuery(savesQueryOptions);
   const activeSave = saves?.find((save) => save.isActive) ?? saves?.[0];
 
   const switchSave = useMutation({
-    mutationFn: setActiveSave,
+    mutationKey: playerResultContextMutationKey,
+    mutationFn: async (saveId: number) => {
+      await onBeforeContextChange();
+      return setActiveSave(saveId);
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
       onSwitched?.();

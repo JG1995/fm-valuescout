@@ -7,8 +7,14 @@ import {
 import type { ComparisonPool, SearchView } from "../types/search-view";
 import { completeFilterRules } from "../utils/filter-registry";
 
+export type SearchPlayerPageContext = {
+  activeSave: { id: number; contextToken: string } | null;
+  currentSnapshot: { id: number; saveId: number } | null;
+};
+
 export const searchKeys = {
   all: ["search"] as const,
+  playerPages: () => [...searchKeys.all, "players"] as const,
   players: (
     offset: number,
     limit: number,
@@ -19,10 +25,13 @@ export const searchKeys = {
     requestedFields: string[] = [],
     searchView: SearchView = "general",
     comparisonPool: ComparisonPool = "filtered",
+    context: SearchPlayerPageContext = {
+      activeSave: null,
+      currentSnapshot: null,
+    },
   ) =>
     [
-      ...searchKeys.all,
-      "players",
+      ...searchKeys.playerPages(),
       {
         offset,
         limit,
@@ -33,6 +42,7 @@ export const searchKeys = {
         requestedFields,
         searchView,
         comparisonPool,
+        context,
       },
     ] as const,
   suggest: (query: string, limit: number) =>
