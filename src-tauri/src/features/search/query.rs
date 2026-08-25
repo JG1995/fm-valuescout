@@ -192,6 +192,16 @@ impl SortField {
         }
     }
 
+    fn club_dna_sort_identity(
+        &self,
+        definition_version: Option<i64>,
+    ) -> Option<crate::features::player_metrics::resolver::ClubDnaSortIdentity> {
+        match self {
+            Self::Dynamic(field) => field.club_dna_sort_identity(definition_version),
+            _ => None,
+        }
+    }
+
     fn moneyball_role_id(&self) -> Option<&str> {
         match self {
             Self::Dynamic(field) => field.moneyball_role_id(),
@@ -396,6 +406,7 @@ pub fn search_players_in_view(
         .then(|| current_club_dna_definition_version(conn, snapshot_id))
         .transpose()?
         .flatten();
+    let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
 
     let mut full_snapshot_roles = filter_ast
         .map(potential_role_ids_from_ast)
@@ -432,6 +443,16 @@ pub fn search_players_in_view(
             identity.role_id, identity.projection_model_version
         ));
     }
+    if let Some((_, bindings)) = club_dna_sort.zip(club_dna_bindings) {
+        from_sql.push_str(&format!(
+            " LEFT JOIN club_dna_scores club_dna_sort
+              ON club_dna_sort.snapshot_id = players.snapshot_id
+              AND club_dna_sort.uid = players.uid
+              AND club_dna_sort.definition_version = ?{}
+              AND club_dna_sort.score_model_version = ?{}",
+            bindings.definition_version, bindings.score_model_version
+        ));
+    }
     let mut where_sql = "players.snapshot_id = ?1".to_string();
     if let Some(compiled) = &compiled {
         where_sql.push_str(" AND ");
@@ -446,9 +467,17 @@ pub fn search_players_in_view(
     if let Some(compiled) = &compiled {
         bind_values.extend(compiled.params.clone());
     }
+    if let Some(identity) = club_dna_sort.filter(|_| !club_dna_filter) {
+        bind_values.push(
+            identity
+                .definition_version
+                .map_or(Value::Null, Value::Integer),
+        );
+        bind_values.push(Value::Integer(identity.score_model_version));
+    }
     let filter_bind_values = bind_values.clone();
     let mut select_bind_values = bind_values.clone();
-    if club_dna_requested && !club_dna_filter {
+    if club_dna_requested && !club_dna_filter && club_dna_sort.is_none() {
         select_bind_values.push(club_dna_definition_version.map_or(Value::Null, Value::Integer));
         select_bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
     }
@@ -472,19 +501,17 @@ pub fn search_players_in_view(
             "ORDER BY potential_role_sort.score {}, players.uid ASC",
             sort_dir.sql_keyword()
         )
+    } else if club_dna_sort.is_some() {
+        format!(
+            "ORDER BY club_dna_sort.score IS NULL ASC, club_dna_sort.score {}, players.uid ASC",
+            sort_dir.sql_keyword()
+        )
     } else {
         let sort_expression = sort_by.sql_expr(club_dna_bindings);
-        if sort_by.is_club_dna() {
-            format!(
-                "ORDER BY ({sort_expression}) IS NULL ASC, {sort_expression} {}, players.uid ASC",
-                sort_dir.sql_keyword()
-            )
-        } else {
-            format!(
-                "ORDER BY {sort_expression} {}, players.uid ASC",
-                sort_dir.sql_keyword()
-            )
-        }
+        format!(
+            "ORDER BY {sort_expression} {}, players.uid ASC",
+            sort_dir.sql_keyword()
+        )
     };
 
     let mut select_sql = String::from(
@@ -1749,6 +1776,7 @@ mod tests {
         conn.pragma_update(None, "reverse_unordered_selects", true)
             .expect("reverse unordered ties");
         let score_rows_before = club_dna_score_rows(&conn);
+        let score_row_count_before = score_rows_before.len();
         let requested_fields = vec!["club_dna".to_string()];
 
         let page = search_players(
@@ -1815,6 +1843,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [30, 40, 50, 60]
         );
+        assert_eq!(club_dna_score_rows(&conn).len(), score_row_count_before);
         assert_eq!(club_dna_score_rows(&conn), score_rows_before);
     }
 
@@ -3564,6 +3593,24 @@ mod tests {
 
         assert!(query.contains("potential_display_roles.retain"));
         assert!(query.contains("role_id != identity.role_id"));
+    }
+
+    #[test]
+    fn club_dna_sort_uses_a_missing_preserving_exact_identity_relation() {
+        let source = include_str!("query.rs");
+        let query = &source[source
+            .find("pub fn search_players_in_view")
+            .expect("search query function")
+            ..source
+                .find("fn current_club_dna_definition_version")
+                .expect("following helper")];
+
+        assert!(query.contains("LEFT JOIN club_dna_scores club_dna_sort"));
+        assert!(query.contains("club_dna_sort.snapshot_id = players.snapshot_id"));
+        assert!(query.contains("club_dna_sort.uid = players.uid"));
+        assert!(query.contains("club_dna_sort.definition_version"));
+        assert!(query.contains("club_dna_sort.score_model_version"));
+        assert!(query.contains("ORDER BY club_dna_sort.score IS NULL ASC"));
     }
 
     #[test]

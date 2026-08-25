@@ -5,7 +5,7 @@ use rusqlite::Row;
 use crate::features::moneyball::{is_moneyball_statistic_key, role_catalog::builtin_catalog};
 use crate::features::scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS};
 
-use super::potential_cache::PROJECTION_MODEL_VERSION;
+use super::{club_dna::SCORE_MODEL_VERSION, potential_cache::PROJECTION_MODEL_VERSION};
 
 /// FM26 dump position keys (bridge `PositionEntries`).
 pub const POSITION_KEYS: &[&str] = &[
@@ -47,6 +47,13 @@ pub enum MetricValueKind {
 pub struct PotentialRoleSortIdentity {
     pub role_id: &'static str,
     pub projection_model_version: i64,
+}
+
+/// Exact persisted Club DNA score identity for one validated sort.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClubDnaSortIdentity {
+    pub definition_version: Option<i64>,
+    pub score_model_version: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -251,6 +258,16 @@ impl MetricField {
 
     pub fn current_role_id(&self) -> Option<&'static str> {
         self.source.current_role_id()
+    }
+
+    pub fn club_dna_sort_identity(
+        &self,
+        definition_version: Option<i64>,
+    ) -> Option<ClubDnaSortIdentity> {
+        self.is_club_dna().then_some(ClubDnaSortIdentity {
+            definition_version,
+            score_model_version: SCORE_MODEL_VERSION,
+        })
     }
 
     pub fn moneyball_key(&self) -> Option<&str> {
@@ -561,6 +578,24 @@ mod tests {
 
         assert_eq!(metric.kind(), MetricValueKind::Integer);
         assert!(metric.is_club_dna());
+        assert_eq!(
+            metric.club_dna_sort_identity(Some(2)),
+            Some(ClubDnaSortIdentity {
+                definition_version: Some(2),
+                score_model_version: SCORE_MODEL_VERSION,
+            })
+        );
+        assert_eq!(
+            metric.club_dna_sort_identity(None),
+            Some(ClubDnaSortIdentity {
+                definition_version: None,
+                score_model_version: SCORE_MODEL_VERSION,
+            })
+        );
+        assert!(MetricField::parse("ca")
+            .expect("parse scalar metric")
+            .club_dna_sort_identity(Some(2))
+            .is_none());
         assert!(expression.contains("club_dna_scores"));
         assert!(expression.contains("cds.snapshot_id = players.snapshot_id"));
         assert!(expression.contains("cds.definition_version = ?2"));

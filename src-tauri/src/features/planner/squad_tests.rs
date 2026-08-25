@@ -380,6 +380,22 @@ fn potential_sort_uses_a_missing_preserving_exact_version_relation_and_skips_its
 }
 
 #[test]
+fn club_dna_sort_uses_a_missing_preserving_exact_identity_relation() {
+    let source = include_str!("squad.rs");
+    let query = &source[source
+        .find("pub fn list_squad_players")
+        .expect("squad query function")
+        ..source.find("fn empty_page").expect("following helper")];
+
+    assert!(query.contains("LEFT JOIN club_dna_scores club_dna_sort"));
+    assert!(query.contains("club_dna_sort.snapshot_id = p.snapshot_id"));
+    assert!(query.contains("club_dna_sort.uid = p.uid"));
+    assert!(query.contains("club_dna_sort.definition_version"));
+    assert!(query.contains("club_dna_sort.score_model_version"));
+    assert!(query.contains("ORDER BY club_dna_sort.score IS NULL ASC"));
+}
+
+#[test]
 fn current_role_sort_materializes_requested_potential_page_fields() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
@@ -687,6 +703,7 @@ fn sorts_club_dna_squad_ascending_with_exact_membership_and_read_only_pages() {
     conn.pragma_update(None, "reverse_unordered_selects", true)
         .expect("reverse unordered ties");
     let score_rows_before = club_dna_score_rows(&conn);
+    let score_row_count_before = score_rows_before.len();
     let requested_fields = vec!["club_dna".to_string()];
 
     let page = list_squad_players(
@@ -752,6 +769,7 @@ fn sorts_club_dna_squad_ascending_with_exact_membership_and_read_only_pages() {
             .collect::<Vec<_>>(),
         [79, 80, 82]
     );
+    assert_eq!(club_dna_score_rows(&conn).len(), score_row_count_before);
     assert_eq!(club_dna_score_rows(&conn), score_rows_before);
 }
 
