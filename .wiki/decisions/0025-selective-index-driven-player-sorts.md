@@ -86,4 +86,4 @@ This would break bounded IPC and duplicate authoritative semantics. Rejected.
 - [ADR-0015 — SQLite with Rust-owned migrations and queries](./0015-sqlite-rust-owned.md)
 - [ADR-0019 — Lazy persistent potential role-score cache](./0019-lazy-potential-role-score-cache.md)
 - [ADR-0024 — Eager persisted Club DNA scores](./0024-eager-persisted-club-dna-scores.md)
-- [Player Table Sort Performance](../features/active/player-table-sort-performance.md)
+- [Player Table Sort Performance](../features/completed/player-table-sort-performance.md)
