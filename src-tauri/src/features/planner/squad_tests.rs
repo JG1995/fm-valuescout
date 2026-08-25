@@ -363,6 +363,23 @@ fn current_role_sort_uses_a_missing_preserving_relation() {
 }
 
 #[test]
+fn potential_sort_uses_a_missing_preserving_exact_version_relation_and_skips_its_page_pass() {
+    let source = include_str!("squad.rs");
+    let query = &source[source
+        .find("pub fn list_squad_players")
+        .expect("squad query function")
+        ..source.find("fn empty_page").expect("following helper")];
+
+    assert!(query.contains("LEFT JOIN player_potential_role_scores potential_role_sort"));
+    assert!(query.contains("potential_role_sort.snapshot_id = p.snapshot_id"));
+    assert!(query.contains("potential_role_sort.uid = p.uid"));
+    assert!(query.contains("potential_role_sort.projection_model_version"));
+    assert!(query.contains("ORDER BY potential_role_sort.score"));
+    assert!(query.contains("potential_display_roles.retain"));
+    assert!(query.contains("role_id != identity.role_id"));
+}
+
+#[test]
 fn current_role_sort_materializes_requested_potential_page_fields() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
@@ -878,15 +895,16 @@ fn potential_display_is_page_scoped_and_potential_sort_materializes_the_squad_co
         .expect("count page cache rows");
     assert_eq!(display_cache_rows, 1);
 
+    let visible_sort_role = "potential_role.line_holding_keeper_oop".to_string();
+    let distinct_visible_role = "potential_role.sweeper_keeper_oop".to_string();
     let sorted_page = list_squad_players(
         &conn,
         save_id,
         0,
-        DEFAULT_SQUAD_PAGE_LIMIT,
-        SquadSortField::parse("potential_role.line_holding_keeper_oop")
-            .expect("parse potential sort"),
+        1,
+        SquadSortField::parse(&visible_sort_role).expect("parse potential sort"),
         SquadSortDir::Desc,
-        &[],
+        &[visible_sort_role.clone(), distinct_visible_role.clone()],
     )
     .expect("sort squad potential");
     assert_eq!(
@@ -895,14 +913,24 @@ fn potential_display_is_page_scoped_and_potential_sort_materializes_the_squad_co
             .iter()
             .map(|player| player.uid)
             .collect::<Vec<_>>(),
-        [80, 79, 78, 77]
+        [80]
     );
-    let sort_cache_rows: i64 = conn
+    let selected_role_rows: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM player_potential_role_scores",
+            "SELECT COUNT(*) FROM player_potential_role_scores
+             WHERE role_id = 'line_holding_keeper_oop'",
             [],
             |row| row.get(0),
         )
-        .expect("count sorted cache rows");
-    assert_eq!(sort_cache_rows, 4);
+        .expect("count globally sorted role rows");
+    assert_eq!(selected_role_rows, 4);
+    let distinct_visible_rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM player_potential_role_scores
+             WHERE role_id = 'sweeper_keeper_oop'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count page-lazy distinct visible role rows");
+    assert_eq!(distinct_visible_rows, 1);
 }

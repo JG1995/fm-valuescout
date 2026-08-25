@@ -4,7 +4,7 @@ use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExten
 
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
-    potential_cache::materialize_player_roles,
+    potential_cache::{materialize_player_roles, squad_role_rows_are_complete},
     resolver::{
         parse_requested_fields, read_dynamic_value, ClubDnaSqlBindings, DynamicValue, MetricField,
     },
@@ -61,9 +61,11 @@ impl SquadSortField {
         matches!(self, Self::Dynamic(field) if field.is_club_dna())
     }
 
-    fn potential_role_id(&self) -> Option<&'static str> {
+    fn potential_role_sort_identity(
+        &self,
+    ) -> Option<crate::features::player_metrics::resolver::PotentialRoleSortIdentity> {
         match self {
-            Self::Dynamic(field) => field.potential_role_id(),
+            Self::Dynamic(field) => field.potential_role_sort_identity(),
             _ => None,
         }
     }
@@ -198,9 +200,34 @@ pub fn list_squad_players(
             SELECT club_name FROM managed_club_settings WHERE save_id = ?2
         )";
 
-    if let Some(role_id) = sort_by.potential_role_id() {
-        let player_uids = list_squad_player_uids(conn, save_id, snapshot_id)?;
-        materialize_player_roles(conn, snapshot_id, &player_uids, &[role_id.to_string()])?;
+    let potential_role_sort = sort_by.potential_role_sort_identity();
+    if let Some(identity) = potential_role_sort {
+        if !squad_role_rows_are_complete(
+            conn,
+            snapshot_id,
+            save_id,
+            identity.role_id,
+            identity.projection_model_version,
+        )? {
+            let player_uids = list_squad_player_uids(conn, save_id, snapshot_id)?;
+            materialize_player_roles(
+                conn,
+                snapshot_id,
+                &player_uids,
+                &[identity.role_id.to_string()],
+            )?;
+            if !squad_role_rows_are_complete(
+                conn,
+                snapshot_id,
+                save_id,
+                identity.role_id,
+                identity.projection_model_version,
+            )? {
+                return Err(
+                    "potential role materialization did not complete the squad cohort".to_string(),
+                );
+            }
+        }
     }
 
     let count_sql = format!("SELECT COUNT(*) FROM players p WHERE {membership_sql}");
@@ -208,7 +235,7 @@ pub fn list_squad_players(
         .query_row(&count_sql, params![snapshot_id, save_id], |row| row.get(0))
         .map_err(|error| error.to_string())?;
     let current_role_sort = sort_by.current_role_id();
-    let from_sql = if let Some(role_id) = current_role_sort {
+    let mut from_sql = if let Some(role_id) = current_role_sort {
         format!(
             "FROM players p
              LEFT JOIN player_role_scores current_role_sort
@@ -219,9 +246,24 @@ pub fn list_squad_players(
     } else {
         "FROM players p".to_string()
     };
+    if let Some(identity) = potential_role_sort {
+        from_sql.push_str(&format!(
+            " LEFT JOIN player_potential_role_scores potential_role_sort
+              ON potential_role_sort.snapshot_id = p.snapshot_id
+              AND potential_role_sort.uid = p.uid
+              AND potential_role_sort.role_id = '{}'
+              AND potential_role_sort.projection_model_version = {}",
+            identity.role_id, identity.projection_model_version
+        ));
+    }
     let order_sql = if current_role_sort.is_some() {
         format!(
             "ORDER BY current_role_sort.score {}, p.uid ASC",
+            sort_dir.sql_keyword()
+        )
+    } else if potential_role_sort.is_some() {
+        format!(
+            "ORDER BY potential_role_sort.score {}, p.uid ASC",
             sort_dir.sql_keyword()
         )
     } else {
@@ -238,7 +280,10 @@ pub fn list_squad_players(
             )
         }
     };
-    let potential_display_roles = potential_role_ids(&dynamic_fields);
+    let mut potential_display_roles = potential_role_ids(&dynamic_fields);
+    if let Some(identity) = potential_role_sort {
+        potential_display_roles.retain(|role_id| role_id != identity.role_id);
+    }
     if !potential_display_roles.is_empty() {
         let page_uids = query_page_uids(
             conn,

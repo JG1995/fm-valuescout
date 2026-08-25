@@ -42,6 +42,13 @@ pub enum MetricValueKind {
     Text,
 }
 
+/// Exact cache identity for one validated potential-role sort.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PotentialRoleSortIdentity {
+    pub role_id: &'static str,
+    pub projection_model_version: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MetricSource {
     Column(&'static str),
@@ -232,6 +239,14 @@ impl MetricField {
             MetricSource::PotentialRole { role_id } => Some(role_id),
             _ => None,
         }
+    }
+
+    pub fn potential_role_sort_identity(&self) -> Option<PotentialRoleSortIdentity> {
+        self.potential_role_id()
+            .map(|role_id| PotentialRoleSortIdentity {
+                role_id,
+                projection_model_version: PROJECTION_MODEL_VERSION,
+            })
     }
 
     pub fn current_role_id(&self) -> Option<&'static str> {
@@ -507,6 +522,24 @@ mod tests {
         assert!(MetricField::parse("hidden.NotARealMetric").is_err());
         assert!(MetricField::parse("personality.NotARealMetric").is_err());
         assert!(MetricField::parse("role.not_a_role").is_err());
+    }
+
+    #[test]
+    fn exposes_validated_potential_role_sort_identity() {
+        let metric = MetricField::parse("potential_role.line_holding_keeper_oop")
+            .expect("parse potential role metric");
+
+        assert_eq!(
+            metric.potential_role_sort_identity(),
+            Some(PotentialRoleSortIdentity {
+                role_id: "line_holding_keeper_oop",
+                projection_model_version: PROJECTION_MODEL_VERSION,
+            })
+        );
+        assert!(MetricField::parse("ca")
+            .expect("parse scalar metric")
+            .potential_role_sort_identity()
+            .is_none());
     }
 
     #[test]

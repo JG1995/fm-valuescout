@@ -472,7 +472,7 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 #### Commit 5 — Streamline warm potential-role sorts
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `perf(tables): streamline potential role sorts`
 
@@ -541,7 +541,7 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 #### Commit 6 — Drive Club DNA sorts from score rows
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `perf(tables): drive Club DNA sorts from scores`
 
@@ -613,19 +613,19 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 **PR:** PR 1 — Improve player table sort performance
 
-**Commit:** Commit 5 — Streamline warm potential-role sorts
+**Commit:** Commit 6 — Drive Club DNA sorts from score rows
 
 ### RED or removal proof
 
-Focused cache and query tests fail because warm potential completeness still uses nested missing-row probes, potential ordering still uses a correlated lookup, and the globally sorted role can repeat page-only materialization when it is also visible.
+Focused Search and Squad tests fail the relation-shape contract because Club DNA sorting still uses a correlated scalar lookup instead of exact definition/model score rows.
 
 ### Expected outcome
 
-Exact-version count equality proves warm Search and managed-club cohort completeness, bounded cold materialization rechecks before relation ordering, the selected global sort role skips only its redundant page pass, and distinct visible potential roles remain page-lazy.
+Search and Squad order exact cohorts through missing-preserving, read-only Club DNA relations with nulls last, both directions, UID ties, totals, and pages; automated gates and representative-save manual acceptance pass before feature validation.
 
 ### Explicit exclusions
 
-Eager or background scoring, schema/model-version/index changes, pools or extra database drivers, frontend work, current-role or Club DNA changes, and removal of unrelated visible-role laziness.
+Club DNA writer/schema/index/version/formula/filter changes, current-role or potential changes, performance infrastructure or evidence files, and quantified performance claims.
 
 ## Discoveries and replanning
 
@@ -648,7 +648,8 @@ Eager or background scoring, schema/model-version/index changes, pools or extra 
 | PR 1 — Improve player table sort performance | Commit 1 — Record the approved feature plan | a1bf86feeddfc89fc0c3b0d3328ac9bc971b8ed7 | Recorded the accepted schema 2 ledger, TODO activation, ADR-0025, and ADR index entry; BACKLOG stayed unchanged. | Both classifiers were runnable; Markdown/LSP diagnostics and exact staged diff checks passed. | Not applicable | Clear | 0 | None |
 | PR 1 — Improve player table sort performance | Commit 2 — Add seven targeted player indexes | 5985da86ab02abbb80df7c252f5e418167483a73 | Added migration v33 with exactly six directional PA, Age, and Value indexes plus one managed-club membership index; retained Name and CA indexes and unchanged query behavior. | `./scripts/dev check-rust` passed with 584 tests and 2 ignored; `./scripts/dev check` passed; Rust LSP and staged diff checks passed. | Pass | Clear | 0 | None |
 | PR 1 — Improve player table sort performance | Commit 3 — Retain rows and clear context-bound results | 1ed1f17bae6f0a8c401301a7e82d53062c014adc | Added exact player-page roots and app-owned cancellation/removal, injected context transitions, committed/requested result controllers, truthful sort-only retention, projection/context clearing, and stale-row activation denial. | Focused frontend validation passed 231 tests; `./scripts/dev check-app`, 49-test smoke, `./scripts/dev check`, LSP, and staged diff checks passed. | Pass | Clear | 2 | None |
-| PR 1 — Improve player table sort performance | Commit 4 — Drive current-role sorts from score rows | Pending record | Replaced correlated current-role sort lookup with exact missing-preserving Search and Squad joins to validated `player_role_scores` identities, including the potential-display page path. | `./scripts/dev check-rust` passed with 591 tests and 2 ignored; `./scripts/dev check`, Rust LSP, and staged diff checks passed. | Pass | Clear | 1 | None |
+| PR 1 — Improve player table sort performance | Commit 4 — Drive current-role sorts from score rows | 812aa46f0e0dffc68dd55c3d6de8f588c2eb942a | Replaced correlated current-role sort lookup with exact missing-preserving Search and Squad joins to validated `player_role_scores` identities, including the potential-display page path. | `./scripts/dev check-rust` passed with 591 tests and 2 ignored; `./scripts/dev check`, Rust LSP, and staged diff checks passed. | Pass | Clear | 1 | None |
+| PR 1 — Improve player table sort performance | Commit 5 — Streamline warm potential-role sorts | Pending record | Replaced nested warm probes with exact-version completeness counts, retained bounded cold recheck, added exact relation ordering, and skipped only the selected role's redundant page pass. | `./scripts/dev check-rust` passed with 597 tests and 2 ignored; `./scripts/dev check`, Rust LSP, and staged diff checks passed. | Pass | Clear | 0 | None |
 
 ## Final validation
 

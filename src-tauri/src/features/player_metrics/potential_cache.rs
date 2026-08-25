@@ -34,7 +34,7 @@ pub fn materialize_snapshot_roles(
     if roles.is_empty() {
         return Ok(());
     }
-    if !has_missing_role_rows(conn, snapshot_id, &roles)? {
+    if snapshot_roles_are_complete(conn, snapshot_id, &roles)? {
         return Ok(());
     }
 
@@ -42,10 +42,10 @@ pub fn materialize_snapshot_roles(
     loop {
         let players = load_player_batch(conn, snapshot_id, after_uid)?;
         if players.is_empty() {
-            return Ok(());
+            break;
         }
         let Some(last_player) = players.last() else {
-            return Ok(());
+            break;
         };
         let last_uid = last_player.uid;
 
@@ -59,6 +59,12 @@ pub fn materialize_snapshot_roles(
             tx.commit().map_err(|error| error.to_string())?;
         }
         after_uid = Some(last_uid);
+    }
+
+    if snapshot_roles_are_complete(conn, snapshot_id, &roles)? {
+        Ok(())
+    } else {
+        Err("potential role materialization did not complete the snapshot".to_string())
     }
 }
 
@@ -135,50 +141,76 @@ fn requested_roles(role_ids: &[String]) -> Result<Vec<&'static RoleDefinition>, 
     Ok(roles)
 }
 
-fn has_missing_role_rows(
+/// Returns whether exact-version rows cover every player in the snapshot for one role.
+///
+/// Nullable scores count as cached rows. The cache primary key permits at most one row for
+/// each snapshot/player/role identity, so equal counts prove complete coverage.
+pub fn snapshot_role_rows_are_complete(
+    conn: &Connection,
+    snapshot_id: i64,
+    role_id: &str,
+    projection_model_version: i64,
+) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT
+             (SELECT COUNT(*) FROM players WHERE snapshot_id = ?1) =
+             (SELECT COUNT(*)
+              FROM player_potential_role_scores
+              WHERE snapshot_id = ?1
+                AND role_id = ?2
+                AND projection_model_version = ?3)",
+        params![snapshot_id, role_id, projection_model_version],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|complete| complete != 0)
+    .map_err(|error| error.to_string())
+}
+
+/// Returns whether exact-version rows cover the current snapshot's managed-club cohort.
+///
+/// The cached count joins back to the current cohort so rows for players who have left it do
+/// not affect completeness. Nullable scores count as rows under the cache primary key.
+pub fn squad_role_rows_are_complete(
+    conn: &Connection,
+    snapshot_id: i64,
+    save_id: i64,
+    role_id: &str,
+    projection_model_version: i64,
+) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT
+             (SELECT COUNT(*)
+              FROM players p
+              WHERE p.snapshot_id = ?1
+                AND p.current_club = (
+                    SELECT club_name FROM managed_club_settings WHERE save_id = ?2
+                )) =
+             (SELECT COUNT(*)
+              FROM player_potential_role_scores cached
+              INNER JOIN players p
+                ON p.snapshot_id = cached.snapshot_id AND p.uid = cached.uid
+              WHERE cached.snapshot_id = ?1
+                AND cached.role_id = ?3
+                AND cached.projection_model_version = ?4
+                AND p.current_club = (
+                    SELECT club_name FROM managed_club_settings WHERE save_id = ?2
+                ))",
+        params![snapshot_id, save_id, role_id, projection_model_version],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|complete| complete != 0)
+    .map_err(|error| error.to_string())
+}
+
+fn snapshot_roles_are_complete(
     conn: &Connection,
     snapshot_id: i64,
     roles: &[&RoleDefinition],
 ) -> Result<bool, String> {
-    let role_values = roles
-        .iter()
-        .enumerate()
-        .map(|(index, _)| format!("(?{})", index + 2))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let model_version_index = roles.len() + 2;
-    let sql = format!(
-        "WITH requested(role_id) AS (VALUES {role_values})
-         SELECT EXISTS(
-             SELECT 1
-             FROM players p
-             WHERE p.snapshot_id = ?1
-               AND EXISTS (
-                   SELECT 1
-                   FROM requested r
-                   WHERE NOT EXISTS (
-                       SELECT 1
-                       FROM player_potential_role_scores cached
-                       WHERE cached.snapshot_id = p.snapshot_id
-                         AND cached.uid = p.uid
-                         AND cached.role_id = r.role_id
-                         AND cached.projection_model_version = ?{model_version_index}
-                   )
-               )
-         )"
-    );
-    let mut values = vec![Value::Integer(snapshot_id)];
-    values.extend(
-        roles
-            .iter()
-            .map(|role| Value::Text(role.role_id.to_string())),
-    );
-    values.push(Value::Integer(PROJECTION_MODEL_VERSION));
-    conn.query_row(&sql, params_from_iter(values.iter()), |row| {
-        row.get::<_, i64>(0)
+    roles.iter().try_fold(true, |complete, role| {
+        snapshot_role_rows_are_complete(conn, snapshot_id, role.role_id, PROJECTION_MODEL_VERSION)
+            .map(|role_complete| complete && role_complete)
     })
-    .map(|exists| exists != 0)
-    .map_err(|error| error.to_string())
 }
 
 fn load_player_batch(
@@ -384,4 +416,164 @@ fn persist_scores(
         .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn completeness_connection() -> Connection {
+        let conn = Connection::open_in_memory().expect("open database");
+        conn.execute_batch(
+            "CREATE TABLE players (
+                snapshot_id INTEGER NOT NULL,
+                uid INTEGER NOT NULL,
+                current_club TEXT,
+                PRIMARY KEY (snapshot_id, uid)
+            );
+            CREATE TABLE managed_club_settings (
+                save_id INTEGER PRIMARY KEY,
+                club_name TEXT NOT NULL
+            );
+            CREATE TABLE player_potential_role_scores (
+                snapshot_id INTEGER NOT NULL,
+                uid INTEGER NOT NULL,
+                role_id TEXT NOT NULL,
+                score INTEGER,
+                projection_model_version INTEGER NOT NULL,
+                PRIMARY KEY (snapshot_id, uid, role_id)
+            );",
+        )
+        .expect("create completeness tables");
+        conn
+    }
+
+    #[test]
+    fn snapshot_count_completeness_includes_nullable_rows_and_rejects_missing_or_stale_rows() {
+        let conn = completeness_connection();
+        conn.execute(
+            "INSERT INTO players (snapshot_id, uid, current_club)
+             VALUES (1, 10, 'Loan FC'), (1, 20, 'Loan FC')",
+            [],
+        )
+        .expect("insert snapshot players");
+        conn.execute(
+            "INSERT INTO player_potential_role_scores
+             (snapshot_id, uid, role_id, score, projection_model_version)
+             VALUES (1, 10, 'goalkeeper_ip', 90, ?1),
+                    (1, 20, 'goalkeeper_ip', NULL, ?1)",
+            [PROJECTION_MODEL_VERSION],
+        )
+        .expect("insert exact nullable cache rows");
+
+        assert!(snapshot_role_rows_are_complete(
+            &conn,
+            1,
+            "goalkeeper_ip",
+            PROJECTION_MODEL_VERSION,
+        )
+        .expect("complete nullable snapshot"));
+
+        conn.execute(
+            "DELETE FROM player_potential_role_scores WHERE uid = 20",
+            [],
+        )
+        .expect("remove cached row");
+        assert!(!snapshot_role_rows_are_complete(
+            &conn,
+            1,
+            "goalkeeper_ip",
+            PROJECTION_MODEL_VERSION,
+        )
+        .expect("missing row is incomplete"));
+
+        conn.execute(
+            "INSERT INTO player_potential_role_scores
+             (snapshot_id, uid, role_id, score, projection_model_version)
+             VALUES (1, 20, 'goalkeeper_ip', 99, 1)",
+            [],
+        )
+        .expect("insert stale cache row");
+        assert!(!snapshot_role_rows_are_complete(
+            &conn,
+            1,
+            "goalkeeper_ip",
+            PROJECTION_MODEL_VERSION,
+        )
+        .expect("stale row is incomplete"));
+    }
+
+    #[test]
+    fn squad_count_completeness_tracks_the_current_managed_club_membership() {
+        let conn = completeness_connection();
+        conn.execute(
+            "INSERT INTO managed_club_settings (save_id, club_name) VALUES (5, 'Loan FC')",
+            [],
+        )
+        .expect("configure managed club");
+        conn.execute(
+            "INSERT INTO players (snapshot_id, uid, current_club)
+             VALUES (1, 10, 'Loan FC'), (1, 20, 'Loan FC'), (1, 30, 'Other FC')",
+            [],
+        )
+        .expect("insert snapshot players");
+        conn.execute(
+            "INSERT INTO player_potential_role_scores
+             (snapshot_id, uid, role_id, score, projection_model_version)
+             VALUES (1, 10, 'goalkeeper_ip', NULL, ?1),
+                    (1, 20, 'goalkeeper_ip', 90, ?1)",
+            [PROJECTION_MODEL_VERSION],
+        )
+        .expect("insert managed cohort cache rows");
+
+        assert!(squad_role_rows_are_complete(
+            &conn,
+            1,
+            5,
+            "goalkeeper_ip",
+            PROJECTION_MODEL_VERSION,
+        )
+        .expect("complete managed cohort"));
+
+        conn.execute(
+            "UPDATE players SET current_club = 'Loan FC' WHERE uid = 30",
+            [],
+        )
+        .expect("move player into managed club");
+        assert!(!squad_role_rows_are_complete(
+            &conn,
+            1,
+            5,
+            "goalkeeper_ip",
+            PROJECTION_MODEL_VERSION,
+        )
+        .expect("new cohort member is incomplete"));
+
+        conn.execute(
+            "INSERT INTO player_potential_role_scores
+             (snapshot_id, uid, role_id, score, projection_model_version)
+             VALUES (1, 30, 'goalkeeper_ip', 80, ?1)",
+            [PROJECTION_MODEL_VERSION],
+        )
+        .expect("cache new member");
+        conn.execute(
+            "UPDATE players SET current_club = 'Other FC' WHERE uid = 10",
+            [],
+        )
+        .expect("move cached player out of managed club");
+        conn.execute(
+            "DELETE FROM player_potential_role_scores WHERE uid = 10",
+            [],
+        )
+        .expect("remove outside cache row");
+
+        assert!(squad_role_rows_are_complete(
+            &conn,
+            1,
+            5,
+            "goalkeeper_ip",
+            PROJECTION_MODEL_VERSION,
+        )
+        .expect("outside rows do not affect the managed cohort"));
+    }
 }

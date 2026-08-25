@@ -176,9 +176,11 @@ impl SortField {
         matches!(self, Self::Dynamic(field) if field.is_club_dna())
     }
 
-    fn potential_role_id(&self) -> Option<&'static str> {
+    fn potential_role_sort_identity(
+        &self,
+    ) -> Option<crate::features::player_metrics::resolver::PotentialRoleSortIdentity> {
         match self {
-            Self::Dynamic(field) => field.potential_role_id(),
+            Self::Dynamic(field) => field.potential_role_sort_identity(),
             _ => None,
         }
     }
@@ -399,8 +401,9 @@ pub fn search_players_in_view(
         .map(potential_role_ids_from_ast)
         .transpose()?
         .unwrap_or_default();
-    if let Some(role_id) = sort_by.potential_role_id() {
-        add_role_once(&mut full_snapshot_roles, role_id);
+    let potential_role_sort = sort_by.potential_role_sort_identity();
+    if let Some(identity) = potential_role_sort {
+        add_role_once(&mut full_snapshot_roles, identity.role_id);
     }
     if !full_snapshot_roles.is_empty() {
         materialize_snapshot_roles(conn, snapshot_id, &full_snapshot_roles)?;
@@ -417,6 +420,16 @@ pub fn search_players_in_view(
               ON current_role_sort.snapshot_id = players.snapshot_id
               AND current_role_sort.role_id = '{role_id}'
               AND current_role_sort.uid = players.uid"
+        ));
+    }
+    if let Some(identity) = potential_role_sort {
+        from_sql.push_str(&format!(
+            " LEFT JOIN player_potential_role_scores potential_role_sort
+              ON potential_role_sort.snapshot_id = players.snapshot_id
+              AND potential_role_sort.uid = players.uid
+              AND potential_role_sort.role_id = '{}'
+              AND potential_role_sort.projection_model_version = {}",
+            identity.role_id, identity.projection_model_version
         ));
     }
     let mut where_sql = "players.snapshot_id = ?1".to_string();
@@ -454,6 +467,11 @@ pub fn search_players_in_view(
             "ORDER BY current_role_sort.score {}, players.uid ASC",
             sort_dir.sql_keyword()
         )
+    } else if potential_role_sort.is_some() {
+        format!(
+            "ORDER BY potential_role_sort.score {}, players.uid ASC",
+            sort_dir.sql_keyword()
+        )
     } else {
         let sort_expression = sort_by.sql_expr(club_dna_bindings);
         if sort_by.is_club_dna() {
@@ -483,7 +501,10 @@ pub fn search_players_in_view(
                 players.pa,
                 players.market_value_gbp",
     );
-    let potential_display_roles = potential_role_ids(&dynamic_fields);
+    let mut potential_display_roles = potential_role_ids(&dynamic_fields);
+    if let Some(identity) = potential_role_sort {
+        potential_display_roles.retain(|role_id| role_id != identity.role_id);
+    }
     if !potential_display_roles.is_empty() {
         let page_uids = query_page_uids(
             conn,
@@ -3414,6 +3435,135 @@ mod tests {
             )
             .expect("count sorted cohort cache rows");
         assert_eq!(cache_rows, 2);
+        let unrelated_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE role_id = 'sweeper_keeper_oop'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count unrelated cache rows");
+        assert_eq!(
+            unrelated_rows, 0,
+            "sorting one role must not cache another role"
+        );
+
+        let snapshot_id = current_snapshot_id(&conn);
+        conn.execute(
+            "UPDATE player_potential_role_scores
+             SET score = 99, projection_model_version = 1
+             WHERE snapshot_id = ?1
+               AND uid = 2
+               AND role_id = 'line_holding_keeper_oop'",
+            [snapshot_id],
+        )
+        .expect("mark selected cache row stale");
+        let stale_page = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::parse("potential_role.line_holding_keeper_oop")
+                .expect("parse potential sort"),
+            SortDir::Desc,
+            None,
+            &[],
+        )
+        .expect("rebuild stale potential sort row");
+        assert_eq!(
+            stale_page
+                .players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Higher potential", "Lower potential"]
+        );
+        let exact_version_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1
+                   AND role_id = 'line_holding_keeper_oop'
+                   AND projection_model_version = 2",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("count rebuilt exact-version rows");
+        assert_eq!(exact_version_rows, 2);
+
+        conn.execute(
+            "DELETE FROM player_potential_role_scores
+             WHERE snapshot_id = ?1
+               AND uid = 1
+               AND role_id = 'line_holding_keeper_oop'",
+            [snapshot_id],
+        )
+        .expect("remove selected cache row");
+        search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::parse("potential_role.line_holding_keeper_oop")
+                .expect("parse potential sort"),
+            SortDir::Desc,
+            None,
+            &[],
+        )
+        .expect("rebuild missing potential sort row");
+
+        conn.execute(
+            "UPDATE players SET attributes_json = '{invalid JSON}' WHERE snapshot_id = ?1",
+            [snapshot_id],
+        )
+        .expect("make unnecessary warm materialization observable");
+        let warm_page = search_players(
+            &conn,
+            0,
+            DEFAULT_PAGE_LIMIT,
+            SortField::parse("potential_role.line_holding_keeper_oop")
+                .expect("parse potential sort"),
+            SortDir::Asc,
+            None,
+            &[],
+        )
+        .expect("reuse complete warm potential sort rows");
+        assert_eq!(
+            warm_page
+                .players
+                .iter()
+                .map(|player| player.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Lower potential", "Higher potential"]
+        );
+    }
+
+    #[test]
+    fn potential_sort_uses_a_missing_preserving_exact_version_relation() {
+        let source = include_str!("query.rs");
+        let query = &source[source
+            .find("pub fn search_players_in_view")
+            .expect("search query function")
+            ..source
+                .find("fn current_club_dna_definition_version")
+                .expect("following helper")];
+
+        assert!(query.contains("LEFT JOIN player_potential_role_scores potential_role_sort"));
+        assert!(query.contains("potential_role_sort.snapshot_id = players.snapshot_id"));
+        assert!(query.contains("potential_role_sort.uid = players.uid"));
+        assert!(query.contains("potential_role_sort.projection_model_version"));
+        assert!(query.contains("ORDER BY potential_role_sort.score"));
+    }
+
+    #[test]
+    fn potential_sort_skips_its_visible_role_page_pass() {
+        let source = include_str!("query.rs");
+        let query = &source[source
+            .find("pub fn search_players_in_view")
+            .expect("search query function")
+            ..source
+                .find("fn current_club_dna_definition_version")
+                .expect("following helper")];
+
+        assert!(query.contains("potential_display_roles.retain"));
+        assert!(query.contains("role_id != identity.role_id"));
     }
 
     #[test]
