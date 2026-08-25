@@ -183,6 +183,13 @@ impl SortField {
         }
     }
 
+    fn current_role_id(&self) -> Option<&'static str> {
+        match self {
+            Self::Dynamic(field) => field.current_role_id(),
+            _ => None,
+        }
+    }
+
     fn moneyball_role_id(&self) -> Option<&str> {
         match self {
             Self::Dynamic(field) => field.moneyball_role_id(),
@@ -399,10 +406,19 @@ pub fn search_players_in_view(
         materialize_snapshot_roles(conn, snapshot_id, &full_snapshot_roles)?;
     }
 
-    let from_sql = match view {
+    let current_role_sort = sort_by.current_role_id();
+    let mut from_sql = match view {
         SearchView::General => "FROM players".to_string(),
         SearchView::Moneyball => "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string(),
     };
+    if let Some(role_id) = current_role_sort {
+        from_sql.push_str(&format!(
+            " LEFT JOIN player_role_scores current_role_sort
+              ON current_role_sort.snapshot_id = players.snapshot_id
+              AND current_role_sort.role_id = '{role_id}'
+              AND current_role_sort.uid = players.uid"
+        ));
+    }
     let mut where_sql = "players.snapshot_id = ?1".to_string();
     if let Some(compiled) = &compiled {
         where_sql.push_str(" AND ");
@@ -433,17 +449,24 @@ pub fn search_players_in_view(
         .map_err(|error| error.to_string())?;
 
     // Whitelisted expr + dir only — never interpolate raw client strings.
-    let sort_expression = sort_by.sql_expr(club_dna_bindings);
-    let order_sql = if sort_by.is_club_dna() {
+    let order_sql = if current_role_sort.is_some() {
         format!(
-            "ORDER BY ({sort_expression}) IS NULL ASC, {sort_expression} {}, players.uid ASC",
+            "ORDER BY current_role_sort.score {}, players.uid ASC",
             sort_dir.sql_keyword()
         )
     } else {
-        format!(
-            "ORDER BY {sort_expression} {}, players.uid ASC",
-            sort_dir.sql_keyword()
-        )
+        let sort_expression = sort_by.sql_expr(club_dna_bindings);
+        if sort_by.is_club_dna() {
+            format!(
+                "ORDER BY ({sort_expression}) IS NULL ASC, {sort_expression} {}, players.uid ASC",
+                sort_dir.sql_keyword()
+            )
+        } else {
+            format!(
+                "ORDER BY {sort_expression} {}, players.uid ASC",
+                sort_dir.sql_keyword()
+            )
+        }
     };
 
     let mut select_sql = String::from(
@@ -3447,6 +3470,140 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["High Role", "Low Role"]
         );
+    }
+
+    #[test]
+    fn current_role_sort_retains_missing_nullable_duplicate_and_tied_scores() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("current-role-sort.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "First score tie", 180),
+                player_template(2, "Second score tie", 170),
+                player_template(3, "Nullable score", 160),
+                player_template(4, "Missing score", 150),
+            ],
+        );
+        let role_id = "deep_lying_playmaker_ip";
+        set_role_score(&conn, 1, role_id, Some(80));
+        set_role_score(&conn, 2, role_id, Some(80));
+        set_role_score(&conn, 3, role_id, None);
+        conn.execute(
+            "DELETE FROM player_role_scores
+             WHERE snapshot_id = (SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1)
+               AND uid = 4
+               AND role_id = ?1",
+            [role_id],
+        )
+        .expect("remove current role score");
+        let sort_by = SortField::parse(&format!("role.{role_id}")).expect("parse role sort");
+
+        for (direction, expected) in [
+            (SortDir::Asc, vec![3, 4, 1, 2]),
+            (SortDir::Desc, vec![1, 2, 3, 4]),
+        ] {
+            let page = search_without_filters(&conn, 0, 4, sort_by.clone(), direction)
+                .expect("sort current roles");
+            assert_eq!(page.total, 4);
+            assert_eq!(
+                page.players
+                    .iter()
+                    .map(|player| player.uid)
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
+
+        let page =
+            search_without_filters(&conn, 1, 2, sort_by, SortDir::Asc).expect("page current roles");
+        assert_eq!(page.total, 4);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            vec![4, 1]
+        );
+    }
+
+    #[test]
+    fn current_role_sort_uses_a_missing_preserving_relation() {
+        let source = include_str!("query.rs");
+        let query = &source[source
+            .find("pub fn search_players_in_view")
+            .expect("search query function")
+            ..source
+                .find("fn current_club_dna_definition_version")
+                .expect("following helper")];
+
+        assert!(query.contains("LEFT JOIN player_role_scores current_role_sort"));
+        assert!(query.contains("current_role_sort.snapshot_id = players.snapshot_id"));
+        assert!(query.contains("current_role_sort.role_id = '{role_id}'"));
+        assert!(query.contains("current_role_sort.uid = players.uid"));
+        assert!(query.contains("ORDER BY current_role_sort.score"));
+    }
+
+    #[test]
+    fn current_role_sort_materializes_requested_potential_page_fields() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("current-role-potential-page.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "First score tie", 180),
+                player_template(2, "Second score tie", 170),
+                player_template(3, "Nullable score", 160),
+                player_template(4, "Missing score", 150),
+            ],
+        );
+        let snapshot_id = current_snapshot_id(&conn);
+        conn.execute(
+            "UPDATE players
+             SET positions_json = ?1, attributes_json = ?2
+             WHERE snapshot_id = ?3 AND uid IN (1, 4)",
+            rusqlite::params![
+                json!({ "GK": 20 }).to_string(),
+                json!({ "Positioning": 16, "Concentration": 16 }).to_string(),
+                snapshot_id,
+            ],
+        )
+        .expect("set potential source values");
+        let role_id = "deep_lying_playmaker_ip";
+        set_role_score(&conn, 1, role_id, Some(80));
+        set_role_score(&conn, 2, role_id, Some(80));
+        set_role_score(&conn, 3, role_id, None);
+        conn.execute(
+            "DELETE FROM player_role_scores
+             WHERE snapshot_id = ?1 AND uid = 4 AND role_id = ?2",
+            rusqlite::params![snapshot_id, role_id],
+        )
+        .expect("remove current role score");
+
+        let potential_field = "potential_role.line_holding_keeper_oop".to_string();
+        let page = search_players(
+            &conn,
+            1,
+            2,
+            SortField::parse(&format!("role.{role_id}")).expect("parse role sort"),
+            SortDir::Asc,
+            None,
+            std::slice::from_ref(&potential_field),
+        )
+        .expect("query current role page with potential field");
+
+        assert_eq!(page.total, 4);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            vec![4, 1]
+        );
+        assert!(matches!(
+            page.players[0].dynamic_values.get(&potential_field),
+            Some(Some(DynamicValue::Integer(_)))
+        ));
     }
 
     #[test]

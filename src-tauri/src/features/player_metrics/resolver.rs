@@ -55,6 +55,15 @@ enum MetricSource {
     ClubDna,
 }
 
+impl MetricSource {
+    fn current_role_id(&self) -> Option<&'static str> {
+        match self {
+            Self::CurrentRole { role_id } => Some(role_id),
+            _ => None,
+        }
+    }
+}
+
 /// Bound parameter positions for an exact persisted Club DNA score identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClubDnaSqlBindings {
@@ -223,6 +232,10 @@ impl MetricField {
             MetricSource::PotentialRole { role_id } => Some(role_id),
             _ => None,
         }
+    }
+
+    pub fn current_role_id(&self) -> Option<&'static str> {
+        self.source.current_role_id()
     }
 
     pub fn moneyball_key(&self) -> Option<&str> {
@@ -494,6 +507,17 @@ mod tests {
         assert!(MetricField::parse("hidden.NotARealMetric").is_err());
         assert!(MetricField::parse("personality.NotARealMetric").is_err());
         assert!(MetricField::parse("role.not_a_role").is_err());
+    }
+
+    #[test]
+    fn exposes_validated_current_role_sort_identity() {
+        let metric = MetricField::parse("role.deep_lying_playmaker_ip").expect("parse role metric");
+
+        assert_eq!(metric.current_role_id(), Some("deep_lying_playmaker_ip"));
+        assert!(MetricField::parse("ca")
+            .expect("parse scalar metric")
+            .current_role_id()
+            .is_none());
     }
 
     #[test]

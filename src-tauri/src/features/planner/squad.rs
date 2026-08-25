@@ -67,6 +67,13 @@ impl SquadSortField {
             _ => None,
         }
     }
+
+    fn current_role_id(&self) -> Option<&'static str> {
+        match self {
+            Self::Dynamic(field) => field.current_role_id(),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,22 +207,42 @@ pub fn list_squad_players(
     let total = conn
         .query_row(&count_sql, params![snapshot_id, save_id], |row| row.get(0))
         .map_err(|error| error.to_string())?;
-    let sort_expression = sort_by.sql_expr(club_dna_bindings);
-    let order_sql = if sort_by.is_club_dna() {
+    let current_role_sort = sort_by.current_role_id();
+    let from_sql = if let Some(role_id) = current_role_sort {
         format!(
-            "ORDER BY ({sort_expression}) IS NULL ASC, {sort_expression} {}, p.uid ASC",
+            "FROM players p
+             LEFT JOIN player_role_scores current_role_sort
+               ON current_role_sort.snapshot_id = p.snapshot_id
+              AND current_role_sort.role_id = '{role_id}'
+              AND current_role_sort.uid = p.uid"
+        )
+    } else {
+        "FROM players p".to_string()
+    };
+    let order_sql = if current_role_sort.is_some() {
+        format!(
+            "ORDER BY current_role_sort.score {}, p.uid ASC",
             sort_dir.sql_keyword()
         )
     } else {
-        format!(
-            "ORDER BY {sort_expression} {}, p.uid ASC",
-            sort_dir.sql_keyword()
-        )
+        let sort_expression = sort_by.sql_expr(club_dna_bindings);
+        if sort_by.is_club_dna() {
+            format!(
+                "ORDER BY ({sort_expression}) IS NULL ASC, {sort_expression} {}, p.uid ASC",
+                sort_dir.sql_keyword()
+            )
+        } else {
+            format!(
+                "ORDER BY {sort_expression} {}, p.uid ASC",
+                sort_dir.sql_keyword()
+            )
+        }
     };
     let potential_display_roles = potential_role_ids(&dynamic_fields);
     if !potential_display_roles.is_empty() {
         let page_uids = query_page_uids(
             conn,
+            &from_sql,
             membership_sql,
             &query_bind_values,
             &order_sql,
@@ -237,7 +264,7 @@ pub fn list_squad_players(
              p.ca,
              p.pa,
              p.market_value_gbp{}
-         FROM players p
+         {from_sql}
          WHERE {membership_sql}
              {order_sql}
              LIMIT ?{} OFFSET ?{}",
@@ -349,6 +376,7 @@ fn current_club_dna_definition_version(
 
 fn query_page_uids(
     conn: &Connection,
+    from_sql: &str,
     membership_sql: &str,
     bind_values: &[Value],
     order_sql: &str,
@@ -358,7 +386,7 @@ fn query_page_uids(
     let limit_index = bind_values.len() + 1;
     let offset_index = bind_values.len() + 2;
     let sql = format!(
-        "SELECT p.uid FROM players p WHERE {membership_sql} {order_sql} LIMIT ?{limit_index} OFFSET ?{offset_index}"
+        "SELECT p.uid {from_sql} WHERE {membership_sql} {order_sql} LIMIT ?{limit_index} OFFSET ?{offset_index}"
     );
     let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let mut values = bind_values.to_vec();

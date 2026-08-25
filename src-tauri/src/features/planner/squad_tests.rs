@@ -303,6 +303,119 @@ fn orders_targeted_scalar_sorts_in_the_exact_managed_club_cohort() {
 }
 
 #[test]
+fn current_role_sort_retains_missing_nullable_duplicate_and_tied_scores() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    let role_id = "deep_lying_playmaker_ip";
+    set_role_score(&conn, save_id, 77, role_id, Some(80));
+    set_role_score(&conn, save_id, 78, role_id, Some(80));
+    set_role_score(&conn, save_id, 79, role_id, None);
+    conn.execute(
+        "DELETE FROM player_role_scores
+         WHERE snapshot_id = ?1 AND uid = 80 AND role_id = ?2",
+        params![snapshot_id, role_id],
+    )
+    .expect("remove current role score");
+    let sort_by = SquadSortField::parse(&format!("role.{role_id}")).expect("parse role sort");
+
+    for (direction, expected) in [
+        (SquadSortDir::Asc, vec![79, 80, 77, 78]),
+        (SquadSortDir::Desc, vec![77, 78, 79, 80]),
+    ] {
+        let page = list_squad_players(&conn, save_id, 0, 4, sort_by.clone(), direction, &[])
+            .expect("sort current roles");
+        assert_eq!(page.total, 4);
+        assert_eq!(
+            page.players
+                .iter()
+                .map(|player| player.uid)
+                .collect::<Vec<_>>(),
+            expected
+        );
+    }
+
+    let page = list_squad_players(&conn, save_id, 1, 2, sort_by, SquadSortDir::Asc, &[])
+        .expect("page current roles");
+    assert_eq!(page.total, 4);
+    assert_eq!(
+        page.players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        vec![80, 77]
+    );
+}
+
+#[test]
+fn current_role_sort_uses_a_missing_preserving_relation() {
+    let source = include_str!("squad.rs");
+    let query = &source[source
+        .find("pub fn list_squad_players")
+        .expect("squad query function")
+        ..source.find("fn empty_page").expect("following helper")];
+
+    assert!(query.contains("LEFT JOIN player_role_scores current_role_sort"));
+    assert!(query.contains("current_role_sort.snapshot_id = p.snapshot_id"));
+    assert!(query.contains("current_role_sort.role_id = '{role_id}'"));
+    assert!(query.contains("current_role_sort.uid = p.uid"));
+    assert!(query.contains("ORDER BY current_role_sort.score"));
+}
+
+#[test]
+fn current_role_sort_materializes_requested_potential_page_fields() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE players
+         SET positions_json = ?1, attributes_json = ?2
+         WHERE snapshot_id = ?3 AND uid IN (77, 80)",
+        params![
+            json!({ "GK": 20 }).to_string(),
+            json!({ "Positioning": 16, "Concentration": 16 }).to_string(),
+            snapshot_id,
+        ],
+    )
+    .expect("set potential source values");
+    let role_id = "deep_lying_playmaker_ip";
+    set_role_score(&conn, save_id, 77, role_id, Some(80));
+    set_role_score(&conn, save_id, 78, role_id, Some(80));
+    set_role_score(&conn, save_id, 79, role_id, None);
+    conn.execute(
+        "DELETE FROM player_role_scores
+         WHERE snapshot_id = ?1 AND uid = 80 AND role_id = ?2",
+        params![snapshot_id, role_id],
+    )
+    .expect("remove current role score");
+
+    let potential_field = "potential_role.line_holding_keeper_oop".to_string();
+    let page = list_squad_players(
+        &conn,
+        save_id,
+        1,
+        2,
+        SquadSortField::parse(&format!("role.{role_id}")).expect("parse role sort"),
+        SquadSortDir::Asc,
+        std::slice::from_ref(&potential_field),
+    )
+    .expect("query current role page with potential field");
+
+    assert_eq!(page.total, 4);
+    assert_eq!(
+        page.players
+            .iter()
+            .map(|player| player.uid)
+            .collect::<Vec<_>>(),
+        vec![80, 77]
+    );
+    assert!(matches!(
+        page.players[0].dynamic_values.get(&potential_field),
+        Some(Some(DynamicValue::Integer(_)))
+    ));
+}
+
+#[test]
 fn returns_no_players_without_a_configuration_or_matching_current_players() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     conn.execute(
