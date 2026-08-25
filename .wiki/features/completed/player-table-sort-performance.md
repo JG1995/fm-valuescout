@@ -159,7 +159,7 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/89
 
 **Merge ref:** Not merged
 
@@ -654,15 +654,15 @@ Feature completion reconciled the implemented architecture in `.wiki/ARCHITECTUR
 - Base: `f8b511693cc879c2f64f4e267637e3b8744007a0`
 - Planned content refs: `a1bf86feeddfc89fc0c3b0d3328ac9bc971b8ed7`, `5985da86ab02abbb80df7c252f5e418167483a73`, `1ed1f17bae6f0a8c401301a7e82d53062c014adc`, `812aa46f0e0dffc68dd55c3d6de8f588c2eb942a`, `db65160bdd0a6e5a598efdcc2606679db2894454`, `0111f0835a25bb24211e1254635c027a09c83a39`
 - Correction ref: `b5a5dc688e59fcd5f9e9a567c4387705ddedff30`
-- Documentation reconciliation ref: Pending record
+- Documentation reconciliation ref: `fd87f90e8f781831c7b50b6d91d1c47716a0487e`
 
 ## Final publication
 
 ```yaml
-status: ready_for_publication
-pr_status: not_published
+status: published
+pr_status: open
 merge_status: not_merged
-pr_ref: "Not published"
+pr_ref: "https://github.com/JG1995/fm-valuescout/pull/89"
 merge_ref: "Not merged"
 branch: feature/player-table-sort-performance
 base_branch: main
@@ -680,7 +680,7 @@ feature_review_nitpick: none
 ci_repair_rounds: 0 of 2
 earlier_pr_merge_refs: []
 correction_ref: b5a5dc688e59fcd5f9e9a567c4387705ddedff30
-close_out_documentation_ref: Pending record
+close_out_documentation_ref: fd87f90e8f781831c7b50b6d91d1c47716a0487e
 implementation_range: "f8b511693cc879c2f64f4e267637e3b8744007a0..0111f0835a25bb24211e1254635c027a09c83a39"
 final_pr_commit_set:
   - a1bf86feeddfc89fc0c3b0d3328ac9bc971b8ed7
@@ -690,11 +690,11 @@ final_pr_commit_set:
   - db65160bdd0a6e5a598efdcc2606679db2894454
   - 0111f0835a25bb24211e1254635c027a09c83a39
   - b5a5dc688e59fcd5f9e9a567c4387705ddedff30
-  - Pending record
+  - fd87f90e8f781831c7b50b6d91d1c47716a0487e
 ```
 
 ## Feature close-out
 
 **State:** Current.
 
-The feature-review correction round at `b5a5dc688e59fcd5f9e9a567c4387705ddedff30` fixed stale cached replacement promotion and incomplete potential-sort proof. Correction review: Blocking No, no remaining findings, Test portfolio Pass, Project fit Conforms. Final validation passed: exact focused frontend 233 tests; `./scripts/dev check-rust` 601 tests and 2 ignored; full `./scripts/dev check`; smoke 49 tests; and developer manual representative-save checklist `Pass`. The PR remains unpublished and unmerged, with zero of two CI repair rounds used.
+The feature-review correction round at `b5a5dc688e59fcd5f9e9a567c4387705ddedff30` fixed stale cached replacement promotion and incomplete potential-sort proof. Correction review: Blocking No, no remaining findings, Test portfolio Pass, Project fit Conforms. Final validation passed: exact focused frontend 233 tests; `./scripts/dev check-rust` 601 tests and 2 ignored; full `./scripts/dev check`; smoke 49 tests; and developer manual representative-save checklist `Pass`. PR [#89](https://github.com/JG1995/fm-valuescout/pull/89) is open and ready for review, with zero of two CI repair rounds used.
