@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- [Player Table Sort Performance](./features/active/player-table-sort-performance.md) — keep sort-only Search and Squad replacements visible, clear results before supported context changes, retain Name/CA controls, and make targeted scalar and persisted-score sorts acceptably responsive on a representative approximately 250,000-player save.
 
 ## Next
 
