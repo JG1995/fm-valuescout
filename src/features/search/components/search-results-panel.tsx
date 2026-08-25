@@ -1,7 +1,7 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { SearchX } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NationalityCell } from "@/components/player-table/nationality-cell";
 import {
   type PlayerTableColumn,
@@ -24,6 +24,7 @@ import {
   MONEYBALL_SEARCH_METRICS,
 } from "@/utils/moneyball-search-metrics";
 import { getPlayerMetric } from "@/utils/player-metrics";
+import type { SearchPlayerPageContext } from "../api/search-keys";
 import {
   SEARCH_PAGE_SIZE,
   searchPlayersQueryOptions,
@@ -55,6 +56,7 @@ type SearchResultsPanelProps = {
   onSortChange: (sortBy: SearchSortField, sortDir: SearchSortDir) => void;
   view: SearchView;
   comparisonPool: ComparisonPool;
+  pageContext: SearchPlayerPageContext;
 };
 
 function nextSort(
@@ -183,6 +185,9 @@ function SearchResultsVirtualTable({
   onResizeColumn,
   view,
   comparisonPool,
+  pageContext,
+  firstPageQueryOptions,
+  isReplacementActive,
 }: {
   total: number;
   sortBy: SearchSortField;
@@ -198,6 +203,9 @@ function SearchResultsVirtualTable({
   onResizeColumn: (metricId: string, width: number) => void;
   view: SearchView;
   comparisonPool: ComparisonPool;
+  pageContext: SearchPlayerPageContext;
+  firstPageQueryOptions: ReturnType<typeof searchPlayersQueryOptions>;
+  isReplacementActive: boolean;
 }) {
   const navigate = useNavigate();
 
@@ -222,6 +230,8 @@ function SearchResultsVirtualTable({
           metrics={view === "moneyball" ? MONEYBALL_SEARCH_METRICS : undefined}
         />
       }
+      firstPageQueryOptions={firstPageQueryOptions}
+      isReplacementActive={isReplacementActive}
       pageQueryOptions={(offset, limit) =>
         searchPlayersQueryOptions(
           offset,
@@ -233,6 +243,7 @@ function SearchResultsVirtualTable({
           requestedFields,
           view,
           comparisonPool,
+          pageContext,
         )
       }
       pageSize={SEARCH_PAGE_SIZE}
@@ -397,6 +408,7 @@ export function SearchResultsPanel({
   onSortChange,
   view,
   comparisonPool,
+  pageContext,
 }: SearchResultsPanelProps) {
   const tableId = view === "moneyball" ? "moneyball-search" : "search";
   const layout = usePlayerTableStore((state) => state.layouts[tableId]);
@@ -425,10 +437,8 @@ export function SearchResultsPanel({
     [columns],
   );
 
-  const { data: page } = useSuspenseQuery(
-    searchPlayersQueryOptions(
-      0,
-      SEARCH_PAGE_SIZE,
+  const requested = useMemo(
+    () => ({
       sortBy,
       sortDir,
       filters,
@@ -436,22 +446,126 @@ export function SearchResultsPanel({
       requestedFields,
       view,
       comparisonPool,
-    ),
+      pageContext,
+    }),
+    [
+      comparisonPool,
+      filterCombine,
+      filters,
+      pageContext,
+      requestedFields,
+      sortBy,
+      sortDir,
+      view,
+    ],
   );
+  const [committed, setCommitted] = useState(requested);
+  const committedOptions = searchPlayersQueryOptions(
+    0,
+    SEARCH_PAGE_SIZE,
+    committed.sortBy,
+    committed.sortDir,
+    committed.filters,
+    committed.filterCombine,
+    committed.requestedFields,
+    committed.view,
+    committed.comparisonPool,
+    committed.pageContext,
+  );
+  const requestedOptions = searchPlayersQueryOptions(
+    0,
+    SEARCH_PAGE_SIZE,
+    requested.sortBy,
+    requested.sortDir,
+    requested.filters,
+    requested.filterCombine,
+    requested.requestedFields,
+    requested.view,
+    requested.comparisonPool,
+    requested.pageContext,
+  );
+  const committedQuery = useQuery(committedOptions);
+  const requestedQuery = useQuery(requestedOptions);
+  const requestMatchesCommitted =
+    JSON.stringify(committedOptions.queryKey) ===
+    JSON.stringify(requestedOptions.queryKey);
+  const isSortReplacement =
+    !requestMatchesCommitted &&
+    JSON.stringify({
+      filters: committed.filters,
+      filterCombine: committed.filterCombine,
+      requestedFields: committed.requestedFields,
+      view: committed.view,
+      comparisonPool: committed.comparisonPool,
+      pageContext: committed.pageContext,
+    }) ===
+      JSON.stringify({
+        filters: requested.filters,
+        filterCombine: requested.filterCombine,
+        requestedFields: requested.requestedFields,
+        view: requested.view,
+        comparisonPool: requested.comparisonPool,
+        pageContext: requested.pageContext,
+      });
+  const isReplacementActive = !requestMatchesCommitted;
+  const isReplacementPending = isSortReplacement && requestedQuery.isPending;
+  const replacementError =
+    isSortReplacement && requestedQuery.isError ? requestedQuery.error : null;
+  const replacementLabel = requested.sortBy.startsWith("potential_role.")
+    ? "Calculating and sorting…"
+    : "Sorting…";
+
+  useEffect(() => {
+    if (requestedQuery.isSuccess && !requestMatchesCommitted) {
+      setCommitted(requested);
+    }
+  }, [requestMatchesCommitted, requested, requestedQuery.isSuccess]);
+
   const listKey = useMemo(
     () =>
       [
-        view,
-        comparisonPool,
-        filterCombine,
-        ...filters.map(
+        committed.view,
+        committed.comparisonPool,
+        committed.filterCombine,
+        ...committed.filters.map(
           (rule) =>
             `${rule.field}:${rule.op}:${String(filterValueToIpc(rule.value))}`,
         ),
       ].join("|"),
-    [comparisonPool, filterCombine, filters, view],
+    [committed],
   );
-
+  const page =
+    requestMatchesCommitted || isSortReplacement
+      ? committedQuery.data
+      : undefined;
+  if (!page) {
+    return (
+      <Panel title="Results" flush>
+        <EmptyState
+          icon={SearchX}
+          title={
+            requestedQuery.isError
+              ? "Could not load players"
+              : "Loading players"
+          }
+          action={
+            requestedQuery.isError ? (
+              <button
+                type="button"
+                onClick={() => void requestedQuery.refetch()}
+              >
+                Retry
+              </button>
+            ) : undefined
+          }
+        >
+          {requestedQuery.isError
+            ? requestedQuery.error.message
+            : "Loading player results…"}
+        </EmptyState>
+      </Panel>
+    );
+  }
   if (page.total === 0) {
     const appliedFilters = completeFilterRules(filters, view);
     if (appliedFilters.length > 0) {
@@ -482,23 +596,23 @@ export function SearchResultsPanel({
     );
   }
 
-  const dirLabel = sortDir === "asc" ? "ascending" : "descending";
+  const dirLabel = committed.sortDir === "asc" ? "ascending" : "descending";
   const sortMetric =
-    view === "moneyball"
-      ? getMoneyballSearchMetric(sortBy)
-      : getPlayerMetric(sortBy);
+    committed.view === "moneyball"
+      ? getMoneyballSearchMetric(committed.sortBy)
+      : getPlayerMetric(committed.sortBy);
   const sortLabel = sortMetric
     ? sortMetric.id === "age"
       ? "Age / DOB"
       : sortMetric.label
-    : sortBy;
+    : committed.sortBy;
   const removeColumn = (metricId: string) => {
     const remainingColumns = columns.filter((column) => column.id !== metricId);
     if (remainingColumns.length === columns.length) {
       return;
     }
     removeStoredColumn(tableId, metricId);
-    if (sortBy !== metricId) {
+    if (requested.sortBy !== metricId) {
       return;
     }
     const nextColumn =
@@ -524,17 +638,43 @@ export function SearchResultsPanel({
         <span className="text-on-surface">{formatCount(page.total)}</span>{" "}
         players · sorted by {sortLabel} ({dirLabel})
       </p>
+      {isReplacementPending ? (
+        <p
+          className="shrink-0 px-4 pb-3 text-body-sm text-on-surface-variant"
+          role="status"
+        >
+          {replacementLabel}
+        </p>
+      ) : null}
+      {replacementError ? (
+        <div
+          className="flex shrink-0 items-center justify-between gap-3 px-4 pb-3 text-body-sm text-error"
+          role="alert"
+        >
+          <span>Could not sort players. {replacementError.message}</span>
+          <button
+            type="button"
+            className="shrink-0 rounded-full border border-outline px-3 py-1 text-label-md text-on-surface transition-colors duration-150 ease-out hover:bg-surface-container-high focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            onClick={() => void requestedQuery.refetch()}
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       <SearchResultsVirtualTable
         key={listKey}
         total={page.total}
-        sortBy={sortBy}
-        sortDir={sortDir}
-        filters={filters}
-        filterCombine={filterCombine}
+        sortBy={committed.sortBy}
+        sortDir={committed.sortDir}
+        filters={committed.filters}
+        filterCombine={committed.filterCombine}
         columns={columns}
-        requestedFields={requestedFields}
-        view={view}
-        comparisonPool={comparisonPool}
+        requestedFields={committed.requestedFields}
+        view={committed.view}
+        comparisonPool={committed.comparisonPool}
+        pageContext={committed.pageContext}
+        firstPageQueryOptions={committedOptions}
+        isReplacementActive={isReplacementActive}
         onSortChange={onSortChange}
         onAddColumn={(metricId) => addColumns(tableId, [metricId])}
         onRemoveColumn={removeColumn}

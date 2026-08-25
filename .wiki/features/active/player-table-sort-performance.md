@@ -318,7 +318,7 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 #### Commit 3 — Retain rows and clear context-bound results
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `fix(tables): retain rows while sorting`
 
@@ -406,7 +406,7 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 #### Commit 4 — Drive current-role sorts from score rows
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `perf(tables): drive current role sorts from scores`
 
@@ -613,19 +613,19 @@ Commit 2 adds the narrow index foundation. Commit 3 then proves the direct UI ar
 
 **PR:** PR 1 — Improve player table sort performance
 
-**Commit:** Commit 3 — Retain rows and clear context-bound results
+**Commit:** Commit 4 — Drive current-role sorts from score rows
 
 ### RED or removal proof
 
-Focused frontend tests fail because Search and Squad lack stable player-page roots and an app-owned clearing coordinator, supported context mutations invoke Tauri without the injected pre-mutation callback, routes do not share a neutral transition key, and sort changes replace or remount the result panel instead of retaining one committed request.
+Focused Search and Squad tests fail the relation-shape contract because current-role sorting is still represented by a correlated scalar score lookup and the query owners do not drive ordering from exact `player_role_scores` rows.
 
 ### Expected outcome
 
-Search and Squad own one committed result during sort-only replacement, supported app-owned context mutations cancel and remove exact player-page roots before Tauri, routes stay blocked through owner refresh, late fulfillment cannot restore stale rows, and retained rows cannot activate until the latest requested sort commits.
+Search and Squad order their exact cohorts through the existing current-role score relation while retaining players with missing or nullable scores and preserving both directions, UID ties, filters, totals, pages, and save/snapshot/club isolation.
 
 ### Explicit exclusions
 
-Backend DTO or SQL changes, response-generation metadata, new IPC arguments, copied Query data, global result state, broad cache eviction, and non-sort row retention.
+New indexes, potential-role or Club DNA changes, scoring or ingest changes, frontend work, planner directives, and generic statement-plan abstractions.
 
 ## Discoveries and replanning
 
@@ -646,7 +646,8 @@ Backend DTO or SQL changes, response-generation metadata, new IPC arguments, cop
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Improve player table sort performance | Commit 1 — Record the approved feature plan | a1bf86feeddfc89fc0c3b0d3328ac9bc971b8ed7 | Recorded the accepted schema 2 ledger, TODO activation, ADR-0025, and ADR index entry; BACKLOG stayed unchanged. | Both classifiers were runnable; Markdown/LSP diagnostics and exact staged diff checks passed. | Not applicable | Clear | 0 | None |
-| PR 1 — Improve player table sort performance | Commit 2 — Add seven targeted player indexes | Pending record | Added migration v33 with exactly six directional PA, Age, and Value indexes plus one managed-club membership index; retained Name and CA indexes and unchanged query behavior. | `./scripts/dev check-rust` passed with 584 tests and 2 ignored; `./scripts/dev check` passed; Rust LSP and staged diff checks passed. | Pass | Clear | 0 | None |
+| PR 1 — Improve player table sort performance | Commit 2 — Add seven targeted player indexes | 5985da86ab02abbb80df7c252f5e418167483a73 | Added migration v33 with exactly six directional PA, Age, and Value indexes plus one managed-club membership index; retained Name and CA indexes and unchanged query behavior. | `./scripts/dev check-rust` passed with 584 tests and 2 ignored; `./scripts/dev check` passed; Rust LSP and staged diff checks passed. | Pass | Clear | 0 | None |
+| PR 1 — Improve player table sort performance | Commit 3 — Retain rows and clear context-bound results | Pending record | Added exact player-page roots and app-owned cancellation/removal, injected context transitions, committed/requested result controllers, truthful sort-only retention, projection/context clearing, and stale-row activation denial. | Focused frontend validation passed 231 tests; `./scripts/dev check-app`, 49-test smoke, `./scripts/dev check`, LSP, and staged diff checks passed. | Pass | Clear | 2 | None |
 
 ## Final validation
 

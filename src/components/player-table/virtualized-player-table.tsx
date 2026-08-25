@@ -28,6 +28,8 @@ export type ConfigurableVirtualizedTableProps<
   fixedColumns?: readonly ConfigurableTableFixedColumn[];
   getPageRows: (page: TPage) => readonly TRow[];
   header: ReactNode;
+  firstPageQueryOptions?: UseQueryOptions<TPage, Error, TPage, TQueryKey>;
+  isReplacementActive?: boolean;
   pageQueryOptions: (
     offset: number,
     limit: number,
@@ -101,6 +103,8 @@ export function ConfigurableVirtualizedTable<
   fixedColumns = [],
   getPageRows,
   header,
+  firstPageQueryOptions,
+  isReplacementActive = false,
   onRowActivate,
   pageQueryOptions,
   pageSize,
@@ -151,6 +155,10 @@ export function ConfigurableVirtualizedTable<
   });
 
   useEffect(() => {
+    if (isReplacementActive) {
+      setPendingFocusIndex(null);
+      return;
+    }
     setKeyboardFocusIndex((index) => Math.min(index, Math.max(0, total - 1)));
     setPendingFocusIndex((index) => {
       if (index === null || total === 0) {
@@ -169,10 +177,10 @@ export function ConfigurableVirtualizedTable<
     if (element.scrollTop > maximumOffset) {
       virtualizer.scrollToOffset(maximumOffset);
     }
-  }, [total, virtualizer]);
+  }, [isReplacementActive, total, virtualizer]);
 
   const focusRow = (index: number) => {
-    if (index < 0 || index >= total) {
+    if (isReplacementActive || index < 0 || index >= total) {
       return;
     }
     if (!parentRef.current?.querySelector(`[data-index="${index}"]`)) {
@@ -193,7 +201,11 @@ export function ConfigurableVirtualizedTable<
     ]),
   ).sort((left, right) => left - right);
   const pageQueries = useQueries({
-    queries: pages.map((page) => pageQueryOptions(page * pageSize, pageSize)),
+    queries: pages.map((page) =>
+      page === 0 && firstPageQueryOptions
+        ? firstPageQueryOptions
+        : pageQueryOptions(page * pageSize, pageSize),
+    ),
   });
   const pageData = pages.map((page, index) => ({
     page,
@@ -203,7 +215,7 @@ export function ConfigurableVirtualizedTable<
   }));
 
   useEffect(() => {
-    if (pendingFocusIndex === null) {
+    if (isReplacementActive || pendingFocusIndex === null) {
       return;
     }
     if (!rowAtIndex(pageData, pageSize, pendingFocusIndex)) {
@@ -219,7 +231,7 @@ export function ConfigurableVirtualizedTable<
     setKeyboardFocusIndex(pendingFocusIndex);
     setPendingFocusIndex(null);
     row.focus();
-  }, [pageData, pageSize, pendingFocusIndex, virtualizer]);
+  }, [isReplacementActive, pageData, pageSize, pendingFocusIndex, virtualizer]);
 
   const visibleLoadedIndexes = virtualRows
     .map((row) => row.index)
@@ -276,7 +288,8 @@ export function ConfigurableVirtualizedTable<
             ) : null}
             {virtualRows.map((virtualRow) => {
               const row = rowAtIndex(pageData, pageSize, virtualRow.index);
-              const isInteractive = row !== undefined && onRowActivate;
+              const isInteractive =
+                !isReplacementActive && row !== undefined && onRowActivate;
               const isTabStop = virtualRow.index === tabStopIndex;
 
               return (

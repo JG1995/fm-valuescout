@@ -11,6 +11,10 @@ import {
   useRef,
   useState,
 } from "react";
+import {
+  type ClearPlayerResultContext,
+  playerResultContextMutationKey,
+} from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
 import { useAnchoredPopover } from "@/components/ui/use-anchored-popover";
@@ -178,10 +182,12 @@ function ManagedClubPicker({
 export function ManagedClubSelector({
   action,
   onSaved,
+  onBeforeContextChange,
 }: {
   action?: ReactNode;
   onSaved?: () => void;
-} = {}) {
+  onBeforeContextChange: ClearPlayerResultContext;
+}) {
   const queryClient = useQueryClient();
   const { data: managedClub } = useSuspenseQuery(managedClubQueryOptions);
   const { data: availableClubs } = useSuspenseQuery(
@@ -206,7 +212,11 @@ export function ManagedClubSelector({
     [availableClubs, managedClub.clubName],
   );
   const save = useMutation({
-    mutationFn: () => setManagedClub(clubName),
+    mutationKey: playerResultContextMutationKey,
+    mutationFn: async () => {
+      await onBeforeContextChange();
+      return setManagedClub(clubName);
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: managedClubKeys.all });
       onSaved?.();

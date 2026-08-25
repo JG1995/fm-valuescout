@@ -15,6 +15,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterContext } from "@/app/router-context";
+import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
@@ -59,6 +60,7 @@ import {
   getPlannerRoleReferenceCalls,
   getPlannerSlotCandidateFetchCount,
   getPlannerTeamSaveIpcMockCalls,
+  observeManagedClubSaveCall,
   resolvePendingManagedClubSave,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
@@ -351,6 +353,19 @@ describe("My Club route", () => {
     setPlannerAvailableClubs(["Barcelona"]);
     const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
     queryClient.setQueryData(staffKeys.all, []);
+    const searchPage = searchKeys.players(0, 50);
+    const squadPage = squadKeys.players(0, 50);
+    queryClient.setQueryData(searchPage, { players: ["search"] });
+    queryClient.setQueryData(squadPage, { players: ["squad"] });
+    let mutationWasVisible = false;
+    observeManagedClubSaveCall(() => {
+      expect(queryClient.getQueryData(searchPage)).toBeUndefined();
+      expect(queryClient.getQueryData(squadPage)).toBeUndefined();
+      mutationWasVisible =
+        queryClient.isMutating({
+          mutationKey: playerResultContextMutationKey,
+        }) > 0;
+    });
 
     const managedClub = await screen.findByRole("combobox", {
       name: "Managed club",
@@ -363,6 +378,7 @@ describe("My Club route", () => {
       expect(queryClient.getQueryState(staffKeys.all)?.isInvalidated).toBe(
         true,
       );
+      expect(mutationWasVisible).toBe(true);
     });
   });
 
@@ -997,6 +1013,34 @@ describe("My Club route", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit filters" })).toBeNull();
+  });
+
+  it("blocks the Squad controller through a managed-club owner refresh", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    await screen.findByRole("table", { name: "Squad overview" });
+    let resolveSaves!: (value: SaveSummary[]) => void;
+    const refreshedSaves = queryClient.fetchQuery({
+      ...savesQueryOptions,
+      queryFn: () =>
+        new Promise<SaveSummary[]>((resolve) => {
+          resolveSaves = resolve;
+        }),
+    });
+
+    expect(await screen.findByText("Loading squad overview…")).toBeVisible();
+    expect(screen.queryByRole("table", { name: "Squad overview" })).toBeNull();
+    resolveSaves(savesFor(1));
+    await refreshedSaves;
+    expect(
+      await screen.findByRole("table", { name: "Squad overview" }),
+    ).toBeInTheDocument();
   });
 
   it("describes an empty configured Squad as one managed club", async () => {
@@ -1639,6 +1683,77 @@ describe("My Club route", () => {
     expect(getSquadCurrentAbilityBoostIpcMockCalls()).toEqual([]);
   });
 
+  it("deduplicates the initial Squad page-zero IPC request", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Only once", 1)]);
+    renderMyClubRoute({
+      initialEntry: "/my-club",
+      staleTime: 60_000,
+    });
+
+    expect(
+      await screen.findByRole("table", { name: "Squad overview" }),
+    ).toBeInTheDocument();
+    expect(getSquadPlayersCallCount()).toBe(1);
+  });
+
+  it("shows an initial Squad failure and retries page zero", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Recovered Squad", 1)]);
+    setSquadPlayersPageIpcMockMode("rejectInitial");
+    const user = userEvent.setup();
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    expect(await screen.findByText("Could not load squad")).toBeInTheDocument();
+    const callsAfterFailure = getSquadPlayersCallCount();
+
+    setSquadPlayersPageIpcMockMode("success");
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(
+      await screen.findByRole("table", { name: "Squad overview" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Recovered Squad")).toBeInTheDocument();
+    expect(getSquadPlayersCallCount()).toBeGreaterThan(callsAfterFailure);
+  });
+
+  it("clears Squad rows while a visible-field projection loads", async () => {
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([squadPlayerNamed("Projected Squad", 1)]);
+    renderMyClubRoute({ initialEntry: "/my-club" });
+
+    expect(await screen.findByText("Projected Squad")).toBeInTheDocument();
+    const callsBeforeProjection = getSquadPlayersCallCount();
+    setSquadPlayersPageIpcMockMode("pendingProjection");
+    act(() => {
+      usePlayerTableStore.getState().addColumns("squad", ["attr.Acceleration"]);
+    });
+
+    await waitFor(() =>
+      expect(getSquadPlayersCallCount()).toBe(callsBeforeProjection + 1),
+    );
+    expect(screen.getByText("Loading squad overview…")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Squad overview" })).toBeNull();
+    expect(screen.queryByText("Projected Squad")).toBeNull();
+
+    resolvePendingSquadPlayersPageIpcMock();
+    expect(await screen.findByText("Projected Squad")).toBeInTheDocument();
+    act(() => {
+      usePlayerTableStore.getState().removeColumn("squad", "attr.Acceleration");
+    });
+  });
+
   it("sorts the Squad table through the URL and backend query", async () => {
     const user = userEvent.setup();
     await resolveLoadDataIpcMock();
@@ -1677,6 +1792,162 @@ describe("My Club route", () => {
       ),
     ).toHaveAttribute("aria-sort", "ascending");
     expect(screen.getByText("Alex Scout")).toBeInTheDocument();
+  });
+
+  it("retains committed Squad rows, blocks stale activation, and promotes only the latest sort", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      squadPlayerNamed("Zara", 1, 200),
+      squadPlayerNamed("Alice", 2, 100),
+    ]);
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    const callsBeforeSort = getSquadPlayersCallCount();
+    setSquadPlayersPageIpcMockMode("pendingReplacement");
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+
+    await waitFor(() =>
+      expect(getSquadPlayersCallCount()).toBe(callsBeforeSort + 1),
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Sorting…");
+    expect(within(table).getByText("Zara")).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
+    const row = within(table)
+      .getAllByRole("row")
+      .find((candidate) => candidate.hasAttribute("data-index"));
+    if (!row) {
+      throw new Error("expected a retained Squad row");
+    }
+    expect(row).not.toHaveAttribute("tabindex");
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: "ArrowDown" });
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(router.state.location.pathname).toBe("/my-club");
+
+    await user.click(within(table).getByRole("button", { name: "CA" }));
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "CA" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
+    resolvePendingSquadPlayersPageIpcMock();
+    await Promise.resolve();
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+    expect(within(table).getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("falls back when removing a deferred requested dynamic Squad sort", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    usePlayerTableStore.getState().addColumns("squad", ["attr.Acceleration"]);
+    setSquadPlayersOverride([
+      {
+        ...squadPlayerNamed("Fast Squad", 1),
+        dynamicValues: { "attr.Acceleration": 16 },
+      },
+    ]);
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    setSquadPlayersPageIpcMockMode("pendingDynamicReplacement");
+    await user.click(
+      within(table).getByRole("button", { name: "Acceleration" }),
+    );
+    await screen.findByRole("status");
+
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "Acceleration" }),
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: "Remove Acceleration" }),
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        squadSort: "ca",
+        squadDir: "desc",
+      });
+      expect(
+        screen.queryByRole("columnheader", { name: "Acceleration" }),
+      ).toBeNull();
+      expect(screen.getByRole("columnheader", { name: "CA" })).toHaveAttribute(
+        "aria-sort",
+        "descending",
+      );
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByText("Fast Squad")).toBeInTheDocument();
+
+    resolvePendingSquadPlayersPageIpcMock();
+    await Promise.resolve();
+    expect(screen.getByRole("columnheader", { name: "CA" })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+  });
+
+  it("keeps committed Squad rows after a failed sort and retries the replacement", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    resolveSavePlannerClubFamilyIpcMock({
+      primaryClub: "Metro FC",
+      sources: [],
+    });
+    setSquadPlayersOverride([
+      squadPlayerNamed("Zara", 1, 200),
+      squadPlayerNamed("Alice", 2, 100),
+    ]);
+    const { router } = renderMyClubRoute({ initialEntry: "/my-club" });
+
+    const table = await screen.findByRole("table", {
+      name: "Squad overview",
+    });
+    setSquadPlayersPageIpcMockMode("rejectReplacementOnce");
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not sort squad.",
+    );
+    expect(within(table).getByText("Zara")).toBeInTheDocument();
+    const retainedRow = within(table)
+      .getAllByRole("row")
+      .find((row) => row.hasAttribute("data-index"));
+    if (!retainedRow) {
+      throw new Error("expected a retained Squad row after a failed sort");
+    }
+    expect(retainedRow).not.toHaveAttribute("tabindex");
+    expect(
+      within(retainedRow).queryByRole("link", { name: "Zara" }),
+    ).toBeNull();
+    fireEvent.click(retainedRow);
+    retainedRow.focus();
+    await user.keyboard("{Enter}");
+    expect(router.state.location.pathname).toBe("/my-club");
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "Name" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
   });
 
   it("moves focus between Squad rows with the arrow keys", async () => {

@@ -79,10 +79,19 @@ let pendingSearchPlayersPage: {
   promise: Promise<SearchPlayersPage>;
   resolve: (page: SearchPlayersPage) => void;
 } | null = null;
+let rejectedReplacement = false;
 let suggestOverride: PlayerSuggestHit[] | null = null;
 let lastSuggestPlayersArgs: Record<string, unknown> | null = null;
 
-export type SearchPlayersPageIpcMockMode = "success" | "pendingSecondPage";
+export type SearchPlayersPageIpcMockMode =
+  | "success"
+  | "pendingSecondPage"
+  | "pendingReplacement"
+  | "pendingDynamicReplacement"
+  | "pendingProjection"
+  | "pendingMoneyballCohort"
+  | "rejectInitial"
+  | "rejectReplacementOnce";
 
 export function setSearchPlayersOverride(players: PlayerSummary[] | null) {
   overridePlayers = players;
@@ -98,6 +107,7 @@ export function resetSearchPlayersOverride() {
   searchPlayersCallCount = 0;
   searchPlayersPageMode = "success";
   pendingSearchPlayersPage = null;
+  rejectedReplacement = false;
   suggestOverride = null;
   lastSuggestPlayersArgs = null;
 }
@@ -115,6 +125,7 @@ export function setSearchPlayersPageIpcMockMode(
 ) {
   searchPlayersPageMode = mode;
   pendingSearchPlayersPage = null;
+  rejectedReplacement = false;
 }
 
 export function resolvePendingSearchPlayersPageIpcMock() {
@@ -138,6 +149,7 @@ function parsePaging(args: unknown): {
   sortDir: SearchSortDir;
   filters: FilterRuleIpc[];
   filterCombine: "and" | "or";
+  requestedFields: string[];
 } {
   const record =
     typeof args === "object" && args !== null
@@ -160,7 +172,20 @@ function parsePaging(args: unknown): {
   const filters = Array.isArray(record.filters)
     ? record.filters.filter(isFilterRuleIpc)
     : [];
-  return { offset, limit, sortBy, sortDir, filters, filterCombine };
+  const requestedFields = Array.isArray(record.requestedFields)
+    ? record.requestedFields.filter(
+        (field): field is string => typeof field === "string",
+      )
+    : [];
+  return {
+    offset,
+    limit,
+    sortBy,
+    sortDir,
+    filters,
+    filterCombine,
+    requestedFields,
+  };
 }
 
 function isFilterRuleIpc(value: unknown): value is FilterRuleIpc {
@@ -431,9 +456,23 @@ export function resolveSearchPlayersIpcMock(
     typeof args === "object" && args !== null
       ? (args as Record<string, unknown>)
       : {};
-  const { offset } = parsePaging(args);
+  const { offset, limit, requestedFields, sortBy } = parsePaging(args);
 
-  if (offset >= 50 && searchPlayersPageMode === "pendingSecondPage") {
+  if (
+    (offset >= 50 && searchPlayersPageMode === "pendingSecondPage") ||
+    (offset === 0 &&
+      sortBy === "name" &&
+      searchPlayersPageMode === "pendingReplacement") ||
+    (offset === 0 &&
+      sortBy === "attr.Acceleration" &&
+      searchPlayersPageMode === "pendingDynamicReplacement") ||
+    (offset === 0 &&
+      requestedFields.length > 0 &&
+      searchPlayersPageMode === "pendingProjection") ||
+    (offset === 0 &&
+      limit === 1 &&
+      searchPlayersPageMode === "pendingMoneyballCohort")
+  ) {
     if (!pendingSearchPlayersPage) {
       let resolve!: (page: SearchPlayersPage) => void;
       const promise = new Promise<SearchPlayersPage>((next) => {
@@ -442,6 +481,20 @@ export function resolveSearchPlayersIpcMock(
       pendingSearchPlayersPage = { args, promise, resolve };
     }
     return pendingSearchPlayersPage.promise;
+  }
+
+  if (offset === 0 && searchPlayersPageMode === "rejectInitial") {
+    return Promise.reject(new Error("Could not load players."));
+  }
+
+  if (
+    offset === 0 &&
+    sortBy === "name" &&
+    searchPlayersPageMode === "rejectReplacementOnce" &&
+    !rejectedReplacement
+  ) {
+    rejectedReplacement = true;
+    return Promise.reject(new Error("Could not sort players."));
   }
 
   return searchPlayersPage(args);

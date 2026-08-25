@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { CircleAlert } from "lucide-react";
 import { Suspense } from "react";
 import { ErrorBoundary } from "@/components/error-boundary/error-boundary";
+import type { ClearPlayerResultContext } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { Panel } from "@/components/ui/panel/panel";
@@ -36,10 +37,12 @@ function SnapshotSectionError({
 
 type SnapshotPanelsWithErrorBoundaryProps = {
   onCurrentContextChanged?: () => void;
+  onBeforeContextChange: ClearPlayerResultContext;
 };
 
 export function SnapshotPanelsWithErrorBoundary({
   onCurrentContextChanged,
+  onBeforeContextChange,
 }: SnapshotPanelsWithErrorBoundaryProps) {
   const queryClient = useQueryClient();
 
@@ -56,7 +59,10 @@ export function SnapshotPanelsWithErrorBoundary({
           />
         )}
       >
-        <SaveSwitcher onCurrentContextChanged={onCurrentContextChanged} />
+        <SaveSwitcher
+          onBeforeContextChange={onBeforeContextChange}
+          onCurrentContextChanged={onCurrentContextChanged}
+        />
       </ErrorBoundary>
       <ErrorBoundary
         fallback={({ error, reset }) => (
@@ -79,6 +85,7 @@ export function SnapshotPanelsWithErrorBoundary({
           }
         >
           <SnapshotHistoryPanel
+            onBeforeContextChange={onBeforeContextChange}
             onCurrentContextChanged={onCurrentContextChanged}
           />
         </Suspense>

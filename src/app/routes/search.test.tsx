@@ -5,6 +5,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -15,6 +16,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { RouterContext } from "@/app/router-context";
 import type { PlayerSummary } from "@/features/search/types/player-summary";
+import { currentSnapshotQueryOptions } from "@/features/snapshot/api/current-snapshot-query-options";
 import { snapshotKeys } from "@/features/snapshot/api/snapshot-keys";
 import { routeTree } from "@/routeTree.gen";
 import { useLayoutStore } from "@/stores/use-layout-store";
@@ -29,8 +31,11 @@ import {
   setSearchPlayersPageIpcMockMode,
 } from "@/testing/search-ipc-mock";
 import {
+  observeSnapshotIpcCall,
   resolveCreateSaveIpcMock,
   resolveLoadDataIpcMock,
+  resolvePendingSetActiveSaveIpcMock,
+  setActiveSaveIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
 
 function renderSearchRoute(initialEntry = "/search") {
@@ -1096,6 +1101,97 @@ describe("search route", () => {
     expect(screen.queryByText("Save Two Star")).not.toBeInTheDocument();
   });
 
+  it("does not recreate the Moneyball cohort observer during a deferred active-save transition", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Moneyball context", 160)]);
+    setSearchPlayersPageIpcMockMode("pendingMoneyballCohort");
+    const { queryClient } = renderSearchRoute("/search?view=moneyball");
+
+    expect(await screen.findByText("Moneyball context")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
+    ).toBeInTheDocument();
+    const callsBeforeTransition = getSearchPlayersCallCount();
+    const second = resolveCreateSaveIpcMock({ name: "Second save" });
+    await queryClient.invalidateQueries({ queryKey: snapshotKeys.saves() });
+    setActiveSaveIpcMockMode("busy");
+    let tauriWasCalled = false;
+    observeSnapshotIpcCall("setActiveSave", () => {
+      tauriWasCalled = true;
+    });
+
+    await userEvent
+      .setup()
+      .selectOptions(
+        await screen.findByRole("combobox", { name: "Active save" }),
+        String(second.id),
+      );
+    await waitFor(() => expect(tauriWasCalled).toBe(true));
+    expect(getSearchPlayersCallCount()).toBe(callsBeforeTransition);
+
+    resolvePendingSearchPlayersPageIpcMock();
+    await Promise.resolve();
+    expect(getSearchPlayersCallCount()).toBe(callsBeforeTransition);
+    expect(
+      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
+    ).toBeInTheDocument();
+
+    resolvePendingSetActiveSaveIpcMock();
+  });
+
+  it("deduplicates the initial Search page-zero IPC request", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Only once", 160)]);
+    renderSearchRoute();
+
+    expect(
+      await screen.findByRole("table", { name: "Player search results" }),
+    ).toBeInTheDocument();
+    expect(getSearchPlayersCallCount()).toBe(1);
+  });
+
+  it("shows an initial Search failure and retries page zero", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Recovered Search", 160)]);
+    setSearchPlayersPageIpcMockMode("rejectInitial");
+    const user = userEvent.setup();
+    renderSearchRoute();
+
+    expect(
+      await screen.findByText("Could not load players"),
+    ).toBeInTheDocument();
+    expect(getSearchPlayersCallCount()).toBeGreaterThanOrEqual(1);
+
+    setSearchPlayersPageIpcMockMode("success");
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(
+      await screen.findByRole("table", { name: "Player search results" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Recovered Search")).toBeInTheDocument();
+    expect(getSearchPlayersCallCount()).toBe(2);
+  });
+
+  it("blocks Search results after an owner refresh fails", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Committed Search", 160)]);
+    const { queryClient } = renderSearchRoute();
+
+    expect(await screen.findByText("Committed Search")).toBeInTheDocument();
+    const refresh = queryClient.fetchQuery({
+      ...currentSnapshotQueryOptions,
+      staleTime: 0,
+      queryFn: () => Promise.reject(new Error("Snapshot refresh failed")),
+    });
+    await expect(refresh).rejects.toThrow("Snapshot refresh failed");
+
+    expect(
+      await screen.findByText("Loading player results…"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("table", { name: "Player search results" }),
+    ).toBeNull();
+  });
+
   it("defaults CA header to descending aria-sort", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
@@ -1146,7 +1242,9 @@ describe("search route", () => {
     const nameHeader = within(table).getByRole("columnheader", {
       name: /Name/i,
     });
-    expect(nameHeader).toHaveAttribute("aria-sort", "ascending");
+    await waitFor(() =>
+      expect(nameHeader).toHaveAttribute("aria-sort", "ascending"),
+    );
 
     const bodyRowsAfter = within(table)
       .getAllByRole("row")
@@ -1157,6 +1255,209 @@ describe("search route", () => {
     }
     expect(within(firstAfter).getByText("Alice")).toBeInTheDocument();
     expect(within(firstAfter).queryByText("Zara")).not.toBeInTheDocument();
+  });
+
+  it("clears Search rows while a visible-field projection loads", async () => {
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([playerNamed("Projected Search", 160)]);
+    renderSearchRoute();
+
+    expect(await screen.findByText("Projected Search")).toBeInTheDocument();
+    const callsBeforeProjection = getSearchPlayersCallCount();
+    setSearchPlayersPageIpcMockMode("pendingProjection");
+    act(() => {
+      usePlayerTableStore
+        .getState()
+        .addColumns("search", ["attr.Acceleration"]);
+    });
+
+    await waitFor(() =>
+      expect(getSearchPlayersCallCount()).toBe(callsBeforeProjection + 1),
+    );
+    expect(screen.getByText("Loading player results…")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("table", { name: "Player search results" }),
+    ).toBeNull();
+    expect(screen.queryByText("Projected Search")).toBeNull();
+
+    resolvePendingSearchPlayersPageIpcMock();
+    expect(await screen.findByText("Projected Search")).toBeInTheDocument();
+    act(() => {
+      usePlayerTableStore
+        .getState()
+        .removeColumn("search", "attr.Acceleration");
+    });
+  });
+
+  it("retains committed Search rows and blocks activation while a replacement sort loads", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Zara", 200),
+      playerNamed("Alice", 100),
+    ]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    const callsBeforeSort = getSearchPlayersCallCount();
+    setSearchPlayersPageIpcMockMode("pendingReplacement");
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+
+    await waitFor(() =>
+      expect(getSearchPlayersCallCount()).toBe(callsBeforeSort + 1),
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Sorting…");
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
+    expect(within(table).getByText("Zara")).toBeInTheDocument();
+
+    const row = within(table)
+      .getAllByRole("row")
+      .find((candidate) => candidate.hasAttribute("data-index"));
+    if (!row) {
+      throw new Error("expected a retained Search row");
+    }
+    expect(row).not.toHaveAttribute("tabindex");
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: "ArrowDown" });
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(router.state.location.pathname).toBe("/search");
+
+    resolvePendingSearchPlayersPageIpcMock();
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "Name" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
+    expect(within(table).getByText("Alice")).toBeInTheDocument();
+  });
+
+  it("falls back when removing a deferred requested dynamic Search sort", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    usePlayerTableStore.getState().addColumns("search", ["attr.Acceleration"]);
+    setSearchPlayersOverride([
+      {
+        ...playerNamed("Fast Search", 160),
+        dynamicValues: { "attr.Acceleration": 16 },
+      },
+    ]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    setSearchPlayersPageIpcMockMode("pendingDynamicReplacement");
+    await user.click(
+      within(table).getByRole("button", { name: "Acceleration" }),
+    );
+    await screen.findByRole("status");
+
+    fireEvent.contextMenu(
+      within(table).getByRole("columnheader", { name: "Acceleration" }),
+    );
+    await user.click(
+      screen.getByRole("menuitem", { name: "Remove Acceleration" }),
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.search).toMatchObject({
+        sort: "ca",
+        dir: "desc",
+      });
+      expect(
+        screen.queryByRole("columnheader", { name: "Acceleration" }),
+      ).toBeNull();
+      expect(screen.getByRole("columnheader", { name: "CA" })).toHaveAttribute(
+        "aria-sort",
+        "descending",
+      );
+    });
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByText("Fast Search")).toBeInTheDocument();
+
+    resolvePendingSearchPlayersPageIpcMock();
+    await Promise.resolve();
+    expect(screen.getByRole("columnheader", { name: "CA" })).toHaveAttribute(
+      "aria-sort",
+      "descending",
+    );
+  });
+
+  it("keeps committed Search rows after a failed sort and retries the replacement", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Zara", 200),
+      playerNamed("Alice", 100),
+    ]);
+    const { router } = renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    setSearchPlayersPageIpcMockMode("rejectReplacementOnce");
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not sort players.",
+    );
+    expect(within(table).getByText("Zara")).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "descending");
+    const retainedRow = within(table)
+      .getAllByRole("row")
+      .find((row) => row.hasAttribute("data-index"));
+    if (!retainedRow) {
+      throw new Error("expected a retained Search row after a failed sort");
+    }
+    expect(retainedRow).not.toHaveAttribute("tabindex");
+    fireEvent.click(retainedRow);
+    retainedRow.focus();
+    await user.keyboard("{Enter}");
+    expect(router.state.location.pathname).toBe("/search");
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "Name" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("ignores a superseded Search sort when its deferred result resolves", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setSearchPlayersOverride([
+      playerNamed("Zara", 200),
+      playerNamed("Alice", 100),
+    ]);
+    renderSearchRoute();
+
+    const table = await screen.findByRole("table", {
+      name: "Player search results",
+    });
+    setSearchPlayersPageIpcMockMode("pendingReplacement");
+    await user.click(within(table).getByRole("button", { name: "Name" }));
+    await screen.findByRole("status");
+    await user.click(within(table).getByRole("button", { name: "CA" }));
+
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: "CA" }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
+    resolvePendingSearchPlayersPageIpcMock();
+    await Promise.resolve();
+    expect(
+      within(table).getByRole("columnheader", { name: "CA" }),
+    ).toHaveAttribute("aria-sort", "ascending");
+    expect(within(table).getByText("Alice")).toBeInTheDocument();
   });
 
   it("defaults missing dir from the sort field for partial URLs", async () => {
@@ -1517,9 +1818,11 @@ describe("search route", () => {
       sort: "ca",
       dir: "asc",
     });
-    expect(
-      within(table).getByRole("columnheader", { name: /CA/i }),
-    ).toHaveAttribute("aria-sort", "ascending");
+    await waitFor(() =>
+      expect(
+        within(table).getByRole("columnheader", { name: /CA/i }),
+      ).toHaveAttribute("aria-sort", "ascending"),
+    );
 
     const bodyRows = within(table)
       .getAllByRole("row")

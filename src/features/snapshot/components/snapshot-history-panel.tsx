@@ -5,6 +5,10 @@ import {
 } from "@tanstack/react-query";
 import { DatabaseZap } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import {
+  type ClearPlayerResultContext,
+  playerResultContextMutationKey,
+} from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { EmptyState } from "@/components/ui/empty-state/empty-state";
 import { TextField } from "@/components/ui/field/text-field";
@@ -25,6 +29,7 @@ import type { SnapshotDeleteResult, SnapshotMetadata } from "../types/snapshot";
 type SnapshotHistoryPanelProps = {
   /** Route-owned invalidation for products that only read the current snapshot. */
   onCurrentContextChanged?: () => void;
+  onBeforeContextChange: ClearPlayerResultContext;
 };
 
 type SnapshotModalProps = {
@@ -141,6 +146,8 @@ function SnapshotRenameModal({
 }
 
 type SnapshotDeletionModalProps = SnapshotModalProps & {
+  targetIsCurrent: boolean;
+  onBeforeContextChange: ClearPlayerResultContext;
   onDeleted: (snapshot: SnapshotMetadata, result: SnapshotDeleteResult) => void;
 };
 
@@ -149,13 +156,23 @@ function SnapshotDeletionModal({
   onClose,
   onDeleted,
   fallbackFocusTo,
+  targetIsCurrent,
+  onBeforeContextChange,
 }: SnapshotDeletionModalProps) {
   const [visibleTarget, setVisibleTarget] = useState<SnapshotMetadata | null>(
     target,
   );
   const remove = useMutation({
-    mutationFn: () =>
-      deleteSnapshot(visibleTarget?.id ?? 0, visibleTarget?.contextToken ?? ""),
+    mutationKey: targetIsCurrent ? playerResultContextMutationKey : undefined,
+    mutationFn: async () => {
+      if (targetIsCurrent) {
+        await onBeforeContextChange();
+      }
+      return deleteSnapshot(
+        visibleTarget?.id ?? 0,
+        visibleTarget?.contextToken ?? "",
+      );
+    },
     onSuccess: (result) => {
       if (visibleTarget) {
         onDeleted(visibleTarget, result);
@@ -222,6 +239,7 @@ function SnapshotDeletionModal({
 }
 
 export function SnapshotHistoryPanel({
+  onBeforeContextChange,
   onCurrentContextChanged,
 }: SnapshotHistoryPanelProps) {
   const queryClient = useQueryClient();
@@ -346,6 +364,8 @@ export function SnapshotHistoryPanel({
         target={deleteTarget}
         onClose={() => setDeleteTarget(null)}
         fallbackFocusTo={() => panelRef.current}
+        targetIsCurrent={deleteTarget?.isCurrent ?? false}
+        onBeforeContextChange={onBeforeContextChange}
         onDeleted={(snapshot) => {
           void queryClient.invalidateQueries({
             queryKey: snapshotKeys.history(snapshot.saveId),

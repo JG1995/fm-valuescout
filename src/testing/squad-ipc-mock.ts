@@ -27,6 +27,7 @@ let pendingSquadPlayersPage: {
   resolve: (page: SquadPlayersPage) => void;
 } | null = null;
 let rejectedSecondPage = false;
+let rejectedReplacement = false;
 let squadCurrentAbilityBoostMode: SquadCurrentAbilityBoostIpcMockMode =
   "success";
 let squadCurrentAbilityBoostCalls: unknown[] = [];
@@ -64,7 +65,12 @@ export type SquadCurrentAbilityBoostIpcMockMode =
 export type SquadPlayersPageIpcMockMode =
   | "success"
   | "pendingSecondPage"
-  | "rejectSecondPageOnce";
+  | "rejectSecondPageOnce"
+  | "pendingReplacement"
+  | "pendingDynamicReplacement"
+  | "pendingProjection"
+  | "rejectInitial"
+  | "rejectReplacementOnce";
 
 export type SquadWonderkidMentalityBoostIpcMockMode =
   | "success"
@@ -84,6 +90,7 @@ export function resetSquadPlayersOverride() {
   squadPlayersPageMode = "success";
   pendingSquadPlayersPage = null;
   rejectedSecondPage = false;
+  rejectedReplacement = false;
   squadCurrentAbilityBoostMode = "success";
   squadCurrentAbilityBoostCalls = [];
   lastSquadCurrentAbilityBoostProgress = null;
@@ -108,6 +115,7 @@ export function setSquadPlayersPageIpcMockMode(
   squadPlayersPageMode = mode;
   pendingSquadPlayersPage = null;
   rejectedSecondPage = false;
+  rejectedReplacement = false;
 }
 
 export function resolvePendingSquadPlayersPageIpcMock() {
@@ -378,6 +386,7 @@ function parsePaging(args: unknown): {
   limit: number;
   sortBy: SquadSortField;
   sortDir: SquadSortDir;
+  requestedFields: string[];
 } {
   const record =
     typeof args === "object" && args !== null
@@ -395,7 +404,12 @@ function parsePaging(args: unknown): {
   const sortDir = isSquadSortDir(record.sortDir)
     ? record.sortDir
     : DEFAULT_SQUAD_SORT_DIR;
-  return { offset, limit, sortBy, sortDir };
+  const requestedFields = Array.isArray(record.requestedFields)
+    ? record.requestedFields.filter(
+        (field): field is string => typeof field === "string",
+      )
+    : [];
+  return { offset, limit, sortBy, sortDir, requestedFields };
 }
 
 function compareNullableString(
@@ -466,9 +480,20 @@ export function resolveSquadPlayersIpcMock(
     typeof args === "object" && args !== null
       ? (args as Record<string, unknown>)
       : {};
-  const { offset } = parsePaging(args);
+  const { offset, requestedFields, sortBy } = parsePaging(args);
 
-  if (offset >= 50 && squadPlayersPageMode === "pendingSecondPage") {
+  if (
+    (offset >= 50 && squadPlayersPageMode === "pendingSecondPage") ||
+    (offset === 0 &&
+      sortBy === "name" &&
+      squadPlayersPageMode === "pendingReplacement") ||
+    (offset === 0 &&
+      sortBy === "attr.Acceleration" &&
+      squadPlayersPageMode === "pendingDynamicReplacement") ||
+    (offset === 0 &&
+      requestedFields.length > 0 &&
+      squadPlayersPageMode === "pendingProjection")
+  ) {
     if (!pendingSquadPlayersPage) {
       let resolve!: (page: SquadPlayersPage) => void;
       const promise = new Promise<SquadPlayersPage>((next) => {
@@ -479,6 +504,10 @@ export function resolveSquadPlayersIpcMock(
     return pendingSquadPlayersPage.promise;
   }
 
+  if (offset === 0 && squadPlayersPageMode === "rejectInitial") {
+    return Promise.reject(new Error("Could not load squad."));
+  }
+
   if (
     offset >= 50 &&
     squadPlayersPageMode === "rejectSecondPageOnce" &&
@@ -486,6 +515,16 @@ export function resolveSquadPlayersIpcMock(
   ) {
     rejectedSecondPage = true;
     return Promise.reject(new Error("Could not load the next squad page."));
+  }
+
+  if (
+    offset === 0 &&
+    sortBy === "name" &&
+    squadPlayersPageMode === "rejectReplacementOnce" &&
+    !rejectedReplacement
+  ) {
+    rejectedReplacement = true;
+    return Promise.reject(new Error("Could not sort squad."));
   }
 
   return squadPlayersPage(args);
