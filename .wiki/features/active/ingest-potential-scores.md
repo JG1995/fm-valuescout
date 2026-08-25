@@ -230,7 +230,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 #### Commit 2 — Add eager current-potential persistence
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(scoring): persist current potential projections`
 
@@ -297,7 +297,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 #### Commit 3 — Maintain potential data across snapshot selection
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(snapshot): materialize selected potential scores`
 
@@ -880,19 +880,19 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **PR:** PR 1 — Precompute current-snapshot potential scoring
 
-**Commit:** Commit 2 — Add eager current-potential persistence
+**Commit:** Commit 3 — Maintain potential data across snapshot selection
 
 ### RED or removal proof
 
-Add focused v33 upgrade and eager-writer tests first. They must fail because v34 projected columns, current-only complete backfill, the shared read-only invariant assertion, and rollback ownership do not exist yet.
+Add lifecycle tests that expose the current selector's missing potential ownership: winning ingest lacks eager rows, losing ingest can retain or disturb derived state, deletion promotion lacks materialization, and save switching must remain write-free.
 
 ### Expected outcome
 
-Migration v34 atomically adds projected player fields, discards sparse lazy rows, backfills every save's effective current snapshot from one projection per player, leaves retained historical snapshots empty, and advances `user_version` only with the completed backfill. The eager owner also exposes the read-only completeness assertion required by later consumer packets.
+`select_current_snapshot` atomically clears every losing snapshot and materializes only the effective winner after source players and current role scores exist. Deletion promotion completes derived state before commit, final deletion leaves none, and save switching performs no potential writes.
 
 ### Explicit exclusions
 
-New-ingest selection, deletion promotion, save switching, boost reconciliation, product-read conversion, lazy-module deletion, formula/catalog changes, frontend work, and `.wiki/features/completed/player-table-sort-performance.md`.
+Boost reconciliation, product-read conversion, Search/Squad lazy cleanup, formula/catalog changes, frontend work, and `.wiki/features/completed/player-table-sort-performance.md`.
 
 ## Discoveries and replanning
 
@@ -909,7 +909,8 @@ New-ingest selection, deletion promotion, save switching, boost reconciliation, 
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Precompute current-snapshot potential scoring | Commit 1 — Record the approved feature plan | Pending record | Recorded the reviewed schema 2 ledger, TODO activation, superseded ADR-0019, accepted ADR-0026, and ADR index update. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 2 | Checkpoint review added a shared read-only derived-data invariant assertion and pre-mutation Planner guards before the replacement fingerprint was accepted. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 1 — Record the approved feature plan | 52be1f96b1c06177d4b92fa52ef8f2f8e673c064 | Recorded the reviewed schema 2 ledger, TODO activation, superseded ADR-0019, accepted ADR-0026, and ADR index update. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 2 | Checkpoint review added a shared read-only derived-data invariant assertion and pre-mutation Planner guards before the replacement fingerprint was accepted. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 2 — Add eager current-potential persistence | Pending record | Added migration v34, atomic current-only backfill, one-projection eager writer, exact projected-map and catalog-row invariant assertion, shared model-version ownership, and truthful migration errors. | `./scripts/dev check-rust`: 611 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 3 | The atomic migration/writer/assertion implementation exceeded the soft estimate; review corrections strengthened projected-map validation, writer postconditions, rollback context, one-call proof, and nullable SQL-row proof without changing packet scope. |
 
 ## Final validation
 

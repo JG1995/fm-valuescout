@@ -5,7 +5,7 @@ use rusqlite::Row;
 use crate::features::moneyball::{is_moneyball_statistic_key, role_catalog::builtin_catalog};
 use crate::features::scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS};
 
-use super::{club_dna::SCORE_MODEL_VERSION, potential_cache::PROJECTION_MODEL_VERSION};
+use super::{club_dna::SCORE_MODEL_VERSION, potential_scores::PROJECTION_MODEL_VERSION};
 
 /// FM26 dump position keys (bridge `PositionEntries`).
 pub const POSITION_KEYS: &[&str] = &[
