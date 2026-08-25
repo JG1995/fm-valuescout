@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- [Ingest-Time Potential Scoring](./features/active/ingest-potential-scores.md) — precompute projected visible attributes and complete potential role scores for each save's effective current snapshot, with atomic ingest, promotion, and boost reconciliation.
 
 ## Next
 
