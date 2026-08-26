@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -166,7 +166,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 ### PR 1 — Optimize staff assignments from the Shortlist
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -542,7 +542,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 #### Commit 6 — Present assignment recommendations
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): present assignment recommendations`
 
@@ -621,7 +621,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 #### Commit 7 — Prove the browser assignment workflow
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `test(staff): cover assignment optimization workflow`
 
@@ -682,24 +682,6 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 **Review mandate:** Verify only test/spec/stub paths changed; the stub carries `scopeDisplayName` as Rust-provided result data and derives no scope label; immutable-token guards remain contract-shaped with no business-rule duplication; smoke uses accessible selectors; the workflow covers configuration through results and same-ID/new-token reset; viewport/table behavior is meaningful; no Rust claim relies on the stub; test overlap is proportionate; and any product defect stopped and returned to its exact owning packet rather than entering Commit 7.
 
-## Active work
-
-**PR:** PR 1 — Optimize staff assignments from the Shortlist
-
-**Commit:** Commit 6 — Present assignment recommendations
-
-### RED or removal proof
-
-Extend one Rust optimizer query/DTO proof so a team slot must carry its current custom Planner display name and a Club slot must carry `Club`. In the already-planned explicit-state tests, require the captured request key/generation for every completion; require matching returned tokens for `ready`, `no_managed_club`, and `no_shortlist`; allow row-free `no_current_snapshot` guidance only with the current save token and no snapshot token; and allow row-free `stale_context` guidance despite a changed returned save token and/or a changed or absent resolved snapshot token. Strengthen the existing target-save reset test with the only same-token delayed-completion proof. Add the minimal deferred Planner-team save resolver, change a display name in the existing route proof, resolve through the mock's normal successful depth update, wait for refreshed context, and assert the obsolete result stays absent. Retain the focused result/import/filter proofs already planned. Confirm RED because slots lack `scopeDisplayName`, completion acceptance is not state-specific, `optimize.reset()` does not cancel or invalidate an in-flight callback, and the Planner mock cannot complete its deferred successful save.
-
-### Expected outcome
-
-Staff Shortlist renders Rust-owned assignment recommendations and explicit vacancies with current configured scope names. Each optimize request is bound to its starting context key and generation. Current-context states also require matching returned tokens, while `stale_context` and `no_current_snapshot` can show only state-coherent guidance and never rows under their recorded token rules. Every target/context reset invalidates the generation, so same-token late completions and a successfully resolved Planner display-name change cannot restore obsolete results.
-
-### Explicit exclusions
-
-Recommendation persistence, manual overrides, dual duties, frontend ranking or mapping, new routes or global state, Playwright optimizer fixtures, current-state documentation, and unrelated workspace changes.
-
 ## Discoveries and replanning
 
 - No planned feature spec or existing active ledger exists, so planning creates one ledger and removes no promoted file.
@@ -716,6 +698,8 @@ Recommendation persistence, manual overrides, dual duties, frontend ranking or m
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Optimize staff assignments from the Shortlist | Commit 7 — Prove the browser assignment workflow | Pending record | Added a contract-shaped browser IPC fixture and one assembled Staff Shortlist configuration, recommendation, vacancy, viewport, and context-reset workflow. | Local and CI-serial smoke passed (50); full Vitest passed (651); `check` passed (Rust 661 passed, 2 ignored); e2e LSP and staged whitespace checks passed. | Pass | Clear | 1 | None |
+| PR 1 — Optimize staff assignments from the Shortlist | Commit 6 — Present assignment recommendations | e5519ead8051b8ddfef69d8ae885b239c8534de6 | Added generation-safe token-bound optimization, Rust-provided scope display labels, pending-context suppression, and accessible recommendation/vacancy presentation. | Focused Vitest passed (148); `check-rust` passed (661 passed, 2 ignored); `check`, changed-path LSP, and staged whitespace checks passed. | Accepted gap — functional stale-result guards are implemented; developer declined further asynchronous test synchronization. | Accepted findings — reviewer confirmed functional fixes and retained only test synchronization. | 1 | Replanned Commit 6 DTO and request-generation scope after functional review; accepted revised Delivery fingerprint. |
 | PR 1 — Optimize staff assignments from the Shortlist | Commit 5 — Configure assignment slots in My Club | 15c508931ba97482e6e962e121eda0c97501b85f | Added token-aware frontend snapshot contracts, typed target Query APIs, and an accessible context-safe Configure slots Modal in Staff Shortlist. | Focused Vitest passed (137 tests); `check`, TypeScript LSP, and staged whitespace checks passed. | Pass | Clear | 1 | None |
 | PR 1 — Optimize staff assignments from the Shortlist | Commit 4 — Expose current-context recommendations | c85dde0702320744812f3a78472c18baf47effb1 | Added snapshot context-token summaries and a bounded token-guarded read-only optimizer query/IPC command over current Shortlist staff and persisted scores. | `check-rust` passed (661 passed, 2 ignored); `check`, Rust LSP, and staged whitespace checks passed. | Pass | Clear | 0 | None |
 | PR 1 — Optimize staff assignments from the Shortlist | Commit 3 — Allocate canonical staff job groups | a70ec914fdd61e224a2fea7e387570fa1d3a0108 | Added the pure exact-label allocator with Coach discipline selection, deterministic one-duty allocation, vacancies, and bounded evidence. | `check-rust` passed (655 passed, 2 ignored); `check`, Rust LSP, and staged whitespace checks passed. | Accepted gap — production behavior is covered at representative seams; developer declined broader exhaustive mapping, tie-order, and multi-job ordering tests. | Accepted findings — reviewer found no functional defect; developer directed review to skip test-depth expansion. | 0 | None |

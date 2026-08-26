@@ -334,6 +334,138 @@ test.describe("application smoke", () => {
     ).toBeVisible();
   });
 
+  test("Staff Shortlist configures assignment recommendations and clears them after snapshot replacement", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      staffAssignment: true,
+      staffShortlist: true,
+      staffWorkspace: true,
+    });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/my-club?view=staff-shortlist");
+
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Configure slots" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Configure assignment slots",
+    });
+    const firstTeam = dialog.getByRole("group", { name: "First Team" });
+    const club = dialog.getByRole("group", { name: "Club" });
+    const assistantManager = firstTeam.getByRole("spinbutton", {
+      name: "Assistant Manager slots",
+      exact: true,
+    });
+    const coaches = firstTeam.getByRole("spinbutton", {
+      name: "Coaches slots",
+      exact: true,
+    });
+    const manager = dialog
+      .getByRole("group", { name: "Reserves" })
+      .getByRole("spinbutton", { name: "Manager slots", exact: true });
+    const scout = club.getByRole("spinbutton", {
+      name: "Scout slots",
+      exact: true,
+    });
+
+    await expect(firstTeam).toBeVisible();
+    await expect(club).toBeVisible();
+    await expect(
+      firstTeam.getByRole("spinbutton", {
+        name: "Manager slots",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(assistantManager).toHaveValue("0");
+    await expect(assistantManager).toHaveAttribute("max", "50");
+    await expect(coaches).toHaveValue("0");
+    await expect(manager).toHaveValue("0");
+    await expect(scout).toHaveValue("0");
+    await assistantManager.fill("50");
+    await expect(assistantManager).toHaveValue("50");
+    await assistantManager.fill("1");
+    await coaches.fill("1");
+    await manager.fill("1");
+    await scout.fill("1");
+    await dialog.getByRole("button", { name: "Save slots" }).click();
+    await expect(main.getByRole("status")).toHaveText("Slot counts saved.");
+    await expect(dialog).toBeHidden();
+
+    await main.getByRole("button", { name: "Configure slots" }).click();
+    await expect(dialog).toBeVisible();
+    await expect(assistantManager).toHaveValue("1");
+    await expect(coaches).toHaveValue("1");
+    await expect(manager).toHaveValue("1");
+    await expect(scout).toHaveValue("1");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+
+    await main.getByRole("button", { name: "Optimize assignments" }).click();
+    const assignments = main.getByRole("table", {
+      name: "Staff assignment recommendations and vacancies",
+    });
+    await expect(assignments).toBeVisible();
+    await expect(
+      main.getByText("5 joined shortlisted candidates; 4 configured slots."),
+    ).toBeVisible();
+    await expect(assignments.getByRole("row")).toHaveCount(5);
+    await expect(assignments).toContainText("First Team");
+    await expect(assignments).toContainText("Reserves");
+    await expect(assignments).toContainText("Club");
+    await expect(assignments).toContainText("Alex Assistant");
+    await expect(assignments).toContainText(
+      "Preferred Job: Assistant Manager. Eligible for this target.",
+    );
+    await expect(assignments).toContainText("Coach Casey");
+    await expect(assignments).toContainText(
+      "Preferred Job: Coach. Eligible for this target. Coach discipline: attacking_technical.",
+    );
+    await expect(assignments).toContainText("Current staff");
+    await expect(assignments).toContainText("Riley Scout");
+    await expect(assignments).toContainText(
+      "Preferred Job: Scout. Eligible for this target.",
+    );
+    await expect(assignments).toContainText("Recruitment");
+    await expect(
+      assignments.getByRole("img", {
+        name: "Assistant Manager: 82, Excellent",
+      }),
+    ).toBeVisible();
+    await expect(assignments).toContainText("Vacancy");
+    await expect(assignments).toContainText(
+      "0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
+    );
+
+    for (const [width, height] of [
+      [1280, 800],
+      [1600, 900],
+    ] as const) {
+      await page.setViewportSize({ width, height });
+      await expect(assignments).toBeVisible();
+      const [assignmentsBox, mainBox] = await Promise.all([
+        assignments.boundingBox(),
+        main.boundingBox(),
+      ]);
+      expect(assignmentsBox).not.toBeNull();
+      expect(mainBox).not.toBeNull();
+      expect(assignmentsBox?.x).toBeGreaterThanOrEqual(mainBox?.x ?? 0);
+      expect(
+        (assignmentsBox?.x ?? 0) + (assignmentsBox?.width ?? 0),
+      ).toBeLessThanOrEqual((mainBox?.x ?? 0) + (mainBox?.width ?? 0) + 1);
+    }
+
+    await page
+      .getByTestId("app-header")
+      .getByRole("button", { name: "Load Data" })
+      .click();
+    await expect(
+      page.getByText("Loaded 4 players into the database."),
+    ).toBeVisible();
+    await expect(assignments).toHaveCount(0);
+    await expect(
+      main.getByRole("button", { name: "Optimize assignments" }),
+    ).toBeEnabled();
+  });
+
   test("Staff Profile keeps role fit inside a virtual scrollport", async ({
     page,
   }) => {
