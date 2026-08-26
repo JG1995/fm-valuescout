@@ -60,6 +60,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Completed
 
+- [Cumulative Moneyball Imports](./features/completed/cumulative-moneyball-imports.md) — cumulative current-snapshot Moneyball upserts with atomic full-cohort percentiles and shared Search/My Club Squad upload entry points (Linear JAY-33).
 - [Ingest-Time Potential Scoring](./features/completed/ingest-potential-scores.md) — current-only eager projected attributes and complete potential role scores with atomic lifecycle and read-only consumers.
 - [Player Table Sort Performance](./features/completed/player-table-sort-performance.md) — truthful sort replacement, context-bound result clearing, targeted player indexes, and relation-driven Search and Squad sorts.
 - [Club DNA](./features/completed/club-dna.md) — save-owned full-catalog attribute definitions with eager nullable 0–100 scores, Search and Squad table integration, and a context-safe My Club definition Modal (Linear JAY-32).

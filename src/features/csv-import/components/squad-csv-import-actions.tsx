@@ -1,20 +1,24 @@
 import { FileUp } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button/button";
+import type { CsvImportSummary } from "../types/csv-import-summary";
 import { SquadCsvImportModal } from "./squad-csv-import-modal";
 
 type SquadCsvImportActionsProps = {
   activeSaveId: number;
   snapshotId: number;
   onYouthImported: () => void;
+  onMoneyballImported: (summary: CsvImportSummary) => void;
 };
 
 export function SquadCsvImportActions({
   activeSaveId,
   snapshotId,
   onYouthImported,
+  onMoneyballImported,
 }: SquadCsvImportActionsProps) {
-  const [open, setOpen] = useState(false);
+  const [moneyballOpen, setMoneyballOpen] = useState(false);
+  const [youthOpen, setYouthOpen] = useState(false);
 
   return (
     <>
@@ -23,7 +27,16 @@ export function SquadCsvImportActions({
           variant="secondary"
           icon={FileUp}
           onClick={() => {
-            setOpen(true);
+            setMoneyballOpen(true);
+          }}
+        >
+          Upload Squad CSV
+        </Button>
+        <Button
+          variant="secondary"
+          icon={FileUp}
+          onClick={() => {
+            setYouthOpen(true);
           }}
         >
           Upload Youth Academy CSV
@@ -32,10 +45,21 @@ export function SquadCsvImportActions({
       <SquadCsvImportModal
         activeSaveId={activeSaveId}
         snapshotId={snapshotId}
-        format="youthTracker"
-        open={open}
+        format="moneyball"
+        open={moneyballOpen}
         onClose={() => {
-          setOpen(false);
+          setMoneyballOpen(false);
+        }}
+        onYouthImported={() => undefined}
+        onMoneyballImported={onMoneyballImported}
+      />
+      <SquadCsvImportModal
+        activeSaveId={activeSaveId}
+        snapshotId={snapshotId}
+        format="youthTracker"
+        open={youthOpen}
+        onClose={() => {
+          setYouthOpen(false);
         }}
         onYouthImported={onYouthImported}
       />

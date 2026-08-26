@@ -9,11 +9,7 @@ import { Panel } from "@/components/ui/panel/panel";
 import { SquadCsvImportModal } from "@/features/csv-import/components/squad-csv-import-modal";
 import type { CsvImportSummary } from "@/features/csv-import/types/csv-import-summary";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
-import {
-  type SearchPlayerPageContext,
-  searchKeys,
-} from "@/features/search/api/search-keys";
-import { searchPlayersQueryOptions } from "@/features/search/api/search-players-query-options";
+import { searchKeys } from "@/features/search/api/search-keys";
 import { SearchFilterBar } from "@/features/search/components/search-filter-bar";
 import { SearchResultsPanel } from "@/features/search/components/search-results-panel";
 import type {
@@ -114,35 +110,6 @@ function PanelFallback() {
   );
 }
 
-function MoneyballCohortPresence({
-  onChange,
-  pageContext,
-}: {
-  onChange: (hasCohort: boolean) => void;
-  pageContext: SearchPlayerPageContext;
-}) {
-  const { data } = useQuery(
-    searchPlayersQueryOptions(
-      0,
-      1,
-      "moneyball.average_rating",
-      "desc",
-      [],
-      "and",
-      [],
-      "moneyball",
-      "fullCsv",
-      pageContext,
-    ),
-  );
-  useEffect(() => {
-    if (data) {
-      onChange(data.total > 0);
-    }
-  }, [data, onChange]);
-  return null;
-}
-
 function SearchPageContent() {
   const snapshotQuery = useQuery(currentSnapshotQueryOptions);
   const savesQuery = useQuery(savesQueryOptions);
@@ -176,29 +143,15 @@ function SearchPageContent() {
     [filterUrls, view],
   );
   const [importOpen, setImportOpen] = useState(false);
-  const [hasMoneyballCohort, setHasMoneyballCohort] = useState(false);
   const [lastMoneyballImport, setLastMoneyballImport] =
     useState<CsvImportSummary | null>(null);
   const snapshotContext = snapshot ? `${snapshot.saveId}:${snapshot.id}` : null;
-  const pageContext =
-    !isResultContextChanging && activeSave
-      ? {
-          activeSave: {
-            id: activeSave.id,
-            contextToken: activeSave.contextToken,
-          },
-          currentSnapshot: snapshot
-            ? { id: snapshot.id, saveId: snapshot.saveId }
-            : null,
-        }
-      : null;
   const tabRefs = useRef<Record<SearchView, HTMLButtonElement | null>>({
     general: null,
     moneyball: null,
   });
   useEffect(() => {
     if (!snapshotContext) return;
-    setHasMoneyballCohort(false);
     setLastMoneyballImport(null);
   }, [snapshotContext]);
 
@@ -309,12 +262,6 @@ function SearchPageContent() {
         </div>
         {view === "moneyball" ? (
           <div className="flex flex-wrap items-center gap-2">
-            {pageContext ? (
-              <MoneyballCohortPresence
-                onChange={setHasMoneyballCohort}
-                pageContext={pageContext}
-              />
-            ) : null}
             <fieldset className="inline-flex rounded-full border border-outline bg-surface-container-high p-0.5">
               <legend className="sr-only">Comparison pool</legend>
               {(["filtered", "fullCsv"] as const).map((pool) => (
@@ -338,9 +285,7 @@ function SearchPageContent() {
               icon={FileUp}
               onClick={() => setImportOpen(true)}
             >
-              {!isResultContextChanging && hasMoneyballCohort
-                ? "Replace Moneyball CSV"
-                : "Upload Moneyball CSV"}
+              Upload Moneyball CSV
             </Button>
             {lastMoneyballImport ? (
               <p className="text-body-sm text-on-surface-variant">
@@ -404,11 +349,9 @@ function SearchPageContent() {
         onYouthImported={() => undefined}
         onMoneyballImported={(summary) => {
           setLastMoneyballImport(summary);
-          setHasMoneyballCohort(summary.storedPlayers > 0);
           void queryClient.invalidateQueries({ queryKey: searchKeys.all });
           void queryClient.invalidateQueries({ queryKey: moneyballKeys.all });
         }}
-        replace={!isResultContextChanging && hasMoneyballCohort}
       />
     </>
   );

@@ -33,11 +33,8 @@ import {
   setSearchPlayersPageIpcMockMode,
 } from "@/testing/search-ipc-mock";
 import {
-  observeSnapshotIpcCall,
   resolveCreateSaveIpcMock,
   resolveLoadDataIpcMock,
-  resolvePendingSetActiveSaveIpcMock,
-  setActiveSaveIpcMockMode,
 } from "@/testing/snapshot-ipc-mock";
 
 function renderSearchRoute(initialEntry = "/search") {
@@ -333,7 +330,7 @@ describe("search route", () => {
     });
   });
 
-  it("labels an existing Moneyball cohort as a replacement", async () => {
+  it("keeps the Moneyball upload label when a cohort exists", async () => {
     await resolveLoadDataIpcMock();
     setSearchPlayersOverride([
       {
@@ -344,8 +341,11 @@ describe("search route", () => {
     renderSearchRoute("/search?view=moneyball");
 
     expect(
-      await screen.findByRole("button", { name: "Replace Moneyball CSV" }),
+      await screen.findByRole("button", { name: "Upload Moneyball CSV" }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Replace Moneyball CSV" }),
+    ).toBeNull();
   });
 
   it("moves focus to the selected Search tab during keyboard navigation", async () => {
@@ -1101,44 +1101,6 @@ describe("search route", () => {
     await user.selectOptions(saveSelect, "1");
     expect(await screen.findByText("Save One Star")).toBeInTheDocument();
     expect(screen.queryByText("Save Two Star")).not.toBeInTheDocument();
-  });
-
-  it("does not recreate the Moneyball cohort observer during a deferred active-save transition", async () => {
-    await resolveLoadDataIpcMock();
-    setSearchPlayersOverride([playerNamed("Moneyball context", 160)]);
-    setSearchPlayersPageIpcMockMode("pendingMoneyballCohort");
-    const { queryClient } = renderSearchRoute("/search?view=moneyball");
-
-    expect(await screen.findByText("Moneyball context")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
-    ).toBeInTheDocument();
-    const callsBeforeTransition = getSearchPlayersCallCount();
-    const second = resolveCreateSaveIpcMock({ name: "Second save" });
-    await queryClient.invalidateQueries({ queryKey: snapshotKeys.saves() });
-    setActiveSaveIpcMockMode("busy");
-    let tauriWasCalled = false;
-    observeSnapshotIpcCall("setActiveSave", () => {
-      tauriWasCalled = true;
-    });
-
-    await userEvent
-      .setup()
-      .selectOptions(
-        await screen.findByRole("combobox", { name: "Active save" }),
-        String(second.id),
-      );
-    await waitFor(() => expect(tauriWasCalled).toBe(true));
-    expect(getSearchPlayersCallCount()).toBe(callsBeforeTransition);
-
-    resolvePendingSearchPlayersPageIpcMock();
-    await Promise.resolve();
-    expect(getSearchPlayersCallCount()).toBe(callsBeforeTransition);
-    expect(
-      screen.getByRole("button", { name: "Upload Moneyball CSV" }),
-    ).toBeInTheDocument();
-
-    resolvePendingSetActiveSaveIpcMock();
   });
 
   it("deduplicates the initial Search page-zero IPC request", async () => {

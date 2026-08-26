@@ -91,8 +91,9 @@ export function CsvImportOutcome({
 
     return (
       <p className="text-body-md text-on-surface-variant">
-        {prompt} Matching player rows replace earlier CSV enrichment; player IDs
-        outside the current snapshot are skipped.
+        {prompt} Matching player rows add or update CSV enrichment. Omitted
+        players keep their earlier enrichment; player IDs outside the current
+        snapshot are skipped.
       </p>
     );
   }

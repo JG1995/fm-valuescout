@@ -30,6 +30,7 @@ import {
   managedClubQueryOptions,
 } from "@/features/managed-club/api/managed-club-query-options";
 import { ManagedClubSelector } from "@/features/managed-club/components/managed-club-selector";
+import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import {
   type MyClubWorkspace,
   MyClubWorkspaceTabs,
@@ -763,6 +764,14 @@ function MyClubPageContent() {
                     onYouthImported={() => {
                       void queryClient.invalidateQueries({
                         queryKey: academyKeys.all,
+                      });
+                    }}
+                    onMoneyballImported={() => {
+                      void queryClient.invalidateQueries({
+                        queryKey: searchKeys.all,
+                      });
+                      void queryClient.invalidateQueries({
+                        queryKey: moneyballKeys.all,
                       });
                     }}
                   />

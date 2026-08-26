@@ -114,7 +114,8 @@ export function MoneyballProfilePanel({
           title="No Moneyball data for this player"
         >
           This player was not included in the current Moneyball import. Import a
-          Moneyball CSV from Player Search to analyse the current snapshot.
+          Moneyball CSV from Player Search or My Club Squad to analyse the
+          current snapshot.
         </EmptyState>
       </Panel>
     );
@@ -125,7 +126,8 @@ export function MoneyballProfilePanel({
       <Panel title="Moneyball">
         <EmptyState icon={DatabaseZap} title="Re-import Moneyball data">
           This import was saved before percentile scores were available.
-          Re-import the Moneyball CSV from Player Search to analyse it.
+          Re-import the Moneyball CSV from Player Search or My Club Squad to
+          analyse it.
         </EmptyState>
       </Panel>
     );
