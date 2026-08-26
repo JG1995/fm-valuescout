@@ -111,6 +111,7 @@ import {
   resolveGetStaffIpcMock,
   resolveListMyStaffIpcMock,
   resolveListStaffShortlistIpcMock,
+  resolveOptimizeStaffAssignmentsIpcMock,
   resolveSaveStaffAssignmentTargetsIpcMock,
   resolveSearchStaffIpcMock,
 } from "@/testing/staff-ipc-mock";
@@ -199,6 +200,10 @@ function registerIpcMocks() {
 
     if (cmd === "save_staff_assignment_targets") {
       return resolveSaveStaffAssignmentTargetsIpcMock(args);
+    }
+
+    if (cmd === "optimize_staff_assignments") {
+      return resolveOptimizeStaffAssignmentsIpcMock(args);
     }
 
     if (cmd === "get_staff") {

@@ -18,6 +18,8 @@ type DraftTarget = Pick<StaffAssignmentTarget, "scope" | "jobId"> & {
 type StaffAssignmentTargetModalProps = {
   context: StaffAssignmentContext;
   contextKey: string;
+  onSaved?: () => void;
+  onPendingChange?: (pending: boolean) => void;
 };
 
 function draftKey(target: Pick<DraftTarget, "scope" | "jobId">) {
@@ -49,6 +51,8 @@ function errorMessage(error: unknown) {
 export function StaffAssignmentTargetModal({
   context,
   contextKey,
+  onSaved,
+  onPendingChange,
 }: StaffAssignmentTargetModalProps) {
   const queryClient = useQueryClient();
   const targetsQuery = useQuery(
@@ -62,6 +66,9 @@ export function StaffAssignmentTargetModal({
   currentContextKey.current = contextKey;
 
   const saveTargets = useMutation({
+    onMutate: () => {
+      onPendingChange?.(true);
+    },
     mutationFn: (targets: StaffAssignmentTargetInput[]) =>
       saveStaffAssignmentTargets(context.saveContextToken, targets),
     onSuccess: async (result) => {
@@ -78,6 +85,10 @@ export function StaffAssignmentTargetModal({
       setSaved(true);
       setOpen(false);
       setDraft([]);
+      onSaved?.();
+    },
+    onSettled: () => {
+      onPendingChange?.(false);
     },
   });
 

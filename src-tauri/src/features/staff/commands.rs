@@ -13,7 +13,7 @@ use super::assignment_optimizer::{
     CoachDiscipline, StaffAssignmentClassification, StaffAssignmentEvidence, StaffAssignmentSlot,
 };
 use super::assignment_optimizer_query::{
-    self, StaffAssignmentOptimization, StaffAssignmentOptimizationState,
+    self, StaffAssignmentOptimization, StaffAssignmentOptimizationState, StaffAssignmentResultSlot,
 };
 use super::assignment_targets::{
     self, StaffAssignmentTarget, StaffAssignmentTargetInput, StaffAssignmentTargetTeam,
@@ -329,6 +329,7 @@ impl From<StaffAssignmentEvidence> for StaffAssignmentEvidenceDto {
 pub enum StaffAssignmentSlotDto {
     Recommendation {
         scope: String,
+        scope_display_name: String,
         job_id: String,
         job_label: String,
         slot_number: i64,
@@ -341,6 +342,7 @@ pub enum StaffAssignmentSlotDto {
     },
     Vacancy {
         scope: String,
+        scope_display_name: String,
         job_id: String,
         job_label: String,
         slot_number: i64,
@@ -348,11 +350,16 @@ pub enum StaffAssignmentSlotDto {
     },
 }
 
-impl From<StaffAssignmentSlot> for StaffAssignmentSlotDto {
-    fn from(slot: StaffAssignmentSlot) -> Self {
+impl From<StaffAssignmentResultSlot> for StaffAssignmentSlotDto {
+    fn from(result_slot: StaffAssignmentResultSlot) -> Self {
+        let StaffAssignmentResultSlot {
+            scope_display_name,
+            slot,
+        } = result_slot;
         match slot {
             StaffAssignmentSlot::Recommendation(recommendation) => Self::Recommendation {
                 scope: recommendation.scope,
+                scope_display_name,
                 job_id: recommendation.job_id,
                 job_label: recommendation.job_label,
                 slot_number: recommendation.slot_number,
@@ -365,6 +372,7 @@ impl From<StaffAssignmentSlot> for StaffAssignmentSlotDto {
             },
             StaffAssignmentSlot::Vacancy(vacancy) => Self::Vacancy {
                 scope: vacancy.scope,
+                scope_display_name,
                 job_id: vacancy.job_id,
                 job_label: vacancy.job_label,
                 slot_number: vacancy.slot_number,
@@ -1055,6 +1063,7 @@ mod tests {
             unsupported_preferred_job_count: 1,
             slots: vec![StaffAssignmentSlotDto::Vacancy {
                 scope: "senior".to_string(),
+                scope_display_name: "First Team".to_string(),
                 job_id: "assistant_manager".to_string(),
                 job_label: "Assistant Manager".to_string(),
                 slot_number: 1,
@@ -1081,6 +1090,7 @@ mod tests {
         assert_eq!(value["configuredSlotCount"], 1);
         assert_eq!(value["unsupportedPreferredJobCount"], 1);
         assert_eq!(value["slots"][0]["kind"], "vacancy");
+        assert_eq!(value["slots"][0]["scopeDisplayName"], "First Team");
         assert_eq!(value["slots"][0]["slotNumber"], 1);
         assert_eq!(value["slots"][0]["evidence"]["unavailableScoreCount"], 2);
     }

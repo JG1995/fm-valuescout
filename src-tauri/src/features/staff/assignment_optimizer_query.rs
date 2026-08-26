@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::features::managed_club::service::selected_club;
@@ -41,6 +43,12 @@ pub(super) enum StaffAssignmentOptimizationState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct StaffAssignmentResultSlot {
+    pub(super) scope_display_name: String,
+    pub(super) slot: StaffAssignmentSlot,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StaffAssignmentOptimization {
     pub(super) state: StaffAssignmentOptimizationState,
     pub(super) save_id: i64,
@@ -50,7 +58,7 @@ pub(super) struct StaffAssignmentOptimization {
     pub(super) joined_candidate_count: i64,
     pub(super) configured_slot_count: i64,
     pub(super) unsupported_preferred_job_count: i64,
-    pub(super) slots: Vec<StaffAssignmentSlot>,
+    pub(super) slots: Vec<StaffAssignmentResultSlot>,
     pub(super) evidence: Vec<StaffAssignmentEvidence>,
 }
 
@@ -135,6 +143,7 @@ pub(super) fn optimize_staff_assignments(
     }
 
     let targets = read_nonzero_targets_without_initializing_teams(conn, save_id)?;
+    let scope_display_names = load_scope_display_names(conn, save_id)?;
     let configured_slot_count = targets.iter().map(|target| target.slot_count).sum::<i64>();
     let configured_slot_count_usize = usize::try_from(configured_slot_count)
         .map_err(|_| "Staff assignment targets exceed the supported slot limit".to_string())?;
@@ -156,6 +165,27 @@ pub(super) fn optimize_staff_assignments(
     if slots.len() > MAX_STAFF_ASSIGNMENT_SLOTS {
         return Err("Staff assignment result exceeds the supported slot limit".to_string());
     }
+
+    let slots = slots
+        .into_iter()
+        .map(|slot| {
+            let scope = match &slot {
+                StaffAssignmentSlot::Recommendation(recommendation) => &recommendation.scope,
+                StaffAssignmentSlot::Vacancy(vacancy) => &vacancy.scope,
+            };
+            let scope_display_name = if scope == "club" {
+                "Club".to_string()
+            } else {
+                scope_display_names.get(scope).cloned().ok_or_else(|| {
+                    "Staff assignment targets reference an unavailable Planner team".to_string()
+                })?
+            };
+            Ok(StaffAssignmentResultSlot {
+                scope_display_name,
+                slot,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
 
     Ok(StaffAssignmentOptimization {
         state: StaffAssignmentOptimizationState::Ready,
@@ -190,6 +220,18 @@ fn result(
         slots: Vec::new(),
         evidence: Vec::new(),
     }
+}
+
+fn load_scope_display_names(
+    conn: &Connection,
+    save_id: i64,
+) -> Result<HashMap<String, String>, String> {
+    conn.prepare("SELECT team, display_name FROM planner_teams WHERE save_id = ?1")
+        .map_err(|error| error.to_string())?
+        .query_map([save_id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<HashMap<_, _>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 fn load_candidates(

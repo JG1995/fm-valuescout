@@ -50,6 +50,42 @@ describe("StaffShortlistImportModal", () => {
     });
   });
 
+  it("reports pending context work until a deferred import completes", async () => {
+    let resolveImport: (summary: {
+      totalStaff: number;
+      storedStaff: number;
+      skippedStaff: number;
+    }) => void = () => {
+      throw new Error("Expected import resolver");
+    };
+    openFileDialog.mockResolvedValue("C:\\exports\\staff.csv");
+    invokeCommand.mockReturnValue(
+      new Promise((resolve) => {
+        resolveImport = resolve;
+      }),
+    );
+    const onPendingChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <StaffShortlistImportModal
+        activeSaveId={1}
+        snapshotId={1}
+        open
+        replacesExisting={false}
+        onClose={vi.fn()}
+        onImported={vi.fn().mockResolvedValue(undefined)}
+        onPendingChange={onPendingChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Choose CSV" }));
+    await waitFor(() => expect(onPendingChange).toHaveBeenCalledWith(true));
+    resolveImport({ totalStaff: 1, storedStaff: 1, skippedStaff: 0 });
+    await waitFor(() =>
+      expect(onPendingChange).toHaveBeenLastCalledWith(false),
+    );
+  });
+
   it("abandons a picked file when the active snapshot changes", async () => {
     let resolvePath: (path: string) => void = (_path) => {
       throw new Error("Expected file picker resolver");

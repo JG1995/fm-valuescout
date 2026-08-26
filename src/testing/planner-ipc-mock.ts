@@ -301,6 +301,11 @@ let teamSaveCalls: Array<{
   teams: Array<{ team: PlannerTeam; displayName: string }>;
   confirmPopulatedRemoval: boolean;
 }> = [];
+let pendingPlannerTeamSave: {
+  teams: Array<{ team: PlannerTeam; displayName: string }>;
+  confirmPopulatedRemoval: boolean;
+  resolve: (depth: PlannerDepth) => void;
+} | null = null;
 
 function cloneTactic(value: PlannerTactic): PlannerTactic {
   return {
@@ -411,6 +416,7 @@ export function resetPlannerIpcMock() {
   optimizeBases = [];
   teamSaveError = null;
   teamSavePending = false;
+  pendingPlannerTeamSave = null;
   teamRemovalImpactOverride = null;
   teamRemovalImpactPending = false;
   pendingTeamRemovalImpact = null;
@@ -979,9 +985,33 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
     throw teamSaveError;
   }
   if (teamSavePending) {
-    return new Promise<PlannerDepth>(() => {});
+    return new Promise<PlannerDepth>((resolve) => {
+      pendingPlannerTeamSave = {
+        teams: inputs,
+        confirmPopulatedRemoval: args.confirmPopulatedRemoval as boolean,
+        resolve,
+      };
+    });
   }
 
+  return applyPlannerTeamSave(inputs, args.confirmPopulatedRemoval);
+}
+
+export function resolvePendingPlannerTeamSaveIpcMock() {
+  const pending = pendingPlannerTeamSave;
+  if (!pending) {
+    return;
+  }
+  pendingPlannerTeamSave = null;
+  pending.resolve(
+    applyPlannerTeamSave(pending.teams, pending.confirmPopulatedRemoval),
+  );
+}
+
+function applyPlannerTeamSave(
+  inputs: Array<{ team: PlannerTeam; displayName: string }>,
+  confirmPopulatedRemoval: boolean,
+) {
   const removedPopulatedTeams = depth.teams.filter(
     (team) =>
       !inputs.some((input) => input.team === team.team) &&
@@ -989,7 +1019,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
         (plannerString) => plannerString.assignments.length > 0,
       ),
   );
-  if (removedPopulatedTeams.length > 0 && !args.confirmPopulatedRemoval) {
+  if (removedPopulatedTeams.length > 0 && !confirmPopulatedRemoval) {
     throw `Removing populated planner teams requires confirmation: ${removedPopulatedTeams
       .map((team) => team.displayName)
       .join(", ")}`;

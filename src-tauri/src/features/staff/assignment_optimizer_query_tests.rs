@@ -163,7 +163,7 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
     configure_managed_club(&conn);
     conn.execute_batch(
         "INSERT INTO planner_teams (save_id, team, display_name) VALUES
-             (1, 'senior', 'Senior'),
+             (1, 'senior', 'First Team'),
              (1, 'reserves', 'Reserves');
          INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
              (1, 'senior', 'assistant_manager', 1),
@@ -216,14 +216,14 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
     assert_eq!(result.configured_slot_count, 6);
     assert_eq!(result.unsupported_preferred_job_count, 1);
     assert!(result.slots.iter().any(|slot| matches!(
-        slot,
+        &slot.slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 1
                 && recommendation.classification == StaffAssignmentClassification::CurrentStaff
                 && recommendation.score == 72
     )));
     assert!(result.slots.iter().any(|slot| matches!(
-        slot,
+        &slot.slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 4
                 && recommendation.classification == StaffAssignmentClassification::CurrentStaff
@@ -231,29 +231,37 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
                 && recommendation.coach_discipline == Some(CoachDiscipline::PossessionTactical)
     )));
     assert!(result.slots.iter().any(|slot| matches!(
-        slot,
+        &slot.slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 3
                 && recommendation.classification == StaffAssignmentClassification::Recruitment
                 && recommendation.score == 83
     )));
     assert!(result.slots.iter().any(|slot| matches!(
-        slot,
+        &slot.slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 8 && recommendation.job_id == "manager" && recommendation.score == 81
     )));
     assert!(result.slots.iter().any(|slot| matches!(
-        slot,
+        &slot.slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 9 && recommendation.job_id == "head_physio" && recommendation.score == 82
     )));
     assert!(result.slots.iter().any(|slot| matches!(
-        slot,
+        &slot.slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 10
                 && recommendation.job_id == "head_sports_science"
                 && recommendation.score == 84
     )));
+    assert!(result.slots.iter().any(|slot|
+        slot.scope_display_name == "First Team"
+            && matches!(&slot.slot, StaffAssignmentSlot::Recommendation(recommendation) if recommendation.scope == "senior")
+    ));
+    assert!(result.slots.iter().any(|slot|
+        slot.scope_display_name == "Club"
+            && matches!(&slot.slot, StaffAssignmentSlot::Recommendation(recommendation) if recommendation.scope == "club")
+    ));
     let coach_evidence = result
         .evidence
         .iter()

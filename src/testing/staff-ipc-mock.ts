@@ -2,7 +2,10 @@ import type {
   MyStaffBoostProgress,
   MyStaffBoostResult,
 } from "@/features/staff/types/my-staff-boost";
-import type { StaffAssignmentTargets } from "@/features/staff/types/staff-assignment";
+import type {
+  StaffAssignmentOptimization,
+  StaffAssignmentTargets,
+} from "@/features/staff/types/staff-assignment";
 import type { StaffBoostResult } from "@/features/staff/types/staff-boost";
 import type { StaffDetail } from "@/features/staff/types/staff-detail";
 import type { StaffFilterRuleIpc } from "@/features/staff/types/staff-filter-rule";
@@ -46,6 +49,14 @@ let pendingStaffAssignmentTargets: {
   promise: Promise<StaffAssignmentTargets>;
   resolve: (result: StaffAssignmentTargets) => void;
 } | null = null;
+let staffAssignmentOptimization: StaffAssignmentOptimization;
+let staffAssignmentOptimizerMode: StaffAssignmentOptimizerIpcMockMode =
+  "success";
+let lastStaffAssignmentOptimizerArgs: unknown;
+let pendingStaffAssignmentOptimization: {
+  promise: Promise<StaffAssignmentOptimization>;
+  resolve: (result: StaffAssignmentOptimization) => void;
+} | null = null;
 
 export type MyStaffBoostIpcMockMode = "pending" | "recoveryRequired" | "error";
 
@@ -70,6 +81,10 @@ export type StaffBoostIpcMockMode =
 
 export type StaffListIpcMockMode = "success" | "error";
 export type StaffAssignmentTargetsIpcMockMode = "success" | "error" | "pending";
+export type StaffAssignmentOptimizerIpcMockMode =
+  | "success"
+  | "error"
+  | "pending";
 
 const ASSIGNMENT_TEAM_JOBS = [
   ["manager", "Manager"],
@@ -145,6 +160,81 @@ export function fixtureStaffAssignmentTargets(
 }
 
 staffAssignmentTargets = fixtureStaffAssignmentTargets();
+
+export function fixtureStaffAssignmentOptimization(
+  overrides: Partial<StaffAssignmentOptimization> = {},
+): StaffAssignmentOptimization {
+  return {
+    state: "ready",
+    saveId: 1,
+    saveContextToken: "save-token-1",
+    snapshotId: 1,
+    snapshotContextToken: "snapshot-token-1",
+    joinedCandidateCount: 2,
+    configuredSlotCount: 2,
+    unsupportedPreferredJobCount: 1,
+    slots: [
+      {
+        kind: "recommendation",
+        scope: "senior",
+        scopeDisplayName: "Senior",
+        jobId: "assistant_manager",
+        jobLabel: "Assistant Manager",
+        slotNumber: 1,
+        uid: 101,
+        name: "Alex Coach",
+        preferredJob: "Assistant Manager",
+        classification: "current_staff",
+        score: 82,
+        coachDiscipline: null,
+      },
+      {
+        kind: "vacancy",
+        scope: "senior",
+        scopeDisplayName: "Senior",
+        jobId: "coaches",
+        jobLabel: "Coaches",
+        slotNumber: 1,
+        evidence: {
+          jobId: "coaches",
+          joinedCandidateCount: 1,
+          eligibleScoreCount: 0,
+          unavailableScoreCount: 1,
+        },
+      },
+    ],
+    evidence: [],
+    ...overrides,
+  };
+}
+
+staffAssignmentOptimization = fixtureStaffAssignmentOptimization();
+
+export function setStaffAssignmentOptimizationIpcMock(
+  result: StaffAssignmentOptimization,
+) {
+  staffAssignmentOptimization = structuredClone(result);
+}
+
+export function getLastStaffAssignmentOptimizerIpcArgs() {
+  return lastStaffAssignmentOptimizerArgs;
+}
+
+export function setStaffAssignmentOptimizerIpcMockMode(
+  mode: StaffAssignmentOptimizerIpcMockMode,
+) {
+  staffAssignmentOptimizerMode = mode;
+  if (mode !== "pending") {
+    pendingStaffAssignmentOptimization = null;
+  }
+}
+
+export function resolvePendingStaffAssignmentOptimizationIpcMock() {
+  pendingStaffAssignmentOptimization?.resolve(
+    structuredClone(staffAssignmentOptimization),
+  );
+  pendingStaffAssignmentOptimization = null;
+}
 
 export function setStaffAssignmentTargetsIpcMock(
   targets: StaffAssignmentTargets,
@@ -240,6 +330,10 @@ export function resetStaffIpcMock() {
   staffAssignmentTargetsMode = "success";
   lastStaffAssignmentTargetsArgs = undefined;
   pendingStaffAssignmentTargets = null;
+  staffAssignmentOptimization = fixtureStaffAssignmentOptimization();
+  staffAssignmentOptimizerMode = "success";
+  lastStaffAssignmentOptimizerArgs = undefined;
+  pendingStaffAssignmentOptimization = null;
 }
 
 export function fixtureStaffDetail(
@@ -502,6 +596,38 @@ export function resolveSaveStaffAssignmentTargetsIpcMock(
     return pendingStaffAssignmentTargets.promise;
   }
   return Promise.resolve(structuredClone(staffAssignmentTargets));
+}
+
+export function resolveOptimizeStaffAssignmentsIpcMock(
+  args: unknown,
+): Promise<StaffAssignmentOptimization> {
+  lastStaffAssignmentOptimizerArgs = args;
+  if (
+    typeof args !== "object" ||
+    args === null ||
+    typeof (args as Record<string, unknown>).expectedSaveContextToken !==
+      "string" ||
+    typeof (args as Record<string, unknown>).expectedSnapshotContextToken !==
+      "string"
+  ) {
+    return Promise.reject(
+      new Error("Invalid staff assignment optimization request"),
+    );
+  }
+  if (staffAssignmentOptimizerMode === "error") {
+    return Promise.reject(new Error("Could not optimize staff assignments"));
+  }
+  if (staffAssignmentOptimizerMode === "pending") {
+    if (!pendingStaffAssignmentOptimization) {
+      let resolve!: (result: StaffAssignmentOptimization) => void;
+      const promise = new Promise<StaffAssignmentOptimization>((next) => {
+        resolve = next;
+      });
+      pendingStaffAssignmentOptimization = { promise, resolve };
+    }
+    return pendingStaffAssignmentOptimization.promise;
+  }
+  return Promise.resolve(structuredClone(staffAssignmentOptimization));
 }
 
 export function resolveSearchStaffIpcMock(args: unknown): StaffPage {

@@ -68,6 +68,7 @@ import {
   observeManagedClubSaveCall,
   resolvePendingManagedClubSave,
   resolvePendingPlannerTeamRemovalImpact,
+  resolvePendingPlannerTeamSaveIpcMock,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
@@ -117,6 +118,7 @@ import {
 import {
   fixtureStaff,
   fixtureStaffAssignmentTargets,
+  getLastStaffAssignmentOptimizerIpcArgs,
   getLastStaffAssignmentTargetsIpcArgs,
   setStaffAssignmentTargetsIpcMock,
   setStaffOverride,
@@ -320,6 +322,93 @@ describe("My Club route", () => {
     expect(
       await screen.findByRole("button", { name: "Configure slots" }),
     ).toBeInTheDocument();
+  });
+
+  it("optimizes without shortlist presentation filters", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    renderMyClubRoute({
+      initialEntry:
+        "/my-club?view=staff-shortlist&preferredJob=Coach&unemployedOnly=true",
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize assignments" }),
+    );
+
+    await waitFor(() =>
+      expect(getLastStaffAssignmentOptimizerIpcArgs()).toEqual({
+        expectedSaveContextToken: "save-token-1",
+        expectedSnapshotContextToken: "snapshot-token-1",
+      }),
+    );
+  });
+
+  it("suppresses recommendations during an actual pending Planner team save", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerTeamRemovalImpacts([]);
+    setPlannerTeamSavePending(true);
+    const { queryClient } = renderMyClubRoute({
+      initialEntry: "/my-club?view=staff-shortlist",
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Optimize assignments" }),
+    );
+    expect(
+      await screen.findByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).toBeInTheDocument();
+
+    await openMyClubWorkspace(user, "planner");
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    const seniorDisplayName = within(dialog).getByRole("textbox", {
+      name: "Senior display name",
+    });
+    await user.clear(seniorDisplayName);
+    await user.type(seniorDisplayName, "First Team");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+    await waitFor(() =>
+      expect(
+        queryClient.isMutating({ mutationKey: playerResultContextMutationKey }),
+      ).toBeGreaterThan(0),
+    );
+
+    await openMyClubWorkspace(user, "staff-shortlist");
+    expect(
+      screen.queryByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    ).toBeDisabled();
+
+    resolvePendingPlannerTeamSaveIpcMock();
+    await openMyClubWorkspace(user, "planner");
+    expect(
+      await screen.findByRole("tab", { name: "First Team" }),
+    ).toBeInTheDocument();
+    await openMyClubWorkspace(user, "staff-shortlist");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Optimize assignments" }),
+      ).not.toBeDisabled(),
+    );
+    expect(
+      screen.queryByRole("table", {
+        name: "Staff assignment recommendations and vacancies",
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("uses the route context for complete slot saves and token replacement", async () => {
