@@ -19,6 +19,7 @@ use super::service::{self, SaveContext};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotSummary {
     pub id: i64,
+    pub context_token: String,
     pub save_id: i64,
     pub schema_version: i64,
     pub generated_at_utc: String,
@@ -502,6 +503,7 @@ fn get_snapshot_by_id(tx: &Transaction<'_>, snapshot_id: i64) -> Result<Snapshot
     tx.query_row(
         "SELECT
             id,
+            context_token,
             save_id,
             schema_version,
             generated_at_utc,
@@ -521,19 +523,20 @@ fn get_snapshot_by_id(tx: &Transaction<'_>, snapshot_id: i64) -> Result<Snapshot
         |row| {
             Ok(SnapshotSummary {
                 id: row.get(0)?,
-                save_id: row.get(1)?,
-                schema_version: row.get(2)?,
-                generated_at_utc: row.get(3)?,
-                game_version: row.get(4)?,
-                supported_game_version: row.get(5)?,
-                bridge_version: row.get(6)?,
-                protocol_version: row.get(7)?,
-                game_date: row.get(8)?,
-                game_date_source: row.get(9)?,
-                scan_truncated: row.get::<_, i32>(10)? == 1,
-                max_accepted: row.get(11)?,
-                player_count: row.get(12)?,
-                loaded_at_utc: row.get(13)?,
+                context_token: row.get(1)?,
+                save_id: row.get(2)?,
+                schema_version: row.get(3)?,
+                generated_at_utc: row.get(4)?,
+                game_version: row.get(5)?,
+                supported_game_version: row.get(6)?,
+                bridge_version: row.get(7)?,
+                protocol_version: row.get(8)?,
+                game_date: row.get(9)?,
+                game_date_source: row.get(10)?,
+                scan_truncated: row.get::<_, i32>(11)? == 1,
+                max_accepted: row.get(12)?,
+                player_count: row.get(13)?,
+                loaded_at_utc: row.get(14)?,
             })
         },
     )

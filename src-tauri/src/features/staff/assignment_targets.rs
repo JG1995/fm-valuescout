@@ -112,6 +112,18 @@ fn read_targets(conn: &Connection, save_id: i64) -> Result<StaffAssignmentTarget
     })
 }
 
+pub(crate) fn read_nonzero_targets_without_initializing_teams(
+    conn: &Connection,
+    save_id: i64,
+) -> Result<Vec<StaffAssignmentTarget>, String> {
+    let teams = read_enabled_teams(conn, save_id)?;
+    let allowed = allowed_pairs_for_teams(&teams);
+    Ok(expand_targets(conn, save_id, &allowed)?
+        .into_iter()
+        .filter(|target| target.slot_count > 0)
+        .collect())
+}
+
 pub(crate) fn nonzero_targets_for_scope(
     conn: &Connection,
     save_id: i64,
@@ -186,6 +198,17 @@ fn enabled_teams(
     save_id: i64,
 ) -> Result<Vec<StaffAssignmentTargetTeam>, String> {
     ensure_team_settings(conn, save_id)?;
+    let teams = read_enabled_teams(conn, save_id)?;
+    if teams.is_empty() {
+        return Err("Planner team settings are unavailable for this save".to_string());
+    }
+    Ok(teams)
+}
+
+fn read_enabled_teams(
+    conn: &Connection,
+    save_id: i64,
+) -> Result<Vec<StaffAssignmentTargetTeam>, String> {
     let teams = conn
         .prepare(
             "SELECT team, display_name FROM planner_teams WHERE save_id = ?1
@@ -201,10 +224,9 @@ fn enabled_teams(
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
-    if teams.is_empty()
-        || teams
-            .iter()
-            .any(|team| !TEAM_SCOPES.contains(&team.team.as_str()))
+    if teams
+        .iter()
+        .any(|team| !TEAM_SCOPES.contains(&team.team.as_str()))
     {
         return Err("Planner team settings are unavailable for this save".to_string());
     }
