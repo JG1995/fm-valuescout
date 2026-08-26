@@ -47,7 +47,6 @@ pub(crate) fn rebuild_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result
 }
 
 /// Replaces one player's potential-derived values after a source-player change.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn replace_player(
     tx: &Transaction<'_>,
     snapshot_id: i64,
@@ -300,7 +299,6 @@ fn load_players(
         .map_err(|error| error.to_string())
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 fn load_player(
     tx: &Transaction<'_>,
     snapshot_id: i64,

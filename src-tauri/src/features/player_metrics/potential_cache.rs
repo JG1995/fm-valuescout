@@ -110,19 +110,6 @@ pub fn materialize_player_roles(
     Ok(())
 }
 
-/// Removes a player's derived potential scores alongside the source-data update.
-pub fn invalidate_player_cache(
-    tx: &Transaction<'_>,
-    snapshot_id: i64,
-    player_uid: i64,
-) -> Result<(), rusqlite::Error> {
-    tx.execute(
-        "DELETE FROM player_potential_role_scores WHERE snapshot_id = ?1 AND uid = ?2",
-        params![snapshot_id, player_uid],
-    )?;
-    Ok(())
-}
-
 fn requested_roles(role_ids: &[String]) -> Result<Vec<&'static RoleDefinition>, String> {
     let mut roles = Vec::new();
     for role_id in role_ids {
