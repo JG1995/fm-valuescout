@@ -63,6 +63,9 @@ describe("SquadCsvImportModal", () => {
     expect(
       screen.getByRole("dialog", { name: "Upload Moneyball CSV" }),
     ).toHaveTextContent("Drop one CSV file here, or browse your files.");
+    expect(
+      screen.getByText(/Matching player rows add or update CSV enrichment/i),
+    ).toHaveTextContent("Omitted players keep their earlier enrichment");
     await user.click(screen.getByRole("button", { name: "Browse files" }));
 
     expect(open).toHaveBeenCalledWith({

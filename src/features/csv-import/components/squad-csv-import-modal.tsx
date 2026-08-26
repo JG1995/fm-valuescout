@@ -18,7 +18,6 @@ type SquadCsvImportModalProps = {
   onClose: () => void;
   onYouthImported: () => void;
   onMoneyballImported?: (summary: CsvImportSummary) => void;
-  replace?: boolean;
 };
 
 function formatName(format: CsvImportFormat) {
@@ -86,7 +85,6 @@ export function SquadCsvImportModal({
   onClose,
   onYouthImported,
   onMoneyballImported,
-  replace = false,
 }: SquadCsvImportModalProps) {
   const {
     captureSelection,
@@ -144,7 +142,7 @@ export function SquadCsvImportModal({
   return (
     <Modal
       open={open}
-      title={`${replace ? "Replace" : "Upload"} ${label} CSV`}
+      title={`Upload ${label} CSV`}
       onClose={close}
       footer={
         <>

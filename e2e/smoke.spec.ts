@@ -1048,7 +1048,7 @@ test.describe("application smoke", () => {
     await expect(menu).toHaveCount(0);
   });
 
-  test("Moneyball Search owns its CSV upload while Squad keeps Youth Academy", async ({
+  test("Moneyball Search and Squad expose Moneyball uploads while Squad keeps Youth Academy", async ({
     page,
   }) => {
     await stubTauriIpc(page, {
@@ -1080,6 +1080,20 @@ test.describe("application smoke", () => {
     await moneyballDialog.getByRole("button", { name: "Close" }).click();
 
     await page.goto("/my-club");
+    await main.getByRole("button", { name: "Upload Squad CSV" }).click();
+    const squadDialog = page.getByRole("dialog", {
+      name: "Upload Moneyball CSV",
+    });
+    await expect(squadDialog).toContainText(
+      "Only a Moneyball export can be imported",
+    );
+    await squadDialog.getByRole("button", { name: "Browse files" }).click();
+    await expect(squadDialog.getByText(/Moneyball imported/i)).toBeVisible();
+    expect(await squadDialog.textContent()).not.toContain(
+      "/tmp/smoke-import.csv",
+    );
+    await squadDialog.getByRole("button", { name: "Close" }).click();
+
     await main
       .getByRole("button", { name: "Upload Youth Academy CSV" })
       .click();

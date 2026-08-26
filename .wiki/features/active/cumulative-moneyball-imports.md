@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -127,7 +127,7 @@ Import players A and B into the current snapshot, then import changed A and new 
 
 ### PR 1 — Make Moneyball imports cumulative
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -321,7 +321,7 @@ Import players A and B into the current snapshot, then import changed A and new 
 
 #### Commit 3 — Upload cumulative Moneyball data from Squad
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(squad): upload cumulative Moneyball CSV`
 
@@ -415,19 +415,21 @@ Import players A and B into the current snapshot, then import changed A and new 
 
 **PR:** PR 1 — Make Moneyball imports cumulative
 
-**Commit:** Commit 3 — Upload cumulative Moneyball data from Squad
+**Active work:** None — feature validation
+
+**Commit:** None — feature validation
 
 ### RED or removal proof
 
-Require **Upload Squad CSV** beside Youth, stable Search upload wording, cumulative outcome copy, shared Moneyball format binding, and Search/Player Profile invalidation after Squad success. Current code must fail because the Squad action is absent and replacement-only copy remains.
+Not applicable — all three planned packets completed deterministic validation and independent checkpoint review. Feature-level validation and review remain pending.
 
 ### Expected outcome
 
-Search and My Club Squad expose the same context-bound Moneyball import path with cumulative copy, separate accessible modal state, path-redacted feedback, and correct query invalidation.
+Run the complete feature validation portfolio, review the exact recorded implementation set, reconcile current-state documentation, and prepare the final PR for publication.
 
 ### Explicit exclusions
 
-- Backend persistence, schema changes, Squad Moneyball columns, managed-club filtering, new modal infrastructure, source sets, and unrelated UI refactors.
+- Release preparation and unrelated implementation or documentation.
 - The pre-existing developer-owned modification in `.wiki/features/completed/player-table-sort-performance.md`.
 
 ## Discoveries and replanning
@@ -442,7 +444,8 @@ Search and My Club Squad expose the same context-bound Moneyball import path wit
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Make Moneyball imports cumulative | Commit 1 — Record the approved feature plan | fd37d2fa2c159f10c4a6507dac861d97e7b76a1f | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
-| PR 1 — Make Moneyball imports cumulative | Commit 2 — Upsert cumulative Moneyball cohorts | Pending record | Replaced destructive cohort replacement with per-player upserts, write-free empty matches, and atomic complete-cohort percentile recomputation while preserving current-snapshot ownership and rollback. | `./scripts/dev check-rust`: 641 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
+| PR 1 — Make Moneyball imports cumulative | Commit 2 — Upsert cumulative Moneyball cohorts | 3d9d94362555097e0dd0663a2d41d50da41f9013 | Replaced destructive cohort replacement with per-player upserts, write-free empty matches, and atomic complete-cohort percentile recomputation while preserving current-snapshot ownership and rollback. | `./scripts/dev check-rust`: 641 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
+| PR 1 — Make Moneyball imports cumulative | Commit 3 — Upload cumulative Moneyball data from Squad | Pending record | Added the shared Moneyball upload action to My Club Squad, route-owned Search/Profile invalidation, stable cumulative copy, and removed obsolete whole-cohort replacement UI state. | Focused frontend tests: 187 passed; `./scripts/dev check`: passed with 641 Rust tests passed and 2 ignored; `./scripts/dev smoke`: 49 passed; `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
 
 ## Final validation
 

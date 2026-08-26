@@ -19,6 +19,7 @@ import { playerResultContextMutationKey } from "@/components/player-table/player
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
+import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
 import type { MyClubWorkspace } from "@/features/my-club/components/my-club-workspace-tabs";
 import { plannerKeys } from "@/features/planner/api/planner-keys";
 import type {
@@ -51,6 +52,10 @@ import {
   setClubDnaRemoveIpcMockMode,
   setClubDnaSetIpcMockMode,
 } from "@/testing/club-dna-ipc-mock";
+import {
+  getLastCsvImportIpcArgs,
+  setCsvImportIpcMockResult,
+} from "@/testing/csv-import-ipc-mock";
 import {
   getPlannerAddStringIpcMockCalls,
   getPlannerClearAllIpcMockCalls,
@@ -111,6 +116,10 @@ import {
   setStaffOverride,
   setStaffShortlistOverride,
 } from "@/testing/staff-ipc-mock";
+
+const { openCsvDialog } = vi.hoisted(() => ({ openCsvDialog: vi.fn() }));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({ open: openCsvDialog }));
 
 function renderMyClubRoute({
   staleTime = 0,
@@ -1236,32 +1245,62 @@ describe("My Club route", () => {
     ).toHaveAttribute("aria-sort", "descending");
   });
 
-  it("opens the format-bound Youth Academy CSV import modal from Squad", async () => {
+  it("uploads a Moneyball CSV from Squad and refreshes its consumers", async () => {
     const user = userEvent.setup();
+    openCsvDialog.mockResolvedValue("C:\\Users\\Jonas\\private-squad.csv");
+    setCsvImportIpcMockResult({
+      format: "moneyball",
+      totalPlayers: 75,
+      storedPlayers: 74,
+      skippedPlayers: 1,
+    });
     await resolveLoadDataIpcMock();
     resolveSavePlannerClubFamilyIpcMock({
       primaryClub: "Metro FC",
       sources: [],
     });
     setSquadPlayersOverride([squadPlayerNamed("Alex Scout", 42)]);
-    renderMyClubRoute({ initialEntry: "/my-club" });
+    const { queryClient } = renderMyClubRoute({ initialEntry: "/my-club" });
 
     await screen.findByRole("table", { name: "Squad overview" });
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
     expect(
-      screen.queryByRole("button", { name: "Upload Moneyball CSV" }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "Upload Squad CSV" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Upload Youth Academy CSV" }),
     ).toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: "Upload Squad CSV" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Upload Moneyball CSV",
+    });
+    expect(dialog).toHaveTextContent("Only a Moneyball export can be imported");
     await user.click(
-      screen.getByRole("button", { name: "Upload Youth Academy CSV" }),
+      within(dialog).getByRole("button", { name: "Browse files" }),
     );
+
+    await waitFor(() => {
+      expect(getLastCsvImportIpcArgs()).toEqual({
+        path: "C:\\Users\\Jonas\\private-squad.csv",
+        expectedFormat: "moneyball",
+      });
+    });
     expect(
-      await screen.findByRole("dialog", {
-        name: "Upload Youth Academy CSV",
-      }),
-    ).toHaveTextContent("Only a Youth Academy export can be imported");
+      await within(dialog).findByText(/Moneyball imported/i),
+    ).toBeInTheDocument();
+    expect(dialog).not.toHaveTextContent("C:\\Users\\Jonas\\private-squad.csv");
+    await waitFor(() => {
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: searchKeys.all,
+      });
+      expect(invalidateQueries).toHaveBeenCalledWith({
+        queryKey: moneyballKeys.all,
+      });
+    });
+    expect(invalidateQueries).not.toHaveBeenCalledWith({
+      queryKey: squadKeys.all,
+    });
   });
 
   it("confirms a Squad CA boost, locks the action, and refreshes affected views", async () => {
