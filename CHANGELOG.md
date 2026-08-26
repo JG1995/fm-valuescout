@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-26
+
+### Added
+
+- Squad now provides the shared Moneyball CSV import, and repeated imports accumulate data without removing omitted players.
+- Staff Shortlist can define team-specific staffing targets and optimize assignments by job.
+
+### Changed
+
+- Player Search and Squad keep current rows visible during sorting and use indexed ordering for more responsive large-save tables.
+- Current-snapshot potential attributes and role scores are materialized once and reused across Search, Squad, Planner, and player profiles.
+
+### Fixed
+
+- Navigation no longer runs repeated snapshot-wide potential-score validation for players and roles unrelated to the requested view.
+
 ## [0.13.0] - 2026-08-24
 
 ### Added
