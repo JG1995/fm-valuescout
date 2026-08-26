@@ -3,7 +3,9 @@ use std::collections::HashMap;
 #[cfg(test)]
 use std::cell::Cell;
 
-use rusqlite::{params, params_from_iter, types::Value, OptionalExtension, Transaction};
+use rusqlite::{
+    params, params_from_iter, types::Value, Connection, OptionalExtension, Transaction,
+};
 
 use crate::features::scoring::{
     catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
@@ -157,9 +159,8 @@ pub(crate) fn backfill_current_snapshots(tx: &Transaction<'_>) -> Result<(), Str
 }
 
 /// Verifies that an already-resolved current snapshot has complete persisted potential state.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn assert_current_snapshot_complete(
-    tx: &Transaction<'_>,
+    conn: &Connection,
     snapshot_id: i64,
 ) -> Result<(), String> {
     let roles = all_roles();
@@ -257,7 +258,7 @@ pub(crate) fn assert_current_snapshot_complete(
     );
     values.push(Value::Integer(snapshot_id));
     values.push(Value::Integer(PROJECTION_MODEL_VERSION));
-    let incomplete: bool = tx
+    let incomplete: bool = conn
         .query_row(&sql, params_from_iter(values.iter()), |row| row.get(0))
         .map_err(|error| error.to_string())?;
     if incomplete {

@@ -444,7 +444,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 #### Commit 5 — Read persisted profile potential values
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(player): read stored potential values`
 
@@ -507,7 +507,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 #### Commit 6 — Read persisted Planner assignment potential
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(planner): read stored assignment potential`
 
@@ -901,19 +901,19 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **PR:** PR 1 — Precompute current-snapshot potential scoring
 
-**Commit:** Commit 5 — Read persisted profile potential values
+**Commit:** Commit 6 — Read persisted Planner assignment potential
 
 ### RED or removal proof
 
-Add a profile test whose valid stored projected map and potential role rows deliberately differ from what current source JSON would recalculate. It must fail while `get_player` still calls `project_attributes` and `score_role`. Add missing/wrong-version corruption cases under write-denying triggers.
+Add assignment tests whose stored potential role rows diverge from source projection, plus corrupt-state tests proving direct depth and destructive team/assignment mutations fail before any Planner setup or write. The current code must fail these proofs because it recalculates assignment potential and detects corruption only after mutations through response loading.
 
 ### Expected outcome
 
-Known-player profile reads assert complete current potential state once, then return exact-version projected JSON and persisted nullable potential rows without projection, scoring, repair, or writes. Unknown UIDs still return `None`, and DTO order, mapping, concealment, nulls, and age-29 behavior remain unchanged.
+Planner depth reads combine exact-version stored IP/OOP potential rows after one shared preflight. Every depth-returning team/string/assignment mutation validates potential state before setup, transaction, or write and uses an internal already-preflighted loader for its response. Corruption leaves Planner and derived tables unchanged.
 
 ### Explicit exclusions
 
-Planner, Search, Squad, scoring formulas, frontend profile changes, lazy-module deletion, and `.wiki/features/completed/player-table-sort-performance.md`.
+Role reference, optimizer candidate conversion, slot candidates, Search, Squad, formulas, tactic behavior, and `.wiki/features/completed/player-table-sort-performance.md`.
 
 ## Discoveries and replanning
 
@@ -938,7 +938,8 @@ Planner, Search, Squad, scoring formulas, frontend profile changes, lazy-module 
 | PR 1 — Precompute current-snapshot potential scoring | Commit 1 — Record the approved feature plan | 52be1f96b1c06177d4b92fa52ef8f2f8e673c064 | Recorded the reviewed schema 2 ledger, TODO activation, superseded ADR-0019, accepted ADR-0026, and ADR index update. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 2 | Checkpoint review added a shared read-only derived-data invariant assertion and pre-mutation Planner guards before the replacement fingerprint was accepted. |
 | PR 1 — Precompute current-snapshot potential scoring | Commit 2 — Add eager current-potential persistence | 71c6f8bec15e4c495349c0cf6d948fd03524fa4f | Added migration v34, atomic current-only backfill, one-projection eager writer, exact projected-map and catalog-row invariant assertion, shared model-version ownership, and truthful migration errors. | `./scripts/dev check-rust`: 611 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 3 | The atomic migration/writer/assertion implementation exceeded the soft estimate; review corrections strengthened projected-map validation, writer postconditions, rollback context, one-call proof, and nullable SQL-row proof without changing packet scope. |
 | PR 1 — Precompute current-snapshot potential scoring | Commit 3 — Maintain potential data across snapshot selection | 1de1e8540fb8c12886c72932655275f7a0f94b50 | Added selector-owned winner materialization and loser clearing, deletion-promotion/final-deletion lifecycle, write-free save switching, sparse source normalization with pre-projection domain validation, and eager-baseline-compatible lazy/boost tests. | `./scripts/dev check-rust`: 619 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 1 | Replanned after supported sparse maps and eager test baselines disproved the original packet assumptions; compatibility fixes preserved deferred lazy and boost behavior. |
-| PR 1 — Precompute current-snapshot potential scoring | Commit 4 — Recompute boosted player potential atomically | Pending record | Replaced boost-time invalidation with post-update one-player projected-map and complete potential-role replacement inside the existing reconciliation transaction. | `./scripts/dev check-rust`: 621 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Updated one invalid Determination-zero fixture to nullable input under Commit 3's enforced source-domain contract; supported missing-value behavior remains covered. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 4 — Recompute boosted player potential atomically | 556a2071f4f55a8e50fa3d6fca2591261e83426a | Replaced boost-time invalidation with post-update one-player projected-map and complete potential-role replacement inside the existing reconciliation transaction. | `./scripts/dev check-rust`: 621 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Updated one invalid Determination-zero fixture to nullable input under Commit 3's enforced source-domain contract; supported missing-value behavior remains covered. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 5 — Read persisted profile potential values | Pending record | Converted known-player profile reads to shared-invariant-guarded projected JSON and exact-version persisted potential rows, removing production read-time projection and scoring. | `./scripts/dev check-rust`: 626 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Materialized one Staff test fixture that inserts a player directly so its profile read satisfies the new invariant; production Staff behavior is unchanged. |
 
 ## Final validation
 
