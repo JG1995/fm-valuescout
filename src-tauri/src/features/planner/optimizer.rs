@@ -1,11 +1,11 @@
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, params_from_iter, types::Value, Connection};
 
-use crate::features::scoring::{
-    catalog::all_roles, combine::combine_role_scores, projection::project_attributes,
-    score::score_role,
+use crate::features::{
+    player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
+    scoring::combine::combine_role_scores,
 };
 
 use super::depth::{
@@ -565,26 +565,64 @@ fn load_potential_optimizer_candidates(
     team: PlannerTeam,
     tactic: &PlannerTactic,
 ) -> Result<Vec<OptimizerCandidate>, String> {
-    let lane_roles = tactic
+    let role_ids = tactic
         .lanes
         .iter()
-        .map(|lane| {
-            let ip_role = all_roles()
-                .iter()
-                .find(|role| role.role_id == lane.ip_role_id)
-                .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.ip_role_id))?;
-            let oop_role = all_roles()
-                .iter()
-                .find(|role| role.role_id == lane.oop_role_id)
-                .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.oop_role_id))?;
-            Ok((ip_role, oop_role))
+        .flat_map(|lane| [&lane.ip_role_id, &lane.oop_role_id])
+        .collect::<HashSet<_>>();
+    let role_placeholders = (4..role_ids.len() + 4)
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let potential_score_sql = format!(
+        "SELECT scores.uid, scores.role_id, scores.score
+         FROM players player
+         CROSS JOIN player_potential_role_scores scores
+         WHERE player.snapshot_id = ?1
+           AND player.current_club = (
+               SELECT club_name FROM managed_club_settings WHERE save_id = ?2
+           )
+           AND scores.snapshot_id = player.snapshot_id
+           AND scores.uid = player.uid
+           AND scores.projection_model_version = ?3
+           AND scores.role_id IN ({role_placeholders})"
+    );
+    let mut potential_score_values = vec![
+        Value::Integer(snapshot_id),
+        Value::Integer(save_id),
+        Value::Integer(PROJECTION_MODEL_VERSION),
+    ];
+    potential_score_values.extend(
+        role_ids
+            .iter()
+            .map(|role_id| Value::Text((*role_id).to_string())),
+    );
+    let mut score_statement = tx
+        .prepare(&potential_score_sql)
+        .map_err(|error| error.to_string())?;
+    let role_scores = score_statement
+        .query_map(params_from_iter(potential_score_values.iter()), |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<u8>>(2)?,
+            ))
         })
-        .collect::<Result<Vec<_>, String>>()?;
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .fold(
+            HashMap::<i64, HashMap<String, Option<u8>>>::new(),
+            |mut scores, row| {
+                scores.entry(row.0).or_default().insert(row.1, row.2);
+                scores
+            },
+        );
 
     let mut player_statement = tx
         .prepare(
-            "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json,
-                    p.attributes_json, p.ca, p.pa
+            "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json
              FROM players p
              WHERE p.snapshot_id = ?1
                AND p.current_club = (
@@ -601,9 +639,6 @@ fn load_potential_optimizer_candidates(
                 row.get::<_, Option<i64>>(2)?,
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, i64>(6)?,
-                row.get::<_, i64>(7)?,
             ))
         })
         .map_err(|error| error.to_string())?
@@ -612,45 +647,26 @@ fn load_potential_optimizer_candidates(
 
     players
         .into_iter()
-        .filter(|(_, _, age, _, _, _, _, _)| is_age_eligible(team, *age))
+        .filter(|(_, _, age, _, _)| is_age_eligible(team, *age))
         .map(
-            |(
-                player_uid,
-                last_known_name,
-                age,
-                preferred_foot,
-                positions_json,
-                attributes_json,
-                ca,
-                pa,
-            )| {
+            |(player_uid, last_known_name, _, preferred_foot, positions_json)| {
                 let positions = serde_json::from_str::<
                     std::collections::BTreeMap<String, Option<i64>>,
                 >(&positions_json)
                 .map_err(|error| error.to_string())?;
-                let attributes =
-                    serde_json::from_str::<HashMap<String, Option<u8>>>(&attributes_json)
-                        .map_err(|error| error.to_string())?;
-                let projected_attributes = project_attributes(
-                    &attributes,
-                    ca,
-                    pa,
-                    age,
-                    positions
-                        .iter()
-                        .map(|(position, familiarity)| (position.as_str(), *familiarity)),
-                );
                 let lane_scores = tactic
                     .lanes
                     .iter()
-                    .zip(&lane_roles)
-                    .map(|(lane, (ip_role, oop_role))| {
+                    .map(|lane| {
+                        let player_scores = role_scores.get(&player_uid);
                         lane_fit_score(
-                            combine_role_scores(
-                                score_role(&projected_attributes, ip_role),
-                                score_role(&projected_attributes, oop_role),
-                                lane.ip_weight,
-                            ),
+                            player_scores.and_then(|scores| {
+                                combine_role_scores(
+                                    scores.get(lane.ip_role_id.as_str()).copied().flatten(),
+                                    scores.get(lane.oop_role_id.as_str()).copied().flatten(),
+                                    lane.ip_weight,
+                                )
+                            }),
                             &preferred_foot,
                             &positions,
                             lane,
