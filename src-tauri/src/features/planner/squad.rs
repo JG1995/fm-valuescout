@@ -4,7 +4,7 @@ use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExten
 
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
-    potential_cache::{materialize_player_roles, squad_role_rows_are_complete},
+    potential_scores::assert_current_snapshot_complete,
     resolver::{
         parse_requested_fields, read_dynamic_value, ClubDnaSqlBindings, DynamicValue, MetricField,
     },
@@ -189,6 +189,18 @@ pub fn list_squad_players(
         return Ok(empty_page());
     }
 
+    let limit = limit.clamp(1, MAX_SQUAD_PAGE_LIMIT);
+    let offset = i64::try_from(offset).map_err(|_| "squad offset out of range".to_string())?;
+    let limit = i64::try_from(limit).map_err(|_| "squad limit out of range".to_string())?;
+    let potential_role_sort = sort_by.potential_role_sort_identity();
+    let potential_requested = potential_role_sort.is_some()
+        || dynamic_fields
+            .iter()
+            .any(|field| field.potential_role_id().is_some());
+    if potential_requested {
+        assert_current_snapshot_complete(conn, snapshot_id)?;
+    }
+
     let club_dna_requested =
         sort_by.is_club_dna() || dynamic_fields.iter().any(MetricField::is_club_dna);
     let club_dna_definition_version = club_dna_requested
@@ -210,43 +222,10 @@ pub fn list_squad_players(
         query_bind_values.push(Value::Integer(SCORE_MODEL_VERSION));
     }
 
-    let limit = limit.clamp(1, MAX_SQUAD_PAGE_LIMIT);
-    let offset = i64::try_from(offset).map_err(|_| "squad offset out of range".to_string())?;
-    let limit = i64::try_from(limit).map_err(|_| "squad limit out of range".to_string())?;
     let membership_sql = "p.snapshot_id = ?1
         AND p.current_club = (
             SELECT club_name FROM managed_club_settings WHERE save_id = ?2
         )";
-
-    let potential_role_sort = sort_by.potential_role_sort_identity();
-    if let Some(identity) = potential_role_sort {
-        if !squad_role_rows_are_complete(
-            conn,
-            snapshot_id,
-            save_id,
-            identity.role_id,
-            identity.projection_model_version,
-        )? {
-            let player_uids = list_squad_player_uids(conn, save_id, snapshot_id)?;
-            materialize_player_roles(
-                conn,
-                snapshot_id,
-                &player_uids,
-                &[identity.role_id.to_string()],
-            )?;
-            if !squad_role_rows_are_complete(
-                conn,
-                snapshot_id,
-                save_id,
-                identity.role_id,
-                identity.projection_model_version,
-            )? {
-                return Err(
-                    "potential role materialization did not complete the squad cohort".to_string(),
-                );
-            }
-        }
-    }
 
     let count_sql = format!("SELECT COUNT(*) FROM players p WHERE {membership_sql}");
     let total = conn
@@ -306,22 +285,6 @@ pub fn list_squad_players(
             sort_dir.sql_keyword()
         )
     };
-    let mut potential_display_roles = potential_role_ids(&dynamic_fields);
-    if let Some(identity) = potential_role_sort {
-        potential_display_roles.retain(|role_id| role_id != identity.role_id);
-    }
-    if !potential_display_roles.is_empty() {
-        let page_uids = query_page_uids(
-            conn,
-            &from_sql,
-            membership_sql,
-            &query_bind_values,
-            &order_sql,
-            limit,
-            offset,
-        )?;
-        materialize_player_roles(conn, snapshot_id, &page_uids, &potential_display_roles)?;
-    }
     let select_sql = format!(
         "SELECT
              p.uid,
@@ -417,19 +380,6 @@ fn dynamic_select_sql(
         .collect()
 }
 
-fn potential_role_ids(fields: &[MetricField]) -> Vec<String> {
-    let mut role_ids = Vec::new();
-    for field in fields {
-        let Some(role_id) = field.potential_role_id() else {
-            continue;
-        };
-        if !role_ids.iter().any(|existing| existing == role_id) {
-            role_ids.push(role_id.to_string());
-        }
-    }
-    role_ids
-}
-
 fn current_club_dna_definition_version(
     conn: &Connection,
     snapshot_id: i64,
@@ -443,29 +393,4 @@ fn current_club_dna_definition_version(
     )
     .optional()
     .map_err(|error| error.to_string())
-}
-
-fn query_page_uids(
-    conn: &Connection,
-    from_sql: &str,
-    membership_sql: &str,
-    bind_values: &[Value],
-    order_sql: &str,
-    limit: i64,
-    offset: i64,
-) -> Result<Vec<i64>, String> {
-    let limit_index = bind_values.len() + 1;
-    let offset_index = bind_values.len() + 2;
-    let sql = format!(
-        "SELECT p.uid {from_sql} WHERE {membership_sql} {order_sql} LIMIT ?{limit_index} OFFSET ?{offset_index}"
-    );
-    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
-    let mut values = bind_values.to_vec();
-    values.push(Value::Integer(limit));
-    values.push(Value::Integer(offset));
-    let rows = statement
-        .query_map(params_from_iter(values.iter()), |row| row.get(0))
-        .map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())
 }

@@ -772,7 +772,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 #### Commit 10 — Make Squad potential queries read-only
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(squad): remove potential materialization`
 
@@ -835,7 +835,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 #### Commit 11 — Delete the lazy potential cache paths
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(scoring): delete lazy potential cache`
 
@@ -901,19 +901,19 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **PR:** PR 1 — Precompute current-snapshot potential scoring
 
-**Commit:** Commit 10 — Make Squad potential queries read-only
+**Commit:** Commit 11 — Delete the lazy potential cache paths
 
 ### RED or removal proof
 
-Install write-denying triggers and corrupt one eager role row so Squad potential display or sort reaches the old completeness/materialization path and attempts repair. The test must fail before lazy calls are removed.
+Use repository search to prove every product caller has moved to eager persistence and shared invariant preflight. The compiler and retained no-write consumer tests provide contract-removal proof for deleting the lazy module and compatibility helpers.
 
 ### Expected outcome
 
-Squad conditionally asserts complete current potential state when requested fields or sort need it, then directly counts, sorts, and pages exact-version persisted rows for the managed-club cohort. Missing/stale state fails without writes; managed-club, null, pagination, ties, and non-potential behavior remain unchanged.
+The lazy cache module, export, batching, stale replacement, completeness checks, and obsolete tests are deleted. Only migration/backfill, snapshot lifecycle, and boost reconciliation write potential-derived state; all product consumers read exact-version persisted rows after shared validation.
 
 ### Explicit exclusions
 
-Search, shared lazy-module deletion, managed-club ownership, frontend behavior, sort redesign, and `.wiki/features/completed/player-table-sort-performance.md`.
+Formula/catalog changes, query redesign, new migrations beyond compilation fixes, frontend work, historical potential data, new abstractions, and `.wiki/features/completed/player-table-sort-performance.md`.
 
 ## Discoveries and replanning
 
@@ -943,7 +943,8 @@ Search, shared lazy-module deletion, managed-club ownership, frontend behavior, 
 | PR 1 — Precompute current-snapshot potential scoring | Commit 6 — Read persisted Planner assignment potential | 09a591be7d06eab5c8851186537c97b933c62915 | Converted assignment potential to exact-version stored IP/OOP rows and added pre-write potential preflight plus already-validated response loading for every depth-returning Planner mutation. | `./scripts/dev check-rust`: 634 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 1 | None. |
 | PR 1 — Precompute current-snapshot potential scoring | Commit 7 — Read persisted Planner role reference scores | 51a89ac4e7e1d4e3e378b2e61c05d0b608f6aa8d | Converted Planner role reference to shared-invariant-guarded exact-version persisted potential tactic-role rows while preserving fit, lane, tie, and ordering behavior. | `./scripts/dev check-rust`: 636 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Extended the shared Planner no-write trigger helper to projected player fields for corruption proofs. |
 | PR 1 — Precompute current-snapshot potential scoring | Commit 8 — Read persisted potential optimizer scores | 68c89049fadf31258c1898a20e2c5479536d5703 | Converted potential optimizer candidates to exact-version persisted tactic-role rows while retaining all allocation, fit, age, tie, reservation, provenance, and rollback behavior. | `./scripts/dev check-rust`: 638 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
-| PR 1 — Precompute current-snapshot potential scoring | Commit 9 — Make Search potential queries read-only | Pending record | Removed Search snapshot/page materialization, added conditional shared-invariant preflight, and retained exact-version persisted display/filter/sort query semantics. | `./scripts/dev check-rust`: 639 passed, 2 ignored; `./scripts/dev check` and `./scripts/dev secrets`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Removed Search-owned lazy helpers from the shared module while retaining Squad's remaining materializer and completeness paths. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 9 — Make Search potential queries read-only | a577551f9a1f7c79b3ba83d3c2641bddc2494d34 | Removed Search snapshot/page materialization, added conditional shared-invariant preflight, and retained exact-version persisted display/filter/sort query semantics. | `./scripts/dev check-rust`: 639 passed, 2 ignored; `./scripts/dev check` and `./scripts/dev secrets`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Removed Search-owned lazy helpers from the shared module while retaining Squad's remaining materializer and completeness paths. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 10 — Make Squad potential queries read-only | Pending record | Removed Squad completeness/materialization work, added conditional shared-invariant preflight, and retained bounded exact-version managed-club display/sort semantics. | `./scripts/dev check-rust`: 640 passed, 2 ignored; `./scripts/dev check` and `./scripts/dev secrets`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Retained `list_squad_player_uids` for the supported squad-boost cohort caller; lazy module deletion remains Commit 11. |
 
 ## Final validation
 

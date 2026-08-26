@@ -1,4 +1,4 @@
-use rusqlite::params;
+use rusqlite::{params, Connection};
 use serde_json::json;
 
 use super::squad::{list_squad_players, SquadSortDir, SquadSortField, DEFAULT_SQUAD_PAGE_LIMIT};
@@ -6,9 +6,61 @@ use super::test_support::{
     add_picker_candidates, current_snapshot_id, open_with_snapshot, set_role_score,
 };
 use crate::features::player_metrics::{
-    club_dna::SCORE_MODEL_VERSION, potential_cache::PROJECTION_MODEL_VERSION,
+    club_dna::SCORE_MODEL_VERSION, potential_scores::PROJECTION_MODEL_VERSION,
     resolver::DynamicValue,
 };
+
+type PotentialState = (
+    Vec<(i64, Option<String>, Option<i64>)>,
+    Vec<(i64, String, Option<i64>, i64)>,
+);
+
+fn potential_state(conn: &Connection, snapshot_id: i64) -> PotentialState {
+    let projections = conn
+        .prepare(
+            "SELECT uid, potential_attributes_json, potential_projection_model_version
+             FROM players WHERE snapshot_id = ?1 ORDER BY uid",
+        )
+        .expect("prepare projected state")
+        .query_map([snapshot_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .expect("query projected state")
+        .collect::<Result<_, _>>()
+        .expect("read projected state");
+    let scores = conn
+        .prepare(
+            "SELECT uid, role_id, score, projection_model_version
+             FROM player_potential_role_scores
+             WHERE snapshot_id = ?1 ORDER BY uid, role_id",
+        )
+        .expect("prepare potential score state")
+        .query_map([snapshot_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .expect("query potential score state")
+        .collect::<Result<_, _>>()
+        .expect("read potential score state");
+    (projections, scores)
+}
+
+fn deny_potential_writes(conn: &Connection) {
+    conn.execute_batch(
+        "CREATE TRIGGER deny_projected_player_updates
+         BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
+         BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
+         CREATE TRIGGER deny_potential_score_inserts
+         BEFORE INSERT ON player_potential_role_scores
+         BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
+         CREATE TRIGGER deny_potential_score_updates
+         BEFORE UPDATE ON player_potential_role_scores
+         BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
+         CREATE TRIGGER deny_potential_score_deletes
+         BEFORE DELETE ON player_potential_role_scores
+         BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;",
+    )
+    .expect("deny potential writes");
+}
 
 #[test]
 fn lists_the_exact_current_managed_club() {
@@ -366,7 +418,7 @@ fn current_role_sort_uses_a_missing_preserving_relation() {
 }
 
 #[test]
-fn potential_sort_uses_a_missing_preserving_exact_version_relation_and_skips_its_page_pass() {
+fn potential_sort_uses_a_missing_preserving_exact_version_relation() {
     let source = include_str!("squad.rs");
     let query = &source[source
         .find("pub fn list_squad_players")
@@ -378,12 +430,10 @@ fn potential_sort_uses_a_missing_preserving_exact_version_relation_and_skips_its
     assert!(query.contains("potential_role_sort.uid = p.uid"));
     assert!(query.contains("potential_role_sort.projection_model_version"));
     assert!(query.contains("ORDER BY potential_role_sort.score"));
-    assert!(query.contains("potential_display_roles.retain"));
-    assert!(query.contains("role_id != identity.role_id"));
 }
 
 #[test]
-fn potential_sort_orders_nullable_ties_and_materializes_only_the_distinct_visible_page_role() {
+fn potential_sort_orders_nullable_ties_with_complete_visible_rows() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let snapshot_id = current_snapshot_id(&conn, save_id);
@@ -391,17 +441,24 @@ fn potential_sort_orders_nullable_ties_and_materializes_only_the_distinct_visibl
     let sort_metric = format!("potential_role.{sort_role}");
     let distinct_visible_role = "sweeper_keeper_oop";
     let distinct_visible_metric = format!("potential_role.{distinct_visible_role}");
-    conn.execute("DELETE FROM player_potential_role_scores", [])
-        .expect("clear eager rows for lazy nullable sort test");
     for (uid, score) in [(77, Some(80)), (78, Some(80)), (79, Some(40)), (80, None)] {
         conn.execute(
-            "INSERT INTO player_potential_role_scores (
-                 snapshot_id, uid, role_id, score, projection_model_version
-             ) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![snapshot_id, uid, sort_role, score, PROJECTION_MODEL_VERSION],
+            "UPDATE player_potential_role_scores SET score = ?4
+             WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = ?3",
+            params![snapshot_id, uid, sort_role, score],
         )
         .expect("seed exact-version potential sort score");
     }
+    for (uid, score) in [(77, Some(70)), (78, Some(60)), (79, Some(50)), (80, None)] {
+        conn.execute(
+            "UPDATE player_potential_role_scores SET score = ?4
+             WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = ?3",
+            params![snapshot_id, uid, distinct_visible_role, score],
+        )
+        .expect("seed persisted visible potential score");
+    }
+    let before = potential_state(&conn, snapshot_id);
+    deny_potential_writes(&conn);
     let sort_by = SquadSortField::parse(&sort_metric).expect("parse potential sort");
 
     for (direction, expected) in [
@@ -427,7 +484,7 @@ fn potential_sort_orders_nullable_ties_and_materializes_only_the_distinct_visibl
         2,
         sort_by,
         SquadSortDir::Asc,
-        &[sort_metric, distinct_visible_metric],
+        &[sort_metric, distinct_visible_metric.clone()],
     )
     .expect("page warm potential scores with a distinct visible role");
     assert_eq!(page.total, 4);
@@ -465,7 +522,16 @@ fn potential_sort_orders_nullable_ties_and_materializes_only_the_distinct_visibl
         .expect("query distinct visible role rows")
         .collect::<Result<Vec<_>, _>>()
         .expect("collect distinct visible role rows");
-    assert_eq!(distinct_visible_uids, [77, 79]);
+    assert_eq!(distinct_visible_uids, [77, 78, 79, 80]);
+    assert_eq!(
+        page.players[0].dynamic_values.get(&distinct_visible_metric),
+        Some(&Some(DynamicValue::Integer(50)))
+    );
+    assert_eq!(
+        page.players[1].dynamic_values.get(&distinct_visible_metric),
+        Some(&Some(DynamicValue::Integer(70)))
+    );
+    assert_eq!(potential_state(&conn, snapshot_id), before);
 }
 
 #[test]
@@ -485,21 +551,10 @@ fn club_dna_sort_uses_a_missing_preserving_exact_identity_relation() {
 }
 
 #[test]
-fn current_role_sort_materializes_requested_potential_page_fields() {
+fn current_role_sort_reads_complete_requested_potential_fields_without_writes() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let snapshot_id = current_snapshot_id(&conn, save_id);
-    conn.execute(
-        "UPDATE players
-         SET positions_json = ?1, attributes_json = ?2
-         WHERE snapshot_id = ?3 AND uid IN (77, 80)",
-        params![
-            json!({ "GK": 20 }).to_string(),
-            json!({ "Positioning": 16, "Concentration": 16 }).to_string(),
-            snapshot_id,
-        ],
-    )
-    .expect("set potential source values");
     let role_id = "deep_lying_playmaker_ip";
     set_role_score(&conn, save_id, 77, role_id, Some(80));
     set_role_score(&conn, save_id, 78, role_id, Some(80));
@@ -513,11 +568,14 @@ fn current_role_sort_materializes_requested_potential_page_fields() {
 
     let potential_field = "potential_role.line_holding_keeper_oop".to_string();
     conn.execute(
-        "DELETE FROM player_potential_role_scores
-         WHERE snapshot_id = ?1 AND role_id = 'line_holding_keeper_oop'",
+        "UPDATE player_potential_role_scores SET score = 70
+         WHERE snapshot_id = ?1 AND uid IN (77, 80)
+           AND role_id = 'line_holding_keeper_oop'",
         [snapshot_id],
     )
-    .expect("clear eager requested role for lazy page test");
+    .expect("seed persisted potential scores");
+    let before = potential_state(&conn, snapshot_id);
+    deny_potential_writes(&conn);
     let page = list_squad_players(
         &conn,
         save_id,
@@ -541,6 +599,7 @@ fn current_role_sort_materializes_requested_potential_page_fields() {
         page.players[0].dynamic_values.get(&potential_field),
         Some(Some(DynamicValue::Integer(_)))
     ));
+    assert_eq!(potential_state(&conn, snapshot_id), before);
 }
 
 #[test]
@@ -959,93 +1018,110 @@ fn sorts_club_dna_squad_descending_and_missing_definition_as_uid_stable_all_null
 }
 
 #[test]
-fn potential_display_is_page_scoped_and_potential_sort_materializes_the_squad_cohort() {
+fn potential_display_rejects_missing_and_wrong_version_rows_without_writes() {
+    for wrong_version in [false, true] {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        let snapshot_id = current_snapshot_id(&conn, save_id);
+        if wrong_version {
+            conn.execute(
+                "UPDATE player_potential_role_scores SET projection_model_version = ?2
+                 WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'line_holding_keeper_oop'",
+                params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
+            )
+        } else {
+            conn.execute(
+                "DELETE FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'line_holding_keeper_oop'",
+                [snapshot_id],
+            )
+        }
+        .expect("corrupt potential role");
+        let before = potential_state(&conn, snapshot_id);
+        deny_potential_writes(&conn);
+
+        let error = list_squad_players(
+            &conn,
+            save_id,
+            0,
+            1,
+            SquadSortField::DEFAULT,
+            SquadSortDir::DEFAULT,
+            &["potential_role.line_holding_keeper_oop".to_string()],
+        )
+        .expect_err("reject incomplete potential display");
+
+        assert_eq!(error, "Current potential snapshot is incomplete");
+        assert_eq!(potential_state(&conn, snapshot_id), before);
+    }
+}
+
+#[test]
+fn potential_sort_rejects_missing_and_wrong_version_rows_without_writes() {
+    for wrong_version in [false, true] {
+        let (temp_dir, mut conn, save_id) = open_with_snapshot();
+        add_picker_candidates(&temp_dir, &mut conn, save_id);
+        let snapshot_id = current_snapshot_id(&conn, save_id);
+        if wrong_version {
+            conn.execute(
+                "UPDATE player_potential_role_scores SET projection_model_version = ?2
+                 WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'line_holding_keeper_oop'",
+                params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
+            )
+        } else {
+            conn.execute(
+                "DELETE FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'line_holding_keeper_oop'",
+                [snapshot_id],
+            )
+        }
+        .expect("corrupt potential role");
+        let before = potential_state(&conn, snapshot_id);
+        deny_potential_writes(&conn);
+
+        let error = list_squad_players(
+            &conn,
+            save_id,
+            0,
+            1,
+            SquadSortField::parse("potential_role.line_holding_keeper_oop")
+                .expect("parse potential sort"),
+            SquadSortDir::Desc,
+            &[],
+        )
+        .expect_err("reject incomplete potential sort");
+
+        assert_eq!(error, "Current potential snapshot is incomplete");
+        assert_eq!(potential_state(&conn, snapshot_id), before);
+    }
+}
+
+#[test]
+fn non_potential_squad_query_ignores_corrupt_potential_state() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
     let snapshot_id = current_snapshot_id(&conn, save_id);
-    for (uid, score) in [(77, 8), (78, 10), (79, 12), (80, 16)] {
-        conn.execute(
-            "UPDATE players
-             SET ca = 100,
-                 pa = 100,
-                 positions_json = ?1,
-                 attributes_json = ?2
-             WHERE snapshot_id = ?3 AND uid = ?4",
-            params![
-                json!({ "GK": 20 }).to_string(),
-                json!({ "Positioning": score, "Concentration": score }).to_string(),
-                snapshot_id,
-                uid,
-            ],
-        )
-        .expect("set potential source values");
-    }
-    let requested_fields = vec!["potential_role.line_holding_keeper_oop".to_string()];
-    conn.execute("DELETE FROM player_potential_role_scores", [])
-        .expect("clear eager rows for lazy display and sort test");
+    conn.execute(
+        "DELETE FROM player_potential_role_scores
+         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'line_holding_keeper_oop'",
+        [snapshot_id],
+    )
+    .expect("corrupt unused potential role");
+    let before = potential_state(&conn, snapshot_id);
+    deny_potential_writes(&conn);
 
-    let display_page = list_squad_players(
+    let page = list_squad_players(
         &conn,
         save_id,
         0,
         1,
         SquadSortField::DEFAULT,
         SquadSortDir::DEFAULT,
-        &requested_fields,
+        &[],
     )
-    .expect("display potential page");
-    assert_eq!(display_page.players.len(), 1);
-    assert!(matches!(
-        display_page.players[0]
-            .dynamic_values
-            .get("potential_role.line_holding_keeper_oop"),
-        Some(Some(DynamicValue::Integer(_)))
-    ));
-    let display_cache_rows: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM player_potential_role_scores",
-            [],
-            |row| row.get(0),
-        )
-        .expect("count page cache rows");
-    assert_eq!(display_cache_rows, 1);
+    .expect("read current squad fields");
 
-    let visible_sort_role = "potential_role.line_holding_keeper_oop".to_string();
-    let distinct_visible_role = "potential_role.sweeper_keeper_oop".to_string();
-    let sorted_page = list_squad_players(
-        &conn,
-        save_id,
-        0,
-        1,
-        SquadSortField::parse(&visible_sort_role).expect("parse potential sort"),
-        SquadSortDir::Desc,
-        &[visible_sort_role.clone(), distinct_visible_role.clone()],
-    )
-    .expect("sort squad potential");
-    assert_eq!(
-        sorted_page
-            .players
-            .iter()
-            .map(|player| player.uid)
-            .collect::<Vec<_>>(),
-        [80]
-    );
-    let selected_role_rows: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM player_potential_role_scores
-             WHERE role_id = 'line_holding_keeper_oop'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("count globally sorted role rows");
-    assert_eq!(selected_role_rows, 4);
-    let distinct_visible_rows: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM player_potential_role_scores
-             WHERE role_id = 'sweeper_keeper_oop'",
-            [],
-            |row| row.get(0),
-        )
-        .expect("count page-lazy distinct visible role rows");
-    assert_eq!(distinct_visible_rows, 1);
+    assert_eq!(page.total, 4);
+    assert_eq!(page.players[0].uid, 77);
+    assert_eq!(potential_state(&conn, snapshot_id), before);
 }
