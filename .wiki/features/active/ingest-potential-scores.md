@@ -8,7 +8,7 @@ Active
 
 ## Delivery authorization
 
-**Delivery fingerprint:** 95f8488c8bbb78735e6afdf9b4ffdedb7ed28bce8964b81734105b8958cd1b94
+**Delivery fingerprint:** de707ef4e1eee17435261eb2dab614968e0f6d252365a2db172cb5653d307e67
 
 Ledger state records delivery intent only. It grants no authority to create, switch, or mutate `feature/ingest-potential-scores` or any other branch.
 
@@ -54,8 +54,9 @@ Move visible-attribute projection and potential role scoring from product reads 
 ## Current-state map
 
 - Relevant components: `src-tauri/src/features/scoring/projection.rs::project_attributes` owns the pure projection and `scoring/catalog.rs::all_roles` plus `scoring/score.rs::score_role` own catalog scoring. Production projection calls exist in `player/query.rs::get_player` and `load_role_scores`, `planner/depth.rs::resolve_assignment`, `planner/optimizer.rs::load_potential_optimizer_candidates`, `planner/role_reference.rs::get_role_reference`, and `player_metrics/potential_cache.rs::score_missing_roles`.
-- Data model: `players` stores current visible attributes and projection inputs. `player_role_scores` stores complete current ingest-time role rows. `player_potential_role_scores` stores sparse, versioned, nullable lazy-cache rows keyed by `(snapshot_id, uid, role_id)` and cascading to the owning player.
-- Persistence and migrations: `src-tauri/src/db/migrations.rs` has schema version 33. Migration v21 created `player_potential_role_scores`. `Migration` currently applies SQL-only changes inside one transaction.
+- Data model: completed Commit 2 added nullable `players.potential_attributes_json` and `potential_projection_model_version`. `player_role_scores` stores complete current ingest-time role rows. Migration v34 now backfills complete, versioned, nullable `player_potential_role_scores` rows keyed by `(snapshot_id, uid, role_id)` for each existing current snapshot; draft Commit 3 extends that eager ownership to later selection events.
+- Persistence and migrations: `src-tauri/src/db/migrations.rs` is at schema version 34. Migration v21 created `player_potential_role_scores`; completed Commit 2 added the v34 projected columns and an in-transaction Rust backfill hook.
+- Supported input shape: player dump `attributes` maps are sparse and open-keyed. `dump_validation::validate_int_or_null_map` accepts omitted and unknown keys when their values are JSON numbers or null. `snapshot::ingest::attributes_map` preserves every supplied key, requires each non-null number to be an integer representable as `u8`, and currently accepts zero. The closed visible catalog is the 47 exact PascalCase keys in `scoring::catalog::DUMP_ATTRIBUTE_KEYS`. The eager writer must validate supplied catalog values as `1..=20`, then normalize that catalog to an exact-key projected map with omitted catalog keys as null. Unknown source keys retain the existing typed source contract but do not enter projected output.
 - Snapshot lifecycle: `snapshot/ingest.rs::ingest_dump_json_for_save` inserts players, staff, and current role scores before `snapshot/service.rs::select_current_snapshot` chooses the effective current row. `snapshot/service.rs::delete_snapshot` calls the same selector when deletion promotes a retained snapshot. `set_active_save` only changes save activation.
 - Boost lifecycle: `player/service.rs::reconcile_verified_boost` updates CA or mentality in one transaction, `replace_role_scores` rewrites current role rows after mentality changes, Club DNA is recalculated eagerly, and potential rows are currently invalidated through `potential_cache::invalidate_player_cache`.
 - Read consumers: Player Profile derives projected attributes and all role scores in `player/query.rs`; Planner depth, role reference, and potential optimizer derive them independently; Search and Squad already query `player_potential_role_scores` but call lazy materializers first.
@@ -68,7 +69,7 @@ Move visible-attribute projection and potential role scoring from product reads 
 
 Add nullable `potential_attributes_json` and `potential_projection_model_version` columns to `players`. They remain null for non-current snapshots and form the direct snapshot/player-owned counterpart to `attributes_json`. Keep the normalized `player_potential_role_scores` table and its role/score index because Search and Squad already use those rows for bounded display, filter, and sort. Keep `projection_model_version` on every potential-role row.
 
-Replace the lazy cache module with an eager derived-state writer under `src-tauri/src/features/player_metrics/potential_scores.rs`. The writer loads each target player once, parses current visible attributes and positions once, calls `project_attributes` once, serializes that projected map once, and scores the complete `all_roles()` catalog from the same map. It writes the player projection and all nullable role rows inside its caller's transaction. A current-snapshot rebuild first clears the target snapshot's old projection fields and rows, then replaces the complete set. A lifecycle helper also clears projection fields and potential rows from every non-current snapshot in the save.
+Replace the lazy cache module with an eager derived-state writer under `src-tauri/src/features/player_metrics/potential_scores.rs`. The writer loads each target player once and parses current visible attributes and positions once. It first preserves the existing open-keyed source parsing contract: every supplied non-null entry, including an unknown key, must be an integer representable as `u8`. Before normalization or projection, it rejects every supplied non-null `DUMP_ATTRIBUTE_KEYS` value outside `1..=20`. It then builds a complete source map from exactly `DUMP_ATTRIBUTE_KEYS`, represents omitted supported visible attributes as null, ignores accepted unknown keys for projection and projected persistence, calls `project_attributes` once, serializes that exact-key projected map once, and scores the complete `all_roles()` catalog from the same map. It writes the player projection and all nullable role rows inside its caller's transaction. A current-snapshot rebuild first clears the target snapshot's old projection fields and rows, then replaces the complete set. A lifecycle helper also clears projection fields and potential rows from every non-current snapshot in the save.
 
 Migration v34 adds the projected columns and converts the existing sparse table to eager current-snapshot ownership without changing its key, score domain, index, or cascade. Extend the migration registry with an explicit transaction hook for v34 so the schema change, deletion of all old lazy rows, backfill of every save's existing current snapshot, and `PRAGMA user_version = 34` commit together. The hook calls the shared eager writer. A crash or calculation failure leaves the database at v33. Future projection-model changes must add a new explicit migration or equivalent pre-open rebuild that invokes the same complete writer; product reads never own stale-row replacement.
 
@@ -92,6 +93,7 @@ Potential optimizer then loads persisted tactic-role rows and keeps its existing
 - `player_potential_role_scores` already has the required normalized identity, nullable score, model version, cascade, and Search/Squad index.
 - `players` is snapshot-owned and already stores the current attribute map and every projection input.
 - `project_attributes` returns one visible-attribute map and all potential role consumers use the same role catalog and scorer.
+- Supported dump/player attribute maps can omit visible keys and can contain unknown keys. Dump validation accepts number-or-null values without a closed player-key check. Ingest preserves supplied entries and its typed map conversion rejects nonintegers and values outside `u8`, but accepts zero. `DUMP_ATTRIBUTE_KEYS` is the closed 47-key catalog for visible projection and persisted projected output. Missing and explicit null supported attributes are both unavailable to current queries.
 - Snapshot selection and deletion promotion already share `select_current_snapshot` inside transactions.
 - No planned feature spec exists. BACKLOG scope does not change.
 - `.wiki/features/completed/player-table-sort-performance.md` has an unrelated developer-owned worktree modification and is excluded from this feature and every packet.
@@ -115,12 +117,14 @@ Potential optimizer then loads persisted tactic-role rows and keeps its existing
 ### Unknowns
 
 - Exact representative v34 upgrade and Load Data duration on the largest user database is not available. Validation records functional and transactional evidence, not an unmeasured speed claim.
-- The corrected packets cleared focused independent correction review. `delivery_state.py` computed and the ledger records the replacement Delivery fingerprint.
+- Focused independent replan review accepted the changed packets. `delivery_state.py` computed and the ledger records the replacement fingerprint.
 
 ### Risks
 
 - A custom migration hook can violate migration atomicity if it runs outside the migration transaction or advances `user_version` before backfill completes.
 - A writer can accidentally call `project_attributes` once per role instead of once per player.
+- A writer can pass a sparse source map through unchanged, producing an incomplete projected map that violates the persisted assertion even though the dump is supported.
+- A writer can normalize and project before validating the supplied source domain. For a growth-eligible player with `CA < PA`, supplied `Acceleration: 0` can project to a valid value such as `1` and let invalid source data satisfy the persisted assertion.
 - Ingest can materialize the inserted snapshot before selection and retain potential data on a non-winning historical row.
 - Demotion or promotion can leave both snapshots materialized or expose a promoted snapshot before its rows are complete.
 - Boost reconciliation can mix updated current values with stale projected rows or partially replace the role catalog.
@@ -297,71 +301,88 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 #### Commit 3 — Maintain potential data across snapshot selection
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(snapshot): materialize selected potential scores`
 
-**Work:** Make ingest selection, demotion, deletion promotion, and save switching preserve the current-only materialization invariant.
+**Work:** Make ingest selection, demotion, deletion promotion, and save switching preserve the current-only materialization invariant; validate supplied visible source values before sparse normalization and projection; and adapt tests whose setup now begins with eager rows.
 
-**Size assessment:** Estimated 100–170 changed non-test implementation lines. Within the soft target.
+**Size assessment:** Estimated 120–200 changed non-test implementation lines. Within the soft target. The eager source-domain check is a small addition to the same writer boundary. The broader test diff does not count toward the soft target and remains atomic because eager lifecycle activation itself invalidates the old zero-row fixture baseline; Commit 3 must leave the branch green without weakening the still-supported lazy paths.
 
 **Out of scope:**
 
-- Boost reconciliation, product-read conversion, lazy Search/Squad cleanup, formula changes, and UI progress.
+- Boost reconciliation behavior, product-read conversion, deletion of lazy Search/Squad paths, formula/catalog changes, and UI progress.
 
 **Implementation packet:**
 
 - Keep `select_current_snapshot` as the single effective-current owner. Materialize only after the winner is known, clear every loser in the save, and commit marker and derived state together.
+- Before normalization or the writer's single projection call, parse the open source map with the existing integer/`u8` rules and validate every supplied non-null `DUMP_ATTRIBUTE_KEYS` value as `1..=20`. Then normalize exactly `DUMP_ATTRIBUTE_KEYS`, using null for an omitted supported visible attribute. Continue to accept typed unknown keys under the existing source contract, but exclude them from the exact-key projected map. Preserve malformed JSON, noninteger numbers, values outside `u8`, and supplied supported values outside `1..=20` as failures. Retain `rebuild_snapshot` and `replace_player` post-write calls to `assert_current_snapshot_complete`; the new pre-projection check supplements rather than replaces the exact-key persisted postcondition.
+- Make the smallest trunk-safe fixture adaptations for the fourteen known failures in `/tmp/commit3-check.log`. Preserve lazy materializer behavior until Commits 9–10 by clearing eager rows only inside tests whose current purpose is lazy fill/replacement. Use `UPDATE` or `DELETE` plus `INSERT` when a test needs custom score/version rows that eager ingest already created. Do not convert boost behavior or read consumers early.
 
 **Files and responsibilities:**
 
 - `src-tauri/src/features/snapshot/service.rs::{select_current_snapshot, delete_snapshot, set_active_save}` — coordinate current marker, losing-snapshot clear, promotion materialization, and no-write save switching.
 - `src-tauri/src/features/snapshot/ingest.rs::ingest_dump_json_for_save` — invoke the selection-owned lifecycle only after players and current role scores exist; extend ingest fixtures and generated-count assertions.
-- `src-tauri/src/features/player_metrics/potential_scores.rs` — expose transaction-scoped current-selection reconciliation and exact completeness checks used by lifecycle tests.
+- `src-tauri/src/features/player_metrics/potential_scores.rs::{persist_players, reconcile_current_selection}` — parse the open source map, validate every supplied non-null catalog value as `1..=20` before normalization or projection, normalize sparse visible attributes into the exact supported key set, ignore accepted unknown keys in projected output, reconcile current selection, and correct the normalization proof to expect projected rather than source values.
+- `src-tauri/src/db/migrations.rs` tests — replace the committed `{}` rollback characterization with a successful sparse-v33 backfill proof; retain malformed JSON and invalid typed/domain rollback coverage.
+- `src-tauri/src/features/search/query.rs` tests — adapt eager-row counts, explicit lazy-cache baselines, and custom exact-version score setup without changing Search production behavior.
+- `src-tauri/src/features/planner/squad_tests.rs` — make the same bounded eager-row and custom-score fixture adaptations for Squad while retaining its lazy materializer contract until Commit 10.
+- `src-tauri/src/features/player/service.rs` tests — replace duplicate potential-row inserts with updates or delete-and-insert setup so the existing invalidation and rollback contracts remain protected until Commit 4.
 
 **Behavior and data flow:**
 
-- Ingest inserts a complete stored snapshot and current roles, then selection determines the winner. If the new row wins, the transaction clears the former current's projected fields and rows and materializes the new winner. If it loses, the inserted row remains clear and the existing current remains unchanged. Current deletion cascades the deleted data, selects the retained winner, and materializes it before Academy promotion work and commit. `set_active_save` changes only `saves.is_active` and relies on the selected save's maintained current rows.
+- Ingest inserts a stored snapshot and current roles, then selection determines the winner. If the new row wins, the transaction clears the former current's projected fields and rows and materializes the new winner. The writer parses all supplied source entries under the existing integer/`u8` contract, rejects any supplied non-null catalog value outside `1..=20` before normalization or projection, expands the winner's sparse visible map to exactly the closed supported key set, maps each omission to null, excludes accepted unknown keys, projects that complete map once, and persists assertion-compatible projected JSON plus the complete role catalog. If the new row loses, it remains clear and the existing current remains unchanged. Current deletion cascades the deleted data, selects the retained winner, and materializes it before Academy promotion work and commit. `set_active_save` changes only `saves.is_active` and relies on the selected save's maintained current rows.
+- Eager ingest means Search, Squad, and boost fixtures now begin with complete derived rows. Commit 3 changes only test setup and assertions needed to express their still-supported pre-cutover contracts: lazy-specific tests explicitly remove the eager rows they intend to rematerialize; custom score/version cases replace existing rows instead of inserting duplicate primary keys; ordinary eager baselines compare the correct complete row inventory.
 
 **Ordered implementation steps:**
 
-1. Add RED ingest/service tests for later-then-earlier, earlier-then-later, current deletion promotion, demotion clearing, final deletion, and save switching without writes.
-2. Route winner reconciliation through `select_current_snapshot` without projecting the inserted snapshot in advance.
-3. Clear non-current potential fields and rows for the save inside the selection transaction.
-4. Rebuild a newly selected current snapshot through the shared eager writer.
-5. Preserve Academy class ordering and all existing snapshot result semantics.
-6. Add injected materialization-failure proofs for ingest and deletion rollback.
-7. Keep current role and Club DNA lifecycle behavior unchanged.
+1. Preserve the draft RED/GREEN lifecycle tests for later-then-earlier, earlier-then-later, current deletion promotion, demotion clearing, final deletion, save switching without writes, and materialization rollback.
+2. Route winner reconciliation through `select_current_snapshot` without projecting the inserted snapshot in advance; clear non-current state and rebuild only a changed winner inside the same transaction.
+3. In `persist_players`, parse the stored source object into the same open `HashMap<String, Option<u8>>` shape used by current ingest scoring. Before building a normalized map or calling `project_attributes`, inspect every supplied `DUMP_ATTRIBUTE_KEYS` entry and reject a non-null value outside `1..=20`. Keep an unknown key when parsing so malformed, noninteger, and out-of-`u8` unknown values still fail as they do today; accept a null or `u8` unknown value and omit it from projected persistence.
+4. Construct the complete source map from exactly `DUMP_ATTRIBUTE_KEYS` only after source validation passes. Map absent and explicit-null supported attributes to `None`, call `project_attributes` once, and require the serialized projected object to contain exactly the 47 catalog keys. Keep the existing `assert_current_snapshot_complete` call after every successful rebuild or one-player replacement.
+5. Add a RED/GREEN writer test with a growth-eligible player (`CA < PA`, age below 29) and supplied `Acceleration: 0`. RED must show the current normalize/project-first draft can persist projected `Acceleration: 1`; GREEN must return the source-domain error before the projection call and leave projected fields and potential-role rows unchanged. Add a typed unknown-key case that remains accepted but absent from the exact-key projected object.
+6. Replace `rolls_back_v34_when_current_player_projects_to_an_incomplete_map` with `migrates_v33_sparse_current_player_attributes_as_nulls`: a v33 `{}` or sparse-map proof that reaches v34, stores every projected key as null when unavailable, and writes the complete nullable role catalog. Retain `rolls_back_v34_when_current_player_projection_input_is_malformed`; add focused noninteger, out-of-`u8`, and supported-domain supplied-value cases through the same rollback helper, and keep their unchanged v33 evidence. The supported-domain case must use growth-eligible `Acceleration: 0` and prove `user_version` stays 33 before projection can mask it.
+7. Extend `failed_winning_potential_materialization_rolls_back_ingest` or add its narrow analogue with a later winning dump whose growth-eligible player supplies `Acceleration: 0`. Prove the ingest fails, the inserted snapshot and its current/potential rows do not survive, and the prior current snapshot plus its derived state remain unchanged.
+8. Correct `rebuild_normalizes_omitted_attributes_to_null` to expect the actual projected `Acceleration` value of 11 from the fixture rather than the source value 10, while proving an omitted key such as `Pace` persists as null and the map has exactly `DUMP_ATTRIBUTE_KEYS.len()` entries.
+9. Adapt the failing Search and Squad lazy tests. Explicitly delete eager rows before a call only when the test still protects page/full-cohort lazy materialization or stale replacement; otherwise compare the eager complete baseline. Replace duplicate exact-version inserts with `UPDATE` or `DELETE` plus `INSERT` for custom nullable/tie scores.
+10. Adapt the three failing boost tests by updating or replacing the eager row used as their custom seed. Preserve the current successful invalidation result and Club DNA/rollback assertions; Commit 4, not this packet, changes boost behavior to eager replacement.
+11. Preserve Academy ordering, current roles, Club DNA, selector results, request validation, Search/Squad query semantics, and all current rollback behavior.
+12. Run the full Rust gate, inspect any failure beyond the recorded fourteen as a possible scope contradiction, then run the complete commit gate.
 
 **Tests and proof:**
 
-- Modify `snapshot/ingest.rs` tests to assert only the effective winner has projected JSON plus exactly players × catalog roles, including when a newly ingested earlier/undated snapshot loses.
-- Modify `snapshot/service.rs` tests so deleting current materializes the retained promoted snapshot and clears no save-scoped data; deleting non-current does not rewrite the winner; deleting final leaves no rows.
-- Add a two-save switch test that installs write-denying triggers before `set_active_save`, then proves the selected save's current potential data was already complete and switching performs no potential writes.
-- Add rollback tests for failing new-winner and promoted-winner writes. Retain existing date-order, Academy, Club DNA, cascade, token, and save-deletion tests because those contracts still apply.
-- No fixtures, mocks, or snapshots are deleted. Extend existing JSON fixtures only through test setup where practical.
+- In `snapshot/ingest.rs`, retain the new winner/loser assertions for projected JSON and players × catalog rows, including earlier and undated losing ingests. Extend `failed_winning_potential_materialization_rolls_back_ingest` or add a narrow test with growth-eligible `CA < PA` and supplied `Acceleration: 0`; the source-domain error must roll back the winning snapshot before projected `1` can mask it, while the prior current snapshot and all of its source and derived rows remain byte-for-byte unchanged.
+- In `snapshot/service.rs`, retain promotion materialization, non-current no-rewrite under write-denying triggers, final deletion, `promoted_snapshot_materialization_failure_rolls_back_current_deletion`, and `switching_between_materialized_saves_performs_no_potential_writes`.
+- In `potential_scores.rs`, fix `rebuild_normalizes_omitted_attributes_to_null` so it detects both regressions: passing a sparse map through unchanged and confusing source values with CA-to-PA projected values. Add a direct growth-eligible `Acceleration: 0` RED/GREEN proof that rejects before projection and leaves derived state unchanged. Add an open-key proof that a supplied unknown key with a null or integer `u8` value remains accepted source input but is absent from the persisted exact 47-key projection; malformed, noninteger, and out-of-`u8` unknown values remain failures. Retain the successful rebuild and replacement proofs that run `assert_current_snapshot_complete` after persistence, including exact projected keys and complete nullable catalog rows.
+- In `migrations.rs`, replace only `rolls_back_v34_when_current_player_projects_to_an_incomplete_map` with `migrates_v33_sparse_current_player_attributes_as_nulls`; `{}` is a supported sparse map and must migrate successfully. Retain `rolls_back_v34_when_current_player_projection_input_is_malformed`. Add focused rollback tests for a fractional or otherwise noninteger number, a number outside `u8`, and a supplied supported value outside `1..=20`. The domain test must use growth-eligible `Acceleration: 0` so the old draft would project it to `1`; GREEN must reject the source first. Every failure keeps `user_version = 33`, leaves the v34 columns absent, preserves source JSON, and retains the old sparse row.
+- In `search/query.rs`, adapt `current_role_sort_materializes_requested_potential_page_fields`, `invalid_filter_rules_do_not_materialize_potential_cache_rows`, `potential_display_materializes_only_requested_page_players`, `potential_role_filters_materialize_each_requested_role_and_replace_stale_rows`, `potential_sort_materializes_the_full_search_cohort_before_ordering`, and `potential_sort_orders_nullable_ties_and_materializes_only_the_distinct_visible_page_role`. Keep each current lazy contract observable with an explicit empty/stale setup where required; do not assert that normal ingest starts empty.
+- In `planner/squad_tests.rs`, adapt `current_role_sort_materializes_requested_potential_page_fields`, `potential_display_is_page_scoped_and_potential_sort_materializes_the_squad_cohort`, and `potential_sort_orders_nullable_ties_and_materializes_only_the_distinct_visible_page_role` by the same rule.
+- In `player/service.rs`, adapt `successful_player_boost_recomputes_its_club_dna_score_and_invalidates_potential_roles`, `current_ability_reconciliation_rolls_back_exact_derived_rows_when_club_dna_upsert_fails`, and `determination_reconciliation_rolls_back_all_rows_when_club_dna_upsert_fails` so custom seeds replace eager rows. Preserve invalidation, exact rollback snapshots, and Club DNA behavior until Commit 4.
+- No production fixtures, frontend mocks, snapshots, or helpers are deleted. Add a narrow test-only row-clear or row-replacement helper only if repeated setup would otherwise obscure the contract.
 
 **Patterns to verify:**
 
-- Shared `SNAPSHOT_ORDER_BY`, current marker transaction, `delete_snapshot` Academy promotion, ADR-0024 ingest atomicity, and snapshot-history tests for retained earlier rows.
+- `dump_validation::validate_int_or_null_map` for the open number-or-null player map; `snapshot::ingest::attributes_map` for integer/`u8` parsing of every supplied key; `DUMP_ATTRIBUTE_KEYS` and `bridge/Layouts/Fm263Layout.cs::AttributeEntries` for the exact 47-key visible catalog; `project_attributes` for missing/null equivalence, growth semantics, and the masking path; shared `SNAPSHOT_ORDER_BY`; the current marker transaction; `delete_snapshot` Academy promotion; ADR-0024 ingest atomicity; Search/Squad lazy materializer tests; and boost invalidation/rollback tests.
 
 **Constraints and non-goals:**
 
-- Do not materialize every retained snapshot, select by load order, calculate during save switch, alter Academy behavior, change bridge provenance, or add recovery/background work.
+- Do not require dump producers to emit every visible key or reject a typed unknown key that the open player-attribute source contract currently accepts. Do not persist unknown keys in the exact projected map, change missing/null query semantics, bypass validation of supplied catalog values, project more than once per player, or weaken the complete persisted-map assertion.
+- Do not materialize every retained snapshot, select by load order, calculate during save switch, alter Academy or Club DNA behavior, change bridge provenance, convert boost behavior before Commit 4, remove lazy Search/Squad behavior before Commits 9–10, or add recovery/background work.
+- Test adaptation must preserve a supported contract or isolate a still-supported lazy seam. Do not delete, skip, or weaken a test merely because eager rows changed its initial database state.
 
 **Dependencies and sequencing:**
 
-- Requires Commit 2's v34 schema and eager writer. Must land before any product read stops recalculating.
+- Requires completed Commit 2's v34 schema and eager writer. Commit 3 remains atomic and must restore a green trunk-safe state before Commit 4 because it activates eager rows for every normal ingest fixture. Commit 4 ordering remains safe: current boost invalidation stays intact after the seed adaptations, then Commit 4 replaces it atomically. Commits 9 and 10 later retire the explicitly isolated lazy Search/Squad behavior rather than repeating this compatibility repair.
 
-**Validation:** Run `./scripts/dev check-rust` for the focused snapshot lifecycle RED/GREEN proofs, then `./scripts/dev check` as the commit gate.
+**Validation:** Run `./scripts/dev check-rust` and require all Rust tests, including the fourteen formerly failing cases in `/tmp/commit3-check.log`, to pass; then run `./scripts/dev check` as the commit gate. Inspect `git diff --check` for the exact Commit 3 worktree diff before checkpoint review.
 
-**Stop conditions:** Stop and replan if selection cannot keep marker and derived writes in one transaction, if promotion must commit before scoring, if save switching exposes an unmaterialized current snapshot, or if lifecycle changes alter the accepted date selector or Academy semantics.
+**Stop conditions:** Stop and replan if source-domain validation cannot run before normalization and projection, if the writer must close the currently open player-attribute source key set, if sparse normalization changes supplied valid values or formulas, if a supplied malformed/noninteger/out-of-`u8` value or supported non-null value outside `1..=20` becomes accepted, if projected output contains anything other than the exact 47 `DUMP_ATTRIBUTE_KEYS`, if selection cannot keep marker and derived writes in one transaction, if promotion must commit before scoring, if save switching exposes an unmaterialized current snapshot, if lifecycle changes alter the accepted date selector or Academy semantics, if a Search/Squad test cannot remain meaningful without early consumer conversion, or if a boost test requires eager recomputation before Commit 4.
 
-**Review mandate:** Trace winning and losing ingest paths; prove only current rows survive; verify promotion atomicity and rollback; verify save switching performs no scoring; preserve date ordering and Academy effects; check final-snapshot deletion; and ensure every writer receives complete current player inputs.
+**Review mandate:** Verify the writer parses the open source map and validates every supplied non-null catalog value as integer `1..=20` before normalization or projection; a growth-eligible supplied `Acceleration: 0` cannot become persisted `1`; omitted catalog keys become null; typed unknown keys retain the supported source contract but cannot enter the exact 47-key projection; `{}` migration succeeds while malformed, noninteger, out-of-`u8`, and supported-domain failures roll back; winning-ingest failure preserves the prior current state; successful rebuild and replacement still run the exact-key post-write assertion; projected-value expectations are correct; winner, loser, promotion, and save-switch lifecycles remain atomic; only current rows survive; compatibility adaptations do not weaken assertions; and date ordering, Academy, Club DNA, deferred boost/lazy ownership, and full gates remain unchanged.
 
 #### Commit 4 — Recompute boosted player potential atomically
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(player): refresh boosted potential scores`
 
@@ -381,7 +402,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 - `src-tauri/src/features/player/service.rs::{reconcile_verified_boost, reconcile_mentality, replace_role_scores, database_sync_error}` — order source updates, current scores, potential replacement, Club DNA, and commit; remove lazy invalidation.
 - `src-tauri/src/features/player_metrics/potential_scores.rs` — replace one current player's projected JSON and every catalog role row from one projection.
-- Existing tests in `player/service.rs` — replace invalidation assertions with exact recomputation and rollback assertions for both supported boost operations.
+- Existing tests in `player/service.rs` — starting from Commit 3's eager-row-safe seeds, replace the still-supported invalidation outcome with exact recomputation and rollback assertions for both supported boost operations. Do not repeat Commit 3's duplicate-insert fixture repair.
 
 **Behavior and data flow:**
 
@@ -389,7 +410,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **Ordered implementation steps:**
 
-1. Rewrite the boost invalidation test into RED assertions for changed projected JSON and complete changed role rows.
+1. Turn Commit 3's green, eager-row-safe invalidation characterization into RED assertions for changed projected JSON and complete changed role rows; the RED reason must be delete-only invalidation, not a duplicate seed failure.
 2. Add a mentality-path RED proof where Determination affects current and potential scores.
 3. Replace `potential_cache::invalidate_player_cache` with the one-player eager writer after source/current-score updates.
 4. Prove catalog replacement removes stale/extra rows and inserts nullable rows.
@@ -398,8 +419,8 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **Tests and proof:**
 
-- Modify `successful_player_boost_recomputes_its_club_dna_score_and_invalidates_potential_roles` into an eager recomputation test and add exact row-count/model assertions.
-- Extend current-ability and Determination reconciliation tests to compare stored projection and role scores against the post-update source values.
+- Modify Commit 3's seed-adapted `successful_player_boost_recomputes_its_club_dna_score_and_invalidates_potential_roles` into an eager recomputation test and add exact row-count/model assertions. This packet changes the behavioral expectation; it does not redo the eager baseline setup.
+- Extend the already seed-adapted current-ability and Determination rollback/reconciliation tests to compare stored projection and role scores against post-update source values.
 - Extend rollback tests with write-denying triggers on projected fields or potential rows. A plausible wrong implementation that deletes rows, uses pre-update values, omits nullable roles, or commits partial data must fail.
 - Retain bridge error, stale context, request-ID, current-role, Club DNA, and squad-wide orchestration tests. No frontend mocks or snapshots change.
 
@@ -413,7 +434,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **Dependencies and sequencing:**
 
-- Requires Commits 2–3. Later read packets rely on boosts keeping stored potential values current.
+- Requires Commits 2–3 and Commit 3's green eager-row fixture baseline. Later read packets rely on boosts keeping stored potential values current.
 
 **Validation:** Run `./scripts/dev check-rust` for focused boost RED/GREEN and rollback proofs, then `./scripts/dev check` as the commit gate.
 
@@ -719,13 +740,13 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 2. Reuse the validated dynamic fields, `potential_role_ids_from_ast`, and `potential_role_sort_identity` to compute one `potential_requested` condition. Invoke `assert_current_snapshot_complete` once after request/filter validation and current snapshot resolution but before any affected count or page query.
 3. Remove `materialize_snapshot_roles`, `materialize_player_roles`, and role collection used only to choose write scope.
 4. Point version references to `potential_scores`.
-5. Rewrite lazy-cache tests as complete eager-row query tests and missing/stale invariant-failure tests.
+5. Remove Commit 3's explicit empty/stale lazy-fixture setup and rewrite those seed-adapted tests as complete eager-row query tests plus missing/wrong-version invariant-failure tests. Do not repeat the earlier fixture compatibility repair.
 6. Preserve the current validation and empty-snapshot ordering, totals, page bounds, OR/AND behavior, null scores, scalar/`EXISTS`/`LEFT JOIN` SQL, and binding.
 7. Remove only Search-owned obsolete helpers/imports.
 
 **Tests and proof:**
 
-- Rewrite `potential_role_filter_materializes_the_full_snapshot_and_reuses_cached_rows`, stale replacement, page-scoped display, and invalid-filter/no-materialization tests to assert eager rows are unchanged before/after reads.
+- Rewrite the Commit 3-adapted `potential_role_filter_materializes_the_full_snapshot_and_reuses_cached_rows`, stale replacement, page-scoped display, current-role-sort display, potential-sort, and invalid-filter/no-materialization tests. Remove their deliberate empty/stale lazy baselines and assert normal complete eager rows are unchanged before and after reads.
 - Add separate potential display, filter, and sort cases for a deleted catalog row and a wrong-version row. Each must return the shared invariant error before its scalar, `EXISTS`, or `LEFT JOIN` query can yield null, exclusion, a changed total, or changed order. Write-denying triggers plus before/after projected fields and role rows prove no repair or mutation.
 - Add a non-potential Search case with the same corrupt fixture that preserves current scalar behavior and does not invoke the potential assertion. Retain invalid-request proof so validation still fails before snapshot assertion work.
 - Retain potential display/filter/sort correctness, nullable scores, multi-role AND/OR, totals, pagination, UID ties, SQL trust-boundary, current-role, Club DNA, Moneyball, and general Search tests.
@@ -741,7 +762,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **Dependencies and sequencing:**
 
-- Requires Commits 2–4. Shared lazy code remains temporarily for Squad, so do not delete the module yet.
+- Requires Commits 2–4 and Commit 3's green compatibility adaptations. Shared lazy code remains temporarily for Squad, so do not delete the module yet. This packet owns retiring Search's lazy assertions, not repairing their eager-ingest setup.
 
 **Validation:** Run `./scripts/dev check-rust` for focused Search RED/GREEN proofs, then `./scripts/dev check` as the commit gate.
 
@@ -783,12 +804,12 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 2. Derive one `potential_requested` condition from validated dynamic fields and `potential_role_sort_identity`; call `assert_current_snapshot_complete` once after current/configured context resolution and before count/page SQL.
 3. Remove `squad_role_rows_are_complete`, player UID enumeration used only by materialization, and `materialize_player_roles` calls.
 4. Retain exact-version sort join, dynamic scalar select, cohort predicate, bounds, and UID tie.
-5. Rewrite lazy page/cohort tests as eager no-write correctness and invariant-failure tests.
+5. Remove Commit 3's explicit lazy-fixture clearing and rewrite the seed-adapted page/cohort tests as eager no-write correctness and invariant-failure tests. Do not repeat the earlier eager-row compatibility repair.
 6. Remove Squad-owned helpers/imports made obsolete.
 
 **Tests and proof:**
 
-- Rewrite `potential_display_is_page_scoped_and_potential_sort_materializes_the_squad_cohort` to assert complete eager rows exist before the call, the requested page/sort is correct, and row counts/content do not change.
+- Rewrite the Commit 3-adapted `potential_display_is_page_scoped_and_potential_sort_materializes_the_squad_cohort`, current-role-sort potential display, and nullable/tie potential-sort tests. Remove their deliberate lazy baselines, assert complete eager rows exist before the call, preserve the requested page/sort result, and prove row counts and content do not change.
 - Add separate display and sort cases for a deleted catalog row and a wrong-version row. Each must return the shared invariant error before scalar or `LEFT JOIN` SQL can yield null or changed order; write-denying triggers and before/after state prove no mutation.
 - Add a non-potential Squad case with the same corrupt fixture that preserves current behavior without invoking the assertion. Retain empty results for no current snapshot or no managed-club configuration.
 - Retain managed-club scope, unconfigured state, current/potential sort, nullable value, UID tie, bounds, current role, Club DNA, dynamic metric, and page tests.
@@ -804,7 +825,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **Dependencies and sequencing:**
 
-- Requires Commits 2–4 and follows Commit 9. After this packet, no product read may call the lazy materializer.
+- Requires Commits 2–4 and Commit 3's green compatibility adaptations, and follows Commit 9. This packet owns retiring Squad's lazy assertions, not repairing their eager-ingest setup. After this packet, no product read may call the lazy materializer.
 
 **Validation:** Run `./scripts/dev check-rust` for focused Squad RED/GREEN proofs, then `./scripts/dev check` as the commit gate.
 
@@ -880,19 +901,19 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **PR:** PR 1 — Precompute current-snapshot potential scoring
 
-**Commit:** Commit 3 — Maintain potential data across snapshot selection
+**Commit:** Commit 4 — Recompute boosted player potential atomically
 
 ### RED or removal proof
 
-Add lifecycle tests that expose the current selector's missing potential ownership: winning ingest lacks eager rows, losing ingest can retain or disturb derived state, deletion promotion lacks materialization, and save switching must remain write-free.
+Starting from Commit 3's eager-row-safe fixtures, rewrite the supported boost invalidation expectation so it fails while CA and Determination reconciliation still delete potential rows instead of atomically replacing projected fields and the complete role catalog.
 
 ### Expected outcome
 
-`select_current_snapshot` atomically clears every losing snapshot and materializes only the effective winner after source players and current role scores exist. Deletion promotion completes derived state before commit, final deletion leaves none, and save switching performs no potential writes.
+Verified CA and mentality changes update source fields and current roles, then replace the changed current player's projected map and every nullable potential-role row from transaction-visible post-update values before Club DNA and commit. Any local failure rolls back every SQLite-derived value and retains the established `SnapshotSync` Load Data recovery result.
 
 ### Explicit exclusions
 
-Boost reconciliation, product-read conversion, Search/Squad lazy cleanup, formula/catalog changes, frontend work, and `.wiki/features/completed/player-table-sort-performance.md`.
+Bridge protocol or eligibility changes, batch orchestration, snapshot-wide rebuilds, product-read conversion, frontend invalidation, formula/catalog changes, and `.wiki/features/completed/player-table-sort-performance.md`.
 
 ## Discoveries and replanning
 
@@ -904,13 +925,19 @@ Boost reconciliation, product-read conversion, Search/Squad lazy cleanup, formul
 - The checkpoint review also found MEDIUM stale plan state: Unknowns, Active work, and Discoveries still described the completed initial review and fingerprint calculation as pending. The correction preserves that historical fact; focused correction review cleared and `delivery_state.py` recorded the replacement fingerprint.
 - This is a substantive packet correction without a scope, PR-boundary, or commit-topology change. Commits 2 and 5–11 require new packet fingerprints and a fresh worker run after focused independent correction review; no implementation can resume under the superseded delivery fingerprint.
 - Correction round 2 found a second HIGH at the Planner mutation-response boundary: `save_planner_teams`, `add_planner_string`, `remove_planner_string`, `clear_planner_depth`, `clear_planner_assignment`, `assign_planner_player`, and `move_planner_player` currently commit their service mutations before calling `get_depth`. A `get_depth`-only assertion would therefore report corrupt potential state after product-owned Planner data changed, and confirmed team removal can delete assignments first. Commit 6 now preflights each service before setup or mutation, preserves request-validation and no-snapshot ordering, and uses one internal already-preflighted depth loader to avoid a second successful-response assertion. The optimizer's existing planned pre-transaction guard remains unchanged. Focused correction review accepted this boundary correction with no remaining finding.
+- Commit 3 disproved Commit 2's complete-source-map assumption. Supported dump `attributes` maps are sparse: validation permits omitted keys, ingest persists only supplied entries, and production fixtures use that shape. The committed `{}` rollback test therefore characterized supported input as invalid. The correction normalizes the closed `DUMP_ATTRIBUTE_KEYS` set inside the eager writer, treats omitted supported attributes as null before the single projection, and preserves malformed/type/domain rejection. Missing and null remain equally unavailable to current queries, while persisted projected maps become complete and assertion-compatible. ADR-0026's durable eager ownership and lifecycle decision does not change.
+- Activating eager materialization also disproved the packet assumption that existing Search, Squad, and boost tests would still start with zero or sparse potential rows. The 14 failures in `/tmp/commit3-check.log` comprise the obsolete `{}` rollback, one projected-value expectation (`Acceleration` is 11 after projection, not source 10), Search/Squad zero/page-count assumptions and duplicate custom inserts, and boost custom seeds that collide with eager rows. Commit 3 now owns the minimum trunk-safe test setup and assertion adaptations. It explicitly clears eager rows only where a still-supported lazy materializer must remain protected until Commits 9–10, and uses `UPDATE` or `DELETE` plus `INSERT` for custom score/version setup.
+- The snapshot lifecycle draft already places selector ownership and rollback proofs in `snapshot/service.rs`, `snapshot/ingest.rs`, and `player_metrics/potential_scores.rs`; the known failures do not disprove that architecture. Commit 3 remains one coherent atomic commit because enabling eager lifecycle and reconciling its immediate supported-input and test-baseline consequences cannot land separately on a green trunk. Commit 4 remains safely ordered after it: Commit 3 preserves current boost invalidation behavior, then Commit 4 changes that behavior to eager one-player replacement. Commits 9 and 10 own the later removal of Search/Squad lazy behavior, not a second copy of Commit 3's compatibility repair.
+- This replan changes Commit 3 and clarifies the test-ownership and dependency packets for Commits 4, 9, and 10. Their prior packet fingerprints and Delivery fingerprint `95f8488c8bbb78735e6afdf9b4ffdedb7ed28bce8964b81734105b8958cd1b94` are invalid. Focused replan review accepted the replacement packets and `delivery_state.py` computed the new authorization.
+- Focused replan correction round 1 retained a MEDIUM source-domain finding in Commit 3. `dump_validation` accepts any JSON number, `attributes_map` accepts `u8` zero, and the draft eager writer normalized and projected before checking the FM visible domain. A growth-eligible supplied `Acceleration: 0` could therefore become projected `1` and pass the persisted assertion. The corrected packet validates every supplied non-null `DUMP_ATTRIBUTE_KEYS` value as integer `1..=20` before normalization or projection, retains the open typed contract for unknown source keys, and excludes unknown keys from the exact 47-key projected output. New writer, migration, and winning-ingest RED/GREEN rollback proofs own the correction. Focused correction review accepted the packet with no remaining finding.
 
 ## Completed work
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Precompute current-snapshot potential scoring | Commit 1 — Record the approved feature plan | 52be1f96b1c06177d4b92fa52ef8f2f8e673c064 | Recorded the reviewed schema 2 ledger, TODO activation, superseded ADR-0019, accepted ADR-0026, and ADR index update. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 2 | Checkpoint review added a shared read-only derived-data invariant assertion and pre-mutation Planner guards before the replacement fingerprint was accepted. |
-| PR 1 — Precompute current-snapshot potential scoring | Commit 2 — Add eager current-potential persistence | Pending record | Added migration v34, atomic current-only backfill, one-projection eager writer, exact projected-map and catalog-row invariant assertion, shared model-version ownership, and truthful migration errors. | `./scripts/dev check-rust`: 611 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 3 | The atomic migration/writer/assertion implementation exceeded the soft estimate; review corrections strengthened projected-map validation, writer postconditions, rollback context, one-call proof, and nullable SQL-row proof without changing packet scope. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 2 — Add eager current-potential persistence | 71c6f8bec15e4c495349c0cf6d948fd03524fa4f | Added migration v34, atomic current-only backfill, one-projection eager writer, exact projected-map and catalog-row invariant assertion, shared model-version ownership, and truthful migration errors. | `./scripts/dev check-rust`: 611 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 3 | The atomic migration/writer/assertion implementation exceeded the soft estimate; review corrections strengthened projected-map validation, writer postconditions, rollback context, one-call proof, and nullable SQL-row proof without changing packet scope. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 3 — Maintain potential data across snapshot selection | Pending record | Added selector-owned winner materialization and loser clearing, deletion-promotion/final-deletion lifecycle, write-free save switching, sparse source normalization with pre-projection domain validation, and eager-baseline-compatible lazy/boost tests. | `./scripts/dev check-rust`: 619 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 1 | Replanned after supported sparse maps and eager test baselines disproved the original packet assumptions; compatibility fixes preserved deferred lazy and boost behavior. |
 
 ## Final validation
 

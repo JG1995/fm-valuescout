@@ -2974,6 +2974,50 @@ mod tests {
         let mut conn = open_migrated(&temp_dir.path().join("invalid-potential-filter.db"));
         ingest_players(&mut conn, vec![player_template(1, "No cache work", 150)]);
 
+        let snapshot_id = current_snapshot_id(&conn);
+        conn.execute(
+            "DELETE FROM player_potential_role_scores
+             WHERE snapshot_id = ?1 AND role_id = 'goalkeeper_ip'",
+            [snapshot_id],
+        )
+        .expect("clear eager requested role for invalid filter test");
+        let derived_state = |conn: &Connection| {
+            let mut statement = conn
+                .prepare(
+                    "SELECT
+                         players.uid,
+                         players.potential_attributes_json,
+                         players.potential_projection_model_version,
+                         scores.role_id,
+                         scores.score,
+                         scores.projection_model_version
+                     FROM players
+                     LEFT JOIN player_potential_role_scores scores
+                       ON scores.snapshot_id = players.snapshot_id AND scores.uid = players.uid
+                     WHERE players.snapshot_id = ?1
+                     ORDER BY players.uid, scores.role_id",
+                )
+                .expect("prepare derived state query");
+            statement
+                .query_map([snapshot_id], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                        row.get::<_, Option<i64>>(4)?,
+                        row.get::<_, Option<i64>>(5)?,
+                    ))
+                })
+                .expect("query derived state")
+                .collect::<Result<Vec<_>, _>>()
+                .expect("read derived state")
+        };
+        let derived_state_before = derived_state(&conn);
+        assert!(derived_state_before
+            .iter()
+            .all(|(_, _, _, role_id, _, _)| role_id.as_deref() != Some("goalkeeper_ip")));
+
         let error = search_with_filters(
             &conn,
             0,
@@ -2992,14 +3036,7 @@ mod tests {
         )
         .expect_err("invalid filter");
         assert!(error.contains("invalid string filter operator"));
-        let cache_rows: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM player_potential_role_scores",
-                [],
-                |row| row.get(0),
-            )
-            .expect("count cache rows");
-        assert_eq!(cache_rows, 0);
+        assert_eq!(derived_state(&conn), derived_state_before);
     }
 
     #[test]
@@ -3027,6 +3064,8 @@ mod tests {
                 },
             )],
         );
+        conn.execute("DELETE FROM player_potential_role_scores", [])
+            .expect("clear eager rows for lazy filter test");
         let rules = vec![
             filter_rule(
                 "potential_role.line_holding_keeper_oop",
@@ -3358,6 +3397,8 @@ mod tests {
             ],
         );
         let requested_fields = vec!["potential_role.line_holding_keeper_oop".to_string()];
+        conn.execute("DELETE FROM player_potential_role_scores", [])
+            .expect("clear eager rows for lazy page test");
 
         let page = search_players(
             &conn,
@@ -3439,6 +3480,8 @@ mod tests {
             ],
         );
 
+        conn.execute("DELETE FROM player_potential_role_scores", [])
+            .expect("clear eager rows for lazy cohort sort test");
         let page = search_players(
             &conn,
             0,
@@ -3601,6 +3644,8 @@ mod tests {
         let sort_metric = format!("potential_role.{sort_role}");
         let distinct_visible_role = "sweeper_keeper_oop";
         let distinct_visible_metric = format!("potential_role.{distinct_visible_role}");
+        conn.execute("DELETE FROM player_potential_role_scores", [])
+            .expect("clear eager rows for lazy nullable sort test");
         for (uid, score) in [(1, Some(80)), (2, Some(80)), (3, Some(40)), (4, None)] {
             conn.execute(
                 "INSERT INTO player_potential_role_scores (
@@ -3873,6 +3918,12 @@ mod tests {
         .expect("remove current role score");
 
         let potential_field = "potential_role.line_holding_keeper_oop".to_string();
+        conn.execute(
+            "DELETE FROM player_potential_role_scores
+             WHERE snapshot_id = ?1 AND role_id = 'line_holding_keeper_oop'",
+            [snapshot_id],
+        )
+        .expect("clear eager requested role for lazy page test");
         let page = search_players(
             &conn,
             1,

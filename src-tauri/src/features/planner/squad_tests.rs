@@ -391,6 +391,8 @@ fn potential_sort_orders_nullable_ties_and_materializes_only_the_distinct_visibl
     let sort_metric = format!("potential_role.{sort_role}");
     let distinct_visible_role = "sweeper_keeper_oop";
     let distinct_visible_metric = format!("potential_role.{distinct_visible_role}");
+    conn.execute("DELETE FROM player_potential_role_scores", [])
+        .expect("clear eager rows for lazy nullable sort test");
     for (uid, score) in [(77, Some(80)), (78, Some(80)), (79, Some(40)), (80, None)] {
         conn.execute(
             "INSERT INTO player_potential_role_scores (
@@ -510,6 +512,12 @@ fn current_role_sort_materializes_requested_potential_page_fields() {
     .expect("remove current role score");
 
     let potential_field = "potential_role.line_holding_keeper_oop".to_string();
+    conn.execute(
+        "DELETE FROM player_potential_role_scores
+         WHERE snapshot_id = ?1 AND role_id = 'line_holding_keeper_oop'",
+        [snapshot_id],
+    )
+    .expect("clear eager requested role for lazy page test");
     let page = list_squad_players(
         &conn,
         save_id,
@@ -973,6 +981,8 @@ fn potential_display_is_page_scoped_and_potential_sort_materializes_the_squad_co
         .expect("set potential source values");
     }
     let requested_fields = vec!["potential_role.line_holding_keeper_oop".to_string()];
+    conn.execute("DELETE FROM player_potential_role_scores", [])
+        .expect("clear eager rows for lazy display and sort test");
 
     let display_page = list_squad_players(
         &conn,

@@ -114,6 +114,22 @@ pub(crate) fn clear_non_current_snapshots(
     Ok(())
 }
 
+/// Clears every non-current snapshot and materializes a newly selected current snapshot.
+pub(crate) fn reconcile_current_selection(
+    tx: &Transaction<'_>,
+    save_id: i64,
+    previous_snapshot_id: Option<i64>,
+    current_snapshot_id: Option<i64>,
+) -> Result<(), String> {
+    clear_non_current_snapshots(tx, save_id)?;
+    if current_snapshot_id != previous_snapshot_id {
+        if let Some(snapshot_id) = current_snapshot_id {
+            rebuild_snapshot(tx, snapshot_id)?;
+        }
+    }
+    Ok(())
+}
+
 /// Deletes the disposable cache and materializes each existing effective current snapshot.
 pub(crate) fn backfill_current_snapshots(tx: &Transaction<'_>) -> Result<(), String> {
     let save_ids = tx
@@ -332,10 +348,29 @@ fn persist_players(
         .map_err(|error| error.to_string())?;
 
     for player in players {
-        let attributes = serde_json::from_str::<HashMap<String, Option<u8>>>(
+        let source_attributes = serde_json::from_str::<HashMap<String, Option<u8>>>(
             &player.attributes_json,
         )
         .map_err(|error| format!("invalid player {} attributes JSON: {error}", player.uid))?;
+        for key in DUMP_ATTRIBUTE_KEYS {
+            if let Some(value) = source_attributes.get(*key).copied().flatten() {
+                if !(1..=20).contains(&value) {
+                    return Err(format!(
+                        "player {} attribute `{key}` must be between 1 and 20",
+                        player.uid
+                    ));
+                }
+            }
+        }
+        let attributes = DUMP_ATTRIBUTE_KEYS
+            .iter()
+            .map(|key| {
+                (
+                    (*key).to_string(),
+                    source_attributes.get(*key).copied().flatten(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
         let positions = serde_json::from_str::<HashMap<String, Option<i64>>>(
             &player.positions_json,
         )
@@ -580,6 +615,66 @@ mod tests {
         replace_player(&tx, snapshot_id, 42).expect("replace one player");
         tx.commit().expect("commit player replacement");
         assert_eq!(derived_state(&conn, snapshot_id).2.len(), all_roles().len());
+    }
+
+    #[test]
+    fn rebuild_normalizes_omitted_attributes_to_null() {
+        let (conn, snapshot_id) = snapshot_with_players(&[42]);
+        conn.execute(
+            "UPDATE players SET attributes_json = '{\"Acceleration\":10,\"Unknown\":20}'
+             WHERE snapshot_id = ?1 AND uid = 42",
+            [snapshot_id],
+        )
+        .expect("store sparse source attributes");
+
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start writer transaction");
+        rebuild_snapshot(&tx, snapshot_id).expect("persist potential scores");
+        tx.commit().expect("commit potential scores");
+
+        let projected = serde_json::from_str::<HashMap<String, Option<u8>>>(
+            derived_state(&conn, snapshot_id)
+                .0
+                .as_deref()
+                .expect("persisted projected attributes"),
+        )
+        .expect("parse persisted projected attributes");
+        assert_eq!(projected.len(), DUMP_ATTRIBUTE_KEYS.len());
+        assert_eq!(projected.get("Acceleration"), Some(&Some(11)));
+        assert_eq!(projected.get("Pace"), Some(&None));
+        assert!(!projected.contains_key("Unknown"));
+    }
+
+    #[test]
+    fn rebuild_rejects_out_of_domain_catalog_attributes_before_projection() {
+        let (conn, snapshot_id) = snapshot_with_players(&[42]);
+        let initial_tx = conn
+            .unchecked_transaction()
+            .expect("start initial writer transaction");
+        rebuild_snapshot(&initial_tx, snapshot_id).expect("persist initial potential scores");
+        initial_tx
+            .commit()
+            .expect("commit initial potential scores");
+        let before = derived_state(&conn, snapshot_id);
+        conn.execute(
+            "UPDATE players SET attributes_json = '{\"Acceleration\":0}'
+             WHERE snapshot_id = ?1 AND uid = 42",
+            [snapshot_id],
+        )
+        .expect("store invalid source attribute");
+
+        reset_project_attributes_calls();
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start rejecting writer transaction");
+        let error = rebuild_snapshot(&tx, snapshot_id)
+            .expect_err("reject zero-valued catalog source attribute before projection");
+        assert!(error.contains("player 42 attribute `Acceleration` must be between 1 and 20"));
+        assert_eq!(project_attributes_call_count(), 0);
+        drop(tx);
+
+        assert_eq!(derived_state(&conn, snapshot_id), before);
     }
 
     #[test]

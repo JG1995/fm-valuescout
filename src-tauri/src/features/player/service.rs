@@ -1308,9 +1308,9 @@ mod tests {
         fixture
             .conn
             .execute(
-                "INSERT INTO player_potential_role_scores (
-                    snapshot_id, uid, role_id, score, projection_model_version
-                 ) VALUES (?1, ?2, 'goalkeeper_ip', 80, 1)",
+                "UPDATE player_potential_role_scores
+                 SET score = 80, projection_model_version = 1
+                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
                 params![fixture.snapshot_id, PLAYER_UID],
             )
             .expect("seed potential cache");
@@ -1890,9 +1890,9 @@ mod tests {
         fixture
             .conn
             .execute(
-                "INSERT INTO player_potential_role_scores (
-                    snapshot_id, uid, role_id, score, projection_model_version
-                 ) VALUES (?1, ?2, 'goalkeeper_ip', 80, 1)",
+                "UPDATE player_potential_role_scores
+                 SET score = 80, projection_model_version = 1
+                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
                 params![fixture.snapshot_id, PLAYER_UID],
             )
             .expect("seed potential cache");
@@ -1918,7 +1918,7 @@ mod tests {
             .query_row(
                 "SELECT role_id, score, projection_model_version
                  FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2",
+                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
                 params![fixture.snapshot_id, PLAYER_UID],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
@@ -1970,7 +1970,7 @@ mod tests {
                 .query_row(
                     "SELECT role_id, score, projection_model_version
                      FROM player_potential_role_scores
-                     WHERE snapshot_id = ?1 AND uid = ?2",
+                     WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
                     params![fixture.snapshot_id, PLAYER_UID],
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )
@@ -2011,13 +2011,26 @@ mod tests {
         );
         fixture
             .conn
+            .execute(
+                "UPDATE player_potential_role_scores
+                 SET score = 80, projection_model_version = 1
+                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed goalkeeper potential row");
+        fixture
+            .conn
+            .execute(
+                "UPDATE player_potential_role_scores
+                 SET score = NULL, projection_model_version = 1
+                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'full_back_ip'",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed nullable potential row");
+        fixture
+            .conn
             .execute_batch(&format!(
-                "INSERT INTO player_potential_role_scores (
-                    snapshot_id, uid, role_id, score, projection_model_version
-                 ) VALUES
-                    ({snapshot_id}, {player_uid}, 'goalkeeper_ip', 80, 1),
-                    ({snapshot_id}, {player_uid}, 'full_back_ip', NULL, 1);
-                 INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
                  VALUES ({save_id}, '[\"attr.Determination\"]');
                  INSERT INTO club_dna_scores (
                     snapshot_id, uid, definition_version, score_model_version, score
@@ -2026,7 +2039,7 @@ mod tests {
                 player_uid = PLAYER_UID,
                 save_id = fixture.save_id,
             ))
-            .expect("seed derived rows");
+            .expect("seed Club DNA rows");
         let original_mentality_json: (String, String) = fixture
             .conn
             .query_row(

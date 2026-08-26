@@ -1497,7 +1497,9 @@ mod tests {
         let snapshot_id = conn.last_insert_rowid();
         insert_player(&conn, snapshot_id, 42);
         conn.execute(
-            "UPDATE players SET attributes_json = ?2 WHERE snapshot_id = ?1 AND uid = 42",
+            "UPDATE players
+             SET ca = 100, pa = 140, age = 20, attributes_json = ?2
+             WHERE snapshot_id = ?1 AND uid = 42",
             params![snapshot_id, source_attributes],
         )
         .expect("set v33 player input");
@@ -1554,8 +1556,84 @@ mod tests {
     }
 
     #[test]
-    fn rolls_back_v34_when_current_player_projects_to_an_incomplete_map() {
-        assert_v34_backfill_rolls_back("{}", "Current potential snapshot is incomplete");
+    fn migrates_v33_sparse_current_player_attributes_as_nulls() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("potential-scores-v34-sparse.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 33) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v33");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set v33 version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES ('Sparse projection')", [])
+            .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert current snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+        insert_player(&conn, snapshot_id, 42);
+        conn.execute(
+            "UPDATE players SET attributes_json = '{}' WHERE snapshot_id = ?1 AND uid = 42",
+            [snapshot_id],
+        )
+        .expect("store sparse v33 attributes");
+        conn.execute(
+            "INSERT INTO player_potential_role_scores (
+                snapshot_id, uid, role_id, score, projection_model_version
+             ) VALUES (?1, 42, 'v33_sparse_row', 50, 1)",
+            [snapshot_id],
+        )
+        .expect("insert v33 sparse row");
+
+        apply(&conn).expect("migrate sparse v33 potential state");
+
+        let projected_json: String = conn
+            .query_row(
+                "SELECT potential_attributes_json FROM players
+                 WHERE snapshot_id = ?1 AND uid = 42",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("read projected sparse attributes");
+        let projected: HashMap<String, Option<u8>> =
+            serde_json::from_str(&projected_json).expect("parse projected sparse attributes");
+        assert_eq!(
+            projected.len(),
+            crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS.len()
+        );
+        assert!(projected.values().all(Option::is_none));
+        let potential_row_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1 AND uid = 42",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("count complete sparse potential rows");
+        assert_eq!(
+            potential_row_count,
+            crate::features::scoring::catalog::all_roles().len() as i64
+        );
+    }
+
+    #[test]
+    fn rolls_back_v34_when_current_player_projection_input_is_noninteger_or_out_of_u8_range() {
+        assert_v34_backfill_rolls_back("{\"Unknown\":10.5}", "invalid type");
+        assert_v34_backfill_rolls_back("{\"Unknown\":300}", "invalid value");
+    }
+
+    #[test]
+    fn rolls_back_v34_when_current_player_source_attribute_is_outside_the_visible_domain() {
+        assert_v34_backfill_rolls_back(
+            "{\"Acceleration\":0}",
+            "player 42 attribute `Acceleration` must be between 1 and 20",
+        );
     }
 
     #[test]
