@@ -40,6 +40,7 @@ Use a short, numbered filename such as `0001-decision-title.md`.
 | [0024](./0024-eager-persisted-club-dna-scores.md) | Eager persisted Club DNA scores |
 | [0025](./0025-selective-index-driven-player-sorts.md) | Selective index-driven player table sorts |
 | [0026](./0026-eager-current-potential-scoring.md) | Eager current-snapshot potential scoring |
+| [0027](./0027-scoped-potential-read-validation.md) | Scoped potential read validation |
 
 ## ADR format
 

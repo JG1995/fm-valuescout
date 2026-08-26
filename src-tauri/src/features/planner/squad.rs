@@ -4,7 +4,7 @@ use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExten
 
 use crate::features::player_metrics::{
     club_dna::SCORE_MODEL_VERSION,
-    potential_scores::assert_current_snapshot_complete,
+    potential_scores::assert_snapshot_roles_complete,
     resolver::{
         parse_requested_fields, read_dynamic_value, ClubDnaSqlBindings, DynamicValue, MetricField,
     },
@@ -193,13 +193,15 @@ pub fn list_squad_players(
     let offset = i64::try_from(offset).map_err(|_| "squad offset out of range".to_string())?;
     let limit = i64::try_from(limit).map_err(|_| "squad limit out of range".to_string())?;
     let potential_role_sort = sort_by.potential_role_sort_identity();
-    let potential_requested = potential_role_sort.is_some()
-        || dynamic_fields
-            .iter()
-            .any(|field| field.potential_role_id().is_some());
-    if potential_requested {
-        assert_current_snapshot_complete(conn, snapshot_id)?;
+    let mut potential_role_ids = dynamic_fields
+        .iter()
+        .filter_map(MetricField::potential_role_id)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if let Some(identity) = potential_role_sort {
+        potential_role_ids.push(identity.role_id.to_string());
     }
+    assert_snapshot_roles_complete(conn, snapshot_id, &potential_role_ids)?;
 
     let club_dna_requested =
         sort_by.is_club_dna() || dynamic_fields.iter().any(MetricField::is_club_dna);

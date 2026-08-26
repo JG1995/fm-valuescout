@@ -123,7 +123,7 @@ impl AssignmentProvenance {
 }
 
 pub fn get_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
-    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
+    let snapshot_id = current_snapshot_id(conn, save_id)?;
     load_depth(conn, save_id, snapshot_id)
 }
 
@@ -670,7 +670,9 @@ fn resolve_assignment(
                 ip.score,
                 oop.score,
                 potential_ip.score,
-                potential_oop.score
+                potential_oop.score,
+                potential_ip.role_id IS NOT NULL,
+                potential_oop.role_id IS NOT NULL
              FROM players p
              LEFT JOIN player_role_scores ip
                ON ip.snapshot_id = p.snapshot_id
@@ -707,6 +709,8 @@ fn resolve_assignment(
                     row.get::<_, Option<u8>>(3)?,
                     row.get::<_, Option<u8>>(4)?,
                     row.get::<_, Option<u8>>(5)?,
+                    row.get::<_, bool>(6)?,
+                    row.get::<_, bool>(7)?,
                 ))
             },
         )
@@ -720,6 +724,8 @@ fn resolve_assignment(
         oop_score,
         potential_ip_score,
         potential_oop_score,
+        has_potential_ip_score,
+        has_potential_oop_score,
     )) = player
     else {
         return Ok(ResolvedAssignment {
@@ -729,6 +735,9 @@ fn resolve_assignment(
             potential_combined_score: None,
         });
     };
+    if !has_potential_ip_score || !has_potential_oop_score {
+        return Err("Current potential snapshot is incomplete".to_string());
+    }
     let state = if is_in_pool {
         AssignmentState::Resolved
     } else {

@@ -4,9 +4,7 @@ use rusqlite::{params, params_from_iter, types::Value, Connection};
 
 use crate::features::{
     managed_club::service as managed_club_service,
-    player_metrics::potential_scores::{
-        assert_current_snapshot_complete, PROJECTION_MODEL_VERSION,
-    },
+    player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
     scoring::catalog::{all_roles, RolePhase},
 };
 
@@ -128,7 +126,6 @@ pub fn get_role_reference(
             Ok((lane, role, phase.position(lane)))
         })
         .collect::<Result<Vec<_>, String>>()?;
-    assert_current_snapshot_complete(conn, snapshot_id)?;
     let role_ids = lane_roles
         .iter()
         .map(|(_, role, _)| role.role_id)
@@ -344,6 +341,13 @@ fn load_players(
         if let Some(index) = player_indices.get(&player_uid) {
             players[*index].potential_role_scores.insert(role_id, score);
         }
+    }
+    if players.iter().any(|player| {
+        role_ids
+            .iter()
+            .any(|role_id| !player.potential_role_scores.contains_key(*role_id))
+    }) {
+        return Err("Current potential snapshot is incomplete".to_string());
     }
 
     Ok(players)

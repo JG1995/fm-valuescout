@@ -7,7 +7,7 @@ use crate::features::moneyball::percentile::{calculate_percentiles, MoneyballNum
 use crate::features::moneyball::{role_catalog::builtin_catalog, role_score::score_role};
 use crate::features::player_metrics::club_dna::SCORE_MODEL_VERSION;
 use crate::features::player_metrics::{
-    potential_scores::assert_current_snapshot_complete,
+    potential_scores::assert_snapshot_roles_complete,
     resolver::{
         parse_requested_fields_for_moneyball, read_dynamic_value, ClubDnaSqlBindings, MetricField,
     },
@@ -388,16 +388,22 @@ pub fn search_players_in_view(
         }
     };
 
-    let potential_filter_roles = filter_ast.map(potential_role_ids_from_ast).transpose()?;
+    let potential_filter_roles = filter_ast
+        .map(potential_role_ids_from_ast)
+        .transpose()?
+        .unwrap_or_default();
     let potential_role_sort = sort_by.potential_role_sort_identity();
-    let potential_requested = dynamic_fields
-        .iter()
-        .any(|field| field.potential_role_id().is_some())
-        || potential_filter_roles.is_some_and(|roles| !roles.is_empty())
-        || potential_role_sort.is_some();
-    if potential_requested {
-        assert_current_snapshot_complete(conn, snapshot_id)?;
+    let mut potential_role_ids = potential_filter_roles;
+    potential_role_ids.extend(
+        dynamic_fields
+            .iter()
+            .filter_map(MetricField::potential_role_id)
+            .map(str::to_string),
+    );
+    if let Some(identity) = potential_role_sort {
+        potential_role_ids.push(identity.role_id.to_string());
     }
+    assert_snapshot_roles_complete(conn, snapshot_id, &potential_role_ids)?;
 
     let club_dna_bindings = club_dna_requested.then(|| {
         if club_dna_filter {
