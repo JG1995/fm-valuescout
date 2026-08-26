@@ -17,7 +17,10 @@ use super::squad::{
     DEFAULT_SQUAD_PAGE_LIMIT, MAX_SQUAD_PAGE_LIMIT,
 };
 use super::tactic::{self as tactic_service, PlannerTactic, TacticLane, TacticOptions};
-use super::teams::{self as teams_service, PlannerTeamInput};
+use super::teams::{
+    self as teams_service, PlannerStaffingTargetRemovalImpact, PlannerTeamInput,
+    PlannerTeamRemovalImpact,
+};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -520,6 +523,65 @@ impl From<PlannerTeamInputDto> for PlannerTeamInput {
             display_name: input.display_name,
         }
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerStaffingTargetRemovalImpactDto {
+    pub job_id: String,
+    pub job_label: String,
+    pub slot_count: i64,
+}
+
+impl From<PlannerStaffingTargetRemovalImpact> for PlannerStaffingTargetRemovalImpactDto {
+    fn from(impact: PlannerStaffingTargetRemovalImpact) -> Self {
+        Self {
+            job_id: impact.job_id,
+            job_label: impact.job_label,
+            slot_count: impact.slot_count,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannerTeamRemovalImpactDto {
+    pub team: String,
+    pub display_name: String,
+    pub assignment_count: i64,
+    pub staffing_targets: Vec<PlannerStaffingTargetRemovalImpactDto>,
+}
+
+impl From<PlannerTeamRemovalImpact> for PlannerTeamRemovalImpactDto {
+    fn from(impact: PlannerTeamRemovalImpact) -> Self {
+        Self {
+            team: impact.team.as_str().to_string(),
+            display_name: impact.display_name,
+            assignment_count: impact.assignment_count,
+            staffing_targets: impact
+                .staffing_targets
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_planner_team_removal_impacts(
+    teams: Vec<PlannerTeamInputDto>,
+    db: State<'_, Db>,
+) -> Result<Vec<PlannerTeamRemovalImpactDto>, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let save_id = service::active_save_id(&conn)?;
+    let teams = teams
+        .into_iter()
+        .map(PlannerTeamInput::from)
+        .collect::<Vec<_>>();
+    teams_service::planner_team_removal_impacts(&conn, save_id, &teams)
+        .map(|impacts| impacts.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]

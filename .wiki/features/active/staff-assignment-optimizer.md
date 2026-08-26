@@ -195,7 +195,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(staff): plan assignment optimization`
 
@@ -255,7 +255,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 #### Commit 2 — Persist staff assignment targets
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): persist assignment targets`
 
@@ -679,19 +679,19 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 **PR:** PR 1 — Optimize staff assignments from the Shortlist
 
-**Commit:** Commit 1 — Record the approved feature plan
+**Commit:** Commit 2 — Persist staff assignment targets
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. `ledger_state.py` is the structural proof; the planning diff must contain only this ledger and `.wiki/TODO.md`.
+Add focused failing migration, target-service, Planner-service, component, route, and existing smoke proofs for the v35 table, exact complete replacement, rollback, combined removal impact, confirmed atomic cleanup, and route-visible Planner save mutation. Confirm each proof fails for the missing target persistence or removal behavior before implementation.
 
 ### Expected outcome
 
-The reviewed schema-2 ledger and TODO activation are the only feature-owned changes ready for the first authorized commit. The ledger reports one Active PR, one Active planning commit, six Pending implementation/test commits, exact branch/publication authority, and packet fingerprints while the Delivery fingerprint remains pending review and classification.
+The save owns validated 0-through-50 staffing targets. Target replacement is atomic, and Manage teams names and confirms assignment and staffing-target impact before one transaction removes a disabled team’s Planner and staffing state.
 
 ### Explicit exclusions
 
-Implementation, tests, migrations, configuration, BACKLOG, current-state docs, ADRs, fingerprint acceptance, Git/GitHub mutation, Linear mutation, and the unrelated developer-owned completed-feature modification.
+Candidate joins, Preferred Job mapping, recommendation allocation, Staff Shortlist configuration controls, result presentation, optimizer browser fixtures, current-state documentation, and unrelated cleanup.
 
 ## Discoveries and replanning
 
@@ -707,6 +707,7 @@ Implementation, tests, migrations, configuration, BACKLOG, current-state docs, A
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Optimize staff assignments from the Shortlist | Commit 1 — Record the approved feature plan | 1e526f810b7a63a8b76c85c1a0839d22e9fabea4 | Recorded the reviewed schema-2 ledger and TODO activation on the authorized branch. | `ledger_state.py`, `delivery_state.py`, staged whitespace checks, and the pre-commit gate passed. | Not applicable | Accepted findings — developer directed reviews to fix functional issues only; retained one non-functional stale active-work sentence to preserve the accepted fingerprint. | 0 | None |
 
 ## Final validation
 

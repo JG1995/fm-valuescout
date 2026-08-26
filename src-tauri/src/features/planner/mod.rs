@@ -5,7 +5,7 @@ mod optimizer;
 mod role_reference;
 pub mod squad;
 pub mod tactic;
-mod teams;
+pub(crate) mod teams;
 
 #[cfg(test)]
 mod depth_tests;

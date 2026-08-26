@@ -1281,6 +1281,25 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
+          if (cmd === "get_planner_team_removal_impacts") {
+            if (!Array.isArray(args?.teams)) {
+              throw new Error("Invalid planner team settings");
+            }
+            const included = new Set(args.teams.map((team) => team?.team));
+            return plannerDepth.teams
+              .filter((team) => !included.has(team.team))
+              .map((team) => ({
+                team: team.team,
+                displayName: team.displayName,
+                assignmentCount: team.strings.reduce(
+                  (count, plannerString) =>
+                    count + plannerString.assignments.length,
+                  0,
+                ),
+                staffingTargets: [],
+              }));
+          }
+
           if (cmd === "save_planner_teams") {
             if (!Array.isArray(args?.teams) || args.teams.length < 1 || args.teams.length > 3) {
               throw new Error("Planner configuration must contain one to three teams");

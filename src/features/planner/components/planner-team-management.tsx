@@ -1,8 +1,10 @@
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { playerResultContextMutationKey } from "@/components/player-table/player-result-context";
 import { Button } from "@/components/ui/button/button";
 import { TextField } from "@/components/ui/field/text-field";
 import { Modal } from "@/components/ui/modal/modal";
+import { fetchPlannerTeamRemovalImpacts } from "../api/fetch-planner-team-removal-impacts";
 import {
   type PlannerTeamSettingInput,
   savePlannerTeams,
@@ -13,15 +15,10 @@ import {
   PLANNER_TEAMS,
   type PlannerTeam,
 } from "../types/team";
+import type { PlannerTeamRemovalImpact } from "../types/team-removal-impact";
 
 type PlannerTeamDraft = PlannerTeamSettingInput & {
   included: boolean;
-};
-
-type RemovedTeam = {
-  team: PlannerTeam;
-  displayName: string;
-  assignmentCount: number;
 };
 
 type PlannerTeamManagementProps = {
@@ -40,17 +37,6 @@ function draftFromDepth(depth: PlannerDepth): PlannerTeamDraft[] {
       displayName: current?.displayName ?? PLANNER_TEAM_NAMES[team],
     };
   });
-}
-
-function assignmentCount(depth: PlannerDepth, team: PlannerTeam) {
-  return (
-    depth.teams
-      .find((candidate) => candidate.team === team)
-      ?.strings.reduce(
-        (count, plannerString) => count + plannerString.assignments.length,
-        0,
-      ) ?? 0
-  );
 }
 
 function validateDraft(draft: PlannerTeamDraft[]) {
@@ -89,22 +75,6 @@ function validateDraft(draft: PlannerTeamDraft[]) {
   };
 }
 
-function removedTeams(
-  depth: PlannerDepth,
-  draft: PlannerTeamDraft[],
-): RemovedTeam[] {
-  return depth.teams
-    .filter(
-      (team) =>
-        !draft.find((candidate) => candidate.team === team.team)?.included,
-    )
-    .map((team) => ({
-      team: team.team,
-      displayName: team.displayName,
-      assignmentCount: assignmentCount(depth, team.team),
-    }));
-}
-
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -119,7 +89,19 @@ export function PlannerTeamManagement({
   const [confirmRemoval, setConfirmRemoval] = useState(false);
   const [returnFocusToSave, setReturnFocusToSave] = useState(false);
   const [draft, setDraft] = useState(() => draftFromDepth(depth));
+  const [removalImpacts, setRemovalImpacts] = useState<
+    PlannerTeamRemovalImpact[]
+  >([]);
+  const [removalImpactError, setRemovalImpactError] = useState<string | null>(
+    null,
+  );
+  const [checkingRemovalImpact, setCheckingRemovalImpact] = useState(false);
+  const [previewedTeams, setPreviewedTeams] = useState<
+    PlannerTeamSettingInput[] | null
+  >(null);
+  const removalImpactRequest = useRef(0);
   const save = useMutation({
+    mutationKey: playerResultContextMutationKey,
     mutationFn: ({
       teams,
       confirmPopulatedRemoval,
@@ -131,8 +113,15 @@ export function PlannerTeamManagement({
       onPendingChange(true);
     },
     onSuccess: (nextDepth) => {
-      const removed = removedTeams(depth, draft).map((team) => team.team);
+      const removed = depth.teams
+        .filter(
+          (team) =>
+            !draft.find((candidate) => candidate.team === team.team)?.included,
+        )
+        .map((team) => team.team);
+      removalImpactRequest.current += 1;
       setConfirmRemoval(false);
+      setPreviewedTeams(null);
       setOpen(false);
       onSaved(nextDepth, removed);
     },
@@ -142,19 +131,29 @@ export function PlannerTeamManagement({
   });
 
   const validation = useMemo(() => validateDraft(draft), [draft]);
-  const pendingRemovalTeams = useMemo(
-    () => removedTeams(depth, draft).filter((team) => team.assignmentCount > 0),
-    [depth, draft],
-  );
-  const serverError = save.isError ? errorMessage(save.error) : null;
+  const serverError = save.isError
+    ? errorMessage(save.error)
+    : removalImpactError;
 
   useEffect(() => {
+    removalImpactRequest.current += 1;
     if (open) {
       setDraft(draftFromDepth(depth));
       setConfirmRemoval(false);
+      setPreviewedTeams(null);
+      setRemovalImpacts([]);
+      setRemovalImpactError(null);
+      setCheckingRemovalImpact(false);
       save.reset();
     }
   }, [depth, open, save.reset]);
+
+  useEffect(
+    () => () => {
+      removalImpactRequest.current += 1;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!open || !confirmRemoval) {
@@ -179,7 +178,12 @@ export function PlannerTeamManagement({
     team: PlannerTeam,
     update: Partial<PlannerTeamDraft>,
   ) => {
+    removalImpactRequest.current += 1;
     save.reset();
+    setCheckingRemovalImpact(false);
+    setPreviewedTeams(null);
+    setRemovalImpacts([]);
+    setRemovalImpactError(null);
     setDraft((current) =>
       current.map((candidate) =>
         candidate.team === team ? { ...candidate, ...update } : candidate,
@@ -187,43 +191,73 @@ export function PlannerTeamManagement({
     );
   };
 
-  const submit = (confirmPopulatedRemoval: boolean) => {
-    if (!validation.valid) {
-      return;
-    }
-    save.mutate({
-      teams: draft
-        .filter((team) => team.included)
-        .map(({ team, displayName }) => ({
-          team,
-          displayName: displayName.trim(),
-        })),
-      confirmPopulatedRemoval,
-    });
+  const inputs = () =>
+    draft
+      .filter((team) => team.included)
+      .map(({ team, displayName }) => ({
+        team,
+        displayName: displayName.trim(),
+      }));
+
+  const submit = (
+    teams: PlannerTeamSettingInput[],
+    confirmPopulatedRemoval: boolean,
+  ) => {
+    save.mutate({ teams, confirmPopulatedRemoval });
   };
 
-  const requestSave = () => {
-    if (!validation.valid) {
+  const requestSave = async () => {
+    if (!validation.valid || checkingRemovalImpact) {
       return;
     }
-    if (pendingRemovalTeams.length > 0) {
-      setConfirmRemoval(true);
-      return;
+    const teams = inputs();
+    const request = ++removalImpactRequest.current;
+    setRemovalImpactError(null);
+    setCheckingRemovalImpact(true);
+    try {
+      const impacts = await fetchPlannerTeamRemovalImpacts(teams);
+      if (request !== removalImpactRequest.current) {
+        return;
+      }
+      setRemovalImpacts(impacts);
+      setPreviewedTeams(teams);
+      if (
+        impacts.some(
+          (impact) =>
+            impact.assignmentCount > 0 || impact.staffingTargets.length > 0,
+        )
+      ) {
+        setConfirmRemoval(true);
+        return;
+      }
+      submit(teams, false);
+    } catch (error) {
+      if (request === removalImpactRequest.current) {
+        setRemovalImpactError(errorMessage(error));
+      }
+    } finally {
+      if (request === removalImpactRequest.current) {
+        setCheckingRemovalImpact(false);
+      }
     }
-    submit(false);
   };
 
   const close = () => {
-    if (!save.isPending) {
+    if (!save.isPending && !checkingRemovalImpact) {
+      removalImpactRequest.current += 1;
       setConfirmRemoval(false);
+      setPreviewedTeams(null);
       setReturnFocusToSave(false);
       setOpen(false);
     }
   };
 
   const leaveConfirmation = () => {
-    if (!save.isPending) {
+    if (!save.isPending && !checkingRemovalImpact) {
+      removalImpactRequest.current += 1;
       setConfirmRemoval(false);
+      setPreviewedTeams(null);
+      setRemovalImpacts([]);
       setReturnFocusToSave(true);
     }
   };
@@ -232,7 +266,7 @@ export function PlannerTeamManagement({
     <>
       <Button
         variant="secondary"
-        disabled={disabled || save.isPending}
+        disabled={disabled || save.isPending || checkingRemovalImpact}
         onClick={() => setOpen(true)}
         data-planner-manage-teams
         className="!h-7 !px-3 !text-label-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -249,7 +283,7 @@ export function PlannerTeamManagement({
             <>
               <Button
                 variant="secondary"
-                disabled={save.isPending}
+                disabled={save.isPending || checkingRemovalImpact}
                 onClick={leaveConfirmation}
                 data-planner-team-confirm-cancel
               >
@@ -259,7 +293,12 @@ export function PlannerTeamManagement({
                 variant="destructive"
                 loading={save.isPending}
                 loadingLabel="Removing…"
-                onClick={() => submit(true)}
+                disabled={checkingRemovalImpact || !previewedTeams}
+                onClick={() => {
+                  if (previewedTeams) {
+                    submit(previewedTeams, true);
+                  }
+                }}
               >
                 Remove teams
               </Button>
@@ -268,15 +307,15 @@ export function PlannerTeamManagement({
             <>
               <Button
                 variant="secondary"
-                disabled={save.isPending}
+                disabled={save.isPending || checkingRemovalImpact}
                 onClick={close}
               >
                 Cancel
               </Button>
               <Button
-                loading={save.isPending}
-                loadingLabel="Saving…"
-                disabled={!validation.valid}
+                loading={save.isPending || checkingRemovalImpact}
+                loadingLabel={checkingRemovalImpact ? "Checking…" : "Saving…"}
+                disabled={!validation.valid || checkingRemovalImpact}
                 onClick={requestSave}
                 data-planner-team-save
               >
@@ -289,13 +328,29 @@ export function PlannerTeamManagement({
         {confirmRemoval ? (
           <div className="space-y-3">
             <p className="text-body-md text-on-surface-variant">
-              Removing these teams permanently deletes their assignments.
+              Removing these teams permanently deletes their assignments and
+              staffing targets.
             </p>
             <ul className="list-disc space-y-1 pl-5 text-body-md text-on-surface">
-              {pendingRemovalTeams.map((team) => (
+              {removalImpacts.map((team) => (
                 <li key={team.team}>
-                  {team.displayName}: {team.assignmentCount} assignment
-                  {team.assignmentCount === 1 ? "" : "s"}
+                  {team.displayName}:{" "}
+                  {team.assignmentCount > 0 ? (
+                    <>
+                      {team.assignmentCount} assignment
+                      {team.assignmentCount === 1 ? "" : "s"}
+                    </>
+                  ) : null}
+                  {team.assignmentCount > 0 && team.staffingTargets.length > 0
+                    ? "; "
+                    : null}
+                  {team.staffingTargets.map((target, index) => (
+                    <span key={target.jobId}>
+                      {index > 0 ? ", " : null}
+                      {target.jobLabel}: {target.slotCount} slot
+                      {target.slotCount === 1 ? "" : "s"}
+                    </span>
+                  ))}
                 </li>
               ))}
             </ul>
@@ -335,7 +390,12 @@ export function PlannerTeamManagement({
                       <input
                         type="checkbox"
                         checked={team.included}
-                        disabled={soleTeam || maxTeams || save.isPending}
+                        disabled={
+                          soleTeam ||
+                          maxTeams ||
+                          save.isPending ||
+                          checkingRemovalImpact
+                        }
                         onChange={(event) =>
                           updateDraft(team.team, {
                             included: event.target.checked,
@@ -349,7 +409,7 @@ export function PlannerTeamManagement({
                         label={`${PLANNER_TEAM_NAMES[team.team]} display name`}
                         value={team.displayName}
                         error={validation.fieldErrors[team.team]}
-                        disabled={save.isPending}
+                        disabled={save.isPending || checkingRemovalImpact}
                         onChange={(event) =>
                           updateDraft(team.team, {
                             displayName: event.target.value,

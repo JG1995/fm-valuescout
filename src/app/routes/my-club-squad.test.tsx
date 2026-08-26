@@ -67,6 +67,7 @@ import {
   getPlannerTeamSaveIpcMockCalls,
   observeManagedClubSaveCall,
   resolvePendingManagedClubSave,
+  resolvePendingPlannerTeamRemovalImpact,
   resolvePlannerDepthIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
@@ -89,6 +90,8 @@ import {
   setPlannerSlotCandidates,
   setPlannerTacticIpcMock,
   setPlannerTacticSaveError,
+  setPlannerTeamRemovalImpactPending,
+  setPlannerTeamRemovalImpacts,
   setPlannerTeamSaveError,
   setPlannerTeamSavePending,
 } from "@/testing/planner-ipc-mock";
@@ -5072,6 +5075,16 @@ describe("My Club route", () => {
               : "U19",
       })),
     });
+    setPlannerTeamRemovalImpacts([
+      {
+        team: "reserves",
+        displayName: "B Team",
+        assignmentCount: 1,
+        staffingTargets: [
+          { jobId: "manager", jobLabel: "Manager", slotCount: 2 },
+        ],
+      },
+    ]);
     renderMyClubRoute();
 
     await user.click(
@@ -5090,7 +5103,9 @@ describe("My Club route", () => {
     const confirmation = await screen.findByRole("dialog", {
       name: "Remove planner teams?",
     });
-    expect(confirmation).toHaveTextContent("B Team: 1 assignment");
+    expect(confirmation).toHaveTextContent(
+      "B Team: 1 assignment; Manager: 2 slots",
+    );
     expect(
       within(confirmation).getByRole("button", { name: "Cancel" }),
     ).toHaveFocus();
@@ -5318,7 +5333,7 @@ describe("My Club route", () => {
     depth.teams = depth.teams.filter((team) => team.team === "senior");
     setPlannerDepthIpcMock(depth);
     setPlannerTeamSavePending(true);
-    renderMyClubRoute();
+    const { queryClient } = renderMyClubRoute();
 
     await user.click(
       await screen.findByRole("button", { name: "Manage teams" }),
@@ -5340,10 +5355,65 @@ describe("My Club route", () => {
       expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(1),
     );
     expect(
+      queryClient.isMutating({
+        mutationKey: playerResultContextMutationKey,
+      }),
+    ).toBeGreaterThan(0);
+    expect(
       within(dialog).getByRole("button", { name: "Saving…" }),
     ).toBeDisabled();
     await user.click(within(dialog).getByRole("button", { name: "Saving…" }));
     expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(1);
+  });
+
+  it("cancels a pending removal preview when the active save changes", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    setPlannerAvailableClubs(["Barcelona"]);
+    setPlannerTeamRemovalImpacts([]);
+    setPlannerTeamRemovalImpactPending(true);
+    const { queryClient } = renderMyClubRoute();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Manage teams" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage squad teams",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save teams" }),
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Checking…" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("textbox", { name: "Senior display name" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Senior" }),
+    ).toBeDisabled();
+
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      snapshotKeys.current(),
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot in the planner query");
+    }
+    queryClient.setQueryData<SnapshotSummary | null>(
+      snapshotKeys.current(),
+      () => ({ ...snapshot, saveId: 2 }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    await act(async () => {
+      resolvePendingPlannerTeamRemovalImpact();
+    });
+    expect(getPlannerTeamSaveIpcMockCalls()).toHaveLength(0);
   });
 
   it("discards an open management draft when the active save changes", async () => {

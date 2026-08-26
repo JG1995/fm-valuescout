@@ -9,6 +9,10 @@ use crate::features::memory_read::service::{
 };
 use crate::features::player::boost_gate;
 
+use super::assignment_targets::{
+    self, StaffAssignmentTarget, StaffAssignmentTargetInput, StaffAssignmentTargetTeam,
+    StaffAssignmentTargets,
+};
 use super::filter::{self, FilterAst, FilterRule};
 use super::query::{
     self, SortDir, SortField, StaffDetail, StaffPage, StaffPageState, StaffRoleScore, StaffScope,
@@ -194,6 +198,100 @@ impl From<StaffDetail> for StaffDetailDto {
                 .collect(),
         }
     }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentTargetDto {
+    pub scope: String,
+    pub job_id: String,
+    pub job_label: String,
+    pub slot_count: i64,
+}
+
+impl From<StaffAssignmentTarget> for StaffAssignmentTargetDto {
+    fn from(target: StaffAssignmentTarget) -> Self {
+        Self {
+            scope: target.scope,
+            job_id: target.job_id,
+            job_label: target.job_label,
+            slot_count: target.slot_count,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentTargetTeamDto {
+    pub team: String,
+    pub display_name: String,
+}
+
+impl From<StaffAssignmentTargetTeam> for StaffAssignmentTargetTeamDto {
+    fn from(team: StaffAssignmentTargetTeam) -> Self {
+        Self {
+            team: team.team,
+            display_name: team.display_name,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentTargetsDto {
+    pub teams: Vec<StaffAssignmentTargetTeamDto>,
+    pub targets: Vec<StaffAssignmentTargetDto>,
+}
+
+impl From<StaffAssignmentTargets> for StaffAssignmentTargetsDto {
+    fn from(targets: StaffAssignmentTargets) -> Self {
+        Self {
+            teams: targets.teams.into_iter().map(Into::into).collect(),
+            targets: targets.targets.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentTargetInputDto {
+    pub scope: String,
+    pub job_id: String,
+    pub slot_count: i64,
+}
+
+impl From<StaffAssignmentTargetInputDto> for StaffAssignmentTargetInput {
+    fn from(target: StaffAssignmentTargetInputDto) -> Self {
+        Self {
+            scope: target.scope,
+            job_id: target.job_id,
+            slot_count: target.slot_count,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_staff_assignment_targets(
+    expected_save_context_token: String,
+    db: State<'_, Db>,
+) -> Result<StaffAssignmentTargetsDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    assignment_targets::get_targets(&conn, &expected_save_context_token).map(Into::into)
+}
+
+#[tauri::command]
+pub fn save_staff_assignment_targets(
+    expected_save_context_token: String,
+    targets: Vec<StaffAssignmentTargetInputDto>,
+    db: State<'_, Db>,
+) -> Result<StaffAssignmentTargetsDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let inputs = targets.into_iter().map(Into::into).collect::<Vec<_>>();
+    assignment_targets::save_targets(&conn, &expected_save_context_token, &inputs).map(Into::into)
 }
 
 fn parse_filters(
@@ -766,6 +864,29 @@ mod tests {
             .expect("serialize no shortlist state")["state"],
             "no_shortlist"
         );
+    }
+
+    #[test]
+    fn staff_assignment_targets_dto_serializes_teams_and_targets_in_camel_case() {
+        let value = serde_json::to_value(StaffAssignmentTargetsDto {
+            teams: vec![StaffAssignmentTargetTeamDto {
+                team: "reserves".to_string(),
+                display_name: "B Team".to_string(),
+            }],
+            targets: vec![StaffAssignmentTargetDto {
+                scope: "reserves".to_string(),
+                job_id: "manager".to_string(),
+                job_label: "Manager".to_string(),
+                slot_count: 2,
+            }],
+        })
+        .expect("serialize staff assignment targets");
+        assert_eq!(value["teams"][0]["team"], "reserves");
+        assert_eq!(value["teams"][0]["displayName"], "B Team");
+        assert_eq!(value["targets"][0]["scope"], "reserves");
+        assert_eq!(value["targets"][0]["jobId"], "manager");
+        assert_eq!(value["targets"][0]["jobLabel"], "Manager");
+        assert_eq!(value["targets"][0]["slotCount"], 2);
     }
 
     #[test]

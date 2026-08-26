@@ -1,5 +1,8 @@
 use rusqlite::params;
 
+use crate::features::snapshot::service;
+use crate::features::staff::assignment_targets::{self, StaffAssignmentTargetInput};
+
 use super::depth::{assign_player, get_depth, PlannerTeam};
 use super::teams::{get_team_settings, save_team_settings, PlannerTeamInput};
 use super::test_support::{
@@ -98,6 +101,64 @@ fn replaces_team_names_and_removes_populated_team_after_confirmation() {
             PlannerTeam::Reserves,
         )
         .len(),
+        1
+    );
+}
+
+#[test]
+fn target_impact_requires_confirmation_and_confirmed_removal_keeps_other_scopes() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    get_depth(&conn, save_id).expect("initialize planner teams");
+    let token = service::capture_active_save_context(&conn)
+        .expect("save context")
+        .context_token;
+    let targets = assignment_targets::get_targets(&conn, &token).expect("expanded targets");
+    let inputs = targets
+        .targets
+        .iter()
+        .map(|target| StaffAssignmentTargetInput {
+            scope: target.scope.clone(),
+            job_id: target.job_id.clone(),
+            slot_count: i64::from(
+                (target.scope == "reserves" && target.job_id == "manager")
+                    || (target.scope == "club" && target.job_id == "scout"),
+            ),
+        })
+        .collect::<Vec<_>>();
+    assignment_targets::save_targets(&conn, &token, &inputs).expect("save targets");
+
+    let inputs = [input("senior", "Senior"), input("youth", "Youth")];
+    let impacts =
+        super::teams::planner_team_removal_impacts(&conn, save_id, &inputs).expect("target impact");
+    assert_eq!(impacts.len(), 1);
+    assert_eq!(impacts[0].assignment_count, 0);
+    assert_eq!(
+        impacts[0]
+            .staffing_targets
+            .iter()
+            .map(|target| (target.job_id.as_str(), target.slot_count))
+            .collect::<Vec<_>>(),
+        [("manager", 1)]
+    );
+
+    assert!(save_team_settings(&conn, save_id, &inputs, false).is_err());
+    save_team_settings(&conn, save_id, &inputs, true).expect("confirmed removal");
+    assert_eq!(
+        conn.query_row(
+            "SELECT COUNT(*) FROM staff_assignment_targets WHERE save_id = ?1 AND scope = 'reserves'",
+            [save_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("removed targets"),
+        0
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT slot_count FROM staff_assignment_targets WHERE save_id = ?1 AND scope = 'club' AND job_id = 'scout'",
+            [save_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("retained club target"),
         1
     );
 }

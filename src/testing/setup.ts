@@ -63,6 +63,7 @@ import {
   resolvePlannerSlotCandidatesIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
+  resolvePlannerTeamRemovalImpactsIpcMock,
   resolveRemovePlannerStringIpcMock,
   resolveSavePlannerTacticIpcMock,
   resolveSavePlannerTeamsIpcMock,
@@ -280,6 +281,10 @@ function registerIpcMocks() {
 
     if (cmd === "set_managed_club") {
       return resolveSetManagedClubIpcMock(args);
+    }
+
+    if (cmd === "get_planner_team_removal_impacts") {
+      return resolvePlannerTeamRemovalImpactsIpcMock(args);
     }
 
     if (cmd === "save_planner_teams") {

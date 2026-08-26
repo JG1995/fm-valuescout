@@ -2,6 +2,8 @@ use std::collections::HashSet;
 
 use rusqlite::{params, Connection, Transaction};
 
+use crate::features::staff::assignment_targets;
+
 use super::depth::{preflight_depth_snapshot, PlannerTeam};
 
 pub(super) const MAX_DISPLAY_NAME_LEN: usize = 40;
@@ -13,7 +15,7 @@ const DEFAULT_TEAM_NAMES: [(PlannerTeam, &str); 3] = [
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct PlannerTeamSetting {
+pub(crate) struct PlannerTeamSetting {
     pub(super) team: PlannerTeam,
     pub(super) display_name: String,
 }
@@ -24,6 +26,21 @@ pub(super) struct PlannerTeamInput {
     pub(super) display_name: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PlannerStaffingTargetRemovalImpact {
+    pub(super) job_id: String,
+    pub(super) job_label: String,
+    pub(super) slot_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PlannerTeamRemovalImpact {
+    pub(super) team: PlannerTeam,
+    pub(super) display_name: String,
+    pub(super) assignment_count: i64,
+    pub(super) staffing_targets: Vec<PlannerStaffingTargetRemovalImpact>,
+}
+
 pub(super) fn get_team_settings(
     conn: &Connection,
     save_id: i64,
@@ -31,7 +48,7 @@ pub(super) fn get_team_settings(
     load_team_settings(conn, save_id)
 }
 
-pub(super) fn ensure_team_settings(
+pub(crate) fn ensure_team_settings(
     conn: &Connection,
     save_id: i64,
 ) -> Result<Vec<PlannerTeamSetting>, String> {
@@ -67,6 +84,50 @@ pub(super) fn ensure_available(
     Ok(())
 }
 
+pub(super) fn planner_team_removal_impacts(
+    conn: &Connection,
+    save_id: i64,
+    inputs: &[PlannerTeamInput],
+) -> Result<Vec<PlannerTeamRemovalImpact>, String> {
+    let desired = normalize_inputs(inputs)?;
+    ensure_team_settings(conn, save_id)?;
+    let current = load_team_settings(conn, save_id)?;
+    current
+        .into_iter()
+        .filter(|setting| !desired.iter().any(|item| item.team == setting.team))
+        .map(|setting| {
+            let assignment_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM planner_assignments
+                     WHERE save_id = ?1 AND string_id IN (
+                         SELECT id FROM planner_strings WHERE save_id = ?1 AND team = ?2
+                     )",
+                    params![save_id, setting.team.as_str()],
+                    |row| row.get(0),
+                )
+                .map_err(|error| error.to_string())?;
+            let staffing_targets = assignment_targets::nonzero_targets_for_scope(
+                conn,
+                save_id,
+                setting.team.as_str(),
+            )?
+            .into_iter()
+            .map(|target| PlannerStaffingTargetRemovalImpact {
+                job_id: target.job_id,
+                job_label: target.job_label,
+                slot_count: target.slot_count,
+            })
+            .collect();
+            Ok(PlannerTeamRemovalImpact {
+                team: setting.team,
+                display_name: setting.display_name,
+                assignment_count,
+                staffing_targets,
+            })
+        })
+        .collect()
+}
+
 pub(super) fn save_team_settings(
     conn: &Connection,
     save_id: i64,
@@ -86,20 +147,35 @@ pub(super) fn save_team_settings(
         .iter()
         .filter(|setting| !desired.iter().any(|item| item.team == setting.team))
         .collect::<Vec<_>>();
-    let populated = removed
+    let impacts = removed
         .iter()
         .map(|setting| {
-            team_assignment_count(&tx, save_id, setting.team).map(|count| (*setting, count))
+            let assignment_count = team_assignment_count(&tx, save_id, setting.team)?;
+            let staffing_targets = assignment_targets::nonzero_targets_for_scope_tx(
+                &tx,
+                save_id,
+                setting.team.as_str(),
+            )?
+            .into_iter()
+            .map(|target| PlannerStaffingTargetRemovalImpact {
+                job_id: target.job_id,
+                job_label: target.job_label,
+                slot_count: target.slot_count,
+            })
+            .collect::<Vec<_>>();
+            Ok((setting, assignment_count, staffing_targets))
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let populated = populated
-        .into_iter()
-        .filter(|(_, count)| *count > 0)
+    let populated = impacts
+        .iter()
+        .filter(|(_, assignment_count, staffing_targets)| {
+            *assignment_count > 0 || !staffing_targets.is_empty()
+        })
         .collect::<Vec<_>>();
     if !populated.is_empty() && !confirm_populated_removal {
         let teams = populated
             .iter()
-            .map(|(setting, _)| setting.display_name.as_str())
+            .map(|(setting, _, _)| setting.display_name.as_str())
             .collect::<Vec<_>>()
             .join(", ");
         return Err(format!(
@@ -108,6 +184,7 @@ pub(super) fn save_team_settings(
     }
 
     for setting in removed {
+        assignment_targets::delete_scope_targets(&tx, save_id, setting.team.as_str())?;
         tx.execute(
             "DELETE FROM planner_assignments
              WHERE save_id = ?1
