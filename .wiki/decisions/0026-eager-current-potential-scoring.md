@@ -4,7 +4,7 @@
 
 Accepted
 
-Implementation status: Implemented by [Ingest-Time Potential Scoring](../features/completed/ingest-potential-scores.md). The current system uses eager current-snapshot persistence and no longer follows superseded [ADR-0019](./0019-lazy-potential-role-score-cache.md).
+Implementation status: Implemented by [Ingest-Time Potential Scoring](../features/completed/ingest-potential-scores.md). The current system uses eager current-snapshot persistence and no longer follows superseded [ADR-0019](./0019-lazy-potential-role-score-cache.md). [ADR-0027](./0027-scoped-potential-read-validation.md) narrows ordinary read validation while retaining eager ownership and snapshot-wide writer and Planner mutation checks.
 
 ## Context
 

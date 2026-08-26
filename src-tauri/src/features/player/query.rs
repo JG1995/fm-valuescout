@@ -5,9 +5,8 @@ use serde_json::Value;
 
 use crate::features::{
     moneyball::role_catalog::builtin_catalog,
-    player_metrics::potential_scores::{
-        assert_current_snapshot_complete, PROJECTION_MODEL_VERSION,
-    },
+    player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
+    scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,8 +120,6 @@ pub fn get_player(conn: &Connection, uid: i64) -> Result<Option<PlayerDetail>, S
     };
     player.hidden_information_revealed = hidden_information_revealed == 1;
 
-    assert_current_snapshot_complete(conn, snapshot_id)?;
-
     player.potential_attributes = load_potential_attributes(conn, snapshot_id, uid)?;
     let role_scores = load_role_scores(conn, snapshot_id, uid)?;
     player.role_scores = role_scores;
@@ -220,7 +217,7 @@ fn load_potential_attributes(
     snapshot_id: i64,
     uid: i64,
 ) -> Result<BTreeMap<String, Option<i64>>, String> {
-    let projected_attributes_json: String = conn
+    let projected_attributes_json: Option<String> = conn
         .query_row(
             "SELECT potential_attributes_json
              FROM players
@@ -229,8 +226,25 @@ fn load_potential_attributes(
             params![snapshot_id, uid, PROJECTION_MODEL_VERSION],
             |row| row.get(0),
         )
-        .map_err(|error| error.to_string())?;
-    parse_nullable_int_map(&projected_attributes_json)
+        .optional()
+        .map_err(|error| error.to_string())?
+        .flatten();
+    let Some(projected_attributes_json) = projected_attributes_json else {
+        return Err("Current potential snapshot is incomplete".to_string());
+    };
+    let projected_attributes = parse_nullable_int_map(&projected_attributes_json)
+        .map_err(|_| "Current potential snapshot is incomplete".to_string())?;
+    let complete = projected_attributes.len() == DUMP_ATTRIBUTE_KEYS.len()
+        && DUMP_ATTRIBUTE_KEYS.iter().all(|key| {
+            projected_attributes.get(*key).is_some_and(|value| {
+                value.is_none() || value.is_some_and(|value| (1..=20).contains(&value))
+            })
+        });
+    if complete {
+        Ok(projected_attributes)
+    } else {
+        Err("Current potential snapshot is incomplete".to_string())
+    }
 }
 
 fn load_role_scores(
@@ -274,6 +288,12 @@ fn load_role_scores(
     for row in potential_rows {
         let (role_id, score) = row.map_err(|error| error.to_string())?;
         potential_by_role.insert(role_id, score);
+    }
+    if all_roles()
+        .iter()
+        .any(|role| !potential_by_role.contains_key(role.role_id))
+    {
+        return Err("Current potential snapshot is incomplete".to_string());
     }
     let catalog = builtin_catalog()?;
     let mut role_scores = Vec::with_capacity(catalog.definitions.len());
@@ -758,6 +778,38 @@ mod tests {
             Some(&Some(1))
         );
         assert_eq!(centre_forward.potential_score, Some(1));
+    }
+
+    #[test]
+    fn profile_reads_only_requested_player_potential_state() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("profile-potential-scope.db"));
+        ingest_players(
+            &mut conn,
+            vec![
+                player_template(1, "Requested Player", 150),
+                player_template(2, "Unrelated Player", 150),
+            ],
+        );
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "DELETE FROM player_potential_role_scores
+             WHERE snapshot_id = ?1 AND uid = 2 AND role_id = ?2",
+            params![snapshot_id, all_roles()[0].role_id],
+        )
+        .expect("delete unrelated player role");
+        deny_potential_writes(&conn);
+
+        let detail = get_player(&conn, 1)
+            .expect("read requested player")
+            .expect("requested player exists");
+        assert_eq!(detail.uid, 1);
     }
 
     #[test]

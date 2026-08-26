@@ -612,8 +612,9 @@ fn keeps_potential_combined_score_unavailable_when_selected_attributes_are_missi
 }
 
 #[test]
-fn direct_depth_preflight_rejects_corruption_before_setup_writes() {
+fn direct_depth_load_does_not_audit_unassigned_player_potential_state() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
+    get_depth(&conn, save_id).expect("create planner depth");
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
         "DELETE FROM player_potential_role_scores
@@ -624,8 +625,7 @@ fn direct_depth_preflight_rejects_corruption_before_setup_writes() {
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
-    let error = get_depth(&conn, save_id).expect_err("reject incomplete potential state");
-    assert_eq!(error, "Current potential snapshot is incomplete");
+    get_depth(&conn, save_id).expect("load empty depth without a player-wide audit");
     assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
 }
 
