@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
@@ -10,7 +10,7 @@ use serde_json::{Map, Number, Value};
 use crate::features::moneyball::percentile::{
     calculate_percentiles, numeric_statistics, MoneyballPercentiles,
 };
-use crate::features::moneyball::MoneyballStatistics;
+use crate::features::moneyball::{MoneyballStatistics, MONEYBALL_STATISTIC_KEYS};
 
 use super::parser::{parse_csv_with_row_limit, ParsedCsv};
 use super::{
@@ -147,7 +147,6 @@ pub(crate) struct PreparedMoneyballStats {
     substitute_appearances: Option<i64>,
     minutes: Option<i64>,
     statistics_json: String,
-    percentiles_json: String,
 }
 
 pub(crate) struct PreparedMoneyballImport {
@@ -274,13 +273,13 @@ pub(crate) fn persist_csv_import(
         }
         PreparedCsvImport::Moneyball(import) => {
             let stored_players = import.players.len();
-            tx.execute(
-                "DELETE FROM player_moneyball_stats WHERE snapshot_id = ?1",
-                [context.active.snapshot_id],
-            )
-            .map_err(|_| CsvPersistenceError::Database)?;
-            for player in &import.players {
-                insert_moneyball_stats(&tx, context.active.snapshot_id, player)?;
+            if stored_players > 0 {
+                for player in &import.players {
+                    upsert_moneyball_stats(&tx, context.active.snapshot_id, player)?;
+                }
+                let statistics = load_moneyball_statistics(&tx, context.active.snapshot_id)?;
+                let percentiles = calculate_percentiles(&statistics);
+                update_moneyball_percentiles(&tx, context.active.snapshot_id, &percentiles)?;
             }
             CsvImportSummary {
                 format: CsvImportFormat::Moneyball,
@@ -368,33 +367,16 @@ fn prepare_moneyball_import(
         .into_iter()
         .filter(|player| player_uids.contains(&i64::from(player.uid)))
         .map(|player| {
-            Ok((
-                prepare_moneyball_context(&player)?,
-                player.canonical_statistics(),
-            ))
-        })
-        .collect::<Result<Vec<_>, CsvPersistenceError>>()?;
-    let numeric_statistics_by_player = players
-        .iter()
-        .map(|(player, statistics)| (player.player_uid, numeric_statistics(statistics)))
-        .collect();
-    let percentiles_by_player = calculate_percentiles(&numeric_statistics_by_player);
-    let players = players
-        .into_iter()
-        .map(|(player, statistics)| {
-            let percentiles = percentiles_by_player
-                .get(&player.player_uid)
-                .ok_or(CsvPersistenceError::InvalidStatistics)?;
+            let context = prepare_moneyball_context(&player)?;
             Ok(PreparedMoneyballStats {
-                player_uid: player.player_uid,
-                asking_price_kind: player.asking_price_kind,
-                asking_price_lower_eur: player.asking_price_lower_eur,
-                asking_price_upper_eur: player.asking_price_upper_eur,
-                starts: player.starts,
-                substitute_appearances: player.substitute_appearances,
-                minutes: player.minutes,
-                statistics_json: serialize_moneyball_statistics(&statistics)?,
-                percentiles_json: serialize_moneyball_percentiles(percentiles)?,
+                player_uid: context.player_uid,
+                asking_price_kind: context.asking_price_kind,
+                asking_price_lower_eur: context.asking_price_lower_eur,
+                asking_price_upper_eur: context.asking_price_upper_eur,
+                starts: context.starts,
+                substitute_appearances: context.substitute_appearances,
+                minutes: context.minutes,
+                statistics_json: serialize_moneyball_statistics(&player.canonical_statistics())?,
             })
         })
         .collect::<Result<Vec<_>, CsvPersistenceError>>()?;
@@ -482,6 +464,96 @@ fn serialize_moneyball_percentiles(
         .map_err(|_| CsvPersistenceError::InvalidStatistics)
 }
 
+fn load_moneyball_statistics(
+    tx: &Transaction<'_>,
+    snapshot_id: i64,
+) -> Result<
+    BTreeMap<i64, crate::features::moneyball::percentile::MoneyballNumericStatistics>,
+    CsvPersistenceError,
+> {
+    let mut statement = tx
+        .prepare(
+            "SELECT player_uid, statistics_json
+             FROM player_moneyball_stats
+             WHERE snapshot_id = ?1",
+        )
+        .map_err(|_| CsvPersistenceError::Database)?;
+    let rows = statement
+        .query_map([snapshot_id], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|_| CsvPersistenceError::Database)?;
+
+    let mut statistics = BTreeMap::new();
+    for row in rows {
+        let (player_uid, statistics_json) = row.map_err(|_| CsvPersistenceError::Database)?;
+        statistics.insert(
+            player_uid,
+            numeric_statistics(&deserialize_moneyball_statistics(&statistics_json)?),
+        );
+    }
+    Ok(statistics)
+}
+
+fn deserialize_moneyball_statistics(
+    json: &str,
+) -> Result<MoneyballStatistics, CsvPersistenceError> {
+    let value: Value =
+        serde_json::from_str(json).map_err(|_| CsvPersistenceError::InvalidStatistics)?;
+    let object = value
+        .as_object()
+        .ok_or(CsvPersistenceError::InvalidStatistics)?;
+    if object.len() != MONEYBALL_STATISTIC_KEYS.len()
+        || !MONEYBALL_STATISTIC_KEYS
+            .iter()
+            .all(|key| object.contains_key(*key))
+    {
+        return Err(CsvPersistenceError::InvalidStatistics);
+    }
+
+    MONEYBALL_STATISTIC_KEYS
+        .iter()
+        .map(|key| {
+            let value = object
+                .get(*key)
+                .ok_or(CsvPersistenceError::InvalidStatistics)?;
+            let value = match value {
+                Value::Null => None,
+                Value::Number(number) => number
+                    .as_f64()
+                    .filter(|value| value.is_finite())
+                    .map(MoneyballMetricValue::Decimal)
+                    .map(Some)
+                    .ok_or(CsvPersistenceError::InvalidStatistics)?,
+                _ => return Err(CsvPersistenceError::InvalidStatistics),
+            };
+            Ok(((*key).to_string(), value))
+        })
+        .collect()
+}
+
+fn update_moneyball_percentiles(
+    tx: &Transaction<'_>,
+    snapshot_id: i64,
+    percentiles: &BTreeMap<i64, MoneyballPercentiles>,
+) -> Result<(), CsvPersistenceError> {
+    for (player_uid, player_percentiles) in percentiles {
+        let percentiles_json = serialize_moneyball_percentiles(player_percentiles)?;
+        let changed = tx
+            .execute(
+                "UPDATE player_moneyball_stats
+                 SET percentiles_json = ?1
+                 WHERE snapshot_id = ?2 AND player_uid = ?3",
+                params![percentiles_json, snapshot_id, player_uid],
+            )
+            .map_err(|_| CsvPersistenceError::Database)?;
+        if changed != 1 {
+            return Err(CsvPersistenceError::Database);
+        }
+    }
+    Ok(())
+}
+
 fn upsert_youth_career_stats(
     tx: &Transaction<'_>,
     save_id: i64,
@@ -511,7 +583,7 @@ fn upsert_youth_career_stats(
     Ok(())
 }
 
-fn insert_moneyball_stats(
+fn upsert_moneyball_stats(
     tx: &Transaction<'_>,
     snapshot_id: i64,
     player: &PreparedMoneyballStats,
@@ -519,8 +591,17 @@ fn insert_moneyball_stats(
     tx.execute(
         "INSERT INTO player_moneyball_stats (
             snapshot_id, player_uid, asking_price_kind, asking_price_lower_eur, asking_price_upper_eur,
-            starts, substitute_appearances, minutes, statistics_json, percentiles_json
-         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            starts, substitute_appearances, minutes, statistics_json
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(snapshot_id, player_uid) DO UPDATE SET
+            asking_price_kind = excluded.asking_price_kind,
+            asking_price_lower_eur = excluded.asking_price_lower_eur,
+            asking_price_upper_eur = excluded.asking_price_upper_eur,
+            starts = excluded.starts,
+            substitute_appearances = excluded.substitute_appearances,
+            minutes = excluded.minutes,
+            statistics_json = excluded.statistics_json,
+            imported_at_utc = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
         params![
             snapshot_id,
             player.player_uid,
@@ -531,7 +612,6 @@ fn insert_moneyball_stats(
             player.substitute_appearances,
             player.minutes,
             &player.statistics_json,
-            &player.percentiles_json,
         ],
     )
     .map_err(|_| CsvPersistenceError::Database)?;
@@ -584,6 +664,7 @@ mod tests {
 
     use super::*;
     use crate::db::migrations;
+    use crate::features::moneyball::MONEYBALL_STATISTIC_KEYS;
     use crate::features::snapshot::ingest::{ingest_dump_file, ingest_dump_file_for_save};
     use crate::features::snapshot::service as snapshot_service;
 
@@ -599,6 +680,7 @@ mod tests {
         String,
         String,
     );
+    type MoneyballCohortRow = (i64, Option<i64>, String, String);
 
     #[test]
     fn imports_only_matched_youth_rows_replaces_included_rows_and_preserves_omitted_rows() {
@@ -756,7 +838,7 @@ mod tests {
     }
 
     #[test]
-    fn prepares_moneyball_scores_from_only_matched_snapshot_players() {
+    fn prepares_moneyball_context_for_only_matched_snapshot_players() {
         let import = prepare_moneyball_import(
             vec![
                 moneyball_player(1, 1),
@@ -765,32 +847,32 @@ mod tests {
             ],
             &HashSet::from([1, 2]),
         )
-        .expect("prepare matched Moneyball cohort");
+        .expect("prepare matched Moneyball players");
 
         assert_eq!(import.total_players, 3);
         assert_eq!(import.players.len(), 2);
-        let scores = import
+        let statistics = import
             .players
             .iter()
             .map(|player| {
                 (
                     player.player_uid,
-                    serde_json::from_str::<Value>(&player.percentiles_json)
-                        .expect("parse prepared percentile scores"),
+                    serde_json::from_str::<Value>(&player.statistics_json)
+                        .expect("parse prepared statistics"),
                 )
             })
             .collect::<BTreeMap<_, _>>();
 
-        assert_eq!(scores[&1]["goals"], json!(0));
-        assert_eq!(scores[&2]["goals"], json!(100));
-        assert!(!scores.contains_key(&3));
+        assert_eq!(statistics[&1]["goals"], json!(1));
+        assert_eq!(statistics[&2]["goals"], json!(10));
+        assert!(!statistics.contains_key(&3));
     }
 
     #[test]
-    fn successful_moneyball_reimport_replaces_the_captured_snapshot_cohort() {
+    fn successful_moneyball_reimport_upserts_the_captured_snapshot_cohort() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("moneyball-replacement.db"));
-        seed_current_snapshot(&mut conn, &[1, 2]);
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-upsert.db"));
+        seed_current_snapshot(&mut conn, &[1, 2, 3]);
         let context = capture_import_context(&conn).expect("capture import context");
 
         persist_csv_import(
@@ -799,37 +881,130 @@ mod tests {
             moneyball_imports(&[(1, 1_000_000), (2, 2_000_000)]),
         )
         .expect("store the first Moneyball cohort");
-        persist_csv_import(&mut conn, &context, moneyball_imports(&[(1, 3_000_000)]))
-            .expect("replace the Moneyball cohort");
+        persist_csv_import(
+            &mut conn,
+            &context,
+            moneyball_imports(&[(1, 3_000_000), (3, 4_000_000)]),
+        )
+        .expect("upsert the changed and new Moneyball players");
 
         let rows = conn
             .prepare(
-                "SELECT player_uid, asking_price_lower_eur
+                "SELECT player_uid, asking_price_lower_eur,
+                        json_extract(percentiles_json, '$.goals')
                  FROM player_moneyball_stats
                  WHERE snapshot_id = ?1
                  ORDER BY player_uid",
             )
             .expect("prepare current cohort query")
             .query_map([context.active.snapshot_id], |row| {
-                Ok((row.get(0)?, row.get(1)?))
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
             })
             .expect("query current cohort")
-            .collect::<Result<Vec<(i64, i64)>, _>>()
+            .collect::<Result<Vec<(i64, i64, i64)>, _>>()
             .expect("read current cohort");
-        assert_eq!(rows, vec![(1, 3_000_000)]);
+        assert_eq!(
+            rows,
+            vec![(1, 3_000_000, 50), (2, 2_000_000, 0), (3, 4_000_000, 100),]
+        );
     }
 
     #[test]
-    fn rolls_back_moneyball_replacement_when_an_insert_fails() {
+    fn replaces_included_nulls_and_preserves_omitted_moneyball_rows() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("moneyball-replacement-rollback.db"));
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-null-replacement.db"));
         seed_current_snapshot(&mut conn, &[1, 2]);
         let context = capture_import_context(&conn).expect("capture import context");
-        persist_csv_import(&mut conn, &context, moneyball_import(1, 1_000_000))
-            .expect("store the prior Moneyball cohort");
+        persist_csv_import(
+            &mut conn,
+            &context,
+            moneyball_imports(&[(1, 1_000_000), (2, 2_000_000)]),
+        )
+        .expect("store the first Moneyball cohort");
+
+        persist_csv_import(&mut conn, &context, moneyball_import_with_nulls(1))
+            .expect("replace included Moneyball values with nulls");
+
+        let included: MoneyballStoredValues = conn
+            .query_row(
+                "SELECT asking_price_kind, asking_price_lower_eur, asking_price_upper_eur,
+                        starts, substitute_appearances, minutes, statistics_json, percentiles_json
+                 FROM player_moneyball_stats
+                 WHERE snapshot_id = ?1 AND player_uid = 1",
+                [context.active.snapshot_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                    ))
+                },
+            )
+            .expect("read included Moneyball row");
+        assert_eq!(included.0, None);
+        assert_eq!(included.1, None);
+        assert_eq!(included.2, None);
+        assert_eq!(included.3, None);
+        assert_eq!(included.4, None);
+        assert_eq!(included.5, None);
+        assert_eq!(
+            serde_json::from_str::<Value>(&included.6).expect("parse included statistics")["goals"],
+            Value::Null
+        );
+
+        let omitted: MoneyballStoredValues = conn
+            .query_row(
+                "SELECT asking_price_kind, asking_price_lower_eur, asking_price_upper_eur,
+                        starts, substitute_appearances, minutes, statistics_json, percentiles_json
+                 FROM player_moneyball_stats
+                 WHERE snapshot_id = ?1 AND player_uid = 2",
+                [context.active.snapshot_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                    ))
+                },
+            )
+            .expect("read omitted Moneyball row");
+        assert_eq!(omitted.0, Some("single".to_string()));
+        assert_eq!(omitted.1, Some(2_000_000));
+        assert_eq!(omitted.3, Some(10));
+        assert_eq!(omitted.4, Some(2));
+        assert_eq!(omitted.5, Some(900));
+        assert_eq!(
+            serde_json::from_str::<Value>(&omitted.6).expect("parse omitted statistics")["goals"],
+            json!(2_000_000)
+        );
+    }
+
+    #[test]
+    fn rolls_back_moneyball_upserts_and_percentile_recalculation_on_late_failure() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("moneyball-upsert-rollback.db"));
+        seed_current_snapshot(&mut conn, &[1, 2, 3]);
+        let context = capture_import_context(&conn).expect("capture import context");
+        persist_csv_import(
+            &mut conn,
+            &context,
+            moneyball_imports(&[(1, 1_000_000), (2, 2_000_000)]),
+        )
+        .expect("store the prior Moneyball cohort");
+        let before = moneyball_cohort_rows(&conn, context.active.snapshot_id);
         conn.execute_batch(
-            "CREATE TRIGGER reject_second_moneyball_insert
-             BEFORE INSERT ON player_moneyball_stats
+            "CREATE TRIGGER reject_second_moneyball_percentile_update
+             BEFORE UPDATE OF percentiles_json ON player_moneyball_stats
              WHEN NEW.player_uid = 2
              BEGIN
                  SELECT RAISE(ABORT, 'test write failure');
@@ -841,29 +1016,18 @@ mod tests {
             persist_csv_import(
                 &mut conn,
                 &context,
-                moneyball_imports(&[(1, 2_000_000), (2, 3_000_000)]),
+                moneyball_imports(&[(1, 3_000_000), (3, 4_000_000)]),
             ),
             Err(CsvPersistenceError::Database)
         );
-        let rows = conn
-            .prepare(
-                "SELECT player_uid, asking_price_lower_eur
-                 FROM player_moneyball_stats
-                 WHERE snapshot_id = ?1
-                 ORDER BY player_uid",
-            )
-            .expect("prepare retained cohort query")
-            .query_map([context.active.snapshot_id], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })
-            .expect("query retained cohort")
-            .collect::<Result<Vec<(i64, i64)>, _>>()
-            .expect("read retained cohort");
-        assert_eq!(rows, vec![(1, 1_000_000)]);
+        assert_eq!(
+            moneyball_cohort_rows(&conn, context.active.snapshot_id),
+            before
+        );
     }
 
     #[test]
-    fn moneyball_imports_follow_the_effective_current_snapshot_and_clear_only_its_cohort() {
+    fn moneyball_imports_follow_the_effective_current_snapshot_and_preserve_cohorts() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("snapshot-moneyball-import.db"));
         seed_current_snapshot(&mut conn, &[1]);
@@ -893,7 +1057,7 @@ mod tests {
         persist_csv_import(&mut conn, &second_context, moneyball_import(1, 2_000_000))
             .expect("import second snapshot Moneyball data");
         persist_csv_import(&mut conn, &second_context, moneyball_import(1, 3_000_000))
-            .expect("replace Moneyball data within the second snapshot");
+            .expect("update Moneyball data within the second snapshot");
 
         let historical_snapshot_id = insert_snapshot(&mut conn, save_id, false, &[1, 2]);
         conn.execute(
@@ -909,10 +1073,37 @@ mod tests {
         assert_eq!(latest_context.active.snapshot_id, second_snapshot_id);
         persist_csv_import(&mut conn, &latest_context, moneyball_import(1, 4_000_000))
             .expect("import against effective current snapshot");
+        let current_before: (String, String) = conn
+            .query_row(
+                "SELECT imported_at_utc, percentiles_json
+                 FROM player_moneyball_stats
+                 WHERE snapshot_id = ?1 AND player_uid = 1",
+                [second_snapshot_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read current Moneyball row before zero-match import");
+        conn.execute_batch(
+            "CREATE TRIGGER reject_zero_match_moneyball_insert
+             BEFORE INSERT ON player_moneyball_stats
+             BEGIN
+                 SELECT RAISE(ABORT, 'zero-match import must not insert');
+             END;
+             CREATE TRIGGER reject_zero_match_moneyball_update
+             BEFORE UPDATE ON player_moneyball_stats
+             BEGIN
+                 SELECT RAISE(ABORT, 'zero-match import must not update');
+             END;
+             CREATE TRIGGER reject_zero_match_moneyball_delete
+             BEFORE DELETE ON player_moneyball_stats
+             BEGIN
+                 SELECT RAISE(ABORT, 'zero-match import must not delete');
+             END;",
+        )
+        .expect("reject Moneyball writes during zero-match import");
         let zero_match_path = write_csv(&temp_dir, "zero-match-moneyball.csv", MONEYBALL_EXPORT);
         assert_eq!(
             import_csv_file(&mut conn, &zero_match_path)
-                .expect("clear the active cohort when no CSV player matches"),
+                .expect("keep the active cohort when no CSV player matches"),
             CsvImportSummary {
                 format: CsvImportFormat::Moneyball,
                 total_players: 75,
@@ -920,6 +1111,17 @@ mod tests {
                 skipped_players: 75,
             }
         );
+
+        let current_after: (String, String) = conn
+            .query_row(
+                "SELECT imported_at_utc, percentiles_json
+                 FROM player_moneyball_stats
+                 WHERE snapshot_id = ?1 AND player_uid = 1",
+                [second_snapshot_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read current Moneyball row after zero-match import");
+        assert_eq!(current_after, current_before);
 
         let rows: Vec<(i64, i64)> = conn
             .prepare(
@@ -933,7 +1135,13 @@ mod tests {
             .expect("query Moneyball history")
             .collect::<Result<_, _>>()
             .expect("read Moneyball history");
-        assert_eq!(rows, vec![(first_snapshot_id, 1_000_000)]);
+        assert_eq!(
+            rows,
+            vec![
+                (first_snapshot_id, 1_000_000),
+                (second_snapshot_id, 4_000_000),
+            ]
+        );
         assert_eq!(
             career_values(&conn, save_id, 1),
             Some((Some(12), None, None, None))
@@ -1407,21 +1615,80 @@ mod tests {
             total_players: players.len(),
             players: players
                 .iter()
-                .map(
-                    |(player_uid, asking_price_lower_eur)| PreparedMoneyballStats {
-                        player_uid: *player_uid,
-                        asking_price_kind: Some("single"),
-                        asking_price_lower_eur: Some(*asking_price_lower_eur),
-                        asking_price_upper_eur: None,
-                        starts: Some(10),
-                        substitute_appearances: Some(2),
-                        minutes: Some(900),
-                        statistics_json: format!(r#"{{"value":{asking_price_lower_eur}}}"#),
-                        percentiles_json: r#"{"value":50}"#.to_string(),
-                    },
-                )
+                .map(|(player_uid, asking_price_lower_eur)| {
+                    moneyball_prepared_stats(
+                        *player_uid,
+                        Some(*asking_price_lower_eur),
+                        Some(10),
+                        Some(2),
+                        Some(900),
+                        Some(*asking_price_lower_eur),
+                    )
+                })
                 .collect(),
         })
+    }
+
+    fn moneyball_import_with_nulls(player_uid: i64) -> PreparedCsvImport {
+        PreparedCsvImport::Moneyball(PreparedMoneyballImport {
+            total_players: 1,
+            players: vec![moneyball_prepared_stats(
+                player_uid, None, None, None, None, None,
+            )],
+        })
+    }
+
+    fn moneyball_prepared_stats(
+        player_uid: i64,
+        asking_price_lower_eur: Option<i64>,
+        starts: Option<i64>,
+        substitute_appearances: Option<i64>,
+        minutes: Option<i64>,
+        goals: Option<i64>,
+    ) -> PreparedMoneyballStats {
+        PreparedMoneyballStats {
+            player_uid,
+            asking_price_kind: asking_price_lower_eur.map(|_| "single"),
+            asking_price_lower_eur,
+            asking_price_upper_eur: None,
+            starts,
+            substitute_appearances,
+            minutes,
+            statistics_json: moneyball_statistics_json(goals),
+        }
+    }
+
+    fn moneyball_statistics_json(goals: Option<i64>) -> String {
+        let statistics = MONEYBALL_STATISTIC_KEYS
+            .iter()
+            .map(|key| {
+                (
+                    (*key).to_string(),
+                    if *key == "goals" {
+                        goals.map_or(Value::Null, Value::from)
+                    } else {
+                        Value::Null
+                    },
+                )
+            })
+            .collect::<serde_json::Map<_, _>>();
+        serde_json::to_string(&statistics).expect("serialize Moneyball statistics")
+    }
+
+    fn moneyball_cohort_rows(conn: &Connection, snapshot_id: i64) -> Vec<MoneyballCohortRow> {
+        conn.prepare(
+            "SELECT player_uid, asking_price_lower_eur, statistics_json, percentiles_json
+             FROM player_moneyball_stats
+             WHERE snapshot_id = ?1
+             ORDER BY player_uid",
+        )
+        .expect("prepare Moneyball cohort query")
+        .query_map([snapshot_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .expect("query Moneyball cohort")
+        .collect::<Result<_, _>>()
+        .expect("read Moneyball cohort")
     }
 
     fn moneyball_player(uid: u32, goals: u32) -> MoneyballPlayer {

@@ -226,7 +226,7 @@ Import players A and B into the current snapshot, then import changed A and new 
 
 #### Commit 2 — Upsert cumulative Moneyball cohorts
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(import): upsert cumulative Moneyball cohorts`
 
@@ -321,7 +321,7 @@ Import players A and B into the current snapshot, then import changed A and new 
 
 #### Commit 3 — Upload cumulative Moneyball data from Squad
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(squad): upload cumulative Moneyball CSV`
 
@@ -415,19 +415,19 @@ Import players A and B into the current snapshot, then import changed A and new 
 
 **PR:** PR 1 — Make Moneyball imports cumulative
 
-**Commit:** Commit 2 — Upsert cumulative Moneyball cohorts
+**Commit:** Commit 3 — Upload cumulative Moneyball data from Squad
 
 ### RED or removal proof
 
-Rewrite the current replacement and zero-match tests first. The existing implementation must fail because it deletes omitted players and clears the active cohort on a valid zero-match import.
+Require **Upload Squad CSV** beside Youth, stable Search upload wording, cumulative outcome copy, shared Moneyball format binding, and Search/Player Profile invalidation after Squad success. Current code must fail because the Squad action is absent and replacement-only copy remains.
 
 ### Expected outcome
 
-Moneyball imports upsert included current-snapshot players, preserve omitted players, treat empty matches as no-ops, and atomically recompute persisted percentiles across the complete resulting cohort.
+Search and My Club Squad expose the same context-bound Moneyball import path with cumulative copy, separate accessible modal state, path-redacted feedback, and correct query invalidation.
 
 ### Explicit exclusions
 
-- Frontend actions or copy, query production changes, migrations, source sets, clear/remove operations, Youth behavior, and unrelated refactors.
+- Backend persistence, schema changes, Squad Moneyball columns, managed-club filtering, new modal infrastructure, source sets, and unrelated UI refactors.
 - The pre-existing developer-owned modification in `.wiki/features/completed/player-table-sort-performance.md`.
 
 ## Discoveries and replanning
@@ -441,7 +441,8 @@ Moneyball imports upsert included current-snapshot players, preserve omitted pla
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Make Moneyball imports cumulative | Commit 1 — Record the approved feature plan | Pending record | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Make Moneyball imports cumulative | Commit 1 — Record the approved feature plan | fd37d2fa2c159f10c4a6507dac861d97e7b76a1f | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Make Moneyball imports cumulative | Commit 2 — Upsert cumulative Moneyball cohorts | Pending record | Replaced destructive cohort replacement with per-player upserts, write-free empty matches, and atomic complete-cohort percentile recomputation while preserving current-snapshot ownership and rollback. | `./scripts/dev check-rust`: 641 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
 
 ## Final validation
 
