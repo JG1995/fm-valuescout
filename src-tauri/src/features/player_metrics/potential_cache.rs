@@ -21,53 +21,6 @@ struct PlayerForProjection {
     attributes_json: String,
 }
 
-/// Materializes missing or stale potential role scores for the complete snapshot.
-///
-/// A potential filter must have a complete cohort before its count or page is queried.
-/// Batches bound the write transaction without changing that completeness contract.
-pub fn materialize_snapshot_roles(
-    conn: &Connection,
-    snapshot_id: i64,
-    role_ids: &[String],
-) -> Result<(), String> {
-    let roles = requested_roles(role_ids)?;
-    if roles.is_empty() {
-        return Ok(());
-    }
-    if snapshot_roles_are_complete(conn, snapshot_id, &roles)? {
-        return Ok(());
-    }
-
-    let mut after_uid = None;
-    loop {
-        let players = load_player_batch(conn, snapshot_id, after_uid)?;
-        if players.is_empty() {
-            break;
-        }
-        let Some(last_player) = players.last() else {
-            break;
-        };
-        let last_uid = last_player.uid;
-
-        let cached_role_ids = load_cached_role_ids(conn, snapshot_id, &players, &roles)?;
-        let scores = score_missing_roles(players, &roles, &cached_role_ids)?;
-        if !scores.is_empty() {
-            let tx = conn
-                .unchecked_transaction()
-                .map_err(|error| error.to_string())?;
-            persist_scores(&tx, snapshot_id, &scores)?;
-            tx.commit().map_err(|error| error.to_string())?;
-        }
-        after_uid = Some(last_uid);
-    }
-
-    if snapshot_roles_are_complete(conn, snapshot_id, &roles)? {
-        Ok(())
-    } else {
-        Err("potential role materialization did not complete the snapshot".to_string())
-    }
-}
-
 /// Materializes missing or stale potential role scores for a bounded requested cohort.
 ///
 /// Display-only table fields use this after their page UIDs are known. The cache retains
@@ -128,31 +81,6 @@ fn requested_roles(role_ids: &[String]) -> Result<Vec<&'static RoleDefinition>, 
     Ok(roles)
 }
 
-/// Returns whether exact-version rows cover every player in the snapshot for one role.
-///
-/// Nullable scores count as cached rows. The cache primary key permits at most one row for
-/// each snapshot/player/role identity, so equal counts prove complete coverage.
-pub fn snapshot_role_rows_are_complete(
-    conn: &Connection,
-    snapshot_id: i64,
-    role_id: &str,
-    projection_model_version: i64,
-) -> Result<bool, String> {
-    conn.query_row(
-        "SELECT
-             (SELECT COUNT(*) FROM players WHERE snapshot_id = ?1) =
-             (SELECT COUNT(*)
-              FROM player_potential_role_scores
-              WHERE snapshot_id = ?1
-                AND role_id = ?2
-                AND projection_model_version = ?3)",
-        params![snapshot_id, role_id, projection_model_version],
-        |row| row.get::<_, i64>(0),
-    )
-    .map(|complete| complete != 0)
-    .map_err(|error| error.to_string())
-}
-
 /// Returns whether exact-version rows cover the current snapshot's managed-club cohort.
 ///
 /// The cached count joins back to the current cohort so rows for players who have left it do
@@ -187,64 +115,6 @@ pub fn squad_role_rows_are_complete(
     )
     .map(|complete| complete != 0)
     .map_err(|error| error.to_string())
-}
-
-fn snapshot_roles_are_complete(
-    conn: &Connection,
-    snapshot_id: i64,
-    roles: &[&RoleDefinition],
-) -> Result<bool, String> {
-    roles.iter().try_fold(true, |complete, role| {
-        snapshot_role_rows_are_complete(conn, snapshot_id, role.role_id, PROJECTION_MODEL_VERSION)
-            .map(|role_complete| complete && role_complete)
-    })
-}
-
-fn load_player_batch(
-    conn: &Connection,
-    snapshot_id: i64,
-    after_uid: Option<i64>,
-) -> Result<Vec<PlayerForProjection>, String> {
-    let (sql, values) = match after_uid {
-        None => (
-            "SELECT uid, ca, pa, age, positions_json, attributes_json
-             FROM players
-             WHERE snapshot_id = ?1
-             ORDER BY uid
-             LIMIT ?2",
-            vec![
-                Value::Integer(snapshot_id),
-                Value::Integer(MATERIALIZATION_BATCH_SIZE as i64),
-            ],
-        ),
-        Some(uid) => (
-            "SELECT uid, ca, pa, age, positions_json, attributes_json
-             FROM players
-             WHERE snapshot_id = ?1 AND uid > ?2
-             ORDER BY uid
-             LIMIT ?3",
-            vec![
-                Value::Integer(snapshot_id),
-                Value::Integer(uid),
-                Value::Integer(MATERIALIZATION_BATCH_SIZE as i64),
-            ],
-        ),
-    };
-    let mut stmt = conn.prepare(sql).map_err(|error| error.to_string())?;
-    let rows = stmt
-        .query_map(params_from_iter(values.iter()), |row| {
-            Ok(PlayerForProjection {
-                uid: row.get(0)?,
-                ca: row.get(1)?,
-                pa: row.get(2)?,
-                age: row.get(3)?,
-                positions_json: row.get(4)?,
-                attributes_json: row.get(5)?,
-            })
-        })
-        .map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())
 }
 
 fn load_players_by_uids(
@@ -433,61 +303,6 @@ mod tests {
         )
         .expect("create completeness tables");
         conn
-    }
-
-    #[test]
-    fn snapshot_count_completeness_includes_nullable_rows_and_rejects_missing_or_stale_rows() {
-        let conn = completeness_connection();
-        conn.execute(
-            "INSERT INTO players (snapshot_id, uid, current_club)
-             VALUES (1, 10, 'Loan FC'), (1, 20, 'Loan FC')",
-            [],
-        )
-        .expect("insert snapshot players");
-        conn.execute(
-            "INSERT INTO player_potential_role_scores
-             (snapshot_id, uid, role_id, score, projection_model_version)
-             VALUES (1, 10, 'goalkeeper_ip', 90, ?1),
-                    (1, 20, 'goalkeeper_ip', NULL, ?1)",
-            [PROJECTION_MODEL_VERSION],
-        )
-        .expect("insert exact nullable cache rows");
-
-        assert!(snapshot_role_rows_are_complete(
-            &conn,
-            1,
-            "goalkeeper_ip",
-            PROJECTION_MODEL_VERSION,
-        )
-        .expect("complete nullable snapshot"));
-
-        conn.execute(
-            "DELETE FROM player_potential_role_scores WHERE uid = 20",
-            [],
-        )
-        .expect("remove cached row");
-        assert!(!snapshot_role_rows_are_complete(
-            &conn,
-            1,
-            "goalkeeper_ip",
-            PROJECTION_MODEL_VERSION,
-        )
-        .expect("missing row is incomplete"));
-
-        conn.execute(
-            "INSERT INTO player_potential_role_scores
-             (snapshot_id, uid, role_id, score, projection_model_version)
-             VALUES (1, 20, 'goalkeeper_ip', 99, 1)",
-            [],
-        )
-        .expect("insert stale cache row");
-        assert!(!snapshot_role_rows_are_complete(
-            &conn,
-            1,
-            "goalkeeper_ip",
-            PROJECTION_MODEL_VERSION,
-        )
-        .expect("stale row is incomplete"));
     }
 
     #[test]

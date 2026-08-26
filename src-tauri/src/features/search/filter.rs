@@ -571,7 +571,7 @@ fn compile_potential_role_score_rule(
     let score_placeholder = next_placeholder(next_index);
     let clause = format!(
         "EXISTS (SELECT 1 FROM player_potential_role_scores pprs WHERE pprs.snapshot_id = players.snapshot_id AND pprs.uid = players.uid AND pprs.role_id = {role_placeholder} AND pprs.projection_model_version = {} AND pprs.score IS NOT NULL AND pprs.score {compare} {score_placeholder})",
-        crate::features::player_metrics::potential_cache::PROJECTION_MODEL_VERSION,
+        crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
     );
     Ok((
         clause,
@@ -1337,7 +1337,7 @@ mod tests {
     }
 
     #[test]
-    fn compiles_potential_role_score_filter_via_versioned_cache() {
+    fn compiles_potential_role_score_filter_via_versioned_rows() {
         let ast = parse_filter_ast(
             vec![rule(
                 "potential_role.goalkeeper_ip",
@@ -1351,7 +1351,7 @@ mod tests {
         let compiled = compile_filters(&ast, 2).expect("compile");
         assert!(
             compiled.sql.contains("player_potential_role_scores"),
-            "expected potential cache SQL, got {}",
+            "expected potential score SQL, got {}",
             compiled.sql
         );
         assert!(compiled.sql.contains("projection_model_version = 2"));
