@@ -154,6 +154,103 @@ pub(super) fn set_player_preferred_foot(
     .expect("set player preferred foot");
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct PlannerPotentialState {
+    pub(super) teams: Vec<(String, String)>,
+    pub(super) strings: Vec<(i64, String, i64)>,
+    pub(super) assignments: Vec<(i64, i64, String, i64, String, String)>,
+    pub(super) projections: Vec<(i64, Option<String>, Option<i64>)>,
+    pub(super) potential_scores: Vec<(i64, String, Option<u8>, i64)>,
+}
+
+pub(super) fn planner_potential_state(
+    conn: &Connection,
+    save_id: i64,
+    snapshot_id: i64,
+) -> PlannerPotentialState {
+    let teams = conn
+        .prepare("SELECT team, display_name FROM planner_teams WHERE save_id = ?1 ORDER BY team")
+        .expect("prepare teams")
+        .query_map([save_id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .expect("query teams")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect teams");
+    let strings = conn
+        .prepare(
+            "SELECT id, team, string_order
+             FROM planner_strings WHERE save_id = ?1 ORDER BY id",
+        )
+        .expect("prepare strings")
+        .query_map([save_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .expect("query strings")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect strings");
+    let assignments = conn
+        .prepare(
+            "SELECT id, string_id, lane_id, player_uid, last_known_name, provenance
+             FROM planner_assignments WHERE save_id = ?1 ORDER BY id",
+        )
+        .expect("prepare assignments")
+        .query_map([save_id], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        })
+        .expect("query assignments")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect assignments");
+    let projections = conn
+        .prepare(
+            "SELECT uid, potential_attributes_json, potential_projection_model_version
+             FROM players WHERE snapshot_id = ?1 ORDER BY uid",
+        )
+        .expect("prepare projections")
+        .query_map([snapshot_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .expect("query projections")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect projections");
+    let potential_scores = conn
+        .prepare(
+            "SELECT uid, role_id, score, projection_model_version
+             FROM player_potential_role_scores WHERE snapshot_id = ?1 ORDER BY uid, role_id",
+        )
+        .expect("prepare potential scores")
+        .query_map([snapshot_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .expect("query potential scores")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect potential scores");
+    PlannerPotentialState {
+        teams,
+        strings,
+        assignments,
+        projections,
+        potential_scores,
+    }
+}
+
+pub(super) fn deny_potential_writes(conn: &Connection) {
+    for (name, operation) in [
+        ("deny_potential_insert", "INSERT"),
+        ("deny_potential_update", "UPDATE"),
+        ("deny_potential_delete", "DELETE"),
+    ] {
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER {name} BEFORE {operation} ON player_potential_role_scores
+             BEGIN SELECT RAISE(ABORT, 'potential writes are forbidden'); END"
+        ))
+        .expect("create potential write trigger");
+    }
+}
+
 pub(super) fn assigned_player_uid(
     depth: &PlannerDepth,
     team: PlannerTeam,

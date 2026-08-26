@@ -1,6 +1,11 @@
+use rusqlite::params;
+
 use super::depth::{assign_player, get_depth, PlannerTeam};
 use super::teams::{get_team_settings, save_team_settings, PlannerTeamInput};
-use super::test_support::{add_picker_candidates, open_with_snapshot, team_strings};
+use super::test_support::{
+    add_picker_candidates, current_snapshot_id, deny_potential_writes, open_with_snapshot,
+    planner_potential_state, team_strings,
+};
 
 fn input(team: &str, display_name: &str) -> PlannerTeamInput {
     PlannerTeamInput {
@@ -51,6 +56,7 @@ fn replaces_team_names_and_removes_populated_team_after_confirmation() {
     .expect("save confirmed settings");
     assert_eq!(
         settings
+            .0
             .iter()
             .map(|setting| (setting.team, setting.display_name.as_str()))
             .collect::<Vec<_>>(),
@@ -85,7 +91,7 @@ fn replaces_team_names_and_removes_populated_team_after_confirmation() {
         false,
     )
     .expect("restore reserves");
-    assert_eq!(restored.len(), 3);
+    assert_eq!(restored.0.len(), 3);
     assert_eq!(
         team_strings(
             &get_depth(&conn, save_id).expect("reload depth after restore"),
@@ -97,9 +103,46 @@ fn replaces_team_names_and_removes_populated_team_after_confirmation() {
 }
 
 #[test]
+fn corrupt_potential_state_blocks_confirmed_team_removal_before_writes() {
+    let (temp_dir, mut conn, save_id) = open_with_snapshot();
+    add_picker_candidates(&temp_dir, &mut conn, save_id);
+    let depth = get_depth(&conn, save_id).expect("initialize planner depth");
+    let reserves_string_id = team_strings(&depth, PlannerTeam::Reserves)[0].id;
+    assign_player(&conn, save_id, reserves_string_id, "goalkeeper", 79)
+        .expect("assign reserve player");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE players
+         SET potential_projection_model_version = 999
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("corrupt projected map version");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    let error = save_team_settings(
+        &conn,
+        save_id,
+        &[input("senior", "Senior"), input("youth", "Youth")],
+        true,
+    )
+    .expect_err("reject destructive team removal");
+    assert_eq!(error, "Current potential snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
 fn rejects_invalid_team_settings_without_mutating_existing_rows() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
     get_depth(&conn, save_id).expect("initialize planner depth");
+    conn.execute(
+        "UPDATE player_potential_role_scores
+         SET projection_model_version = 999
+         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'goalkeeper_ip'",
+        params![current_snapshot_id(&conn, save_id)],
+    )
+    .expect("corrupt potential state");
 
     for (inputs, expected) in [
         (vec![], "at least one"),
@@ -152,6 +195,7 @@ fn swaps_existing_display_names_without_transient_unique_constraint_failure() {
 
     assert_eq!(
         settings
+            .0
             .iter()
             .map(|setting| (setting.team, setting.display_name.as_str()))
             .collect::<Vec<_>>(),
@@ -175,6 +219,7 @@ fn swaps_existing_display_names_without_transient_unique_constraint_failure() {
     .expect("allow display names in the internal replacement namespace");
     assert_eq!(
         sentinel_names
+            .0
             .iter()
             .map(|setting| (setting.team, setting.display_name.as_str()))
             .collect::<Vec<_>>(),
@@ -197,7 +242,7 @@ fn keeps_one_team_and_isolates_settings_per_save() {
 
     let only_senior = save_team_settings(&conn, save_id, &[input("senior", "Senior")], false)
         .expect("keep one configured team");
-    assert_eq!(only_senior.len(), 1);
+    assert_eq!(only_senior.0.len(), 1);
 
     conn.execute(
         "INSERT INTO saves (name, is_active) VALUES ('Second save', 0)",
@@ -207,7 +252,7 @@ fn keeps_one_team_and_isolates_settings_per_save() {
     let second_save_id = conn.last_insert_rowid();
     let second = save_team_settings(&conn, second_save_id, &[input("youth", "U19")], false)
         .expect("configure second save");
-    assert_eq!(second.len(), 1);
+    assert_eq!(second.0.len(), 1);
     assert_eq!(
         get_team_settings(&conn, save_id)
             .expect("load first settings")

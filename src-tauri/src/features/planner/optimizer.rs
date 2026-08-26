@@ -9,7 +9,7 @@ use crate::features::scoring::{
 };
 
 use super::depth::{
-    current_snapshot_id, ensure_depth, get_depth, insert_assignment, AssignmentProvenance,
+    ensure_depth, insert_assignment, load_depth, preflight_depth_snapshot, AssignmentProvenance,
     PlannerDepth, PlannerTeam,
 };
 use super::fit::lane_fit_score;
@@ -246,9 +246,9 @@ pub(super) fn optimize_depth_with_basis(
     save_id: i64,
     score_basis: ScoreBasis,
 ) -> Result<PlannerDepth, String> {
-    let tactic = ensure_depth(conn, save_id)?;
-    let snapshot_id = current_snapshot_id(conn, save_id)?
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
+    let tactic = ensure_depth(conn, save_id)?;
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
@@ -357,7 +357,7 @@ pub(super) fn optimize_depth_with_basis(
     }
 
     tx.commit().map_err(|error| error.to_string())?;
-    get_depth(conn, save_id)
+    load_depth(conn, save_id, Some(snapshot_id))
 }
 
 struct ManualAssignment {

@@ -1,8 +1,10 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
-use crate::features::scoring::{
-    catalog::all_roles, combine::combine_role_scores, projection::project_attributes,
-    score::score_role,
+use crate::features::{
+    player_metrics::potential_scores::{
+        assert_current_snapshot_complete, PROJECTION_MODEL_VERSION,
+    },
+    scoring::combine::combine_role_scores,
 };
 
 use super::tactic::{self, PlannerTactic, TacticLane};
@@ -121,9 +123,17 @@ impl AssignmentProvenance {
 }
 
 pub fn get_depth(conn: &Connection, save_id: i64) -> Result<PlannerDepth, String> {
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
+    load_depth(conn, save_id, snapshot_id)
+}
+
+pub(super) fn load_depth(
+    conn: &Connection,
+    save_id: i64,
+    snapshot_id: Option<i64>,
+) -> Result<PlannerDepth, String> {
     let tactic = ensure_depth(conn, save_id)?;
     let settings = teams::get_team_settings(conn, save_id)?;
-    let snapshot_id = current_snapshot_id(conn, save_id)?;
     let mut teams = settings
         .into_iter()
         .map(|setting| PlannerDepthTeam {
@@ -299,7 +309,8 @@ pub fn add_string(
     conn: &Connection,
     save_id: i64,
     team: PlannerTeam,
-) -> Result<PlannerString, String> {
+) -> Result<(PlannerString, Option<i64>), String> {
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
     ensure_depth(conn, save_id)?;
     teams::ensure_available(conn, save_id, team)?;
     let tx = conn
@@ -323,11 +334,14 @@ pub fn add_string(
     let id = tx.last_insert_rowid();
     tx.commit().map_err(|error| error.to_string())?;
 
-    Ok(PlannerString {
-        id,
-        string_order,
-        assignments: Vec::new(),
-    })
+    Ok((
+        PlannerString {
+            id,
+            string_order,
+            assignments: Vec::new(),
+        },
+        snapshot_id,
+    ))
 }
 
 pub fn remove_string(
@@ -335,7 +349,8 @@ pub fn remove_string(
     save_id: i64,
     string_id: i64,
     confirm_populated: bool,
-) -> Result<(), String> {
+) -> Result<((), Option<i64>), String> {
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
     ensure_depth(conn, save_id)?;
     let tx = conn
         .unchecked_transaction()
@@ -397,13 +412,19 @@ pub fn remove_string(
         )
         .map_err(|error| error.to_string())?;
     }
-    tx.commit().map_err(|error| error.to_string())
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(((), snapshot_id))
 }
 
-pub fn clear_all(conn: &Connection, save_id: i64, confirmed: bool) -> Result<(), String> {
+pub fn clear_all(
+    conn: &Connection,
+    save_id: i64,
+    confirmed: bool,
+) -> Result<((), Option<i64>), String> {
     if !confirmed {
         return Err("Clearing all squads requires confirmation".to_string());
     }
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
     ensure_depth(conn, save_id)?;
     let tx = conn
         .unchecked_transaction()
@@ -413,7 +434,8 @@ pub fn clear_all(conn: &Connection, save_id: i64, confirmed: bool) -> Result<(),
         params![save_id],
     )
     .map_err(|error| error.to_string())?;
-    tx.commit().map_err(|error| error.to_string())
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(((), snapshot_id))
 }
 
 pub fn clear_assignment(
@@ -421,7 +443,8 @@ pub fn clear_assignment(
     save_id: i64,
     string_id: i64,
     lane_id: &str,
-) -> Result<(), String> {
+) -> Result<((), Option<i64>), String> {
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
     let tactic = ensure_depth(conn, save_id)?;
     find_lane(&tactic, lane_id)?;
     let tx = conn
@@ -434,7 +457,8 @@ pub fn clear_assignment(
         params![save_id, string_id, lane_id],
     )
     .map_err(|error| error.to_string())?;
-    tx.commit().map_err(|error| error.to_string())
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(((), snapshot_id))
 }
 
 pub fn assign_player(
@@ -443,7 +467,8 @@ pub fn assign_player(
     string_id: i64,
     lane_id: &str,
     player_uid: i64,
-) -> Result<(), String> {
+) -> Result<((), Option<i64>), String> {
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
     let tactic = ensure_depth(conn, save_id)?;
     find_lane(&tactic, lane_id)?;
     let tx = conn
@@ -462,7 +487,8 @@ pub fn assign_player(
         &last_known_name,
         AssignmentProvenance::Manual,
     )?;
-    tx.commit().map_err(|error| error.to_string())
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(((), snapshot_id))
 }
 
 pub fn move_player(
@@ -471,7 +497,8 @@ pub fn move_player(
     string_id: i64,
     lane_id: &str,
     player_uid: i64,
-) -> Result<(), String> {
+) -> Result<((), Option<i64>), String> {
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
     let tactic = ensure_depth(conn, save_id)?;
     find_lane(&tactic, lane_id)?;
     let tx = conn
@@ -503,7 +530,8 @@ pub fn move_player(
         &last_known_name,
         AssignmentProvenance::Manual,
     )?;
-    tx.commit().map_err(|error| error.to_string())
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(((), snapshot_id))
 }
 
 fn normalize_candidate_search(search: &str) -> Result<String, String> {
@@ -537,6 +565,17 @@ pub(super) fn ensure_depth(conn: &Connection, save_id: i64) -> Result<PlannerTac
     }
     tx.commit().map_err(|error| error.to_string())?;
     Ok(tactic)
+}
+
+pub(super) fn preflight_depth_snapshot(
+    conn: &Connection,
+    save_id: i64,
+) -> Result<Option<i64>, String> {
+    let snapshot_id = current_snapshot_id(conn, save_id)?;
+    if let Some(snapshot_id) = snapshot_id {
+        assert_current_snapshot_complete(conn, snapshot_id)?;
+    }
+    Ok(snapshot_id)
 }
 
 pub(super) fn current_snapshot_id(conn: &Connection, save_id: i64) -> Result<Option<i64>, String> {
@@ -628,13 +667,10 @@ fn resolve_assignment(
                     ),
                     0
                 ),
-                p.attributes_json,
-                p.ca,
-                p.pa,
-                p.age,
-                p.positions_json,
                 ip.score,
-                oop.score
+                oop.score,
+                potential_ip.score,
+                potential_oop.score
              FROM players p
              LEFT JOIN player_role_scores ip
                ON ip.snapshot_id = p.snapshot_id
@@ -644,6 +680,16 @@ fn resolve_assignment(
                ON oop.snapshot_id = p.snapshot_id
               AND oop.uid = p.uid
               AND oop.role_id = ?5
+             LEFT JOIN player_potential_role_scores potential_ip
+               ON potential_ip.snapshot_id = p.snapshot_id
+              AND potential_ip.uid = p.uid
+              AND potential_ip.role_id = ?4
+              AND potential_ip.projection_model_version = ?6
+             LEFT JOIN player_potential_role_scores potential_oop
+               ON potential_oop.snapshot_id = p.snapshot_id
+              AND potential_oop.uid = p.uid
+              AND potential_oop.role_id = ?5
+              AND potential_oop.projection_model_version = ?6
              WHERE p.snapshot_id = ?2 AND p.uid = ?3",
             params![
                 save_id,
@@ -651,18 +697,16 @@ fn resolve_assignment(
                 player_uid,
                 lane.ip_role_id,
                 lane.oop_role_id,
+                PROJECTION_MODEL_VERSION,
             ],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, i32>(1)? == 1,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, i64>(4)?,
-                    row.get::<_, Option<i64>>(5)?,
-                    row.get::<_, String>(6)?,
-                    row.get::<_, Option<u8>>(7)?,
-                    row.get::<_, Option<u8>>(8)?,
+                    row.get::<_, Option<u8>>(2)?,
+                    row.get::<_, Option<u8>>(3)?,
+                    row.get::<_, Option<u8>>(4)?,
+                    row.get::<_, Option<u8>>(5)?,
                 ))
             },
         )
@@ -672,13 +716,10 @@ fn resolve_assignment(
     let Some((
         current_name,
         is_in_pool,
-        attributes_json,
-        ca,
-        pa,
-        age,
-        positions_json,
         ip_score,
         oop_score,
+        potential_ip_score,
+        potential_oop_score,
     )) = player
     else {
         return Ok(ResolvedAssignment {
@@ -688,27 +729,6 @@ fn resolve_assignment(
             potential_combined_score: None,
         });
     };
-    let attributes = serde_json::from_str(&attributes_json).map_err(|error| error.to_string())?;
-    let positions =
-        serde_json::from_str::<std::collections::BTreeMap<String, Option<i64>>>(&positions_json)
-            .map_err(|error| error.to_string())?;
-    let projected_attributes = project_attributes(
-        &attributes,
-        ca,
-        pa,
-        age,
-        positions
-            .iter()
-            .map(|(position, familiarity)| (position.as_str(), *familiarity)),
-    );
-    let ip_role = all_roles()
-        .iter()
-        .find(|role| role.role_id == lane.ip_role_id)
-        .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.ip_role_id))?;
-    let oop_role = all_roles()
-        .iter()
-        .find(|role| role.role_id == lane.oop_role_id)
-        .ok_or_else(|| format!("Unknown tactic lane role `{}`", lane.oop_role_id))?;
     let state = if is_in_pool {
         AssignmentState::Resolved
     } else {
@@ -720,8 +740,8 @@ fn resolve_assignment(
         state,
         combined_score: combine_role_scores(ip_score, oop_score, lane.ip_weight),
         potential_combined_score: combine_role_scores(
-            score_role(&projected_attributes, ip_role),
-            score_role(&projected_attributes, oop_role),
+            potential_ip_score,
+            potential_oop_score,
             lane.ip_weight,
         ),
     })

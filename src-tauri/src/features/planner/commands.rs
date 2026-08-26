@@ -536,8 +536,9 @@ pub fn save_planner_teams(
         .into_iter()
         .map(PlannerTeamInput::from)
         .collect::<Vec<_>>();
-    teams_service::save_team_settings(&conn, save_id, &teams, confirm_populated_removal)?;
-    Ok(depth_service::get_depth(&conn, save_id)?.into())
+    let (_, snapshot_id) =
+        teams_service::save_team_settings(&conn, save_id, &teams, confirm_populated_removal)?;
+    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
 }
 
 #[tauri::command]
@@ -580,8 +581,8 @@ pub fn add_planner_string(team: String, db: State<'_, Db>) -> Result<PlannerDept
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
-    depth_service::add_string(&conn, save_id, team)?;
-    Ok(depth_service::get_depth(&conn, save_id)?.into())
+    let (_, snapshot_id) = depth_service::add_string(&conn, save_id, team)?;
+    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
 }
 
 #[tauri::command]
@@ -594,8 +595,9 @@ pub fn remove_planner_string(
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
-    depth_service::remove_string(&conn, save_id, string_id, confirm_populated)?;
-    Ok(depth_service::get_depth(&conn, save_id)?.into())
+    let (_, snapshot_id) =
+        depth_service::remove_string(&conn, save_id, string_id, confirm_populated)?;
+    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
 }
 
 #[tauri::command]
@@ -604,8 +606,8 @@ pub fn clear_planner_depth(confirmed: bool, db: State<'_, Db>) -> Result<Planner
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
-    depth_service::clear_all(&conn, save_id, confirmed)?;
-    Ok(depth_service::get_depth(&conn, save_id)?.into())
+    let (_, snapshot_id) = depth_service::clear_all(&conn, save_id, confirmed)?;
+    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
 }
 
 #[tauri::command]
@@ -618,8 +620,8 @@ pub fn clear_planner_assignment(
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
-    depth_service::clear_assignment(&conn, save_id, string_id, &lane_id)?;
-    Ok(depth_service::get_depth(&conn, save_id)?.into())
+    let (_, snapshot_id) = depth_service::clear_assignment(&conn, save_id, string_id, &lane_id)?;
+    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
 }
 
 #[tauri::command]
@@ -633,8 +635,9 @@ pub fn assign_planner_player(
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
-    depth_service::assign_player(&conn, save_id, string_id, &lane_id, player_uid)?;
-    Ok(depth_service::get_depth(&conn, save_id)?.into())
+    let (_, snapshot_id) =
+        depth_service::assign_player(&conn, save_id, string_id, &lane_id, player_uid)?;
+    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
 }
 
 #[tauri::command]
@@ -648,6 +651,7 @@ pub fn move_planner_player(
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
     let save_id = service::active_save_id(&conn)?;
-    depth_service::move_player(&conn, save_id, string_id, &lane_id, player_uid)?;
-    Ok(depth_service::get_depth(&conn, save_id)?.into())
+    let (_, snapshot_id) =
+        depth_service::move_player(&conn, save_id, string_id, &lane_id, player_uid)?;
+    Ok(depth_service::load_depth(&conn, save_id, snapshot_id)?.into())
 }

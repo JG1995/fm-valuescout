@@ -535,6 +535,7 @@ fn optimizer_allocates_strings_in_ascending_order_within_a_team() {
     let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
     let second_string_id = add_string(&conn, save_id, PlannerTeam::Senior)
         .expect("add second string")
+        .0
         .id;
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(90));
