@@ -18,6 +18,8 @@ export function StaffShortlistImportModal({
   replacesExisting,
   onClose,
   onImported,
+  onPendingChange,
+  contextKey: providedContextKey,
 }: {
   activeSaveId: number | undefined;
   snapshotId: number | undefined;
@@ -25,8 +27,11 @@ export function StaffShortlistImportModal({
   replacesExisting: boolean;
   onClose: () => void;
   onImported: (summary: StaffShortlistImportSummary) => Promise<void>;
+  onPendingChange?: (pending: boolean) => void;
+  contextKey?: string;
 }) {
-  const contextKey = `${activeSaveId ?? "none"}:${snapshotId ?? "none"}`;
+  const contextKey =
+    providedContextKey ?? `${activeSaveId ?? "none"}:${snapshotId ?? "none"}`;
   const currentContext = useRef(contextKey);
   const contextGeneration = useRef(0);
   const previousContextKey = useRef(contextKey);
@@ -37,7 +42,8 @@ export function StaffShortlistImportModal({
     contextGeneration.current += 1;
     setPending(false);
     setError(undefined);
-  }, [contextKey]);
+    onPendingChange?.(false);
+  }, [contextKey, onPendingChange]);
   useEffect(() => {
     if (previousContextKey.current !== contextKey && open) {
       onClose();
@@ -59,6 +65,7 @@ export function StaffShortlistImportModal({
     });
     if (!path || !isCurrentSelection()) return;
     setPending(true);
+    onPendingChange?.(true);
     setError(undefined);
     try {
       const summary = await invokeCommand<StaffShortlistImportSummary>(
@@ -74,17 +81,26 @@ export function StaffShortlistImportModal({
         setError(reason instanceof Error ? reason.message : String(reason));
       }
     } finally {
-      if (isCurrentSelection()) setPending(false);
+      if (isCurrentSelection()) {
+        setPending(false);
+        onPendingChange?.(false);
+      }
+    }
+  };
+  const close = () => {
+    if (!pending) {
+      onPendingChange?.(false);
+      onClose();
     }
   };
   return (
     <Modal
       open={open}
       title="Upload Staff Shortlist CSV"
-      onClose={() => !pending && onClose()}
+      onClose={close}
       footer={
         <>
-          <Button variant="secondary" disabled={pending} onClick={onClose}>
+          <Button variant="secondary" disabled={pending} onClick={close}>
             Cancel
           </Button>
           <Button

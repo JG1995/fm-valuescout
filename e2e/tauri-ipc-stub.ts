@@ -11,6 +11,7 @@ type SmokeStubOptions = {
   moneyballSearch?: boolean;
   staffWorkspace?: boolean;
   staffShortlist?: boolean;
+  staffAssignment?: boolean;
   staffFamily?: "configured" | "none";
   snapshotHistory?: boolean;
 };
@@ -26,6 +27,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const moneyballSearch = options.moneyballSearch ?? false;
   const staffWorkspace = options.staffWorkspace ?? false;
   const staffShortlist = options.staffShortlist ?? false;
+  const staffAssignment = options.staffAssignment ?? false;
   const staffFamilyConfigured = options.staffFamily !== "none";
   const snapshotHistory = options.snapshotHistory ?? false;
   await page.addInitScript({
@@ -44,6 +46,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const moneyballSearch = ${moneyballSearch ? "true" : "false"};
       const staffWorkspace = ${staffWorkspace ? "true" : "false"};
       const staffShortlist = ${staffShortlist ? "true" : "false"};
+      const staffAssignment = ${staffAssignment ? "true" : "false"};
       const staffFamilyConfigured = ${staffFamilyConfigured ? "true" : "false"};
       const snapshotHistoryEnabled = ${snapshotHistory ? "true" : "false"};
       let nextSaveId = 2;
@@ -80,6 +83,65 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           isCurrent: true,
         },
       ] : [];
+      let staffAssignmentSnapshotToken = "snapshot-token-1";
+      const staffAssignmentSnapshot = () => ({
+        id: 1,
+        contextToken: staffAssignmentSnapshotToken,
+        saveId: 1,
+        customName: null,
+        gameDate: "2026-08-01",
+        gameDateSource: "inGame",
+        playerCount: 4,
+        loadedAtUtc: "2026-07-28T15:00:00.000Z",
+        isCurrent: true,
+      });
+      const staffAssignmentTeams = [
+        { team: "senior", displayName: "First Team" },
+        { team: "reserves", displayName: "Reserves" },
+        { team: "youth", displayName: "Youth" },
+      ];
+      const staffAssignmentTeamJobs = [
+        { jobId: "manager", jobLabel: "Manager" },
+        { jobId: "assistant_manager", jobLabel: "Assistant Manager" },
+        { jobId: "coaches", jobLabel: "Coaches" },
+        { jobId: "set_piece_coach", jobLabel: "Set Piece Coach" },
+        { jobId: "head_performance_analyst", jobLabel: "Head Performance Analyst" },
+        { jobId: "performance_analyst", jobLabel: "Performance Analyst" },
+        { jobId: "head_physio", jobLabel: "Head Physio" },
+        { jobId: "physio", jobLabel: "Physio" },
+        { jobId: "head_sports_science", jobLabel: "Head of Sports Science" },
+        { jobId: "sports_scientist", jobLabel: "Sports Scientist" },
+      ];
+      const staffAssignmentClubJobs = [
+        { jobId: "head_of_youth_development", jobLabel: "Head of Youth Development" },
+        { jobId: "director_of_football", jobLabel: "Director of Football" },
+        { jobId: "technical_director", jobLabel: "Technical Director" },
+        { jobId: "loan_manager", jobLabel: "Loan Manager" },
+        { jobId: "chief_scout", jobLabel: "Chief Scout" },
+        { jobId: "scout", jobLabel: "Scout" },
+      ];
+      let staffAssignmentTargets = [
+        ...staffAssignmentTeams.flatMap(({ team }) =>
+          staffAssignmentTeamJobs
+            .filter(({ jobId }) => team !== "senior" || jobId !== "manager")
+            .map(({ jobId, jobLabel }) => ({
+              scope: team,
+              jobId,
+              jobLabel,
+              slotCount: 0,
+            })),
+        ),
+        ...staffAssignmentClubJobs.map(({ jobId, jobLabel }) => ({
+          scope: "club",
+          jobId,
+          jobLabel,
+          slotCount: 0,
+        })),
+      ];
+      const staffAssignmentTargetResponse = () => ({
+        teams: staffAssignmentTeams.map((team) => ({ ...team })),
+        targets: staffAssignmentTargets.map((target) => ({ ...target })),
+      });
       const activeSave = () => saves.find((save) => save.isActive) || saves[0];
       const snapshotOrder = (left, right) => {
         if (left.gameDate === null && right.gameDate !== null) return 1;
@@ -106,6 +168,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         .find((snapshot) => snapshot.isCurrent) || null;
       const snapshotSummary = (snapshot) => ({
         id: snapshot.id,
+        contextToken: snapshot.contextToken,
         saveId: snapshot.saveId,
         schemaVersion: 6,
         generatedAtUtc: snapshot.loadedAtUtc,
@@ -573,9 +636,11 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           if (cmd === "get_current_snapshot") {
             const snapshot = currentSnapshot();
             if (snapshot) return snapshotSummary(snapshot);
+            if (staffAssignment) return snapshotSummary(staffAssignmentSnapshot());
             return plannerSnapshot || squadOverview || playerProfile || staffWorkspace
               ? {
                   id: 1,
+                  contextToken: "snapshot-token-1",
                   saveId: 1,
                   schemaVersion: 6,
                   generatedAtUtc: "2026-07-28T15:00:00.000Z",
@@ -684,6 +749,126 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   total: squadPlayers.length,
                 }
               : { players: [], total: 0 };
+          }
+
+          if (cmd === "get_staff_assignment_targets") {
+            if (args?.expectedSaveContextToken !== activeSave().contextToken) {
+              throw new Error("Staff assignment save context changed");
+            }
+            return staffAssignmentTargetResponse();
+          }
+
+          if (cmd === "save_staff_assignment_targets") {
+            if (args?.expectedSaveContextToken !== activeSave().contextToken) {
+              throw new Error("Staff assignment save context changed");
+            }
+            if (!Array.isArray(args?.targets)) {
+              throw new Error("Staff assignment targets are required");
+            }
+            staffAssignmentTargets = staffAssignmentTargets.map((target) => {
+              const saved = args.targets.find(
+                (candidate) =>
+                  candidate?.scope === target.scope &&
+                  candidate?.jobId === target.jobId,
+              );
+              return saved ? { ...target, slotCount: saved.slotCount } : target;
+            });
+            return staffAssignmentTargetResponse();
+          }
+
+          if (cmd === "optimize_staff_assignments") {
+            if (
+              args?.expectedSaveContextToken !== activeSave().contextToken ||
+              args?.expectedSnapshotContextToken !== staffAssignmentSnapshotToken
+            ) {
+              throw new Error("Staff assignment context changed");
+            }
+            return {
+              state: "ready",
+              saveId: activeSave().id,
+              saveContextToken: activeSave().contextToken,
+              snapshotId: 1,
+              snapshotContextToken: staffAssignmentSnapshotToken,
+              joinedCandidateCount: 5,
+              configuredSlotCount: 4,
+              unsupportedPreferredJobCount: 1,
+              slots: [
+                {
+                  kind: "recommendation",
+                  scope: "senior",
+                  scopeDisplayName: "First Team",
+                  jobId: "assistant_manager",
+                  jobLabel: "Assistant Manager",
+                  slotNumber: 1,
+                  uid: 101,
+                  name: "Alex Assistant",
+                  preferredJob: "Assistant Manager",
+                  classification: "current_staff",
+                  score: 82,
+                  coachDiscipline: null,
+                },
+                {
+                  kind: "recommendation",
+                  scope: "senior",
+                  scopeDisplayName: "First Team",
+                  jobId: "coaches",
+                  jobLabel: "Coaches",
+                  slotNumber: 1,
+                  uid: 102,
+                  name: "Coach Casey",
+                  preferredJob: "Coach",
+                  classification: "current_staff",
+                  score: 79,
+                  coachDiscipline: "attacking_technical",
+                },
+                {
+                  kind: "vacancy",
+                  scope: "reserves",
+                  scopeDisplayName: "Reserves",
+                  jobId: "manager",
+                  jobLabel: "Manager",
+                  slotNumber: 1,
+                  evidence: {
+                    jobId: "manager",
+                    joinedCandidateCount: 1,
+                    eligibleScoreCount: 0,
+                    unavailableScoreCount: 1,
+                  },
+                },
+                {
+                  kind: "recommendation",
+                  scope: "club",
+                  scopeDisplayName: "Club",
+                  jobId: "scout",
+                  jobLabel: "Scout",
+                  slotNumber: 1,
+                  uid: 103,
+                  name: "Riley Scout",
+                  preferredJob: "Scout",
+                  classification: "recruitment",
+                  score: 74,
+                  coachDiscipline: null,
+                },
+              ],
+              evidence: [
+                { jobId: "manager", joinedCandidateCount: 1, eligibleScoreCount: 0, unavailableScoreCount: 1 },
+                { jobId: "assistant_manager", joinedCandidateCount: 1, eligibleScoreCount: 1, unavailableScoreCount: 0 },
+                { jobId: "coaches", joinedCandidateCount: 1, eligibleScoreCount: 1, unavailableScoreCount: 0 },
+                { jobId: "set_piece_coach", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "head_performance_analyst", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "performance_analyst", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "head_physio", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "physio", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "head_sports_science", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "sports_scientist", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "head_of_youth_development", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "director_of_football", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "technical_director", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "loan_manager", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "chief_scout", joinedCandidateCount: 0, eligibleScoreCount: 0, unavailableScoreCount: 0 },
+                { jobId: "scout", joinedCandidateCount: 1, eligibleScoreCount: 1, unavailableScoreCount: 0 },
+              ],
+            };
           }
 
           if (cmd === "search_staff") {
@@ -1281,6 +1466,25 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             };
           }
 
+          if (cmd === "get_planner_team_removal_impacts") {
+            if (!Array.isArray(args?.teams)) {
+              throw new Error("Invalid planner team settings");
+            }
+            const included = new Set(args.teams.map((team) => team?.team));
+            return plannerDepth.teams
+              .filter((team) => !included.has(team.team))
+              .map((team) => ({
+                team: team.team,
+                displayName: team.displayName,
+                assignmentCount: team.strings.reduce(
+                  (count, plannerString) =>
+                    count + plannerString.assignments.length,
+                  0,
+                ),
+                staffingTargets: [],
+              }));
+          }
+
           if (cmd === "save_planner_teams") {
             if (!Array.isArray(args?.teams) || args.teams.length < 1 || args.teams.length > 3) {
               throw new Error("Planner configuration must contain one to three teams");
@@ -1437,8 +1641,14 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           }
 
           if (cmd === "load_data") {
-            const loadedSnapshot = {
+            if (staffAssignment) {
+              staffAssignmentSnapshotToken = "snapshot-token-replacement";
+            }
+            const loadedSnapshot = staffAssignment
+              ? snapshotSummary(staffAssignmentSnapshot())
+              : {
               id: 1,
+              contextToken: "snapshot-token-1",
               saveId: 1,
               schemaVersion: 6,
               generatedAtUtc: "2026-07-28T15:00:00.000Z",

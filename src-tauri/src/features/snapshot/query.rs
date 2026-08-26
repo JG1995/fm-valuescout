@@ -9,6 +9,7 @@ pub fn get_current_snapshot(conn: &Connection) -> Result<Option<SnapshotSummary>
     conn.query_row(
         "SELECT
             s.id,
+            s.context_token,
             s.save_id,
             s.schema_version,
             s.generated_at_utc,
@@ -114,19 +115,20 @@ pub(crate) fn get_snapshot_metadata(
 fn map_snapshot_row(row: &Row<'_>) -> rusqlite::Result<SnapshotSummary> {
     Ok(SnapshotSummary {
         id: row.get(0)?,
-        save_id: row.get(1)?,
-        schema_version: row.get(2)?,
-        generated_at_utc: row.get(3)?,
-        game_version: row.get(4)?,
-        supported_game_version: row.get(5)?,
-        bridge_version: row.get(6)?,
-        protocol_version: row.get(7)?,
-        game_date: row.get(8)?,
-        game_date_source: row.get(9)?,
-        scan_truncated: row.get::<_, i32>(10)? == 1,
-        max_accepted: row.get(11)?,
-        player_count: row.get(12)?,
-        loaded_at_utc: row.get(13)?,
+        context_token: row.get(1)?,
+        save_id: row.get(2)?,
+        schema_version: row.get(3)?,
+        generated_at_utc: row.get(4)?,
+        game_version: row.get(5)?,
+        supported_game_version: row.get(6)?,
+        bridge_version: row.get(7)?,
+        protocol_version: row.get(8)?,
+        game_date: row.get(9)?,
+        game_date_source: row.get(10)?,
+        scan_truncated: row.get::<_, i32>(11)? == 1,
+        max_accepted: row.get(12)?,
+        player_count: row.get(13)?,
+        loaded_at_utc: row.get(14)?,
     })
 }
 
@@ -184,6 +186,7 @@ mod tests {
             .expect("current snapshot");
 
         assert!(snapshot.player_count > 0);
+        assert!(!snapshot.context_token.is_empty());
     }
 
     #[test]

@@ -63,6 +63,7 @@ import {
   resolvePlannerSlotCandidatesIpcMock,
   resolvePlannerTacticIpcMock,
   resolvePlannerTacticOptionsIpcMock,
+  resolvePlannerTeamRemovalImpactsIpcMock,
   resolveRemovePlannerStringIpcMock,
   resolveSavePlannerTacticIpcMock,
   resolveSavePlannerTeamsIpcMock,
@@ -106,9 +107,12 @@ import {
   resetStaffIpcMock,
   resolveBoostMyStaffCurrentAbilityIpcMock,
   resolveBoostStaffCurrentAbilityIpcMock,
+  resolveGetStaffAssignmentTargetsIpcMock,
   resolveGetStaffIpcMock,
   resolveListMyStaffIpcMock,
   resolveListStaffShortlistIpcMock,
+  resolveOptimizeStaffAssignmentsIpcMock,
+  resolveSaveStaffAssignmentTargetsIpcMock,
   resolveSearchStaffIpcMock,
 } from "@/testing/staff-ipc-mock";
 
@@ -188,6 +192,18 @@ function registerIpcMocks() {
 
     if (cmd === "list_staff_shortlist") {
       return resolveListStaffShortlistIpcMock(args);
+    }
+
+    if (cmd === "get_staff_assignment_targets") {
+      return resolveGetStaffAssignmentTargetsIpcMock(args);
+    }
+
+    if (cmd === "save_staff_assignment_targets") {
+      return resolveSaveStaffAssignmentTargetsIpcMock(args);
+    }
+
+    if (cmd === "optimize_staff_assignments") {
+      return resolveOptimizeStaffAssignmentsIpcMock(args);
     }
 
     if (cmd === "get_staff") {
@@ -280,6 +296,10 @@ function registerIpcMocks() {
 
     if (cmd === "set_managed_club") {
       return resolveSetManagedClubIpcMock(args);
+    }
+
+    if (cmd === "get_planner_team_removal_impacts") {
+      return resolvePlannerTeamRemovalImpactsIpcMock(args);
     }
 
     if (cmd === "save_planner_teams") {

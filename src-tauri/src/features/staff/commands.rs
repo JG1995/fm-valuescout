@@ -9,6 +9,16 @@ use crate::features::memory_read::service::{
 };
 use crate::features::player::boost_gate;
 
+use super::assignment_optimizer::{
+    CoachDiscipline, StaffAssignmentClassification, StaffAssignmentEvidence, StaffAssignmentSlot,
+};
+use super::assignment_optimizer_query::{
+    self, StaffAssignmentOptimization, StaffAssignmentOptimizationState, StaffAssignmentResultSlot,
+};
+use super::assignment_targets::{
+    self, StaffAssignmentTarget, StaffAssignmentTargetInput, StaffAssignmentTargetTeam,
+    StaffAssignmentTargets,
+};
 use super::filter::{self, FilterAst, FilterRule};
 use super::query::{
     self, SortDir, SortField, StaffDetail, StaffPage, StaffPageState, StaffRoleScore, StaffScope,
@@ -193,6 +203,255 @@ impl From<StaffDetail> for StaffDetailDto {
                 .map(StaffRoleScoreDto::from)
                 .collect(),
         }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentTargetDto {
+    pub scope: String,
+    pub job_id: String,
+    pub job_label: String,
+    pub slot_count: i64,
+}
+
+impl From<StaffAssignmentTarget> for StaffAssignmentTargetDto {
+    fn from(target: StaffAssignmentTarget) -> Self {
+        Self {
+            scope: target.scope,
+            job_id: target.job_id,
+            job_label: target.job_label,
+            slot_count: target.slot_count,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentTargetTeamDto {
+    pub team: String,
+    pub display_name: String,
+}
+
+impl From<StaffAssignmentTargetTeam> for StaffAssignmentTargetTeamDto {
+    fn from(team: StaffAssignmentTargetTeam) -> Self {
+        Self {
+            team: team.team,
+            display_name: team.display_name,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentTargetsDto {
+    pub teams: Vec<StaffAssignmentTargetTeamDto>,
+    pub targets: Vec<StaffAssignmentTargetDto>,
+}
+
+impl From<StaffAssignmentTargets> for StaffAssignmentTargetsDto {
+    fn from(targets: StaffAssignmentTargets) -> Self {
+        Self {
+            teams: targets.teams.into_iter().map(Into::into).collect(),
+            targets: targets.targets.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentTargetInputDto {
+    pub scope: String,
+    pub job_id: String,
+    pub slot_count: i64,
+}
+
+impl From<StaffAssignmentTargetInputDto> for StaffAssignmentTargetInput {
+    fn from(target: StaffAssignmentTargetInputDto) -> Self {
+        Self {
+            scope: target.scope,
+            job_id: target.job_id,
+            slot_count: target.slot_count,
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_staff_assignment_targets(
+    expected_save_context_token: String,
+    db: State<'_, Db>,
+) -> Result<StaffAssignmentTargetsDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    assignment_targets::get_targets(&conn, &expected_save_context_token).map(Into::into)
+}
+
+#[tauri::command]
+pub fn save_staff_assignment_targets(
+    expected_save_context_token: String,
+    targets: Vec<StaffAssignmentTargetInputDto>,
+    db: State<'_, Db>,
+) -> Result<StaffAssignmentTargetsDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    let inputs = targets.into_iter().map(Into::into).collect::<Vec<_>>();
+    assignment_targets::save_targets(&conn, &expected_save_context_token, &inputs).map(Into::into)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentEvidenceDto {
+    pub job_id: String,
+    pub joined_candidate_count: usize,
+    pub eligible_score_count: usize,
+    pub unavailable_score_count: usize,
+}
+
+impl From<StaffAssignmentEvidence> for StaffAssignmentEvidenceDto {
+    fn from(evidence: StaffAssignmentEvidence) -> Self {
+        Self {
+            job_id: evidence.job_id,
+            joined_candidate_count: evidence.joined_candidate_count,
+            eligible_score_count: evidence.eligible_score_count,
+            unavailable_score_count: evidence.unavailable_score_count,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum StaffAssignmentSlotDto {
+    Recommendation {
+        scope: String,
+        scope_display_name: String,
+        job_id: String,
+        job_label: String,
+        slot_number: i64,
+        uid: i64,
+        name: Option<String>,
+        preferred_job: String,
+        classification: &'static str,
+        score: u8,
+        coach_discipline: Option<&'static str>,
+    },
+    Vacancy {
+        scope: String,
+        scope_display_name: String,
+        job_id: String,
+        job_label: String,
+        slot_number: i64,
+        evidence: StaffAssignmentEvidenceDto,
+    },
+}
+
+impl From<StaffAssignmentResultSlot> for StaffAssignmentSlotDto {
+    fn from(result_slot: StaffAssignmentResultSlot) -> Self {
+        let StaffAssignmentResultSlot {
+            scope_display_name,
+            slot,
+        } = result_slot;
+        match slot {
+            StaffAssignmentSlot::Recommendation(recommendation) => Self::Recommendation {
+                scope: recommendation.scope,
+                scope_display_name,
+                job_id: recommendation.job_id,
+                job_label: recommendation.job_label,
+                slot_number: recommendation.slot_number,
+                uid: recommendation.uid,
+                name: recommendation.name,
+                preferred_job: recommendation.preferred_job,
+                classification: classification_name(recommendation.classification),
+                score: recommendation.score,
+                coach_discipline: recommendation.coach_discipline.map(coach_discipline_name),
+            },
+            StaffAssignmentSlot::Vacancy(vacancy) => Self::Vacancy {
+                scope: vacancy.scope,
+                scope_display_name,
+                job_id: vacancy.job_id,
+                job_label: vacancy.job_label,
+                slot_number: vacancy.slot_number,
+                evidence: vacancy.evidence.into(),
+            },
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StaffAssignmentOptimizationDto {
+    pub state: &'static str,
+    pub save_id: i64,
+    pub save_context_token: String,
+    pub snapshot_id: Option<i64>,
+    pub snapshot_context_token: Option<String>,
+    pub joined_candidate_count: i64,
+    pub configured_slot_count: i64,
+    pub unsupported_preferred_job_count: i64,
+    pub slots: Vec<StaffAssignmentSlotDto>,
+    pub evidence: Vec<StaffAssignmentEvidenceDto>,
+}
+
+impl From<StaffAssignmentOptimization> for StaffAssignmentOptimizationDto {
+    fn from(result: StaffAssignmentOptimization) -> Self {
+        Self {
+            state: match result.state {
+                StaffAssignmentOptimizationState::StaleContext => "stale_context",
+                StaffAssignmentOptimizationState::NoCurrentSnapshot => "no_current_snapshot",
+                StaffAssignmentOptimizationState::NoManagedClub => "no_managed_club",
+                StaffAssignmentOptimizationState::NoShortlist => "no_shortlist",
+                StaffAssignmentOptimizationState::Ready => "ready",
+            },
+            save_id: result.save_id,
+            save_context_token: result.save_context_token,
+            snapshot_id: result.snapshot_id,
+            snapshot_context_token: result.snapshot_context_token,
+            joined_candidate_count: result.joined_candidate_count,
+            configured_slot_count: result.configured_slot_count,
+            unsupported_preferred_job_count: result.unsupported_preferred_job_count,
+            slots: result.slots.into_iter().map(Into::into).collect(),
+            evidence: result.evidence.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[tauri::command]
+pub fn optimize_staff_assignments(
+    expected_save_context_token: String,
+    expected_snapshot_context_token: String,
+    db: State<'_, Db>,
+) -> Result<StaffAssignmentOptimizationDto, String> {
+    let conn =
+        db.0.lock()
+            .map_err(|_| "database lock poisoned".to_string())?;
+    assignment_optimizer_query::optimize_staff_assignments(
+        &conn,
+        &expected_save_context_token,
+        &expected_snapshot_context_token,
+    )
+    .map(Into::into)
+}
+
+fn classification_name(classification: StaffAssignmentClassification) -> &'static str {
+    match classification {
+        StaffAssignmentClassification::CurrentStaff => "current_staff",
+        StaffAssignmentClassification::Recruitment => "recruitment",
+    }
+}
+
+fn coach_discipline_name(discipline: CoachDiscipline) -> &'static str {
+    match discipline {
+        CoachDiscipline::AttackingTechnical => "attacking_technical",
+        CoachDiscipline::AttackingTactical => "attacking_tactical",
+        CoachDiscipline::DefendingTechnical => "defending_technical",
+        CoachDiscipline::DefendingTactical => "defending_tactical",
+        CoachDiscipline::PossessionTechnical => "possession_technical",
+        CoachDiscipline::PossessionTactical => "possession_tactical",
     }
 }
 
@@ -766,6 +1025,91 @@ mod tests {
             .expect("serialize no shortlist state")["state"],
             "no_shortlist"
         );
+    }
+
+    #[test]
+    fn staff_assignment_targets_dto_serializes_teams_and_targets_in_camel_case() {
+        let value = serde_json::to_value(StaffAssignmentTargetsDto {
+            teams: vec![StaffAssignmentTargetTeamDto {
+                team: "reserves".to_string(),
+                display_name: "B Team".to_string(),
+            }],
+            targets: vec![StaffAssignmentTargetDto {
+                scope: "reserves".to_string(),
+                job_id: "manager".to_string(),
+                job_label: "Manager".to_string(),
+                slot_count: 2,
+            }],
+        })
+        .expect("serialize staff assignment targets");
+        assert_eq!(value["teams"][0]["team"], "reserves");
+        assert_eq!(value["teams"][0]["displayName"], "B Team");
+        assert_eq!(value["targets"][0]["scope"], "reserves");
+        assert_eq!(value["targets"][0]["jobId"], "manager");
+        assert_eq!(value["targets"][0]["jobLabel"], "Manager");
+        assert_eq!(value["targets"][0]["slotCount"], 2);
+    }
+
+    #[test]
+    fn staff_assignment_optimizer_dto_serializes_context_slots_and_evidence_in_camel_case() {
+        let value = serde_json::to_value(StaffAssignmentOptimizationDto {
+            state: "ready",
+            save_id: 3,
+            save_context_token: "save-token".to_string(),
+            snapshot_id: Some(7),
+            snapshot_context_token: Some("snapshot-token".to_string()),
+            joined_candidate_count: 2,
+            configured_slot_count: 1,
+            unsupported_preferred_job_count: 1,
+            slots: vec![
+                StaffAssignmentSlotDto::Recommendation {
+                    scope: "senior".to_string(),
+                    scope_display_name: "First Team".to_string(),
+                    job_id: "assistant_manager".to_string(),
+                    job_label: "Assistant Manager".to_string(),
+                    slot_number: 1,
+                    uid: 7,
+                    name: None,
+                    preferred_job: "Assistant Manager".to_string(),
+                    classification: "current_staff",
+                    score: 82,
+                    coach_discipline: None,
+                },
+                StaffAssignmentSlotDto::Vacancy {
+                    scope: "senior".to_string(),
+                    scope_display_name: "First Team".to_string(),
+                    job_id: "assistant_manager".to_string(),
+                    job_label: "Assistant Manager".to_string(),
+                    slot_number: 1,
+                    evidence: StaffAssignmentEvidenceDto {
+                        job_id: "assistant_manager".to_string(),
+                        joined_candidate_count: 2,
+                        eligible_score_count: 0,
+                        unavailable_score_count: 2,
+                    },
+                },
+            ],
+            evidence: vec![StaffAssignmentEvidenceDto {
+                job_id: "assistant_manager".to_string(),
+                joined_candidate_count: 2,
+                eligible_score_count: 0,
+                unavailable_score_count: 2,
+            }],
+        })
+        .expect("serialize assignment optimizer");
+
+        assert_eq!(value["state"], "ready");
+        assert_eq!(value["saveContextToken"], "save-token");
+        assert_eq!(value["snapshotContextToken"], "snapshot-token");
+        assert_eq!(value["joinedCandidateCount"], 2);
+        assert_eq!(value["configuredSlotCount"], 1);
+        assert_eq!(value["unsupportedPreferredJobCount"], 1);
+        assert_eq!(value["slots"][0]["kind"], "recommendation");
+        assert!(value["slots"][0]["name"].is_null());
+        assert_eq!(value["slots"][0]["scopeDisplayName"], "First Team");
+        assert_eq!(value["slots"][0]["slotNumber"], 1);
+        assert_eq!(value["slots"][1]["kind"], "vacancy");
+        assert_eq!(value["slots"][1]["evidence"]["unavailableScoreCount"], 2);
     }
 
     #[test]

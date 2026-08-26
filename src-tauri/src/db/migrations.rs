@@ -747,6 +747,19 @@ CREATE INDEX idx_club_dna_scores_snapshot_definition_model_score
     ON club_dna_scores(snapshot_id, definition_version, score_model_version, score);
 ";
 
+pub const STAFF_ASSIGNMENT_TARGETS_SQL: &str = "
+CREATE TABLE staff_assignment_targets (
+    save_id INTEGER NOT NULL REFERENCES saves(id) ON DELETE CASCADE,
+    scope TEXT NOT NULL CHECK (scope IN ('senior', 'reserves', 'youth', 'club')),
+    job_id TEXT NOT NULL CHECK (trim(job_id) <> ''),
+    slot_count INTEGER NOT NULL CHECK (slot_count BETWEEN 1 AND 50),
+    PRIMARY KEY (save_id, scope, job_id)
+);
+
+CREATE INDEX idx_staff_assignment_targets_save_scope
+    ON staff_assignment_targets(save_id, scope);
+";
+
 pub const POTENTIAL_SCORES_V34_SQL: &str = "
 ALTER TABLE players
     ADD COLUMN potential_attributes_json TEXT;
@@ -950,6 +963,11 @@ pub fn all() -> &'static [Migration] {
             version: 34,
             description: "persist_current_potential_scores",
             sql: POTENTIAL_SCORES_V34_SQL,
+        },
+        Migration {
+            version: 35,
+            description: "create_staff_assignment_targets",
+            sql: STAFF_ASSIGNMENT_TARGETS_SQL,
         },
     ]
 }
@@ -1204,6 +1222,51 @@ mod tests {
     }
 
     #[test]
+    fn opening_fresh_db_applies_staff_assignment_target_schema() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("staff-assignment-targets.db"));
+
+        let columns = table_columns(&conn, "staff_assignment_targets");
+        assert_eq!(columns, ["save_id", "scope", "job_id", "slot_count"]);
+        conn.execute(
+            "INSERT INTO saves (name, is_active) VALUES ('Target save', 1)",
+            [],
+        )
+        .expect("create active save");
+        let save_id: i64 = conn
+            .query_row("SELECT id FROM saves WHERE is_active = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("active save");
+        for slot_count in [1, 50] {
+            conn.execute(
+                "INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count)
+                 VALUES (?1, 'club', ?2, ?3)",
+                params![save_id, format!("job_{slot_count}"), slot_count],
+            )
+            .expect("accept boundary target");
+        }
+        for slot_count in [0, 51] {
+            assert!(conn
+                .execute(
+                    "INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count)
+                     VALUES (?1, 'club', ?2, ?3)",
+                    params![save_id, format!("invalid_{slot_count}"), slot_count],
+                )
+                .is_err());
+        }
+        conn.execute("DELETE FROM saves WHERE id = ?1", [save_id])
+            .expect("delete save");
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM staff_assignment_targets", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .expect("target cascade"),
+            0
+        );
+    }
+
+    #[test]
     fn opening_fresh_db_applies_all_migrations_without_demo_value() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let db_path = temp_dir.path().join("migration-test.db");
@@ -1212,7 +1275,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         assert_player_sort_index_inventory(&conn);
 
         let demo_value_exists: bool = conn
@@ -1330,7 +1393,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         assert_player_sort_index_inventory(&conn);
         assert_eq!(
             conn.query_row(
@@ -1411,7 +1474,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         let player_columns = table_columns(&conn, "players");
         assert!(player_columns.contains(&"potential_attributes_json".to_string()));
         assert!(player_columns.contains(&"potential_projection_model_version".to_string()));
@@ -2142,7 +2205,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         let settings: Vec<(i64, String, String)> = conn
             .prepare(
                 "SELECT save_id, team, display_name
@@ -2369,7 +2432,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         type MoneyballRow = (
             Option<String>,
             Option<i64>,
@@ -2555,7 +2618,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         let existing: i64 = conn
             .query_row("SELECT reveal_hidden_information FROM saves", [], |row| {
                 row.get(0)
@@ -2658,7 +2721,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -2739,7 +2802,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         assert_eq!(
             table_columns(&conn, "player_potential_role_scores"),
             [
@@ -3292,7 +3355,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, managed_club_settings.club_name
@@ -3363,7 +3426,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -3550,7 +3613,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         let primary_club: String = conn
             .query_row(
                 "SELECT club_name FROM managed_club_settings WHERE save_id = ?1",
@@ -3598,7 +3661,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -3839,7 +3902,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -3945,7 +4008,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
 
         let table_name: String = conn
             .query_row(
@@ -4180,7 +4243,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -4244,7 +4307,7 @@ mod tests {
                 row.get(0)
             })
             .expect("count absent backfill");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         assert_eq!(staff_count, 1);
         assert_eq!(score_count, 0);
     }
@@ -4410,6 +4473,7 @@ mod tests {
                 "idx_saves_one_active",
                 "idx_snapshots_context_token",
                 "idx_snapshots_one_current_per_save",
+                "idx_staff_assignment_targets_save_scope",
                 "idx_staff_role_scores_snapshot_role",
                 "idx_staff_shortlist_entries_save_preferred_job",
             ]
@@ -4499,7 +4563,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
     }
 
     #[test]
@@ -4533,7 +4597,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 34);
+        assert_eq!(version, 35);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -4573,7 +4637,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 34, "legacy version {legacy_version}");
+            assert_eq!(version, 35, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -4586,7 +4650,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 34);
+        assert_eq!(migrations.len(), 35);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -4732,6 +4796,12 @@ mod tests {
             "persist_current_potential_scores"
         );
         assert_eq!(migrations[33].sql, POTENTIAL_SCORES_V34_SQL);
+        assert_eq!(migrations[34].version, 35);
+        assert_eq!(
+            migrations[34].description,
+            "create_staff_assignment_targets"
+        );
+        assert_eq!(migrations[34].sql, STAFF_ASSIGNMENT_TARGETS_SQL);
     }
 
     #[test]

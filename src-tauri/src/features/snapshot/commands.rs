@@ -208,6 +208,7 @@ pub fn delete_save(
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotSummaryDto {
     pub id: i64,
+    pub context_token: String,
     pub save_id: i64,
     pub schema_version: i64,
     pub generated_at_utc: String,
@@ -227,6 +228,7 @@ impl From<SnapshotSummary> for SnapshotSummaryDto {
     fn from(snapshot: SnapshotSummary) -> Self {
         Self {
             id: snapshot.id,
+            context_token: snapshot.context_token,
             save_id: snapshot.save_id,
             schema_version: snapshot.schema_version,
             generated_at_utc: snapshot.generated_at_utc,
@@ -343,6 +345,50 @@ pub fn load_data(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn snapshot_summary_dto_exposes_context_tokens_for_current_and_load_data_results() {
+        let summary = |context_token: &str| SnapshotSummaryDto {
+            id: 7,
+            context_token: context_token.to_string(),
+            save_id: 3,
+            schema_version: 8,
+            generated_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
+            game_version: "26.3".to_string(),
+            supported_game_version: "26.3".to_string(),
+            bridge_version: "0.4".to_string(),
+            protocol_version: 1,
+            game_date: Some("2026-08-01".to_string()),
+            game_date_source: "memory".to_string(),
+            scan_truncated: false,
+            max_accepted: None,
+            player_count: 25,
+            loaded_at_utc: "2026-08-11T10:00:00.000Z".to_string(),
+        };
+        let current = serde_json::to_value(summary("current-token")).expect("serialize current");
+        assert_eq!(current["id"], 7);
+        assert_eq!(current["contextToken"], "current-token");
+
+        let load_data = serde_json::to_value(LoadDataResultDto {
+            request_id: "request".to_string(),
+            players_found: Some(25),
+            scan_truncated: Some(false),
+            max_accepted: None,
+            stored_snapshot: summary("stored-token"),
+            effective_snapshot: summary("effective-token"),
+            timings: LoadDataTimingsDto {
+                scan_ms: 1,
+                ingest_ms: 2,
+                total_ms: 3,
+            },
+        })
+        .expect("serialize Load Data result");
+        assert_eq!(load_data["storedSnapshot"]["contextToken"], "stored-token");
+        assert_eq!(
+            load_data["effectiveSnapshot"]["contextToken"],
+            "effective-token"
+        );
+    }
 
     #[test]
     fn snapshot_management_dtos_expose_metadata_and_invalidation_context_only() {

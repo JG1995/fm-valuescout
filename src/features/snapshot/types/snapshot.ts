@@ -1,5 +1,6 @@
 export type SnapshotSummary = {
   id: number;
+  contextToken: string;
   saveId: number;
   schemaVersion: number;
   generatedAtUtc: string;

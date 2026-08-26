@@ -77,6 +77,7 @@ function buildSnapshot(overrides?: Partial<SnapshotSummary>): SnapshotSummary {
   const activeSave = saves.find((save) => save.isActive) ?? saves[0];
   return {
     id: nextSnapshotId,
+    contextToken: `snapshot-token-${nextSnapshotId}`,
     saveId: activeSave.id,
     schemaVersion: 6,
     generatedAtUtc: "2026-07-28T15:00:00.000Z",
@@ -121,6 +122,7 @@ function historySnapshotState(snapshot: SnapshotMetadata) {
   return {
     snapshot: buildSnapshot({
       id: snapshot.id,
+      contextToken: snapshot.contextToken,
       saveId: snapshot.saveId,
       gameDate: snapshot.gameDate,
       gameDateSource: snapshot.gameDateSource,
@@ -607,7 +609,7 @@ export function resolveLoadDataIpcMock(
       ),
     {
       id: result.effectiveSnapshot.id,
-      contextToken: `snapshot-token-${result.effectiveSnapshot.id}`,
+      contextToken: result.effectiveSnapshot.contextToken,
       saveId: result.effectiveSnapshot.saveId,
       customName: null,
       gameDate: result.effectiveSnapshot.gameDate,

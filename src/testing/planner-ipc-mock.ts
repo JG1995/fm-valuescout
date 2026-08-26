@@ -14,6 +14,7 @@ import type {
   TacticRoleOption,
 } from "@/features/planner/types/tactic";
 import { PLANNER_TEAMS, type PlannerTeam } from "@/features/planner/types/team";
+import type { PlannerTeamRemovalImpact } from "@/features/planner/types/team-removal-impact";
 
 const DEFAULT_MANAGED_CLUB: ManagedClubStatus = {
   clubName: null,
@@ -293,10 +294,18 @@ let optimizeCalls = 0;
 let optimizeBases: string[] = [];
 let teamSaveError: string | null = null;
 let teamSavePending = false;
+let teamRemovalImpactOverride: PlannerTeamRemovalImpact[] | null = null;
+let teamRemovalImpactPending = false;
+let pendingTeamRemovalImpact: (() => void) | null = null;
 let teamSaveCalls: Array<{
   teams: Array<{ team: PlannerTeam; displayName: string }>;
   confirmPopulatedRemoval: boolean;
 }> = [];
+let pendingPlannerTeamSave: {
+  teams: Array<{ team: PlannerTeam; displayName: string }>;
+  confirmPopulatedRemoval: boolean;
+  resolve: (depth: PlannerDepth) => void;
+} | null = null;
 
 function cloneTactic(value: PlannerTactic): PlannerTactic {
   return {
@@ -407,6 +416,10 @@ export function resetPlannerIpcMock() {
   optimizeBases = [];
   teamSaveError = null;
   teamSavePending = false;
+  pendingPlannerTeamSave = null;
+  teamRemovalImpactOverride = null;
+  teamRemovalImpactPending = false;
+  pendingTeamRemovalImpact = null;
   teamSaveCalls = [];
 }
 
@@ -569,6 +582,26 @@ export function setPlannerTeamSaveError(message: string | null) {
 
 export function setPlannerTeamSavePending(value: boolean) {
   teamSavePending = value;
+}
+
+export function setPlannerTeamRemovalImpacts(
+  impacts: PlannerTeamRemovalImpact[] | null,
+) {
+  teamRemovalImpactOverride = impacts;
+}
+
+export function setPlannerTeamRemovalImpactPending(value: boolean) {
+  teamRemovalImpactPending = value;
+}
+
+export function resolvePendingPlannerTeamRemovalImpact() {
+  if (!pendingTeamRemovalImpact) {
+    throw new Error("No planner team removal impact request is pending");
+  }
+  const resolve = pendingTeamRemovalImpact;
+  pendingTeamRemovalImpact = null;
+  teamRemovalImpactPending = false;
+  resolve();
 }
 
 export function getPlannerTeamSaveIpcMockCalls() {
@@ -864,6 +897,55 @@ export function resolveOptimizePlannerDepthIpcMock(args: unknown) {
   return cloneDepth(depth);
 }
 
+export function resolvePlannerTeamRemovalImpactsIpcMock(args: unknown) {
+  if (
+    typeof args !== "object" ||
+    args === null ||
+    !("teams" in args) ||
+    !Array.isArray(args.teams)
+  ) {
+    throw "Invalid planner team settings";
+  }
+  const impacts = teamRemovalImpactOverride
+    ? teamRemovalImpactOverride.map((impact) => ({
+        ...impact,
+        staffingTargets: [...impact.staffingTargets],
+      }))
+    : removalImpactsForTeams({ teams: args.teams });
+  if (teamRemovalImpactPending) {
+    return new Promise<PlannerTeamRemovalImpact[]>((resolve) => {
+      pendingTeamRemovalImpact = () => resolve(impacts);
+    });
+  }
+  return impacts;
+}
+
+function removalImpactsForTeams(args: { teams: unknown[] }) {
+  const included = new Set(
+    args.teams
+      .filter(
+        (team): team is { team: PlannerTeam } =>
+          typeof team === "object" &&
+          team !== null &&
+          "team" in team &&
+          typeof team.team === "string" &&
+          PLANNER_TEAMS.includes(team.team as PlannerTeam),
+      )
+      .map((team) => team.team),
+  );
+  return depth.teams
+    .filter((team) => !included.has(team.team))
+    .map((team) => ({
+      team: team.team,
+      displayName: team.displayName,
+      assignmentCount: team.strings.reduce(
+        (count, plannerString) => count + plannerString.assignments.length,
+        0,
+      ),
+      staffingTargets: [],
+    }));
+}
+
 export function resolveSavePlannerTeamsIpcMock(args: unknown) {
   if (
     typeof args !== "object" ||
@@ -903,9 +985,33 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
     throw teamSaveError;
   }
   if (teamSavePending) {
-    return new Promise<PlannerDepth>(() => {});
+    return new Promise<PlannerDepth>((resolve) => {
+      pendingPlannerTeamSave = {
+        teams: inputs,
+        confirmPopulatedRemoval: args.confirmPopulatedRemoval as boolean,
+        resolve,
+      };
+    });
   }
 
+  return applyPlannerTeamSave(inputs, args.confirmPopulatedRemoval);
+}
+
+export function resolvePendingPlannerTeamSaveIpcMock() {
+  const pending = pendingPlannerTeamSave;
+  if (!pending) {
+    return;
+  }
+  pendingPlannerTeamSave = null;
+  pending.resolve(
+    applyPlannerTeamSave(pending.teams, pending.confirmPopulatedRemoval),
+  );
+}
+
+function applyPlannerTeamSave(
+  inputs: Array<{ team: PlannerTeam; displayName: string }>,
+  confirmPopulatedRemoval: boolean,
+) {
   const removedPopulatedTeams = depth.teams.filter(
     (team) =>
       !inputs.some((input) => input.team === team.team) &&
@@ -913,7 +1019,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
         (plannerString) => plannerString.assignments.length > 0,
       ),
   );
-  if (removedPopulatedTeams.length > 0 && !args.confirmPopulatedRemoval) {
+  if (removedPopulatedTeams.length > 0 && !confirmPopulatedRemoval) {
     throw `Removing populated planner teams requires confirmation: ${removedPopulatedTeams
       .map((team) => team.displayName)
       .join(", ")}`;
