@@ -1,9 +1,22 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, Transaction};
+
+use crate::features::player_metrics::potential_scores;
+
+type MigrationHook = for<'a> fn(&Transaction<'a>) -> Result<(), String>;
 
 pub struct Migration {
     pub version: i32,
     pub description: &'static str,
     pub sql: &'static str,
+}
+
+impl Migration {
+    fn hook(&self) -> Option<MigrationHook> {
+        match self.version {
+            34 => Some(potential_scores::backfill_current_snapshots),
+            _ => None,
+        }
+    }
 }
 
 pub const INITIAL_DEMO_VALUE_SQL: &str = "
@@ -734,6 +747,15 @@ CREATE INDEX idx_club_dna_scores_snapshot_definition_model_score
     ON club_dna_scores(snapshot_id, definition_version, score_model_version, score);
 ";
 
+pub const POTENTIAL_SCORES_V34_SQL: &str = "
+ALTER TABLE players
+    ADD COLUMN potential_attributes_json TEXT;
+
+ALTER TABLE players
+    ADD COLUMN potential_projection_model_version INTEGER
+    CHECK (potential_projection_model_version IS NULL OR potential_projection_model_version > 0);
+";
+
 pub const PLAYER_TARGETED_SORT_INDEXES_SQL: &str = "
 CREATE INDEX idx_players_snapshot_pa_asc_uid
     ON players(snapshot_id, pa ASC, uid ASC);
@@ -924,6 +946,11 @@ pub fn all() -> &'static [Migration] {
             description: "index_targeted_player_sorts",
             sql: PLAYER_TARGETED_SORT_INDEXES_SQL,
         },
+        Migration {
+            version: 34,
+            description: "persist_current_potential_scores",
+            sql: POTENTIAL_SCORES_V34_SQL,
+        },
     ]
 }
 
@@ -935,8 +962,10 @@ pub fn latest_version() -> i32 {
 }
 
 /// Apply pending migrations using `PRAGMA user_version`.
-pub fn apply(conn: &Connection) -> Result<(), rusqlite::Error> {
-    let current: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+pub fn apply(conn: &Connection) -> Result<(), String> {
+    let current: i32 = conn
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|error| format!("read database schema version: {error}"))?;
 
     log::info!(
         "database schema migration state: current={current}, target={}",
@@ -954,14 +983,25 @@ pub fn apply(conn: &Connection) -> Result<(), rusqlite::Error> {
             migration.description
         );
 
-        let result = (|| {
-            let tx = conn.unchecked_transaction()?;
-            tx.execute_batch(migration.sql)?;
-            tx.pragma_update(None, "user_version", migration.version)?;
-            tx.commit()
+        let result = (|| -> Result<(), String> {
+            let tx = conn
+                .unchecked_transaction()
+                .map_err(|error| error.to_string())?;
+            tx.execute_batch(migration.sql)
+                .map_err(|error| error.to_string())?;
+            if let Some(hook) = migration.hook() {
+                hook(&tx)?;
+            }
+            tx.pragma_update(None, "user_version", migration.version)
+                .map_err(|error| error.to_string())?;
+            tx.commit().map_err(|error| error.to_string())
         })();
         if let Err(error) = result {
-            log::error!("database migration {} failed", migration.version);
+            let error = format!(
+                "migration {} ({}) failed: {error}",
+                migration.version, migration.description
+            );
+            log::error!("database {error}");
             return Err(error);
         }
     }
@@ -974,7 +1014,7 @@ pub fn apply(conn: &Connection) -> Result<(), rusqlite::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
+    use std::{collections::HashMap, path::Path};
 
     use rusqlite::params;
 
@@ -1027,6 +1067,14 @@ mod tests {
             .expect("read table columns")
     }
 
+    fn complete_attributes_json() -> String {
+        let attributes = crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS
+            .iter()
+            .map(|key| ((*key).to_string(), Some(10_u8)))
+            .collect::<HashMap<_, _>>();
+        serde_json::to_string(&attributes).expect("serialize complete attributes")
+    }
+
     fn insert_player(conn: &Connection, snapshot_id: i64, uid: i64) {
         conn.execute(
             "INSERT INTO players (
@@ -1034,8 +1082,8 @@ mod tests {
                 nationalities_json, preferred_foot, positions_json, attributes_json,
                 hidden_attributes_json, personality_json
              ) VALUES (?1, ?2, 100, 100, 'CSV player', 2000, 1, '[]', 'Right',
-                '{}', '{}', '{}', '{}')",
-            params![snapshot_id, uid],
+                '{}', ?3, '{}', '{}')",
+            params![snapshot_id, uid, complete_attributes_json()],
         )
         .expect("insert player");
     }
@@ -1164,7 +1212,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         assert_player_sort_index_inventory(&conn);
 
         let demo_value_exists: bool = conn
@@ -1282,7 +1330,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         assert_player_sort_index_inventory(&conn);
         assert_eq!(
             conn.query_row(
@@ -1307,6 +1355,284 @@ mod tests {
                 Some(12_000_000),
                 Some("Existing FC".to_string())
             )
+        );
+    }
+
+    #[test]
+    fn migrates_v33_current_snapshots_to_complete_potential_scores_only() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("potential-scores-v33.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 33) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v33");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set v33 version");
+        }
+
+        let mut current_snapshots = Vec::new();
+        let mut retained_snapshots = Vec::new();
+        for save_name in ["First save", "Second save"] {
+            conn.execute("INSERT INTO saves (name) VALUES (?1)", [save_name])
+                .expect("insert save");
+            let save_id = conn.last_insert_rowid();
+            conn.execute(
+                INSERT_SNAPSHOT_SQL,
+                params![save_id, true, false, Option::<i64>::None],
+            )
+            .expect("insert current snapshot");
+            let current_snapshot_id = conn.last_insert_rowid();
+            insert_player(&conn, current_snapshot_id, save_id * 10);
+            current_snapshots.push((current_snapshot_id, save_id * 10));
+
+            conn.execute(
+                INSERT_SNAPSHOT_SQL,
+                params![save_id, false, false, Option::<i64>::None],
+            )
+            .expect("insert retained snapshot");
+            let retained_snapshot_id = conn.last_insert_rowid();
+            insert_player(&conn, retained_snapshot_id, save_id * 10 + 1);
+            retained_snapshots.push((retained_snapshot_id, save_id * 10 + 1));
+        }
+        for (snapshot_id, uid) in current_snapshots.iter().chain(retained_snapshots.iter()) {
+            conn.execute(
+                "INSERT INTO player_potential_role_scores (
+                    snapshot_id, uid, role_id, score, projection_model_version
+                 ) VALUES (?1, ?2, 'obsolete_sparse_role', 99, 1)",
+                params![snapshot_id, uid],
+            )
+            .expect("insert disposable sparse row");
+        }
+
+        apply(&conn).expect("migrate v33 potential state");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read user version");
+        assert_eq!(version, 34);
+        let player_columns = table_columns(&conn, "players");
+        assert!(player_columns.contains(&"potential_attributes_json".to_string()));
+        assert!(player_columns.contains(&"potential_projection_model_version".to_string()));
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start post-migration assertion transaction");
+        for (snapshot_id, _) in &current_snapshots {
+            potential_scores::assert_current_snapshot_complete(&tx, *snapshot_id)
+                .expect("current snapshot passes the post-migration assertion");
+        }
+        tx.commit()
+            .expect("commit post-migration assertion transaction");
+        for (snapshot_id, uid) in current_snapshots {
+            let (attributes_json, model_version): (Option<String>, Option<i64>) = conn
+                .query_row(
+                    "SELECT potential_attributes_json, potential_projection_model_version
+                     FROM players WHERE snapshot_id = ?1 AND uid = ?2",
+                    params![snapshot_id, uid],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .expect("read current projected attributes");
+            assert!(attributes_json.is_some());
+            assert_eq!(
+                model_version,
+                Some(potential_scores::PROJECTION_MODEL_VERSION)
+            );
+            let rows: Vec<(String, Option<i64>, i64)> = conn
+                .prepare(
+                    "SELECT role_id, score, projection_model_version
+                     FROM player_potential_role_scores
+                     WHERE snapshot_id = ?1 AND uid = ?2 ORDER BY role_id",
+                )
+                .expect("prepare current scores")
+                .query_map(params![snapshot_id, uid], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })
+                .expect("query current scores")
+                .collect::<Result<_, _>>()
+                .expect("read current scores");
+            assert_eq!(
+                rows.len(),
+                crate::features::scoring::catalog::all_roles().len()
+            );
+            assert!(rows
+                .iter()
+                .all(|(_, _, version)| *version == potential_scores::PROJECTION_MODEL_VERSION));
+        }
+        for (snapshot_id, uid) in retained_snapshots {
+            let derived: (Option<String>, Option<i64>, i64) = conn
+                .query_row(
+                    "SELECT potential_attributes_json, potential_projection_model_version,
+                            (SELECT COUNT(*) FROM player_potential_role_scores
+                             WHERE snapshot_id = players.snapshot_id AND uid = players.uid)
+                     FROM players WHERE snapshot_id = ?1 AND uid = ?2",
+                    params![snapshot_id, uid],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .expect("read retained potential state");
+            assert_eq!(derived, (None, None, 0));
+        }
+    }
+
+    fn assert_v34_backfill_rolls_back(source_attributes: &str, expected_error: &str) {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("potential-scores-v34-rollback.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 33) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v33");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set v33 version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES ('Invalid projection')", [])
+            .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert current snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+        insert_player(&conn, snapshot_id, 42);
+        conn.execute(
+            "UPDATE players
+             SET ca = 100, pa = 140, age = 20, attributes_json = ?2
+             WHERE snapshot_id = ?1 AND uid = 42",
+            params![snapshot_id, source_attributes],
+        )
+        .expect("set v33 player input");
+        conn.execute(
+            "INSERT INTO player_potential_role_scores (
+                snapshot_id, uid, role_id, score, projection_model_version
+             ) VALUES (?1, 42, 'v33_sparse_row', 50, 1)",
+            [snapshot_id],
+        )
+        .expect("insert v33 derived row");
+
+        let error = apply(&conn).expect_err("reject incomplete v34 backfill");
+        assert!(error.contains("migration 34 (persist_current_potential_scores) failed"));
+        assert!(error.contains(expected_error));
+        assert!(!error.contains("Invalid parameter name"));
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read rolled-back version");
+        assert_eq!(version, 33);
+        assert!(!table_columns(&conn, "players")
+            .iter()
+            .any(|column| column == "potential_attributes_json"));
+        assert_eq!(
+            conn.query_row(
+                "SELECT attributes_json FROM players WHERE snapshot_id = ?1 AND uid = 42",
+                [snapshot_id],
+                |row| row.get::<_, String>(0),
+            )
+            .expect("read unchanged player source"),
+            source_attributes
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT role_id, score, projection_model_version
+                 FROM player_potential_role_scores",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<i64>>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .expect("read unchanged v33 score row"),
+            ("v33_sparse_row".to_string(), Some(50), 1)
+        );
+    }
+
+    #[test]
+    fn rolls_back_v34_when_current_player_projection_input_is_malformed() {
+        assert_v34_backfill_rolls_back("not JSON", "invalid player 42 attributes JSON");
+    }
+
+    #[test]
+    fn migrates_v33_sparse_current_player_attributes_as_nulls() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = Connection::open(temp_dir.path().join("potential-scores-v34-sparse.db"))
+            .expect("open test db");
+        conn.pragma_update(None, "foreign_keys", true)
+            .expect("enable foreign keys");
+        for migration in all().iter().filter(|migration| migration.version <= 33) {
+            conn.execute_batch(migration.sql)
+                .expect("apply migration through v33");
+            conn.pragma_update(None, "user_version", migration.version)
+                .expect("set v33 version");
+        }
+        conn.execute("INSERT INTO saves (name) VALUES ('Sparse projection')", [])
+            .expect("insert save");
+        let save_id = conn.last_insert_rowid();
+        conn.execute(
+            INSERT_SNAPSHOT_SQL,
+            params![save_id, true, false, Option::<i64>::None],
+        )
+        .expect("insert current snapshot");
+        let snapshot_id = conn.last_insert_rowid();
+        insert_player(&conn, snapshot_id, 42);
+        conn.execute(
+            "UPDATE players SET attributes_json = '{}' WHERE snapshot_id = ?1 AND uid = 42",
+            [snapshot_id],
+        )
+        .expect("store sparse v33 attributes");
+        conn.execute(
+            "INSERT INTO player_potential_role_scores (
+                snapshot_id, uid, role_id, score, projection_model_version
+             ) VALUES (?1, 42, 'v33_sparse_row', 50, 1)",
+            [snapshot_id],
+        )
+        .expect("insert v33 sparse row");
+
+        apply(&conn).expect("migrate sparse v33 potential state");
+
+        let projected_json: String = conn
+            .query_row(
+                "SELECT potential_attributes_json FROM players
+                 WHERE snapshot_id = ?1 AND uid = 42",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("read projected sparse attributes");
+        let projected: HashMap<String, Option<u8>> =
+            serde_json::from_str(&projected_json).expect("parse projected sparse attributes");
+        assert_eq!(
+            projected.len(),
+            crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS.len()
+        );
+        assert!(projected.values().all(Option::is_none));
+        let potential_row_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1 AND uid = 42",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("count complete sparse potential rows");
+        assert_eq!(
+            potential_row_count,
+            crate::features::scoring::catalog::all_roles().len() as i64
+        );
+    }
+
+    #[test]
+    fn rolls_back_v34_when_current_player_projection_input_is_noninteger_or_out_of_u8_range() {
+        assert_v34_backfill_rolls_back("{\"Unknown\":10.5}", "invalid type");
+        assert_v34_backfill_rolls_back("{\"Unknown\":300}", "invalid value");
+    }
+
+    #[test]
+    fn rolls_back_v34_when_current_player_source_attribute_is_outside_the_visible_domain() {
+        assert_v34_backfill_rolls_back(
+            "{\"Acceleration\":0}",
+            "player 42 attribute `Acceleration` must be between 1 and 20",
         );
     }
 
@@ -1816,7 +2142,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         let settings: Vec<(i64, String, String)> = conn
             .prepare(
                 "SELECT save_id, team, display_name
@@ -2043,7 +2369,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         type MoneyballRow = (
             Option<String>,
             Option<i64>,
@@ -2229,7 +2555,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         let existing: i64 = conn
             .query_row("SELECT reveal_hidden_information FROM saves", [], |row| {
                 row.get(0)
@@ -2332,7 +2658,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -2413,7 +2739,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         assert_eq!(
             table_columns(&conn, "player_potential_role_scores"),
             [
@@ -2966,7 +3292,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, managed_club_settings.club_name
@@ -3017,16 +3343,7 @@ mod tests {
         )
         .expect("insert current snapshot");
         let snapshot_id = conn.last_insert_rowid();
-        conn.execute(
-            "INSERT INTO players (
-                snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
-                nationalities_json, preferred_foot, positions_json, attributes_json,
-                hidden_attributes_json, personality_json
-             ) VALUES (?1, 77, 100, 100, 'Current player', 2000, 1, '[]', 'Right',
-                '{}', '{}', '{}', '{}')",
-            [snapshot_id],
-        )
-        .expect("insert current player");
+        insert_player(&conn, snapshot_id, 77);
         for (player_uid, imported_at_utc) in [
             (77, "2026-08-10T12:34:56.789Z"),
             (88, "2026-08-10T12:35:56.789Z"),
@@ -3046,7 +3363,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -3233,7 +3550,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         let primary_club: String = conn
             .query_row(
                 "SELECT club_name FROM managed_club_settings WHERE save_id = ?1",
@@ -3281,7 +3598,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -3522,7 +3839,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -3628,7 +3945,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
 
         let table_name: String = conn
             .query_row(
@@ -3863,7 +4180,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -3927,7 +4244,7 @@ mod tests {
                 row.get(0)
             })
             .expect("count absent backfill");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         assert_eq!(staff_count, 1);
         assert_eq!(score_count, 0);
     }
@@ -4018,6 +4335,8 @@ mod tests {
                 "gender",
                 "club_reputation",
                 "team_type",
+                "potential_attributes_json",
+                "potential_projection_model_version",
             ]
         );
         assert_eq!(
@@ -4180,7 +4499,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
     }
 
     #[test]
@@ -4214,7 +4533,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 33);
+        assert_eq!(version, 34);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -4254,7 +4573,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 33, "legacy version {legacy_version}");
+            assert_eq!(version, 34, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -4267,7 +4586,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 33);
+        assert_eq!(migrations.len(), 34);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -4407,6 +4726,12 @@ mod tests {
         assert_eq!(migrations[32].version, 33);
         assert_eq!(migrations[32].description, "index_targeted_player_sorts");
         assert_eq!(migrations[32].sql, PLAYER_TARGETED_SORT_INDEXES_SQL);
+        assert_eq!(migrations[33].version, 34);
+        assert_eq!(
+            migrations[33].description,
+            "persist_current_potential_scores"
+        );
+        assert_eq!(migrations[33].sql, POTENTIAL_SCORES_V34_SQL);
     }
 
     #[test]

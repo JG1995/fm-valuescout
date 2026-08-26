@@ -581,8 +581,11 @@ fn map_staff(
 mod tests {
     use super::*;
     use crate::db::migrations;
-    use crate::features::player::{query as player_query, service as player_service};
     use crate::features::staff::filter::{parse_filter_ast, FilterRule, FilterValue};
+    use crate::features::{
+        player::{query as player_query, service as player_service},
+        player_metrics::potential_scores::rebuild_snapshot,
+    };
     fn open() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.pragma_update(None, "foreign_keys", true).unwrap();
@@ -958,6 +961,11 @@ mod tests {
             [],
         )
         .expect("insert player");
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start potential materialization transaction");
+        rebuild_snapshot(&tx, 1).expect("materialize player potential state");
+        tx.commit().expect("commit player potential state");
 
         assert!(
             player_query::get_player(&conn, 77)

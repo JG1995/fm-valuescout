@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-0026](./0026-eager-current-potential-scoring.md)
 
-Implementation status: Implemented in the completed [Configurable Player Tables](../features/completed/configurable-player-tables.md) feature. Migration v21, lazy materialization, version checks, and boost invalidation are live. Cold and warm Windows timings through the assembled Tauri/WebView remain a follow-up gap.
+Implementation status: Retired and removed by the completed [Ingest-Time Potential Scoring](../features/completed/ingest-potential-scores.md) feature. Migration v21 and the lazy materialization, version-check, and boost-invalidation paths are historical.
 
 ## Context
 
@@ -83,6 +83,8 @@ Keep calculated scores only for the current process. This avoids a migration but
 
 ## Related work
 
+- Superseded by: [ADR-0026 — Eager current-snapshot potential scoring](./0026-eager-current-potential-scoring.md)
+- Replacement: [Ingest-Time Potential Scoring](../features/completed/ingest-potential-scores.md)
 - Completed feature record: [Configurable Player Tables](../features/completed/configurable-player-tables.md)
 - Existing projection contract: [Potential role scores](../features/completed/potential-role-scores.md)
 - Existing current-score contract: [Role scoring engine](../features/completed/role-scoring-engine.md)

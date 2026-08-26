@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 
-use crate::features::academy::service as academy_service;
+use crate::features::{academy::service as academy_service, player_metrics::potential_scores};
 
 use super::query::get_snapshot_metadata;
 
@@ -403,6 +403,14 @@ pub(crate) fn select_current_snapshot(
         .query_row(&select_current_sql, params![save_id], |row| row.get(0))
         .optional()
         .map_err(|error| error.to_string())?;
+    let previous_snapshot_id = tx
+        .query_row(
+            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
+            params![save_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
 
     tx.execute(
         "UPDATE snapshots SET is_current = 0 WHERE save_id = ?1 AND is_current = 1",
@@ -417,6 +425,13 @@ pub(crate) fn select_current_snapshot(
         )
         .map_err(|error| error.to_string())?;
     }
+
+    potential_scores::reconcile_current_selection(
+        tx,
+        save_id,
+        previous_snapshot_id,
+        current_snapshot_id,
+    )?;
 
     Ok(current_snapshot_id)
 }
@@ -481,6 +496,10 @@ fn map_save_row(row: &Row<'_>) -> rusqlite::Result<SaveSummary> {
 mod tests {
     use super::*;
     use crate::db::migrations;
+    use crate::features::{
+        player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
+        scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
+    };
     use rusqlite::params;
     use std::path::Path;
 
@@ -520,15 +539,69 @@ mod tests {
     }
 
     fn insert_player(conn: &Connection, snapshot_id: i64, uid: i64) {
+        let attributes = DUMP_ATTRIBUTE_KEYS
+            .iter()
+            .map(|key| ((*key).to_string(), serde_json::Value::from(10)))
+            .collect::<serde_json::Map<_, _>>();
         conn.execute(
             "INSERT INTO players (
-                snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year,
+                snapshot_id, uid, ca, pa, name, birth_year, birth_day_of_year, age,
                 nationalities_json, preferred_foot, positions_json, attributes_json,
                 hidden_attributes_json, personality_json
-             ) VALUES (?1, ?2, 100, 150, 'History player', 2000, 1, '[]', 'Right', '{}', '{}', '{}', '{}')",
-            params![snapshot_id, uid],
+             ) VALUES (?1, ?2, 100, 150, 'History player', 2000, 1, 20, '[]', 'Right',
+                       '{\"ST\":20}', ?3, '{}', '{}')",
+            params![
+                snapshot_id,
+                uid,
+                serde_json::to_string(&attributes).expect("serialize player attributes")
+            ],
         )
         .expect("insert player");
+    }
+
+    fn potential_state(conn: &Connection, snapshot_id: i64) -> (Option<String>, Option<i64>, i64) {
+        let fields = conn
+            .query_row(
+                "SELECT potential_attributes_json, potential_projection_model_version
+                 FROM players WHERE snapshot_id = ?1 ORDER BY uid LIMIT 1",
+                [snapshot_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read projected player fields");
+        let score_count = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores WHERE snapshot_id = ?1",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("count potential score rows");
+        (fields.0, fields.1, score_count)
+    }
+
+    fn assert_complete_potential_state(conn: &Connection, snapshot_id: i64) {
+        let state = potential_state(conn, snapshot_id);
+        assert!(state.0.is_some());
+        assert_eq!(state.1, Some(PROJECTION_MODEL_VERSION));
+        assert_eq!(state.2, all_roles().len() as i64);
+    }
+
+    fn assert_empty_potential_state(conn: &Connection, snapshot_id: i64) {
+        assert_eq!(potential_state(conn, snapshot_id), (None, None, 0));
+    }
+
+    fn deny_potential_writes(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TRIGGER deny_projected_player_updates
+             BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
+             BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
+             CREATE TRIGGER deny_potential_score_inserts
+             BEFORE INSERT ON player_potential_role_scores
+             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
+             CREATE TRIGGER deny_potential_score_deletes
+             BEFORE DELETE ON player_potential_role_scores
+             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;",
+        )
+        .expect("deny potential writes");
     }
 
     fn snapshot_token(conn: &Connection, snapshot_id: i64) -> String {
@@ -806,6 +879,7 @@ mod tests {
             "2026-08-11T11:00:00.000Z",
         );
         insert_player(&conn, historical, 77);
+        insert_player(&conn, current, 77);
         conn.execute(
             "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
              VALUES (?1, 77, '{}')",
@@ -831,6 +905,10 @@ mod tests {
             )
             .expect("count academy classes before deletion");
         select_current_snapshot_for_test(&mut conn, save.id);
+        assert_empty_potential_state(&conn, historical);
+        assert_complete_potential_state(&conn, current);
+        let current_potential_state = potential_state(&conn, current);
+        deny_potential_writes(&conn);
 
         let historical_token = snapshot_token(&conn, historical);
         let result = delete_snapshot(&mut conn, historical, &historical_token)
@@ -838,6 +916,7 @@ mod tests {
 
         assert_eq!(result.current_snapshot_id, Some(current));
         assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+        assert_eq!(potential_state(&conn, current), current_potential_state);
         assert_eq!(
             conn.query_row(
                 "SELECT COUNT(*) FROM players WHERE snapshot_id = ?1",
@@ -885,7 +964,8 @@ mod tests {
     }
 
     #[test]
-    fn deleting_the_current_snapshot_promotes_retained_club_dna_rows_without_backfill() {
+    fn deleting_the_current_snapshot_promotes_retained_club_dna_rows_and_materializes_potential_scores(
+    ) {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("promote-snapshot.db"));
         let save = list_saves(&conn)
@@ -921,6 +1001,8 @@ mod tests {
         )
         .expect("seed exact Club DNA rows");
         select_current_snapshot_for_test(&mut conn, save.id);
+        assert_empty_potential_state(&conn, promoted);
+        assert_complete_potential_state(&conn, current);
         conn.execute_batch(
             "CREATE TRIGGER reject_club_dna_backfill
              BEFORE INSERT ON club_dna_scores
@@ -940,6 +1022,7 @@ mod tests {
             delete_snapshot(&mut conn, current, &current_token).expect("delete current snapshot");
         assert_eq!(promoted_result.current_snapshot_id, Some(promoted));
         assert_eq!(current_snapshot_id(&conn, save.id), Some(promoted));
+        assert_complete_potential_state(&conn, promoted);
         assert_eq!(
             conn.query_row(
                 "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1",
@@ -980,6 +1063,101 @@ mod tests {
             delete_snapshot(&mut conn, promoted, &promoted_token).expect("delete final snapshot");
         assert_eq!(final_result.current_snapshot_id, None);
         assert_eq!(current_snapshot_id(&conn, save.id), None);
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("count final potential rows"),
+            0
+        );
+    }
+
+    #[test]
+    fn promoted_snapshot_materialization_failure_rolls_back_current_deletion() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("promote-potential-rollback.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let promoted = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-05-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        let current = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2027-05-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        insert_player(&conn, promoted, 77);
+        insert_player(&conn, current, 77);
+        select_current_snapshot_for_test(&mut conn, save.id);
+        let current_potential_state = potential_state(&conn, current);
+        conn.execute_batch(
+            "CREATE TRIGGER reject_promoted_potential_rows
+             BEFORE INSERT ON player_potential_role_scores
+             BEGIN SELECT RAISE(ABORT, 'promoted potential writes fail'); END;",
+        )
+        .expect("reject promoted potential rows");
+
+        let current_token = snapshot_token(&conn, current);
+        assert!(delete_snapshot(&mut conn, current, &current_token)
+            .expect_err("roll back promoted snapshot materialization")
+            .contains("promoted potential writes fail"));
+
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+        assert_eq!(potential_state(&conn, current), current_potential_state);
+        assert!(!snapshot_token(&conn, promoted).is_empty());
+        assert!(!snapshot_token(&conn, current).is_empty());
+    }
+
+    #[test]
+    fn switching_between_materialized_saves_performs_no_potential_writes() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("save-switch-potential.db"));
+        let first_save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let second_save = create_save(&conn, "Second save").expect("create second save");
+        let first_snapshot = insert_snapshot(
+            &conn,
+            first_save.id,
+            Some("2026-05-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        let second_snapshot = insert_snapshot(
+            &conn,
+            second_save.id,
+            Some("2026-06-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        insert_player(&conn, first_snapshot, 77);
+        insert_player(&conn, second_snapshot, 88);
+        select_current_snapshot_for_test(&mut conn, first_save.id);
+        select_current_snapshot_for_test(&mut conn, second_save.id);
+        assert_complete_potential_state(&conn, first_snapshot);
+        assert_complete_potential_state(&conn, second_snapshot);
+        deny_potential_writes(&conn);
+
+        let switched = set_active_save(&mut conn, second_save.id).expect("switch saves");
+
+        assert!(switched.is_active);
+        assert_eq!(
+            current_snapshot_id(&conn, first_save.id),
+            Some(first_snapshot)
+        );
+        assert_eq!(
+            current_snapshot_id(&conn, second_save.id),
+            Some(second_snapshot)
+        );
     }
 
     #[test]

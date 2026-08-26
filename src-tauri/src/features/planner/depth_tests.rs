@@ -1,13 +1,10 @@
-use rusqlite::params;
+use rusqlite::{params, Connection};
 
+use crate::db::migrations;
 use crate::features::managed_club::service as managed_club_service;
 use crate::features::planner::tactic;
-use crate::features::scoring::{
-    catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
-    combine::combine_role_scores,
-    projection::project_attributes,
-    score::score_role,
-};
+use crate::features::player_metrics::potential_scores;
+use crate::features::scoring::combine::combine_role_scores;
 use crate::features::snapshot;
 
 use super::depth::{
@@ -16,8 +13,8 @@ use super::depth::{
 };
 use super::teams::{save_team_settings, PlannerTeamInput};
 use super::test_support::{
-    add_picker_candidates, assignment_provenance, current_snapshot_id, open_with_snapshot,
-    team_strings,
+    add_picker_candidates, assignment_provenance, current_snapshot_id, deny_potential_writes,
+    open_with_snapshot, planner_potential_state, team_strings,
 };
 
 #[test]
@@ -210,6 +207,7 @@ fn assign_and_move_player_persist_manual_provenance() {
     let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
     let second_string_id = add_string(&conn, save_id, PlannerTeam::Senior)
         .expect("add destination string")
+        .0
         .id;
 
     assign_player(&conn, save_id, first_string_id, "goalkeeper", 77).expect("assign player");
@@ -226,10 +224,11 @@ fn adds_ordered_strings_and_rejects_removing_the_final_string() {
     let first_senior_id = team_strings(&first, PlannerTeam::Senior)[0].id;
 
     let added = add_string(&conn, save_id, PlannerTeam::Senior).expect("add string");
-    assert_eq!(added.string_order, 1);
+    assert_eq!(added.0.string_order, 1);
     remove_string(&conn, save_id, first_senior_id, false).expect("remove empty string");
 
-    let error = remove_string(&conn, save_id, added.id, false).expect_err("keep the final string");
+    let error =
+        remove_string(&conn, save_id, added.0.id, false).expect_err("keep the final string");
     assert!(error.contains("at least one string"));
     let reloaded = get_depth(&conn, save_id).expect("reload depth");
     let strings = team_strings(&reloaded, PlannerTeam::Senior);
@@ -242,7 +241,7 @@ fn adds_ordered_strings_and_rejects_removing_the_final_string() {
     );
 
     let next = add_string(&conn, save_id, PlannerTeam::Senior).expect("add next string");
-    assert_eq!(next.string_order, 1);
+    assert_eq!(next.0.string_order, 1);
 }
 
 #[test]
@@ -270,8 +269,60 @@ fn populated_string_requires_confirmation_and_deletes_only_its_assignments() {
     let reloaded = get_depth(&conn, save_id).expect("reload depth");
     let strings = team_strings(&reloaded, PlannerTeam::Senior);
     assert_eq!(strings.len(), 1);
-    assert_eq!(strings[0].id, remaining.id);
+    assert_eq!(strings[0].id, remaining.0.id);
     assert!(strings[0].assignments.is_empty());
+}
+
+#[test]
+fn unconfirmed_clear_returns_confirmation_before_potential_preflight() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE players
+         SET potential_projection_model_version = 999
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("corrupt projected map version");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+
+    let error = clear_all(&conn, save_id, false).expect_err("require confirmation");
+    assert_eq!(error, "Clearing all squads requires confirmation");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
+fn adding_string_without_a_snapshot_preserves_existing_depth_result() {
+    let temp_dir = tempfile::tempdir().expect("temp dir");
+    let conn = Connection::open(temp_dir.path().join("planner-depth.db")).expect("open db");
+    conn.pragma_update(None, "foreign_keys", true)
+        .expect("enable foreign keys");
+    migrations::apply(&conn).expect("apply migrations");
+    let save_id = snapshot::service::list_saves(&conn)
+        .expect("seed default save")
+        .into_iter()
+        .find(|save| save.is_active)
+        .expect("active save")
+        .id;
+
+    let (added, snapshot_id) =
+        add_string(&conn, save_id, PlannerTeam::Senior).expect("add string without snapshot");
+
+    assert_eq!(snapshot_id, None);
+    assert_eq!(added.string_order, 1);
+    assert_eq!(
+        team_strings(
+            &get_depth(&conn, save_id).expect("load depth without snapshot"),
+            PlannerTeam::Senior
+        )
+        .iter()
+        .map(|planner_string| planner_string.string_order)
+        .collect::<Vec<_>>(),
+        [0, 1]
+    );
 }
 
 #[test]
@@ -392,7 +443,7 @@ fn enforces_player_uniqueness_and_moves_in_one_save() {
     let second = add_string(&conn, save_id, PlannerTeam::Senior).expect("add string");
     assign_player(&conn, save_id, first_id, "goalkeeper", 77).expect("assign player");
 
-    let error = assign_player(&conn, save_id, second.id, "goalkeeper", 77)
+    let error = assign_player(&conn, save_id, second.0.id, "goalkeeper", 77)
         .expect_err("reject duplicate player");
     assert!(error.contains("already assigned"));
     let error = assign_player(&conn, save_id, reserve_id, "goalkeeper", 77)
@@ -458,22 +509,15 @@ fn assignment_state_uses_managed_club_membership_not_team_level() {
             |row| row.get(0),
         )
         .expect("current snapshot");
-    let attributes = DUMP_ATTRIBUTE_KEYS
-        .iter()
-        .map(|key| ((*key).to_string(), Some(10)))
-        .collect();
     conn.execute(
         "UPDATE players
          SET ca = 80,
              pa = 170,
              age = 20,
              positions_json = '{\"GK\": 18, \"SW\": null, \"MC\": 14, \"DM\": 0}',
-             attributes_json = ?1
-         WHERE snapshot_id = ?2 AND uid = 77",
-        params![
-            serde_json::to_string(&attributes).expect("serialize attributes"),
-            snapshot_id
-        ],
+             attributes_json = '{\"Acceleration\": 10}'
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
     )
     .expect("set projection inputs");
     conn.execute(
@@ -488,21 +532,27 @@ fn assignment_state_uses_managed_club_membership_not_team_level() {
     )
     .expect("set role scores");
 
-    let projected_attributes =
-        project_attributes(&attributes, 80, 170, Some(20), [("GK", Some(20))]);
-    let ip_role = all_roles()
-        .iter()
-        .find(|role| role.role_id == "goalkeeper_ip")
-        .expect("goalkeeper role");
-    let oop_role = all_roles()
-        .iter()
-        .find(|role| role.role_id == "line_holding_keeper_oop")
-        .expect("line-holding keeper role");
-    let expected_potential = combine_role_scores(
-        score_role(&projected_attributes, ip_role),
-        score_role(&projected_attributes, oop_role),
-        0.25,
-    );
+    let tx = conn
+        .unchecked_transaction()
+        .expect("start potential rebuild");
+    potential_scores::replace_player(&tx, snapshot_id, 77).expect("rebuild persisted potential");
+    tx.commit().expect("commit potential rebuild");
+    let (potential_ip_score, potential_oop_score) = conn
+        .query_row(
+            "SELECT ip.score, oop.score
+             FROM player_potential_role_scores ip
+             INNER JOIN player_potential_role_scores oop
+               ON oop.snapshot_id = ip.snapshot_id
+              AND oop.uid = ip.uid
+              AND oop.role_id = 'line_holding_keeper_oop'
+             WHERE ip.snapshot_id = ?1
+               AND ip.uid = 77
+               AND ip.role_id = 'goalkeeper_ip'",
+            params![snapshot_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("load persisted potential scores");
+    let expected_potential = combine_role_scores(potential_ip_score, potential_oop_score, 0.25);
 
     let scored = get_depth(&conn, save_id).expect("load score");
     let assignment = &team_strings(&scored, PlannerTeam::Senior)[0].assignments[0];
@@ -559,6 +609,128 @@ fn keeps_potential_combined_score_unavailable_when_selected_attributes_are_missi
     assert_eq!(assignment.state, AssignmentState::Resolved);
     assert_eq!(assignment.combined_score, Some(70));
     assert_eq!(assignment.potential_combined_score, None);
+}
+
+#[test]
+fn direct_depth_preflight_rejects_corruption_before_setup_writes() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "DELETE FROM player_potential_role_scores
+         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'goalkeeper_ip'",
+        params![snapshot_id],
+    )
+    .expect("remove potential role");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    let error = get_depth(&conn, save_id).expect_err("reject incomplete potential state");
+    assert_eq!(error, "Current potential snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
+fn depth_rejects_missing_potential_role_without_writes() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "DELETE FROM player_potential_role_scores
+         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'goalkeeper_ip'",
+        params![snapshot_id],
+    )
+    .expect("remove potential role");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    let error = get_depth(&conn, save_id).expect_err("reject incomplete potential state");
+    assert_eq!(error, "Current potential snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
+fn depth_rejects_wrong_version_potential_role_without_writes() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE player_potential_role_scores
+         SET projection_model_version = 999
+         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'goalkeeper_ip'",
+        params![snapshot_id],
+    )
+    .expect("stale potential role");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    let error = get_depth(&conn, save_id).expect_err("reject stale potential state");
+    assert_eq!(error, "Current potential snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
+fn corrupt_potential_state_blocks_assignment_move_before_writes() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let first_string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    let second_string_id = add_string(&conn, save_id, PlannerTeam::Senior)
+        .expect("add destination string")
+        .0
+        .id;
+    assign_player(&conn, save_id, first_string_id, "goalkeeper", 77).expect("assign player");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE players
+         SET potential_projection_model_version = 999
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("corrupt projected map version");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    let error = move_player(&conn, save_id, second_string_id, "goalkeeper", 77)
+        .expect_err("reject assignment move");
+    assert_eq!(error, "Current potential snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
+fn assignment_uses_persisted_potential_scores_instead_of_source_projection() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    let depth = get_depth(&conn, save_id).expect("create planner depth");
+    let string_id = team_strings(&depth, PlannerTeam::Senior)[0].id;
+    assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE players
+         SET attributes_json = '{}'
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("diverge source attributes");
+    conn.execute(
+        "UPDATE player_potential_role_scores
+         SET score = CASE role_id
+             WHEN 'goalkeeper_ip' THEN 80
+             WHEN 'line_holding_keeper_oop' THEN 60
+             ELSE score
+         END
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("set persisted potential scores");
+
+    let reloaded = get_depth(&conn, save_id).expect("load persisted assignment score");
+    let assignment = &team_strings(&reloaded, PlannerTeam::Senior)[0].assignments[0];
+    assert_eq!(
+        assignment.potential_combined_score,
+        combine_role_scores(Some(80), Some(60), 0.5)
+    );
 }
 
 #[test]

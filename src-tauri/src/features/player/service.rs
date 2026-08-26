@@ -299,7 +299,7 @@ pub(super) fn reconcile_verified_boost(
         reconcile_mentality(&tx, prepared, &verified, &current)?;
     }
 
-    crate::features::player_metrics::potential_cache::invalidate_player_cache(
+    crate::features::player_metrics::potential_scores::replace_player(
         &tx,
         prepared.snapshot_id,
         i64::from(prepared.player_uid),
@@ -879,9 +879,12 @@ mod tests {
         PlayerBoostRequestError, PlayerBoostResult, OPERATION_BOOST_CURRENT_ABILITY,
         OPERATION_WONDERKID_MENTALITY,
     };
-    use crate::features::scoring::catalog::all_roles;
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service::{create_save, set_active_save};
+    use crate::features::{
+        player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
+        scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
+    };
 
     const GOLDEN_FIXTURE: &str = include_str!("../memory_read/fixtures/golden_dump_v8.json");
     const PLAYER_UID: i64 = 77;
@@ -900,6 +903,9 @@ mod tests {
         save_id: i64,
         dump_path: PathBuf,
     }
+
+    type PotentialRoleRows = Vec<(String, Option<i64>, i64)>;
+    type PotentialState = (Option<String>, Option<i64>, PotentialRoleRows);
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -951,6 +957,148 @@ mod tests {
 
     fn nullable_value(value: Option<i64>) -> Value {
         value.map(Value::from).unwrap_or(Value::Null)
+    }
+
+    fn seeded_complete_player(
+        age: Option<i64>,
+        ca: i64,
+        pa: i64,
+        mentality: Mentality,
+    ) -> SeededPlayer {
+        let mut fixture = seeded_player(age, ca, pa, mentality);
+        let attributes_json: String = fixture
+            .conn
+            .query_row(
+                "SELECT attributes_json FROM players WHERE snapshot_id = ?1 AND uid = ?2",
+                params![fixture.snapshot_id, PLAYER_UID],
+                |row| row.get(0),
+            )
+            .expect("read source attributes");
+        let mut attributes: Map<String, Value> =
+            serde_json::from_str(&attributes_json).expect("parse source attributes");
+        for key in DUMP_ATTRIBUTE_KEYS {
+            if *key != "Handling" {
+                attributes
+                    .entry((*key).to_string())
+                    .or_insert_with(|| Value::from(10));
+            }
+        }
+        let attributes_json = serde_json::to_string(&attributes).expect("serialize attributes");
+        let tx = fixture
+            .conn
+            .transaction()
+            .expect("start complete-player setup");
+        tx.execute(
+            "UPDATE players SET attributes_json = ?1 WHERE snapshot_id = ?2 AND uid = ?3",
+            params![attributes_json, fixture.snapshot_id, PLAYER_UID],
+        )
+        .expect("set complete source attributes");
+        super::replace_role_scores(&tx, fixture.snapshot_id, PLAYER_UID as u32, &attributes)
+            .expect("replace current role scores");
+        crate::features::player_metrics::potential_scores::replace_player(
+            &tx,
+            fixture.snapshot_id,
+            PLAYER_UID,
+        )
+        .expect("replace potential role scores");
+        tx.commit().expect("commit complete-player setup");
+        fixture
+    }
+
+    fn current_role_scores(
+        conn: &Connection,
+        snapshot_id: i64,
+    ) -> Vec<(String, String, Option<i64>)> {
+        let mut statement = conn
+            .prepare(
+                "SELECT role_id, phase, score FROM player_role_scores
+                 WHERE snapshot_id = ?1 AND uid = ?2 ORDER BY role_id, phase",
+            )
+            .expect("prepare current role-score read");
+        statement
+            .query_map(params![snapshot_id, PLAYER_UID], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .expect("read current role scores")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect current role scores")
+    }
+
+    fn potential_state(conn: &Connection, snapshot_id: i64) -> PotentialState {
+        let projected = conn
+            .query_row(
+                "SELECT potential_attributes_json, potential_projection_model_version
+                 FROM players WHERE snapshot_id = ?1 AND uid = ?2",
+                params![snapshot_id, PLAYER_UID],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read potential projection");
+        let mut statement = conn
+            .prepare(
+                "SELECT role_id, score, projection_model_version
+                 FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1 AND uid = ?2 ORDER BY role_id",
+            )
+            .expect("prepare potential role-score read");
+        let roles = statement
+            .query_map(params![snapshot_id, PLAYER_UID], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .expect("read potential role scores")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect potential role scores");
+        (projected.0, projected.1, roles)
+    }
+
+    fn assert_complete_potential_state(state: &PotentialState) {
+        assert!(state.0.is_some());
+        assert_eq!(state.1, Some(PROJECTION_MODEL_VERSION));
+        assert_eq!(
+            state
+                .2
+                .iter()
+                .map(|(role_id, _, _)| role_id)
+                .collect::<Vec<_>>(),
+            {
+                let mut expected_role_ids = all_roles()
+                    .iter()
+                    .map(|role| role.role_id)
+                    .collect::<Vec<_>>();
+                expected_role_ids.sort_unstable();
+                expected_role_ids
+            }
+        );
+        assert!(state
+            .2
+            .iter()
+            .all(|(_, _, version)| *version == PROJECTION_MODEL_VERSION));
+        assert!(state.2.iter().any(|(_, score, _)| score.is_none()));
+    }
+
+    fn club_dna_state(
+        conn: &Connection,
+        snapshot_id: i64,
+    ) -> Vec<(i64, i64, i64, i64, Option<i64>)> {
+        let mut statement = conn
+            .prepare(
+                "SELECT snapshot_id, uid, definition_version, score_model_version, score
+                 FROM club_dna_scores WHERE snapshot_id = ?1 AND uid = ?2
+                 ORDER BY definition_version, score_model_version",
+            )
+            .expect("prepare Club DNA read");
+        statement
+            .query_map(params![snapshot_id, PLAYER_UID], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })
+            .expect("read Club DNA rows")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect Club DNA rows")
     }
 
     #[test]
@@ -1294,8 +1442,8 @@ mod tests {
     }
 
     #[test]
-    fn successful_player_boost_recomputes_its_club_dna_score_and_invalidates_potential_roles() {
-        let mut fixture = seeded_player(
+    fn successful_player_boost_recomputes_its_club_dna_and_complete_potential_state() {
+        let mut fixture = seeded_complete_player(
             Some(20),
             150,
             170,
@@ -1305,15 +1453,16 @@ mod tests {
                 determination: Some(14),
             },
         );
+        let previous_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
         fixture
             .conn
             .execute(
                 "INSERT INTO player_potential_role_scores (
                     snapshot_id, uid, role_id, score, projection_model_version
-                 ) VALUES (?1, ?2, 'goalkeeper_ip', 80, 1)",
+                 ) VALUES (?1, ?2, 'obsolete_potential_role', 80, 1)",
                 params![fixture.snapshot_id, PLAYER_UID],
             )
-            .expect("seed potential cache");
+            .expect("seed obsolete potential row");
         fixture
             .conn
             .execute(
@@ -1341,16 +1490,10 @@ mod tests {
         )
         .expect("reconcile CA boost");
 
-        let cache_rows: i64 = fixture
-            .conn
-            .query_row(
-                "SELECT COUNT(*) FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2",
-                params![fixture.snapshot_id, PLAYER_UID],
-                |row| row.get(0),
-            )
-            .expect("count invalidated potential cache rows");
-        assert_eq!(cache_rows, 0);
+        let recomputed_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        assert_complete_potential_state(&recomputed_potential_state);
+        assert_ne!(recomputed_potential_state.0, previous_potential_state.0);
+        assert_ne!(recomputed_potential_state.2, previous_potential_state.2);
         let club_dna_score: Option<i64> = fixture
             .conn
             .query_row(
@@ -1436,7 +1579,7 @@ mod tests {
     }
 
     #[test]
-    fn wonderkid_mentality_preserves_missing_and_invalid_snapshot_values() {
+    fn wonderkid_mentality_preserves_missing_snapshot_values() {
         let mut fixture = seeded_player(
             Some(19),
             150,
@@ -1454,7 +1597,7 @@ mod tests {
                  SET attributes_json = ?1, personality_json = ?2
                  WHERE snapshot_id = ?3 AND uid = ?4",
                 params![
-                    r#"{"Pace":15,"Determination":0}"#,
+                    r#"{"Pace":15,"Determination":null}"#,
                     r#"{"Ambition":10}"#,
                     fixture.snapshot_id,
                     PLAYER_UID
@@ -1505,7 +1648,7 @@ mod tests {
 
         assert_eq!(personality.get("Ambition"), Some(&Value::from(19)));
         assert!(!personality.contains_key("Professionalism"));
-        assert_eq!(attributes.get("Determination"), Some(&Value::from(0)));
+        assert_eq!(attributes.get("Determination"), Some(&Value::Null));
     }
 
     #[test]
@@ -1548,17 +1691,27 @@ mod tests {
     }
 
     #[test]
-    fn determination_reconciliation_rewrites_all_current_role_scores() {
-        let mut fixture = seeded_player(
+    fn determination_reconciliation_rewrites_current_and_potential_role_scores() {
+        let mut fixture = seeded_complete_player(
             Some(19),
             150,
-            170,
+            150,
             Mentality {
                 ambition: Some(11),
                 professionalism: Some(12),
-                determination: Some(10),
+                determination: Some(1),
             },
         );
+        let previous_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO player_potential_role_scores (
+                    snapshot_id, uid, role_id, score, projection_model_version
+                 ) VALUES (?1, ?2, 'obsolete_potential_role', 80, 1)",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed obsolete potential row");
         fixture
             .conn
             .execute_batch(&format!(
@@ -1577,7 +1730,7 @@ mod tests {
         let previous = Mentality {
             ambition: Some(11),
             professionalism: Some(12),
-            determination: Some(10),
+            determination: Some(1),
         };
         let current = Mentality {
             ambition: Some(11),
@@ -1588,7 +1741,7 @@ mod tests {
         super::reconcile_verified_boost(
             &mut fixture.conn,
             &prepared,
-            verified_mentality_result(150, 170, previous, current),
+            verified_mentality_result(150, 150, previous, current),
         )
         .expect("reconcile determination");
 
@@ -1601,6 +1754,9 @@ mod tests {
             player_mentality(&fixture.conn, fixture.snapshot_id),
             current
         );
+        let recomputed_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        assert_complete_potential_state(&recomputed_potential_state);
+        assert_ne!(recomputed_potential_state.0, previous_potential_state.0);
     }
 
     #[test]
@@ -1876,6 +2032,160 @@ mod tests {
     }
 
     #[test]
+    fn current_ability_potential_row_write_failure_rolls_back_all_reconciliation_state() {
+        let mut fixture = seeded_complete_player(
+            Some(20),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+                 VALUES (?1, '[\"attr.Acceleration\"]')",
+                [fixture.save_id],
+            )
+            .expect("seed Club DNA definition");
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_scores (
+                    snapshot_id, uid, definition_version, score_model_version, score
+                 ) VALUES (?1, ?2, 1, 1, 70)",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed Club DNA row");
+        let original_current_role_scores = current_role_scores(&fixture.conn, fixture.snapshot_id);
+        let original_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        let original_club_dna_state = club_dna_state(&fixture.conn, fixture.snapshot_id);
+        fixture
+            .conn
+            .execute_batch(&format!(
+                "CREATE TRIGGER fail_potential_role_insert
+                 BEFORE INSERT ON player_potential_role_scores
+                 WHEN NEW.snapshot_id = {} AND NEW.uid = {}
+                 BEGIN
+                     SELECT RAISE(ABORT, 'forced potential role failure');
+                 END;",
+                fixture.snapshot_id, PLAYER_UID
+            ))
+            .expect("create potential role write trigger");
+        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare CA boost");
+
+        let error = super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_ca_result(150, 155, 170),
+        )
+        .expect_err("potential role write failure must roll back CA reconciliation");
+
+        assert_snapshot_sync(error);
+        assert_eq!(player_ca(&fixture.conn, fixture.snapshot_id), 150);
+        assert_eq!(
+            current_role_scores(&fixture.conn, fixture.snapshot_id),
+            original_current_role_scores
+        );
+        assert_eq!(
+            potential_state(&fixture.conn, fixture.snapshot_id),
+            original_potential_state
+        );
+        assert_eq!(
+            club_dna_state(&fixture.conn, fixture.snapshot_id),
+            original_club_dna_state
+        );
+    }
+
+    #[test]
+    fn determination_potential_projection_write_failure_rolls_back_all_reconciliation_state() {
+        let mut fixture = seeded_complete_player(
+            Some(19),
+            150,
+            170,
+            Mentality {
+                ambition: Some(11),
+                professionalism: Some(12),
+                determination: Some(10),
+            },
+        );
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+                 VALUES (?1, '[\"attr.Determination\"]')",
+                [fixture.save_id],
+            )
+            .expect("seed Club DNA definition");
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_scores (
+                    snapshot_id, uid, definition_version, score_model_version, score
+                 ) VALUES (?1, ?2, 1, 1, 50)",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed Club DNA row");
+        let original_mentality = player_mentality(&fixture.conn, fixture.snapshot_id);
+        let original_current_role_scores = current_role_scores(&fixture.conn, fixture.snapshot_id);
+        let original_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        let original_club_dna_state = club_dna_state(&fixture.conn, fixture.snapshot_id);
+        fixture
+            .conn
+            .execute_batch(&format!(
+                "CREATE TRIGGER fail_potential_projection_update
+                 BEFORE UPDATE OF potential_attributes_json ON players
+                 WHEN NEW.snapshot_id = {} AND NEW.uid = {}
+                 BEGIN
+                     SELECT RAISE(ABORT, 'forced potential projection failure');
+                 END;",
+                fixture.snapshot_id, PLAYER_UID
+            ))
+            .expect("create potential projection write trigger");
+        let prepared = super::prepare_wonderkid_mentality_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare Wonderkid Mentality");
+        let previous = Mentality {
+            ambition: Some(11),
+            professionalism: Some(12),
+            determination: Some(10),
+        };
+        let current = Mentality {
+            ambition: Some(11),
+            professionalism: Some(12),
+            determination: Some(20),
+        };
+
+        let error = super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_mentality_result(150, 170, previous, current),
+        )
+        .expect_err("potential projection write failure must roll back mentality reconciliation");
+
+        assert_snapshot_sync(error);
+        assert_eq!(
+            player_mentality(&fixture.conn, fixture.snapshot_id),
+            original_mentality
+        );
+        assert_eq!(
+            current_role_scores(&fixture.conn, fixture.snapshot_id),
+            original_current_role_scores
+        );
+        assert_eq!(
+            potential_state(&fixture.conn, fixture.snapshot_id),
+            original_potential_state
+        );
+        assert_eq!(
+            club_dna_state(&fixture.conn, fixture.snapshot_id),
+            original_club_dna_state
+        );
+    }
+
+    #[test]
     fn current_ability_reconciliation_rolls_back_exact_derived_rows_when_club_dna_upsert_fails() {
         let mut fixture = seeded_player(
             Some(20),
@@ -1890,9 +2200,9 @@ mod tests {
         fixture
             .conn
             .execute(
-                "INSERT INTO player_potential_role_scores (
-                    snapshot_id, uid, role_id, score, projection_model_version
-                 ) VALUES (?1, ?2, 'goalkeeper_ip', 80, 1)",
+                "UPDATE player_potential_role_scores
+                 SET score = 80, projection_model_version = 1
+                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
                 params![fixture.snapshot_id, PLAYER_UID],
             )
             .expect("seed potential cache");
@@ -1918,7 +2228,7 @@ mod tests {
             .query_row(
                 "SELECT role_id, score, projection_model_version
                  FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2",
+                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
                 params![fixture.snapshot_id, PLAYER_UID],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
@@ -1970,7 +2280,7 @@ mod tests {
                 .query_row(
                     "SELECT role_id, score, projection_model_version
                      FROM player_potential_role_scores
-                     WHERE snapshot_id = ?1 AND uid = ?2",
+                     WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
                     params![fixture.snapshot_id, PLAYER_UID],
                     |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
                 )
@@ -2011,13 +2321,26 @@ mod tests {
         );
         fixture
             .conn
+            .execute(
+                "UPDATE player_potential_role_scores
+                 SET score = 80, projection_model_version = 1
+                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed goalkeeper potential row");
+        fixture
+            .conn
+            .execute(
+                "UPDATE player_potential_role_scores
+                 SET score = NULL, projection_model_version = 1
+                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'full_back_ip'",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed nullable potential row");
+        fixture
+            .conn
             .execute_batch(&format!(
-                "INSERT INTO player_potential_role_scores (
-                    snapshot_id, uid, role_id, score, projection_model_version
-                 ) VALUES
-                    ({snapshot_id}, {player_uid}, 'goalkeeper_ip', 80, 1),
-                    ({snapshot_id}, {player_uid}, 'full_back_ip', NULL, 1);
-                 INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
                  VALUES ({save_id}, '[\"attr.Determination\"]');
                  INSERT INTO club_dna_scores (
                     snapshot_id, uid, definition_version, score_model_version, score
@@ -2026,7 +2349,7 @@ mod tests {
                 player_uid = PLAYER_UID,
                 save_id = fixture.save_id,
             ))
-            .expect("seed derived rows");
+            .expect("seed Club DNA rows");
         let original_mentality_json: (String, String) = fixture
             .conn
             .query_row(

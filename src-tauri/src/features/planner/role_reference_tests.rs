@@ -1,10 +1,13 @@
 use std::collections::HashSet;
 
+use rusqlite::params;
+
 use super::role_reference::{get_role_reference, RoleReferenceBasis, RoleReferencePhase};
 use super::tactic;
 use super::test_support::{
-    add_picker_candidates, current_snapshot_id, open_with_snapshot, set_player_attributes,
-    set_player_positions, set_player_preferred_foot, set_right_winger_scores, set_role_score,
+    add_picker_candidates, current_snapshot_id, deny_potential_writes, open_with_snapshot,
+    planner_potential_state, set_player_attributes, set_player_positions,
+    set_player_preferred_foot, set_right_winger_scores, set_role_score,
 };
 
 fn seeded_snapshot() -> (tempfile::TempDir, rusqlite::Connection, i64) {
@@ -150,8 +153,9 @@ fn phase_selection_uses_only_the_selected_phase_position_and_role() {
 }
 
 #[test]
-fn selected_basis_changes_the_best_lane_and_keeps_both_scores_for_that_lane() {
+fn selected_basis_changes_the_best_lane_and_keeps_both_persisted_scores_for_that_lane() {
     let (_temp_dir, conn, save_id) = seeded_snapshot();
+    let snapshot_id = current_snapshot_id(&conn, save_id);
     clear_current_scores(&conn, save_id);
     set_player_positions(&conn, save_id, 77, r#"{"AML":20,"AMR":20}"#);
     set_player_attributes(
@@ -171,8 +175,21 @@ fn selected_basis_changes_the_best_lane_and_keeps_both_scores_for_that_lane() {
     let mut changed_tactic = tactic::default_tactic();
     changed_tactic.lanes[8].ip_role_id = "inside_winger_ip".to_string();
     tactic::save_tactic(&conn, save_id, &changed_tactic).expect("save role comparison tactic");
-    set_role_score(&conn, save_id, 77, "inside_winger_ip", Some(90));
-    set_role_score(&conn, save_id, 77, "winger_ip", Some(10));
+    set_role_score(&conn, save_id, 77, "inside_winger_ip", Some(10));
+    set_role_score(&conn, save_id, 77, "winger_ip", Some(90));
+    conn.execute(
+        "UPDATE player_potential_role_scores
+         SET score = CASE role_id
+             WHEN 'inside_winger_ip' THEN 90
+             WHEN 'winger_ip' THEN 10
+             ELSE score
+         END
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("set persisted potential role scores");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
 
     let current = get_role_reference(
         &conn,
@@ -189,15 +206,59 @@ fn selected_basis_changes_the_best_lane_and_keeps_both_scores_for_that_lane() {
     )
     .expect("potential role reference");
 
-    let current_player = &lane(&current, "left_winger").players[0];
+    let current_player = &lane(&current, "right_winger").players[0];
     assert_eq!(current_player.player_uid, 77);
     assert_eq!(current_player.current_score, Some(90));
-    assert!(current_player.potential_score.is_some());
+    assert_eq!(current_player.potential_score, Some(10));
 
-    let potential_player = &lane(&potential, "right_winger").players[0];
+    let potential_player = &lane(&potential, "left_winger").players[0];
     assert_eq!(potential_player.player_uid, 77);
     assert_eq!(potential_player.current_score, Some(10));
-    assert!(potential_player.potential_score.is_some());
+    assert_eq!(potential_player.potential_score, Some(90));
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
+fn role_reference_rejects_missing_potential_role_for_both_bases_without_writes() {
+    let (_temp_dir, conn, save_id) = seeded_snapshot();
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "DELETE FROM player_potential_role_scores
+         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'winger_ip'",
+        params![snapshot_id],
+    )
+    .expect("remove persisted potential role");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    for basis in [RoleReferenceBasis::Current, RoleReferenceBasis::Potential] {
+        let error = get_role_reference(&conn, save_id, RoleReferencePhase::InPossession, basis)
+            .expect_err("reject incomplete potential state");
+        assert_eq!(error, "Current potential snapshot is incomplete");
+        assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+    }
+}
+
+#[test]
+fn role_reference_rejects_wrong_version_potential_role_for_both_bases_without_writes() {
+    let (_temp_dir, conn, save_id) = seeded_snapshot();
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE player_potential_role_scores
+         SET projection_model_version = 999
+         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'winger_ip'",
+        params![snapshot_id],
+    )
+    .expect("set stale potential role version");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    for basis in [RoleReferenceBasis::Current, RoleReferenceBasis::Potential] {
+        let error = get_role_reference(&conn, save_id, RoleReferencePhase::InPossession, basis)
+            .expect_err("reject stale potential state");
+        assert_eq!(error, "Current potential snapshot is incomplete");
+        assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+    }
 }
 
 #[test]
@@ -264,11 +325,19 @@ fn equal_scores_keep_the_first_lane_in_persisted_tactic_order() {
 }
 
 #[test]
-fn missing_selected_basis_marks_the_player_unavailable() {
+fn missing_current_basis_marks_the_player_unavailable_while_persisted_potential_is_eligible() {
     let (_temp_dir, conn, save_id) = seeded_snapshot();
+    let snapshot_id = current_snapshot_id(&conn, save_id);
     set_player_positions(&conn, save_id, 77, r#"{"AMR":20}"#);
     clear_current_scores(&conn, save_id);
     set_player_attributes(&conn, save_id, 77, &full_attributes(20));
+    conn.execute(
+        "UPDATE player_potential_role_scores
+         SET score = 100
+         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'winger_ip'",
+        params![snapshot_id],
+    )
+    .expect("set persisted potential winger score");
 
     let reference = get_role_reference(
         &conn,

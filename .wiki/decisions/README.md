@@ -32,13 +32,14 @@ Use a short, numbered filename such as `0001-decision-title.md`.
 | [0016](./0016-csharp-bepinex-fm26-bridge.md) | C# BepInEx bridge for FM26 memory read |
 | [0017](./0017-action-specific-fm26-player-boosts.md) | Action-specific FM26 player boosts |
 | [0018](./0018-squad-wide-player-boosts.md) | Squad-wide action-specific player boosts |
-| [0019](./0019-lazy-potential-role-score-cache.md) | Lazy persistent potential role-score cache |
+| [0019](./0019-lazy-potential-role-score-cache.md) | Lazy persistent potential role-score cache (superseded by ADR-0026) |
 | [0020](./0020-action-specific-fm26-staff-ca-boost.md) | Action-specific FM26 staff CA boost |
 | [0021](./0021-sequential-club-family-staff-ca-boost.md) | Sequential club-family staff CA boost |
 | [0022](./0022-explicit-release-preparation.md) | Explicit release preparation |
 | [0023](./0023-lazy-club-dna-score-cache.md) | Lazy persistent Club DNA score cache (superseded by ADR-0024) |
 | [0024](./0024-eager-persisted-club-dna-scores.md) | Eager persisted Club DNA scores |
 | [0025](./0025-selective-index-driven-player-sorts.md) | Selective index-driven player table sorts |
+| [0026](./0026-eager-current-potential-scoring.md) | Eager current-snapshot potential scoring |
 
 ## ADR format
 

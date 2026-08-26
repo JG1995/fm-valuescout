@@ -3,9 +3,11 @@ use std::collections::{BTreeMap, HashMap};
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde_json::Value;
 
-use crate::features::moneyball::role_catalog::builtin_catalog;
-use crate::features::scoring::{
-    catalog::all_roles, projection::project_attributes, score::score_role,
+use crate::features::{
+    moneyball::role_catalog::builtin_catalog,
+    player_metrics::potential_scores::{
+        assert_current_snapshot_complete, PROJECTION_MODEL_VERSION,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -119,23 +121,10 @@ pub fn get_player(conn: &Connection, uid: i64) -> Result<Option<PlayerDetail>, S
     };
     player.hidden_information_revealed = hidden_information_revealed == 1;
 
-    let attributes = scoring_attributes(&player.attributes)?;
-    let projected_attributes = project_attributes(
-        &attributes,
-        player.ca,
-        player.pa,
-        player.age,
-        player
-            .positions
-            .iter()
-            .map(|(position, familiarity)| (position.as_str(), *familiarity)),
-    );
-    let potential_attributes = projected_attributes
-        .iter()
-        .map(|(key, value)| (key.clone(), value.map(i64::from)))
-        .collect();
-    let role_scores = load_role_scores(conn, snapshot_id, uid, &projected_attributes)?;
-    player.potential_attributes = potential_attributes;
+    assert_current_snapshot_complete(conn, snapshot_id)?;
+
+    player.potential_attributes = load_potential_attributes(conn, snapshot_id, uid)?;
+    let role_scores = load_role_scores(conn, snapshot_id, uid)?;
     player.role_scores = role_scores;
     Ok(Some(player))
 }
@@ -226,11 +215,28 @@ fn optional_bool(value: Option<i64>) -> rusqlite::Result<Option<bool>> {
     }
 }
 
+fn load_potential_attributes(
+    conn: &Connection,
+    snapshot_id: i64,
+    uid: i64,
+) -> Result<BTreeMap<String, Option<i64>>, String> {
+    let projected_attributes_json: String = conn
+        .query_row(
+            "SELECT potential_attributes_json
+             FROM players
+             WHERE snapshot_id = ?1 AND uid = ?2
+               AND potential_projection_model_version = ?3",
+            params![snapshot_id, uid, PROJECTION_MODEL_VERSION],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    parse_nullable_int_map(&projected_attributes_json)
+}
+
 fn load_role_scores(
     conn: &Connection,
     snapshot_id: i64,
     uid: i64,
-    projected_attributes: &HashMap<String, Option<u8>>,
 ) -> Result<Vec<PlayerRoleScore>, String> {
     let mut stmt = conn
         .prepare(
@@ -252,15 +258,23 @@ fn load_role_scores(
         scores_by_role.insert(role_id, score);
     }
 
-    let potential_by_role = all_roles()
-        .iter()
-        .map(|role| {
-            (
-                role.role_id,
-                score_role(projected_attributes, role).map(i64::from),
-            )
+    let mut potential_statement = conn
+        .prepare(
+            "SELECT role_id, score
+             FROM player_potential_role_scores
+             WHERE snapshot_id = ?1 AND uid = ?2 AND projection_model_version = ?3",
+        )
+        .map_err(|error| error.to_string())?;
+    let potential_rows = potential_statement
+        .query_map(params![snapshot_id, uid, PROJECTION_MODEL_VERSION], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
         })
-        .collect::<HashMap<_, _>>();
+        .map_err(|error| error.to_string())?;
+    let mut potential_by_role = HashMap::new();
+    for row in potential_rows {
+        let (role_id, score) = row.map_err(|error| error.to_string())?;
+        potential_by_role.insert(role_id, score);
+    }
     let catalog = builtin_catalog()?;
     let mut role_scores = Vec::with_capacity(catalog.definitions.len());
     for role in &catalog.definitions {
@@ -295,23 +309,6 @@ fn load_role_scores(
     }
 
     Ok(role_scores)
-}
-
-fn scoring_attributes(
-    attributes: &BTreeMap<String, Option<i64>>,
-) -> Result<HashMap<String, Option<u8>>, String> {
-    attributes
-        .iter()
-        .map(|(key, value)| {
-            let value = value
-                .map(|value| {
-                    u8::try_from(value)
-                        .map_err(|_| format!("attribute `{key}` is outside the u8 range"))
-                })
-                .transpose()?;
-            Ok((key.clone(), value))
-        })
-        .collect()
 }
 
 fn parse_string_array(json: &str) -> Result<Vec<String>, String> {
@@ -377,14 +374,13 @@ fn parse_nullable_int_map(json: &str) -> Result<BTreeMap<String, Option<i64>>, S
 mod tests {
     use super::*;
     use crate::db::migrations;
-    use crate::features::moneyball::role_catalog::builtin_catalog;
-    use crate::features::scoring::{
-        catalog::{all_roles, RolePhase, DUMP_ATTRIBUTE_KEYS},
-        projection::project_attributes,
-        score::score_role,
-    };
     use crate::features::snapshot::ingest::ingest_dump_file;
     use crate::features::snapshot::service::{create_save, set_active_save};
+    use crate::features::{
+        moneyball::role_catalog::builtin_catalog,
+        player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
+        scoring::catalog::{all_roles, RolePhase, DUMP_ATTRIBUTE_KEYS},
+    };
     use rusqlite::params;
     use serde_json::{json, Value};
     use std::path::Path;
@@ -498,6 +494,70 @@ mod tests {
         .expect("update role score");
     }
 
+    type PotentialState = (Option<String>, Option<i64>, Vec<(String, Option<i64>, i64)>);
+
+    fn potential_state(conn: &Connection, uid: i64) -> PotentialState {
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        let fields = conn
+            .query_row(
+                "SELECT potential_attributes_json, potential_projection_model_version
+                 FROM players WHERE snapshot_id = ?1 AND uid = ?2",
+                params![snapshot_id, uid],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read projected fields");
+        let roles = conn
+            .prepare(
+                "SELECT role_id, score, projection_model_version
+                 FROM player_potential_role_scores
+                 WHERE snapshot_id = ?1 AND uid = ?2
+                 ORDER BY role_id",
+            )
+            .expect("prepare potential rows")
+            .query_map(params![snapshot_id, uid], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .expect("query potential rows")
+            .collect::<Result<_, _>>()
+            .expect("read potential rows");
+        (fields.0, fields.1, roles)
+    }
+
+    fn deny_potential_writes(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TRIGGER deny_projected_player_updates
+             BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
+             BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
+             CREATE TRIGGER deny_potential_score_inserts
+             BEFORE INSERT ON player_potential_role_scores
+             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
+             CREATE TRIGGER deny_potential_score_updates
+             BEFORE UPDATE ON player_potential_role_scores
+             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
+             CREATE TRIGGER deny_potential_score_deletes
+             BEFORE DELETE ON player_potential_role_scores
+             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;",
+        )
+        .expect("deny potential writes");
+    }
+
+    fn assert_profile_rejects_corrupt_potential_state(conn: &Connection, uid: i64) {
+        let before = potential_state(conn, uid);
+        deny_potential_writes(conn);
+
+        assert_eq!(
+            get_player(conn, uid),
+            Err("Current potential snapshot is incomplete".to_string())
+        );
+        assert_eq!(potential_state(conn, uid), before);
+    }
+
     #[test]
     fn returns_player_name_and_role_scores_for_known_uid() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -574,7 +634,7 @@ mod tests {
     }
 
     #[test]
-    fn returns_role_potential_from_projected_visible_attributes() {
+    fn returns_role_potential_from_persisted_values() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("potential-score.db"));
         let mut player = player_template(1, "Potential Role", 80);
@@ -595,22 +655,21 @@ mod tests {
         );
         ingest_players(&mut conn, vec![player]);
 
-        let attributes = DUMP_ATTRIBUTE_KEYS
-            .iter()
-            .map(|key| ((*key).to_string(), Some(10)))
-            .collect();
-        let projected_attributes =
-            project_attributes(&attributes, 80, 170, Some(20), [("AMR", Some(20))]);
-        let expected_potential_attributes = projected_attributes
-            .iter()
-            .map(|(key, value)| (key.clone(), value.map(i64::from)))
-            .collect::<BTreeMap<_, _>>();
-        let centre_forward = all_roles()
-            .iter()
-            .find(|role| role.role_id == "centre_forward_ip")
-            .expect("centre forward role");
-        let expected_potential_score =
-            score_role(&projected_attributes, centre_forward).map(i64::from);
+        let stored_potential_attributes = parse_nullable_int_map(
+            &potential_state(&conn, 1)
+                .0
+                .expect("persisted projected attributes"),
+        )
+        .expect("parse persisted projected attributes");
+        let stored_potential_score: Option<i64> = conn
+            .query_row(
+                "SELECT score FROM player_potential_role_scores
+                 WHERE snapshot_id = (SELECT id FROM snapshots WHERE is_current = 1)
+                   AND uid = 1 AND role_id = 'centre_forward_ip'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("persisted centre-forward score");
 
         let detail = get_player(&conn, 1)
             .expect("get_player")
@@ -622,7 +681,7 @@ mod tests {
             .filter(|role| role.attribute_role_id.is_none())
             .map(|role| role.id.as_str())
             .collect::<std::collections::HashSet<_>>();
-        assert_eq!(detail.potential_attributes, expected_potential_attributes);
+        assert_eq!(detail.potential_attributes, stored_potential_attributes);
         assert_eq!(detail.role_scores.len(), 88);
         assert!(detail.role_scores.iter().any(|role| {
             unmapped_role_ids.contains(role.role_id.as_str())
@@ -641,8 +700,171 @@ mod tests {
             .expect("centre forward row");
 
         assert_eq!(centre_forward.score, Some(50));
-        assert_eq!(centre_forward.potential_score, expected_potential_score);
+        assert_eq!(centre_forward.potential_score, stored_potential_score);
         assert_ne!(centre_forward.potential_score, centre_forward.score);
+    }
+
+    #[test]
+    fn reads_persisted_potential_values_when_source_values_diverge() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("persisted-potential-wins.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_template(1, "Persisted Potential", 80)],
+        );
+
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        let mut stored_attributes = parse_nullable_int_map(
+            &potential_state(&conn, 1)
+                .0
+                .expect("persisted projected attributes"),
+        )
+        .expect("parse persisted projected attributes");
+        stored_attributes.insert("Acceleration".to_string(), Some(1));
+        conn.execute(
+            "UPDATE players SET potential_attributes_json = ?3
+             WHERE snapshot_id = ?1 AND uid = ?2",
+            params![
+                snapshot_id,
+                1,
+                serde_json::to_string(&stored_attributes).expect("serialize projected attributes")
+            ],
+        )
+        .expect("change persisted projected attributes");
+        conn.execute(
+            "UPDATE player_potential_role_scores SET score = 1
+             WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'centre_forward_ip'",
+            params![snapshot_id, 1],
+        )
+        .expect("change persisted potential score");
+
+        let detail = get_player(&conn, 1)
+            .expect("get player")
+            .expect("player present");
+        let centre_forward = detail
+            .role_scores
+            .iter()
+            .find(|row| row.role_id == "st_centre_forward_ip")
+            .expect("centre-forward row");
+
+        assert_eq!(
+            detail.potential_attributes.get("Acceleration"),
+            Some(&Some(1))
+        );
+        assert_eq!(centre_forward.potential_score, Some(1));
+    }
+
+    #[test]
+    fn profile_rejects_missing_potential_role_without_rebuild() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("missing-potential-role.db"));
+        ingest_players(&mut conn, vec![player_template(1, "Missing Role", 150)]);
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "DELETE FROM player_potential_role_scores
+             WHERE snapshot_id = ?1 AND uid = 1 AND role_id = ?2",
+            params![snapshot_id, all_roles()[0].role_id],
+        )
+        .expect("delete potential role");
+
+        assert_profile_rejects_corrupt_potential_state(&conn, 1);
+    }
+
+    #[test]
+    fn profile_rejects_wrong_version_potential_role_without_rebuild() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("wrong-version-potential-role.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_template(1, "Wrong Role Version", 150)],
+        );
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "UPDATE player_potential_role_scores
+             SET projection_model_version = ?3
+             WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = ?4",
+            params![
+                snapshot_id,
+                1,
+                PROJECTION_MODEL_VERSION - 1,
+                all_roles()[0].role_id
+            ],
+        )
+        .expect("change potential role version");
+
+        assert_profile_rejects_corrupt_potential_state(&conn, 1);
+    }
+
+    #[test]
+    fn profile_rejects_null_potential_attributes_without_rebuild() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("null-potential-attributes.db"));
+        ingest_players(
+            &mut conn,
+            vec![player_template(1, "Null Potential Map", 150)],
+        );
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "UPDATE players SET potential_attributes_json = NULL
+             WHERE snapshot_id = ?1 AND uid = 1",
+            [snapshot_id],
+        )
+        .expect("clear projected attributes");
+
+        assert_profile_rejects_corrupt_potential_state(&conn, 1);
+    }
+
+    #[test]
+    fn profile_rejects_wrong_version_potential_attributes_without_rebuild() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(
+            &temp_dir
+                .path()
+                .join("wrong-version-potential-attributes.db"),
+        );
+        ingest_players(
+            &mut conn,
+            vec![player_template(1, "Wrong Potential Map Version", 150)],
+        );
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        conn.execute(
+            "UPDATE players SET potential_projection_model_version = ?2
+             WHERE snapshot_id = ?1 AND uid = 1",
+            params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
+        )
+        .expect("change projected attribute version");
+
+        assert_profile_rejects_corrupt_potential_state(&conn, 1);
     }
 
     #[test]

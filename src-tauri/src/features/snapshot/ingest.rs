@@ -700,6 +700,39 @@ mod tests {
         .expect("count role scores")
     }
 
+    fn potential_state(conn: &Connection, snapshot_id: i64) -> (Option<String>, Option<i64>, i64) {
+        let fields = conn
+            .query_row(
+                "SELECT potential_attributes_json, potential_projection_model_version
+                 FROM players WHERE snapshot_id = ?1 ORDER BY uid LIMIT 1",
+                [snapshot_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read projected player fields");
+        let score_count = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_potential_role_scores WHERE snapshot_id = ?1",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("count potential role rows");
+        (fields.0, fields.1, score_count)
+    }
+
+    fn assert_complete_potential_state(conn: &Connection, snapshot_id: i64) {
+        let state = potential_state(conn, snapshot_id);
+        assert!(state.0.is_some());
+        assert_eq!(
+            state.1,
+            Some(crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION)
+        );
+        assert_eq!(state.2, all_roles().len() as i64);
+    }
+
+    fn assert_empty_potential_state(conn: &Connection, snapshot_id: i64) {
+        assert_eq!(potential_state(conn, snapshot_id), (None, None, 0));
+    }
+
     fn club_dna_score_rows(
         conn: &Connection,
         snapshot_id: i64,
@@ -1366,6 +1399,7 @@ mod tests {
         let later_json = dump_with_game_date(Some("2027-08-16"), "Later player");
         let first_path = write_dump(&temp_dir, "later.json", &later_json);
         let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        assert_complete_potential_state(&conn, first.id);
 
         let earlier_json = dump_with_game_date(Some("2026-08-14"), "Earlier player");
         let second_path = write_dump(&temp_dir, "earlier.json", &earlier_json);
@@ -1373,6 +1407,8 @@ mod tests {
 
         assert_ne!(second.id, first.id);
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
+        assert_complete_potential_state(&conn, first.id);
+        assert_empty_potential_state(&conn, second.id);
         assert!(snapshot_row_exists(&conn, first.id));
         assert_eq!(snapshot_count(&conn, active_save.id), 2);
         assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
@@ -1418,6 +1454,7 @@ mod tests {
             &dump_with_game_date(Some("2026-08-14"), "Earlier player"),
         );
         let earlier = ingest_dump_file(&mut conn, &earlier_path).expect("earlier ingest");
+        assert_complete_potential_state(&conn, earlier.id);
         let later_path = write_dump(
             &temp_dir,
             "later.json",
@@ -1426,6 +1463,8 @@ mod tests {
         let later = ingest_dump_file(&mut conn, &later_path).expect("later ingest");
 
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(later.id));
+        assert_empty_potential_state(&conn, earlier.id);
+        assert_complete_potential_state(&conn, later.id);
         assert_eq!(snapshot_count(&conn, active_save.id), 2);
         assert!(snapshot_row_exists(&conn, earlier.id));
         assert_eq!(
@@ -1576,10 +1615,90 @@ mod tests {
         let undated = ingest_dump_file(&mut conn, &undated_path).expect("undated ingest");
 
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(dated.id));
+        assert_complete_potential_state(&conn, dated.id);
+        assert_empty_potential_state(&conn, undated.id);
         assert!(snapshot_row_exists(&conn, undated.id));
         assert_eq!(
             automatic_class_years(&conn, active_save.id),
             vec![2025, 2026]
+        );
+    }
+
+    #[test]
+    fn failed_winning_potential_materialization_rolls_back_ingest() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-potential-rollback.db"));
+        let first_path = write_dump(
+            &temp_dir,
+            "first.json",
+            &dump_with_game_date(Some("2026-08-14"), "Earlier player"),
+        );
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let first_potential_state = potential_state(&conn, first.id);
+        conn.execute_batch(
+            "CREATE TRIGGER reject_winning_potential_rows
+             BEFORE INSERT ON player_potential_role_scores
+             BEGIN SELECT RAISE(ABORT, 'winning potential writes fail'); END;",
+        )
+        .expect("reject winning potential rows");
+        let later_path = write_dump(
+            &temp_dir,
+            "later.json",
+            &dump_with_game_date(Some("2027-08-16"), "Later player"),
+        );
+
+        assert!(ingest_dump_file(&mut conn, &later_path)
+            .expect_err("roll back winning potential materialization")
+            .contains("winning potential writes fail"));
+
+        assert_eq!(snapshot_count(&conn, first.save_id), 1);
+        assert_eq!(current_snapshot_id(&conn, first.save_id), Some(first.id));
+        assert_eq!(potential_state(&conn, first.id), first_potential_state);
+    }
+
+    #[test]
+    fn invalid_winning_source_attribute_rolls_back_ingest() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-domain-rollback.db"));
+        let first_path = write_dump(
+            &temp_dir,
+            "first.json",
+            &dump_with_game_date(Some("2026-08-14"), "Earlier player"),
+        );
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let first_potential_state = potential_state(&conn, first.id);
+        let first_attributes: String = conn
+            .query_row(
+                "SELECT attributes_json FROM players WHERE snapshot_id = ?1 AND uid = 77",
+                [first.id],
+                |row| row.get(0),
+            )
+            .expect("read prior source attributes");
+        let mut later: Value = serde_json::from_str(&dump_with_game_date(
+            Some("2027-08-16"),
+            "Invalid later player",
+        ))
+        .expect("parse later dump");
+        later["players"][0]["ca"] = Value::from(100);
+        later["players"][0]["pa"] = Value::from(140);
+        later["players"][0]["age"] = Value::from(20);
+        later["players"][0]["attributes"]["Acceleration"] = Value::from(0);
+        let later_path = write_dump(&temp_dir, "later.json", &later.to_string());
+
+        let error = ingest_dump_file(&mut conn, &later_path)
+            .expect_err("reject zero-valued source attribute before projection");
+        assert!(error.contains("player 77 attribute `Acceleration` must be between 1 and 20"));
+        assert_eq!(snapshot_count(&conn, first.save_id), 1);
+        assert_eq!(current_snapshot_id(&conn, first.save_id), Some(first.id));
+        assert_eq!(potential_state(&conn, first.id), first_potential_state);
+        assert_eq!(
+            conn.query_row(
+                "SELECT attributes_json FROM players WHERE snapshot_id = ?1 AND uid = 77",
+                [first.id],
+                |row| row.get::<_, String>(0),
+            )
+            .expect("read unchanged prior source attributes"),
+            first_attributes
         );
     }
 

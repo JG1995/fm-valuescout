@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use rusqlite::{params, Connection, Transaction};
 
-use super::depth::PlannerTeam;
+use super::depth::{preflight_depth_snapshot, PlannerTeam};
 
 pub(super) const MAX_DISPLAY_NAME_LEN: usize = 40;
 
@@ -72,8 +72,9 @@ pub(super) fn save_team_settings(
     save_id: i64,
     inputs: &[PlannerTeamInput],
     confirm_populated_removal: bool,
-) -> Result<Vec<PlannerTeamSetting>, String> {
+) -> Result<(Vec<PlannerTeamSetting>, Option<i64>), String> {
     let desired = normalize_inputs(inputs)?;
+    let snapshot_id = preflight_depth_snapshot(conn, save_id)?;
     ensure_save_exists(conn, save_id)?;
 
     let tx = conn
@@ -150,7 +151,7 @@ pub(super) fn save_team_settings(
     }
 
     tx.commit().map_err(|error| error.to_string())?;
-    load_team_settings(conn, save_id)
+    Ok((load_team_settings(conn, save_id)?, snapshot_id))
 }
 
 pub(super) fn load_team_settings_from_tx(
