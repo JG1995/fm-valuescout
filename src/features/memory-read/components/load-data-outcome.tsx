@@ -59,7 +59,8 @@ function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
   const storedSnapshot = result.storedSnapshot;
   const latestSnapshot = result.effectiveSnapshot;
   const loaded = `Loaded ${formatCount(storedSnapshot.playerCount)} players into the database.${formatLoadTimings(result.timings)}`;
-  const storedBecameLatest = storedSnapshot.id === latestSnapshot.id;
+  const storedBecameLatest =
+    storedSnapshot.contextToken === latestSnapshot.contextToken;
   const latestMessage = storedBecameLatest
     ? " This snapshot is now the latest."
     : ` Stored this snapshot in history; the latest remains ${formatSnapshotDate(latestSnapshot.gameDate)}.`;

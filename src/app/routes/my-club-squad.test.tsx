@@ -116,6 +116,9 @@ import {
 } from "@/testing/squad-ipc-mock";
 import {
   fixtureStaff,
+  fixtureStaffAssignmentTargets,
+  getLastStaffAssignmentTargetsIpcArgs,
+  setStaffAssignmentTargetsIpcMock,
   setStaffOverride,
   setStaffShortlistOverride,
 } from "@/testing/staff-ipc-mock";
@@ -302,6 +305,87 @@ describe("My Club route", () => {
     expect(
       await screen.findByRole("table", { name: "Staff overview" }),
     ).toBeInTheDocument();
+  });
+
+  it("places Configure slots only in Staff Shortlist", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    renderMyClubRoute({ initialEntry: "/my-club?view=staff" });
+
+    await screen.findByRole("table", { name: "Staff overview" });
+    expect(
+      screen.queryByRole("button", { name: "Configure slots" }),
+    ).toBeNull();
+    await openMyClubWorkspace(user, "staff-shortlist");
+    expect(
+      await screen.findByRole("button", { name: "Configure slots" }),
+    ).toBeInTheDocument();
+  });
+
+  it("uses the route context for complete slot saves and token replacement", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const targets = fixtureStaffAssignmentTargets();
+    targets.teams[1] = { ...targets.teams[1], displayName: "B Squad" };
+    setStaffAssignmentTargetsIpcMock(targets);
+    const { queryClient } = renderMyClubRoute({
+      initialEntry: "/my-club?view=staff-shortlist",
+    });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Configure slots" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Configure assignment slots",
+    });
+    expect(within(dialog).getByText("B Squad")).toBeInTheDocument();
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save slots" }),
+    );
+    await waitFor(() =>
+      expect(getLastStaffAssignmentTargetsIpcArgs()).toEqual(
+        expect.objectContaining({ expectedSaveContextToken: "save-token-1" }),
+      ),
+    );
+    expect(
+      (
+        getLastStaffAssignmentTargetsIpcArgs() as
+          | { targets?: unknown[] }
+          | undefined
+      )?.targets,
+    ).toHaveLength(35);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Configure slots" }),
+    );
+    const reopened = await screen.findByRole("dialog");
+    const assistantManager = within(reopened).getAllByRole("spinbutton", {
+      name: "Assistant Manager slots",
+    })[0];
+    await user.clear(assistantManager);
+    await user.type(assistantManager, "12");
+    const snapshot = queryClient.getQueryData<SnapshotSummary>(
+      snapshotKeys.current(),
+    );
+    if (!snapshot) {
+      throw new Error("Expected a current snapshot");
+    }
+    queryClient.setQueryData<SnapshotSummary | null>(
+      snapshotKeys.current(),
+      () => ({ ...snapshot, contextToken: "snapshot-token-replacement" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    const configureSlots = await screen.findByRole("button", {
+      name: "Configure slots",
+    });
+    expect(configureSlots).toHaveFocus();
+    await user.click(configureSlots);
+    expect(
+      screen.getAllByRole("spinbutton", { name: "Assistant Manager slots" })[0],
+    ).toHaveValue(0);
   });
 
   it.each([

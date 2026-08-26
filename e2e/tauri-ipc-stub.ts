@@ -106,6 +106,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         .find((snapshot) => snapshot.isCurrent) || null;
       const snapshotSummary = (snapshot) => ({
         id: snapshot.id,
+        contextToken: snapshot.contextToken,
         saveId: snapshot.saveId,
         schemaVersion: 6,
         generatedAtUtc: snapshot.loadedAtUtc,
@@ -576,6 +577,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
             return plannerSnapshot || squadOverview || playerProfile || staffWorkspace
               ? {
                   id: 1,
+                  contextToken: "snapshot-token-1",
                   saveId: 1,
                   schemaVersion: 6,
                   generatedAtUtc: "2026-07-28T15:00:00.000Z",
@@ -1458,6 +1460,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           if (cmd === "load_data") {
             const loadedSnapshot = {
               id: 1,
+              contextToken: "snapshot-token-1",
               saveId: 1,
               schemaVersion: 6,
               generatedAtUtc: "2026-07-28T15:00:00.000Z",

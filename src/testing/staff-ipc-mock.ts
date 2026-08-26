@@ -2,6 +2,7 @@ import type {
   MyStaffBoostProgress,
   MyStaffBoostResult,
 } from "@/features/staff/types/my-staff-boost";
+import type { StaffAssignmentTargets } from "@/features/staff/types/staff-assignment";
 import type { StaffBoostResult } from "@/features/staff/types/staff-boost";
 import type { StaffDetail } from "@/features/staff/types/staff-detail";
 import type { StaffFilterRuleIpc } from "@/features/staff/types/staff-filter-rule";
@@ -38,6 +39,13 @@ let pendingMyStaffBoost: {
   resolve: (result: MyStaffBoostResult) => void;
   reject: (error: Error) => void;
 } | null = null;
+let staffAssignmentTargets: StaffAssignmentTargets;
+let staffAssignmentTargetsMode: StaffAssignmentTargetsIpcMockMode = "success";
+let lastStaffAssignmentTargetsArgs: unknown;
+let pendingStaffAssignmentTargets: {
+  promise: Promise<StaffAssignmentTargets>;
+  resolve: (result: StaffAssignmentTargets) => void;
+} | null = null;
 
 export type MyStaffBoostIpcMockMode = "pending" | "recoveryRequired" | "error";
 
@@ -61,6 +69,28 @@ export type StaffBoostIpcMockMode =
   | "snapshotSyncError";
 
 export type StaffListIpcMockMode = "success" | "error";
+export type StaffAssignmentTargetsIpcMockMode = "success" | "error" | "pending";
+
+const ASSIGNMENT_TEAM_JOBS = [
+  ["manager", "Manager"],
+  ["assistant_manager", "Assistant Manager"],
+  ["coaches", "Coaches"],
+  ["set_piece_coach", "Set Piece Coach"],
+  ["head_performance_analyst", "Head Performance Analyst"],
+  ["performance_analyst", "Performance Analyst"],
+  ["head_physio", "Head Physio"],
+  ["physio", "Physio"],
+  ["head_sports_science", "Head of Sports Science"],
+  ["sports_scientist", "Sports Scientist"],
+] as const;
+const ASSIGNMENT_CLUB_JOBS = [
+  ["head_of_youth_development", "Head of Youth Development"],
+  ["director_of_football", "Director of Football"],
+  ["technical_director", "Technical Director"],
+  ["loan_manager", "Loan Manager"],
+  ["chief_scout", "Chief Scout"],
+  ["scout", "Scout"],
+] as const;
 
 const ROLE_IDS = [
   "assistant_manager",
@@ -84,6 +114,63 @@ const ROLE_IDS = [
   "physio",
   "sports_scientist",
 ] as const;
+
+export function fixtureStaffAssignmentTargets(
+  overrides: Partial<StaffAssignmentTargets> = {},
+): StaffAssignmentTargets {
+  const teams = [
+    { team: "senior" as const, displayName: "Senior" },
+    { team: "reserves" as const, displayName: "Reserves" },
+    { team: "youth" as const, displayName: "Youth" },
+  ];
+  const targets = [
+    ...teams.flatMap(({ team }) =>
+      ASSIGNMENT_TEAM_JOBS.filter(
+        ([jobId]) => !(team === "senior" && jobId === "manager"),
+      ).map(([jobId, jobLabel]) => ({
+        scope: team,
+        jobId,
+        jobLabel,
+        slotCount: 0,
+      })),
+    ),
+    ...ASSIGNMENT_CLUB_JOBS.map(([jobId, jobLabel]) => ({
+      scope: "club" as const,
+      jobId,
+      jobLabel,
+      slotCount: 0,
+    })),
+  ];
+  return { teams, targets, ...overrides };
+}
+
+staffAssignmentTargets = fixtureStaffAssignmentTargets();
+
+export function setStaffAssignmentTargetsIpcMock(
+  targets: StaffAssignmentTargets,
+) {
+  staffAssignmentTargets = structuredClone(targets);
+}
+
+export function getLastStaffAssignmentTargetsIpcArgs() {
+  return lastStaffAssignmentTargetsArgs;
+}
+
+export function setStaffAssignmentTargetsIpcMockMode(
+  mode: StaffAssignmentTargetsIpcMockMode,
+) {
+  staffAssignmentTargetsMode = mode;
+  if (mode !== "pending") {
+    pendingStaffAssignmentTargets = null;
+  }
+}
+
+export function resolvePendingStaffAssignmentTargetsIpcMock() {
+  pendingStaffAssignmentTargets?.resolve(
+    structuredClone(staffAssignmentTargets),
+  );
+  pendingStaffAssignmentTargets = null;
+}
 
 export function fixtureStaff(
   overrides: Partial<StaffSummary> = {},
@@ -149,6 +236,10 @@ export function resetStaffIpcMock() {
   myStaffBoostCalls = [];
   myStaffBoostMode = "pending";
   pendingMyStaffBoost = null;
+  staffAssignmentTargets = fixtureStaffAssignmentTargets();
+  staffAssignmentTargetsMode = "success";
+  lastStaffAssignmentTargetsArgs = undefined;
+  pendingStaffAssignmentTargets = null;
 }
 
 export function fixtureStaffDetail(
@@ -348,6 +439,69 @@ function sortStaff(
         : String(a ?? "").localeCompare(String(b ?? ""));
     return (sortDir === "asc" ? cmp : -cmp) || left.uid - right.uid;
   });
+}
+
+export function resolveGetStaffAssignmentTargetsIpcMock(
+  args: unknown,
+): StaffAssignmentTargets {
+  if (
+    typeof args !== "object" ||
+    args === null ||
+    typeof (args as Record<string, unknown>).expectedSaveContextToken !==
+      "string"
+  ) {
+    throw new Error("Missing expected save context token");
+  }
+  if (staffAssignmentTargetsMode === "error") {
+    throw new Error("Could not load assignment targets");
+  }
+  return structuredClone(staffAssignmentTargets);
+}
+
+export function resolveSaveStaffAssignmentTargetsIpcMock(
+  args: unknown,
+): Promise<StaffAssignmentTargets> {
+  lastStaffAssignmentTargetsArgs = args;
+  if (
+    typeof args !== "object" ||
+    args === null ||
+    typeof (args as Record<string, unknown>).expectedSaveContextToken !==
+      "string" ||
+    !Array.isArray((args as Record<string, unknown>).targets)
+  ) {
+    return Promise.reject(new Error("Invalid assignment target request"));
+  }
+  if (staffAssignmentTargetsMode === "error") {
+    return Promise.reject(new Error("Could not save assignment targets"));
+  }
+  const requested = new Map(
+    (
+      (
+        args as {
+          targets: { scope: string; jobId: string; slotCount: number }[];
+        }
+      ).targets ?? []
+    ).map((target) => [`${target.scope}:${target.jobId}`, target.slotCount]),
+  );
+  staffAssignmentTargets = {
+    ...staffAssignmentTargets,
+    targets: staffAssignmentTargets.targets.map((target) => ({
+      ...target,
+      slotCount:
+        requested.get(`${target.scope}:${target.jobId}`) ?? target.slotCount,
+    })),
+  };
+  if (staffAssignmentTargetsMode === "pending") {
+    if (!pendingStaffAssignmentTargets) {
+      let resolve!: (result: StaffAssignmentTargets) => void;
+      const promise = new Promise<StaffAssignmentTargets>((next) => {
+        resolve = next;
+      });
+      pendingStaffAssignmentTargets = { promise, resolve };
+    }
+    return pendingStaffAssignmentTargets.promise;
+  }
+  return Promise.resolve(structuredClone(staffAssignmentTargets));
 }
 
 export function resolveSearchStaffIpcMock(args: unknown): StaffPage {

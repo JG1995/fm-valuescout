@@ -75,9 +75,11 @@ import {
   staffMyStaffQueryOptions,
   staffShortlistQueryOptions,
 } from "@/features/staff/api/staff-query-options";
+import { StaffAssignmentTargetModal } from "@/features/staff/components/staff-assignment-target-modal";
 import { StaffSearchResultsPanel } from "@/features/staff/components/staff-search-results-panel";
 import type { StaffShortlistImportSummary } from "@/features/staff/components/staff-shortlist-import-modal";
 import { StaffShortlistImportModal } from "@/features/staff/components/staff-shortlist-import-modal";
+import type { StaffAssignmentContext } from "@/features/staff/types/staff-assignment";
 import type {
   StaffSortDir,
   StaffSortField,
@@ -475,7 +477,18 @@ function MyClubPageContent() {
   const [shortlistImport, setShortlistImport] = useState<
     { contextKey: string; summary: StaffShortlistImportSummary } | undefined
   >();
-  const shortlistContextKey = `${snapshot?.saveId ?? "none"}:${snapshot?.id ?? "none"}`;
+  const [shortlistImportRevision, setShortlistImportRevision] = useState(0);
+  const shortlistContextKey = `${activeSave?.id ?? "none"}:${activeSave?.contextToken ?? "none"}:${snapshot?.saveId ?? "none"}:${snapshot?.id ?? "none"}:${snapshot?.contextToken ?? "none"}`;
+  const staffAssignmentContext: StaffAssignmentContext | null =
+    activeSave && snapshot && activeSave.id === snapshot.saveId
+      ? {
+          saveId: activeSave.id,
+          saveContextToken: activeSave.contextToken,
+          snapshotId: snapshot.id,
+          snapshotContextToken: snapshot.contextToken,
+        }
+      : null;
+  const staffAssignmentContextKey = `${shortlistContextKey}:${managedClub.clubName ?? "none"}:${depth.teams.map((team) => `${team.team}:${team.displayName}`).join("|")}:${shortlistImportRevision}`;
   const squadCurrentAbilityBoostContextIsCurrent =
     squadCurrentAbilityBoost.variables?.snapshotId === snapshot?.id;
   const squadWonderkidMentalityBoostContextIsCurrent =
@@ -596,6 +609,7 @@ function MyClubPageContent() {
     await queryClient.invalidateQueries({ queryKey: staffKeys.all });
     await updateStaffSearch({ preferredJob: "", unemployedOnly: false });
     setShortlistImport({ contextKey: shortlistContextKey, summary });
+    setShortlistImportRevision((revision) => revision + 1);
   };
   const onStaffBoostSuccess = () =>
     queryClient.invalidateQueries({ queryKey: snapshotKeys.all });
@@ -855,6 +869,8 @@ function MyClubPageContent() {
           <MyClubStaffShortlistWorkspace
             activeSaveId={snapshot.saveId}
             snapshotId={snapshot.id}
+            assignmentContext={staffAssignmentContext}
+            assignmentContextKey={staffAssignmentContextKey}
             shortlistContextKey={shortlistContextKey}
             shortlistImport={shortlistImport}
             preferredJob={search.preferredJob}
@@ -892,6 +908,8 @@ function StaffWorkspaceFallback() {
 function MyClubStaffShortlistWorkspace({
   activeSaveId,
   snapshotId,
+  assignmentContext,
+  assignmentContextKey,
   shortlistContextKey,
   shortlistImport,
   preferredJob,
@@ -907,6 +925,8 @@ function MyClubStaffShortlistWorkspace({
 }: {
   activeSaveId: number;
   snapshotId: number;
+  assignmentContext: StaffAssignmentContext | null;
+  assignmentContextKey: string;
   shortlistContextKey: string;
   shortlistImport?: {
     contextKey: string;
@@ -932,6 +952,12 @@ function MyClubStaffShortlistWorkspace({
     <div className="flex min-h-0 flex-1 flex-col gap-gutter">
       <div className="flex flex-wrap items-center gap-4 rounded-lg border border-outline-variant bg-surface-container px-4 py-3">
         <Button onClick={() => setImportOpen(true)}>Upload CSV</Button>
+        {assignmentContext ? (
+          <StaffAssignmentTargetModal
+            context={assignmentContext}
+            contextKey={assignmentContextKey}
+          />
+        ) : null}
         <label className="flex items-center gap-2 text-body-md text-on-surface">
           Preferred Job
           <select

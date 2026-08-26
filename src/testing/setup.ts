@@ -107,9 +107,11 @@ import {
   resetStaffIpcMock,
   resolveBoostMyStaffCurrentAbilityIpcMock,
   resolveBoostStaffCurrentAbilityIpcMock,
+  resolveGetStaffAssignmentTargetsIpcMock,
   resolveGetStaffIpcMock,
   resolveListMyStaffIpcMock,
   resolveListStaffShortlistIpcMock,
+  resolveSaveStaffAssignmentTargetsIpcMock,
   resolveSearchStaffIpcMock,
 } from "@/testing/staff-ipc-mock";
 
@@ -189,6 +191,14 @@ function registerIpcMocks() {
 
     if (cmd === "list_staff_shortlist") {
       return resolveListStaffShortlistIpcMock(args);
+    }
+
+    if (cmd === "get_staff_assignment_targets") {
+      return resolveGetStaffAssignmentTargetsIpcMock(args);
+    }
+
+    if (cmd === "save_staff_assignment_targets") {
+      return resolveSaveStaffAssignmentTargetsIpcMock(args);
     }
 
     if (cmd === "get_staff") {

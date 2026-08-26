@@ -395,7 +395,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 #### Commit 4 — Expose current-context recommendations
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): expose assignment recommendations`
 
@@ -465,7 +465,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 #### Commit 5 — Configure assignment slots in My Club
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): configure assignment slots`
 
@@ -679,19 +679,19 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 **PR:** PR 1 — Optimize staff assignments from the Shortlist
 
-**Commit:** Commit 4 — Expose current-context recommendations
+**Commit:** Commit 5 — Configure assignment slots in My Club
 
 ### RED or removal proof
 
-Add focused snapshot DTO and temporary-SQLite optimizer-query tests for immutable context tokens, forced snapshot-ID reuse, setup-state distinctions, exact shortlist/current-snapshot joins, persisted-score null handling, managed-club classification, bounded output, and read-only command serialization. Confirm they fail because no current-context optimizer command exists and current-snapshot summaries omit their token.
+Add focused frontend tests that require snapshot and Load Data context tokens, reject equal numeric snapshot IDs with different tokens, exercise typed target IPC, and render an accessible complete target form in Staff Shortlist. Confirm they fail because frontend snapshot contracts and slot configuration do not exist.
 
 ### Expected outcome
 
-Rust exposes the immutable snapshot token and a bounded read-only optimizer command that validates save and snapshot context, joins only the active save’s current Shortlist staff, preserves unavailable scores, classifies exact club membership, invokes the pure allocator, and returns explicit setup or ready states.
+Staff Shortlist exposes an accessible Configure slots Modal backed by typed target Query/mutation APIs. It renders Rust-provided team names and allowed pairs, submits one complete 0-through-50 entry per pair with immutable save context, and resets safely when route context tokens or other context inputs change.
 
 ### Explicit exclusions
 
-Frontend controls or types, route composition, result layout, browser stubs, score recomputation, recommendation persistence, current-state documentation, and shortlist import changes.
+Optimize action, recommendation results, frontend allocation or catalog invention, global state, new routes, optimizer browser commands, current-state documentation, and unrelated My Club changes.
 
 ## Discoveries and replanning
 
@@ -707,6 +707,7 @@ Frontend controls or types, route composition, result layout, browser stubs, sco
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Optimize staff assignments from the Shortlist | Commit 4 — Expose current-context recommendations | c85dde0702320744812f3a78472c18baf47effb1 | Added snapshot context-token summaries and a bounded token-guarded read-only optimizer query/IPC command over current Shortlist staff and persisted scores. | `check-rust` passed (661 passed, 2 ignored); `check`, Rust LSP, and staged whitespace checks passed. | Pass | Clear | 0 | None |
 | PR 1 — Optimize staff assignments from the Shortlist | Commit 3 — Allocate canonical staff job groups | a70ec914fdd61e224a2fea7e387570fa1d3a0108 | Added the pure exact-label allocator with Coach discipline selection, deterministic one-duty allocation, vacancies, and bounded evidence. | `check-rust` passed (655 passed, 2 ignored); `check`, Rust LSP, and staged whitespace checks passed. | Accepted gap — production behavior is covered at representative seams; developer declined broader exhaustive mapping, tie-order, and multi-job ordering tests. | Accepted findings — reviewer found no functional defect; developer directed review to skip test-depth expansion. | 0 | None |
 | PR 1 — Optimize staff assignments from the Shortlist | Commit 2 — Persist staff assignment targets | fd3de72af2c5d49e88cff83b86f49383afe7a84a | Added migration v35, token-bound exact target replacement, bounded team display data, combined Planner removal impact, and confirmed atomic cleanup. | Focused route tests passed (128); `check-rust` passed (648 passed, 2 ignored); smoke passed (49); `check` and staged whitespace checks passed. | Pass | Clear | 1 | None |
 | PR 1 — Optimize staff assignments from the Shortlist | Commit 1 — Record the approved feature plan | 1e526f810b7a63a8b76c85c1a0839d22e9fabea4 | Recorded the reviewed schema-2 ledger and TODO activation on the authorized branch. | `ledger_state.py`, `delivery_state.py`, staged whitespace checks, and the pre-commit gate passed. | Not applicable | Accepted findings — developer directed reviews to fix functional issues only; retained one non-functional stale active-work sentence to preserve the accepted fingerprint. | 0 | None |
