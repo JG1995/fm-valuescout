@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -184,7 +184,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 **Required checks:** strict required GitHub Actions `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -698,7 +698,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Optimize staff assignments from the Shortlist | Commit 7 — Prove the browser assignment workflow | Pending record | Added a contract-shaped browser IPC fixture and one assembled Staff Shortlist configuration, recommendation, vacancy, viewport, and context-reset workflow. | Local and CI-serial smoke passed (50); full Vitest passed (651); `check` passed (Rust 661 passed, 2 ignored); e2e LSP and staged whitespace checks passed. | Pass | Clear | 1 | None |
+| PR 1 — Optimize staff assignments from the Shortlist | Commit 7 — Prove the browser assignment workflow | a1c251cd8757ba5ff6abc77674fa612f9facd981 | Added a contract-shaped browser IPC fixture and one assembled Staff Shortlist configuration, recommendation, vacancy, viewport, and context-reset workflow. | Local and CI-serial smoke passed (50); full Vitest passed (653 after corrections); `check` passed (Rust 661 passed, 2 ignored); e2e LSP and staged whitespace checks passed. | Pass | Clear | 1 | None |
 | PR 1 — Optimize staff assignments from the Shortlist | Commit 6 — Present assignment recommendations | e5519ead8051b8ddfef69d8ae885b239c8534de6 | Added generation-safe token-bound optimization, Rust-provided scope display labels, pending-context suppression, and accessible recommendation/vacancy presentation. | Focused Vitest passed (148); `check-rust` passed (661 passed, 2 ignored); `check`, changed-path LSP, and staged whitespace checks passed. | Accepted gap — functional stale-result guards are implemented; developer declined further asynchronous test synchronization. | Accepted findings — reviewer confirmed functional fixes and retained only test synchronization. | 1 | Replanned Commit 6 DTO and request-generation scope after functional review; accepted revised Delivery fingerprint. |
 | PR 1 — Optimize staff assignments from the Shortlist | Commit 5 — Configure assignment slots in My Club | 15c508931ba97482e6e962e121eda0c97501b85f | Added token-aware frontend snapshot contracts, typed target Query APIs, and an accessible context-safe Configure slots Modal in Staff Shortlist. | Focused Vitest passed (137 tests); `check`, TypeScript LSP, and staged whitespace checks passed. | Pass | Clear | 1 | None |
 | PR 1 — Optimize staff assignments from the Shortlist | Commit 4 — Expose current-context recommendations | c85dde0702320744812f3a78472c18baf47effb1 | Added snapshot context-token summaries and a bounded token-guarded read-only optimizer query/IPC command over current Shortlist staff and persisted scores. | `check-rust` passed (661 passed, 2 ignored); `check`, Rust LSP, and staged whitespace checks passed. | Pass | Clear | 0 | None |
@@ -733,4 +733,20 @@ If the native environment or representative save is unavailable, report those ch
 
 ## Documentation impact
 
-Complete during reconciliation. Expected owners are `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, `.wiki/TODO.md`, and the completed feature record only after implementation makes the behavior current. No ADR or debug report is currently warranted.
+Reconciled in `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, and `.wiki/TODO.md`. This completed ledger is the delivery record. No ADR or debug report is warranted.
+
+## Close-out
+
+**Feature review:** Clear after correction round 1. Feature correction commit `359d3b0ff32fba21a2b6df0c4e5581f29865b8c9` preserves nullable recommendation names through Rust and TypeScript so missing names render as `—`, and binds target-save pending completion to the current context and request generation so an older save cannot re-enable optimization while a newer save remains unresolved. Focused regression proofs cover both defects.
+
+**Documentation reconciliation:** Complete; architecture, design, and TODO now describe the implemented behavior.
+
+**Automated validation:** `./scripts/dev test` passed 653 frontend tests; `./scripts/dev check` passed with 661 Rust tests and 2 ignored; and `./scripts/dev smoke` passed 50 browser tests.
+
+**Native representative-save manual pass:** Unavailable; native Tauri/WebView focus, real-save persistence, and assembled IPC behavior remain unverified.
+
+**Mutation testing:** Unsupported; no mutation command is configured.
+
+**Accepted test-depth gaps:** Direct branch coverage is absent for duplicate, unknown/extra, disabled-team, and out-of-range target-validator inputs; composite target-key uniqueness; combined assignment-and-target removal and zero-impact/no-confirmation service cases; exhaustive allocator mapping, Coach tie-order, and multi-job ordering; and additional asynchronous synchronization. Browser smoke remains stub-backed and does not prove Rust or SQLite behavior.
+
+**Publication state:** Ready for publication; PR is not published and no merge ref exists.

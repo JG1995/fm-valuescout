@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- [Optimize club staff assignments by role](./features/active/staff-assignment-optimizer.md) — configure save-scoped role targets and recommend current Staff Shortlist assignments and vacancies without changing FM data (Linear JAY-16).
+None.
 
 ## Next
 
