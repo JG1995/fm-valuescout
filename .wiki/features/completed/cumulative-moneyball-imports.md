@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -145,7 +145,7 @@ Import players A and B into the current snapshot, then import changed A and new 
 
 **Required checks:** GitHub strict required status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -415,17 +415,17 @@ Import players A and B into the current snapshot, then import changed A and new 
 
 **PR:** PR 1 — Make Moneyball imports cumulative
 
-**Active work:** None — feature validation
+**Active work:** None — documentation close-out
 
-**Commit:** None — feature validation
+**Commit:** None — documentation close-out
 
 ### RED or removal proof
 
-Not applicable — all three planned packets completed deterministic validation and independent checkpoint review. Feature-level validation and review remain pending.
+Not applicable — all three planned packets, full feature validation, feature review, and documentation reconciliation are complete. The reviewed close-out is ready for final PR publication.
 
 ### Expected outcome
 
-Run the complete feature validation portfolio, review the exact recorded implementation set, reconcile current-state documentation, and prepare the final PR for publication.
+The reviewed close-out is ready for final PR publication.
 
 ### Explicit exclusions
 
@@ -438,6 +438,8 @@ Run the complete feature validation portfolio, review the exact recorded impleme
 - Planning confirmed that Full CSV Search reads persisted complete-cohort percentiles. Player Profile uses persisted rows only for scored-cohort readiness and membership, reads raw statistics, and recalculates metric percentiles and role scores over natural-position peers at read time. Consumer production queries stay unchanged.
 - Planning confirmed that the 1,000-player cap is per file. The cumulative cohort is bounded only by current-snapshot membership, and the approved synchronous atomic recomputation contract applies to the complete resulting cohort. A total cohort limit, background job, or non-atomic recomputation requires a developer decision and replanning.
 - Planning selected one PR because the persistence and UI commits are atomic and ordered but share one feature review surface; no risky foundation or independently publishable seam requires a second PR.
+- Feature close-out passed `./scripts/dev test`, `./scripts/dev check-rust` (641 passed, 2 ignored), `./scripts/dev check`, and `./scripts/dev smoke` (49 passed); focused frontend tests passed 187 tests. Independent feature review found no CRITICAL, HIGH, or MEDIUM findings, rated the test portfolio Pass and project fit Conforms, and retained one non-blocking NITPICK for the unused `pendingMoneyballCohort` test-mock mode.
+- Native Windows/Tauri picker and WebView drop, packaged IPC, focus restoration at 1280×800 and 1600×900, a representative overlapping Search/Squad export, native pending context replacement, real application SQLite restart, and representative cumulative-cohort timing were unavailable and remain explicit manual validation gaps.
 
 ## Completed work
 
@@ -445,7 +447,7 @@ Run the complete feature validation portfolio, review the exact recorded impleme
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Make Moneyball imports cumulative | Commit 1 — Record the approved feature plan | fd37d2fa2c159f10c4a6507dac861d97e7b76a1f | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
 | PR 1 — Make Moneyball imports cumulative | Commit 2 — Upsert cumulative Moneyball cohorts | 3d9d94362555097e0dd0663a2d41d50da41f9013 | Replaced destructive cohort replacement with per-player upserts, write-free empty matches, and atomic complete-cohort percentile recomputation while preserving current-snapshot ownership and rollback. | `./scripts/dev check-rust`: 641 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
-| PR 1 — Make Moneyball imports cumulative | Commit 3 — Upload cumulative Moneyball data from Squad | Pending record | Added the shared Moneyball upload action to My Club Squad, route-owned Search/Profile invalidation, stable cumulative copy, and removed obsolete whole-cohort replacement UI state. | Focused frontend tests: 187 passed; `./scripts/dev check`: passed with 641 Rust tests passed and 2 ignored; `./scripts/dev smoke`: 49 passed; `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
+| PR 1 — Make Moneyball imports cumulative | Commit 3 — Upload cumulative Moneyball data from Squad | 58035e4de0f53c2f52f5a0169f7c8124893ef9b7 | Added the shared Moneyball upload action to My Club Squad, route-owned Search/Profile invalidation, stable cumulative copy, and removed obsolete whole-cohort replacement UI state. | Focused frontend tests: 187 passed; `./scripts/dev check`: passed with 641 Rust tests passed and 2 ignored; `./scripts/dev smoke`: 49 passed; `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
 
 ## Final validation
 
@@ -470,4 +472,6 @@ Manual/native evidence target:
 
 ## Documentation impact
 
-Complete during reconciliation. Expected current-state owners are `.wiki/ARCHITECTURE.md`, `.wiki/CONCEPT.md`, `.wiki/DESIGN.md`, `.wiki/TODO.md`, and this ledger's move to `.wiki/features/completed/`; those paths are not authorized in the planning diff beyond the current TODO activation.
+Reconciliation complete: `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, and `.wiki/TODO.md` now describe the implemented cumulative import behavior and upload ownership. `.wiki/CONCEPT.md` requires no change. No ADR or debug report is warranted: the feature extends the existing snapshot-owned table, transaction boundary, and route-owned invalidation seams. The orchestrator must move this complete ledger to `.wiki/features/completed/cumulative-moneyball-imports.md` after inspection.
+
+Active work is none; documentation close-out is complete. Preserve the accepted Delivery fingerprint and PR status: Ready for publication / PR ref Not published / merge ref Not merged.
