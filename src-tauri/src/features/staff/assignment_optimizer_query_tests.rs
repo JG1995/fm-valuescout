@@ -54,6 +54,10 @@ fn configure_managed_club(conn: &Connection) {
 }
 
 fn insert_staff(conn: &Connection, uid: i64, name: &str, club: Option<&str>) {
+    insert_staff_with_name(conn, uid, Some(name), club);
+}
+
+fn insert_staff_with_name(conn: &Connection, uid: i64, name: Option<&str>, club: Option<&str>) {
     conn.execute(
         "INSERT INTO staff (
              snapshot_id, uid, name, age, nationalities_json, gender, ca, pa,
@@ -166,7 +170,7 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
              (1, 'senior', 'First Team'),
              (1, 'reserves', 'Reserves');
          INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
-             (1, 'senior', 'assistant_manager', 1),
+             (1, 'senior', 'assistant_manager', 2),
              (1, 'senior', 'coaches', 1),
              (1, 'senior', 'head_physio', 1),
              (1, 'reserves', 'manager', 1),
@@ -185,6 +189,7 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
     insert_staff(&conn, 8, "Manager", Some("Club A"));
     insert_staff(&conn, 9, "Head physio", Some("Club A"));
     insert_staff(&conn, 10, "Head sports science", Some("Club A"));
+    insert_staff_with_name(&conn, 11, None, Some("Club A"));
     shortlist(&conn, 1, "Assistant Manager", "-");
     shortlist(&conn, 3, "Chief Scout", "Current");
     shortlist(&conn, 4, "Coach", "-");
@@ -194,6 +199,7 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
     shortlist(&conn, 8, "Manager", "-");
     shortlist(&conn, 9, "Head Physio", "-");
     shortlist(&conn, 10, "Head of Sports Science", "-");
+    shortlist(&conn, 11, "Assistant Manager", "-");
     conn.execute_batch(
         "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score) VALUES
              (1, 1, 'assistant_manager', 72),
@@ -204,7 +210,8 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
              (1, 6, 'coach_attacking_technical', NULL),
              (1, 8, 'manager', 81),
              (1, 9, 'physio', 82),
-             (1, 10, 'sports_scientist', 84);",
+             (1, 10, 'sports_scientist', 84),
+             (1, 11, 'assistant_manager', 73);",
     )
     .expect("insert persisted scores");
 
@@ -212,8 +219,8 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
         .expect("optimize shortlist");
 
     assert_eq!(result.state, StaffAssignmentOptimizationState::Ready);
-    assert_eq!(result.joined_candidate_count, 9);
-    assert_eq!(result.configured_slot_count, 6);
+    assert_eq!(result.joined_candidate_count, 10);
+    assert_eq!(result.configured_slot_count, 7);
     assert_eq!(result.unsupported_preferred_job_count, 1);
     assert!(result.slots.iter().any(|slot| matches!(
         &slot.slot,
@@ -229,6 +236,11 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
                 && recommendation.classification == StaffAssignmentClassification::CurrentStaff
                 && recommendation.score == 90
                 && recommendation.coach_discipline == Some(CoachDiscipline::PossessionTactical)
+    )));
+    assert!(result.slots.iter().any(|slot| matches!(
+        &slot.slot,
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 11 && recommendation.name.is_none()
     )));
     assert!(result.slots.iter().any(|slot| matches!(
         &slot.slot,

@@ -78,6 +78,7 @@ export function StaffAssignmentOptimizer({
   const previousContextKey = useRef(contextKey);
   const previousContextUnavailable = useRef(contextUnavailable);
   const requestGeneration = useRef(0);
+  const [targetSavePending, setTargetSavePending] = useState(false);
   const [result, setResult] = useState<PresentedResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   currentContext.current = context;
@@ -144,13 +145,14 @@ export function StaffAssignmentOptimizer({
           contextKey={contextKey}
           onSaved={resetOutcome}
           onPendingChange={(pending) => {
+            setTargetSavePending(pending);
             if (pending) {
               resetOutcome();
             }
           }}
         />
         <Button
-          disabled={contextUnavailable}
+          disabled={contextUnavailable || targetSavePending}
           loading={optimize.isPending}
           loadingLabel="Optimizing…"
           onClick={() => {

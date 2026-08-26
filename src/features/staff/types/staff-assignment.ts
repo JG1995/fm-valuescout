@@ -46,7 +46,7 @@ export type StaffAssignmentRecommendation = {
   jobLabel: string;
   slotNumber: number;
   uid: number;
-  name: string;
+  name: string | null;
   preferredJob: string;
   classification: "current_staff" | "recruitment";
   score: number;

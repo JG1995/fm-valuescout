@@ -48,7 +48,7 @@ let lastStaffAssignmentTargetsArgs: unknown;
 let pendingStaffAssignmentTargets: {
   promise: Promise<StaffAssignmentTargets>;
   resolve: (result: StaffAssignmentTargets) => void;
-} | null = null;
+}[] = [];
 let staffAssignmentOptimization: StaffAssignmentOptimization;
 let staffAssignmentOptimizerMode: StaffAssignmentOptimizerIpcMockMode =
   "success";
@@ -251,15 +251,13 @@ export function setStaffAssignmentTargetsIpcMockMode(
 ) {
   staffAssignmentTargetsMode = mode;
   if (mode !== "pending") {
-    pendingStaffAssignmentTargets = null;
+    pendingStaffAssignmentTargets = [];
   }
 }
 
 export function resolvePendingStaffAssignmentTargetsIpcMock() {
-  pendingStaffAssignmentTargets?.resolve(
-    structuredClone(staffAssignmentTargets),
-  );
-  pendingStaffAssignmentTargets = null;
+  const pending = pendingStaffAssignmentTargets.shift();
+  pending?.resolve(structuredClone(staffAssignmentTargets));
 }
 
 export function fixtureStaff(
@@ -329,7 +327,7 @@ export function resetStaffIpcMock() {
   staffAssignmentTargets = fixtureStaffAssignmentTargets();
   staffAssignmentTargetsMode = "success";
   lastStaffAssignmentTargetsArgs = undefined;
-  pendingStaffAssignmentTargets = null;
+  pendingStaffAssignmentTargets = [];
   staffAssignmentOptimization = fixtureStaffAssignmentOptimization();
   staffAssignmentOptimizerMode = "success";
   lastStaffAssignmentOptimizerArgs = undefined;
@@ -586,14 +584,12 @@ export function resolveSaveStaffAssignmentTargetsIpcMock(
     })),
   };
   if (staffAssignmentTargetsMode === "pending") {
-    if (!pendingStaffAssignmentTargets) {
-      let resolve!: (result: StaffAssignmentTargets) => void;
-      const promise = new Promise<StaffAssignmentTargets>((next) => {
-        resolve = next;
-      });
-      pendingStaffAssignmentTargets = { promise, resolve };
-    }
-    return pendingStaffAssignmentTargets.promise;
+    let resolve!: (result: StaffAssignmentTargets) => void;
+    const promise = new Promise<StaffAssignmentTargets>((next) => {
+      resolve = next;
+    });
+    pendingStaffAssignmentTargets.push({ promise, resolve });
+    return promise;
   }
   return Promise.resolve(structuredClone(staffAssignmentTargets));
 }

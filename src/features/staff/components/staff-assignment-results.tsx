@@ -72,9 +72,9 @@ export function StaffAssignmentResults({
                     <>
                       <td
                         className="max-w-48 truncate px-2 py-2"
-                        title={slot.name}
+                        title={slot.name ?? undefined}
                       >
-                        {slot.name}
+                        {slot.name ?? "—"}
                       </td>
                       <td className="px-2 py-2">
                         {slot.classification === "current_staff"

@@ -20,7 +20,7 @@ fn candidate(
 ) -> StaffAssignmentCandidate {
     StaffAssignmentCandidate {
         uid,
-        name: format!("Staff {uid}"),
+        name: Some(format!("Staff {uid}")),
         preferred_job: preferred_job.to_string(),
         classification: StaffAssignmentClassification::Recruitment,
         scores,

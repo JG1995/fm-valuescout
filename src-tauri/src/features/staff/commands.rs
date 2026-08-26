@@ -334,7 +334,7 @@ pub enum StaffAssignmentSlotDto {
         job_label: String,
         slot_number: i64,
         uid: i64,
-        name: String,
+        name: Option<String>,
         preferred_job: String,
         classification: &'static str,
         score: u8,
@@ -1061,19 +1061,34 @@ mod tests {
             joined_candidate_count: 2,
             configured_slot_count: 1,
             unsupported_preferred_job_count: 1,
-            slots: vec![StaffAssignmentSlotDto::Vacancy {
-                scope: "senior".to_string(),
-                scope_display_name: "First Team".to_string(),
-                job_id: "assistant_manager".to_string(),
-                job_label: "Assistant Manager".to_string(),
-                slot_number: 1,
-                evidence: StaffAssignmentEvidenceDto {
+            slots: vec![
+                StaffAssignmentSlotDto::Recommendation {
+                    scope: "senior".to_string(),
+                    scope_display_name: "First Team".to_string(),
                     job_id: "assistant_manager".to_string(),
-                    joined_candidate_count: 2,
-                    eligible_score_count: 0,
-                    unavailable_score_count: 2,
+                    job_label: "Assistant Manager".to_string(),
+                    slot_number: 1,
+                    uid: 7,
+                    name: None,
+                    preferred_job: "Assistant Manager".to_string(),
+                    classification: "current_staff",
+                    score: 82,
+                    coach_discipline: None,
                 },
-            }],
+                StaffAssignmentSlotDto::Vacancy {
+                    scope: "senior".to_string(),
+                    scope_display_name: "First Team".to_string(),
+                    job_id: "assistant_manager".to_string(),
+                    job_label: "Assistant Manager".to_string(),
+                    slot_number: 1,
+                    evidence: StaffAssignmentEvidenceDto {
+                        job_id: "assistant_manager".to_string(),
+                        joined_candidate_count: 2,
+                        eligible_score_count: 0,
+                        unavailable_score_count: 2,
+                    },
+                },
+            ],
             evidence: vec![StaffAssignmentEvidenceDto {
                 job_id: "assistant_manager".to_string(),
                 joined_candidate_count: 2,
@@ -1089,10 +1104,12 @@ mod tests {
         assert_eq!(value["joinedCandidateCount"], 2);
         assert_eq!(value["configuredSlotCount"], 1);
         assert_eq!(value["unsupportedPreferredJobCount"], 1);
-        assert_eq!(value["slots"][0]["kind"], "vacancy");
+        assert_eq!(value["slots"][0]["kind"], "recommendation");
+        assert!(value["slots"][0]["name"].is_null());
         assert_eq!(value["slots"][0]["scopeDisplayName"], "First Team");
         assert_eq!(value["slots"][0]["slotNumber"], 1);
-        assert_eq!(value["slots"][0]["evidence"]["unavailableScoreCount"], 2);
+        assert_eq!(value["slots"][1]["kind"], "vacancy");
+        assert_eq!(value["slots"][1]["evidence"]["unavailableScoreCount"], 2);
     }
 
     #[test]

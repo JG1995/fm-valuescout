@@ -81,7 +81,7 @@ pub(super) struct StaffAssignmentScoreSet {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct StaffAssignmentCandidate {
     pub(super) uid: i64,
-    pub(super) name: String,
+    pub(super) name: Option<String>,
     pub(super) preferred_job: String,
     pub(super) classification: StaffAssignmentClassification,
     pub(super) scores: StaffAssignmentScoreSet,
@@ -102,7 +102,7 @@ pub(super) struct StaffAssignmentRecommendation {
     pub(super) job_label: String,
     pub(super) slot_number: i64,
     pub(super) uid: i64,
-    pub(super) name: String,
+    pub(super) name: Option<String>,
     pub(super) preferred_job: String,
     pub(super) classification: StaffAssignmentClassification,
     pub(super) score: u8,

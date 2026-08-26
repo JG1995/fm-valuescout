@@ -304,7 +304,7 @@ fn load_candidates(
         {
             candidates.push(StaffAssignmentCandidate {
                 uid,
-                name: name.unwrap_or_default(),
+                name,
                 preferred_job,
                 classification: if club.as_deref() == Some(managed_club) {
                     StaffAssignmentClassification::CurrentStaff

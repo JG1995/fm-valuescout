@@ -15,6 +15,13 @@ type DraftTarget = Pick<StaffAssignmentTarget, "scope" | "jobId"> & {
   slotCount: string;
 };
 
+type SaveTargetRequest = {
+  contextKey: string;
+  generation: number;
+  saveContextToken: string;
+  targets: StaffAssignmentTargetInput[];
+};
+
 type StaffAssignmentTargetModalProps = {
   context: StaffAssignmentContext;
   contextKey: string;
@@ -63,23 +70,33 @@ export function StaffAssignmentTargetModal({
   const [saved, setSaved] = useState(false);
   const currentContextKey = useRef(contextKey);
   const previousContextKey = useRef(contextKey);
+  const requestGeneration = useRef(0);
   currentContextKey.current = contextKey;
 
+  const isCurrentRequest = (request: SaveTargetRequest) =>
+    request.contextKey === currentContextKey.current &&
+    request.generation === requestGeneration.current;
+
   const saveTargets = useMutation({
-    onMutate: () => {
-      onPendingChange?.(true);
+    onMutate: (request: SaveTargetRequest) => {
+      if (isCurrentRequest(request)) {
+        onPendingChange?.(true);
+      }
     },
-    mutationFn: (targets: StaffAssignmentTargetInput[]) =>
-      saveStaffAssignmentTargets(context.saveContextToken, targets),
-    onSuccess: async (result) => {
-      if (currentContextKey.current !== contextKey) {
+    mutationFn: ({ saveContextToken, targets }: SaveTargetRequest) =>
+      saveStaffAssignmentTargets(saveContextToken, targets),
+    onSuccess: async (result, request) => {
+      if (!isCurrentRequest(request)) {
         return;
       }
-      queryClient.setQueryData(staffKeys.assignmentTargets(contextKey), result);
+      queryClient.setQueryData(
+        staffKeys.assignmentTargets(request.contextKey),
+        result,
+      );
       await queryClient.invalidateQueries({
-        queryKey: staffKeys.assignmentTargets(contextKey),
+        queryKey: staffKeys.assignmentTargets(request.contextKey),
       });
-      if (currentContextKey.current !== contextKey) {
+      if (!isCurrentRequest(request)) {
         return;
       }
       setSaved(true);
@@ -87,8 +104,10 @@ export function StaffAssignmentTargetModal({
       setDraft([]);
       onSaved?.();
     },
-    onSettled: () => {
-      onPendingChange?.(false);
+    onSettled: (_result, _error, request) => {
+      if (isCurrentRequest(request)) {
+        onPendingChange?.(false);
+      }
     },
   });
 
@@ -97,11 +116,13 @@ export function StaffAssignmentTargetModal({
       return;
     }
     previousContextKey.current = contextKey;
+    requestGeneration.current += 1;
+    onPendingChange?.(false);
     setOpen(false);
     setDraft([]);
     setSaved(false);
     saveTargets.reset();
-  }, [contextKey, saveTargets.reset]);
+  }, [contextKey, onPendingChange, saveTargets.reset]);
 
   const pending = saveTargets.isPending;
   const errors = new Map(
@@ -149,13 +170,16 @@ export function StaffAssignmentTargetModal({
     if (!canSave) {
       return;
     }
-    saveTargets.mutate(
-      draft.map(({ scope, jobId, slotCount }) => ({
+    saveTargets.mutate({
+      contextKey,
+      generation: requestGeneration.current,
+      saveContextToken: context.saveContextToken,
+      targets: draft.map(({ scope, jobId, slotCount }) => ({
         scope,
         jobId,
         slotCount: Number(slotCount),
       })),
-    );
+    });
   };
 
   const formError = saveTargets.isError

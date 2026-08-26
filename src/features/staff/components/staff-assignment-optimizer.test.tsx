@@ -128,6 +128,42 @@ describe("StaffAssignmentOptimizer", () => {
     expect(screen.getByText(/unsupported Preferred Job/i)).toBeInTheDocument();
   });
 
+  it("renders an em dash instead of a blank person when a recommendation name is missing", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [
+          {
+            kind: "recommendation",
+            scope: "senior",
+            scopeDisplayName: "First Team",
+            jobId: "assistant_manager",
+            jobLabel: "Assistant Manager",
+            slotNumber: 1,
+            uid: 101,
+            name: null,
+            preferredJob: "Assistant Manager",
+            classification: "current_staff",
+            score: 82,
+            coachDiscipline: null,
+          },
+        ],
+      }),
+    );
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+
+    const row = await screen.findByRole("row", {
+      name: /First Team.*Assistant Manager.*Slot 1/i,
+    });
+    const person = within(row).getByText("—");
+    expect(person).not.toHaveAttribute("title");
+    expect(within(row).queryByText("0")).not.toBeInTheDocument();
+  });
+
   it("suppresses a visible recommendation immediately while context is unavailable", async () => {
     const user = userEvent.setup();
     const { rerenderOptimizer } = renderOptimizer();
@@ -180,6 +216,52 @@ describe("StaffAssignmentOptimizer", () => {
       ).not.toBeInTheDocument(),
     );
     resolvePendingStaffAssignmentTargetsIpcMock();
+  });
+
+  it("keeps Optimize blocked when an old-context target save settles after a current one starts", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentTargetsIpcMockMode("pending");
+    const { rerenderOptimizer } = renderOptimizer();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Configure slots" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save slots" }));
+    expect(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    ).toBeDisabled();
+
+    rerenderOptimizer(false, "assignment-context-b", {
+      ...context,
+      snapshotContextToken: "snapshot-token-b",
+    });
+    await user.click(
+      await screen.findByRole("button", { name: "Configure slots" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Configure assignment slots",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save slots" }),
+    );
+
+    resolvePendingStaffAssignmentTargetsIpcMock();
+
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole("button", { name: "Saving…" }),
+      ).toBeDisabled(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    ).toBeDisabled();
+
+    resolvePendingStaffAssignmentTargetsIpcMock();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Optimize assignments" }),
+      ).not.toBeDisabled(),
+    );
   });
 
   it("rejects a response for a different immutable snapshot token", async () => {
