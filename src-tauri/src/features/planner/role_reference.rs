@@ -1,14 +1,13 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, params_from_iter, types::Value, Connection};
 
 use crate::features::{
     managed_club::service as managed_club_service,
-    scoring::{
-        catalog::{all_roles, RolePhase},
-        projection::project_attributes,
-        score::score_role,
+    player_metrics::potential_scores::{
+        assert_current_snapshot_complete, PROJECTION_MODEL_VERSION,
     },
+    scoring::catalog::{all_roles, RolePhase},
 };
 
 use super::{
@@ -97,11 +96,8 @@ struct PlayerInput {
     name: String,
     preferred_foot: String,
     positions: BTreeMap<String, Option<i64>>,
-    attributes: HashMap<String, Option<u8>>,
-    ca: i64,
-    pa: i64,
-    age: Option<i64>,
     role_scores: HashMap<String, Option<u8>>,
+    potential_role_scores: HashMap<String, Option<u8>>,
 }
 
 pub fn get_role_reference(
@@ -132,23 +128,18 @@ pub fn get_role_reference(
             Ok((lane, role, phase.position(lane)))
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let players = load_players(conn, snapshot_id, &club_name)?;
+    assert_current_snapshot_complete(conn, snapshot_id)?;
+    let role_ids = lane_roles
+        .iter()
+        .map(|(_, role, _)| role.role_id)
+        .collect::<BTreeSet<_>>();
+    let players = load_players(conn, snapshot_id, &club_name, &role_ids)?;
     let mut assigned = (0..tactic.lanes.len())
         .map(|_| Vec::new())
         .collect::<Vec<Vec<RoleReferencePlayer>>>();
     let mut no_eligible = Vec::new();
 
     for player in players {
-        let projected_attributes = project_attributes(
-            &player.attributes,
-            player.ca,
-            player.pa,
-            player.age,
-            player
-                .positions
-                .iter()
-                .map(|(position, familiarity)| (position.as_str(), *familiarity)),
-        );
         let mut best: Option<(usize, u8, RoleReferencePlayer)> = None;
 
         for (lane_index, (lane, role, position)) in lane_roles.iter().enumerate() {
@@ -161,7 +152,11 @@ pub fn get_role_reference(
                 &lane.foot_preference,
             );
             let potential_score = phase_fit_score(
-                score_role(&projected_attributes, role),
+                player
+                    .potential_role_scores
+                    .get(role.role_id)
+                    .copied()
+                    .flatten(),
                 &player.preferred_foot,
                 &player.positions,
                 position,
@@ -225,10 +220,11 @@ fn load_players(
     conn: &Connection,
     snapshot_id: i64,
     club_name: &str,
+    role_ids: &BTreeSet<&str>,
 ) -> Result<Vec<PlayerInput>, String> {
     let mut statement = conn
         .prepare(
-            "SELECT uid, name, preferred_foot, positions_json, attributes_json, ca, pa, age
+            "SELECT uid, name, preferred_foot, positions_json
              FROM players
              WHERE snapshot_id = ?1 AND current_club = ?2
              ORDER BY uid",
@@ -241,32 +237,22 @@ fn load_players(
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, i64>(5)?,
-                row.get::<_, i64>(6)?,
-                row.get::<_, Option<i64>>(7)?,
             ))
         })
         .map_err(|error| error.to_string())?
         .map(|row| {
-            let (player_uid, name, preferred_foot, positions_json, attributes_json, ca, pa, age) =
+            let (player_uid, name, preferred_foot, positions_json) =
                 row.map_err(|error| error.to_string())?;
             let positions = serde_json::from_str(&positions_json).map_err(|error| {
                 format!("Invalid positions_json for player {player_uid}: {error}")
-            })?;
-            let attributes = serde_json::from_str(&attributes_json).map_err(|error| {
-                format!("Invalid attributes_json for player {player_uid}: {error}")
             })?;
             Ok(PlayerInput {
                 player_uid,
                 name,
                 preferred_foot,
                 positions,
-                attributes,
-                ca,
-                pa,
-                age,
                 role_scores: HashMap::new(),
+                potential_role_scores: HashMap::new(),
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -276,17 +262,33 @@ fn load_players(
         .enumerate()
         .map(|(index, player)| (player.player_uid, index))
         .collect::<HashMap<_, _>>();
-    let mut score_statement = conn
-        .prepare(
-            "SELECT scores.uid, scores.role_id, scores.score
-             FROM player_role_scores scores
-             INNER JOIN players p
-               ON p.snapshot_id = scores.snapshot_id AND p.uid = scores.uid
-             WHERE scores.snapshot_id = ?1 AND p.current_club = ?2",
-        )
+    let current_role_placeholders = (3..role_ids.len() + 3)
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let current_score_sql = format!(
+        "SELECT scores.uid, scores.role_id, scores.score
+         FROM player_role_scores scores
+         INNER JOIN players p
+           ON p.snapshot_id = scores.snapshot_id AND p.uid = scores.uid
+         WHERE scores.snapshot_id = ?1
+           AND p.current_club = ?2
+           AND scores.role_id IN ({current_role_placeholders})"
+    );
+    let mut current_score_values = vec![
+        Value::Integer(snapshot_id),
+        Value::Text(club_name.to_string()),
+    ];
+    current_score_values.extend(
+        role_ids
+            .iter()
+            .map(|role_id| Value::Text((*role_id).to_string())),
+    );
+    let mut current_score_statement = conn
+        .prepare(&current_score_sql)
         .map_err(|error| error.to_string())?;
-    let score_rows = score_statement
-        .query_map(params![snapshot_id, club_name], |row| {
+    let current_score_rows = current_score_statement
+        .query_map(params_from_iter(current_score_values.iter()), |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
@@ -294,10 +296,53 @@ fn load_players(
             ))
         })
         .map_err(|error| error.to_string())?;
-    for row in score_rows {
+    for row in current_score_rows {
         let (player_uid, role_id, score) = row.map_err(|error| error.to_string())?;
         if let Some(index) = player_indices.get(&player_uid) {
             players[*index].role_scores.insert(role_id, score);
+        }
+    }
+
+    let potential_role_placeholders = (4..role_ids.len() + 4)
+        .map(|index| format!("?{index}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let potential_score_sql = format!(
+        "SELECT scores.uid, scores.role_id, scores.score
+         FROM player_potential_role_scores scores
+         INNER JOIN players p
+           ON p.snapshot_id = scores.snapshot_id AND p.uid = scores.uid
+         WHERE scores.snapshot_id = ?1
+           AND p.current_club = ?2
+           AND scores.projection_model_version = ?3
+           AND scores.role_id IN ({potential_role_placeholders})"
+    );
+    let mut potential_score_values = vec![
+        Value::Integer(snapshot_id),
+        Value::Text(club_name.to_string()),
+        Value::Integer(PROJECTION_MODEL_VERSION),
+    ];
+    potential_score_values.extend(
+        role_ids
+            .iter()
+            .map(|role_id| Value::Text((*role_id).to_string())),
+    );
+    let mut potential_score_statement = conn
+        .prepare(&potential_score_sql)
+        .map_err(|error| error.to_string())?;
+    let potential_score_rows = potential_score_statement
+        .query_map(params_from_iter(potential_score_values.iter()), |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<u8>>(2)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+    for row in potential_score_rows {
+        let (player_uid, role_id, score) = row.map_err(|error| error.to_string())?;
+        if let Some(index) = player_indices.get(&player_uid) {
+            players[*index].potential_role_scores.insert(role_id, score);
         }
     }
 

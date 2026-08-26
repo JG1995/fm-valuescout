@@ -238,6 +238,12 @@ pub(super) fn planner_potential_state(
 }
 
 pub(super) fn deny_potential_writes(conn: &Connection) {
+    conn.execute_batch(
+        "CREATE TRIGGER deny_potential_player_update
+         BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
+         BEGIN SELECT RAISE(ABORT, 'potential writes are forbidden'); END",
+    )
+    .expect("create potential player write trigger");
     for (name, operation) in [
         ("deny_potential_insert", "INSERT"),
         ("deny_potential_update", "UPDATE"),
@@ -247,7 +253,7 @@ pub(super) fn deny_potential_writes(conn: &Connection) {
             "CREATE TRIGGER {name} BEFORE {operation} ON player_potential_role_scores
              BEGIN SELECT RAISE(ABORT, 'potential writes are forbidden'); END"
         ))
-        .expect("create potential write trigger");
+        .expect("create potential score write trigger");
     }
 }
 

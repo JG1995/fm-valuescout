@@ -583,7 +583,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 #### Commit 7 — Read persisted Planner role reference scores
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(planner): read stored role reference potential`
 
@@ -644,7 +644,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 #### Commit 8 — Read persisted potential optimizer scores
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(planner): read stored optimizer potential`
 
@@ -901,19 +901,19 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **PR:** PR 1 — Precompute current-snapshot potential scoring
 
-**Commit:** Commit 7 — Read persisted Planner role reference scores
+**Commit:** Commit 8 — Read persisted potential optimizer scores
 
 ### RED or removal proof
 
-Add selected-basis role-reference tests whose stored potential tactic-role rows diverge from source projection. They must fail while the service still projects and scores each managed-club player. Add missing/wrong-version cases under write-denying triggers.
+Add an optimizer case where exact-version persisted potential tactic-role rows select a different candidate than source projection would. It must fail while potential candidates still project attributes. Add missing/wrong-version cases proving both bases fail before assignment mutation.
 
 ### Expected outcome
 
-Planner role reference asserts complete current potential state before loading players for either basis, then uses exact-version stored tactic-role scores while preserving phase fit, familiarity, preferred foot, lane ties, managed-club scope, and response ordering. Reads perform no projection, scoring, repair, or writes.
+Both optimizer bases preflight complete potential state before Planner setup or assignment transactions. Potential candidates load exact-version stored tactic-role rows and feed unchanged age, fit, foot, lane combination, matching, reservations, provenance, and tie logic without projection, repair, or writes outside the optimizer transaction.
 
 ### Explicit exclusions
 
-Assignment cells, optimizer candidates, tactic definitions, Search, Squad, formula changes, and `.wiki/features/completed/player-table-sort-performance.md`.
+Current optimizer input redesign, allocation/matcher changes, tactic persistence, role reference, Search, Squad, performance redesign, and `.wiki/features/completed/player-table-sort-performance.md`.
 
 ## Discoveries and replanning
 
@@ -940,7 +940,8 @@ Assignment cells, optimizer candidates, tactic definitions, Search, Squad, formu
 | PR 1 — Precompute current-snapshot potential scoring | Commit 3 — Maintain potential data across snapshot selection | 1de1e8540fb8c12886c72932655275f7a0f94b50 | Added selector-owned winner materialization and loser clearing, deletion-promotion/final-deletion lifecycle, write-free save switching, sparse source normalization with pre-projection domain validation, and eager-baseline-compatible lazy/boost tests. | `./scripts/dev check-rust`: 619 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 1 | Replanned after supported sparse maps and eager test baselines disproved the original packet assumptions; compatibility fixes preserved deferred lazy and boost behavior. |
 | PR 1 — Precompute current-snapshot potential scoring | Commit 4 — Recompute boosted player potential atomically | 556a2071f4f55a8e50fa3d6fca2591261e83426a | Replaced boost-time invalidation with post-update one-player projected-map and complete potential-role replacement inside the existing reconciliation transaction. | `./scripts/dev check-rust`: 621 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Updated one invalid Determination-zero fixture to nullable input under Commit 3's enforced source-domain contract; supported missing-value behavior remains covered. |
 | PR 1 — Precompute current-snapshot potential scoring | Commit 5 — Read persisted profile potential values | e8db28c8bf6372dc073d114b0d6c579084bb4d21 | Converted known-player profile reads to shared-invariant-guarded projected JSON and exact-version persisted potential rows, removing production read-time projection and scoring. | `./scripts/dev check-rust`: 626 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Materialized one Staff test fixture that inserts a player directly so its profile read satisfies the new invariant; production Staff behavior is unchanged. |
-| PR 1 — Precompute current-snapshot potential scoring | Commit 6 — Read persisted Planner assignment potential | Pending record | Converted assignment potential to exact-version stored IP/OOP rows and added pre-write potential preflight plus already-validated response loading for every depth-returning Planner mutation. | `./scripts/dev check-rust`: 634 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 1 | None. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 6 — Read persisted Planner assignment potential | 09a591be7d06eab5c8851186537c97b933c62915 | Converted assignment potential to exact-version stored IP/OOP rows and added pre-write potential preflight plus already-validated response loading for every depth-returning Planner mutation. | `./scripts/dev check-rust`: 634 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 1 | None. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 7 — Read persisted Planner role reference scores | Pending record | Converted Planner role reference to shared-invariant-guarded exact-version persisted potential tactic-role rows while preserving fit, lane, tie, and ordering behavior. | `./scripts/dev check-rust`: 636 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Extended the shared Planner no-write trigger helper to projected player fields for corruption proofs. |
 
 ## Final validation
 
