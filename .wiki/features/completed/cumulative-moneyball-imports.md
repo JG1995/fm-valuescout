@@ -129,7 +129,7 @@ Import players A and B into the current snapshot, then import changed A and new 
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/92
 
 **Merge ref:** Not merged
 
