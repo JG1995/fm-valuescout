@@ -168,7 +168,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/93
 
 **Merge ref:** Not merged
 
