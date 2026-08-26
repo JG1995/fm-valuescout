@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-- None.
+- [Cumulative Moneyball Imports](./features/active/cumulative-moneyball-imports.md) — cumulative current-snapshot Moneyball upserts with atomic full-cohort percentiles and shared Search/My Club Squad upload entry points (Linear JAY-33).
 
 ## Next
 
