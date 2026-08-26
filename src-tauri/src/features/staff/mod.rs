@@ -1,3 +1,7 @@
+#[cfg_attr(not(test), allow(dead_code))]
+mod assignment_optimizer;
+#[cfg(test)]
+mod assignment_optimizer_tests;
 pub(crate) mod assignment_targets;
 pub mod commands;
 pub mod filter;

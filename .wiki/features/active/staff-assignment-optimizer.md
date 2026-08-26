@@ -255,7 +255,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 #### Commit 2 — Persist staff assignment targets
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): persist assignment targets`
 
@@ -331,7 +331,7 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 #### Commit 3 — Allocate canonical staff job groups
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): allocate assignment candidates`
 
@@ -679,19 +679,19 @@ Persist one Assistant Manager slot for the enabled Senior team, run one Rust com
 
 **PR:** PR 1 — Optimize staff assignments from the Shortlist
 
-**Commit:** Commit 2 — Persist staff assignment targets
+**Commit:** Commit 3 — Allocate canonical staff job groups
 
 ### RED or removal proof
 
-Add focused failing migration, target-service, Planner-service, component, route, and existing smoke proofs for the v35 table, exact complete replacement, rollback, combined removal impact, confirmed atomic cleanup, and route-visible Planner save mutation. Confirm each proof fails for the missing target persistence or removal behavior before implementation.
+Add table-driven pure tests for the 16 exact Preferred Job labels, rejected near matches, Coach score selection and tie order, missing-score behavior, deterministic score/UID/scope/slot ordering, one-UID uniqueness, explicit vacancies, and bounded evidence. Confirm they fail because no Staff assignment allocator exists.
 
 ### Expected outcome
 
-The save owns validated 0-through-50 staffing targets. Target replacement is atomic, and Manage teams names and confirms assignment and staffing-target impact before one transaction removes a disabled team’s Planner and staffing state.
+A private Rust allocator maps only the approved Preferred Jobs, selects persisted scores without converting missing values to zero, and fills canonical target slots deterministically with one duty per UID plus explicit vacancies and evidence.
 
 ### Explicit exclusions
 
-Candidate joins, Preferred Job mapping, recommendation allocation, Staff Shortlist configuration controls, result presentation, optimizer browser fixtures, current-state documentation, and unrelated cleanup.
+Database queries, Tauri commands, persistence changes, React, browser behavior, current-state documentation, and a general matching abstraction.
 
 ## Discoveries and replanning
 
@@ -707,6 +707,7 @@ Candidate joins, Preferred Job mapping, recommendation allocation, Staff Shortli
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Optimize staff assignments from the Shortlist | Commit 2 — Persist staff assignment targets | fd3de72af2c5d49e88cff83b86f49383afe7a84a | Added migration v35, token-bound exact target replacement, bounded team display data, combined Planner removal impact, and confirmed atomic cleanup. | Focused route tests passed (128); `check-rust` passed (648 passed, 2 ignored); smoke passed (49); `check` and staged whitespace checks passed. | Pass | Clear | 1 | None |
 | PR 1 — Optimize staff assignments from the Shortlist | Commit 1 — Record the approved feature plan | 1e526f810b7a63a8b76c85c1a0839d22e9fabea4 | Recorded the reviewed schema-2 ledger and TODO activation on the authorized branch. | `ledger_state.py`, `delivery_state.py`, staged whitespace checks, and the pre-commit gate passed. | Not applicable | Accepted findings — developer directed reviews to fix functional issues only; retained one non-functional stale active-work sentence to preserve the accepted fingerprint. | 0 | None |
 
 ## Final validation
