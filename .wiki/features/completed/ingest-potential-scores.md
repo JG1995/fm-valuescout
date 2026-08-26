@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -162,7 +162,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **Required checks:** GitHub required strict status `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -901,15 +901,17 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **PR:** PR 1 — Precompute current-snapshot potential scoring
 
-**Commit:** None — implementation complete
+**Active work:** None — documentation close-out
+
+**Commit:** None — documentation close-out
 
 ### RED or removal proof
 
-Not applicable — every planned implementation packet has completed independent checkpoint review. Feature validation and feature-complete review are next.
+Not applicable — all 11 implementation packets completed independent checkpoint review. Feature validation passed and the feature-complete review cleared with no findings; documentation reconciliation is complete.
 
 ### Expected outcome
 
-The exact recorded implementation range passes the ledger's full validation, feature review, documentation reconciliation, and final publication checks before merge.
+The exact recorded implementation range passed full validation and feature review. Documentation reconciliation is complete; publication remains pending.
 
 ### Explicit exclusions
 
@@ -945,7 +947,7 @@ Release work and `.wiki/features/completed/player-table-sort-performance.md`.
 | PR 1 — Precompute current-snapshot potential scoring | Commit 8 — Read persisted potential optimizer scores | 68c89049fadf31258c1898a20e2c5479536d5703 | Converted potential optimizer candidates to exact-version persisted tactic-role rows while retaining all allocation, fit, age, tie, reservation, provenance, and rollback behavior. | `./scripts/dev check-rust`: 638 passed, 2 ignored; `./scripts/dev check`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | None. |
 | PR 1 — Precompute current-snapshot potential scoring | Commit 9 — Make Search potential queries read-only | a577551f9a1f7c79b3ba83d3c2641bddc2494d34 | Removed Search snapshot/page materialization, added conditional shared-invariant preflight, and retained exact-version persisted display/filter/sort query semantics. | `./scripts/dev check-rust`: 639 passed, 2 ignored; `./scripts/dev check` and `./scripts/dev secrets`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Removed Search-owned lazy helpers from the shared module while retaining Squad's remaining materializer and completeness paths. |
 | PR 1 — Precompute current-snapshot potential scoring | Commit 10 — Make Squad potential queries read-only | c43b1a6e8d360e38bf743ece87c074530dcbd3b2 | Removed Squad completeness/materialization work, added conditional shared-invariant preflight, and retained bounded exact-version managed-club display/sort semantics. | `./scripts/dev check-rust`: 640 passed, 2 ignored; `./scripts/dev check` and `./scripts/dev secrets`: passed; LSP and `git diff --cached --check`: passed. | Pass | Clear | 0 | Retained `list_squad_player_uids` for the supported squad-boost cohort caller; lazy module deletion remains Commit 11. |
-| PR 1 — Precompute current-snapshot potential scoring | Commit 11 — Delete the lazy potential cache paths | Pending record | Deleted the retired lazy cache module and export after confirming every consumer uses eager persistence and shared invariant preflight. | Lazy-path `rg`: no matches; `project_attributes` production ownership: eager writer only; `./scripts/dev check-rust`: 640 passed, 2 ignored; `./scripts/dev check`: passed. | Pass | Clear | 0 | None. |
+| PR 1 — Precompute current-snapshot potential scoring | Commit 11 — Delete the lazy potential cache paths | d06ecca94b446a1968d3fddc9256bc3b1bcb5e25 | Deleted the retired lazy cache module and export after confirming every consumer uses eager persistence and shared invariant preflight. | Lazy-path `rg`: no matches; `project_attributes` production ownership: eager writer only; `./scripts/dev check-rust`: 640 passed, 2 ignored; `./scripts/dev check`: passed. | Pass | Clear | 0 | None. |
 
 ## Final validation
 
@@ -961,4 +963,4 @@ Release work and `.wiki/features/completed/player-table-sort-performance.md`.
 
 ## Documentation impact
 
-Complete during reconciliation. Expected owners are `.wiki/ARCHITECTURE.md` for implemented eager current-snapshot scoring, the completed feature ledger, `.wiki/TODO.md`, ADR-0019, ADR-0026, and the ADR index. Do not describe the planned architecture as implemented before delivery.
+Completed during reconciliation. `.wiki/ARCHITECTURE.md` now records migration v34, current-only eager projection and role persistence, atomic lifecycle ownership, read-only invariant validation, and Planner mutation preflights. `.wiki/TODO.md` now removes the active item and links the completed feature. ADR-0019 records the retired lazy lifecycle, and ADR-0026 records the implemented eager lifecycle. The ledger remains the complete feature record; the orchestrator must move it to `.wiki/features/completed/` after inspection. The unrelated dirty `.wiki/features/completed/player-table-sort-performance.md` was not changed.

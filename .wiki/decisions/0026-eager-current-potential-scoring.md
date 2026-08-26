@@ -4,7 +4,7 @@
 
 Accepted
 
-Implementation status: Planned in [Ingest-Time Potential Scoring](../features/active/ingest-potential-scores.md). The current implementation still follows superseded [ADR-0019](./0019-lazy-potential-role-score-cache.md) until that feature is delivered.
+Implementation status: Implemented by [Ingest-Time Potential Scoring](../features/completed/ingest-potential-scores.md). The current system uses eager current-snapshot persistence and no longer follows superseded [ADR-0019](./0019-lazy-potential-role-score-cache.md).
 
 ## Context
 
@@ -99,7 +99,7 @@ This would preserve lazy stale-row replacement and make query success depend on 
 
 ## Related work
 
-- Feature plan: [Ingest-Time Potential Scoring](../features/active/ingest-potential-scores.md)
+- Completed feature: [Ingest-Time Potential Scoring](../features/completed/ingest-potential-scores.md)
 - Supersedes: [ADR-0019 — Lazy persistent potential role-score cache](./0019-lazy-potential-role-score-cache.md)
 - Eager analogue: [ADR-0024 — Eager persisted Club DNA scores](./0024-eager-persisted-club-dna-scores.md)
 - Existing projection contract: [Potential Role Scores](../features/completed/potential-role-scores.md)
