@@ -146,7 +146,7 @@ Migration v34 upgrades a database with two saves and retained history. Each save
 
 **Status:** Ready for publication
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/91
 
 **Merge ref:** Not merged
 
