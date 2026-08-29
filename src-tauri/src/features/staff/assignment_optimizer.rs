@@ -1093,7 +1093,8 @@ fn match_general_requirements<'a>(
         );
     }
 
-    debug_assert_eq!(graph.send_max_flow(source, sink, count), count);
+    let flow = graph.send_max_flow(source, sink, count);
+    debug_assert_eq!(flow, count);
 
     let candidate_for_requirement = |requirement_node: usize, requirement: CoachRequirement| {
         graph.edges[requirement_node].iter().find_map(|edge| {
