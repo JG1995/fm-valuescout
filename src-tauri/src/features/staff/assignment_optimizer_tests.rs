@@ -1,6 +1,7 @@
 use super::assignment_optimizer::{
-    allocate_staff_assignments, canonical_job_id, CoachDiscipline, StaffAssignmentCandidate,
-    StaffAssignmentClassification, StaffAssignmentScoreSet, StaffAssignmentSlot,
+    allocate_staff_assignments, preferred_job_classification, CoachDiscipline, PreferredJob,
+    StaffAssignmentCandidate, StaffAssignmentClassification, StaffAssignmentScoreSet,
+    StaffAssignmentSlot,
 };
 use super::assignment_targets::StaffAssignmentTarget;
 
@@ -41,44 +42,62 @@ fn assigned_uids(result: &super::assignment_optimizer::StaffAssignmentAllocation
 }
 
 #[test]
-fn maps_only_the_sixteen_trimmed_ascii_case_insensitive_preferred_jobs() {
-    let mappings = [
-        ("Manager", "manager"),
-        ("Assistant Manager", "assistant_manager"),
-        ("Coach", "coaches"),
-        ("Set Piece Coach", "set_piece_coach"),
-        ("Head Performance Analyst", "head_performance_analyst"),
-        ("Performance Analyst", "performance_analyst"),
-        ("Head of Youth Development", "head_of_youth_development"),
-        ("Director of Football", "director_of_football"),
-        ("Technical Director", "technical_director"),
-        ("Loan Manager", "loan_manager"),
-        ("Chief Scout", "chief_scout"),
-        ("Scout", "scout"),
-        ("Head Physio", "head_physio"),
-        ("Physio", "physio"),
-        ("Head of Sports Science", "head_sports_science"),
-        ("Sports Scientist", "sports_scientist"),
+fn classifies_only_the_approved_trimmed_ascii_case_insensitive_preferred_jobs() {
+    let classifications = [
+        ("Manager", PreferredJob::Manager),
+        ("Assistant Manager", PreferredJob::AssistantManager),
+        ("Coach", PreferredJob::Coach),
+        ("Fitness Coach", PreferredJob::FitnessCoach),
+        ("Goalkeeping Coach", PreferredJob::GoalkeepingCoach),
+        ("Set Piece Coach", PreferredJob::SetPieceCoach),
+        (
+            "Head Performance Analyst",
+            PreferredJob::HeadPerformanceAnalyst,
+        ),
+        ("Performance Analyst", PreferredJob::PerformanceAnalyst),
+        (
+            "Head of Youth Development",
+            PreferredJob::HeadOfYouthDevelopment,
+        ),
+        ("Director of Football", PreferredJob::DirectorOfFootball),
+        ("Technical Director", PreferredJob::TechnicalDirector),
+        ("Loan Manager", PreferredJob::LoanManager),
+        ("Scout", PreferredJob::Scout),
+        ("Recruitment Analyst", PreferredJob::RecruitmentAnalyst),
+        ("Physio", PreferredJob::Physio),
+        ("Sports Scientist", PreferredJob::SportsScientist),
     ];
 
-    for (preferred_job, job_id) in mappings {
-        assert_eq!(canonical_job_id(preferred_job), Some(job_id));
+    for (preferred_job, classification) in classifications {
         assert_eq!(
-            canonical_job_id(&format!("  {}  ", preferred_job.to_ascii_lowercase())),
-            Some(job_id)
+            preferred_job_classification(preferred_job),
+            Some(classification)
+        );
+        assert_eq!(
+            preferred_job_classification(&format!("  {}  ", preferred_job.to_ascii_lowercase())),
+            Some(classification)
         );
     }
 
     for unsupported in [
+        "Chief Scout",
+        "Head Physio",
+        "Head of Sports Science",
         "Assistant Coach",
         "Coaches",
         "Chief Scout Assistant",
+        "Head Physio Assistant",
+        "Head of Sports Science Assistant",
         "Head Scout",
         "Managerial",
         "Coach/Analyst",
         "",
     ] {
-        assert_eq!(canonical_job_id(unsupported), None, "{unsupported}");
+        assert_eq!(
+            preferred_job_classification(unsupported),
+            None,
+            "{unsupported}"
+        );
     }
 }
 
@@ -221,11 +240,11 @@ fn assigns_manager_only_to_the_supported_reserves_and_youth_targets() {
 }
 
 #[test]
-fn uses_the_three_approved_shared_scores_without_cross_job_substitution() {
+fn uses_the_three_approved_ordinary_scores_without_cross_job_substitution() {
     let candidates = [
         candidate(
             1,
-            "Chief Scout",
+            "Scout",
             StaffAssignmentScoreSet {
                 scout: Some(71),
                 ..Default::default()
@@ -233,7 +252,7 @@ fn uses_the_three_approved_shared_scores_without_cross_job_substitution() {
         ),
         candidate(
             2,
-            "Head Physio",
+            "Physio",
             StaffAssignmentScoreSet {
                 physio: Some(82),
                 ..Default::default()
@@ -241,7 +260,7 @@ fn uses_the_three_approved_shared_scores_without_cross_job_substitution() {
         ),
         candidate(
             3,
-            "Head of Sports Science",
+            "Sports Scientist",
             StaffAssignmentScoreSet {
                 sports_scientist: Some(93),
                 ..Default::default()
@@ -251,14 +270,9 @@ fn uses_the_three_approved_shared_scores_without_cross_job_substitution() {
 
     let result = allocate_staff_assignments(
         &[
-            target("club", "chief_scout", "Chief Scout", 1),
-            target("senior", "head_physio", "Head Physio", 1),
-            target(
-                "reserves",
-                "head_sports_science",
-                "Head of Sports Science",
-                1,
-            ),
+            target("club", "scout", "Scout", 1),
+            target("senior", "physio", "Physio", 1),
+            target("reserves", "sports_scientist", "Sports Scientist", 1),
         ],
         &candidates,
     );
@@ -267,17 +281,17 @@ fn uses_the_three_approved_shared_scores_without_cross_job_substitution() {
     assert!(matches!(
         &result.slots[0],
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.score == 82 && recommendation.job_id == "head_physio"
+            if recommendation.score == 82 && recommendation.job_id == "physio"
     ));
     assert!(matches!(
         &result.slots[1],
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.score == 93 && recommendation.job_id == "head_sports_science"
+            if recommendation.score == 93 && recommendation.job_id == "sports_scientist"
     ));
     assert!(matches!(
         &result.slots[2],
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.score == 71 && recommendation.job_id == "chief_scout"
+            if recommendation.score == 71 && recommendation.job_id == "scout"
     ));
 }
 
@@ -287,9 +301,9 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
         classification: StaffAssignmentClassification::CurrentStaff,
         ..candidate(
             7,
-            "Chief Scout",
+            "Scout",
             StaffAssignmentScoreSet {
-                scout: Some(80),
+                scout: Some(99),
                 ..Default::default()
             },
         )
@@ -339,17 +353,25 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
     ));
     assert!(matches!(
         &result.slots[2],
-        StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.classification == StaffAssignmentClassification::CurrentStaff
+        StaffAssignmentSlot::Vacancy(vacancy) if vacancy.job_id == "chief_scout"
     ));
     assert!(matches!(
         &result.slots[3],
-        StaffAssignmentSlot::Vacancy(vacancy) if vacancy.job_id == "scout"
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.classification == StaffAssignmentClassification::CurrentStaff
     ));
 }
 
 #[test]
-fn configured_recruitment_analyst_slots_emit_vacancies_without_candidate_support() {
+fn recruitment_analyst_slots_remain_vacant_until_their_allocation_phase() {
+    let candidates = [candidate(
+        1,
+        "Recruitment Analyst",
+        StaffAssignmentScoreSet {
+            recruitment_analyst: Some(99),
+            ..Default::default()
+        },
+    )];
     let result = allocate_staff_assignments(
         &[target(
             "club",
@@ -357,7 +379,7 @@ fn configured_recruitment_analyst_slots_emit_vacancies_without_candidate_support
             "Recruitment Analyst",
             2,
         )],
-        &[],
+        &candidates,
     );
 
     assert_eq!(result.slots.len(), 2);

@@ -4,7 +4,7 @@ use super::assignment_optimizer::{
     CoachDiscipline, StaffAssignmentClassification, StaffAssignmentSlot,
 };
 use super::assignment_optimizer_query::{
-    optimize_staff_assignments, StaffAssignmentOptimizationState,
+    load_candidates, optimize_staff_assignments, StaffAssignmentOptimizationState,
 };
 use crate::db::migrations;
 
@@ -161,6 +161,58 @@ fn rejects_stale_tokens_including_a_reused_numeric_snapshot_id() {
 }
 
 #[test]
+fn loads_fm26_candidate_scores_from_current_shortlist_only() {
+    let (_temp_dir, conn, _save_token) = open();
+    insert_current_snapshot(&conn, 1);
+    insert_staff(&conn, 1, "Fitness", Some("Club A"));
+    insert_staff(&conn, 2, "Goalkeeping", Some("Club A"));
+    insert_staff(&conn, 3, "Recruitment analyst", Some("Other FC"));
+    insert_staff(&conn, 4, "Outside shortlist", Some("Club A"));
+    insert_staff(&conn, 6, "Fitness missing score", Some("Club A"));
+    shortlist(&conn, 1, "Fitness Coach", "-");
+    shortlist(&conn, 2, "Goalkeeping Coach", "-");
+    shortlist(&conn, 3, "Recruitment Analyst", "-");
+    shortlist(&conn, 5, "Recruitment Analyst", "-");
+    shortlist(&conn, 6, "Fitness Coach", "-");
+    conn.execute_batch(
+        "INSERT INTO snapshots (
+             id, save_id, is_current, schema_version, generated_at_utc,
+             game_version, supported_game_version, bridge_version,
+             protocol_version, game_date_source, scan_truncated, player_count
+         ) VALUES (2, 1, 0, 8, 'now', '26.3', '26.3', '0.4', 1, 'unknown', 0, 0);
+         INSERT INTO staff (
+             snapshot_id, uid, name, age, nationalities_json, gender, ca, pa,
+             staff_attributes_json, club
+         ) VALUES (2, 5, 'Wrong snapshot', 40, '[]', 'unknown', 100, 120, '{}', 'Club A');
+         INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score) VALUES
+             (1, 1, 'coach_fitness', 71),
+             (1, 2, 'coach_goalkeeping', 72),
+             (1, 3, 'recruitment_analyst', 83),
+             (1, 4, 'coach_fitness', 99),
+             (1, 6, 'coach_fitness', NULL),
+             (2, 5, 'recruitment_analyst', 99);",
+    )
+    .expect("insert score fixtures");
+
+    let candidates = load_candidates(&conn, 1, 1, "Club A").expect("load candidates");
+
+    assert_eq!(candidates.len(), 4);
+    assert_eq!(candidates[0].uid, 1);
+    assert_eq!(candidates[0].scores.coach_fitness, Some(71));
+    assert_eq!(candidates[0].scores.coach_goalkeeping, None);
+    assert_eq!(candidates[1].uid, 2);
+    assert_eq!(candidates[1].scores.coach_goalkeeping, Some(72));
+    assert_eq!(candidates[2].uid, 3);
+    assert_eq!(candidates[2].scores.recruitment_analyst, Some(83));
+    assert_eq!(
+        candidates[2].classification,
+        StaffAssignmentClassification::Recruitment
+    );
+    assert_eq!(candidates[3].uid, 6);
+    assert_eq!(candidates[3].scores.coach_fitness, None);
+}
+
+#[test]
 fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() {
     let (_temp_dir, conn, save_token) = open();
     let snapshot_token = insert_current_snapshot(&conn, 1);
@@ -204,13 +256,10 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
         "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score) VALUES
              (1, 1, 'assistant_manager', 72),
              (1, 2, 'assistant_manager', 99),
-             (1, 3, 'scout', 83),
              (1, 4, 'coach_attacking_technical', 80),
              (1, 4, 'coach_possession_tactical', 90),
              (1, 6, 'coach_attacking_technical', NULL),
              (1, 8, 'manager', 81),
-             (1, 9, 'physio', 82),
-             (1, 10, 'sports_scientist', 84),
              (1, 11, 'assistant_manager', 73);",
     )
     .expect("insert persisted scores");
@@ -221,7 +270,7 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
     assert_eq!(result.state, StaffAssignmentOptimizationState::Ready);
     assert_eq!(result.joined_candidate_count, 10);
     assert_eq!(result.configured_slot_count, 7);
-    assert_eq!(result.unsupported_preferred_job_count, 1);
+    assert_eq!(result.unsupported_preferred_job_count, 3);
     assert!(result.slots.iter().any(|slot| matches!(
         &slot.slot,
         StaffAssignmentSlot::Recommendation(recommendation)
@@ -245,34 +294,20 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
     assert!(result.slots.iter().any(|slot| matches!(
         &slot.slot,
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.uid == 3
-                && recommendation.classification == StaffAssignmentClassification::Recruitment
-                && recommendation.score == 83
-    )));
-    assert!(result.slots.iter().any(|slot| matches!(
-        &slot.slot,
-        StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 8 && recommendation.job_id == "manager" && recommendation.score == 81
     )));
-    assert!(result.slots.iter().any(|slot| matches!(
+    assert!(result.slots.iter().filter(|slot| matches!(
         &slot.slot,
-        StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.uid == 9 && recommendation.job_id == "head_physio" && recommendation.score == 82
-    )));
-    assert!(result.slots.iter().any(|slot| matches!(
-        &slot.slot,
-        StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.uid == 10
-                && recommendation.job_id == "head_sports_science"
-                && recommendation.score == 84
-    )));
+        StaffAssignmentSlot::Vacancy(vacancy)
+            if matches!(vacancy.job_id.as_str(), "chief_scout" | "head_physio" | "head_sports_science")
+    )).count() == 3);
     assert!(result.slots.iter().any(|slot|
         slot.scope_display_name == "First Team"
             && matches!(&slot.slot, StaffAssignmentSlot::Recommendation(recommendation) if recommendation.scope == "senior")
     ));
     assert!(result.slots.iter().any(|slot|
         slot.scope_display_name == "Club"
-            && matches!(&slot.slot, StaffAssignmentSlot::Recommendation(recommendation) if recommendation.scope == "club")
+            && matches!(&slot.slot, StaffAssignmentSlot::Vacancy(vacancy) if vacancy.scope == "club")
     ));
     let coach_evidence = result
         .evidence

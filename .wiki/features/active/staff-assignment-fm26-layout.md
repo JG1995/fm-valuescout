@@ -352,7 +352,7 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 
 #### Commit 3 — Load FM26 assignment candidate scores
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): load FM26 assignment candidates`
 
@@ -416,7 +416,7 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 
 #### Commit 4 — Allocate leads before ordinary roles
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): prioritize assignment lead roles`
 
@@ -691,19 +691,19 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 
 **PR:** PR 1 — Redesign staff assignment slots for FM26
 
-**Commit:** Commit 3 — Load FM26 assignment candidate scores
+**Commit:** Commit 4 — Allocate leads before ordinary roles
 
 ### RED or removal proof
 
-Add optimizer-query proofs showing the three persisted Fitness, Goalkeeping, and Recruitment Analyst scores are currently omitted, plus candidate-classification proofs showing the approved Preferred Jobs are unsupported while retired literal lead jobs and near matches remain rejected.
+Add pure allocation cases where ordinary-first assignment steals the best lead candidate, HPA cannot use the combined approved pool and lead score, literal lead labels are unavailable, or Recruitment Analyst remains vacant despite a supported candidate and persisted score.
 
 ### Expected outcome
 
-The bounded current-shortlist/current-snapshot query loads all three added scores with null preserved as unavailable, and one closed Preferred Job classification exposes the approved exact, lead-family, and Coaches pools without yet changing allocation phases.
+The allocator reserves all four approved Club leads before corresponding ordinary roles under one global UID set, ranks each pool by the required lead score and UID tie, fills ordinary residual slots from the approved Preferred Jobs only, and successfully allocates Recruitment Analyst and remaining exact roles in canonical order.
 
 ### Explicit exclusions
 
-Scoring formula or ingest changes, lead allocation, successful Recruitment Analyst assignment, Coaches composition or specialization matching, target presentation, result collapse, aliases, and unrelated cleanup.
+Coaches composition or specialization matching, target persistence or presentation, result collapse, new substitutions beyond the four approved lead families, scoring changes, current-state documentation, and unrelated cleanup.
 
 ## Discoveries and replanning
 
@@ -716,7 +716,8 @@ Scoring formula or ingest changes, lead allocation, successful Recruitment Analy
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Redesign staff assignment slots for FM26 | Commit 1 — Record the approved feature plan | 3ac8e21906986f929191fb2264fbc7ec4322adbd | Recorded the reviewed JAY-44 ledger and TODO Active link. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear | 0 | None |
-| PR 1 — Redesign staff assignment slots for FM26 | Commit 2 — Reset and redefine assignment targets | Pending record | Added migration v36, the exact Rust-owned FM26 target catalog and limits, Club-safe Planner cleanup, Recruitment Analyst target vacancies, and the 1,108-slot bound. | `./scripts/dev check-rust`; `./scripts/dev check` — passed (667 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
+| PR 1 — Redesign staff assignment slots for FM26 | Commit 2 — Reset and redefine assignment targets | 67854bb776d4948c62fbb549c9f044a0278325ad | Added migration v36, the exact Rust-owned FM26 target catalog and limits, Club-safe Planner cleanup, Recruitment Analyst target vacancies, and the 1,108-slot bound. | `./scripts/dev check-rust`; `./scripts/dev check` — passed (667 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
+| PR 1 — Redesign staff assignment slots for FM26 | Commit 3 — Load FM26 assignment candidate scores | Pending record | Loaded Fitness, Goalkeeping, and Recruitment Analyst scores and introduced the closed approved Preferred Job classification without changing allocation phases. | `./scripts/dev check-rust`; `./scripts/dev check` — passed (668 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
 
 ## Final validation
 

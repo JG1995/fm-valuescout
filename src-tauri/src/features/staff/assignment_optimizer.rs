@@ -2,24 +2,25 @@ use std::collections::HashSet;
 
 use super::assignment_targets::StaffAssignmentTarget;
 
-const PREFERRED_JOB_MAPPINGS: [(&str, &str); 16] = [
-    ("Manager", "manager"),
-    ("Assistant Manager", "assistant_manager"),
-    ("Coach", "coaches"),
-    ("Set Piece Coach", "set_piece_coach"),
-    ("Head Performance Analyst", "head_performance_analyst"),
-    ("Performance Analyst", "performance_analyst"),
-    ("Head of Youth Development", "head_of_youth_development"),
-    ("Director of Football", "director_of_football"),
-    ("Technical Director", "technical_director"),
-    ("Loan Manager", "loan_manager"),
-    ("Chief Scout", "chief_scout"),
-    ("Scout", "scout"),
-    ("Head Physio", "head_physio"),
-    ("Physio", "physio"),
-    ("Head of Sports Science", "head_sports_science"),
-    ("Sports Scientist", "sports_scientist"),
-];
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PreferredJob {
+    Manager,
+    AssistantManager,
+    Coach,
+    FitnessCoach,
+    GoalkeepingCoach,
+    SetPieceCoach,
+    HeadPerformanceAnalyst,
+    PerformanceAnalyst,
+    HeadOfYouthDevelopment,
+    DirectorOfFootball,
+    TechnicalDirector,
+    LoanManager,
+    Scout,
+    RecruitmentAnalyst,
+    Physio,
+    SportsScientist,
+}
 
 const CANONICAL_JOB_IDS: [&str; 17] = [
     "manager",
@@ -67,6 +68,8 @@ pub(super) struct StaffAssignmentScoreSet {
     pub(super) coach_defending_tactical: Option<u8>,
     pub(super) coach_possession_technical: Option<u8>,
     pub(super) coach_possession_tactical: Option<u8>,
+    pub(super) coach_fitness: Option<u8>,
+    pub(super) coach_goalkeeping: Option<u8>,
     pub(super) set_piece_coach: Option<u8>,
     pub(super) head_performance_analyst: Option<u8>,
     pub(super) performance_analyst: Option<u8>,
@@ -74,6 +77,7 @@ pub(super) struct StaffAssignmentScoreSet {
     pub(super) director_of_football: Option<u8>,
     pub(super) technical_director: Option<u8>,
     pub(super) loan_manager: Option<u8>,
+    pub(super) recruitment_analyst: Option<u8>,
     pub(super) scout: Option<u8>,
     pub(super) physio: Option<u8>,
     pub(super) sports_scientist: Option<u8>,
@@ -144,12 +148,59 @@ struct CandidateGroup<'a> {
     eligible: Vec<EligibleCandidate<'a>>,
 }
 
-pub(super) fn canonical_job_id(preferred_job: &str) -> Option<&'static str> {
-    PREFERRED_JOB_MAPPINGS.iter().find_map(|(label, job_id)| {
+pub(super) fn preferred_job_classification(preferred_job: &str) -> Option<PreferredJob> {
+    let preferred_job = preferred_job.trim();
+    [
+        ("Manager", PreferredJob::Manager),
+        ("Assistant Manager", PreferredJob::AssistantManager),
+        ("Coach", PreferredJob::Coach),
+        ("Fitness Coach", PreferredJob::FitnessCoach),
+        ("Goalkeeping Coach", PreferredJob::GoalkeepingCoach),
+        ("Set Piece Coach", PreferredJob::SetPieceCoach),
+        (
+            "Head Performance Analyst",
+            PreferredJob::HeadPerformanceAnalyst,
+        ),
+        ("Performance Analyst", PreferredJob::PerformanceAnalyst),
+        (
+            "Head of Youth Development",
+            PreferredJob::HeadOfYouthDevelopment,
+        ),
+        ("Director of Football", PreferredJob::DirectorOfFootball),
+        ("Technical Director", PreferredJob::TechnicalDirector),
+        ("Loan Manager", PreferredJob::LoanManager),
+        ("Scout", PreferredJob::Scout),
+        ("Recruitment Analyst", PreferredJob::RecruitmentAnalyst),
+        ("Physio", PreferredJob::Physio),
+        ("Sports Scientist", PreferredJob::SportsScientist),
+    ]
+    .into_iter()
+    .find_map(|(label, classification)| {
         label
-            .eq_ignore_ascii_case(preferred_job.trim())
-            .then_some(*job_id)
+            .eq_ignore_ascii_case(preferred_job)
+            .then_some(classification)
     })
+}
+
+fn direct_target_job_id(preferred_job: PreferredJob) -> Option<&'static str> {
+    match preferred_job {
+        PreferredJob::Manager => Some("manager"),
+        PreferredJob::AssistantManager => Some("assistant_manager"),
+        PreferredJob::Coach => Some("coaches"),
+        PreferredJob::SetPieceCoach => Some("set_piece_coach"),
+        PreferredJob::HeadPerformanceAnalyst => Some("head_performance_analyst"),
+        PreferredJob::PerformanceAnalyst => Some("performance_analyst"),
+        PreferredJob::HeadOfYouthDevelopment => Some("head_of_youth_development"),
+        PreferredJob::DirectorOfFootball => Some("director_of_football"),
+        PreferredJob::TechnicalDirector => Some("technical_director"),
+        PreferredJob::LoanManager => Some("loan_manager"),
+        PreferredJob::Scout => Some("scout"),
+        PreferredJob::Physio => Some("physio"),
+        PreferredJob::SportsScientist => Some("sports_scientist"),
+        PreferredJob::FitnessCoach
+        | PreferredJob::GoalkeepingCoach
+        | PreferredJob::RecruitmentAnalyst => None,
+    }
 }
 
 pub(super) fn allocate_staff_assignments(
@@ -158,7 +209,10 @@ pub(super) fn allocate_staff_assignments(
 ) -> StaffAssignmentAllocation {
     let mut groups = std::array::from_fn::<_, 17, _>(|_| CandidateGroup::default());
     for candidate in candidates {
-        let Some(job_id) = canonical_job_id(&candidate.preferred_job) else {
+        let Some(preferred_job) = preferred_job_classification(&candidate.preferred_job) else {
+            continue;
+        };
+        let Some(job_id) = direct_target_job_id(preferred_job) else {
             continue;
         };
         let group = &mut groups[canonical_job_index(job_id).expect("mapped job is canonical")];
