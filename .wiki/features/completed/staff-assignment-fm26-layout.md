@@ -2,7 +2,7 @@
 
 ## Status
 
-Validation
+Ready for final publication
 
 **Ledger schema:** 2
 
@@ -209,7 +209,7 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 
 **Required checks:** strict required GitHub Actions `check`
 
-**Feature close-out:** Not run
+**Feature close-out:** Current
 
 **CI repair rounds:** 0
 
@@ -703,7 +703,7 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 | PR 1 — Redesign staff assignment slots for FM26 | Commit 4 — Allocate leads before ordinary roles | f089a70502f473c429391887e0d7b1ead2ea642a | Added lead-first HPA, Scout, Physio, and Sports Science allocation, ordinary residual phases, global UID reservation, and successful Recruitment Analyst assignment. | `./scripts/dev check-rust`; `./scripts/dev check` — passed (671 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
 | PR 1 — Redesign staff assignment slots for FM26 | Commit 5 — Match the FM26 Coaches composition | 613f240617965e42cd4eb055d35f34837c96c6d3 | Added exact Coach/Fitness/Goalkeeping composition, bounded cardinality-first General matching, typed Coach requirements and evidence, and end-to-end result rendering. | Focused component test; `./scripts/dev check-rust`; `./scripts/dev smoke`; `./scripts/dev check` — passed (679 Rust tests, 2 ignored; 12 component tests; 50 smoke tests). | Pass | Clear | 1 | Initial dense matcher corrected to one compact supported-bound residual graph. |
 | PR 1 — Redesign staff assignment slots for FM26 | Commit 6 — Group Configure slots by FM26 section | 3e67ad8e618203e1a46882efef4cd196c353269c | Grouped Rust-provided targets into FM26 sections, placed Club roles inside Senior or standalone Club without scope changes, and applied per-target limits. | Focused Modal/API/route tests; `./scripts/dev smoke`; `./scripts/dev check` — passed (51 smoke tests; 679 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
-| PR 1 — Redesign staff assignment slots for FM26 | Commit 7 — Collapse assignment results without rerun | Pending record | Added an accessible result-panel chevron that retains the accepted result, avoids rerunning optimization, reopens for new results, and preserves context clearing. | Focused optimizer component test; `./scripts/dev smoke`; `./scripts/dev check` — passed (14 component tests; 51 smoke tests; 679 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
+| PR 1 — Redesign staff assignment slots for FM26 | Commit 7 — Collapse assignment results without rerun | 87279a6fab09955a7d28c24026b5a9a7f0ff1cef | Added an accessible result-panel chevron that retains the accepted result, avoids rerunning optimization, reopens for new results, and preserves context clearing. | Focused optimizer component test; `./scripts/dev smoke`; `./scripts/dev check` — passed (14 component tests; 51 smoke tests; 679 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
 
 ## Final validation
 
@@ -722,4 +722,18 @@ No release command, package build, version change, tag, or publication is part o
 
 ## Documentation impact
 
-Complete during mandatory feature-close-out reconciliation. Update `.wiki/ARCHITECTURE.md` to record implemented migration v36 and its one-time target reset, the exact Rust-owned target catalog and 0/1 versus 0/50 bounds, the 1,108 result limit, non-exact lead eligibility, three-type Coaches eligibility, cardinality-first specialization allocation, typed Coach requirement evidence, and preserved Rust/IPC authority. Update `.wiki/DESIGN.md` to record the implemented FM26 Coaching/Recruitment/Medical Configure-slots sections, the rule that Club roles render inside Senior or one standalone Club group without changing persisted scope, per-target control bounds, and the accessible result-panel collapse behavior that retains the current result. Then move this complete ledger to `.wiki/features/completed/` and move the TODO item from Active to Completed. These current-state updates are required, not conditional. Do not create an ADR unless implementation discovers a new decision that meets the repository threshold.
+Reconciled in `.wiki/ARCHITECTURE.md`, `.wiki/DESIGN.md`, and `.wiki/TODO.md`. This completed ledger is the delivery record. No ADR, debug report, BACKLOG, CONCEPT, planned-spec, or release change is warranted.
+
+## Close-out
+
+**Feature review:** Clear after one functional correction round. The supported-bound General matcher was changed from repeated dense objective-bearing graphs to one compact residual graph with exact partial-discipline selection; correction review found no remaining CRITICAL, HIGH, or MEDIUM issue.
+
+**Documentation reconciliation:** Complete; architecture, design, and TODO describe the implemented FM26 target, allocation, presentation, and collapse contracts.
+
+**Automated validation:** `./scripts/dev test`, `./scripts/dev check-rust`, `./scripts/dev smoke`, and `./scripts/dev check` passed on final implementation HEAD `87279a6fab09955a7d28c24026b5a9a7f0ff1cef` (679 Rust tests passed, 2 ignored; 51 browser tests passed).
+
+**Native Tauri/WebView manual pass:** Not run; the supported native environment and representative save are unavailable in WSL. Focus order, numeric-control feel, section density, Club placement, and chevron geometry remain manual validation gaps. The JAY-44 screenshot also remained inaccessible through the authenticated fetch path.
+
+**Mutation testing:** Unsupported; `./scripts/dev mutate` is not configured and was not reported as passed.
+
+**Publication state:** Ready for publication; PR is not published and no merge ref exists.
