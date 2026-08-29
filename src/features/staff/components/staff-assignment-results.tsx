@@ -1,6 +1,7 @@
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import type {
+  CoachRequirement,
   StaffAssignmentOptimization,
   StaffAssignmentSlot,
 } from "../types/staff-assignment";
@@ -9,10 +10,29 @@ type StaffAssignmentResultsProps = {
   result: StaffAssignmentOptimization;
 };
 
+const coachRequirementLabels: Record<CoachRequirement, string> = {
+  attacking_technical: "Attacking Technical",
+  attacking_tactical: "Attacking Tactical",
+  defending_technical: "Defending Technical",
+  defending_tactical: "Defending Tactical",
+  possession_technical: "Possession Technical",
+  possession_tactical: "Possession Tactical",
+  fitness: "Fitness",
+  goalkeeping: "Goalkeeping",
+};
+
+function coachRequirementText(requirement: CoachRequirement | null) {
+  return requirement
+    ? `Coach requirement: ${coachRequirementLabels[requirement]}.`
+    : null;
+}
+
 function evidenceText(slot: Extract<StaffAssignmentSlot, { kind: "vacancy" }>) {
   const { eligibleScoreCount, joinedCandidateCount, unavailableScoreCount } =
     slot.evidence;
-  return `${eligibleScoreCount} eligible score${eligibleScoreCount === 1 ? "" : "s"}; ${unavailableScoreCount} unavailable score${unavailableScoreCount === 1 ? "" : "s"}; ${joinedCandidateCount} joined shortlisted candidate${joinedCandidateCount === 1 ? "" : "s"}.`;
+  const evidence = `${eligibleScoreCount} eligible score${eligibleScoreCount === 1 ? "" : "s"}; ${unavailableScoreCount} unavailable score${unavailableScoreCount === 1 ? "" : "s"}; ${joinedCandidateCount} joined shortlisted candidate${joinedCandidateCount === 1 ? "" : "s"}.`;
+  const requirement = coachRequirementText(slot.coachRequirement);
+  return requirement ? `${requirement} ${evidence}` : evidence;
 }
 
 export function StaffAssignmentResults({
@@ -90,8 +110,8 @@ export function StaffAssignmentResults({
                       <td className="px-2 py-2 text-on-surface-variant">
                         Preferred Job: {slot.preferredJob}. Eligible for this
                         target.
-                        {slot.coachDiscipline
-                          ? ` Coach discipline: ${slot.coachDiscipline}.`
+                        {slot.coachRequirement
+                          ? ` ${coachRequirementText(slot.coachRequirement)}`
                           : null}
                       </td>
                     </>

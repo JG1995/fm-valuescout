@@ -75,17 +75,18 @@ describe("StaffAssignmentOptimizer", () => {
             preferredJob: "Coach",
             classification: "current_staff",
             score: 82,
-            coachDiscipline: "attacking_technical",
+            coachRequirement: "attacking_technical",
           },
           {
             kind: "vacancy",
             scope: "club",
             scopeDisplayName: "Club",
-            jobId: "scout",
-            jobLabel: "Scout",
-            slotNumber: 1,
+            jobId: "coaches",
+            jobLabel: "Coaches",
+            slotNumber: 2,
+            coachRequirement: "goalkeeping",
             evidence: {
-              jobId: "scout",
+              jobId: "coaches",
               joinedCandidateCount: 2,
               eligibleScoreCount: 0,
               unavailableScoreCount: 2,
@@ -116,16 +117,51 @@ describe("StaffAssignmentOptimizer", () => {
     expect(screen.getByText("Club")).toBeInTheDocument();
     expect(screen.queryByText("senior")).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Coach discipline: attacking_technical\./),
+      screen.getByText(/Coach requirement: Attacking Technical\./),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: /Coaches: 82, Excellent/i }),
     ).toBeInTheDocument();
     expect(screen.getByText("Vacancy")).toBeInTheDocument();
     expect(
-      screen.getByText(/0 eligible scores; 2 unavailable scores/i),
+      screen.getByText(
+        /Coach requirement: Goalkeeping\. 0 eligible scores; 2 unavailable scores/i,
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText(/unsupported Preferred Job/i)).toBeInTheDocument();
+  });
+
+  it("renders canonical Fitness requirements without calculating eligibility", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [
+          {
+            kind: "recommendation",
+            scope: "senior",
+            scopeDisplayName: "First Team",
+            jobId: "coaches",
+            jobLabel: "Coaches",
+            slotNumber: 1,
+            uid: 101,
+            name: "Fit Coach",
+            preferredJob: "Fitness Coach",
+            classification: "current_staff",
+            score: 82,
+            coachRequirement: "fitness",
+          },
+        ],
+      }),
+    );
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+
+    expect(
+      await screen.findByText(/Coach requirement: Fitness\./),
+    ).toBeInTheDocument();
   });
 
   it("renders an em dash instead of a blank person when a recommendation name is missing", async () => {
@@ -145,7 +181,7 @@ describe("StaffAssignmentOptimizer", () => {
             preferredJob: "Assistant Manager",
             classification: "current_staff",
             score: 82,
-            coachDiscipline: null,
+            coachRequirement: null,
           },
         ],
       }),
@@ -162,6 +198,9 @@ describe("StaffAssignmentOptimizer", () => {
     const person = within(row).getByText("—");
     expect(person).not.toHaveAttribute("title");
     expect(within(row).queryByText("0")).not.toBeInTheDocument();
+    expect(
+      within(row).queryByText(/Coach requirement:/),
+    ).not.toBeInTheDocument();
   });
 
   it("suppresses a visible recommendation immediately while context is unavailable", async () => {

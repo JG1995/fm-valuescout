@@ -186,7 +186,7 @@ export function fixtureStaffAssignmentOptimization(
         preferredJob: "Assistant Manager",
         classification: "current_staff",
         score: 82,
-        coachDiscipline: null,
+        coachRequirement: null,
       },
       {
         kind: "vacancy",
@@ -195,6 +195,7 @@ export function fixtureStaffAssignmentOptimization(
         jobId: "coaches",
         jobLabel: "Coaches",
         slotNumber: 1,
+        coachRequirement: "goalkeeping",
         evidence: {
           jobId: "coaches",
           joinedCandidateCount: 1,

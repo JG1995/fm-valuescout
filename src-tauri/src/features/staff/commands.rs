@@ -10,7 +10,7 @@ use crate::features::memory_read::service::{
 use crate::features::player::boost_gate;
 
 use super::assignment_optimizer::{
-    CoachDiscipline, StaffAssignmentClassification, StaffAssignmentEvidence, StaffAssignmentSlot,
+    CoachRequirement, StaffAssignmentClassification, StaffAssignmentEvidence, StaffAssignmentSlot,
 };
 use super::assignment_optimizer_query::{
     self, StaffAssignmentOptimization, StaffAssignmentOptimizationState, StaffAssignmentResultSlot,
@@ -342,7 +342,7 @@ pub enum StaffAssignmentSlotDto {
         preferred_job: String,
         classification: &'static str,
         score: u8,
-        coach_discipline: Option<&'static str>,
+        coach_requirement: Option<&'static str>,
     },
     Vacancy {
         scope: String,
@@ -350,6 +350,7 @@ pub enum StaffAssignmentSlotDto {
         job_id: String,
         job_label: String,
         slot_number: i64,
+        coach_requirement: Option<&'static str>,
         evidence: StaffAssignmentEvidenceDto,
     },
 }
@@ -372,7 +373,7 @@ impl From<StaffAssignmentResultSlot> for StaffAssignmentSlotDto {
                 preferred_job: recommendation.preferred_job,
                 classification: classification_name(recommendation.classification),
                 score: recommendation.score,
-                coach_discipline: recommendation.coach_discipline.map(coach_discipline_name),
+                coach_requirement: recommendation.coach_requirement.map(CoachRequirement::name),
             },
             StaffAssignmentSlot::Vacancy(vacancy) => Self::Vacancy {
                 scope: vacancy.scope,
@@ -380,6 +381,7 @@ impl From<StaffAssignmentResultSlot> for StaffAssignmentSlotDto {
                 job_id: vacancy.job_id,
                 job_label: vacancy.job_label,
                 slot_number: vacancy.slot_number,
+                coach_requirement: vacancy.coach_requirement.map(CoachRequirement::name),
                 evidence: vacancy.evidence.into(),
             },
         }
@@ -445,17 +447,6 @@ fn classification_name(classification: StaffAssignmentClassification) -> &'stati
     match classification {
         StaffAssignmentClassification::CurrentStaff => "current_staff",
         StaffAssignmentClassification::Recruitment => "recruitment",
-    }
-}
-
-fn coach_discipline_name(discipline: CoachDiscipline) -> &'static str {
-    match discipline {
-        CoachDiscipline::AttackingTechnical => "attacking_technical",
-        CoachDiscipline::AttackingTactical => "attacking_tactical",
-        CoachDiscipline::DefendingTechnical => "defending_technical",
-        CoachDiscipline::DefendingTactical => "defending_tactical",
-        CoachDiscipline::PossessionTechnical => "possession_technical",
-        CoachDiscipline::PossessionTactical => "possession_tactical",
     }
 }
 
@@ -1081,7 +1072,7 @@ mod tests {
                     preferred_job: "Assistant Manager".to_string(),
                     classification: "current_staff",
                     score: 82,
-                    coach_discipline: None,
+                    coach_requirement: None,
                 },
                 StaffAssignmentSlotDto::Vacancy {
                     scope: "senior".to_string(),
@@ -1089,11 +1080,39 @@ mod tests {
                     job_id: "assistant_manager".to_string(),
                     job_label: "Assistant Manager".to_string(),
                     slot_number: 1,
+                    coach_requirement: None,
                     evidence: StaffAssignmentEvidenceDto {
                         job_id: "assistant_manager".to_string(),
                         joined_candidate_count: 2,
                         eligible_score_count: 0,
                         unavailable_score_count: 2,
+                    },
+                },
+                StaffAssignmentSlotDto::Recommendation {
+                    scope: "senior".to_string(),
+                    scope_display_name: "First Team".to_string(),
+                    job_id: "coaches".to_string(),
+                    job_label: "Coaches".to_string(),
+                    slot_number: 2,
+                    uid: 8,
+                    name: Some("Coach".to_string()),
+                    preferred_job: "Fitness Coach".to_string(),
+                    classification: "recruitment",
+                    score: 83,
+                    coach_requirement: Some("fitness"),
+                },
+                StaffAssignmentSlotDto::Vacancy {
+                    scope: "senior".to_string(),
+                    scope_display_name: "First Team".to_string(),
+                    job_id: "coaches".to_string(),
+                    job_label: "Coaches".to_string(),
+                    slot_number: 3,
+                    coach_requirement: Some("goalkeeping"),
+                    evidence: StaffAssignmentEvidenceDto {
+                        job_id: "coaches".to_string(),
+                        joined_candidate_count: 1,
+                        eligible_score_count: 0,
+                        unavailable_score_count: 1,
                     },
                 },
             ],
@@ -1113,11 +1132,15 @@ mod tests {
         assert_eq!(value["configuredSlotCount"], 1);
         assert_eq!(value["unsupportedPreferredJobCount"], 1);
         assert_eq!(value["slots"][0]["kind"], "recommendation");
+        assert!(value["slots"][0]["coachRequirement"].is_null());
         assert!(value["slots"][0]["name"].is_null());
         assert_eq!(value["slots"][0]["scopeDisplayName"], "First Team");
         assert_eq!(value["slots"][0]["slotNumber"], 1);
         assert_eq!(value["slots"][1]["kind"], "vacancy");
+        assert!(value["slots"][1]["coachRequirement"].is_null());
         assert_eq!(value["slots"][1]["evidence"]["unavailableScoreCount"], 2);
+        assert_eq!(value["slots"][2]["coachRequirement"], "fitness");
+        assert_eq!(value["slots"][3]["coachRequirement"], "goalkeeping");
     }
 
     #[test]

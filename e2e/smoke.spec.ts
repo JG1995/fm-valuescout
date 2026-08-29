@@ -417,7 +417,7 @@ test.describe("application smoke", () => {
     );
     await expect(assignments).toContainText("Coach Casey");
     await expect(assignments).toContainText(
-      "Preferred Job: Coach. Eligible for this target. Coach discipline: attacking_technical.",
+      "Preferred Job: Coach. Eligible for this target. Coach requirement: Attacking Technical.",
     );
     await expect(assignments).toContainText("Current staff");
     await expect(assignments).toContainText("Riley Scout");
@@ -432,7 +432,7 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect(assignments).toContainText("Vacancy");
     await expect(assignments).toContainText(
-      "0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
+      "Coach requirement: Goalkeeping. 0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
     );
 
     for (const [width, height] of [
