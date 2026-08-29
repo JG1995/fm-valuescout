@@ -52,7 +52,7 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
+- [Staff Assignment FM26 Layout](./features/active/staff-assignment-fm26-layout.md) — redesign Configure slots around FM26 staff limits, exact coach composition and lead pools, Recruitment Analyst support, and collapsible assignment results (Linear JAY-44).
 
 ## Next
 
