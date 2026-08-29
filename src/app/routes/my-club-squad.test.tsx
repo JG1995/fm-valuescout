@@ -442,7 +442,7 @@ describe("My Club route", () => {
           | { targets?: unknown[] }
           | undefined
       )?.targets,
-    ).toHaveLength(30);
+    ).toHaveLength(28);
 
     await user.click(
       await screen.findByRole("button", { name: "Configure slots" }),

@@ -159,7 +159,7 @@ fn target_impact_requires_confirmation_and_confirmed_removal_keeps_other_scopes(
             |row| row.get::<_, i64>(0),
         )
         .expect("retained club targets"),
-        10
+        11
     );
 }
 

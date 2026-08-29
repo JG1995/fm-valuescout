@@ -9,9 +9,11 @@ use super::assignment_optimizer::{
     StaffAssignmentCandidate, StaffAssignmentClassification, StaffAssignmentEvidence,
     StaffAssignmentScoreSet, StaffAssignmentSlot,
 };
-use super::assignment_targets::read_nonzero_targets_without_initializing_teams;
+use super::assignment_targets::{
+    read_nonzero_targets_without_initializing_teams, target_job_display_rank,
+};
 
-const MAX_STAFF_ASSIGNMENT_SLOTS: usize = 1_108;
+const MAX_STAFF_ASSIGNMENT_SLOTS: usize = 959;
 const SCORE_ROLE_IDS: [&str; 21] = [
     "manager",
     "assistant_manager",
@@ -169,7 +171,8 @@ pub(super) fn optimize_staff_assignments(
         return Err("Staff assignment result exceeds the supported slot limit".to_string());
     }
 
-    let slots = slots
+    let senior_enabled = scope_display_names.contains_key("senior");
+    let mut slots = slots
         .into_iter()
         .map(|slot| {
             let scope = match &slot {
@@ -189,6 +192,29 @@ pub(super) fn optimize_staff_assignments(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    slots.sort_by_key(|result_slot| {
+        let (scope, job_id, slot_number) = match &result_slot.slot {
+            StaffAssignmentSlot::Recommendation(recommendation) => (
+                recommendation.scope.as_str(),
+                recommendation.job_id.as_str(),
+                recommendation.slot_number,
+            ),
+            StaffAssignmentSlot::Vacancy(vacancy) => (
+                vacancy.scope.as_str(),
+                vacancy.job_id.as_str(),
+                vacancy.slot_number,
+            ),
+        };
+        let scope_rank = match scope {
+            "senior" => 0,
+            "reserves" => 1,
+            "youth" => 2,
+            "club" if senior_enabled => 0,
+            "club" => 3,
+            _ => usize::MAX,
+        };
+        (scope_rank, target_job_display_rank(job_id), slot_number)
+    });
 
     Ok(StaffAssignmentOptimization {
         state: StaffAssignmentOptimizationState::Ready,
