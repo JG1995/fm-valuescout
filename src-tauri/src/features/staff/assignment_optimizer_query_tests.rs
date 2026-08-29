@@ -172,9 +172,9 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
          INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
              (1, 'senior', 'assistant_manager', 2),
              (1, 'senior', 'coaches', 1),
-             (1, 'senior', 'head_physio', 1),
              (1, 'reserves', 'manager', 1),
-             (1, 'reserves', 'head_sports_science', 1),
+             (1, 'club', 'head_physio', 1),
+             (1, 'club', 'head_sports_science', 1),
              (1, 'club', 'chief_scout', 1);",
     )
     .expect("configure targets");
@@ -296,22 +296,47 @@ fn caps_the_ready_result_at_the_supported_slot_limit() {
              (1, 'youth', 'Youth');",
     )
     .expect("configure teams");
-    for scope in ["senior", "reserves", "youth"] {
-        for job_id in [
-            "manager",
-            "assistant_manager",
-            "coaches",
-            "set_piece_coach",
-            "head_performance_analyst",
-            "performance_analyst",
-            "head_physio",
-            "physio",
-            "head_sports_science",
-            "sports_scientist",
-        ] {
-            if scope == "senior" && job_id == "manager" {
-                continue;
-            }
+    for (scope, job_ids) in [
+        (
+            "senior",
+            [
+                "assistant_manager",
+                "coaches",
+                "set_piece_coach",
+                "performance_analyst",
+                "physio",
+                "sports_scientist",
+            ]
+            .as_slice(),
+        ),
+        (
+            "reserves",
+            [
+                "manager",
+                "assistant_manager",
+                "coaches",
+                "set_piece_coach",
+                "performance_analyst",
+                "physio",
+                "sports_scientist",
+            ]
+            .as_slice(),
+        ),
+        (
+            "youth",
+            [
+                "manager",
+                "assistant_manager",
+                "coaches",
+                "set_piece_coach",
+                "performance_analyst",
+                "physio",
+                "sports_scientist",
+            ]
+            .as_slice(),
+        ),
+    ] {
+        for job_id in job_ids {
             conn.execute(
                 "INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count)
                  VALUES (1, ?1, ?2, 50)",
@@ -320,20 +345,30 @@ fn caps_the_ready_result_at_the_supported_slot_limit() {
             .expect("insert team target");
         }
     }
-    for job_id in [
-        "head_of_youth_development",
-        "director_of_football",
-        "technical_director",
-        "loan_manager",
-        "chief_scout",
-        "scout",
-    ] {
+    for job_id in ["scout", "recruitment_analyst"] {
         conn.execute(
             "INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count)
              VALUES (1, 'club', ?1, 50)",
             [job_id],
         )
-        .expect("insert club target");
+        .expect("insert club count target");
+    }
+    for job_id in [
+        "head_of_youth_development",
+        "head_performance_analyst",
+        "director_of_football",
+        "chief_scout",
+        "technical_director",
+        "loan_manager",
+        "head_physio",
+        "head_sports_science",
+    ] {
+        conn.execute(
+            "INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count)
+             VALUES (1, 'club', ?1, 1)",
+            [job_id],
+        )
+        .expect("insert club lead target");
     }
     shortlist(&conn, 999, "Assistant Manager", "-");
 
@@ -341,6 +376,6 @@ fn caps_the_ready_result_at_the_supported_slot_limit() {
         .expect("read bounded vacancies");
 
     assert_eq!(result.state, StaffAssignmentOptimizationState::Ready);
-    assert_eq!(result.configured_slot_count, 1_750);
-    assert_eq!(result.slots.len(), 1_750);
+    assert_eq!(result.configured_slot_count, 1_108);
+    assert_eq!(result.slots.len(), 1_108);
 }

@@ -11,7 +11,7 @@ use super::assignment_optimizer::{
 };
 use super::assignment_targets::read_nonzero_targets_without_initializing_teams;
 
-const MAX_STAFF_ASSIGNMENT_SLOTS: usize = 1_750;
+const MAX_STAFF_ASSIGNMENT_SLOTS: usize = 1_108;
 const SCORE_ROLE_IDS: [&str; 18] = [
     "manager",
     "assistant_manager",

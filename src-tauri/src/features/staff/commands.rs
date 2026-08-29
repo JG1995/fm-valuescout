@@ -212,6 +212,8 @@ pub struct StaffAssignmentTargetDto {
     pub scope: String,
     pub job_id: String,
     pub job_label: String,
+    pub section: String,
+    pub max_slot_count: i64,
     pub slot_count: i64,
 }
 
@@ -221,6 +223,8 @@ impl From<StaffAssignmentTarget> for StaffAssignmentTargetDto {
             scope: target.scope,
             job_id: target.job_id,
             job_label: target.job_label,
+            section: target.section,
+            max_slot_count: target.max_slot_count,
             slot_count: target.slot_count,
         }
     }
@@ -1038,6 +1042,8 @@ mod tests {
                 scope: "reserves".to_string(),
                 job_id: "manager".to_string(),
                 job_label: "Manager".to_string(),
+                section: "coaching".to_string(),
+                max_slot_count: 50,
                 slot_count: 2,
             }],
         })
@@ -1047,6 +1053,8 @@ mod tests {
         assert_eq!(value["targets"][0]["scope"], "reserves");
         assert_eq!(value["targets"][0]["jobId"], "manager");
         assert_eq!(value["targets"][0]["jobLabel"], "Manager");
+        assert_eq!(value["targets"][0]["section"], "coaching");
+        assert_eq!(value["targets"][0]["maxSlotCount"], 50);
         assert_eq!(value["targets"][0]["slotCount"], 2);
     }
 

@@ -7,25 +7,51 @@ use crate::features::snapshot::service::{capture_active_save_context, ensure_sav
 
 pub(crate) const CLUB_SCOPE: &str = "club";
 const TEAM_SCOPES: [&str; 3] = ["senior", "reserves", "youth"];
-const TEAM_JOBS: [(&str, &str); 10] = [
-    ("manager", "Manager"),
-    ("assistant_manager", "Assistant Manager"),
-    ("coaches", "Coaches"),
-    ("set_piece_coach", "Set Piece Coach"),
-    ("head_performance_analyst", "Head Performance Analyst"),
-    ("performance_analyst", "Performance Analyst"),
-    ("head_physio", "Head Physio"),
-    ("physio", "Physio"),
-    ("head_sports_science", "Head of Sports Science"),
-    ("sports_scientist", "Sports Scientist"),
+const TEAM_JOBS: [(&str, &str, &str, i64); 7] = [
+    ("manager", "Manager", "coaching", 50),
+    ("assistant_manager", "Assistant Manager", "coaching", 50),
+    ("coaches", "Coaches", "coaching", 50),
+    ("set_piece_coach", "Set Piece Coach", "coaching", 50),
+    ("performance_analyst", "Performance Analyst", "coaching", 50),
+    ("physio", "Physio", "medical", 50),
+    ("sports_scientist", "Sports Scientist", "medical", 50),
 ];
-const CLUB_JOBS: [(&str, &str); 6] = [
-    ("head_of_youth_development", "Head of Youth Development"),
-    ("director_of_football", "Director of Football"),
-    ("technical_director", "Technical Director"),
-    ("loan_manager", "Loan Manager"),
-    ("chief_scout", "Chief Scout"),
-    ("scout", "Scout"),
+const CLUB_JOBS: [(&str, &str, &str, i64); 10] = [
+    (
+        "head_of_youth_development",
+        "Head of Youth Development",
+        "coaching",
+        1,
+    ),
+    (
+        "head_performance_analyst",
+        "Head Performance Analyst",
+        "coaching",
+        1,
+    ),
+    (
+        "director_of_football",
+        "Director of Football",
+        "recruitment",
+        1,
+    ),
+    ("chief_scout", "Chief Scout", "recruitment", 1),
+    ("technical_director", "Technical Director", "recruitment", 1),
+    ("scout", "Scout", "recruitment", 50),
+    (
+        "recruitment_analyst",
+        "Recruitment Analyst",
+        "recruitment",
+        50,
+    ),
+    ("loan_manager", "Loan Manager", "recruitment", 1),
+    ("head_physio", "Head Physio", "medical", 1),
+    (
+        "head_sports_science",
+        "Head of Sports Science",
+        "medical",
+        1,
+    ),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +59,8 @@ pub(crate) struct StaffAssignmentTarget {
     pub(crate) scope: String,
     pub(crate) job_id: String,
     pub(crate) job_label: String,
+    pub(crate) section: String,
+    pub(crate) max_slot_count: i64,
     pub(crate) slot_count: i64,
 }
 
@@ -156,11 +184,12 @@ pub(crate) fn nonzero_targets_for_scope_tx(
         .map_err(|error| error.to_string())?;
     rows.into_iter()
         .map(|(job_id, slot_count)| {
-            let job_label = job_label(scope, &job_id).ok_or_else(|| {
-                "Stored staff assignment targets are invalid for the current Planner teams"
-                    .to_string()
-            })?;
-            if !(1..=50).contains(&slot_count) {
+            let (job_label, section, max_slot_count) =
+                target_metadata(scope, &job_id).ok_or_else(|| {
+                    "Stored staff assignment targets are invalid for the current Planner teams"
+                        .to_string()
+                })?;
+            if !(1..=max_slot_count).contains(&slot_count) {
                 return Err(
                     "Stored staff assignment targets are invalid for the current Planner teams"
                         .to_string(),
@@ -170,6 +199,8 @@ pub(crate) fn nonzero_targets_for_scope_tx(
                 scope: scope.to_string(),
                 job_id,
                 job_label: job_label.to_string(),
+                section: section.to_string(),
+                max_slot_count,
                 slot_count,
             })
         })
@@ -236,7 +267,7 @@ fn read_enabled_teams(
 fn allowed_pairs_for_teams(teams: &[StaffAssignmentTargetTeam]) -> Vec<StaffAssignmentTarget> {
     let mut allowed = Vec::new();
     for team in teams {
-        for (job_id, job_label) in TEAM_JOBS {
+        for (job_id, job_label, section, max_slot_count) in TEAM_JOBS {
             if team.team == "senior" && job_id == "manager" {
                 continue;
             }
@@ -244,15 +275,19 @@ fn allowed_pairs_for_teams(teams: &[StaffAssignmentTargetTeam]) -> Vec<StaffAssi
                 scope: team.team.clone(),
                 job_id: job_id.to_string(),
                 job_label: job_label.to_string(),
+                section: section.to_string(),
+                max_slot_count,
                 slot_count: 0,
             });
         }
     }
-    for (job_id, job_label) in CLUB_JOBS {
+    for (job_id, job_label, section, max_slot_count) in CLUB_JOBS {
         allowed.push(StaffAssignmentTarget {
             scope: CLUB_SCOPE.to_string(),
             job_id: job_id.to_string(),
             job_label: job_label.to_string(),
+            section: section.to_string(),
+            max_slot_count,
             slot_count: 0,
         });
     }
@@ -285,8 +320,17 @@ fn expand_targets(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
     for (scope, job_id, slot_count) in &stored {
+        let Some(target) = allowed
+            .iter()
+            .find(|target| target.scope == *scope && target.job_id == *job_id)
+        else {
+            return Err(
+                "Stored staff assignment targets are invalid for the current Planner teams"
+                    .to_string(),
+            );
+        };
         if !allowed_keys.contains(&(scope.as_str(), job_id.as_str()))
-            || !(1..=50).contains(slot_count)
+            || !(1..=target.max_slot_count).contains(slot_count)
         {
             return Err(
                 "Stored staff assignment targets are invalid for the current Planner teams"
@@ -306,28 +350,28 @@ fn expand_targets(
     Ok(result)
 }
 
-fn job_label(scope: &str, job_id: &str) -> Option<&'static str> {
+fn target_metadata(scope: &str, job_id: &str) -> Option<(&'static str, &'static str, i64)> {
     if scope == CLUB_SCOPE {
         return CLUB_JOBS
             .iter()
-            .find_map(|(candidate_id, label)| (*candidate_id == job_id).then_some(*label));
+            .find_map(|(candidate_id, label, section, max)| {
+                (*candidate_id == job_id).then_some((*label, *section, *max))
+            });
     }
     if !TEAM_SCOPES.contains(&scope) || (scope == "senior" && job_id == "manager") {
         return None;
     }
     TEAM_JOBS
         .iter()
-        .find_map(|(candidate_id, label)| (*candidate_id == job_id).then_some(*label))
+        .find_map(|(candidate_id, label, section, max)| {
+            (*candidate_id == job_id).then_some((*label, *section, *max))
+        })
 }
 
 fn validate_complete_inputs(
     inputs: &[StaffAssignmentTargetInput],
     allowed: &[StaffAssignmentTarget],
 ) -> Result<(), String> {
-    let allowed_keys = allowed
-        .iter()
-        .map(|target| (target.scope.as_str(), target.job_id.as_str()))
-        .collect::<HashSet<_>>();
     if inputs.len() != allowed.len() {
         return Err(
             "Staff assignment targets must include every allowed scope and job".to_string(),
@@ -336,14 +380,20 @@ fn validate_complete_inputs(
     let mut seen = HashSet::new();
     for input in inputs {
         let key = (input.scope.as_str(), input.job_id.as_str());
-        if !allowed_keys.contains(&key) {
+        let Some(target) = allowed
+            .iter()
+            .find(|target| target.scope == input.scope && target.job_id == input.job_id)
+        else {
             return Err("Staff assignment target scope or job is not allowed".to_string());
-        }
+        };
         if !seen.insert(key) {
             return Err("Staff assignment targets must not contain duplicates".to_string());
         }
-        if !(0..=50).contains(&input.slot_count) {
-            return Err("Staff assignment target slot count must be between 0 and 50".to_string());
+        let max_slot_count = target.max_slot_count;
+        if !(0..=max_slot_count).contains(&input.slot_count) {
+            return Err(format!(
+                "Staff assignment target slot count must be between 0 and {max_slot_count}"
+            ));
         }
     }
     Ok(())
@@ -366,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn replaces_the_exact_complete_set_and_compacts_zeroes() {
+    fn returns_the_exact_fm26_catalog_and_compacts_zeroes() {
         let (_temp_dir, conn, save_id, token) = connection();
         let before = get_targets(&conn, &token).expect("expanded targets");
         assert_eq!(
@@ -386,7 +436,84 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(before.targets.len(), 35);
+        assert_eq!(before.targets.len(), 30);
+        assert_eq!(
+            before
+                .targets
+                .iter()
+                .map(|target| (
+                    target.scope.as_str(),
+                    target.job_id.as_str(),
+                    target.job_label.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                ("senior", "assistant_manager", "Assistant Manager"),
+                ("senior", "coaches", "Coaches"),
+                ("senior", "set_piece_coach", "Set Piece Coach"),
+                ("senior", "performance_analyst", "Performance Analyst"),
+                ("senior", "physio", "Physio"),
+                ("senior", "sports_scientist", "Sports Scientist"),
+                ("reserves", "manager", "Manager"),
+                ("reserves", "assistant_manager", "Assistant Manager"),
+                ("reserves", "coaches", "Coaches"),
+                ("reserves", "set_piece_coach", "Set Piece Coach"),
+                ("reserves", "performance_analyst", "Performance Analyst"),
+                ("reserves", "physio", "Physio"),
+                ("reserves", "sports_scientist", "Sports Scientist"),
+                ("youth", "manager", "Manager"),
+                ("youth", "assistant_manager", "Assistant Manager"),
+                ("youth", "coaches", "Coaches"),
+                ("youth", "set_piece_coach", "Set Piece Coach"),
+                ("youth", "performance_analyst", "Performance Analyst"),
+                ("youth", "physio", "Physio"),
+                ("youth", "sports_scientist", "Sports Scientist"),
+                (
+                    "club",
+                    "head_of_youth_development",
+                    "Head of Youth Development"
+                ),
+                (
+                    "club",
+                    "head_performance_analyst",
+                    "Head Performance Analyst"
+                ),
+                ("club", "director_of_football", "Director of Football"),
+                ("club", "chief_scout", "Chief Scout"),
+                ("club", "technical_director", "Technical Director"),
+                ("club", "scout", "Scout"),
+                ("club", "recruitment_analyst", "Recruitment Analyst"),
+                ("club", "loan_manager", "Loan Manager"),
+                ("club", "head_physio", "Head Physio"),
+                ("club", "head_sports_science", "Head of Sports Science"),
+            ]
+        );
+        assert!(before
+            .targets
+            .iter()
+            .all(|target| match target.job_id.as_str() {
+                "manager"
+                | "assistant_manager"
+                | "coaches"
+                | "set_piece_coach"
+                | "performance_analyst" =>
+                    target.section == "coaching" && target.max_slot_count == 50,
+                "physio" | "sports_scientist" =>
+                    target.section == "medical" && target.max_slot_count == 50,
+                "scout" | "recruitment_analyst" => {
+                    target.section == "recruitment" && target.max_slot_count == 50
+                }
+                "head_of_youth_development" | "head_performance_analyst" => {
+                    target.section == "coaching" && target.max_slot_count == 1
+                }
+                "director_of_football" | "chief_scout" | "technical_director" | "loan_manager" => {
+                    target.section == "recruitment" && target.max_slot_count == 1
+                }
+                "head_physio" | "head_sports_science" => {
+                    target.section == "medical" && target.max_slot_count == 1
+                }
+                _ => false,
+            }));
         let inputs = before
             .targets
             .iter()
@@ -394,7 +521,9 @@ mod tests {
                 scope: target.scope.clone(),
                 job_id: target.job_id.clone(),
                 slot_count: i64::from(
-                    target.scope == "senior" && target.job_id == "assistant_manager",
+                    (target.scope == "senior" && target.job_id == "assistant_manager")
+                        || (target.scope == CLUB_SCOPE
+                            && target.job_id == "head_of_youth_development"),
                 ),
             })
             .collect::<Vec<_>>();
@@ -405,7 +534,7 @@ mod tests {
                 .iter()
                 .filter(|target| target.slot_count > 0)
                 .count(),
-            1
+            2
         );
         assert_eq!(
             conn.query_row(
@@ -414,8 +543,104 @@ mod tests {
                 |row| row.get::<_, i64>(0)
             )
             .expect("stored targets"),
-            1
+            2
         );
+    }
+
+    #[test]
+    fn enforces_per_target_slot_limits_and_keeps_club_roles_under_club() {
+        let (_temp_dir, conn, _save_id, token) = connection();
+        let complete = get_targets(&conn, &token).expect("targets");
+        let mut inputs = complete
+            .targets
+            .iter()
+            .map(|target| StaffAssignmentTargetInput {
+                scope: target.scope.clone(),
+                job_id: target.job_id.clone(),
+                slot_count: 0,
+            })
+            .collect::<Vec<_>>();
+        inputs
+            .iter_mut()
+            .find(|target| {
+                target.scope == CLUB_SCOPE && target.job_id == "head_performance_analyst"
+            })
+            .expect("club HPA")
+            .slot_count = 2;
+        assert!(save_targets(&conn, &token, &inputs).is_err());
+
+        inputs
+            .iter_mut()
+            .find(|target| {
+                target.scope == CLUB_SCOPE && target.job_id == "head_performance_analyst"
+            })
+            .expect("club HPA")
+            .slot_count = 1;
+        inputs
+            .iter_mut()
+            .find(|target| target.scope == CLUB_SCOPE && target.job_id == "scout")
+            .expect("club Scout")
+            .slot_count = 51;
+        assert!(save_targets(&conn, &token, &inputs).is_err());
+
+        inputs
+            .iter_mut()
+            .find(|target| target.scope == CLUB_SCOPE && target.job_id == "scout")
+            .expect("club Scout")
+            .slot_count = 50;
+        let saved = save_targets(&conn, &token, &inputs).expect("save valid target bounds");
+        assert!(saved.targets.iter().all(|target| {
+            target.scope != CLUB_SCOPE
+                || matches!(
+                    target.job_id.as_str(),
+                    "head_of_youth_development"
+                        | "head_performance_analyst"
+                        | "director_of_football"
+                        | "chief_scout"
+                        | "technical_director"
+                        | "scout"
+                        | "recruitment_analyst"
+                        | "loan_manager"
+                        | "head_physio"
+                        | "head_sports_science"
+                )
+        }));
+    }
+
+    #[test]
+    fn allows_a_complete_catalog_without_senior_and_never_adds_senior_manager() {
+        let (_temp_dir, conn, save_id, token) = connection();
+        get_targets(&conn, &token).expect("initialize planner teams");
+        conn.execute(
+            "DELETE FROM planner_teams WHERE save_id = ?1 AND team = 'senior'",
+            [save_id],
+        )
+        .expect("remove senior");
+
+        let targets = get_targets(&conn, &token).expect("remaining targets");
+        assert_eq!(targets.targets.len(), 24);
+        assert!(targets
+            .targets
+            .iter()
+            .all(|target| target.scope != "senior"));
+        assert_eq!(
+            targets
+                .targets
+                .iter()
+                .filter(|target| target.scope == CLUB_SCOPE)
+                .count(),
+            10
+        );
+        let inputs = targets
+            .targets
+            .iter()
+            .map(|target| StaffAssignmentTargetInput {
+                scope: target.scope.clone(),
+                job_id: target.job_id.clone(),
+                slot_count: 0,
+            })
+            .collect::<Vec<_>>();
+        save_targets(&conn, &token, &inputs).expect("save complete senior-disabled catalog");
     }
 
     #[test]
@@ -468,10 +693,10 @@ mod tests {
         assert!(get_targets(&conn, "stale-token").is_err());
         conn.execute(
             "INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count)
-             VALUES (?1, 'senior', 'manager', 1)",
+             VALUES (?1, 'club', 'head_performance_analyst', 2)",
             [save_id],
         )
-        .expect("insert invalid pair");
+        .expect("insert invalid target count");
         assert!(get_targets(&conn, &token).is_err());
     }
 
@@ -497,7 +722,7 @@ mod tests {
                 row.get::<_, i64>(0)
             })
             .expect("retained rows"),
-            35
+            30
         );
     }
 }

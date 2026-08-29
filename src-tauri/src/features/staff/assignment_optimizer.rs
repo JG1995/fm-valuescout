@@ -21,23 +21,24 @@ const PREFERRED_JOB_MAPPINGS: [(&str, &str); 16] = [
     ("Sports Scientist", "sports_scientist"),
 ];
 
-const CANONICAL_JOB_IDS: [&str; 16] = [
+const CANONICAL_JOB_IDS: [&str; 17] = [
     "manager",
     "assistant_manager",
     "coaches",
     "set_piece_coach",
-    "head_performance_analyst",
     "performance_analyst",
-    "head_physio",
     "physio",
-    "head_sports_science",
     "sports_scientist",
     "head_of_youth_development",
+    "head_performance_analyst",
     "director_of_football",
-    "technical_director",
-    "loan_manager",
     "chief_scout",
+    "technical_director",
     "scout",
+    "recruitment_analyst",
+    "loan_manager",
+    "head_physio",
+    "head_sports_science",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,7 +156,7 @@ pub(super) fn allocate_staff_assignments(
     targets: &[StaffAssignmentTarget],
     candidates: &[StaffAssignmentCandidate],
 ) -> StaffAssignmentAllocation {
-    let mut groups = std::array::from_fn::<_, 16, _>(|_| CandidateGroup::default());
+    let mut groups = std::array::from_fn::<_, 17, _>(|_| CandidateGroup::default());
     for candidate in candidates {
         let Some(job_id) = canonical_job_id(&candidate.preferred_job) else {
             continue;
@@ -201,7 +202,7 @@ pub(super) fn allocate_staff_assignments(
     });
 
     let mut assigned_uids = HashSet::new();
-    let mut next_candidate = [0_usize; 16];
+    let mut next_candidate = [0_usize; 17];
     let mut slots = Vec::new();
     for target in ordered_targets {
         if target.job_id == "manager" && !matches!(target.scope.as_str(), "reserves" | "youth") {

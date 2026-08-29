@@ -9,6 +9,8 @@ fn target(scope: &str, job_id: &str, job_label: &str, slot_count: i64) -> StaffA
         scope: scope.to_string(),
         job_id: job_id.to_string(),
         job_label: job_label.to_string(),
+        section: String::new(),
+        max_slot_count: 50,
         slot_count,
     }
 }
@@ -320,7 +322,7 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
         &[current_staff, repeated_uid, unavailable, zero_score],
     );
 
-    assert_eq!(result.evidence.len(), 16);
+    assert_eq!(result.evidence.len(), 17);
     assert_eq!(assigned_uids(&result), [9, 7]);
     assert!(matches!(
         &result.slots[0],
@@ -344,6 +346,29 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
         &result.slots[3],
         StaffAssignmentSlot::Vacancy(vacancy) if vacancy.job_id == "scout"
     ));
+}
+
+#[test]
+fn configured_recruitment_analyst_slots_emit_vacancies_without_candidate_support() {
+    let result = allocate_staff_assignments(
+        &[target(
+            "club",
+            "recruitment_analyst",
+            "Recruitment Analyst",
+            2,
+        )],
+        &[],
+    );
+
+    assert_eq!(result.slots.len(), 2);
+    assert!(result.slots.iter().enumerate().all(|(index, slot)| {
+        matches!(slot, StaffAssignmentSlot::Vacancy(vacancy)
+            if vacancy.job_id == "recruitment_analyst"
+                && vacancy.slot_number == i64::try_from(index + 1).expect("slot number")
+                && vacancy.evidence.joined_candidate_count == 0
+                && vacancy.evidence.eligible_score_count == 0
+                && vacancy.evidence.unavailable_score_count == 0)
+    }));
 }
 
 #[test]

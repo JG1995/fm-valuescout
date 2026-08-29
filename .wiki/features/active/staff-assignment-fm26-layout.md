@@ -281,7 +281,7 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 
 #### Commit 2 — Reset and redefine assignment targets
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): redefine FM26 assignment targets`
 
@@ -352,7 +352,7 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 
 #### Commit 3 — Load FM26 assignment candidate scores
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): load FM26 assignment candidates`
 
@@ -691,19 +691,19 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 
 **PR:** PR 1 — Redesign staff assignment slots for FM26
 
-**Commit:** Commit 2 — Reset and redefine assignment targets
+**Commit:** Commit 3 — Load FM26 assignment candidate scores
 
 ### RED or removal proof
 
-Add a populated-v35 migration proof that currently retains obsolete target rows, exact redesigned catalog and per-target-bound tests, Planner team-removal isolation, a Recruitment Analyst vacancy proof, and a catalog-valid query fixture that currently cannot emit the legal 1,108-slot maximum.
+Add optimizer-query proofs showing the three persisted Fitness, Goalkeeping, and Recruitment Analyst scores are currently omitted, plus candidate-classification proofs showing the approved Preferred Jobs are unsupported while retired literal lead jobs and near matches remain rejected.
 
 ### Expected outcome
 
-Migration v36 clears only saved assignment targets, Rust returns and validates the exact 30-pair FM26 catalog with section and maximum metadata, Planner removal preserves Club targets, Recruitment Analyst targets emit vacancies before candidate support, and optimizer queries accept but never exceed 1,108 slots.
+The bounded current-shortlist/current-snapshot query loads all three added scores with null preserved as unavailable, and one closed Preferred Job classification exposes the approved exact, lead-family, and Coaches pools without yet changing allocation phases.
 
 ### Explicit exclusions
 
-Recruitment Analyst candidate score loading or successful allocation, lead-priority changes, Coaches composition and specialization matching, Configure slots presentation, result collapse, current-state documentation, and unrelated cleanup.
+Scoring formula or ingest changes, lead allocation, successful Recruitment Analyst assignment, Coaches composition or specialization matching, target presentation, result collapse, aliases, and unrelated cleanup.
 
 ## Discoveries and replanning
 
@@ -715,7 +715,8 @@ Recruitment Analyst candidate score loading or successful allocation, lead-prior
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Redesign staff assignment slots for FM26 | Commit 1 — Record the approved feature plan | Pending record | Recorded the reviewed JAY-44 ledger and TODO Active link. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear | 0 | None |
+| PR 1 — Redesign staff assignment slots for FM26 | Commit 1 — Record the approved feature plan | 3ac8e21906986f929191fb2264fbc7ec4322adbd | Recorded the reviewed JAY-44 ledger and TODO Active link. | `ledger_state.py`; `delivery_state.py`; `git diff --cached --check` — passed. | Not applicable | Clear | 0 | None |
+| PR 1 — Redesign staff assignment slots for FM26 | Commit 2 — Reset and redefine assignment targets | Pending record | Added migration v36, the exact Rust-owned FM26 target catalog and limits, Club-safe Planner cleanup, Recruitment Analyst target vacancies, and the 1,108-slot bound. | `./scripts/dev check-rust`; `./scripts/dev check` — passed (667 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
 
 ## Final validation
 
