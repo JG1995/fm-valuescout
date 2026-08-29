@@ -222,7 +222,8 @@ pub(super) fn match_lanes(
             MatchObjective::default(),
         );
     }
-    debug_assert_eq!(graph.send_max_flow(source, sink, lane_count), lane_count);
+    let flow = graph.send_max_flow(source, sink, lane_count);
+    debug_assert_eq!(flow, lane_count);
 
     candidate_edges
         .into_iter()
