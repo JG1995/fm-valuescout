@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-08-29
+
+### Changed
+
+- Staff assignment slots now follow the FM26 Coaching, Recruitment, and Medical catalog, show club-wide roles once, support Recruitment Analysts, and retain accepted optimizer results when collapsed.
+- The optimizer reserves candidates for Head and Chief roles before ordinary slots and matches General Coaches to their required coaching specializations.
+- Existing assignment slot counts reset once to adopt the FM26 catalog, while legacy Set Piece Coach targets consolidate into one Club slot.
+
+### Fixed
+
+- Coaches slots now require the correct General, Goalkeeping, and Fitness composition, preserving typed vacancies when a required coach type is unavailable.
+- Configure Slots and optimizer results now share canonical squad and role ordering, with every Head role before its ordinary counterpart.
+
 ## [0.14.0] - 2026-08-26
 
 ### Added
