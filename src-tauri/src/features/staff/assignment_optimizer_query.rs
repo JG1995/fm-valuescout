@@ -5,14 +5,14 @@ use rusqlite::{params, Connection, OptionalExtension};
 use crate::features::managed_club::service::selected_club;
 
 use super::assignment_optimizer::{
-    allocate_staff_assignments, canonical_job_id, StaffAssignmentAllocation,
+    allocate_staff_assignments, preferred_job_classification, StaffAssignmentAllocation,
     StaffAssignmentCandidate, StaffAssignmentClassification, StaffAssignmentEvidence,
     StaffAssignmentScoreSet, StaffAssignmentSlot,
 };
 use super::assignment_targets::read_nonzero_targets_without_initializing_teams;
 
-const MAX_STAFF_ASSIGNMENT_SLOTS: usize = 1_750;
-const SCORE_ROLE_IDS: [&str; 18] = [
+const MAX_STAFF_ASSIGNMENT_SLOTS: usize = 1_108;
+const SCORE_ROLE_IDS: [&str; 21] = [
     "manager",
     "assistant_manager",
     "coach_attacking_technical",
@@ -21,6 +21,8 @@ const SCORE_ROLE_IDS: [&str; 18] = [
     "coach_defending_tactical",
     "coach_possession_technical",
     "coach_possession_tactical",
+    "coach_fitness",
+    "coach_goalkeeping",
     "set_piece_coach",
     "head_performance_analyst",
     "performance_analyst",
@@ -28,6 +30,7 @@ const SCORE_ROLE_IDS: [&str; 18] = [
     "director_of_football",
     "technical_director",
     "loan_manager",
+    "recruitment_analyst",
     "scout",
     "physio",
     "sports_scientist",
@@ -154,7 +157,7 @@ pub(super) fn optimize_staff_assignments(
     let unsupported_preferred_job_count = i64::try_from(
         candidates
             .iter()
-            .filter(|candidate| canonical_job_id(&candidate.preferred_job).is_none())
+            .filter(|candidate| preferred_job_classification(&candidate.preferred_job).is_none())
             .count(),
     )
     .map_err(|_| "Staff shortlist candidate count is too large".to_string())?;
@@ -234,7 +237,7 @@ fn load_scope_display_names(
         .map_err(|error| error.to_string())
 }
 
-fn load_candidates(
+pub(super) fn load_candidates(
     conn: &Connection,
     save_id: i64,
     snapshot_id: i64,
@@ -251,7 +254,8 @@ fn load_candidates(
                  ON scores.snapshot_id = staff.snapshot_id
                 AND scores.uid = staff.uid
                 AND scores.role_id IN (?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                                       ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+                                       ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
+                                       ?23)
              WHERE staff.snapshot_id = ?2
              ORDER BY staff.uid ASC, scores.role_id ASC",
         )
@@ -279,6 +283,9 @@ fn load_candidates(
                 SCORE_ROLE_IDS[15],
                 SCORE_ROLE_IDS[16],
                 SCORE_ROLE_IDS[17],
+                SCORE_ROLE_IDS[18],
+                SCORE_ROLE_IDS[19],
+                SCORE_ROLE_IDS[20],
             ],
             |row| {
                 Ok((
@@ -338,6 +345,8 @@ fn set_score(scores: &mut StaffAssignmentScoreSet, role_id: &str, score: Option<
         "coach_defending_tactical" => scores.coach_defending_tactical = score,
         "coach_possession_technical" => scores.coach_possession_technical = score,
         "coach_possession_tactical" => scores.coach_possession_tactical = score,
+        "coach_fitness" => scores.coach_fitness = score,
+        "coach_goalkeeping" => scores.coach_goalkeeping = score,
         "set_piece_coach" => scores.set_piece_coach = score,
         "head_performance_analyst" => scores.head_performance_analyst = score,
         "performance_analyst" => scores.performance_analyst = score,
@@ -345,6 +354,7 @@ fn set_score(scores: &mut StaffAssignmentScoreSet, role_id: &str, score: Option<
         "director_of_football" => scores.director_of_football = score,
         "technical_director" => scores.technical_director = score,
         "loan_manager" => scores.loan_manager = score,
+        "recruitment_analyst" => scores.recruitment_analyst = score,
         "scout" => scores.scout = score,
         "physio" => scores.physio = score,
         "sports_scientist" => scores.sports_scientist = score,

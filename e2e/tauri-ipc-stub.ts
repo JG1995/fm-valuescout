@@ -12,6 +12,7 @@ type SmokeStubOptions = {
   staffWorkspace?: boolean;
   staffShortlist?: boolean;
   staffAssignment?: boolean;
+  staffAssignmentSenior?: boolean;
   staffFamily?: "configured" | "none";
   snapshotHistory?: boolean;
 };
@@ -28,6 +29,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
   const staffWorkspace = options.staffWorkspace ?? false;
   const staffShortlist = options.staffShortlist ?? false;
   const staffAssignment = options.staffAssignment ?? false;
+  const staffAssignmentSenior = options.staffAssignmentSenior ?? true;
   const staffFamilyConfigured = options.staffFamily !== "none";
   const snapshotHistory = options.snapshotHistory ?? false;
   await page.addInitScript({
@@ -47,6 +49,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const staffWorkspace = ${staffWorkspace ? "true" : "false"};
       const staffShortlist = ${staffShortlist ? "true" : "false"};
       const staffAssignment = ${staffAssignment ? "true" : "false"};
+      const staffAssignmentSenior = ${staffAssignmentSenior ? "true" : "false"};
       const staffFamilyConfigured = ${staffFamilyConfigured ? "true" : "false"};
       const snapshotHistoryEnabled = ${snapshotHistory ? "true" : "false"};
       let nextSaveId = 2;
@@ -96,45 +99,47 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         isCurrent: true,
       });
       const staffAssignmentTeams = [
-        { team: "senior", displayName: "First Team" },
+        ...(staffAssignmentSenior
+          ? [{ team: "senior", displayName: "First Team" }]
+          : []),
         { team: "reserves", displayName: "Reserves" },
         { team: "youth", displayName: "Youth" },
       ];
       const staffAssignmentTeamJobs = [
-        { jobId: "manager", jobLabel: "Manager" },
-        { jobId: "assistant_manager", jobLabel: "Assistant Manager" },
-        { jobId: "coaches", jobLabel: "Coaches" },
-        { jobId: "set_piece_coach", jobLabel: "Set Piece Coach" },
-        { jobId: "head_performance_analyst", jobLabel: "Head Performance Analyst" },
-        { jobId: "performance_analyst", jobLabel: "Performance Analyst" },
-        { jobId: "head_physio", jobLabel: "Head Physio" },
-        { jobId: "physio", jobLabel: "Physio" },
-        { jobId: "head_sports_science", jobLabel: "Head of Sports Science" },
-        { jobId: "sports_scientist", jobLabel: "Sports Scientist" },
+        { jobId: "manager", jobLabel: "Manager", section: "coaching" },
+        { jobId: "assistant_manager", jobLabel: "Assistant Manager", section: "coaching" },
+        { jobId: "coaches", jobLabel: "Coaches", section: "coaching" },
+        { jobId: "set_piece_coach", jobLabel: "Set Piece Coach", section: "coaching" },
+        { jobId: "performance_analyst", jobLabel: "Performance Analyst", section: "coaching" },
+        { jobId: "physio", jobLabel: "Physio", section: "medical" },
+        { jobId: "sports_scientist", jobLabel: "Sports Scientist", section: "medical" },
       ];
       const staffAssignmentClubJobs = [
-        { jobId: "head_of_youth_development", jobLabel: "Head of Youth Development" },
-        { jobId: "director_of_football", jobLabel: "Director of Football" },
-        { jobId: "technical_director", jobLabel: "Technical Director" },
-        { jobId: "loan_manager", jobLabel: "Loan Manager" },
-        { jobId: "chief_scout", jobLabel: "Chief Scout" },
-        { jobId: "scout", jobLabel: "Scout" },
+        { jobId: "head_of_youth_development", jobLabel: "Head of Youth Development", section: "coaching", maxSlotCount: 1 },
+        { jobId: "head_performance_analyst", jobLabel: "Head Performance Analyst", section: "coaching", maxSlotCount: 1 },
+        { jobId: "director_of_football", jobLabel: "Director of Football", section: "recruitment", maxSlotCount: 1 },
+        { jobId: "chief_scout", jobLabel: "Chief Scout", section: "recruitment", maxSlotCount: 1 },
+        { jobId: "technical_director", jobLabel: "Technical Director", section: "recruitment", maxSlotCount: 1 },
+        { jobId: "scout", jobLabel: "Scout", section: "recruitment", maxSlotCount: 50 },
+        { jobId: "recruitment_analyst", jobLabel: "Recruitment Analyst", section: "recruitment", maxSlotCount: 50 },
+        { jobId: "loan_manager", jobLabel: "Loan Manager", section: "recruitment", maxSlotCount: 1 },
+        { jobId: "head_physio", jobLabel: "Head Physio", section: "medical", maxSlotCount: 1 },
+        { jobId: "head_sports_science", jobLabel: "Head of Sports Science", section: "medical", maxSlotCount: 1 },
       ];
       let staffAssignmentTargets = [
         ...staffAssignmentTeams.flatMap(({ team }) =>
           staffAssignmentTeamJobs
             .filter(({ jobId }) => team !== "senior" || jobId !== "manager")
-            .map(({ jobId, jobLabel }) => ({
+            .map((job) => ({
               scope: team,
-              jobId,
-              jobLabel,
+              ...job,
+              maxSlotCount: 50,
               slotCount: 0,
             })),
         ),
-        ...staffAssignmentClubJobs.map(({ jobId, jobLabel }) => ({
+        ...staffAssignmentClubJobs.map((job) => ({
           scope: "club",
-          jobId,
-          jobLabel,
+          ...job,
           slotCount: 0,
         })),
       ];
@@ -805,7 +810,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   preferredJob: "Assistant Manager",
                   classification: "current_staff",
                   score: 82,
-                  coachDiscipline: null,
+                  coachRequirement: null,
                 },
                 {
                   kind: "recommendation",
@@ -819,17 +824,18 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   preferredJob: "Coach",
                   classification: "current_staff",
                   score: 79,
-                  coachDiscipline: "attacking_technical",
+                  coachRequirement: "attacking_technical",
                 },
                 {
                   kind: "vacancy",
                   scope: "reserves",
                   scopeDisplayName: "Reserves",
-                  jobId: "manager",
-                  jobLabel: "Manager",
-                  slotNumber: 1,
+                  jobId: "coaches",
+                  jobLabel: "Coaches",
+                  slotNumber: 2,
+                  coachRequirement: "goalkeeping",
                   evidence: {
-                    jobId: "manager",
+                    jobId: "coaches",
                     joinedCandidateCount: 1,
                     eligibleScoreCount: 0,
                     unavailableScoreCount: 1,
@@ -847,7 +853,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   preferredJob: "Scout",
                   classification: "recruitment",
                   score: 74,
-                  coachDiscipline: null,
+                  coachRequirement: null,
                 },
               ],
               evidence: [

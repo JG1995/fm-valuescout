@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { invokeCommand } from "@/lib/tauri-client";
+import type { StaffAssignmentTargets } from "../types/staff-assignment";
 import { fetchStaffAssignmentTargets } from "./fetch-staff-assignment-targets";
 import { saveStaffAssignmentTargets } from "./save-staff-assignment-targets";
 import { staffAssignmentTargetsQueryOptions } from "./staff-assignment-targets-query-options";
@@ -15,13 +16,28 @@ const context = {
 };
 
 const targets = [{ scope: "senior" as const, jobId: "coaches", slotCount: 50 }];
+const targetResponse = {
+  teams: [{ team: "senior", displayName: "Senior" }],
+  targets: [
+    {
+      scope: "club",
+      jobId: "head_of_youth_development",
+      jobLabel: "Head of Youth Development",
+      section: "coaching",
+      maxSlotCount: 1,
+      slotCount: 0,
+    },
+  ],
+} satisfies StaffAssignmentTargets;
 
 describe("staff assignment targets API", () => {
   it("uses typed target commands and token-separated keys", async () => {
     const invoke = vi.mocked(invokeCommand);
-    invoke.mockResolvedValue(undefined);
+    invoke.mockResolvedValue(targetResponse);
 
-    await fetchStaffAssignmentTargets(context.saveContextToken);
+    expect(await fetchStaffAssignmentTargets(context.saveContextToken)).toEqual(
+      targetResponse,
+    );
     await saveStaffAssignmentTargets(context.saveContextToken, targets);
 
     expect(invoke).toHaveBeenNthCalledWith(1, "get_staff_assignment_targets", {

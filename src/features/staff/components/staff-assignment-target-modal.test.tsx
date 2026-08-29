@@ -47,7 +47,7 @@ function renderModal(context = contextA, contextKey = "context-a") {
 }
 
 describe("StaffAssignmentTargetModal", () => {
-  it("renders Rust-provided groups and submits every allowed pair", async () => {
+  it("groups Rust targets inside Senior sections and preserves the complete semantic payload", async () => {
     const user = userEvent.setup();
     const targets = fixtureStaffAssignmentTargets();
     targets.teams[1] = { ...targets.teams[1], displayName: "B Squad" };
@@ -61,45 +61,131 @@ describe("StaffAssignmentTargetModal", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Configure assignment slots",
     });
+    const senior = within(dialog).getByRole("group", { name: "Senior" });
+    const coaching = within(senior).getByRole("group", { name: "Coaching" });
+    const recruitment = within(senior).getByRole("group", {
+      name: "Recruitment",
+    });
+    const medical = within(senior).getByRole("group", { name: "Medical" });
 
     expect(within(dialog).getByText("B Squad")).toBeInTheDocument();
-    expect(within(dialog).getByText("Club")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("group", { name: "Club" })).toBeNull();
     expect(
-      within(dialog).queryAllByRole("spinbutton", { name: "Manager slots" }),
-    ).toHaveLength(2);
-    expect(within(dialog).getAllByRole("spinbutton")).toHaveLength(35);
+      within(coaching).getByRole("spinbutton", {
+        name: "Head of Youth Development slots",
+      }),
+    ).toHaveAttribute("max", "1");
+    expect(
+      within(coaching).getByRole("spinbutton", {
+        name: "Assistant Manager slots",
+      }),
+    ).toHaveAttribute("max", "50");
+    expect(
+      within(coaching).getByRole("spinbutton", { name: "Coaches slots" }),
+    ).toBeInTheDocument();
+    expect(
+      within(recruitment).getByRole("spinbutton", {
+        name: "Recruitment Analyst slots",
+      }),
+    ).toHaveAttribute("max", "50");
+    expect(
+      within(medical).getByRole("spinbutton", { name: "Head Physio slots" }),
+    ).toHaveAttribute("max", "1");
+    expect(
+      within(senior).queryByRole("spinbutton", { name: "Manager slots" }),
+    ).toBeNull();
+    expect(
+      within(dialog).getByRole("group", { name: "B Squad" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("spinbutton", { name: "Doctor slots" }),
+    ).toBeNull();
+    expect(
+      within(dialog).queryByRole("spinbutton", {
+        name: "Chief Doctor slots",
+      }),
+    ).toBeNull();
+    expect(
+      within(dialog).getAllByRole("spinbutton", {
+        name: "Head of Youth Development slots",
+      }),
+    ).toHaveLength(1);
+    expect(within(dialog).getAllByRole("spinbutton")).toHaveLength(30);
 
-    const coaches = within(dialog).getAllByRole("spinbutton", {
+    const headOfYouthDevelopment = within(coaching).getByRole("spinbutton", {
+      name: "Head of Youth Development slots",
+    });
+    const coaches = within(coaching).getByRole("spinbutton", {
       name: "Coaches slots",
     });
-    await user.clear(coaches[0]);
-    await user.type(coaches[0], "50");
+    await user.clear(headOfYouthDevelopment);
+    await user.type(headOfYouthDevelopment, "1");
+    await user.clear(coaches);
+    await user.type(coaches, "50");
     await user.click(
       within(dialog).getByRole("button", { name: "Save slots" }),
     );
 
-    await waitFor(() =>
-      expect(getLastStaffAssignmentTargetsIpcArgs()).toEqual({
+    await waitFor(() => {
+      const request = getLastStaffAssignmentTargetsIpcArgs() as {
+        targets?: { scope: string; jobId: string; slotCount: number }[];
+      };
+      expect(request).toEqual({
         expectedSaveContextToken: "save-token-a",
         targets: expect.arrayContaining([
+          {
+            scope: "club",
+            jobId: "head_of_youth_development",
+            slotCount: 1,
+          },
           { scope: "senior", jobId: "coaches", slotCount: 50 },
         ]),
-      }),
-    );
-    expect(
-      (
-        getLastStaffAssignmentTargetsIpcArgs() as
-          | { targets?: unknown[] }
-          | undefined
-      )?.targets,
-    ).toHaveLength(35);
+      });
+      expect(request.targets).toHaveLength(30);
+      expect(
+        new Set(
+          request.targets?.map((target) => `${target.scope}:${target.jobId}`),
+        ).size,
+      ).toBe(30);
+    });
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Slot counts saved.",
     );
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it("keeps invalid counts local and shows a Rust save error", async () => {
+  it("renders Club sections once when Senior is disabled", async () => {
+    const user = userEvent.setup();
+    const targets = fixtureStaffAssignmentTargets();
+    targets.teams = targets.teams.filter(({ team }) => team !== "senior");
+    targets.targets = targets.targets.filter(({ scope }) => scope !== "senior");
+    setStaffAssignmentTargetsIpcMock(targets);
+    renderModal();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Configure slots" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    const club = within(dialog).getByRole("group", { name: "Club" });
+
+    expect(within(dialog).queryByRole("group", { name: "Senior" })).toBeNull();
+    expect(
+      within(club).getByRole("group", { name: "Coaching" }),
+    ).toBeInTheDocument();
+    expect(
+      within(club).getByRole("group", { name: "Recruitment" }),
+    ).toBeInTheDocument();
+    expect(
+      within(club).getByRole("group", { name: "Medical" }),
+    ).toBeInTheDocument();
+    expect(
+      within(club).getAllByRole("spinbutton", {
+        name: "Head of Youth Development slots",
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("uses each Rust maximum for local validation and shows a Rust save error", async () => {
     const user = userEvent.setup();
     renderModal();
 
@@ -107,21 +193,21 @@ describe("StaffAssignmentTargetModal", () => {
       await screen.findByRole("button", { name: "Configure slots" }),
     );
     const dialog = await screen.findByRole("dialog");
-    const assistantManager = within(dialog).getAllByRole("spinbutton", {
-      name: "Assistant Manager slots",
-    })[0];
-    await user.clear(assistantManager);
-    await user.type(assistantManager, "51");
+    const headOfYouthDevelopment = within(dialog).getByRole("spinbutton", {
+      name: "Head of Youth Development slots",
+    });
+    await user.clear(headOfYouthDevelopment);
+    await user.type(headOfYouthDevelopment, "2");
 
     expect(
-      within(dialog).getByText("Enter a whole number from 0 to 50."),
+      within(dialog).getByText("Enter a whole number from 0 to 1."),
     ).toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: "Save slots" }),
     ).toBeDisabled();
 
-    await user.clear(assistantManager);
-    await user.type(assistantManager, "0");
+    await user.clear(headOfYouthDevelopment);
+    await user.type(headOfYouthDevelopment, "1");
     setStaffAssignmentTargetsIpcMockMode("error");
     await user.click(
       within(dialog).getByRole("button", { name: "Save slots" }),

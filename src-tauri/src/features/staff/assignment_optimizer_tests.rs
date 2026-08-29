@@ -1,5 +1,6 @@
 use super::assignment_optimizer::{
-    allocate_staff_assignments, canonical_job_id, CoachDiscipline, StaffAssignmentCandidate,
+    allocate_staff_assignments, coach_composition, general_match_edge_bytes,
+    preferred_job_classification, CoachRequirement, PreferredJob, StaffAssignmentCandidate,
     StaffAssignmentClassification, StaffAssignmentScoreSet, StaffAssignmentSlot,
 };
 use super::assignment_targets::StaffAssignmentTarget;
@@ -9,6 +10,8 @@ fn target(scope: &str, job_id: &str, job_label: &str, slot_count: i64) -> StaffA
         scope: scope.to_string(),
         job_id: job_id.to_string(),
         job_label: job_label.to_string(),
+        section: String::new(),
+        max_slot_count: 50,
         slot_count,
     }
 }
@@ -39,49 +42,67 @@ fn assigned_uids(result: &super::assignment_optimizer::StaffAssignmentAllocation
 }
 
 #[test]
-fn maps_only_the_sixteen_trimmed_ascii_case_insensitive_preferred_jobs() {
-    let mappings = [
-        ("Manager", "manager"),
-        ("Assistant Manager", "assistant_manager"),
-        ("Coach", "coaches"),
-        ("Set Piece Coach", "set_piece_coach"),
-        ("Head Performance Analyst", "head_performance_analyst"),
-        ("Performance Analyst", "performance_analyst"),
-        ("Head of Youth Development", "head_of_youth_development"),
-        ("Director of Football", "director_of_football"),
-        ("Technical Director", "technical_director"),
-        ("Loan Manager", "loan_manager"),
-        ("Chief Scout", "chief_scout"),
-        ("Scout", "scout"),
-        ("Head Physio", "head_physio"),
-        ("Physio", "physio"),
-        ("Head of Sports Science", "head_sports_science"),
-        ("Sports Scientist", "sports_scientist"),
+fn classifies_only_the_approved_trimmed_ascii_case_insensitive_preferred_jobs() {
+    let classifications = [
+        ("Manager", PreferredJob::Manager),
+        ("Assistant Manager", PreferredJob::AssistantManager),
+        ("Coach", PreferredJob::Coach),
+        ("Fitness Coach", PreferredJob::FitnessCoach),
+        ("Goalkeeping Coach", PreferredJob::GoalkeepingCoach),
+        ("Set Piece Coach", PreferredJob::SetPieceCoach),
+        (
+            "Head Performance Analyst",
+            PreferredJob::HeadPerformanceAnalyst,
+        ),
+        ("Performance Analyst", PreferredJob::PerformanceAnalyst),
+        (
+            "Head of Youth Development",
+            PreferredJob::HeadOfYouthDevelopment,
+        ),
+        ("Director of Football", PreferredJob::DirectorOfFootball),
+        ("Technical Director", PreferredJob::TechnicalDirector),
+        ("Loan Manager", PreferredJob::LoanManager),
+        ("Scout", PreferredJob::Scout),
+        ("Recruitment Analyst", PreferredJob::RecruitmentAnalyst),
+        ("Physio", PreferredJob::Physio),
+        ("Sports Scientist", PreferredJob::SportsScientist),
     ];
 
-    for (preferred_job, job_id) in mappings {
-        assert_eq!(canonical_job_id(preferred_job), Some(job_id));
+    for (preferred_job, classification) in classifications {
         assert_eq!(
-            canonical_job_id(&format!("  {}  ", preferred_job.to_ascii_lowercase())),
-            Some(job_id)
+            preferred_job_classification(preferred_job),
+            Some(classification)
+        );
+        assert_eq!(
+            preferred_job_classification(&format!("  {}  ", preferred_job.to_ascii_lowercase())),
+            Some(classification)
         );
     }
 
     for unsupported in [
+        "Chief Scout",
+        "Head Physio",
+        "Head of Sports Science",
         "Assistant Coach",
         "Coaches",
         "Chief Scout Assistant",
+        "Head Physio Assistant",
+        "Head of Sports Science Assistant",
         "Head Scout",
         "Managerial",
         "Coach/Analyst",
         "",
     ] {
-        assert_eq!(canonical_job_id(unsupported), None, "{unsupported}");
+        assert_eq!(
+            preferred_job_classification(unsupported),
+            None,
+            "{unsupported}"
+        );
     }
 }
 
 #[test]
-fn coach_uses_the_highest_available_score_and_recorded_tie_order() {
+fn coaches_use_the_exact_general_fitness_and_goalkeeping_pools() {
     let candidates = [
         candidate(
             1,
@@ -89,46 +110,51 @@ fn coach_uses_the_highest_available_score_and_recorded_tie_order() {
             StaffAssignmentScoreSet {
                 coach_attacking_technical: Some(91),
                 coach_attacking_tactical: Some(91),
-                coach_defending_tactical: Some(90),
+                coach_defending_technical: Some(91),
+                coach_defending_tactical: Some(91),
+                coach_possession_technical: Some(91),
+                coach_possession_tactical: Some(91),
                 ..Default::default()
             },
         ),
         candidate(
             2,
-            "Coach",
+            "Fitness Coach",
             StaffAssignmentScoreSet {
-                coach_possession_tactical: Some(99),
+                coach_fitness: Some(88),
                 ..Default::default()
             },
         ),
-        candidate(3, "Coach", StaffAssignmentScoreSet::default()),
+        candidate(
+            3,
+            "Goalkeeping Coach",
+            StaffAssignmentScoreSet {
+                coach_goalkeeping: Some(87),
+                ..Default::default()
+            },
+        ),
     ];
 
     let result =
-        allocate_staff_assignments(&[target("senior", "coaches", "Coaches", 3)], &candidates);
+        allocate_staff_assignments(&[target("senior", "coaches", "Coaches", 8)], &candidates);
 
-    assert_eq!(result.evidence[2].joined_candidate_count, 3);
-    assert_eq!(result.evidence[2].eligible_score_count, 2);
-    assert_eq!(result.evidence[2].unavailable_score_count, 1);
+    assert_eq!(assigned_uids(&result), [1, 3, 2]);
     assert!(matches!(
         &result.slots[0],
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.uid == 2
-                && recommendation.score == 99
-                && recommendation.coach_discipline == Some(CoachDiscipline::PossessionTactical)
+            if recommendation.coach_requirement == Some(CoachRequirement::AttackingTechnical)
     ));
     assert!(matches!(
-        &result.slots[1],
+        &result.slots[6],
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.uid == 1
-                && recommendation.score == 91
-                && recommendation.coach_discipline == Some(CoachDiscipline::AttackingTechnical)
+            if recommendation.uid == 3
+                && recommendation.coach_requirement == Some(CoachRequirement::Goalkeeping)
     ));
     assert!(matches!(
-        &result.slots[2],
-        StaffAssignmentSlot::Vacancy(vacancy)
-            if vacancy.evidence.eligible_score_count == 2
-                && vacancy.evidence.unavailable_score_count == 1
+        &result.slots[7],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 2
+                && recommendation.coach_requirement == Some(CoachRequirement::Fitness)
     ));
 }
 
@@ -219,29 +245,183 @@ fn assigns_manager_only_to_the_supported_reserves_and_youth_targets() {
 }
 
 #[test]
-fn uses_the_three_approved_shared_scores_without_cross_job_substitution() {
+fn reserves_hpa_fallback_before_pa_slots_and_keeps_pa_only_ordinary_eligibility() {
+    let candidates = [
+        candidate(
+            20,
+            "Performance Analyst",
+            StaffAssignmentScoreSet {
+                head_performance_analyst: Some(99),
+                performance_analyst: Some(50),
+                ..Default::default()
+            },
+        ),
+        candidate(
+            10,
+            "Performance Analyst",
+            StaffAssignmentScoreSet {
+                head_performance_analyst: Some(80),
+                performance_analyst: Some(98),
+                ..Default::default()
+            },
+        ),
+        candidate(
+            30,
+            "Head Performance Analyst",
+            StaffAssignmentScoreSet {
+                head_performance_analyst: Some(90),
+                performance_analyst: Some(100),
+                ..Default::default()
+            },
+        ),
+    ];
+
+    let result = allocate_staff_assignments(
+        &[
+            target("senior", "performance_analyst", "Performance Analyst", 1),
+            target(
+                "club",
+                "head_performance_analyst",
+                "Head Performance Analyst",
+                1,
+            ),
+        ],
+        &candidates,
+    );
+
+    assert_eq!(assigned_uids(&result), [10, 20]);
+    assert!(matches!(
+        &result.slots[0],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.job_id == "performance_analyst"
+                && recommendation.uid == 10
+                && recommendation.score == 98
+    ));
+    assert!(matches!(
+        &result.slots[1],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.job_id == "head_performance_analyst"
+                && recommendation.uid == 20
+                && recommendation.score == 99
+    ));
+}
+
+#[test]
+fn ranks_hpa_leads_by_hpa_score_uid_and_leaves_missing_lead_scores_vacant() {
+    let candidates = [
+        candidate(
+            40,
+            "Performance Analyst",
+            StaffAssignmentScoreSet {
+                performance_analyst: Some(99),
+                ..Default::default()
+            },
+        ),
+        candidate(
+            30,
+            "Head Performance Analyst",
+            StaffAssignmentScoreSet {
+                head_performance_analyst: Some(80),
+                ..Default::default()
+            },
+        ),
+        candidate(
+            20,
+            "Head Performance Analyst",
+            StaffAssignmentScoreSet {
+                head_performance_analyst: Some(80),
+                ..Default::default()
+            },
+        ),
+    ];
+
+    let result = allocate_staff_assignments(
+        &[
+            target("senior", "performance_analyst", "Performance Analyst", 2),
+            target(
+                "club",
+                "head_performance_analyst",
+                "Head Performance Analyst",
+                1,
+            ),
+        ],
+        &candidates,
+    );
+
+    assert_eq!(assigned_uids(&result), [40, 20]);
+    assert!(matches!(
+        &result.slots[1],
+        StaffAssignmentSlot::Vacancy(vacancy)
+            if vacancy.job_id == "performance_analyst"
+                && vacancy.evidence.joined_candidate_count == 1
+                && vacancy.evidence.eligible_score_count == 1
+                && vacancy.evidence.unavailable_score_count == 0
+    ));
+    assert!(matches!(
+        &result.slots[2],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.job_id == "head_performance_analyst"
+                && recommendation.uid == 20
+                && recommendation.score == 80
+    ));
+    let hpa_evidence = result
+        .evidence
+        .iter()
+        .find(|evidence| evidence.job_id == "head_performance_analyst")
+        .expect("HPA evidence");
+    assert_eq!(hpa_evidence.joined_candidate_count, 3);
+    assert_eq!(hpa_evidence.eligible_score_count, 2);
+    assert_eq!(hpa_evidence.unavailable_score_count, 1);
+}
+
+#[test]
+fn reserves_scout_physio_and_sports_science_leads_before_ordinary_slots() {
     let candidates = [
         candidate(
             1,
-            "Chief Scout",
+            "Scout",
             StaffAssignmentScoreSet {
-                scout: Some(71),
+                scout: Some(92),
                 ..Default::default()
             },
         ),
         candidate(
             2,
-            "Head Physio",
+            "Scout",
+            StaffAssignmentScoreSet {
+                scout: Some(81),
+                ..Default::default()
+            },
+        ),
+        candidate(
+            3,
+            "Physio",
+            StaffAssignmentScoreSet {
+                physio: Some(93),
+                ..Default::default()
+            },
+        ),
+        candidate(
+            4,
+            "Physio",
             StaffAssignmentScoreSet {
                 physio: Some(82),
                 ..Default::default()
             },
         ),
         candidate(
-            3,
-            "Head of Sports Science",
+            5,
+            "Sports Scientist",
             StaffAssignmentScoreSet {
-                sports_scientist: Some(93),
+                sports_scientist: Some(94),
+                ..Default::default()
+            },
+        ),
+        candidate(
+            6,
+            "Sports Scientist",
+            StaffAssignmentScoreSet {
+                sports_scientist: Some(83),
                 ..Default::default()
             },
         ),
@@ -250,33 +430,22 @@ fn uses_the_three_approved_shared_scores_without_cross_job_substitution() {
     let result = allocate_staff_assignments(
         &[
             target("club", "chief_scout", "Chief Scout", 1),
-            target("senior", "head_physio", "Head Physio", 1),
-            target(
-                "reserves",
-                "head_sports_science",
-                "Head of Sports Science",
-                1,
-            ),
+            target("club", "scout", "Scout", 1),
+            target("senior", "physio", "Physio", 1),
+            target("club", "head_physio", "Head Physio", 1),
+            target("reserves", "sports_scientist", "Sports Scientist", 1),
+            target("club", "head_sports_science", "Head of Sports Science", 1),
         ],
         &candidates,
     );
 
-    assert_eq!(assigned_uids(&result), [2, 3, 1]);
-    assert!(matches!(
-        &result.slots[0],
+    assert_eq!(assigned_uids(&result), [4, 6, 1, 2, 3, 5]);
+    assert!(result.slots.iter().all(|slot| matches!(
+        slot,
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.score == 82 && recommendation.job_id == "head_physio"
-    ));
-    assert!(matches!(
-        &result.slots[1],
-        StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.score == 93 && recommendation.job_id == "head_sports_science"
-    ));
-    assert!(matches!(
-        &result.slots[2],
-        StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.score == 71 && recommendation.job_id == "chief_scout"
-    ));
+            if matches!(recommendation.job_id.as_str(),
+                "chief_scout" | "scout" | "physio" | "head_physio" | "sports_scientist" | "head_sports_science")
+    )));
 }
 
 #[test]
@@ -285,9 +454,9 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
         classification: StaffAssignmentClassification::CurrentStaff,
         ..candidate(
             7,
-            "Chief Scout",
+            "Scout",
             StaffAssignmentScoreSet {
-                scout: Some(80),
+                scout: Some(99),
                 ..Default::default()
             },
         )
@@ -320,7 +489,7 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
         &[current_staff, repeated_uid, unavailable, zero_score],
     );
 
-    assert_eq!(result.evidence.len(), 16);
+    assert_eq!(result.evidence.len(), 17);
     assert_eq!(assigned_uids(&result), [9, 7]);
     assert!(matches!(
         &result.slots[0],
@@ -338,11 +507,294 @@ fn preserves_classification_enforces_one_duty_and_reports_unavailable_vacancies(
     assert!(matches!(
         &result.slots[2],
         StaffAssignmentSlot::Recommendation(recommendation)
-            if recommendation.classification == StaffAssignmentClassification::CurrentStaff
+            if recommendation.job_id == "chief_scout"
+                && recommendation.classification == StaffAssignmentClassification::CurrentStaff
     ));
     assert!(matches!(
         &result.slots[3],
         StaffAssignmentSlot::Vacancy(vacancy) if vacancy.job_id == "scout"
+    ));
+}
+
+#[test]
+fn allocates_recruitment_analysts_only_from_their_preferred_job_and_persisted_score() {
+    let candidates = [
+        candidate(
+            1,
+            "Recruitment Analyst",
+            StaffAssignmentScoreSet {
+                recruitment_analyst: Some(99),
+                ..Default::default()
+            },
+        ),
+        candidate(2, "Recruitment Analyst", StaffAssignmentScoreSet::default()),
+        candidate(
+            3,
+            "Scout",
+            StaffAssignmentScoreSet {
+                recruitment_analyst: Some(100),
+                ..Default::default()
+            },
+        ),
+    ];
+    let result = allocate_staff_assignments(
+        &[target(
+            "club",
+            "recruitment_analyst",
+            "Recruitment Analyst",
+            2,
+        )],
+        &candidates,
+    );
+
+    assert!(matches!(
+        &result.slots[0],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 1 && recommendation.score == 99
+    ));
+    assert!(matches!(
+        &result.slots[1],
+        StaffAssignmentSlot::Vacancy(vacancy)
+            if vacancy.job_id == "recruitment_analyst"
+                && vacancy.slot_number == 2
+                && vacancy.evidence.joined_candidate_count == 2
+                && vacancy.evidence.eligible_score_count == 1
+                && vacancy.evidence.unavailable_score_count == 1
+    ));
+}
+
+#[test]
+fn general_matching_keeps_residual_edges_compact_at_the_supported_candidate_bound() {
+    assert!(
+        general_match_edge_bytes() <= 64,
+        "General matching stores two residual edges for each of up to 50 × 10,000 candidate pairs"
+    );
+}
+
+#[test]
+fn coach_composition_repeats_the_exact_jay_44_boundaries() {
+    for (count, general, fitness, goalkeeping) in [
+        (0, 0, 0, 0),
+        (1, 1, 0, 0),
+        (2, 2, 0, 0),
+        (3, 3, 0, 0),
+        (8, 6, 1, 1),
+        (9, 6, 1, 2),
+        (10, 6, 2, 2),
+        (16, 12, 2, 2),
+        (17, 12, 2, 3),
+        (21, 15, 3, 3),
+    ] {
+        assert_eq!(
+            coach_composition(count),
+            super::assignment_optimizer::CoachComposition {
+                general,
+                fitness,
+                goalkeeping,
+            },
+            "count {count}",
+        );
+    }
+}
+
+#[test]
+fn general_matching_maximizes_filled_requirements_before_total_score() {
+    let result = allocate_staff_assignments(
+        &[target("senior", "coaches", "Coaches", 2)],
+        &[
+            candidate(
+                10,
+                "Coach",
+                StaffAssignmentScoreSet {
+                    coach_attacking_technical: Some(100),
+                    coach_attacking_tactical: Some(0),
+                    ..Default::default()
+                },
+            ),
+            candidate(
+                20,
+                "Coach",
+                StaffAssignmentScoreSet {
+                    coach_attacking_technical: Some(99),
+                    ..Default::default()
+                },
+            ),
+        ],
+    );
+
+    assert!(matches!(
+        &result.slots[0],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 20
+                && recommendation.score == 99
+                && recommendation.coach_requirement == Some(CoachRequirement::AttackingTechnical)
+    ));
+    assert!(matches!(
+        &result.slots[1],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 10
+                && recommendation.score == 0
+                && recommendation.coach_requirement == Some(CoachRequirement::AttackingTactical)
+    ));
+}
+
+#[test]
+fn general_matching_selects_partial_disciplines_from_the_complete_cycle() {
+    let result = allocate_staff_assignments(
+        &[target("senior", "coaches", "Coaches", 1)],
+        &[candidate(
+            10,
+            "Coach",
+            StaffAssignmentScoreSet {
+                coach_possession_tactical: Some(99),
+                ..Default::default()
+            },
+        )],
+    );
+
+    assert!(matches!(
+        &result.slots[0],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 10
+                && recommendation.coach_requirement == Some(CoachRequirement::PossessionTactical)
+    ));
+}
+
+#[test]
+fn general_matching_orders_repeated_requirements_and_vacancies_by_cycle_discipline_and_uid() {
+    let result = allocate_staff_assignments(
+        &[target("senior", "coaches", "Coaches", 12)],
+        &[
+            candidate(
+                20,
+                "Coach",
+                StaffAssignmentScoreSet {
+                    coach_attacking_technical: Some(80),
+                    ..Default::default()
+                },
+            ),
+            candidate(
+                10,
+                "Coach",
+                StaffAssignmentScoreSet {
+                    coach_attacking_technical: Some(80),
+                    ..Default::default()
+                },
+            ),
+        ],
+    );
+
+    assert!(matches!(
+        &result.slots[0],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 10
+                && recommendation.coach_requirement == Some(CoachRequirement::AttackingTechnical)
+    ));
+    assert_eq!(
+        result
+            .slots
+            .iter()
+            .take(6)
+            .map(|slot| match slot {
+                StaffAssignmentSlot::Recommendation(recommendation) => {
+                    recommendation.coach_requirement
+                }
+                StaffAssignmentSlot::Vacancy(vacancy) => vacancy.coach_requirement,
+            })
+            .collect::<Vec<_>>(),
+        [
+            Some(CoachRequirement::AttackingTechnical),
+            Some(CoachRequirement::AttackingTactical),
+            Some(CoachRequirement::DefendingTechnical),
+            Some(CoachRequirement::DefendingTactical),
+            Some(CoachRequirement::PossessionTechnical),
+            Some(CoachRequirement::PossessionTactical),
+        ],
+    );
+    assert!(matches!(
+        &result.slots[1],
+        StaffAssignmentSlot::Vacancy(vacancy)
+            if vacancy.coach_requirement == Some(CoachRequirement::AttackingTactical)
+                && vacancy.evidence.joined_candidate_count == 2
+                && vacancy.evidence.eligible_score_count == 0
+                && vacancy.evidence.unavailable_score_count == 2
+    ));
+    assert!(matches!(
+        &result.slots[10],
+        StaffAssignmentSlot::Recommendation(recommendation)
+            if recommendation.uid == 20
+                && recommendation.coach_requirement == Some(CoachRequirement::AttackingTechnical)
+    ));
+}
+
+#[test]
+fn coach_vacancy_evidence_uses_only_its_exact_preferred_job_and_score() {
+    let result = allocate_staff_assignments(
+        &[target("senior", "coaches", "Coaches", 8)],
+        &[
+            candidate(
+                1,
+                "Fitness Coach",
+                StaffAssignmentScoreSet {
+                    coach_goalkeeping: Some(99),
+                    ..Default::default()
+                },
+            ),
+            candidate(2, "Fitness Coach", StaffAssignmentScoreSet::default()),
+            candidate(
+                3,
+                "Goalkeeping Coach",
+                StaffAssignmentScoreSet {
+                    coach_fitness: Some(99),
+                    ..Default::default()
+                },
+            ),
+        ],
+    );
+
+    assert!(matches!(
+        &result.slots[6],
+        StaffAssignmentSlot::Vacancy(vacancy)
+            if vacancy.coach_requirement == Some(CoachRequirement::Goalkeeping)
+                && vacancy.evidence.joined_candidate_count == 1
+                && vacancy.evidence.eligible_score_count == 0
+                && vacancy.evidence.unavailable_score_count == 1
+    ));
+    assert!(matches!(
+        &result.slots[7],
+        StaffAssignmentSlot::Vacancy(vacancy)
+            if vacancy.coach_requirement == Some(CoachRequirement::Fitness)
+                && vacancy.evidence.joined_candidate_count == 2
+                && vacancy.evidence.eligible_score_count == 0
+                && vacancy.evidence.unavailable_score_count == 2
+    ));
+}
+
+#[test]
+fn coach_allocation_keeps_senior_priority_and_global_uid_uniqueness() {
+    let result = allocate_staff_assignments(
+        &[
+            target("reserves", "coaches", "Coaches", 1),
+            target("senior", "coaches", "Coaches", 1),
+        ],
+        &[candidate(
+            1,
+            "Coach",
+            StaffAssignmentScoreSet {
+                coach_attacking_technical: Some(90),
+                ..Default::default()
+            },
+        )],
+    );
+
+    assert_eq!(assigned_uids(&result), [1]);
+    assert!(matches!(
+        &result.slots[0],
+        StaffAssignmentSlot::Recommendation(recommendation) if recommendation.scope == "senior"
+    ));
+    assert!(matches!(
+        &result.slots[1],
+        StaffAssignmentSlot::Vacancy(vacancy) if vacancy.scope == "reserves"
     ));
 }
 

@@ -442,7 +442,7 @@ describe("My Club route", () => {
           | { targets?: unknown[] }
           | undefined
       )?.targets,
-    ).toHaveLength(35);
+    ).toHaveLength(30);
 
     await user.click(
       await screen.findByRole("button", { name: "Configure slots" }),
@@ -475,6 +475,29 @@ describe("My Club route", () => {
     expect(
       screen.getAllByRole("spinbutton", { name: "Assistant Manager slots" })[0],
     ).toHaveValue(0);
+  });
+
+  it("renders standalone Club sections through the Staff Shortlist route without Senior", async () => {
+    const user = userEvent.setup();
+    await resolveLoadDataIpcMock();
+    const targets = fixtureStaffAssignmentTargets();
+    targets.teams = targets.teams.filter(({ team }) => team !== "senior");
+    targets.targets = targets.targets.filter(({ scope }) => scope !== "senior");
+    setStaffAssignmentTargetsIpcMock(targets);
+    renderMyClubRoute({ initialEntry: "/my-club?view=staff-shortlist" });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Configure slots" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Configure assignment slots",
+    });
+    const club = within(dialog).getByRole("group", { name: "Club" });
+
+    expect(within(dialog).queryByRole("group", { name: "Senior" })).toBeNull();
+    expect(
+      within(club).getByRole("group", { name: "Recruitment" }),
+    ).toBeInTheDocument();
   });
 
   it.each([

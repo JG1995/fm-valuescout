@@ -52,14 +52,13 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
-None.
-
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.
 
 ## Completed
 
+- [Staff Assignment FM26 Layout](./features/completed/staff-assignment-fm26-layout.md) — redesign Configure slots around FM26 staff limits, exact coach composition and lead pools, Recruitment Analyst support, and collapsible assignment results (Linear JAY-44).
 - [Cumulative Moneyball Imports](./features/completed/cumulative-moneyball-imports.md) — cumulative current-snapshot Moneyball upserts with atomic full-cohort percentiles and shared Search/My Club Squad upload entry points (Linear JAY-33).
 - [Ingest-Time Potential Scoring](./features/completed/ingest-potential-scores.md) — current-only eager projected attributes and complete potential role scores with atomic lifecycle and read-only consumers.
 - [Player Table Sort Performance](./features/completed/player-table-sort-performance.md) — truthful sort replacement, context-bound result clearing, targeted player indexes, and relation-driven Search and Squad sorts.

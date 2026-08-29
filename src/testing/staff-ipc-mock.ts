@@ -53,6 +53,7 @@ let staffAssignmentOptimization: StaffAssignmentOptimization;
 let staffAssignmentOptimizerMode: StaffAssignmentOptimizerIpcMockMode =
   "success";
 let lastStaffAssignmentOptimizerArgs: unknown;
+let staffAssignmentOptimizerCallCount = 0;
 let pendingStaffAssignmentOptimization: {
   promise: Promise<StaffAssignmentOptimization>;
   resolve: (result: StaffAssignmentOptimization) => void;
@@ -87,24 +88,91 @@ export type StaffAssignmentOptimizerIpcMockMode =
   | "pending";
 
 const ASSIGNMENT_TEAM_JOBS = [
-  ["manager", "Manager"],
-  ["assistant_manager", "Assistant Manager"],
-  ["coaches", "Coaches"],
-  ["set_piece_coach", "Set Piece Coach"],
-  ["head_performance_analyst", "Head Performance Analyst"],
-  ["performance_analyst", "Performance Analyst"],
-  ["head_physio", "Head Physio"],
-  ["physio", "Physio"],
-  ["head_sports_science", "Head of Sports Science"],
-  ["sports_scientist", "Sports Scientist"],
+  { jobId: "manager", jobLabel: "Manager", section: "coaching" },
+  {
+    jobId: "assistant_manager",
+    jobLabel: "Assistant Manager",
+    section: "coaching",
+  },
+  { jobId: "coaches", jobLabel: "Coaches", section: "coaching" },
+  {
+    jobId: "set_piece_coach",
+    jobLabel: "Set Piece Coach",
+    section: "coaching",
+  },
+  {
+    jobId: "performance_analyst",
+    jobLabel: "Performance Analyst",
+    section: "coaching",
+  },
+  { jobId: "physio", jobLabel: "Physio", section: "medical" },
+  {
+    jobId: "sports_scientist",
+    jobLabel: "Sports Scientist",
+    section: "medical",
+  },
 ] as const;
 const ASSIGNMENT_CLUB_JOBS = [
-  ["head_of_youth_development", "Head of Youth Development"],
-  ["director_of_football", "Director of Football"],
-  ["technical_director", "Technical Director"],
-  ["loan_manager", "Loan Manager"],
-  ["chief_scout", "Chief Scout"],
-  ["scout", "Scout"],
+  {
+    jobId: "head_of_youth_development",
+    jobLabel: "Head of Youth Development",
+    section: "coaching",
+    maxSlotCount: 1,
+  },
+  {
+    jobId: "head_performance_analyst",
+    jobLabel: "Head Performance Analyst",
+    section: "coaching",
+    maxSlotCount: 1,
+  },
+  {
+    jobId: "director_of_football",
+    jobLabel: "Director of Football",
+    section: "recruitment",
+    maxSlotCount: 1,
+  },
+  {
+    jobId: "chief_scout",
+    jobLabel: "Chief Scout",
+    section: "recruitment",
+    maxSlotCount: 1,
+  },
+  {
+    jobId: "technical_director",
+    jobLabel: "Technical Director",
+    section: "recruitment",
+    maxSlotCount: 1,
+  },
+  {
+    jobId: "scout",
+    jobLabel: "Scout",
+    section: "recruitment",
+    maxSlotCount: 50,
+  },
+  {
+    jobId: "recruitment_analyst",
+    jobLabel: "Recruitment Analyst",
+    section: "recruitment",
+    maxSlotCount: 50,
+  },
+  {
+    jobId: "loan_manager",
+    jobLabel: "Loan Manager",
+    section: "recruitment",
+    maxSlotCount: 1,
+  },
+  {
+    jobId: "head_physio",
+    jobLabel: "Head Physio",
+    section: "medical",
+    maxSlotCount: 1,
+  },
+  {
+    jobId: "head_sports_science",
+    jobLabel: "Head of Sports Science",
+    section: "medical",
+    maxSlotCount: 1,
+  },
 ] as const;
 
 const ROLE_IDS = [
@@ -141,20 +209,26 @@ export function fixtureStaffAssignmentTargets(
   const targets = [
     ...teams.flatMap(({ team }) =>
       ASSIGNMENT_TEAM_JOBS.filter(
-        ([jobId]) => !(team === "senior" && jobId === "manager"),
-      ).map(([jobId, jobLabel]) => ({
+        ({ jobId }) => !(team === "senior" && jobId === "manager"),
+      ).map(({ jobId, jobLabel, section }) => ({
         scope: team,
         jobId,
         jobLabel,
+        section,
+        maxSlotCount: 50,
         slotCount: 0,
       })),
     ),
-    ...ASSIGNMENT_CLUB_JOBS.map(([jobId, jobLabel]) => ({
-      scope: "club" as const,
-      jobId,
-      jobLabel,
-      slotCount: 0,
-    })),
+    ...ASSIGNMENT_CLUB_JOBS.map(
+      ({ jobId, jobLabel, section, maxSlotCount }) => ({
+        scope: "club" as const,
+        jobId,
+        jobLabel,
+        section,
+        maxSlotCount,
+        slotCount: 0,
+      }),
+    ),
   ];
   return { teams, targets, ...overrides };
 }
@@ -186,7 +260,7 @@ export function fixtureStaffAssignmentOptimization(
         preferredJob: "Assistant Manager",
         classification: "current_staff",
         score: 82,
-        coachDiscipline: null,
+        coachRequirement: null,
       },
       {
         kind: "vacancy",
@@ -195,6 +269,7 @@ export function fixtureStaffAssignmentOptimization(
         jobId: "coaches",
         jobLabel: "Coaches",
         slotNumber: 1,
+        coachRequirement: "goalkeeping",
         evidence: {
           jobId: "coaches",
           joinedCandidateCount: 1,
@@ -218,6 +293,10 @@ export function setStaffAssignmentOptimizationIpcMock(
 
 export function getLastStaffAssignmentOptimizerIpcArgs() {
   return lastStaffAssignmentOptimizerArgs;
+}
+
+export function getStaffAssignmentOptimizerIpcCallCount() {
+  return staffAssignmentOptimizerCallCount;
 }
 
 export function setStaffAssignmentOptimizerIpcMockMode(
@@ -331,6 +410,7 @@ export function resetStaffIpcMock() {
   staffAssignmentOptimization = fixtureStaffAssignmentOptimization();
   staffAssignmentOptimizerMode = "success";
   lastStaffAssignmentOptimizerArgs = undefined;
+  staffAssignmentOptimizerCallCount = 0;
   pendingStaffAssignmentOptimization = null;
 }
 
@@ -597,6 +677,7 @@ export function resolveSaveStaffAssignmentTargetsIpcMock(
 export function resolveOptimizeStaffAssignmentsIpcMock(
   args: unknown,
 ): Promise<StaffAssignmentOptimization> {
+  staffAssignmentOptimizerCallCount += 1;
   lastStaffAssignmentOptimizerArgs = args;
   if (
     typeof args !== "object" ||

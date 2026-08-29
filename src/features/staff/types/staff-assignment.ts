@@ -2,10 +2,14 @@ export type StaffAssignmentScope = "senior" | "reserves" | "youth" | "club";
 
 export type StaffAssignmentTeam = Exclude<StaffAssignmentScope, "club">;
 
+export type StaffAssignmentSection = "coaching" | "recruitment" | "medical";
+
 export type StaffAssignmentTarget = {
   scope: StaffAssignmentScope;
   jobId: string;
   jobLabel: string;
+  section: StaffAssignmentSection;
+  maxSlotCount: number;
   slotCount: number;
 };
 
@@ -38,6 +42,16 @@ export type StaffAssignmentEvidence = {
   unavailableScoreCount: number;
 };
 
+export type CoachRequirement =
+  | "attacking_technical"
+  | "attacking_tactical"
+  | "defending_technical"
+  | "defending_tactical"
+  | "possession_technical"
+  | "possession_tactical"
+  | "fitness"
+  | "goalkeeping";
+
 export type StaffAssignmentRecommendation = {
   kind: "recommendation";
   scope: StaffAssignmentScope;
@@ -50,7 +64,7 @@ export type StaffAssignmentRecommendation = {
   preferredJob: string;
   classification: "current_staff" | "recruitment";
   score: number;
-  coachDiscipline: string | null;
+  coachRequirement: CoachRequirement | null;
 };
 
 export type StaffAssignmentVacancy = {
@@ -60,6 +74,7 @@ export type StaffAssignmentVacancy = {
   jobId: string;
   jobLabel: string;
   slotNumber: number;
+  coachRequirement: CoachRequirement | null;
   evidence: StaffAssignmentEvidence;
 };
 

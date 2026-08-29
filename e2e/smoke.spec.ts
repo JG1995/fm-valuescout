@@ -351,36 +351,77 @@ test.describe("application smoke", () => {
       name: "Configure assignment slots",
     });
     const firstTeam = dialog.getByRole("group", { name: "First Team" });
-    const club = dialog.getByRole("group", { name: "Club" });
-    const assistantManager = firstTeam.getByRole("spinbutton", {
+    const coaching = firstTeam.getByRole("group", { name: "Coaching" });
+    const recruitment = firstTeam.getByRole("group", {
+      name: "Recruitment",
+    });
+    const medical = firstTeam.getByRole("group", { name: "Medical" });
+    const assistantManager = coaching.getByRole("spinbutton", {
       name: "Assistant Manager slots",
       exact: true,
     });
-    const coaches = firstTeam.getByRole("spinbutton", {
+    const coaches = coaching.getByRole("spinbutton", {
       name: "Coaches slots",
+      exact: true,
+    });
+    const headOfYouthDevelopment = coaching.getByRole("spinbutton", {
+      name: "Head of Youth Development slots",
       exact: true,
     });
     const manager = dialog
       .getByRole("group", { name: "Reserves" })
       .getByRole("spinbutton", { name: "Manager slots", exact: true });
-    const scout = club.getByRole("spinbutton", {
+    const scout = recruitment.getByRole("spinbutton", {
       name: "Scout slots",
       exact: true,
     });
 
     await expect(firstTeam).toBeVisible();
-    await expect(club).toBeVisible();
+    await expect(coaching).toBeVisible();
+    await expect(recruitment).toBeVisible();
+    await expect(medical).toBeVisible();
+    await expect(dialog.getByRole("group", { name: "Club" })).toHaveCount(0);
     await expect(
       firstTeam.getByRole("spinbutton", {
         name: "Manager slots",
         exact: true,
       }),
     ).toHaveCount(0);
+    await expect(
+      recruitment.getByRole("spinbutton", {
+        name: "Recruitment Analyst slots",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("group", { name: "Reserves" }).getByRole("spinbutton", {
+        name: "Head of Youth Development slots",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(
+      dialog.getByRole("group", { name: "Youth" }).getByRole("spinbutton", {
+        name: "Head of Youth Development slots",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await expect(headOfYouthDevelopment).toHaveAttribute("max", "1");
     await expect(assistantManager).toHaveValue("0");
     await expect(assistantManager).toHaveAttribute("max", "50");
     await expect(coaches).toHaveValue("0");
     await expect(manager).toHaveValue("0");
     await expect(scout).toHaveValue("0");
+    await expect(scout).toHaveAttribute("max", "50");
+    const dialogBox = await dialog.boundingBox();
+    expect(dialogBox).not.toBeNull();
+    expect(dialogBox?.x).toBeGreaterThanOrEqual(0);
+    expect(dialogBox?.y).toBeGreaterThanOrEqual(0);
+    expect((dialogBox?.x ?? 0) + (dialogBox?.width ?? 0)).toBeLessThanOrEqual(
+      1280,
+    );
+    expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBeLessThanOrEqual(
+      800,
+    );
     await assistantManager.fill("50");
     await expect(assistantManager).toHaveValue("50");
     await assistantManager.fill("1");
@@ -417,7 +458,7 @@ test.describe("application smoke", () => {
     );
     await expect(assignments).toContainText("Coach Casey");
     await expect(assignments).toContainText(
-      "Preferred Job: Coach. Eligible for this target. Coach discipline: attacking_technical.",
+      "Preferred Job: Coach. Eligible for this target. Coach requirement: Attacking Technical.",
     );
     await expect(assignments).toContainText("Current staff");
     await expect(assignments).toContainText("Riley Scout");
@@ -432,8 +473,25 @@ test.describe("application smoke", () => {
     ).toBeVisible();
     await expect(assignments).toContainText("Vacancy");
     await expect(assignments).toContainText(
-      "0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
+      "Coach requirement: Goalkeeping. 0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
     );
+
+    const collapse = main.getByRole("button", {
+      name: "Collapse assignment recommendations",
+    });
+    const bodyId = await collapse.getAttribute("aria-controls");
+    await expect(collapse).toHaveAttribute("aria-expanded", "true");
+    await collapse.click();
+    const expand = main.getByRole("button", {
+      name: "Expand assignment recommendations",
+    });
+    await expect(expand).toHaveAttribute("aria-expanded", "false");
+    await expect(expand).toHaveAttribute("aria-controls", bodyId ?? "");
+    await expect(assignments).toBeHidden();
+    await expect(main.getByText("Alex Assistant")).toBeHidden();
+    await expand.click();
+    await expect(assignments).toBeVisible();
+    await expect(assignments).toContainText("Alex Assistant");
 
     for (const [width, height] of [
       [1280, 800],
@@ -464,6 +522,46 @@ test.describe("application smoke", () => {
     await expect(
       main.getByRole("button", { name: "Optimize assignments" }),
     ).toBeEnabled();
+  });
+
+  test("Staff Shortlist renders standalone Club sections without Senior", async ({
+    page,
+  }) => {
+    await stubTauriIpc(page, {
+      staffAssignment: true,
+      staffAssignmentSenior: false,
+      staffShortlist: true,
+      staffWorkspace: true,
+    });
+    await page.goto("/my-club?view=staff-shortlist");
+
+    const main = page.getByRole("main");
+    await main.getByRole("button", { name: "Configure slots" }).click();
+    const dialog = page.getByRole("dialog", {
+      name: "Configure assignment slots",
+    });
+    const club = dialog.getByRole("group", { name: "Club" });
+
+    await expect(dialog.getByRole("group", { name: "First Team" })).toHaveCount(
+      0,
+    );
+    await expect(club.getByRole("group", { name: "Coaching" })).toBeVisible();
+    await expect(
+      club.getByRole("group", { name: "Recruitment" }),
+    ).toBeVisible();
+    await expect(club.getByRole("group", { name: "Medical" })).toBeVisible();
+    await expect(
+      club.getByRole("spinbutton", {
+        name: "Head of Youth Development slots",
+        exact: true,
+      }),
+    ).toHaveAttribute("max", "1");
+    await expect(
+      club.getByRole("spinbutton", {
+        name: "Recruitment Analyst slots",
+        exact: true,
+      }),
+    ).toHaveAttribute("max", "50");
   });
 
   test("Staff Profile keeps role fit inside a virtual scrollport", async ({

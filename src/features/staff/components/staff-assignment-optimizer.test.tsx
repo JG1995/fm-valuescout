@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   fixtureStaffAssignmentOptimization,
   getLastStaffAssignmentOptimizerIpcArgs,
+  getStaffAssignmentOptimizerIpcCallCount,
   resolvePendingStaffAssignmentOptimizationIpcMock,
   resolvePendingStaffAssignmentTargetsIpcMock,
   setStaffAssignmentOptimizationIpcMock,
@@ -75,17 +76,18 @@ describe("StaffAssignmentOptimizer", () => {
             preferredJob: "Coach",
             classification: "current_staff",
             score: 82,
-            coachDiscipline: "attacking_technical",
+            coachRequirement: "attacking_technical",
           },
           {
             kind: "vacancy",
             scope: "club",
             scopeDisplayName: "Club",
-            jobId: "scout",
-            jobLabel: "Scout",
-            slotNumber: 1,
+            jobId: "coaches",
+            jobLabel: "Coaches",
+            slotNumber: 2,
+            coachRequirement: "goalkeeping",
             evidence: {
-              jobId: "scout",
+              jobId: "coaches",
               joinedCandidateCount: 2,
               eligibleScoreCount: 0,
               unavailableScoreCount: 2,
@@ -116,16 +118,136 @@ describe("StaffAssignmentOptimizer", () => {
     expect(screen.getByText("Club")).toBeInTheDocument();
     expect(screen.queryByText("senior")).not.toBeInTheDocument();
     expect(
-      screen.getByText(/Coach discipline: attacking_technical\./),
+      screen.getByText(/Coach requirement: Attacking Technical\./),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: /Coaches: 82, Excellent/i }),
     ).toBeInTheDocument();
     expect(screen.getByText("Vacancy")).toBeInTheDocument();
     expect(
-      screen.getByText(/0 eligible scores; 2 unavailable scores/i),
+      screen.getByText(
+        /Coach requirement: Goalkeeping\. 0 eligible scores; 2 unavailable scores/i,
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText(/unsupported Preferred Job/i)).toBeInTheDocument();
+  });
+
+  it("collapses and expands the accepted result without optimizing again", async () => {
+    const user = userEvent.setup();
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    const collapse = await screen.findByRole("button", {
+      name: "Collapse assignment recommendations",
+    });
+    const bodyId = collapse.getAttribute("aria-controls");
+    const body = bodyId ? document.getElementById(bodyId) : null;
+
+    expect(collapse).toHaveAttribute("aria-expanded", "true");
+    expect(body).toBeVisible();
+    expect(body).toHaveTextContent("Alex Coach");
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
+
+    await user.click(collapse);
+
+    const expand = screen.getByRole("button", {
+      name: "Expand assignment recommendations",
+    });
+    expect(expand).toHaveAttribute("aria-expanded", "false");
+    expect(expand).toHaveAttribute("aria-controls", bodyId);
+    expect(body).not.toBeVisible();
+    expect(body).toHaveTextContent("Alex Coach");
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
+
+    await user.click(expand);
+
+    expect(
+      screen.getByRole("button", {
+        name: "Collapse assignment recommendations",
+      }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(body).toBeVisible();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
+  });
+
+  it("reopens a newly accepted result after the prior result was collapsed", async () => {
+    const user = userEvent.setup();
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Collapse assignment recommendations",
+      }),
+    );
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [
+          {
+            kind: "recommendation",
+            scope: "senior",
+            scopeDisplayName: "Senior",
+            jobId: "assistant_manager",
+            jobLabel: "Assistant Manager",
+            slotNumber: 1,
+            uid: 102,
+            name: "Jordan Assistant",
+            preferredJob: "Assistant Manager",
+            classification: "current_staff",
+            score: 81,
+            coachRequirement: null,
+          },
+        ],
+      }),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+
+    const collapse = await screen.findByRole("button", {
+      name: "Collapse assignment recommendations",
+    });
+    expect(collapse).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Jordan Assistant")).toBeVisible();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(2);
+  });
+
+  it("renders canonical Fitness requirements without calculating eligibility", async () => {
+    const user = userEvent.setup();
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [
+          {
+            kind: "recommendation",
+            scope: "senior",
+            scopeDisplayName: "First Team",
+            jobId: "coaches",
+            jobLabel: "Coaches",
+            slotNumber: 1,
+            uid: 101,
+            name: "Fit Coach",
+            preferredJob: "Fitness Coach",
+            classification: "current_staff",
+            score: 82,
+            coachRequirement: "fitness",
+          },
+        ],
+      }),
+    );
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+
+    expect(
+      await screen.findByText(/Coach requirement: Fitness\./),
+    ).toBeInTheDocument();
   });
 
   it("renders an em dash instead of a blank person when a recommendation name is missing", async () => {
@@ -145,7 +267,7 @@ describe("StaffAssignmentOptimizer", () => {
             preferredJob: "Assistant Manager",
             classification: "current_staff",
             score: 82,
-            coachDiscipline: null,
+            coachRequirement: null,
           },
         ],
       }),
@@ -162,6 +284,9 @@ describe("StaffAssignmentOptimizer", () => {
     const person = within(row).getByText("—");
     expect(person).not.toHaveAttribute("title");
     expect(within(row).queryByText("0")).not.toBeInTheDocument();
+    expect(
+      within(row).queryByText(/Coach requirement:/),
+    ).not.toBeInTheDocument();
   });
 
   it("suppresses a visible recommendation immediately while context is unavailable", async () => {
@@ -172,6 +297,11 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
     expect(await screen.findByText("Alex Coach")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Collapse assignment recommendations",
+      }),
+    );
 
     rerenderOptimizer(true);
 

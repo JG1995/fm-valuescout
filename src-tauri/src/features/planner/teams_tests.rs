@@ -121,7 +121,7 @@ fn target_impact_requires_confirmation_and_confirmed_removal_keeps_other_scopes(
             job_id: target.job_id.clone(),
             slot_count: i64::from(
                 (target.scope == "reserves" && target.job_id == "manager")
-                    || (target.scope == "club" && target.job_id == "scout"),
+                    || target.scope == "club",
             ),
         })
         .collect::<Vec<_>>();
@@ -154,12 +154,12 @@ fn target_impact_requires_confirmation_and_confirmed_removal_keeps_other_scopes(
     );
     assert_eq!(
         conn.query_row(
-            "SELECT slot_count FROM staff_assignment_targets WHERE save_id = ?1 AND scope = 'club' AND job_id = 'scout'",
+            "SELECT COUNT(*) FROM staff_assignment_targets WHERE save_id = ?1 AND scope = 'club'",
             [save_id],
             |row| row.get::<_, i64>(0),
         )
-        .expect("retained club target"),
-        1
+        .expect("retained club targets"),
+        10
     );
 }
 
