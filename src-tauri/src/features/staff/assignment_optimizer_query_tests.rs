@@ -436,13 +436,13 @@ fn allocates_persisted_fitness_and_goalkeeping_scores_with_exact_vacancy_evidenc
         .expect("optimize typed coach requirements");
 
     assert!(matches!(
-        &result.slots[6].slot,
+        &result.slots[1].slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 9
                 && recommendation.coach_requirement == Some(CoachRequirement::Goalkeeping)
     ));
     assert!(matches!(
-        &result.slots[7].slot,
+        &result.slots[2].slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 7
                 && recommendation.coach_requirement == Some(CoachRequirement::Fitness)

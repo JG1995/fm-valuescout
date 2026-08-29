@@ -113,13 +113,20 @@ enum CoachSlotType {
 
 fn coach_slot_types(count: usize) -> Vec<CoachSlotType> {
     let mut requirements = Vec::with_capacity(count);
-    requirements.extend(std::iter::repeat(CoachSlotType::General).take(count.min(6)));
-    if count >= 7 {
-        requirements.push(CoachSlotType::Goalkeeping);
-    }
-    if count >= 8 {
-        requirements.push(CoachSlotType::Fitness);
-    }
+    requirements.extend(
+        [
+            CoachSlotType::General,
+            CoachSlotType::Goalkeeping,
+            CoachSlotType::Fitness,
+            CoachSlotType::General,
+            CoachSlotType::General,
+            CoachSlotType::General,
+            CoachSlotType::General,
+            CoachSlotType::General,
+        ]
+        .into_iter()
+        .take(count.min(8)),
+    );
     let mut remaining = count.saturating_sub(8);
     while remaining > 0 {
         requirements.push(CoachSlotType::Goalkeeping);
