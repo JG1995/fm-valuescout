@@ -96,11 +96,6 @@ const ASSIGNMENT_TEAM_JOBS = [
   },
   { jobId: "coaches", jobLabel: "Coaches", section: "coaching" },
   {
-    jobId: "set_piece_coach",
-    jobLabel: "Set Piece Coach",
-    section: "coaching",
-  },
-  {
     jobId: "performance_analyst",
     jobLabel: "Performance Analyst",
     section: "coaching",
@@ -122,6 +117,12 @@ const ASSIGNMENT_CLUB_JOBS = [
   {
     jobId: "head_performance_analyst",
     jobLabel: "Head Performance Analyst",
+    section: "coaching",
+    maxSlotCount: 1,
+  },
+  {
+    jobId: "set_piece_coach",
+    jobLabel: "Set Piece Coach",
     section: "coaching",
     maxSlotCount: 1,
   },
@@ -173,6 +174,25 @@ const ASSIGNMENT_CLUB_JOBS = [
     section: "medical",
     maxSlotCount: 1,
   },
+] as const;
+const ASSIGNMENT_JOB_DISPLAY_ORDER = [
+  "manager",
+  "assistant_manager",
+  "coaches",
+  "set_piece_coach",
+  "head_of_youth_development",
+  "head_performance_analyst",
+  "performance_analyst",
+  "director_of_football",
+  "chief_scout",
+  "technical_director",
+  "scout",
+  "recruitment_analyst",
+  "loan_manager",
+  "head_physio",
+  "physio",
+  "head_sports_science",
+  "sports_scientist",
 ] as const;
 
 const ROLE_IDS = [
@@ -230,6 +250,13 @@ export function fixtureStaffAssignmentTargets(
       }),
     ),
   ];
+  const scopeOrder = { senior: 0, club: 0, reserves: 1, youth: 2 } as const;
+  targets.sort(
+    (left, right) =>
+      scopeOrder[left.scope] - scopeOrder[right.scope] ||
+      ASSIGNMENT_JOB_DISPLAY_ORDER.indexOf(left.jobId) -
+        ASSIGNMENT_JOB_DISPLAY_ORDER.indexOf(right.jobId),
+  );
   return { teams, targets, ...overrides };
 }
 

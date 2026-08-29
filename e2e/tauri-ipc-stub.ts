@@ -109,7 +109,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         { jobId: "manager", jobLabel: "Manager", section: "coaching" },
         { jobId: "assistant_manager", jobLabel: "Assistant Manager", section: "coaching" },
         { jobId: "coaches", jobLabel: "Coaches", section: "coaching" },
-        { jobId: "set_piece_coach", jobLabel: "Set Piece Coach", section: "coaching" },
         { jobId: "performance_analyst", jobLabel: "Performance Analyst", section: "coaching" },
         { jobId: "physio", jobLabel: "Physio", section: "medical" },
         { jobId: "sports_scientist", jobLabel: "Sports Scientist", section: "medical" },
@@ -117,6 +116,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
       const staffAssignmentClubJobs = [
         { jobId: "head_of_youth_development", jobLabel: "Head of Youth Development", section: "coaching", maxSlotCount: 1 },
         { jobId: "head_performance_analyst", jobLabel: "Head Performance Analyst", section: "coaching", maxSlotCount: 1 },
+        { jobId: "set_piece_coach", jobLabel: "Set Piece Coach", section: "coaching", maxSlotCount: 1 },
         { jobId: "director_of_football", jobLabel: "Director of Football", section: "recruitment", maxSlotCount: 1 },
         { jobId: "chief_scout", jobLabel: "Chief Scout", section: "recruitment", maxSlotCount: 1 },
         { jobId: "technical_director", jobLabel: "Technical Director", section: "recruitment", maxSlotCount: 1 },
@@ -125,6 +125,25 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
         { jobId: "loan_manager", jobLabel: "Loan Manager", section: "recruitment", maxSlotCount: 1 },
         { jobId: "head_physio", jobLabel: "Head Physio", section: "medical", maxSlotCount: 1 },
         { jobId: "head_sports_science", jobLabel: "Head of Sports Science", section: "medical", maxSlotCount: 1 },
+      ];
+      const staffAssignmentJobDisplayOrder = [
+        "manager",
+        "assistant_manager",
+        "coaches",
+        "set_piece_coach",
+        "head_of_youth_development",
+        "head_performance_analyst",
+        "performance_analyst",
+        "director_of_football",
+        "chief_scout",
+        "technical_director",
+        "scout",
+        "recruitment_analyst",
+        "loan_manager",
+        "head_physio",
+        "physio",
+        "head_sports_science",
+        "sports_scientist",
       ];
       let staffAssignmentTargets = [
         ...staffAssignmentTeams.flatMap(({ team }) =>
@@ -143,6 +162,15 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
           slotCount: 0,
         })),
       ];
+      const staffAssignmentScopeOrder = {
+        senior: 0,
+        club: staffAssignmentSenior ? 0 : 3,
+        reserves: 1,
+        youth: 2,
+      };
+      staffAssignmentTargets.sort((left, right) =>
+        staffAssignmentScopeOrder[left.scope] - staffAssignmentScopeOrder[right.scope]
+        || staffAssignmentJobDisplayOrder.indexOf(left.jobId) - staffAssignmentJobDisplayOrder.indexOf(right.jobId));
       const staffAssignmentTargetResponse = () => ({
         teams: staffAssignmentTeams.map((team) => ({ ...team })),
         targets: staffAssignmentTargets.map((target) => ({ ...target })),
@@ -827,6 +855,20 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                   coachRequirement: "attacking_technical",
                 },
                 {
+                  kind: "recommendation",
+                  scope: "club",
+                  scopeDisplayName: "Club",
+                  jobId: "scout",
+                  jobLabel: "Scout",
+                  slotNumber: 1,
+                  uid: 103,
+                  name: "Riley Scout",
+                  preferredJob: "Scout",
+                  classification: "recruitment",
+                  score: 74,
+                  coachRequirement: null,
+                },
+                {
                   kind: "vacancy",
                   scope: "reserves",
                   scopeDisplayName: "Reserves",
@@ -840,20 +882,6 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
                     eligibleScoreCount: 0,
                     unavailableScoreCount: 1,
                   },
-                },
-                {
-                  kind: "recommendation",
-                  scope: "club",
-                  scopeDisplayName: "Club",
-                  jobId: "scout",
-                  jobLabel: "Scout",
-                  slotNumber: 1,
-                  uid: 103,
-                  name: "Riley Scout",
-                  preferredJob: "Scout",
-                  classification: "recruitment",
-                  score: 74,
-                  coachRequirement: null,
                 },
               ],
               evidence: [

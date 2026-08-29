@@ -84,6 +84,26 @@ describe("StaffAssignmentTargetModal", () => {
       within(coaching).getByRole("spinbutton", { name: "Coaches slots" }),
     ).toBeInTheDocument();
     expect(
+      within(coaching).getByRole("spinbutton", {
+        name: "Set Piece Coach slots",
+      }),
+    ).toHaveAttribute("max", "1");
+    for (const [headRole, ordinaryRole] of [
+      ["Head Performance Analyst slots", "Performance Analyst slots"],
+      ["Chief Scout slots", "Scout slots"],
+      ["Head Physio slots", "Physio slots"],
+      ["Head of Sports Science slots", "Sports Scientist slots"],
+    ]) {
+      const head = within(senior).getByRole("spinbutton", { name: headRole });
+      const ordinary = within(senior).getByRole("spinbutton", {
+        name: ordinaryRole,
+      });
+      expect(
+        head.compareDocumentPosition(ordinary) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).not.toBe(0);
+    }
+    expect(
       within(recruitment).getByRole("spinbutton", {
         name: "Recruitment Analyst slots",
       }),
@@ -94,9 +114,13 @@ describe("StaffAssignmentTargetModal", () => {
     expect(
       within(senior).queryByRole("spinbutton", { name: "Manager slots" }),
     ).toBeNull();
+    const reserves = within(dialog).getByRole("group", { name: "B Squad" });
+    expect(reserves).toBeInTheDocument();
     expect(
-      within(dialog).getByRole("group", { name: "B Squad" }),
-    ).toBeInTheDocument();
+      within(reserves).queryByRole("spinbutton", {
+        name: "Set Piece Coach slots",
+      }),
+    ).toBeNull();
     expect(
       within(dialog).queryByRole("spinbutton", { name: "Doctor slots" }),
     ).toBeNull();
@@ -110,7 +134,7 @@ describe("StaffAssignmentTargetModal", () => {
         name: "Head of Youth Development slots",
       }),
     ).toHaveLength(1);
-    expect(within(dialog).getAllByRole("spinbutton")).toHaveLength(30);
+    expect(within(dialog).getAllByRole("spinbutton")).toHaveLength(28);
 
     const headOfYouthDevelopment = within(coaching).getByRole("spinbutton", {
       name: "Head of Youth Development slots",
@@ -141,12 +165,12 @@ describe("StaffAssignmentTargetModal", () => {
           { scope: "senior", jobId: "coaches", slotCount: 50 },
         ]),
       });
-      expect(request.targets).toHaveLength(30);
+      expect(request.targets).toHaveLength(28);
       expect(
         new Set(
           request.targets?.map((target) => `${target.scope}:${target.jobId}`),
         ).size,
-      ).toBe(30);
+      ).toBe(28);
     });
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Slot counts saved.",

@@ -452,6 +452,9 @@ test.describe("application smoke", () => {
     await expect(assignments).toContainText("First Team");
     await expect(assignments).toContainText("Reserves");
     await expect(assignments).toContainText("Club");
+    const assignmentRows = assignments.locator("tbody tr");
+    await expect(assignmentRows.nth(2)).toContainText("Club");
+    await expect(assignmentRows.nth(3)).toContainText("Reserves");
     await expect(assignments).toContainText("Alex Assistant");
     await expect(assignments).toContainText(
       "Preferred Job: Assistant Manager. Eligible for this target.",

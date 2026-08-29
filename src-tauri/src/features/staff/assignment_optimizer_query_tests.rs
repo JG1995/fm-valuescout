@@ -384,6 +384,29 @@ fn allocates_leads_and_recruitment_analyst_from_persisted_scores() {
                 if recommendation.job_id == job_id && recommendation.uid == uid
         )));
     }
+    assert_eq!(
+        result
+            .slots
+            .iter()
+            .map(|result_slot| match &result_slot.slot {
+                StaffAssignmentSlot::Recommendation(recommendation) => {
+                    recommendation.job_id.as_str()
+                }
+                StaffAssignmentSlot::Vacancy(vacancy) => vacancy.job_id.as_str(),
+            })
+            .collect::<Vec<_>>(),
+        [
+            "head_performance_analyst",
+            "performance_analyst",
+            "chief_scout",
+            "scout",
+            "recruitment_analyst",
+            "head_physio",
+            "physio",
+            "head_sports_science",
+            "sports_scientist",
+        ]
+    );
 }
 
 #[test]
@@ -436,13 +459,13 @@ fn allocates_persisted_fitness_and_goalkeeping_scores_with_exact_vacancy_evidenc
         .expect("optimize typed coach requirements");
 
     assert!(matches!(
-        &result.slots[6].slot,
+        &result.slots[1].slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 9
                 && recommendation.coach_requirement == Some(CoachRequirement::Goalkeeping)
     ));
     assert!(matches!(
-        &result.slots[7].slot,
+        &result.slots[2].slot,
         StaffAssignmentSlot::Recommendation(recommendation)
             if recommendation.uid == 7
                 && recommendation.coach_requirement == Some(CoachRequirement::Fitness)
@@ -466,6 +489,50 @@ fn allocates_persisted_fitness_and_goalkeeping_scores_with_exact_vacancy_evidenc
 }
 
 #[test]
+fn places_standalone_club_results_after_enabled_squads_without_senior() {
+    let (_temp_dir, conn, save_token) = open();
+    let snapshot_token = insert_current_snapshot(&conn, 1);
+    configure_managed_club(&conn);
+    conn.execute_batch(
+        "INSERT INTO planner_teams (save_id, team, display_name) VALUES
+             (1, 'reserves', 'B Squad'),
+             (1, 'youth', 'Academy');
+         INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
+             (1, 'reserves', 'coaches', 1),
+             (1, 'youth', 'manager', 1),
+             (1, 'club', 'head_physio', 1);",
+    )
+    .expect("configure targets");
+    insert_staff(&conn, 1, "Unsupported", Some("Club A"));
+    shortlist(&conn, 1, "Kit Manager", "-");
+
+    let result = optimize_staff_assignments(&conn, &save_token, &snapshot_token)
+        .expect("optimize without senior");
+
+    assert_eq!(result.state, StaffAssignmentOptimizationState::Ready);
+    assert_eq!(
+        result
+            .slots
+            .iter()
+            .map(|result_slot| {
+                let scope = match &result_slot.slot {
+                    StaffAssignmentSlot::Recommendation(recommendation) => {
+                        recommendation.scope.as_str()
+                    }
+                    StaffAssignmentSlot::Vacancy(vacancy) => vacancy.scope.as_str(),
+                };
+                (scope, result_slot.scope_display_name.as_str())
+            })
+            .collect::<Vec<_>>(),
+        [
+            ("reserves", "B Squad"),
+            ("youth", "Academy"),
+            ("club", "Club"),
+        ]
+    );
+}
+
+#[test]
 fn caps_the_ready_result_at_the_supported_slot_limit() {
     let (_temp_dir, conn, save_token) = open();
     let snapshot_token = insert_current_snapshot(&conn, 1);
@@ -483,7 +550,6 @@ fn caps_the_ready_result_at_the_supported_slot_limit() {
             [
                 "assistant_manager",
                 "coaches",
-                "set_piece_coach",
                 "performance_analyst",
                 "physio",
                 "sports_scientist",
@@ -496,7 +562,6 @@ fn caps_the_ready_result_at_the_supported_slot_limit() {
                 "manager",
                 "assistant_manager",
                 "coaches",
-                "set_piece_coach",
                 "performance_analyst",
                 "physio",
                 "sports_scientist",
@@ -509,7 +574,6 @@ fn caps_the_ready_result_at_the_supported_slot_limit() {
                 "manager",
                 "assistant_manager",
                 "coaches",
-                "set_piece_coach",
                 "performance_analyst",
                 "physio",
                 "sports_scientist",
@@ -537,6 +601,7 @@ fn caps_the_ready_result_at_the_supported_slot_limit() {
     for job_id in [
         "head_of_youth_development",
         "head_performance_analyst",
+        "set_piece_coach",
         "director_of_football",
         "chief_scout",
         "technical_director",
@@ -557,6 +622,6 @@ fn caps_the_ready_result_at_the_supported_slot_limit() {
         .expect("read bounded vacancies");
 
     assert_eq!(result.state, StaffAssignmentOptimizationState::Ready);
-    assert_eq!(result.configured_slot_count, 1_108);
-    assert_eq!(result.slots.len(), 1_108);
+    assert_eq!(result.configured_slot_count, 959);
+    assert_eq!(result.slots.len(), 959);
 }
