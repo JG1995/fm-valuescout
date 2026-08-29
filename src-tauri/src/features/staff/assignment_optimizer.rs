@@ -148,6 +148,30 @@ struct CandidateGroup<'a> {
     eligible: Vec<EligibleCandidate<'a>>,
 }
 
+impl<'a> CandidateGroup<'a> {
+    fn add_candidate(
+        &mut self,
+        candidate: &'a StaffAssignmentCandidate,
+        score: Option<(u8, Option<CoachDiscipline>)>,
+    ) {
+        self.joined_candidate_count += 1;
+        if let Some((score, coach_discipline)) = score {
+            self.eligible.push(EligibleCandidate {
+                candidate,
+                score,
+                coach_discipline,
+            });
+        } else {
+            self.unavailable_score_count += 1;
+        }
+    }
+}
+
+struct ConfiguredSlot {
+    target: StaffAssignmentTarget,
+    slot_number: i64,
+}
+
 pub(super) fn preferred_job_classification(preferred_job: &str) -> Option<PreferredJob> {
     let preferred_job = preferred_job.trim();
     [
@@ -182,25 +206,13 @@ pub(super) fn preferred_job_classification(preferred_job: &str) -> Option<Prefer
     })
 }
 
-fn direct_target_job_id(preferred_job: PreferredJob) -> Option<&'static str> {
-    match preferred_job {
-        PreferredJob::Manager => Some("manager"),
-        PreferredJob::AssistantManager => Some("assistant_manager"),
-        PreferredJob::Coach => Some("coaches"),
-        PreferredJob::SetPieceCoach => Some("set_piece_coach"),
-        PreferredJob::HeadPerformanceAnalyst => Some("head_performance_analyst"),
-        PreferredJob::PerformanceAnalyst => Some("performance_analyst"),
-        PreferredJob::HeadOfYouthDevelopment => Some("head_of_youth_development"),
-        PreferredJob::DirectorOfFootball => Some("director_of_football"),
-        PreferredJob::TechnicalDirector => Some("technical_director"),
-        PreferredJob::LoanManager => Some("loan_manager"),
-        PreferredJob::Scout => Some("scout"),
-        PreferredJob::Physio => Some("physio"),
-        PreferredJob::SportsScientist => Some("sports_scientist"),
-        PreferredJob::FitnessCoach
-        | PreferredJob::GoalkeepingCoach
-        | PreferredJob::RecruitmentAnalyst => None,
-    }
+fn add_candidate_to_group<'a>(
+    groups: &mut [CandidateGroup<'a>; 17],
+    candidate: &'a StaffAssignmentCandidate,
+    job_id: &str,
+) {
+    let group_index = canonical_job_index(job_id).expect("mapped job is canonical");
+    groups[group_index].add_candidate(candidate, score_for_job(&candidate.scores, job_id));
 }
 
 pub(super) fn allocate_staff_assignments(
@@ -212,19 +224,50 @@ pub(super) fn allocate_staff_assignments(
         let Some(preferred_job) = preferred_job_classification(&candidate.preferred_job) else {
             continue;
         };
-        let Some(job_id) = direct_target_job_id(preferred_job) else {
-            continue;
-        };
-        let group = &mut groups[canonical_job_index(job_id).expect("mapped job is canonical")];
-        group.joined_candidate_count += 1;
-        if let Some((score, coach_discipline)) = score_for_job(&candidate.scores, job_id) {
-            group.eligible.push(EligibleCandidate {
-                candidate,
-                score,
-                coach_discipline,
-            });
-        } else {
-            group.unavailable_score_count += 1;
+        match preferred_job {
+            PreferredJob::Manager => add_candidate_to_group(&mut groups, candidate, "manager"),
+            PreferredJob::AssistantManager => {
+                add_candidate_to_group(&mut groups, candidate, "assistant_manager")
+            }
+            PreferredJob::Coach => add_candidate_to_group(&mut groups, candidate, "coaches"),
+            PreferredJob::SetPieceCoach => {
+                add_candidate_to_group(&mut groups, candidate, "set_piece_coach")
+            }
+            PreferredJob::HeadPerformanceAnalyst => {
+                add_candidate_to_group(&mut groups, candidate, "head_performance_analyst")
+            }
+            PreferredJob::PerformanceAnalyst => {
+                add_candidate_to_group(&mut groups, candidate, "head_performance_analyst");
+                add_candidate_to_group(&mut groups, candidate, "performance_analyst");
+            }
+            PreferredJob::HeadOfYouthDevelopment => {
+                add_candidate_to_group(&mut groups, candidate, "head_of_youth_development")
+            }
+            PreferredJob::DirectorOfFootball => {
+                add_candidate_to_group(&mut groups, candidate, "director_of_football")
+            }
+            PreferredJob::TechnicalDirector => {
+                add_candidate_to_group(&mut groups, candidate, "technical_director")
+            }
+            PreferredJob::LoanManager => {
+                add_candidate_to_group(&mut groups, candidate, "loan_manager")
+            }
+            PreferredJob::Scout => {
+                add_candidate_to_group(&mut groups, candidate, "chief_scout");
+                add_candidate_to_group(&mut groups, candidate, "scout");
+            }
+            PreferredJob::RecruitmentAnalyst => {
+                add_candidate_to_group(&mut groups, candidate, "recruitment_analyst")
+            }
+            PreferredJob::Physio => {
+                add_candidate_to_group(&mut groups, candidate, "head_physio");
+                add_candidate_to_group(&mut groups, candidate, "physio");
+            }
+            PreferredJob::SportsScientist => {
+                add_candidate_to_group(&mut groups, candidate, "head_sports_science");
+                add_candidate_to_group(&mut groups, candidate, "sports_scientist");
+            }
+            PreferredJob::FitnessCoach | PreferredJob::GoalkeepingCoach => {}
         }
     }
 
@@ -254,55 +297,184 @@ pub(super) fn allocate_staff_assignments(
             canonical_job_rank(&target.job_id),
         )
     });
+    let configured_slots = ordered_targets
+        .into_iter()
+        .filter(|target| {
+            !(target.job_id == "manager" && !matches!(target.scope.as_str(), "reserves" | "youth"))
+                && canonical_job_index(&target.job_id).is_some()
+        })
+        .flat_map(|target| {
+            (1..=target.slot_count).map(move |slot_number| ConfiguredSlot {
+                target: target.clone(),
+                slot_number,
+            })
+        })
+        .collect::<Vec<_>>();
 
     let mut assigned_uids = HashSet::new();
     let mut next_candidate = [0_usize; 17];
-    let mut slots = Vec::new();
-    for target in ordered_targets {
-        if target.job_id == "manager" && !matches!(target.scope.as_str(), "reserves" | "youth") {
-            continue;
-        }
-        let Some(group_index) = canonical_job_index(&target.job_id) else {
-            continue;
-        };
-        for slot_number in 1..=target.slot_count {
-            let group = &groups[group_index];
-            while next_candidate[group_index] < group.eligible.len()
-                && assigned_uids
-                    .contains(&group.eligible[next_candidate[group_index]].candidate.uid)
-            {
-                next_candidate[group_index] += 1;
-            }
-            if let Some(eligible) = group.eligible.get(next_candidate[group_index]) {
-                next_candidate[group_index] += 1;
-                assigned_uids.insert(eligible.candidate.uid);
-                slots.push(StaffAssignmentSlot::Recommendation(
-                    StaffAssignmentRecommendation {
-                        scope: target.scope.clone(),
-                        job_id: target.job_id.clone(),
-                        job_label: target.job_label.clone(),
-                        slot_number,
-                        uid: eligible.candidate.uid,
-                        name: eligible.candidate.name.clone(),
-                        preferred_job: eligible.candidate.preferred_job.clone(),
-                        classification: eligible.candidate.classification,
-                        score: eligible.score,
-                        coach_discipline: eligible.coach_discipline,
-                    },
-                ));
-            } else {
-                slots.push(StaffAssignmentSlot::Vacancy(StaffAssignmentVacancy {
-                    scope: target.scope.clone(),
-                    job_id: target.job_id.clone(),
-                    job_label: target.job_label.clone(),
-                    slot_number,
-                    evidence: evidence[group_index].clone(),
-                }));
-            }
-        }
+    let mut slots = std::iter::repeat_with(|| None)
+        .take(configured_slots.len())
+        .collect::<Vec<Option<StaffAssignmentSlot>>>();
+    for job_id in [
+        "head_performance_analyst",
+        "chief_scout",
+        "head_physio",
+        "head_sports_science",
+    ] {
+        allocate_job_slots(
+            job_id,
+            &configured_slots,
+            &mut slots,
+            &groups,
+            &evidence,
+            &mut next_candidate,
+            &mut assigned_uids,
+        );
     }
+    allocate_ordinary_slots(
+        &configured_slots,
+        &mut slots,
+        &groups,
+        &evidence,
+        &mut next_candidate,
+        &mut assigned_uids,
+    );
+    for (index, configured_slot) in configured_slots.iter().enumerate() {
+        if slots[index].is_some()
+            || configured_slot.target.job_id == "coaches"
+            || is_lead_job(&configured_slot.target.job_id)
+            || is_ordinary_job(&configured_slot.target.job_id)
+        {
+            continue;
+        }
+        let group_index = canonical_job_index(&configured_slot.target.job_id)
+            .expect("configured target is canonical");
+        slots[index] = Some(allocate_slot(
+            configured_slot,
+            &groups[group_index],
+            &evidence[group_index],
+            &mut next_candidate[group_index],
+            &mut assigned_uids,
+        ));
+    }
+    allocate_job_slots(
+        "coaches",
+        &configured_slots,
+        &mut slots,
+        &groups,
+        &evidence,
+        &mut next_candidate,
+        &mut assigned_uids,
+    );
 
-    StaffAssignmentAllocation { slots, evidence }
+    StaffAssignmentAllocation {
+        slots: slots
+            .into_iter()
+            .map(|slot| slot.expect("every configured slot is allocated"))
+            .collect(),
+        evidence,
+    }
+}
+
+fn is_lead_job(job_id: &str) -> bool {
+    matches!(
+        job_id,
+        "head_performance_analyst" | "chief_scout" | "head_physio" | "head_sports_science"
+    )
+}
+
+fn is_ordinary_job(job_id: &str) -> bool {
+    matches!(
+        job_id,
+        "performance_analyst" | "scout" | "physio" | "sports_scientist"
+    )
+}
+
+fn allocate_ordinary_slots(
+    configured_slots: &[ConfiguredSlot],
+    slots: &mut [Option<StaffAssignmentSlot>],
+    groups: &[CandidateGroup<'_>; 17],
+    evidence: &[StaffAssignmentEvidence],
+    next_candidate: &mut [usize; 17],
+    assigned_uids: &mut HashSet<i64>,
+) {
+    for (slot, configured_slot) in slots.iter_mut().zip(configured_slots) {
+        if !is_ordinary_job(&configured_slot.target.job_id) {
+            continue;
+        }
+        let group_index = canonical_job_index(&configured_slot.target.job_id)
+            .expect("ordinary target is canonical");
+        *slot = Some(allocate_slot(
+            configured_slot,
+            &groups[group_index],
+            &evidence[group_index],
+            &mut next_candidate[group_index],
+            assigned_uids,
+        ));
+    }
+}
+
+fn allocate_job_slots(
+    job_id: &str,
+    configured_slots: &[ConfiguredSlot],
+    slots: &mut [Option<StaffAssignmentSlot>],
+    groups: &[CandidateGroup<'_>; 17],
+    evidence: &[StaffAssignmentEvidence],
+    next_candidate: &mut [usize; 17],
+    assigned_uids: &mut HashSet<i64>,
+) {
+    let group_index = canonical_job_index(job_id).expect("allocated job is canonical");
+    for (slot, configured_slot) in slots.iter_mut().zip(configured_slots) {
+        if configured_slot.target.job_id != job_id {
+            continue;
+        }
+        *slot = Some(allocate_slot(
+            configured_slot,
+            &groups[group_index],
+            &evidence[group_index],
+            &mut next_candidate[group_index],
+            assigned_uids,
+        ));
+    }
+}
+
+fn allocate_slot(
+    configured_slot: &ConfiguredSlot,
+    group: &CandidateGroup<'_>,
+    evidence: &StaffAssignmentEvidence,
+    next_candidate: &mut usize,
+    assigned_uids: &mut HashSet<i64>,
+) -> StaffAssignmentSlot {
+    while *next_candidate < group.eligible.len()
+        && assigned_uids.contains(&group.eligible[*next_candidate].candidate.uid)
+    {
+        *next_candidate += 1;
+    }
+    if let Some(eligible) = group.eligible.get(*next_candidate) {
+        *next_candidate += 1;
+        assigned_uids.insert(eligible.candidate.uid);
+        StaffAssignmentSlot::Recommendation(StaffAssignmentRecommendation {
+            scope: configured_slot.target.scope.clone(),
+            job_id: configured_slot.target.job_id.clone(),
+            job_label: configured_slot.target.job_label.clone(),
+            slot_number: configured_slot.slot_number,
+            uid: eligible.candidate.uid,
+            name: eligible.candidate.name.clone(),
+            preferred_job: eligible.candidate.preferred_job.clone(),
+            classification: eligible.candidate.classification,
+            score: eligible.score,
+            coach_discipline: eligible.coach_discipline,
+        })
+    } else {
+        StaffAssignmentSlot::Vacancy(StaffAssignmentVacancy {
+            scope: configured_slot.target.scope.clone(),
+            job_id: configured_slot.target.job_id.clone(),
+            job_label: configured_slot.target.job_label.clone(),
+            slot_number: configured_slot.slot_number,
+            evidence: evidence.clone(),
+        })
+    }
 }
 
 fn canonical_job_index(job_id: &str) -> Option<usize> {
@@ -340,6 +512,7 @@ fn score_for_job(
         "director_of_football" => scores.director_of_football,
         "technical_director" => scores.technical_director,
         "loan_manager" => scores.loan_manager,
+        "recruitment_analyst" => scores.recruitment_analyst,
         "chief_scout" | "scout" => scores.scout,
         "head_physio" | "physio" => scores.physio,
         "head_sports_science" | "sports_scientist" => scores.sports_scientist,

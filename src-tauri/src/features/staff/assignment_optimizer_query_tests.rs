@@ -320,6 +320,81 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
 }
 
 #[test]
+fn allocates_leads_and_recruitment_analyst_from_persisted_scores() {
+    let (_temp_dir, conn, save_token) = open();
+    let snapshot_token = insert_current_snapshot(&conn, 1);
+    configure_managed_club(&conn);
+    conn.execute_batch(
+        "INSERT INTO planner_teams (save_id, team, display_name) VALUES
+             (1, 'senior', 'Senior'),
+             (1, 'reserves', 'Reserves');
+         INSERT INTO staff_assignment_targets (save_id, scope, job_id, slot_count) VALUES
+             (1, 'senior', 'performance_analyst', 1),
+             (1, 'senior', 'physio', 1),
+             (1, 'reserves', 'sports_scientist', 1),
+             (1, 'club', 'head_performance_analyst', 1),
+             (1, 'club', 'chief_scout', 1),
+             (1, 'club', 'scout', 1),
+             (1, 'club', 'recruitment_analyst', 1),
+             (1, 'club', 'head_physio', 1),
+             (1, 'club', 'head_sports_science', 1);",
+    )
+    .expect("configure targets");
+    for (uid, preferred_job) in [
+        (1, "Performance Analyst"),
+        (2, "Performance Analyst"),
+        (3, "Scout"),
+        (4, "Scout"),
+        (5, "Physio"),
+        (6, "Physio"),
+        (7, "Sports Scientist"),
+        (8, "Sports Scientist"),
+        (9, "Recruitment Analyst"),
+    ] {
+        insert_staff(&conn, uid, &format!("Staff {uid}"), Some("Club A"));
+        shortlist(&conn, uid, preferred_job, "-");
+    }
+    conn.execute_batch(
+        "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score) VALUES
+             (1, 1, 'head_performance_analyst', 95),
+             (1, 1, 'performance_analyst', 60),
+             (1, 2, 'head_performance_analyst', 80),
+             (1, 2, 'performance_analyst', 90),
+             (1, 3, 'scout', 85),
+             (1, 4, 'scout', 70),
+             (1, 5, 'physio', 85),
+             (1, 6, 'physio', 70),
+             (1, 7, 'sports_scientist', 85),
+             (1, 8, 'sports_scientist', 70),
+             (1, 9, 'recruitment_analyst', 99);",
+    )
+    .expect("insert persisted scores");
+
+    let result = optimize_staff_assignments(&conn, &save_token, &snapshot_token)
+        .expect("optimize staff assignments");
+
+    assert_eq!(result.state, StaffAssignmentOptimizationState::Ready);
+    assert_eq!(result.configured_slot_count, 9);
+    for (job_id, uid) in [
+        ("performance_analyst", 2),
+        ("physio", 6),
+        ("sports_scientist", 8),
+        ("head_performance_analyst", 1),
+        ("chief_scout", 3),
+        ("scout", 4),
+        ("recruitment_analyst", 9),
+        ("head_physio", 5),
+        ("head_sports_science", 7),
+    ] {
+        assert!(result.slots.iter().any(|slot| matches!(
+            &slot.slot,
+            StaffAssignmentSlot::Recommendation(recommendation)
+                if recommendation.job_id == job_id && recommendation.uid == uid
+        )));
+    }
+}
+
+#[test]
 fn caps_the_ready_result_at_the_supported_slot_limit() {
     let (_temp_dir, conn, save_token) = open();
     let snapshot_token = insert_current_snapshot(&conn, 1);
