@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-08-29
+
+### Fixed
+
+- Staff optimization no longer closes the app when assigning General Coaches in packaged builds.
+- Planner optimization now retains automatic lane assignments in packaged builds.
+
 ## [0.14.1] - 2026-08-29
 
 ### Changed
