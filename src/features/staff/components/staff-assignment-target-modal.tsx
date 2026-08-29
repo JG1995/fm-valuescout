@@ -7,6 +7,7 @@ import { staffAssignmentTargetsQueryOptions } from "../api/staff-assignment-targ
 import { staffKeys } from "../api/staff-keys";
 import type {
   StaffAssignmentContext,
+  StaffAssignmentSection,
   StaffAssignmentTarget,
   StaffAssignmentTargetInput,
 } from "../types/staff-assignment";
@@ -41,14 +42,19 @@ function draftFromTargets(targets: StaffAssignmentTarget[]): DraftTarget[] {
   }));
 }
 
-function slotCountError(value: string) {
+const TARGET_SECTIONS: { id: StaffAssignmentSection; label: string }[] = [
+  { id: "coaching", label: "Coaching" },
+  { id: "recruitment", label: "Recruitment" },
+  { id: "medical", label: "Medical" },
+];
+
+function slotCountError(value: string, maxSlotCount: number) {
+  const message = `Enter a whole number from 0 to ${maxSlotCount}.`;
   if (!/^\d+$/.test(value)) {
-    return "Enter a whole number from 0 to 50.";
+    return message;
   }
   const count = Number(value);
-  return count >= 0 && count <= 50
-    ? undefined
-    : "Enter a whole number from 0 to 50.";
+  return count >= 0 && count <= maxSlotCount ? undefined : message;
 }
 
 function errorMessage(error: unknown) {
@@ -126,7 +132,16 @@ export function StaffAssignmentTargetModal({
 
   const pending = saveTargets.isPending;
   const errors = new Map(
-    draft.map((target) => [draftKey(target), slotCountError(target.slotCount)]),
+    (targetsQuery.data?.targets ?? []).map((target) => {
+      const key = draftKey(target);
+      const draftTarget = draft.find(
+        (candidate) => draftKey(candidate) === key,
+      );
+      return [
+        key,
+        slotCountError(draftTarget?.slotCount ?? "", target.maxSlotCount),
+      ];
+    }),
   );
   const canSave =
     targetsQuery.isSuccess &&
@@ -192,8 +207,23 @@ export function StaffAssignmentTargetModal({
         ...targetsQuery.data.teams.map((team) => ({
           scope: team.team,
           title: team.displayName,
+          targets: targetsQuery.data.targets.filter(
+            (target) =>
+              target.scope === team.team ||
+              (team.team === "senior" && target.scope === "club"),
+          ),
         })),
-        { scope: "club" as const, title: "Club" },
+        ...(!targetsQuery.data.teams.some(({ team }) => team === "senior")
+          ? [
+              {
+                scope: "club" as const,
+                title: "Club",
+                targets: targetsQuery.data.targets.filter(
+                  (target) => target.scope === "club",
+                ),
+              },
+            ]
+          : []),
       ]
     : [];
 
@@ -252,60 +282,67 @@ export function StaffAssignmentTargetModal({
             </p>
           ) : null}
           <div className="space-y-5">
-            {targetGroups.map((group) => {
-              const groupTargets = targetsQuery.data?.targets.filter(
-                (target) => target.scope === group.scope,
-              );
-              if (!groupTargets?.length) {
-                return null;
-              }
-              return (
-                <fieldset key={group.scope} className="space-y-3">
-                  <legend className="text-label-lg text-on-surface">
-                    {group.title}
-                  </legend>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {groupTargets.map((target) => {
-                      const key = draftKey(target);
-                      const draftTarget = draft.find(
-                        (candidate) => draftKey(candidate) === key,
-                      );
-                      const error = errors.get(key);
-                      const errorId = `${target.scope}-${target.jobId}-error`;
-                      return (
-                        <label key={key} className="space-y-1">
-                          <span className="block text-label-md text-on-surface">
-                            {target.jobLabel} slots
-                          </span>
-                          <input
-                            type="number"
-                            min={0}
-                            max={50}
-                            step={1}
-                            value={draftTarget?.slotCount ?? ""}
-                            disabled={pending}
-                            aria-describedby={error ? errorId : undefined}
-                            aria-invalid={error ? true : undefined}
-                            className="w-full rounded-md border border-outline bg-surface px-2 py-1 text-right tabular-nums text-on-surface"
-                            onChange={(event) =>
-                              updateTarget(key, event.target.value)
-                            }
-                          />
-                          {error ? (
-                            <span
-                              id={errorId}
-                              className="block text-body-sm text-error"
-                            >
-                              {error}
-                            </span>
-                          ) : null}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-              );
-            })}
+            {targetGroups.map((group) => (
+              <fieldset key={group.scope} className="space-y-4">
+                <legend className="text-label-lg text-on-surface">
+                  {group.title}
+                </legend>
+                {TARGET_SECTIONS.map((section) => {
+                  const sectionTargets = group.targets.filter(
+                    (target) => target.section === section.id,
+                  );
+                  if (sectionTargets.length === 0) {
+                    return null;
+                  }
+                  return (
+                    <fieldset key={section.id} className="space-y-2">
+                      <legend className="text-label-md text-on-surface-variant">
+                        {section.label}
+                      </legend>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {sectionTargets.map((target) => {
+                          const key = draftKey(target);
+                          const draftTarget = draft.find(
+                            (candidate) => draftKey(candidate) === key,
+                          );
+                          const error = errors.get(key);
+                          const errorId = `${target.scope}-${target.jobId}-error`;
+                          return (
+                            <label key={key} className="space-y-1">
+                              <span className="block text-label-md text-on-surface">
+                                {target.jobLabel} slots
+                              </span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={target.maxSlotCount}
+                                step={1}
+                                value={draftTarget?.slotCount ?? ""}
+                                disabled={pending}
+                                aria-describedby={error ? errorId : undefined}
+                                aria-invalid={error ? true : undefined}
+                                className="w-full rounded-md border border-outline bg-surface px-2 py-1 text-right tabular-nums text-on-surface"
+                                onChange={(event) =>
+                                  updateTarget(key, event.target.value)
+                                }
+                              />
+                              {error ? (
+                                <span
+                                  id={errorId}
+                                  className="block text-body-sm text-error"
+                                >
+                                  {error}
+                                </span>
+                              ) : null}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+                  );
+                })}
+              </fieldset>
+            ))}
           </div>
         </form>
       </Modal>

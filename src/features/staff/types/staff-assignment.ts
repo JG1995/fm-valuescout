@@ -2,10 +2,14 @@ export type StaffAssignmentScope = "senior" | "reserves" | "youth" | "club";
 
 export type StaffAssignmentTeam = Exclude<StaffAssignmentScope, "club">;
 
+export type StaffAssignmentSection = "coaching" | "recruitment" | "medical";
+
 export type StaffAssignmentTarget = {
   scope: StaffAssignmentScope;
   jobId: string;
   jobLabel: string;
+  section: StaffAssignmentSection;
+  maxSlotCount: number;
   slotCount: number;
 };
 

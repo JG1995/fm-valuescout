@@ -555,7 +555,7 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 
 #### Commit 6 — Group Configure slots by FM26 section
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(staff): group FM26 assignment controls`
 
@@ -624,7 +624,7 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 
 #### Commit 7 — Collapse assignment results without rerun
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(staff): collapse assignment results`
 
@@ -691,19 +691,19 @@ Upgrade one populated v35 database to zero redesigned targets, return one club-w
 
 **PR:** PR 1 — Redesign staff assignment slots for FM26
 
-**Commit:** Commit 6 — Group Configure slots by FM26 section
+**Commit:** Commit 7 — Collapse assignment results without rerun
 
 ### RED or removal proof
 
-Add Modal cases showing the flat current presentation cannot group Rust targets into Coaching, Recruitment, and Medical sections, cannot place Club roles inside Senior or a standalone Club group without rewriting scope, and still hardcodes a universal maximum of 50.
+Add result interaction cases showing the current result Panel has no accessible collapse control, cannot hide only its body, and cannot prove that collapse retains the accepted result, avoids another optimize IPC call, and reopens for a newly accepted result.
 
 ### Expected outcome
 
-The Modal derives one presentation-only enabled-team/section model from Rust metadata, displays Club roles once inside Senior or one standalone Club group, preserves every `scope:jobId` draft and complete save payload, applies each target's maximum, and retains context, pending, validation, focus, and containment behavior.
+`StaffAssignmentResults` owns only local expanded state for the current accepted result, exposes a named panel-header chevron with `aria-expanded` and `aria-controls`, hides only the body, performs no optimization when toggled, and resets expanded state for each newly accepted result while existing target/context clearing remains unchanged.
 
 ### Explicit exclusions
 
-Rust catalog or allocation changes, result collapse, route or Query ownership changes, persisted Club-to-Senior scope rewrites, new shared components, mobile layouts, current-state documentation, and unrelated cleanup.
+Result persistence or Query/Zustand ownership, allocation or target configuration changes, shared Panel API changes, route state, animation, current-state documentation, and unrelated cleanup.
 
 ## Discoveries and replanning
 
@@ -719,7 +719,8 @@ Rust catalog or allocation changes, result collapse, route or Query ownership ch
 | PR 1 — Redesign staff assignment slots for FM26 | Commit 2 — Reset and redefine assignment targets | 67854bb776d4948c62fbb549c9f044a0278325ad | Added migration v36, the exact Rust-owned FM26 target catalog and limits, Club-safe Planner cleanup, Recruitment Analyst target vacancies, and the 1,108-slot bound. | `./scripts/dev check-rust`; `./scripts/dev check` — passed (667 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
 | PR 1 — Redesign staff assignment slots for FM26 | Commit 3 — Load FM26 assignment candidate scores | 89d447aac9079be3a2cca7aeeb2ad4c4388f18c9 | Loaded Fitness, Goalkeeping, and Recruitment Analyst scores and introduced the closed approved Preferred Job classification without changing allocation phases. | `./scripts/dev check-rust`; `./scripts/dev check` — passed (668 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
 | PR 1 — Redesign staff assignment slots for FM26 | Commit 4 — Allocate leads before ordinary roles | f089a70502f473c429391887e0d7b1ead2ea642a | Added lead-first HPA, Scout, Physio, and Sports Science allocation, ordinary residual phases, global UID reservation, and successful Recruitment Analyst assignment. | `./scripts/dev check-rust`; `./scripts/dev check` — passed (671 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
-| PR 1 — Redesign staff assignment slots for FM26 | Commit 5 — Match the FM26 Coaches composition | Pending record | Added exact Coach/Fitness/Goalkeeping composition, bounded cardinality-first General matching, typed Coach requirements and evidence, and end-to-end result rendering. | Focused component test; `./scripts/dev check-rust`; `./scripts/dev smoke`; `./scripts/dev check` — passed (679 Rust tests, 2 ignored; 12 component tests; 50 smoke tests). | Pass | Clear | 1 | Initial dense matcher corrected to one compact supported-bound residual graph. |
+| PR 1 — Redesign staff assignment slots for FM26 | Commit 5 — Match the FM26 Coaches composition | 613f240617965e42cd4eb055d35f34837c96c6d3 | Added exact Coach/Fitness/Goalkeeping composition, bounded cardinality-first General matching, typed Coach requirements and evidence, and end-to-end result rendering. | Focused component test; `./scripts/dev check-rust`; `./scripts/dev smoke`; `./scripts/dev check` — passed (679 Rust tests, 2 ignored; 12 component tests; 50 smoke tests). | Pass | Clear | 1 | Initial dense matcher corrected to one compact supported-bound residual graph. |
+| PR 1 — Redesign staff assignment slots for FM26 | Commit 6 — Group Configure slots by FM26 section | Pending record | Grouped Rust-provided targets into FM26 sections, placed Club roles inside Senior or standalone Club without scope changes, and applied per-target limits. | Focused Modal/API/route tests; `./scripts/dev smoke`; `./scripts/dev check` — passed (51 smoke tests; 679 Rust tests, 2 ignored). | Pass | Clear | 0 | None |
 
 ## Final validation
 
