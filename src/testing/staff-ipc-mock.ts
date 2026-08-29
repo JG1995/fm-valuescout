@@ -53,6 +53,7 @@ let staffAssignmentOptimization: StaffAssignmentOptimization;
 let staffAssignmentOptimizerMode: StaffAssignmentOptimizerIpcMockMode =
   "success";
 let lastStaffAssignmentOptimizerArgs: unknown;
+let staffAssignmentOptimizerCallCount = 0;
 let pendingStaffAssignmentOptimization: {
   promise: Promise<StaffAssignmentOptimization>;
   resolve: (result: StaffAssignmentOptimization) => void;
@@ -294,6 +295,10 @@ export function getLastStaffAssignmentOptimizerIpcArgs() {
   return lastStaffAssignmentOptimizerArgs;
 }
 
+export function getStaffAssignmentOptimizerIpcCallCount() {
+  return staffAssignmentOptimizerCallCount;
+}
+
 export function setStaffAssignmentOptimizerIpcMockMode(
   mode: StaffAssignmentOptimizerIpcMockMode,
 ) {
@@ -405,6 +410,7 @@ export function resetStaffIpcMock() {
   staffAssignmentOptimization = fixtureStaffAssignmentOptimization();
   staffAssignmentOptimizerMode = "success";
   lastStaffAssignmentOptimizerArgs = undefined;
+  staffAssignmentOptimizerCallCount = 0;
   pendingStaffAssignmentOptimization = null;
 }
 
@@ -671,6 +677,7 @@ export function resolveSaveStaffAssignmentTargetsIpcMock(
 export function resolveOptimizeStaffAssignmentsIpcMock(
   args: unknown,
 ): Promise<StaffAssignmentOptimization> {
+  staffAssignmentOptimizerCallCount += 1;
   lastStaffAssignmentOptimizerArgs = args;
   if (
     typeof args !== "object" ||

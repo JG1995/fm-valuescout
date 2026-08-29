@@ -476,6 +476,23 @@ test.describe("application smoke", () => {
       "Coach requirement: Goalkeeping. 0 eligible scores; 1 unavailable score; 1 joined shortlisted candidate.",
     );
 
+    const collapse = main.getByRole("button", {
+      name: "Collapse assignment recommendations",
+    });
+    const bodyId = await collapse.getAttribute("aria-controls");
+    await expect(collapse).toHaveAttribute("aria-expanded", "true");
+    await collapse.click();
+    const expand = main.getByRole("button", {
+      name: "Expand assignment recommendations",
+    });
+    await expect(expand).toHaveAttribute("aria-expanded", "false");
+    await expect(expand).toHaveAttribute("aria-controls", bodyId ?? "");
+    await expect(assignments).toBeHidden();
+    await expect(main.getByText("Alex Assistant")).toBeHidden();
+    await expand.click();
+    await expect(assignments).toBeVisible();
+    await expect(assignments).toContainText("Alex Assistant");
+
     for (const [width, height] of [
       [1280, 800],
       [1600, 900],

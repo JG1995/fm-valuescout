@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   fixtureStaffAssignmentOptimization,
   getLastStaffAssignmentOptimizerIpcArgs,
+  getStaffAssignmentOptimizerIpcCallCount,
   resolvePendingStaffAssignmentOptimizationIpcMock,
   resolvePendingStaffAssignmentTargetsIpcMock,
   setStaffAssignmentOptimizationIpcMock,
@@ -131,6 +132,91 @@ describe("StaffAssignmentOptimizer", () => {
     expect(screen.getByText(/unsupported Preferred Job/i)).toBeInTheDocument();
   });
 
+  it("collapses and expands the accepted result without optimizing again", async () => {
+    const user = userEvent.setup();
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    const collapse = await screen.findByRole("button", {
+      name: "Collapse assignment recommendations",
+    });
+    const bodyId = collapse.getAttribute("aria-controls");
+    const body = bodyId ? document.getElementById(bodyId) : null;
+
+    expect(collapse).toHaveAttribute("aria-expanded", "true");
+    expect(body).toBeVisible();
+    expect(body).toHaveTextContent("Alex Coach");
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
+
+    await user.click(collapse);
+
+    const expand = screen.getByRole("button", {
+      name: "Expand assignment recommendations",
+    });
+    expect(expand).toHaveAttribute("aria-expanded", "false");
+    expect(expand).toHaveAttribute("aria-controls", bodyId);
+    expect(body).not.toBeVisible();
+    expect(body).toHaveTextContent("Alex Coach");
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
+
+    await user.click(expand);
+
+    expect(
+      screen.getByRole("button", {
+        name: "Collapse assignment recommendations",
+      }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(body).toBeVisible();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(1);
+  });
+
+  it("reopens a newly accepted result after the prior result was collapsed", async () => {
+    const user = userEvent.setup();
+    renderOptimizer();
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Collapse assignment recommendations",
+      }),
+    );
+    setStaffAssignmentOptimizationIpcMock(
+      fixtureStaffAssignmentOptimization({
+        slots: [
+          {
+            kind: "recommendation",
+            scope: "senior",
+            scopeDisplayName: "Senior",
+            jobId: "assistant_manager",
+            jobLabel: "Assistant Manager",
+            slotNumber: 1,
+            uid: 102,
+            name: "Jordan Assistant",
+            preferredJob: "Assistant Manager",
+            classification: "current_staff",
+            score: 81,
+            coachRequirement: null,
+          },
+        ],
+      }),
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Optimize assignments" }),
+    );
+
+    const collapse = await screen.findByRole("button", {
+      name: "Collapse assignment recommendations",
+    });
+    expect(collapse).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Jordan Assistant")).toBeVisible();
+    expect(getStaffAssignmentOptimizerIpcCallCount()).toBe(2);
+  });
+
   it("renders canonical Fitness requirements without calculating eligibility", async () => {
     const user = userEvent.setup();
     setStaffAssignmentOptimizationIpcMock(
@@ -211,6 +297,11 @@ describe("StaffAssignmentOptimizer", () => {
       screen.getByRole("button", { name: "Optimize assignments" }),
     );
     expect(await screen.findByText("Alex Coach")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Collapse assignment recommendations",
+      }),
+    );
 
     rerenderOptimizer(true);
 

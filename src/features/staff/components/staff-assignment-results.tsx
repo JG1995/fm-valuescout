@@ -1,3 +1,6 @@
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { useId, useState } from "react";
+import { Button } from "@/components/ui/button/button";
 import { Panel } from "@/components/ui/panel/panel";
 import { ScoreBadge } from "@/components/ui/score-badge/score-badge";
 import type {
@@ -38,110 +41,126 @@ function evidenceText(slot: Extract<StaffAssignmentSlot, { kind: "vacancy" }>) {
 export function StaffAssignmentResults({
   result,
 }: StaffAssignmentResultsProps) {
+  const [expanded, setExpanded] = useState(true);
+  const bodyId = useId();
+  const ToggleIcon = expanded ? ChevronUp : ChevronDown;
+
   return (
     <Panel
       title="Assignment recommendations"
+      actions={
+        <Button
+          size="icon"
+          variant="ghost"
+          icon={ToggleIcon}
+          aria-label={`${expanded ? "Collapse" : "Expand"} assignment recommendations`}
+          aria-controls={bodyId}
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+        />
+      }
       className="w-full shrink-0 basis-full"
-      contentClassName="space-y-3"
     >
-      <p className="text-body-sm text-on-surface-variant">
-        {result.joinedCandidateCount} joined shortlisted candidate
-        {result.joinedCandidateCount === 1 ? "" : "s"};{" "}
-        {result.configuredSlotCount} configured slot
-        {result.configuredSlotCount === 1 ? "" : "s"}.
-      </p>
-      {result.slots.length > 0 ? (
-        <div className="max-h-80 overflow-auto rounded-lg border border-outline-variant">
-          <table className="w-full text-left text-body-sm text-on-surface">
-            <caption className="sr-only">
-              Staff assignment recommendations and vacancies
-            </caption>
-            <thead className="bg-surface-container-lowest text-label-md text-on-surface-variant">
-              <tr>
-                <th scope="col" className="px-2 py-2">
-                  Scope
-                </th>
-                <th scope="col" className="px-2 py-2">
-                  Target
-                </th>
-                <th scope="col" className="px-2 py-2">
-                  Person
-                </th>
-                <th scope="col" className="px-2 py-2">
-                  Classification
-                </th>
-                <th scope="col" className="px-2 py-2 text-right">
-                  Score
-                </th>
-                <th scope="col" className="px-2 py-2">
-                  Evidence
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.slots.map((slot) => (
-                <tr
-                  key={`${slot.scope}:${slot.jobId}:${slot.slotNumber}`}
-                  className="border-t border-outline-variant"
-                >
-                  <td className="px-2 py-2">{slot.scopeDisplayName}</td>
-                  <td className="px-2 py-2">
-                    {slot.jobLabel} · Slot {slot.slotNumber}
-                  </td>
-                  {slot.kind === "recommendation" ? (
-                    <>
-                      <td
-                        className="max-w-48 truncate px-2 py-2"
-                        title={slot.name ?? undefined}
-                      >
-                        {slot.name ?? "—"}
-                      </td>
-                      <td className="px-2 py-2">
-                        {slot.classification === "current_staff"
-                          ? "Current staff"
-                          : "Recruitment"}
-                      </td>
-                      <td className="px-2 py-2 text-right">
-                        <ScoreBadge
-                          score={slot.score}
-                          roleName={slot.jobLabel}
-                        />
-                      </td>
-                      <td className="px-2 py-2 text-on-surface-variant">
-                        Preferred Job: {slot.preferredJob}. Eligible for this
-                        target.
-                        {slot.coachRequirement
-                          ? ` ${coachRequirementText(slot.coachRequirement)}`
-                          : null}
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td className="px-2 py-2">—</td>
-                      <td className="px-2 py-2">Vacancy</td>
-                      <td className="px-2 py-2 text-right">—</td>
-                      <td className="px-2 py-2 text-on-surface-variant">
-                        {evidenceText(slot)}
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p role="status" className="text-body-md text-on-surface-variant">
-          No assignment slots are configured.
-        </p>
-      )}
-      {result.unsupportedPreferredJobCount > 0 ? (
+      <div id={bodyId} hidden={!expanded} className="space-y-3">
         <p className="text-body-sm text-on-surface-variant">
-          {result.unsupportedPreferredJobCount} shortlisted person
-          {result.unsupportedPreferredJobCount === 1 ? " has" : "s have"} an
-          unsupported Preferred Job and cannot fill an assignment target.
+          {result.joinedCandidateCount} joined shortlisted candidate
+          {result.joinedCandidateCount === 1 ? "" : "s"};{" "}
+          {result.configuredSlotCount} configured slot
+          {result.configuredSlotCount === 1 ? "" : "s"}.
         </p>
-      ) : null}
+        {result.slots.length > 0 ? (
+          <div className="max-h-80 overflow-auto rounded-lg border border-outline-variant">
+            <table className="w-full text-left text-body-sm text-on-surface">
+              <caption className="sr-only">
+                Staff assignment recommendations and vacancies
+              </caption>
+              <thead className="bg-surface-container-lowest text-label-md text-on-surface-variant">
+                <tr>
+                  <th scope="col" className="px-2 py-2">
+                    Scope
+                  </th>
+                  <th scope="col" className="px-2 py-2">
+                    Target
+                  </th>
+                  <th scope="col" className="px-2 py-2">
+                    Person
+                  </th>
+                  <th scope="col" className="px-2 py-2">
+                    Classification
+                  </th>
+                  <th scope="col" className="px-2 py-2 text-right">
+                    Score
+                  </th>
+                  <th scope="col" className="px-2 py-2">
+                    Evidence
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.slots.map((slot) => (
+                  <tr
+                    key={`${slot.scope}:${slot.jobId}:${slot.slotNumber}`}
+                    className="border-t border-outline-variant"
+                  >
+                    <td className="px-2 py-2">{slot.scopeDisplayName}</td>
+                    <td className="px-2 py-2">
+                      {slot.jobLabel} · Slot {slot.slotNumber}
+                    </td>
+                    {slot.kind === "recommendation" ? (
+                      <>
+                        <td
+                          className="max-w-48 truncate px-2 py-2"
+                          title={slot.name ?? undefined}
+                        >
+                          {slot.name ?? "—"}
+                        </td>
+                        <td className="px-2 py-2">
+                          {slot.classification === "current_staff"
+                            ? "Current staff"
+                            : "Recruitment"}
+                        </td>
+                        <td className="px-2 py-2 text-right">
+                          <ScoreBadge
+                            score={slot.score}
+                            roleName={slot.jobLabel}
+                          />
+                        </td>
+                        <td className="px-2 py-2 text-on-surface-variant">
+                          Preferred Job: {slot.preferredJob}. Eligible for this
+                          target.
+                          {slot.coachRequirement
+                            ? ` ${coachRequirementText(slot.coachRequirement)}`
+                            : null}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-2 py-2">—</td>
+                        <td className="px-2 py-2">Vacancy</td>
+                        <td className="px-2 py-2 text-right">—</td>
+                        <td className="px-2 py-2 text-on-surface-variant">
+                          {evidenceText(slot)}
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p role="status" className="text-body-md text-on-surface-variant">
+            No assignment slots are configured.
+          </p>
+        )}
+        {result.unsupportedPreferredJobCount > 0 ? (
+          <p className="text-body-sm text-on-surface-variant">
+            {result.unsupportedPreferredJobCount} shortlisted person
+            {result.unsupportedPreferredJobCount === 1 ? " has" : "s have"} an
+            unsupported Preferred Job and cannot fill an assignment target.
+          </p>
+        ) : null}
+      </div>
     </Panel>
   );
 }
