@@ -4,6 +4,7 @@ import {
   PERSONALITY_ATTRIBUTE_KEYS,
   VISIBLE_ATTRIBUTE_KEYS,
 } from "@/utils/player-attributes";
+import { POSITION_ORDER } from "@/utils/position-order";
 import { ROLE_CATALOG } from "@/utils/role-catalog";
 
 export type PlayerMetricKind = "string" | "integer" | "boolean" | "enum";
@@ -129,24 +130,6 @@ const ENUM_OPERATORS: readonly PlayerMetricOperator[] = [
   { id: "is_not", label: "is not" },
 ];
 
-const POSITION_KEYS = [
-  "GK",
-  "SW",
-  "DL",
-  "DC",
-  "DR",
-  "DM",
-  "ML",
-  "MC",
-  "MR",
-  "AML",
-  "AMC",
-  "AMR",
-  "ST",
-  "WBL",
-  "WBR",
-] as const;
-
 type RoleId = (typeof ROLE_CATALOG)[number]["id"];
 
 const ROLE_FAMILY_BY_ID = {
@@ -251,7 +234,7 @@ const PERSONALITY_METRICS: PlayerMetric[] = PERSONALITY_ATTRIBUTE_KEYS.map(
     }),
 );
 
-const POSITION_SUITABILITY_METRICS: PlayerMetric[] = POSITION_KEYS.map((key) =>
+const POSITION_SUITABILITY_METRICS: PlayerMetric[] = POSITION_ORDER.map((key) =>
   playerMetric({
     id: `pos.${key}`,
     label: `Position · ${key} suitability`,
@@ -472,7 +455,7 @@ const PLAYER_METRIC_DEFINITIONS: readonly PlayerMetricDefinition[] = [
     kind: "enum",
     defaultWidth: 144,
     operators: ENUM_OPERATORS,
-    enumOptions: POSITION_KEYS.map((key) => ({ value: key, label: key })),
+    enumOptions: POSITION_ORDER.map((key) => ({ value: key, label: key })),
   },
 ];
 

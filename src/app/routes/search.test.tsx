@@ -177,17 +177,17 @@ describe("search route", () => {
     });
     expect(
       within(table).getByRole("columnheader", {
-        name: "Wing-Back (IP · WBL/WBR)",
+        name: "Wing-Back (IP · WBR/WBL)",
       }),
     ).toBeInTheDocument();
     expect(
       within(table).getByRole("columnheader", {
-        name: "Wing-Back (IP · DL/DR)",
+        name: "Wing-Back (IP · DR/DL)",
       }),
     ).toBeInTheDocument();
     expect(
       within(table).getByRole("img", {
-        name: "Moneyball role · Wing-Back (IP · WBL/WBR): 0, Weak",
+        name: "Moneyball role · Wing-Back (IP · WBR/WBL): 0, Weak",
       }),
     ).toBeInTheDocument();
     expect(within(table).getAllByText("—").length).toBeGreaterThan(0);
@@ -205,7 +205,7 @@ describe("search route", () => {
 
     await userEvent.setup().click(
       within(table).getByRole("button", {
-        name: "Wing-Back (IP · WBL/WBR)",
+        name: "Wing-Back (IP · WBR/WBL)",
       }),
     );
     expect(router.state.location.search).toMatchObject({
@@ -247,7 +247,7 @@ describe("search route", () => {
     );
     await user.click(
       within(dialog).getByRole("option", {
-        name: "Wing-Back (IP · WBL/WBR)",
+        name: "Wing-Back (IP · WBR/WBL)",
       }),
     );
     expect(

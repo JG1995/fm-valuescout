@@ -1650,7 +1650,7 @@ export async function stubTauriIpc(page: Page, options: SmokeStubOptions = {}) {
 
           if (cmd === "get_planner_tactic_options") {
             return {
-              placements: ["GK", "DL", "DCR", "DC", "DCL", "DR", "DMCR", "DM", "DMCL", "MCR", "MC", "MCL", "ML", "MR", "AML", "AMCR", "AMC", "AMCL", "AMR", "STCR", "STC", "STCL"],
+              placements: ["GK", "DL", "DCR", "DC", "DCL", "DR", "WBL", "WBR", "DMCR", "DM", "DMCL", "MCR", "MC", "MCL", "ML", "MR", "AML", "AMCR", "AMC", "AMCL", "AMR", "STCR", "STC", "STCL"],
               roles: [
                 { roleId: "goalkeeper_ip", displayName: "Goalkeeper", phase: "in_possession", positionTags: ["GK"] },
                 { roleId: "line_holding_keeper_oop", displayName: "Line-Holding Keeper", phase: "out_of_possession", positionTags: ["GK"] },

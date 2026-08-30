@@ -1377,7 +1377,7 @@ test.describe("application smoke", () => {
     await columnSearch.fill("wing-back");
     await expect(
       columnDialog.getByRole("option", {
-        name: "Wing-Back (IP · WBL/WBR)",
+        name: "Wing-Back (IP · WBR/WBL)",
         exact: true,
       }),
     ).toBeVisible();
@@ -1386,12 +1386,12 @@ test.describe("application smoke", () => {
     await columnSearch.press("ArrowDown");
     await columnSearch.press("Enter");
     const roleHeader = table.getByRole("columnheader", {
-      name: "Wing-Back (IP · WBL/WBR)",
+      name: "Wing-Back (IP · WBR/WBL)",
     });
     await expect(roleHeader).toBeVisible();
     await expect(
       table.getByRole("img", {
-        name: /Moneyball role · Wing-Back \(IP · WBL\/WBR\): 0, Weak/,
+        name: /Moneyball role · Wing-Back \(IP · WBR\/WBL\): 0, Weak/,
       }),
     ).toBeVisible();
 
@@ -1417,7 +1417,7 @@ test.describe("application smoke", () => {
     await fieldSearch.fill("wing-back");
     await expect(
       dialog.getByRole("option", {
-        name: "Wing-Back (IP · WBL/WBR)",
+        name: "Wing-Back (IP · WBR/WBL)",
         exact: true,
       }),
     ).toBeVisible();
@@ -1440,7 +1440,7 @@ test.describe("application smoke", () => {
 
     await roleHeader
       .getByRole("button", {
-        name: "Wing-Back (IP · WBL/WBR)",
+        name: "Wing-Back (IP · WBR/WBL)",
       })
       .click();
     await expect(roleHeader).toHaveAttribute("aria-sort", "descending");
@@ -1486,7 +1486,7 @@ test.describe("application smoke", () => {
     ).toHaveAttribute("aria-pressed", "true");
     await expect(
       main.getByRole("columnheader", {
-        name: "Wing-Back (IP · WBL/WBR)",
+        name: "Wing-Back (IP · WBR/WBL)",
       }),
     ).toBeVisible();
     await expect(

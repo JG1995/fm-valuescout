@@ -13,6 +13,7 @@ import type { TacticOptions } from "../types/tactic";
 import type { PlannerTeam } from "../types/team";
 import {
   linkedPositionDescription,
+  orderedTacticLanes,
   phaseDescription,
 } from "../utils/tactic-editor";
 import { joinPlannerTeamNames } from "../utils/team-display";
@@ -463,7 +464,7 @@ export function PlannerDepthTable({
           )}
         </thead>
         <tbody>
-          {tactic.lanes.map((lane) => {
+          {orderedTacticLanes(tactic.lanes).map((lane) => {
             const ipDescription = phaseDescription(
               lane,
               "ip",

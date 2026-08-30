@@ -107,6 +107,28 @@ describe("player metric table metadata", () => {
     });
   });
 
+  it("lists position choices from right to left and up the pitch", () => {
+    expect(
+      getPlayerMetric("position")?.enumOptions?.map((option) => option.value),
+    ).toEqual([
+      "GK",
+      "SW",
+      "DR",
+      "DC",
+      "DL",
+      "WBR",
+      "DM",
+      "WBL",
+      "MR",
+      "MC",
+      "ML",
+      "AMR",
+      "AMC",
+      "AML",
+      "ST",
+    ]);
+  });
+
   it("uses the complete fixed catalog in metric metadata", () => {
     for (const [category, expectedIds] of Object.entries(
       EXPECTED_ATTRIBUTE_METRIC_IDS_BY_CATEGORY,

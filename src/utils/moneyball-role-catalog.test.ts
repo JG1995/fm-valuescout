@@ -6,6 +6,7 @@ import {
   type MoneyballRolePhase,
   type MoneyballRolePositionFamily,
 } from "./moneyball-role-catalog";
+import { orderedPositions } from "./position-order";
 
 type BackendRole = {
   id: string;
@@ -136,7 +137,7 @@ describe("Moneyball role catalog", () => {
     ).toEqual(
       BACKEND_ROLE_CATALOG.map((role) => ({
         id: role.id,
-        label: `${role.display_name} (${role.phase === "in_possession" ? "IP" : "OOP"} · ${role.position_tags.join("/")})`,
+        label: `${role.display_name} (${role.phase === "in_possession" ? "IP" : "OOP"} · ${orderedPositions(role.position_tags).join("/")})`,
         phase: role.phase,
         positionFamily: role.position_family,
         positionTags: role.position_tags,
@@ -162,13 +163,13 @@ describe("Moneyball role catalog", () => {
     expect(
       MONEYBALL_ROLE_CATALOG.find((role) => role.id === "wbl_wbr_wing_back_ip"),
     ).toMatchObject({
-      label: "Wing-Back (IP · WBL/WBR)",
+      label: "Wing-Back (IP · WBR/WBL)",
       phase: "in_possession",
       positionFamily: "wing_back",
       positionTags: ["WBL", "WBR"],
     });
     expect(
       MONEYBALL_ROLE_CATALOG.find((role) => role.id === "dl_dr_wing_back_ip"),
-    ).toMatchObject({ label: "Wing-Back (IP · DL/DR)" });
+    ).toMatchObject({ label: "Wing-Back (IP · DR/DL)" });
   });
 });

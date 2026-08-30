@@ -65,7 +65,7 @@ describe("Moneyball Search metrics", () => {
         (metric) => metric.id === "moneyball_role.wbl_wbr_wing_back_ip",
       ),
     ).toMatchObject({
-      label: "Wing-Back (IP · WBL/WBR)",
+      label: "Wing-Back (IP · WBR/WBL)",
       category: "Moneyball roles · Wing-back",
       role: true,
       roleId: "wbl_wbr_wing_back_ip",
@@ -74,6 +74,6 @@ describe("Moneyball Search metrics", () => {
       roleMetrics.find(
         (metric) => metric.id === "moneyball_role.dl_dr_wing_back_ip",
       )?.label,
-    ).toBe("Wing-Back (IP · DL/DR)");
+    ).toBe("Wing-Back (IP · DR/DL)");
   });
 });

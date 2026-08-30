@@ -1,3 +1,5 @@
+import { orderedPositions } from "./position-order";
+
 export type MoneyballRolePhase = "in_possession" | "out_of_possession";
 
 export type MoneyballRolePositionFamily =
@@ -30,7 +32,7 @@ const role = (
   positionTags: readonly string[],
 ): MoneyballRoleCatalogEntry => ({
   id,
-  label: `${displayName} (${phase === "in_possession" ? "IP" : "OOP"} · ${positionTags.join("/")})`,
+  label: `${displayName} (${phase === "in_possession" ? "IP" : "OOP"} · ${orderedPositions(positionTags).join("/")})`,
   phase,
   positionFamily,
   positionTags,

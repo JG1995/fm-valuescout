@@ -756,6 +756,8 @@ mod tests {
 
         assert!(options.placements.contains(&"GK".to_string()));
         assert!(options.placements.contains(&"AML".to_string()));
+        assert!(options.placements.contains(&"WBR".to_string()));
+        assert!(options.placements.contains(&"WBL".to_string()));
         assert!(options.placements.contains(&"MCR".to_string()));
         assert!(options.placements.contains(&"MCL".to_string()));
         assert!(options.placements.contains(&"STC".to_string()));

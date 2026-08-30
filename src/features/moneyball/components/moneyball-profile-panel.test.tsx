@@ -17,7 +17,7 @@ describe("MoneyballProfilePanel", () => {
           percentiles: { goals: 83, goals_per_90: 75 },
           comparisonBasis: {
             kind: "available",
-            naturalPositions: ["AMR", "AMC"],
+            naturalPositions: ["AMC", "AMR", "DL", "DR"],
             comparisonPlayerCount: 24,
           },
         })}
@@ -28,7 +28,9 @@ describe("MoneyballProfilePanel", () => {
     expect(screen.getByText("3")).toBeInTheDocument();
     expect(screen.getByText("1,500")).toBeInTheDocument();
     expect(
-      screen.getByText("Natural positions: AMR, AMC · 24 comparison players"),
+      screen.getByText(
+        "Natural positions: DR, DL, AMR, AMC · 24 comparison players",
+      ),
     ).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((tab) => tab.textContent)).toEqual([

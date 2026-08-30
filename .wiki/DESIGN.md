@@ -318,6 +318,7 @@ The app is mostly formatted numbers, so formatting is a design decision, not a p
 **Other values:**
 
 - **Role and position scores:** integer 0–100, no unit, no percent sign. `mono-md` in a badge, tabular sans in a table column.
+- **Linear position order:** list positions from the goalkeeper band toward the striker band and from the player's right to left within each band. Familiarity-ranked lists keep the strongest value first and use this pitch order for ties. Linked Planner rows use the IP position as their primary order. Visual pitch grids keep their attack-up geometry and left-to-right DOM order.
 - **FM attributes:** integer 1–20. **CA and PA:** integer 1–200. Both as raw integers — never rescaled to 0–100, because the user knows the FM scale.
 - **Age:** integer. Where both are shown, birth date first and age in parentheses: `21/03/2001 (25)`.
 - **Snapshot timestamps:** relative in the UI (`4 min ago`, `2 hours ago`, `yesterday`), absolute ISO-like in the `title` attribute (`2026-07-29 20:14 UTC`). Relative age is what tells the user whether to reload.
