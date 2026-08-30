@@ -620,7 +620,7 @@ describe("academy route", () => {
     ).toHaveTextContent("1");
   });
 
-  it("renders positive Academy positions from complete nullable maps", async () => {
+  it("renders only playable Academy positions from complete nullable maps", async () => {
     const user = userEvent.setup();
     await loadConfiguredSave();
     setAcademyClasses([{ id: 7, classYear: 2026, memberCount: 1 }]);
@@ -628,7 +628,7 @@ describe("academy route", () => {
       academyMember({
         playerUid: 77,
         lastKnownName: "Complete prospect",
-        positions: { AMR: 20, MR: 17, AMC: 14, GK: 0, SW: null },
+        positions: { AMR: 20, MR: 17, MC: 16, AMC: 15, GK: 0, SW: null },
       }),
     ]);
     setAcademyCandidates([
@@ -636,7 +636,7 @@ describe("academy route", () => {
         playerUid: 78,
         name: "Candidate prospect",
         age: 18,
-        positions: { AMR: 20, MR: 17, AMC: 14, GK: 0, SW: null },
+        positions: { AMR: 20, MR: 17, MC: 16, AMC: 15, GK: 0, SW: null },
         currentClub: "Metro FC",
       },
     ]);
@@ -645,7 +645,8 @@ describe("academy route", () => {
     const row = await screen.findByRole("row", {
       name: /^Complete prospect/,
     });
-    expect(row).toHaveTextContent("AMR, MR, AMC");
+    expect(row).toHaveTextContent("AMR, MR, MC");
+    expect(row).not.toHaveTextContent("AMC");
     expect(row).not.toHaveTextContent("GK");
     expect(row).not.toHaveTextContent("SW");
 
@@ -653,11 +654,11 @@ describe("academy route", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Add players to Class of 2026",
     });
-    expect(
-      await within(dialog).findByRole("option", {
-        name: /Candidate prospect/i,
-      }),
-    ).toHaveTextContent("AMR, MR, AMC");
+    const candidate = await within(dialog).findByRole("option", {
+      name: /Candidate prospect/i,
+    });
+    expect(candidate).toHaveTextContent("AMR, MR, MC");
+    expect(candidate).not.toHaveTextContent("AMC");
   });
 
   it("removes a member before making them available to another class", async () => {
