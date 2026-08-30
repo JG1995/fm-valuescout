@@ -12,6 +12,8 @@ pub const POSITION_KEYS: &[&str] = &[
     "GK", "SW", "DL", "DC", "DR", "DM", "ML", "MC", "MR", "AML", "AMC", "AMR", "ST", "WBL", "WBR",
 ];
 
+const POSITION_DISPLAY_ORDER_SQL: &str = "CASE entry.key WHEN 'GK' THEN 0 WHEN 'SW' THEN 1 WHEN 'DR' THEN 2 WHEN 'DC' THEN 3 WHEN 'DL' THEN 4 WHEN 'WBR' THEN 5 WHEN 'DM' THEN 6 WHEN 'WBL' THEN 7 WHEN 'MR' THEN 8 WHEN 'MC' THEN 9 WHEN 'ML' THEN 10 WHEN 'AMR' THEN 11 WHEN 'AMC' THEN 12 WHEN 'AML' THEN 13 WHEN 'ST' THEN 14 ELSE 15 END";
+
 pub const HIDDEN_ATTRIBUTE_KEYS: &[&str] = &[
     "Dirtiness",
     "Consistency",
@@ -310,7 +312,7 @@ impl MetricField {
             // Role scores are materialized by the bounded Moneyball role query path.
             MetricSource::MoneyballRole { .. } => "NULL".to_string(),
             MetricSource::Position => format!(
-                "COALESCE((SELECT group_concat(position_key, ', ') FROM (SELECT entry.key AS position_key FROM json_each({player_alias}.positions_json) AS entry WHERE entry.type = 'integer' AND entry.value > 0 ORDER BY entry.value DESC, entry.key ASC)), '')"
+                "COALESCE((SELECT group_concat(position_key, ', ') FROM (SELECT entry.key AS position_key FROM json_each({player_alias}.positions_json) AS entry WHERE entry.type = 'integer' AND entry.value > 0 ORDER BY entry.value DESC, {POSITION_DISPLAY_ORDER_SQL}, entry.key ASC)), '')"
             ),
             MetricSource::CurrentRole { role_id } => format!(
                 "(SELECT prs.score FROM player_role_scores prs WHERE prs.snapshot_id = {player_alias}.snapshot_id AND prs.uid = {player_alias}.uid AND prs.role_id = '{role_id}')"

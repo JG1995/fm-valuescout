@@ -1,5 +1,6 @@
 import { useId } from "react";
 import { SelectField } from "@/components/ui/field/select-field";
+import { orderedTacticPositions } from "@/utils/position-order";
 import {
   TACTIC_LANE_IDS,
   type TacticLane,
@@ -67,9 +68,11 @@ function PhaseControls({
   const roles = rolesForPhase(options, phase, position);
   const selectedRoleIsCompatible = roles.some((role) => role.roleId === roleId);
   const { label, shortLabel } = TACTIC_PHASES[phase];
-  const placements = options.placements.includes(position)
-    ? options.placements
-    : [position, ...options.placements];
+  const placements = orderedTacticPositions(
+    options.placements.includes(position)
+      ? options.placements
+      : [position, ...options.placements],
+  );
 
   return (
     <fieldset

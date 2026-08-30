@@ -457,7 +457,7 @@ describe("player profile route", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Natural positions: MC, AMC, AMR · 24 comparison players",
+        "Natural positions: MC, AMR, AMC · 24 comparison players",
       ),
     ).toBeInTheDocument();
     const moneyballRoleFit = screen.getByRole("region", {

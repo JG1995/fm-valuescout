@@ -7,6 +7,7 @@ import {
   MONEYBALL_METRIC_CATEGORIES,
   MONEYBALL_METRICS,
 } from "@/utils/moneyball-metrics";
+import { orderedPositions } from "@/utils/position-order";
 import type { MoneyballProfile } from "../types/moneyball-profile";
 import { MoneyballMetricValue } from "./moneyball-metric-value";
 
@@ -171,8 +172,10 @@ export function MoneyballProfilePanel({
         {profile.comparisonBasis.kind === "available" ? (
           <p className="text-body-sm text-on-surface-variant">
             Natural positions:{" "}
-            {profile.comparisonBasis.naturalPositions.join(", ")} ·{" "}
-            {profile.comparisonBasis.comparisonPlayerCount} comparison{" "}
+            {orderedPositions(profile.comparisonBasis.naturalPositions).join(
+              ", ",
+            )}{" "}
+            · {profile.comparisonBasis.comparisonPlayerCount} comparison{" "}
             {profile.comparisonBasis.comparisonPlayerCount === 1
               ? "player"
               : "players"}

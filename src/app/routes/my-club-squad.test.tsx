@@ -2732,9 +2732,30 @@ describe("My Club route", () => {
       "aria-selected",
       "true",
     );
+    const matrix = screen.getByRole("region", {
+      name: "Senior squad depth matrix",
+    });
+    expect(matrix).toBeVisible();
     expect(
-      screen.getByRole("region", { name: "Senior squad depth matrix" }),
-    ).toBeVisible();
+      within(matrix)
+        .getAllByRole("row")
+        .slice(1)
+        .map(
+          (row) => row.getAttribute("aria-label")?.match(/^IP: ([^ ]+)/)?.[1],
+        ),
+    ).toEqual([
+      "GK",
+      "DR",
+      "DCR",
+      "DCL",
+      "DL",
+      "DM",
+      "MCR",
+      "MCL",
+      "AMR",
+      "AML",
+      "STC",
+    ]);
   });
 
   it("uses the Squad default for the retired Club Setup workspace", async () => {
@@ -2815,6 +2836,36 @@ describe("My Club route", () => {
     const ipPosition = screen.getByRole("combobox", {
       name: "IP GK position",
     });
+    expect(
+      within(ipPosition)
+        .getAllByRole("option")
+        .map((option) => option.getAttribute("value")),
+    ).toEqual([
+      "GK",
+      "DR",
+      "DCR",
+      "DC",
+      "DCL",
+      "DL",
+      "WBR",
+      "DMCR",
+      "DM",
+      "DMCL",
+      "WBL",
+      "MR",
+      "MCR",
+      "MC",
+      "MCL",
+      "ML",
+      "AMR",
+      "AMCR",
+      "AMC",
+      "AMCL",
+      "AML",
+      "STCR",
+      "STC",
+      "STCL",
+    ]);
     await user.selectOptions(ipPosition, "DL");
 
     const ipRole = screen.getByRole("combobox", { name: "IP DL role" });

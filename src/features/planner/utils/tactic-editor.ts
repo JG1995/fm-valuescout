@@ -1,3 +1,4 @@
+import { compareTacticPositions } from "@/utils/position-order";
 import type {
   PlannerTactic,
   TacticLane,
@@ -33,6 +34,14 @@ export function phasePosition(lane: TacticLane, phase: TacticPhase): string {
 
 export function phaseRoleId(lane: TacticLane, phase: TacticPhase): string {
   return phase === "ip" ? lane.ipRoleId : lane.oopRoleId;
+}
+
+export function orderedTacticLanes(lanes: readonly TacticLane[]): TacticLane[] {
+  return [...lanes].sort(
+    (left, right) =>
+      compareTacticPositions(left.ipPosition, right.ipPosition) ||
+      compareTacticPositions(left.oopPosition, right.oopPosition),
+  );
 }
 
 export function basePosition(placement: string): string {

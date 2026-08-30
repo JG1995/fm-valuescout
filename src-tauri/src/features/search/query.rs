@@ -3270,7 +3270,7 @@ mod tests {
         assert_eq!(
             page.players[0].dynamic_values.get("position"),
             Some(&Some(DynamicValue::Text(
-                "AMC, MC, AML, AMR, WBL".to_string()
+                "AMC, MC, AMR, AML, WBL".to_string()
             )))
         );
     }

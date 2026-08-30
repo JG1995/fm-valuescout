@@ -92,6 +92,8 @@ const DEFAULT_TACTIC_OPTIONS: TacticOptions = {
     "DC",
     "DCL",
     "DR",
+    "WBR",
+    "WBL",
     "DMCR",
     "DM",
     "DMCL",
@@ -496,7 +498,7 @@ export function resolvePlannerRoleReferenceIpcMock(args: unknown) {
     (args.phase !== "in_possession" && args.phase !== "out_of_possession") ||
     (args.scoreBasis !== "current" && args.scoreBasis !== "potential")
   ) {
-    throw "Invalid planner role reference request";
+    throw new Error("Invalid planner role reference request");
   }
   roleReferenceCalls.push({
     phase: args.phase,
@@ -677,7 +679,7 @@ function plannerSlotArgs(args: unknown): PlannerSlotIpcArgs {
     typeof args.stringId !== "number" ||
     typeof args.laneId !== "string"
   ) {
-    throw "Invalid planner slot";
+    throw new Error("Invalid planner slot");
   }
   return { stringId: args.stringId, laneId: args.laneId };
 }
@@ -693,7 +695,7 @@ function plannerAssignmentArgs(args: unknown): PlannerAssignmentIpcArgs {
     typeof args.laneId !== "string" ||
     typeof args.playerUid !== "number"
   ) {
-    throw "Invalid planner assignment";
+    throw new Error("Invalid planner assignment");
   }
   return {
     stringId: args.stringId,
@@ -711,10 +713,10 @@ function resolvePlannerAssignmentIpcMock(args: unknown, move: boolean) {
     .flatMap((team) => team.strings)
     .find((plannerString) => plannerString.id === stringId);
   if (!target) {
-    throw "Planner string not found";
+    throw new Error("Planner string not found");
   }
   if (target.assignments.some((assignment) => assignment.laneId === laneId)) {
-    throw "Planner cell is already occupied";
+    throw new Error("Planner cell is already occupied");
   }
   const existing = depth.teams
     .flatMap((team) => team.strings)
@@ -768,7 +770,7 @@ export function resolveClearPlannerAssignmentIpcMock(args: unknown) {
     .flatMap((team) => team.strings)
     .find((plannerString) => plannerString.id === stringId);
   if (!target) {
-    throw "Planner string not found";
+    throw new Error("Planner string not found");
   }
   target.assignments = target.assignments.filter(
     (assignment) => assignment.laneId !== laneId,
@@ -792,11 +794,11 @@ export function resolveAddPlannerStringIpcMock(args: unknown) {
       args.team !== "reserves" &&
       args.team !== "youth")
   ) {
-    throw "Invalid planner team";
+    throw new Error("Invalid planner team");
   }
   const team = depth.teams.find((candidate) => candidate.team === args.team);
   if (!team) {
-    throw "Planner team not found";
+    throw new Error("Planner team not found");
   }
   const id =
     Math.max(
@@ -817,7 +819,7 @@ export function resolveRemovePlannerStringIpcMock(args: unknown) {
     typeof args.stringId !== "number" ||
     typeof args.confirmPopulated !== "boolean"
   ) {
-    throw "Invalid planner string";
+    throw new Error("Invalid planner string");
   }
   if (assignmentError) {
     throw assignmentError;
@@ -831,13 +833,13 @@ export function resolveRemovePlannerStringIpcMock(args: unknown) {
     (candidate) => candidate.id === args.stringId,
   );
   if (!team || !plannerString) {
-    throw "Planner string not found";
+    throw new Error("Planner string not found");
   }
   if (team.strings.length <= 1) {
     throw `The ${team.team} team must keep at least one string`;
   }
   if (plannerString.assignments.length > 0 && !args.confirmPopulated) {
-    throw "Removing a populated string requires confirmation";
+    throw new Error("Removing a populated string requires confirmation");
   }
   team.strings = team.strings
     .filter((candidate) => candidate.id !== args.stringId)
@@ -853,10 +855,10 @@ export function resolveClearPlannerDepthIpcMock(args: unknown) {
     !("confirmed" in args) ||
     typeof args.confirmed !== "boolean"
   ) {
-    throw "Invalid planner clear request";
+    throw new Error("Invalid planner clear request");
   }
   if (!args.confirmed) {
-    throw "Clearing all squads requires confirmation";
+    throw new Error("Clearing all squads requires confirmation");
   }
   if (clearAllError) {
     throw clearAllError;
@@ -882,7 +884,7 @@ export function resolveOptimizePlannerDepthIpcMock(args: unknown) {
     !("scoreBasis" in args) ||
     (args.scoreBasis !== "current" && args.scoreBasis !== "potential")
   ) {
-    throw "Optimizer requires a valid score basis";
+    throw new Error("Optimizer requires a valid score basis");
   }
   optimizeBases.push(args.scoreBasis);
   if (optimizeError) {
@@ -904,7 +906,7 @@ export function resolvePlannerTeamRemovalImpactsIpcMock(args: unknown) {
     !("teams" in args) ||
     !Array.isArray(args.teams)
   ) {
-    throw "Invalid planner team settings";
+    throw new Error("Invalid planner team settings");
   }
   const impacts = teamRemovalImpactOverride
     ? teamRemovalImpactOverride.map((impact) => ({
@@ -955,14 +957,14 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
     !Array.isArray(args.teams) ||
     typeof args.confirmPopulatedRemoval !== "boolean"
   ) {
-    throw "Invalid planner team settings";
+    throw new Error("Invalid planner team settings");
   }
   const teams = args.teams as Array<{
     team: unknown;
     displayName: unknown;
   }>;
   if (teams.length < 1 || teams.length > PLANNER_TEAMS.length) {
-    throw "Planner configuration must contain one to three teams";
+    throw new Error("Planner configuration must contain one to three teams");
   }
   const inputs = teams.map((team) => {
     if (
@@ -970,7 +972,7 @@ export function resolveSavePlannerTeamsIpcMock(args: unknown) {
       !PLANNER_TEAMS.includes(team.team as PlannerTeam) ||
       typeof team.displayName !== "string"
     ) {
-      throw "Invalid planner team settings";
+      throw new Error("Invalid planner team settings");
     }
     return {
       team: team.team as PlannerTeam,
@@ -1063,7 +1065,7 @@ export function resolveSavePlannerTacticIpcMock(args: unknown) {
   }
   const record = args as { tactic?: PlannerTactic };
   if (!record.tactic) {
-    throw "Tactic is required";
+    throw new Error("Tactic is required");
   }
   tactic = cloneTactic(record.tactic);
   return resolvePlannerTacticIpcMock();
@@ -1076,7 +1078,7 @@ export function resolveSetManagedClubIpcMock(
   onManagedClubSaveCall?.();
   const clubName = (args as { clubName?: unknown }).clubName;
   if (typeof clubName !== "string" || !clubName.trim()) {
-    throw "Managed club must not be empty";
+    throw new Error("Managed club must not be empty");
   }
   const normalized = clubName.trim();
   const result: ManagedClubStatus = {

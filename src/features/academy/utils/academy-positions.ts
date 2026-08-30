@@ -1,24 +1,4 @@
-const ACADEMY_POSITION_ORDER = [
-  "GK",
-  "SW",
-  "DL",
-  "DC",
-  "DR",
-  "DM",
-  "ML",
-  "MC",
-  "MR",
-  "AML",
-  "AMC",
-  "AMR",
-  "ST",
-  "WBL",
-  "WBR",
-] as const;
-
-const positionOrder = new Map<string, number>(
-  ACADEMY_POSITION_ORDER.map((position, index) => [position, index]),
-);
+import { comparePositions } from "@/utils/position-order";
 
 /** Return recorded Academy positions without promoting zero or unread slots. */
 export function recordedAcademyPositions(
@@ -36,11 +16,7 @@ export function recordedAcademyPositions(
       if (familiarity !== 0) {
         return familiarity;
       }
-      return (
-        (positionOrder.get(leftPosition) ?? Number.MAX_SAFE_INTEGER) -
-          (positionOrder.get(rightPosition) ?? Number.MAX_SAFE_INTEGER) ||
-        leftPosition.localeCompare(rightPosition)
-      );
+      return comparePositions(leftPosition, rightPosition);
     })
     .map(([position]) => position);
 }
