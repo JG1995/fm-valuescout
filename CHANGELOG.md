@@ -6,6 +6,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-08-30
+
+### Fixed
+
+- Position displays now use a consistent canonical order across player, Planner, Search, Squad, Academy, and Moneyball views.
+- Academy player lists now show only playable positions with familiarity of 16 or higher, ordered by familiarity and canonical position order for ties.
+
 ## [0.14.2] - 2026-08-29
 
 ### Fixed
