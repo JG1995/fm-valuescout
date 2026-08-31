@@ -16,8 +16,8 @@ use super::parser::{parse_csv_with_row_limit, ParsedCsv};
 use super::{
     CsvImportError as ParsedCsvError, MoneyballMetricValue, MoneyballPlayer, MoneyballTransferValue,
 };
-pub(crate) const MAX_CSV_BYTES: u64 = 1024 * 1024;
-pub(crate) const MAX_CSV_ROWS: usize = 1_000;
+pub(crate) const MAX_CSV_BYTES: u64 = 8 * 1024 * 1024;
+pub(crate) const MAX_CSV_ROWS: usize = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -72,13 +72,13 @@ impl std::fmt::Display for CsvImportServiceError {
                 "The current save or snapshot changed while the CSV was imported"
             ),
             Self::InvalidFile => write!(f, "Select a regular .csv file"),
-            Self::FileTooLarge => write!(f, "CSV file exceeds the 1 MiB limit"),
+            Self::FileTooLarge => write!(f, "CSV file exceeds the 8 MiB limit"),
             Self::InvalidUtf8 => write!(f, "CSV file must use UTF-8 encoding"),
             Self::UnsupportedFormat => write!(f, "CSV format is not supported"),
             Self::FormatMismatch => {
                 write!(f, "CSV does not match the selected upload format")
             }
-            Self::TooManyRows => write!(f, "CSV contains more than 1000 rows"),
+            Self::TooManyRows => write!(f, "CSV contains more than 10,000 rows"),
             Self::InvalidCsv(error) => write!(f, "CSV file is invalid: {error}"),
             Self::Database => write!(f, "CSV import is unavailable"),
         }
@@ -1430,7 +1430,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_files_and_bounds_without_leaking_the_local_path() {
+    fn rejects_invalid_files_without_leaking_the_local_path() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
 
         let text_path = write_csv(&temp_dir, "players.txt", "Unique ID;Player\n1;Player\n");
@@ -1446,22 +1446,57 @@ mod tests {
             parse_csv_file(&utf8_path).expect_err("reject invalid UTF-8"),
             CsvImportServiceError::InvalidUtf8
         );
+    }
 
-        let oversized_path = temp_dir.path().join("oversized.csv");
-        fs::write(&oversized_path, vec![b'x'; MAX_CSV_BYTES as usize + 1])
-            .expect("write oversized CSV");
+    #[test]
+    fn accepts_eight_mib_csv_and_rejects_a_larger_file() {
+        const EIGHT_MIB: usize = 8 * 1024 * 1024;
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let path = temp_dir.path().join("bounded.csv");
+
+        fs::write(&path, vec![b'x'; EIGHT_MIB]).expect("write CSV at byte limit");
         assert_eq!(
-            parse_csv_file(&oversized_path).expect_err("reject oversized CSV"),
-            CsvImportServiceError::FileTooLarge
+            read_csv_file(&path)
+                .expect("accept CSV at byte limit")
+                .len(),
+            EIGHT_MIB
         );
 
-        let too_many_rows = std::iter::once("Unique ID;Player".to_string())
-            .chain((1..=MAX_CSV_ROWS + 1).map(|uid| format!("{uid};Player {uid}")))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let rows_path = write_csv(&temp_dir, "too-many.csv", &too_many_rows);
+        fs::write(&path, vec![b'x'; EIGHT_MIB + 1]).expect("write CSV above byte limit");
         assert_eq!(
-            parse_csv_file(&rows_path).expect_err("reject too many rows"),
+            read_csv_file(&path).expect_err("reject CSV above byte limit"),
+            CsvImportServiceError::FileTooLarge
+        );
+    }
+
+    #[test]
+    fn accepts_ten_thousand_player_rows_and_rejects_the_next_row() {
+        const TEN_THOUSAND_ROWS: usize = 10_000;
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let player_csv = |rows| {
+            std::iter::once("Unique ID;Player".to_string())
+                .chain((1..=rows).map(|uid| format!("{uid};Player {uid}")))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        let accepted_path = write_csv(
+            &temp_dir,
+            "ten-thousand.csv",
+            &player_csv(TEN_THOUSAND_ROWS),
+        );
+        assert!(matches!(
+            parse_csv_file(&accepted_path).expect("accept CSV at row limit"),
+            ParsedCsv::YouthTracker(players) if players.len() == TEN_THOUSAND_ROWS
+        ));
+
+        let rejected_path = write_csv(
+            &temp_dir,
+            "ten-thousand-and-one.csv",
+            &player_csv(TEN_THOUSAND_ROWS + 1),
+        );
+        assert_eq!(
+            parse_csv_file(&rejected_path).expect_err("reject CSV above row limit"),
             CsvImportServiceError::TooManyRows
         );
     }
