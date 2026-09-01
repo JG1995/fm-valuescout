@@ -1,10 +1,12 @@
 use std::cmp::Reverse;
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use rusqlite::{params, params_from_iter, types::Value, Connection};
+use rusqlite::{params, Connection};
 
 use crate::features::{
-    player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
+    player_metrics::compact::{
+        player_current_column, player_metrics_join, player_potential_column, PLAYER_METRICS_ALIAS,
+    },
     scoring::combine::combine_role_scores,
 };
 
@@ -456,58 +458,39 @@ fn load_current_optimizer_candidates(
     team: PlannerTeam,
     tactic: &PlannerTactic,
 ) -> Result<Vec<OptimizerCandidate>, String> {
-    let mut score_statement = tx
-        .prepare(
-            "SELECT scores.uid, scores.role_id, scores.score
-             FROM players player
-             CROSS JOIN player_role_scores scores
-             WHERE player.snapshot_id = ?1
-               AND player.current_club = (
-                   SELECT club_name FROM managed_club_settings WHERE save_id = ?2
-               )
-               AND scores.snapshot_id = player.snapshot_id
-               AND scores.uid = player.uid",
-        )
-        .map_err(|error| error.to_string())?;
-    let role_scores = score_statement
+    let lane_count = tactic.lanes.len();
+    let mut metric_columns = Vec::with_capacity(lane_count * 2);
+    for lane in &tactic.lanes {
+        metric_columns.push(player_current_column(&lane.ip_role_id)?.to_string());
+        metric_columns.push(player_current_column(&lane.oop_role_id)?.to_string());
+    }
+    let metric_select = metric_columns
+        .iter()
+        .map(|column| format!(", {PLAYER_METRICS_ALIAS}.{column}"))
+        .collect::<String>();
+    let sql = format!(
+        "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json{metric_select}
+         FROM players p{}
+         WHERE p.snapshot_id = ?1
+           AND p.current_club = (
+               SELECT club_name FROM managed_club_settings WHERE save_id = ?2
+           )
+         ORDER BY p.uid",
+        player_metrics_join("p", true, false)
+    );
+    let mut statement = tx.prepare(&sql).map_err(|error| error.to_string())?;
+    let players = statement
         .query_map(params![snapshot_id, save_id], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<u8>>(2)?,
-            ))
-        })
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .fold(
-            HashMap::<i64, HashMap<String, Option<u8>>>::new(),
-            |mut scores, row| {
-                scores.entry(row.0).or_default().insert(row.1, row.2);
-                scores
-            },
-        );
-
-    let mut player_statement = tx
-        .prepare(
-            "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json
-             FROM players p
-             WHERE p.snapshot_id = ?1
-               AND p.current_club = (
-                   SELECT club_name FROM managed_club_settings WHERE save_id = ?2
-               )
-             ORDER BY p.uid",
-        )
-        .map_err(|error| error.to_string())?;
-    let players = player_statement
-        .query_map(params![snapshot_id, save_id], |row| {
+            let score_values = (0..lane_count * 2)
+                .map(|index| row.get::<_, Option<u8>>(index + 5))
+                .collect::<Result<Vec<_>, _>>()?;
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<i64>>(2)?,
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
+                score_values,
             ))
         })
         .map_err(|error| error.to_string())?
@@ -516,26 +499,31 @@ fn load_current_optimizer_candidates(
 
     players
         .into_iter()
-        .filter(|(_, _, age, _, _)| is_age_eligible(team, *age))
+        .filter(|(_, _, age, _, _, _)| is_age_eligible(team, *age))
         .map(
-            |(player_uid, last_known_name, _, preferred_foot, positions_json)| {
+            |(player_uid, last_known_name, _, preferred_foot, positions_json, score_values)| {
                 let positions = serde_json::from_str::<
                     std::collections::BTreeMap<String, Option<i64>>,
                 >(&positions_json)
                 .map_err(|error| error.to_string())?;
+                let mut role_scores = HashMap::with_capacity(lane_count * 2);
+                for (lane_index, lane) in tactic.lanes.iter().enumerate() {
+                    role_scores.insert(lane.ip_role_id.clone(), score_values[lane_index * 2]);
+                    role_scores.insert(lane.oop_role_id.clone(), score_values[lane_index * 2 + 1]);
+                }
                 let lane_scores = tactic
                     .lanes
                     .iter()
                     .map(|lane| {
-                        let player_scores = role_scores.get(&player_uid);
                         lane_fit_score(
-                            player_scores.and_then(|scores| {
-                                combine_role_scores(
-                                    scores.get(lane.ip_role_id.as_str()).copied().flatten(),
-                                    scores.get(lane.oop_role_id.as_str()).copied().flatten(),
-                                    lane.ip_weight,
-                                )
-                            }),
+                            combine_role_scores(
+                                role_scores.get(lane.ip_role_id.as_str()).copied().flatten(),
+                                role_scores
+                                    .get(lane.oop_role_id.as_str())
+                                    .copied()
+                                    .flatten(),
+                                lane.ip_weight,
+                            ),
                             &preferred_foot,
                             &positions,
                             lane,
@@ -566,80 +554,39 @@ fn load_potential_optimizer_candidates(
     team: PlannerTeam,
     tactic: &PlannerTactic,
 ) -> Result<Vec<OptimizerCandidate>, String> {
-    let role_ids = tactic
-        .lanes
+    let lane_count = tactic.lanes.len();
+    let mut metric_columns = Vec::with_capacity(lane_count * 2);
+    for lane in &tactic.lanes {
+        metric_columns.push(player_potential_column(&lane.ip_role_id)?);
+        metric_columns.push(player_potential_column(&lane.oop_role_id)?);
+    }
+    let metric_select = metric_columns
         .iter()
-        .flat_map(|lane| [&lane.ip_role_id, &lane.oop_role_id])
-        .collect::<HashSet<_>>();
-    let role_placeholders = (4..role_ids.len() + 4)
-        .map(|index| format!("?{index}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let potential_score_sql = format!(
-        "SELECT scores.uid, scores.role_id, scores.score
-         FROM players player
-         CROSS JOIN player_potential_role_scores scores
-         WHERE player.snapshot_id = ?1
-           AND player.current_club = (
+        .map(|column| format!(", {PLAYER_METRICS_ALIAS}.{column}"))
+        .collect::<String>();
+    let sql = format!(
+        "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json{metric_select}
+         FROM players p{}
+         WHERE p.snapshot_id = ?1
+           AND p.current_club = (
                SELECT club_name FROM managed_club_settings WHERE save_id = ?2
            )
-           AND scores.snapshot_id = player.snapshot_id
-           AND scores.uid = player.uid
-           AND scores.projection_model_version = ?3
-           AND scores.role_id IN ({role_placeholders})"
+         ORDER BY p.uid",
+        player_metrics_join("p", false, true)
     );
-    let mut potential_score_values = vec![
-        Value::Integer(snapshot_id),
-        Value::Integer(save_id),
-        Value::Integer(PROJECTION_MODEL_VERSION),
-    ];
-    potential_score_values.extend(
-        role_ids
-            .iter()
-            .map(|role_id| Value::Text((*role_id).to_string())),
-    );
-    let mut score_statement = tx
-        .prepare(&potential_score_sql)
-        .map_err(|error| error.to_string())?;
-    let role_scores = score_statement
-        .query_map(params_from_iter(potential_score_values.iter()), |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, Option<u8>>(2)?,
-            ))
-        })
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .fold(
-            HashMap::<i64, HashMap<String, Option<u8>>>::new(),
-            |mut scores, row| {
-                scores.entry(row.0).or_default().insert(row.1, row.2);
-                scores
-            },
-        );
-
-    let mut player_statement = tx
-        .prepare(
-            "SELECT p.uid, p.name, p.age, p.preferred_foot, p.positions_json
-             FROM players p
-             WHERE p.snapshot_id = ?1
-               AND p.current_club = (
-                   SELECT club_name FROM managed_club_settings WHERE save_id = ?2
-               )
-             ORDER BY p.uid",
-        )
-        .map_err(|error| error.to_string())?;
-    let players = player_statement
+    let mut statement = tx.prepare(&sql).map_err(|error| error.to_string())?;
+    let players = statement
         .query_map(params![snapshot_id, save_id], |row| {
+            let score_values = (0..lane_count * 2)
+                .map(|index| row.get::<_, Option<u8>>(index + 5))
+                .collect::<Result<Vec<_>, _>>()?;
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<i64>>(2)?,
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
+                score_values,
             ))
         })
         .map_err(|error| error.to_string())?
@@ -648,26 +595,31 @@ fn load_potential_optimizer_candidates(
 
     players
         .into_iter()
-        .filter(|(_, _, age, _, _)| is_age_eligible(team, *age))
+        .filter(|(_, _, age, _, _, _)| is_age_eligible(team, *age))
         .map(
-            |(player_uid, last_known_name, _, preferred_foot, positions_json)| {
+            |(player_uid, last_known_name, _, preferred_foot, positions_json, score_values)| {
                 let positions = serde_json::from_str::<
                     std::collections::BTreeMap<String, Option<i64>>,
                 >(&positions_json)
                 .map_err(|error| error.to_string())?;
+                let mut role_scores = HashMap::with_capacity(lane_count * 2);
+                for (lane_index, lane) in tactic.lanes.iter().enumerate() {
+                    role_scores.insert(lane.ip_role_id.clone(), score_values[lane_index * 2]);
+                    role_scores.insert(lane.oop_role_id.clone(), score_values[lane_index * 2 + 1]);
+                }
                 let lane_scores = tactic
                     .lanes
                     .iter()
                     .map(|lane| {
-                        let player_scores = role_scores.get(&player_uid);
                         lane_fit_score(
-                            player_scores.and_then(|scores| {
-                                combine_role_scores(
-                                    scores.get(lane.ip_role_id.as_str()).copied().flatten(),
-                                    scores.get(lane.oop_role_id.as_str()).copied().flatten(),
-                                    lane.ip_weight,
-                                )
-                            }),
+                            combine_role_scores(
+                                role_scores.get(lane.ip_role_id.as_str()).copied().flatten(),
+                                role_scores
+                                    .get(lane.oop_role_id.as_str())
+                                    .copied()
+                                    .flatten(),
+                                lane.ip_weight,
+                            ),
                             &preferred_foot,
                             &positions,
                             lane,

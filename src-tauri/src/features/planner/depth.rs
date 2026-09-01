@@ -1,8 +1,9 @@
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::features::{
-    player_metrics::potential_scores::{
-        assert_current_snapshot_complete, PROJECTION_MODEL_VERSION,
+    player_metrics::compact::{
+        assert_read_models_complete, player_current_column, player_metrics_join,
+        player_potential_column, PLAYER_METRICS_ALIAS,
     },
     scoring::combine::combine_role_scores,
 };
@@ -198,27 +199,21 @@ pub fn get_slot_candidates(
     let lane = find_lane(&tactic, lane_id)?;
     let snapshot_id = current_snapshot_id(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
+    let ip_column = player_current_column(&lane.ip_role_id)?;
+    let oop_column = player_current_column(&lane.oop_role_id)?;
     let mut statement = conn
-        .prepare(
+        .prepare(&format!(
             "SELECT
                 p.uid,
                 p.name,
                 p.current_club,
-                ip.score,
-                oop.score,
+                {PLAYER_METRICS_ALIAS}.{ip_column},
+                {PLAYER_METRICS_ALIAS}.{oop_column},
                 assignment_string.team,
                 assignment_string.id,
                 assignment_string.string_order,
                 assignment.lane_id
-             FROM players p
-             LEFT JOIN player_role_scores ip
-               ON ip.snapshot_id = p.snapshot_id
-              AND ip.uid = p.uid
-              AND ip.role_id = ?3
-             LEFT JOIN player_role_scores oop
-               ON oop.snapshot_id = p.snapshot_id
-              AND oop.uid = p.uid
-              AND oop.role_id = ?4
+             FROM players p{}
              LEFT JOIN planner_assignments assignment
                ON assignment.save_id = ?2
               AND assignment.player_uid = p.uid
@@ -228,25 +223,23 @@ pub fn get_slot_candidates(
                AND p.current_club = (
                    SELECT club_name FROM managed_club_settings WHERE save_id = ?2
                )",
-        )
+            player_metrics_join("p", true, false),
+        ))
         .map_err(|error| error.to_string())?;
     let candidates = statement
-        .query_map(
-            params![snapshot_id, save_id, lane.ip_role_id, lane.oop_role_id,],
-            |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Option<u8>>(3)?,
-                    row.get::<_, Option<u8>>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                    row.get::<_, Option<i64>>(6)?,
-                    row.get::<_, Option<i64>>(7)?,
-                    row.get::<_, Option<String>>(8)?,
-                ))
-            },
-        )
+        .query_map(params![snapshot_id, save_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<u8>>(3)?,
+                row.get::<_, Option<u8>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<i64>>(6)?,
+                row.get::<_, Option<i64>>(7)?,
+                row.get::<_, Option<String>>(8)?,
+            ))
+        })
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
@@ -573,7 +566,7 @@ pub(super) fn preflight_depth_snapshot(
 ) -> Result<Option<i64>, String> {
     let snapshot_id = current_snapshot_id(conn, save_id)?;
     if let Some(snapshot_id) = snapshot_id {
-        assert_current_snapshot_complete(conn, snapshot_id)?;
+        assert_read_models_complete(conn, snapshot_id, true, true)?;
     }
     Ok(snapshot_id)
 }
@@ -657,50 +650,31 @@ fn resolve_assignment(
             potential_combined_score: None,
         });
     };
+    let ip_column = player_current_column(&lane.ip_role_id)?;
+    let oop_column = player_current_column(&lane.oop_role_id)?;
+    let potential_ip_column = player_potential_column(&lane.ip_role_id)?;
+    let potential_oop_column = player_potential_column(&lane.oop_role_id)?;
     let player = conn
         .query_row(
-            "SELECT
-                p.name,
-                COALESCE(
-                    p.current_club = (
-                        SELECT club_name FROM managed_club_settings WHERE save_id = ?1
+            &format!(
+                "SELECT
+                    p.name,
+                    COALESCE(
+                        p.current_club = (
+                            SELECT club_name FROM managed_club_settings WHERE save_id = ?1
+                        ),
+                        0
                     ),
-                    0
-                ),
-                ip.score,
-                oop.score,
-                potential_ip.score,
-                potential_oop.score,
-                potential_ip.role_id IS NOT NULL,
-                potential_oop.role_id IS NOT NULL
-             FROM players p
-             LEFT JOIN player_role_scores ip
-               ON ip.snapshot_id = p.snapshot_id
-              AND ip.uid = p.uid
-              AND ip.role_id = ?4
-             LEFT JOIN player_role_scores oop
-               ON oop.snapshot_id = p.snapshot_id
-              AND oop.uid = p.uid
-              AND oop.role_id = ?5
-             LEFT JOIN player_potential_role_scores potential_ip
-               ON potential_ip.snapshot_id = p.snapshot_id
-              AND potential_ip.uid = p.uid
-              AND potential_ip.role_id = ?4
-              AND potential_ip.projection_model_version = ?6
-             LEFT JOIN player_potential_role_scores potential_oop
-               ON potential_oop.snapshot_id = p.snapshot_id
-              AND potential_oop.uid = p.uid
-              AND potential_oop.role_id = ?5
-              AND potential_oop.projection_model_version = ?6
-             WHERE p.snapshot_id = ?2 AND p.uid = ?3",
-            params![
-                save_id,
-                snapshot_id,
-                player_uid,
-                lane.ip_role_id,
-                lane.oop_role_id,
-                PROJECTION_MODEL_VERSION,
-            ],
+                    {PLAYER_METRICS_ALIAS}.{ip_column},
+                    {PLAYER_METRICS_ALIAS}.{oop_column},
+                    {PLAYER_METRICS_ALIAS}.{potential_ip_column},
+                    {PLAYER_METRICS_ALIAS}.{potential_oop_column},
+                    {PLAYER_METRICS_ALIAS}.score_model_version IS NOT NULL
+                 FROM players p{}
+                 WHERE p.snapshot_id = ?2 AND p.uid = ?3",
+                player_metrics_join("p", true, true),
+            ),
+            params![save_id, snapshot_id, player_uid],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -710,7 +684,6 @@ fn resolve_assignment(
                     row.get::<_, Option<u8>>(4)?,
                     row.get::<_, Option<u8>>(5)?,
                     row.get::<_, bool>(6)?,
-                    row.get::<_, bool>(7)?,
                 ))
             },
         )
@@ -724,8 +697,7 @@ fn resolve_assignment(
         oop_score,
         potential_ip_score,
         potential_oop_score,
-        has_potential_ip_score,
-        has_potential_oop_score,
+        has_compact_row,
     )) = player
     else {
         return Ok(ResolvedAssignment {
@@ -735,7 +707,7 @@ fn resolve_assignment(
             potential_combined_score: None,
         });
     };
-    if !has_potential_ip_score || !has_potential_oop_score {
+    if !has_compact_row {
         return Err("Current potential snapshot is incomplete".to_string());
     }
     let state = if is_in_pool {
