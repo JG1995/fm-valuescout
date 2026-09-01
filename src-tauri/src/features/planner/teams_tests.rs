@@ -173,12 +173,12 @@ fn corrupt_potential_state_blocks_confirmed_team_removal_before_writes() {
         .expect("assign reserve player");
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "UPDATE players
-         SET potential_projection_model_version = 999
+        "UPDATE player_role_metrics
+         SET projection_model_version = 999
          WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
-    .expect("corrupt projected map version");
+    .expect("corrupt compact projection version");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
@@ -198,12 +198,12 @@ fn rejects_invalid_team_settings_without_mutating_existing_rows() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
     get_depth(&conn, save_id).expect("initialize planner depth");
     conn.execute(
-        "UPDATE player_potential_role_scores
+        "UPDATE player_role_metrics
          SET projection_model_version = 999
-         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'goalkeeper_ip'",
+         WHERE snapshot_id = ?1",
         params![current_snapshot_id(&conn, save_id)],
     )
-    .expect("corrupt potential state");
+    .expect("corrupt compact projection version");
 
     for (inputs, expected) in [
         (vec![], "at least one"),

@@ -65,12 +65,16 @@ Updates are manual in this alpha:
 
 Do not use an older installer after a newer version has migrated the database. Restore a backup instead.
 
+### Database files
+
+This build opens a fresh database file, `app-v2.db`, in the same `%APPDATA%\app.fmvaluescout\` folder. The app never opens or changes the older `app.db`. Reinstalling the app might preserve application data, so an old `app.db` can remain on disk until you remove it. After updating, open the app and verify that your saves, snapshots, and loaded data are present in `app-v2.db` before manually deleting the old `app.db` to reclaim disk space.
+
 To uninstall, close FM ValueScout and use Windows **Installed apps**. To remove the bridge as well, use **Remove plugin** in the app before uninstalling, or delete only `FmDataBridge.dll` from FM's `BepInEx/plugins` directory. Do not delete BepInEx itself or unrelated plugins.
 
 Windows uninstallation does not replace a data-deletion decision. Only after keeping a backup you no longer need, remove these local folders if you want to erase ValueScout data and diagnostics:
 
 ```text
-%APPDATA%\app.fmvaluescout\                 app database (`app.db`)
+%APPDATA%\app.fmvaluescout\                 app databases (`app-v2.db`; legacy `app.db` only if still present)
 %LOCALAPPDATA%\app.fmvaluescout\logs\      app logs
 %LOCALAPPDATA%\fm-valuescout\fm-bridge\    bridge requests, status, dump, and diagnostics
 ```
@@ -96,7 +100,7 @@ Release builds keep bounded local logs in:
 
 The active file is limited to 1 MB; up to three rotated files are retained. The log records app startup and database migration state. Bridge diagnostics are separate under `%LOCALAPPDATA%\fm-valuescout\fm-bridge\`.
 
-For a non-security bug, open a GitHub issue with the app version, Windows version, FM26 build, a short reproduction, and whether the bridge/plugin was installed or updated. Do **not** attach your `app.db`, `dump.json`, full bridge diagnostics, memory addresses, or player data to a public issue. Review and redact logs before sharing them.
+For a non-security bug, open a GitHub issue with the app version, Windows version, FM26 build, a short reproduction, and whether the bridge/plugin was installed or updated. Do **not** attach your `app-v2.db` or `app.db`, `dump.json`, full bridge diagnostics, memory addresses, or player data to a public issue. Review and redact logs before sharing them.
 
 For a security problem, follow [SECURITY.md](SECURITY.md) and do not open a public issue.
 

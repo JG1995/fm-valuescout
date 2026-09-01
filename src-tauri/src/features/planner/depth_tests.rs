@@ -29,15 +29,21 @@ fn returns_ranked_candidates_from_the_managed_club() {
         )
         .expect("current snapshot");
     conn.execute(
-        "UPDATE player_role_scores
-         SET score = CASE uid
+        "UPDATE player_role_metrics
+         SET goalkeeper_ip = CASE uid
              WHEN 78 THEN 50
              WHEN 79 THEN 80
              WHEN 80 THEN NULL
-             ELSE score
+             ELSE goalkeeper_ip
+         END,
+         line_holding_keeper_oop = CASE uid
+             WHEN 78 THEN 50
+             WHEN 79 THEN 80
+             WHEN 80 THEN NULL
+             ELSE line_holding_keeper_oop
          END
          WHERE snapshot_id = ?1
-           AND role_id IN ('goalkeeper_ip', 'line_holding_keeper_oop')",
+           AND uid IN (77, 78, 79, 80)",
         params![snapshot_id],
     )
     .expect("set candidate scores");
@@ -108,12 +114,9 @@ fn slot_candidates_use_the_selected_lane_weight() {
         )
         .expect("current snapshot");
     conn.execute(
-        "UPDATE player_role_scores
-         SET score = CASE role_id
-             WHEN 'goalkeeper_ip' THEN 80
-             WHEN 'line_holding_keeper_oop' THEN 60
-             ELSE score
-         END
+        "UPDATE player_role_metrics
+         SET goalkeeper_ip = 80,
+             line_holding_keeper_oop = 60
          WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
@@ -281,12 +284,12 @@ fn unconfirmed_clear_returns_confirmation_before_potential_preflight() {
     assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "UPDATE players
-         SET potential_projection_model_version = 999
+        "UPDATE player_role_metrics
+         SET projection_model_version = 999
          WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
-    .expect("corrupt projected map version");
+    .expect("corrupt compact projection version");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
 
     let error = clear_all(&conn, save_id, false).expect_err("require confirmation");
@@ -520,34 +523,34 @@ fn assignment_state_uses_managed_club_membership_not_team_level() {
         params![snapshot_id],
     )
     .expect("set projection inputs");
-    conn.execute(
-        "UPDATE player_role_scores
-         SET score = CASE role_id
-             WHEN 'goalkeeper_ip' THEN 80
-             WHEN 'line_holding_keeper_oop' THEN 60
-             ELSE score
-         END
-         WHERE snapshot_id = ?1 AND uid = 77",
-        params![snapshot_id],
-    )
-    .expect("set role scores");
 
     let tx = conn
         .unchecked_transaction()
         .expect("start potential rebuild");
     potential_scores::replace_player(&tx, snapshot_id, 77).expect("rebuild persisted potential");
     tx.commit().expect("commit potential rebuild");
+    conn.execute(
+        "UPDATE player_role_metrics
+         SET goalkeeper_ip = 80,
+             line_holding_keeper_oop = 60
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("set role scores");
+    let potential_ip_column =
+        crate::features::player_metrics::compact::player_potential_column("goalkeeper_ip")
+            .expect("potential ip column");
+    let potential_oop_column = crate::features::player_metrics::compact::player_potential_column(
+        "line_holding_keeper_oop",
+    )
+    .expect("potential oop column");
     let (potential_ip_score, potential_oop_score) = conn
         .query_row(
-            "SELECT ip.score, oop.score
-             FROM player_potential_role_scores ip
-             INNER JOIN player_potential_role_scores oop
-               ON oop.snapshot_id = ip.snapshot_id
-              AND oop.uid = ip.uid
-              AND oop.role_id = 'line_holding_keeper_oop'
-             WHERE ip.snapshot_id = ?1
-               AND ip.uid = 77
-               AND ip.role_id = 'goalkeeper_ip'",
+            &format!(
+                "SELECT {potential_ip_column}, {potential_oop_column}
+                 FROM player_role_metrics
+                 WHERE snapshot_id = ?1 AND uid = 77"
+            ),
             params![snapshot_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -593,12 +596,9 @@ fn keeps_potential_combined_score_unavailable_when_selected_attributes_are_missi
     assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "UPDATE player_role_scores
-         SET score = CASE role_id
-             WHEN 'goalkeeper_ip' THEN 80
-             WHEN 'line_holding_keeper_oop' THEN 60
-             ELSE score
-         END
+        "UPDATE player_role_metrics
+         SET goalkeeper_ip = 80,
+             line_holding_keeper_oop = 60
          WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
@@ -617,11 +617,11 @@ fn direct_depth_load_does_not_audit_unassigned_player_potential_state() {
     get_depth(&conn, save_id).expect("create planner depth");
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "DELETE FROM player_potential_role_scores
-         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'goalkeeper_ip'",
+        "DELETE FROM player_role_metrics
+         WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
-    .expect("remove potential role");
+    .expect("remove compact row");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
@@ -637,11 +637,11 @@ fn depth_rejects_missing_potential_role_without_writes() {
     assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "DELETE FROM player_potential_role_scores
-         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'goalkeeper_ip'",
+        "DELETE FROM player_role_metrics
+         WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
-    .expect("remove potential role");
+    .expect("remove compact row");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
@@ -658,12 +658,12 @@ fn depth_rejects_wrong_version_potential_role_without_writes() {
     assign_player(&conn, save_id, string_id, "goalkeeper", 77).expect("assign player");
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "UPDATE player_potential_role_scores
+        "UPDATE player_role_metrics
          SET projection_model_version = 999
-         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'goalkeeper_ip'",
+         WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
-    .expect("stale potential role");
+    .expect("stale compact projection version");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
@@ -684,18 +684,59 @@ fn corrupt_potential_state_blocks_assignment_move_before_writes() {
     assign_player(&conn, save_id, first_string_id, "goalkeeper", 77).expect("assign player");
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "UPDATE players
-         SET potential_projection_model_version = 999
+        "UPDATE player_role_metrics
+         SET projection_model_version = 999
          WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
-    .expect("corrupt projected map version");
+    .expect("corrupt compact projection version");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
     let error = move_player(&conn, save_id, second_string_id, "goalkeeper", 77)
         .expect_err("reject assignment move");
     assert_eq!(error, "Current potential snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
+fn slot_candidates_reject_missing_current_compact_row_without_writes() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    get_depth(&conn, save_id).expect("create planner depth");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "DELETE FROM player_role_metrics
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("remove compact row for managed-club candidate");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    let error = get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
+        .expect_err("reject missing compact row");
+    assert_eq!(error, "Current compact player snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
+fn slot_candidates_reject_wrong_current_score_model_version_without_writes() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    get_depth(&conn, save_id).expect("create planner depth");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE player_role_metrics
+         SET score_model_version = 999
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("stale compact current version for managed-club candidate");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    let error = get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
+        .expect_err("reject stale compact current state");
+    assert_eq!(error, "Current compact player snapshot is incomplete");
     assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
 }
 
@@ -714,12 +755,9 @@ fn assignment_uses_persisted_potential_scores_instead_of_source_projection() {
     )
     .expect("diverge source attributes");
     conn.execute(
-        "UPDATE player_potential_role_scores
-         SET score = CASE role_id
-             WHEN 'goalkeeper_ip' THEN 80
-             WHEN 'line_holding_keeper_oop' THEN 60
-             ELSE score
-         END
+        "UPDATE player_role_metrics
+         SET potential_goalkeeper_ip = 80,
+             potential_line_holding_keeper_oop = 60
          WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )

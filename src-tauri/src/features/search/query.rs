@@ -5,9 +5,9 @@ use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Ro
 
 use crate::features::moneyball::percentile::{calculate_percentiles, MoneyballNumericStatistics};
 use crate::features::moneyball::{role_catalog::builtin_catalog, role_score::score_role};
-use crate::features::player_metrics::club_dna::SCORE_MODEL_VERSION;
 use crate::features::player_metrics::{
-    potential_scores::assert_snapshot_roles_complete,
+    club_dna::SCORE_MODEL_VERSION,
+    compact::{assert_read_models_complete, player_metrics_join},
     resolver::{
         parse_requested_fields_for_moneyball, read_dynamic_value, ClubDnaSqlBindings, MetricField,
     },
@@ -15,8 +15,9 @@ use crate::features::player_metrics::{
 
 use super::filter::{
     compile_filters, compile_filters_for_moneyball, compile_filters_with_club_dna,
-    moneyball_role_ids_from_ast, moneyball_role_rules_match, potential_role_ids_from_ast,
-    without_moneyball_role_rules, CombineMode, CompiledFilter, FilterAst,
+    current_role_ids_from_ast, moneyball_role_ids_from_ast, moneyball_role_rules_match,
+    potential_role_ids_from_ast, without_moneyball_role_rules, CombineMode, CompiledFilter,
+    FilterAst,
 };
 
 pub use crate::features::player_metrics::resolver::DynamicValue;
@@ -176,11 +177,9 @@ impl SortField {
         matches!(self, Self::Dynamic(field) if field.is_club_dna())
     }
 
-    fn potential_role_sort_identity(
-        &self,
-    ) -> Option<crate::features::player_metrics::resolver::PotentialRoleSortIdentity> {
+    fn potential_role_id(&self) -> Option<&'static str> {
         match self {
-            Self::Dynamic(field) => field.potential_role_sort_identity(),
+            Self::Dynamic(field) => field.potential_role_id(),
             _ => None,
         }
     }
@@ -388,22 +387,32 @@ pub fn search_players_in_view(
         }
     };
 
+    let current_filter_roles = filter_ast
+        .map(current_role_ids_from_ast)
+        .transpose()?
+        .unwrap_or_default();
     let potential_filter_roles = filter_ast
         .map(potential_role_ids_from_ast)
         .transpose()?
         .unwrap_or_default();
-    let potential_role_sort = sort_by.potential_role_sort_identity();
-    let mut potential_role_ids = potential_filter_roles;
-    potential_role_ids.extend(
-        dynamic_fields
+    let current_role_sort = sort_by.current_role_id();
+    let potential_role_sort = sort_by.potential_role_id();
+    let uses_current_role_metrics = current_role_sort.is_some()
+        || dynamic_fields
             .iter()
-            .filter_map(MetricField::potential_role_id)
-            .map(str::to_string),
-    );
-    if let Some(identity) = potential_role_sort {
-        potential_role_ids.push(identity.role_id.to_string());
-    }
-    assert_snapshot_roles_complete(conn, snapshot_id, &potential_role_ids)?;
+            .any(|field| field.current_role_id().is_some())
+        || !current_filter_roles.is_empty();
+    let uses_potential_role_metrics = potential_role_sort.is_some()
+        || dynamic_fields
+            .iter()
+            .any(|field| field.potential_role_id().is_some())
+        || !potential_filter_roles.is_empty();
+    assert_read_models_complete(
+        conn,
+        snapshot_id,
+        uses_current_role_metrics,
+        uses_potential_role_metrics,
+    )?;
 
     let club_dna_bindings = club_dna_requested.then(|| {
         if club_dna_filter {
@@ -425,27 +434,15 @@ pub fn search_players_in_view(
         .flatten();
     let club_dna_sort = sort_by.club_dna_sort_identity(club_dna_definition_version);
 
-    let current_role_sort = sort_by.current_role_id();
     let mut from_sql = match view {
         SearchView::General => "FROM players".to_string(),
         SearchView::Moneyball => "FROM players INNER JOIN player_moneyball_stats moneyball ON moneyball.snapshot_id = players.snapshot_id AND moneyball.player_uid = players.uid AND moneyball.percentiles_json IS NOT NULL".to_string(),
     };
-    if let Some(role_id) = current_role_sort {
-        from_sql.push_str(&format!(
-            " LEFT JOIN player_role_scores current_role_sort
-              ON current_role_sort.snapshot_id = players.snapshot_id
-              AND current_role_sort.role_id = '{role_id}'
-              AND current_role_sort.uid = players.uid"
-        ));
-    }
-    if let Some(identity) = potential_role_sort {
-        from_sql.push_str(&format!(
-            " LEFT JOIN player_potential_role_scores potential_role_sort
-              ON potential_role_sort.snapshot_id = players.snapshot_id
-              AND potential_role_sort.uid = players.uid
-              AND potential_role_sort.role_id = '{}'
-              AND potential_role_sort.projection_model_version = {}",
-            identity.role_id, identity.projection_model_version
+    if uses_current_role_metrics || uses_potential_role_metrics {
+        from_sql.push_str(&player_metrics_join(
+            "players",
+            uses_current_role_metrics,
+            uses_potential_role_metrics,
         ));
     }
     if let Some((_, bindings)) = club_dna_sort.zip(club_dna_bindings) {
@@ -496,17 +493,7 @@ pub fn search_players_in_view(
         .map_err(|error| error.to_string())?;
 
     // Whitelisted expr + dir only — never interpolate raw client strings.
-    let order_sql = if current_role_sort.is_some() {
-        format!(
-            "ORDER BY current_role_sort.score {}, players.uid ASC",
-            sort_dir.sql_keyword()
-        )
-    } else if potential_role_sort.is_some() {
-        format!(
-            "ORDER BY potential_role_sort.score {}, players.uid ASC",
-            sort_dir.sql_keyword()
-        )
-    } else if club_dna_sort.is_some() {
+    let order_sql = if club_dna_sort.is_some() {
         format!(
             "ORDER BY club_dna_sort.score IS NULL ASC, club_dna_sort.score {}, players.uid ASC",
             sort_dir.sql_keyword()
@@ -1269,7 +1256,10 @@ mod tests {
 
     type PotentialState = (
         Vec<(i64, Option<String>, Option<i64>)>,
-        Vec<(i64, String, Option<i64>, i64)>,
+        Vec<(
+            i64,
+            Option<crate::features::player_metrics::compact::test_support::CompactRowShape>,
+        )>,
     );
 
     fn potential_state(conn: &Connection) -> PotentialState {
@@ -1286,20 +1276,27 @@ mod tests {
             .expect("query projected state")
             .collect::<Result<_, _>>()
             .expect("read projected state");
-        let roles = conn
-            .prepare(
-                "SELECT uid, role_id, score, projection_model_version
-                 FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1 ORDER BY uid, role_id",
-            )
-            .expect("prepare potential score state")
-            .query_map([snapshot_id], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        let player_uids = conn
+            .prepare("SELECT uid FROM players WHERE snapshot_id = ?1 ORDER BY uid")
+            .expect("prepare current player uids")
+            .query_map([snapshot_id], |row| row.get::<_, i64>(0))
+            .expect("query current player uids")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read current player uids");
+        let compact_rows = player_uids
+            .into_iter()
+            .map(|uid| {
+                (
+                    uid,
+                    crate::features::player_metrics::compact::test_support::read_row(
+                        conn,
+                        snapshot_id,
+                        uid,
+                    ),
+                )
             })
-            .expect("query potential score state")
-            .collect::<Result<_, _>>()
-            .expect("read potential score state");
-        (projected, roles)
+            .collect();
+        (projected, compact_rows)
     }
 
     fn deny_potential_writes(conn: &Connection) {
@@ -1307,17 +1304,38 @@ mod tests {
             "CREATE TRIGGER deny_projected_player_updates
              BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
              BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_inserts
-             BEFORE INSERT ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_updates
-             BEFORE UPDATE ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_deletes
-             BEFORE DELETE ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;",
+             CREATE TRIGGER deny_compact_role_inserts
+             BEFORE INSERT ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact role writes are forbidden'); END;
+             CREATE TRIGGER deny_compact_role_updates
+             BEFORE UPDATE ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact role writes are forbidden'); END;
+             CREATE TRIGGER deny_compact_role_deletes
+             BEFORE DELETE ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact role writes are forbidden'); END;",
         )
         .expect("deny potential writes");
+    }
+
+    fn set_potential_role_score(conn: &Connection, uid: i64, role_id: &str, score: Option<i64>) {
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        let column = crate::features::player_metrics::compact::player_potential_column(role_id)
+            .expect("potential role column");
+        conn.execute(
+            &format!(
+                "UPDATE player_role_metrics
+                 SET {column} = ?1
+                 WHERE snapshot_id = ?2 AND uid = ?3"
+            ),
+            rusqlite::params![score, snapshot_id, uid],
+        )
+        .expect("update potential role score");
     }
 
     fn insert_moneyball_row(
@@ -2831,11 +2849,15 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("snapshot id");
+        let column = crate::features::player_metrics::compact::player_current_column(role_id)
+            .expect("current role column");
         conn.execute(
-            "UPDATE player_role_scores
-             SET score = ?1
-             WHERE snapshot_id = ?2 AND uid = ?3 AND role_id = ?4",
-            rusqlite::params![score, snapshot_id, uid, role_id],
+            &format!(
+                "UPDATE player_role_metrics
+                 SET {column} = ?1
+                 WHERE snapshot_id = ?2 AND uid = ?3"
+            ),
+            rusqlite::params![score, snapshot_id, uid],
         )
         .expect("update role score");
     }
@@ -2939,11 +2961,11 @@ mod tests {
 
         let snapshot_id = current_snapshot_id(&conn);
         conn.execute(
-            "DELETE FROM player_potential_role_scores
-             WHERE snapshot_id = ?1 AND role_id = 'goalkeeper_ip'",
-            [snapshot_id],
+            "UPDATE player_role_metrics SET projection_model_version = ?2
+             WHERE snapshot_id = ?1",
+            rusqlite::params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
         )
-        .expect("corrupt potential role");
+        .expect("corrupt potential state");
         let before = potential_state(&conn);
         deny_potential_writes(&conn);
 
@@ -2976,11 +2998,11 @@ mod tests {
 
         let snapshot_id = current_snapshot_id(&conn);
         conn.execute(
-            "DELETE FROM player_potential_role_scores
-             WHERE snapshot_id = ?1 AND uid = 1 AND role_id = 'goalkeeper_ip'",
-            [snapshot_id],
+            "UPDATE player_role_metrics SET projection_model_version = ?2
+             WHERE snapshot_id = ?1 AND uid = 1",
+            rusqlite::params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
         )
-        .expect("corrupt unused potential role");
+        .expect("corrupt unused potential state");
         let before = potential_state(&conn);
         deny_potential_writes(&conn);
 
@@ -3007,18 +3029,18 @@ mod tests {
             let snapshot_id = current_snapshot_id(&conn);
             if wrong_version {
                 conn.execute(
-                    "UPDATE player_potential_role_scores SET projection_model_version = ?2
-                     WHERE snapshot_id = ?1 AND uid = 1 AND role_id = 'line_holding_keeper_oop'",
+                    "UPDATE player_role_metrics SET projection_model_version = ?2
+                     WHERE snapshot_id = ?1 AND uid = 1",
                     rusqlite::params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
                 )
             } else {
                 conn.execute(
-                    "DELETE FROM player_potential_role_scores
-                     WHERE snapshot_id = ?1 AND uid = 1 AND role_id = 'line_holding_keeper_oop'",
+                    "DELETE FROM player_role_metrics
+                     WHERE snapshot_id = ?1 AND uid = 1",
                     [snapshot_id],
                 )
             }
-            .expect("corrupt potential role");
+            .expect("corrupt compact row");
             let before = potential_state(&conn);
             deny_potential_writes(&conn);
 
@@ -3352,18 +3374,18 @@ mod tests {
             let snapshot_id = current_snapshot_id(&conn);
             if wrong_version {
                 conn.execute(
-                    "UPDATE player_potential_role_scores SET projection_model_version = ?2
-                     WHERE snapshot_id = ?1 AND uid = 1 AND role_id = 'line_holding_keeper_oop'",
+                    "UPDATE player_role_metrics SET projection_model_version = ?2
+                     WHERE snapshot_id = ?1 AND uid = 1",
                     rusqlite::params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
                 )
             } else {
                 conn.execute(
-                    "DELETE FROM player_potential_role_scores
-                     WHERE snapshot_id = ?1 AND uid = 1 AND role_id = 'line_holding_keeper_oop'",
+                    "DELETE FROM player_role_metrics
+                     WHERE snapshot_id = ?1 AND uid = 1",
                     [snapshot_id],
                 )
             }
-            .expect("corrupt potential role");
+            .expect("corrupt compact row");
             let before = potential_state(&conn);
             deny_potential_writes(&conn);
 
@@ -3451,18 +3473,18 @@ mod tests {
             let snapshot_id = current_snapshot_id(&conn);
             if wrong_version {
                 conn.execute(
-                    "UPDATE player_potential_role_scores SET projection_model_version = ?2
-                     WHERE snapshot_id = ?1 AND uid = 1 AND role_id = 'line_holding_keeper_oop'",
+                    "UPDATE player_role_metrics SET projection_model_version = ?2
+                     WHERE snapshot_id = ?1 AND uid = 1",
                     rusqlite::params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
                 )
             } else {
                 conn.execute(
-                    "DELETE FROM player_potential_role_scores
-                     WHERE snapshot_id = ?1 AND uid = 1 AND role_id = 'line_holding_keeper_oop'",
+                    "DELETE FROM player_role_metrics
+                     WHERE snapshot_id = ?1 AND uid = 1",
                     [snapshot_id],
                 )
             }
-            .expect("corrupt potential role");
+            .expect("corrupt compact row");
             let before = potential_state(&conn);
             deny_potential_writes(&conn);
 
@@ -3484,23 +3506,6 @@ mod tests {
     }
 
     #[test]
-    fn potential_sort_uses_a_missing_preserving_exact_version_relation() {
-        let source = include_str!("query.rs");
-        let query = &source[source
-            .find("pub fn search_players_in_view")
-            .expect("search query function")
-            ..source
-                .find("fn current_club_dna_definition_version")
-                .expect("following helper")];
-
-        assert!(query.contains("LEFT JOIN player_potential_role_scores potential_role_sort"));
-        assert!(query.contains("potential_role_sort.snapshot_id = players.snapshot_id"));
-        assert!(query.contains("potential_role_sort.uid = players.uid"));
-        assert!(query.contains("potential_role_sort.projection_model_version"));
-        assert!(query.contains("ORDER BY potential_role_sort.score"));
-    }
-
-    #[test]
     fn potential_sort_orders_nullable_ties_with_complete_visible_rows() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("warm-potential-sort.db"));
@@ -3519,20 +3524,10 @@ mod tests {
         let distinct_visible_role = "sweeper_keeper_oop";
         let distinct_visible_metric = format!("potential_role.{distinct_visible_role}");
         for (uid, score) in [(1, Some(80)), (2, Some(80)), (3, Some(40)), (4, None)] {
-            conn.execute(
-                "UPDATE player_potential_role_scores SET score = ?4
-                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = ?3",
-                rusqlite::params![snapshot_id, uid, sort_role, score],
-            )
-            .expect("seed exact-version potential sort score");
+            set_potential_role_score(&conn, uid, sort_role, score);
         }
         for (uid, score) in [(1, Some(65)), (3, Some(45))] {
-            conn.execute(
-                "UPDATE player_potential_role_scores SET score = ?4
-                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = ?3",
-                rusqlite::params![snapshot_id, uid, distinct_visible_role, score],
-            )
-            .expect("seed visible potential score");
+            set_potential_role_score(&conn, uid, distinct_visible_role, score);
         }
         let before = potential_state(&conn);
         deny_potential_writes(&conn);
@@ -3572,34 +3567,37 @@ mod tests {
                 .collect::<Vec<_>>(),
             [3, 1]
         );
-        let sorted_role_rows: i64 = conn
+        let compact_rows: i64 = conn
             .query_row(
-                "SELECT COUNT(*) FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1
-                   AND role_id = ?2
-                   AND projection_model_version = ?3",
-                rusqlite::params![snapshot_id, sort_role, PROJECTION_MODEL_VERSION],
+                "SELECT COUNT(*) FROM player_role_metrics WHERE snapshot_id = ?1",
+                [snapshot_id],
                 |row| row.get(0),
             )
-            .expect("count globally sorted role rows");
-        assert_eq!(sorted_role_rows, 4);
-        let distinct_visible_uids = conn
-            .prepare(
-                "SELECT uid FROM player_potential_role_scores
+            .expect("count compact rows");
+        assert_eq!(compact_rows, 4);
+        let distinct_visible_column =
+            crate::features::player_metrics::compact::player_potential_column(
+                distinct_visible_role,
+            )
+            .expect("distinct visible role column");
+        let distinct_visible_values = conn
+            .prepare(&format!(
+                "SELECT uid, {distinct_visible_column}
+                 FROM player_role_metrics
                  WHERE snapshot_id = ?1
-                   AND role_id = ?2
-                   AND projection_model_version = ?3
-                 ORDER BY uid ASC",
-            )
+                 ORDER BY uid ASC"
+            ))
             .expect("prepare distinct visible role query")
-            .query_map(
-                rusqlite::params![snapshot_id, distinct_visible_role, PROJECTION_MODEL_VERSION],
-                |row| row.get::<_, i64>(0),
-            )
+            .query_map([snapshot_id], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?))
+            })
             .expect("query distinct visible role rows")
             .collect::<Result<Vec<_>, _>>()
             .expect("collect distinct visible role rows");
-        assert_eq!(distinct_visible_uids, [1, 2, 3, 4]);
+        assert_eq!(
+            distinct_visible_values,
+            [(1, Some(65)), (2, None), (3, Some(45)), (4, None)]
+        );
         assert_eq!(potential_state(&conn), before);
     }
 
@@ -3694,14 +3692,7 @@ mod tests {
         set_role_score(&conn, 1, role_id, Some(80));
         set_role_score(&conn, 2, role_id, Some(80));
         set_role_score(&conn, 3, role_id, None);
-        conn.execute(
-            "DELETE FROM player_role_scores
-             WHERE snapshot_id = (SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1)
-               AND uid = 4
-               AND role_id = ?1",
-            [role_id],
-        )
-        .expect("remove current role score");
+        set_role_score(&conn, 4, role_id, None);
         let sort_by = SortField::parse(&format!("role.{role_id}")).expect("parse role sort");
 
         for (direction, expected) in [
@@ -3733,23 +3724,6 @@ mod tests {
     }
 
     #[test]
-    fn current_role_sort_uses_a_missing_preserving_relation() {
-        let source = include_str!("query.rs");
-        let query = &source[source
-            .find("pub fn search_players_in_view")
-            .expect("search query function")
-            ..source
-                .find("fn current_club_dna_definition_version")
-                .expect("following helper")];
-
-        assert!(query.contains("LEFT JOIN player_role_scores current_role_sort"));
-        assert!(query.contains("current_role_sort.snapshot_id = players.snapshot_id"));
-        assert!(query.contains("current_role_sort.role_id = '{role_id}'"));
-        assert!(query.contains("current_role_sort.uid = players.uid"));
-        assert!(query.contains("ORDER BY current_role_sort.score"));
-    }
-
-    #[test]
     fn current_role_sort_reads_complete_requested_potential_fields() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("current-role-potential-page.db"));
@@ -3778,21 +3752,11 @@ mod tests {
         set_role_score(&conn, 1, role_id, Some(80));
         set_role_score(&conn, 2, role_id, Some(80));
         set_role_score(&conn, 3, role_id, None);
-        conn.execute(
-            "DELETE FROM player_role_scores
-             WHERE snapshot_id = ?1 AND uid = 4 AND role_id = ?2",
-            rusqlite::params![snapshot_id, role_id],
-        )
-        .expect("remove current role score");
+        set_role_score(&conn, 4, role_id, None);
 
         let potential_field = "potential_role.line_holding_keeper_oop".to_string();
-        conn.execute(
-            "UPDATE player_potential_role_scores SET score = 70
-             WHERE snapshot_id = ?1 AND uid IN (1, 4)
-               AND role_id = 'line_holding_keeper_oop'",
-            [snapshot_id],
-        )
-        .expect("seed persisted potential rows");
+        set_potential_role_score(&conn, 1, "line_holding_keeper_oop", Some(70));
+        set_potential_role_score(&conn, 4, "line_holding_keeper_oop", Some(70));
         let before = potential_state(&conn);
         deny_potential_writes(&conn);
         let page = search_players(

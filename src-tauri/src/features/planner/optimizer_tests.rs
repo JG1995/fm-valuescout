@@ -7,10 +7,10 @@ use super::optimizer::{
 use super::tactic;
 use super::teams::{save_team_settings, PlannerTeamInput};
 use super::test_support::{
-    add_picker_candidates, assigned_player_uid, assignment_provenance, current_snapshot_id,
-    deny_potential_writes, open_with_snapshot, planner_potential_state, set_player_age,
-    set_player_positions, set_player_preferred_foot, set_right_winger_scores, set_role_score,
-    team_strings,
+    add_picker_candidates, assigned_player_uid, assignment_provenance, clear_current_scores_except,
+    current_snapshot_id, deny_potential_writes, open_with_snapshot, planner_potential_state,
+    set_player_age, set_player_positions, set_player_preferred_foot, set_potential_role_score,
+    set_right_winger_scores, set_role_score, team_strings,
 };
 
 #[test]
@@ -64,16 +64,12 @@ fn matcher_breaks_equal_scores_by_lowest_uid_in_lane_order() {
 fn optimizer_penalizes_sub_16_familiarity_without_excluding_eligible_players() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
-    let snapshot_id = current_snapshot_id(&conn, save_id);
-    conn.execute(
-        "UPDATE player_role_scores
-         SET score = NULL
-         WHERE snapshot_id = ?1
-           AND uid IN (77, 78)
-           AND role_id NOT IN ('winger_ip', 'tracking_wide_midfielder_oop')",
-        [snapshot_id],
-    )
-    .expect("limit candidates to the right-winger lane");
+    clear_current_scores_except(
+        &conn,
+        save_id,
+        &[77, 78],
+        &["winger_ip", "tracking_wide_midfielder_oop"],
+    );
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(98));
     set_player_positions(&conn, save_id, 77, r#"{"AMR": 16, "MR": 15}"#);
@@ -114,19 +110,10 @@ fn optimizer_switches_between_current_and_persisted_potential_candidate_scores()
     .expect("remove team levels");
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(90));
-    conn.execute(
-        "UPDATE player_potential_role_scores
-         SET score = CASE uid
-             WHEN 77 THEN 10
-             WHEN 78 THEN 90
-             ELSE score
-         END
-         WHERE snapshot_id = ?1
-           AND uid IN (77, 78)
-           AND role_id IN ('winger_ip', 'tracking_wide_midfielder_oop')",
-        [snapshot_id],
-    )
-    .expect("set persisted potential scores");
+    set_potential_role_score(&conn, save_id, 77, "winger_ip", Some(10));
+    set_potential_role_score(&conn, save_id, 77, "tracking_wide_midfielder_oop", Some(10));
+    set_potential_role_score(&conn, save_id, 78, "winger_ip", Some(90));
+    set_potential_role_score(&conn, save_id, 78, "tracking_wide_midfielder_oop", Some(90));
 
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
     tactic.lanes[9].importance_rank = Some(1);
@@ -151,12 +138,8 @@ fn optimizer_switches_between_current_and_persisted_potential_candidate_scores()
         "Unknown optimizer score basis `unsupported`"
     );
     assert_eq!(
-        planner_potential_state(&conn, save_id, snapshot_id).projections,
-        before.projections
-    );
-    assert_eq!(
-        planner_potential_state(&conn, save_id, snapshot_id).potential_scores,
-        before.potential_scores
+        planner_potential_state(&conn, save_id, snapshot_id).compact_rows,
+        before.compact_rows
     );
 }
 
@@ -165,11 +148,11 @@ fn optimizer_rejects_missing_potential_role_for_both_bases_before_assignment_wri
     let (_temp_dir, conn, save_id) = open_with_snapshot();
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "DELETE FROM player_potential_role_scores
-         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'winger_ip'",
+        "DELETE FROM player_role_metrics
+         WHERE snapshot_id = ?1 AND uid = 77",
         [snapshot_id],
     )
-    .expect("remove persisted potential role");
+    .expect("remove compact row");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
@@ -186,12 +169,12 @@ fn optimizer_rejects_wrong_version_potential_role_for_both_bases_before_assignme
     let (_temp_dir, conn, save_id) = open_with_snapshot();
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "UPDATE player_potential_role_scores
+        "UPDATE player_role_metrics
          SET projection_model_version = 999
-         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'winger_ip'",
+         WHERE snapshot_id = ?1 AND uid = 77",
         [snapshot_id],
     )
-    .expect("set stale potential role version");
+    .expect("set stale compact projection version");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
@@ -279,22 +262,12 @@ fn optimizer_reserves_manual_players_before_automatic_allocation() {
 fn optimizer_uses_the_weight_for_each_tactic_lane() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
-    let snapshot_id: i64 = conn
-        .query_row(
-            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
-            params![save_id],
-            |row| row.get(0),
-        )
-        .expect("current snapshot");
-    conn.execute(
-        "UPDATE player_role_scores
-         SET score = NULL
-         WHERE snapshot_id = ?1
-           AND uid IN (77, 78)
-           AND role_id NOT IN ('winger_ip', 'tracking_wide_midfielder_oop')",
-        [snapshot_id],
-    )
-    .expect("limit candidates to the right-winger lane");
+    clear_current_scores_except(
+        &conn,
+        save_id,
+        &[77, 78],
+        &["winger_ip", "tracking_wide_midfielder_oop"],
+    );
     set_role_score(&conn, save_id, 77, "winger_ip", Some(100));
     set_role_score(&conn, save_id, 77, "tracking_wide_midfielder_oop", Some(0));
     set_role_score(&conn, save_id, 78, "winger_ip", Some(0));
@@ -330,16 +303,12 @@ fn optimizer_uses_the_weight_for_each_tactic_lane() {
 fn optimizer_applies_strict_and_preferred_foot_rules_without_changing_manual_assignments() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
-    let snapshot_id = super::test_support::current_snapshot_id(&conn, save_id);
-    conn.execute(
-        "UPDATE player_role_scores
-         SET score = NULL
-         WHERE snapshot_id = ?1
-           AND uid IN (77, 78)
-           AND role_id NOT IN ('winger_ip', 'tracking_wide_midfielder_oop')",
-        [snapshot_id],
-    )
-    .expect("limit candidates to the right-winger lane");
+    clear_current_scores_except(
+        &conn,
+        save_id,
+        &[77, 78],
+        &["winger_ip", "tracking_wide_midfielder_oop"],
+    );
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(98));
     set_player_preferred_foot(&conn, save_id, 77, "left");
@@ -406,22 +375,16 @@ fn optimizer_applies_strict_and_preferred_foot_rules_without_changing_manual_ass
 fn optimizer_uses_the_exact_matcher_when_lanes_are_unranked() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
-    let snapshot_id: i64 = conn
-        .query_row(
-            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
-            params![save_id],
-            |row| row.get(0),
-        )
-        .expect("current snapshot");
-    conn.execute(
-        "UPDATE player_role_scores
-         SET score = NULL
-         WHERE snapshot_id = ?1
-           AND uid IN (77, 78)
-           AND role_id NOT IN ('inside_winger_ip', 'winger_ip', 'tracking_wide_midfielder_oop')",
-        [snapshot_id],
-    )
-    .expect("limit candidates to conflicting winger lanes");
+    clear_current_scores_except(
+        &conn,
+        save_id,
+        &[77, 78],
+        &[
+            "inside_winger_ip",
+            "winger_ip",
+            "tracking_wide_midfielder_oop",
+        ],
+    );
     set_role_score(&conn, save_id, 77, "inside_winger_ip", Some(100));
     set_role_score(&conn, save_id, 77, "winger_ip", Some(98));
     set_role_score(
@@ -458,22 +421,12 @@ fn optimizer_uses_the_exact_matcher_when_lanes_are_unranked() {
 fn optimizer_assigns_ranked_lanes_in_ascending_order() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
-    let snapshot_id: i64 = conn
-        .query_row(
-            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
-            params![save_id],
-            |row| row.get(0),
-        )
-        .expect("current snapshot");
-    conn.execute(
-        "UPDATE player_role_scores
-         SET score = NULL
-         WHERE snapshot_id = ?1
-           AND uid IN (77, 78)
-           AND role_id NOT IN ('winger_ip', 'tracking_wide_midfielder_oop')",
-        [snapshot_id],
-    )
-    .expect("limit candidates to conflicting winger lanes");
+    clear_current_scores_except(
+        &conn,
+        save_id,
+        &[77, 78],
+        &["winger_ip", "tracking_wide_midfielder_oop"],
+    );
     set_right_winger_scores(&conn, save_id, 77, Some(100));
     set_right_winger_scores(&conn, save_id, 78, Some(100));
     let mut tactic = tactic::get_tactic(&conn, save_id).expect("load tactic");
@@ -501,22 +454,12 @@ fn optimizer_assigns_ranked_lanes_in_ascending_order() {
 fn optimizer_leaves_a_ranked_lane_blank_without_reserving_candidates() {
     let (temp_dir, mut conn, save_id) = open_with_snapshot();
     add_picker_candidates(&temp_dir, &mut conn, save_id);
-    let snapshot_id: i64 = conn
-        .query_row(
-            "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
-            params![save_id],
-            |row| row.get(0),
-        )
-        .expect("current snapshot");
-    conn.execute(
-        "UPDATE player_role_scores
-         SET score = NULL
-         WHERE snapshot_id = ?1
-           AND uid IN (77, 78)
-           AND role_id NOT IN ('winger_ip', 'tracking_wide_midfielder_oop')",
-        [snapshot_id],
-    )
-    .expect("limit candidates to the right-winger lane");
+    clear_current_scores_except(
+        &conn,
+        save_id,
+        &[77, 78],
+        &["winger_ip", "tracking_wide_midfielder_oop"],
+    );
     set_player_positions(&conn, save_id, 77, r#"{"AMR": 18, "MR": 18}"#);
     set_player_positions(&conn, save_id, 78, r#"{"AMR": 18, "MR": 18}"#);
     set_right_winger_scores(&conn, save_id, 77, Some(100));
@@ -681,7 +624,7 @@ fn optimizer_does_not_load_scores_outside_the_managed_club() {
     conn.execute_batch("PRAGMA ignore_check_constraints = ON")
         .expect("allow invalid outside-club score");
     conn.execute(
-        "UPDATE player_role_scores SET score = 'invalid' WHERE snapshot_id = ?1 AND uid = 80",
+        "UPDATE player_role_metrics SET winger_ip = 'invalid' WHERE snapshot_id = ?1 AND uid = 80",
         params![snapshot_id],
     )
     .expect("set invalid outside-club score");

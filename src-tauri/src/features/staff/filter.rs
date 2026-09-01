@@ -1,4 +1,5 @@
 use super::metrics::MetricField;
+use super::scoring::{staff_role_column, STAFF_METRICS_ALIAS};
 use rusqlite::types::Value;
 
 pub const MAX_FILTER_RULES: usize = 32;
@@ -153,14 +154,9 @@ fn compile_rule(
             Vec::new(),
         ),
         FieldKind::Metric(MetricField::Role(role)) => {
-            let p = placeholder(index);
-            let expr = format!("(SELECT srs.score FROM staff_role_scores srs WHERE srs.snapshot_id = staff.snapshot_id AND srs.uid = staff.uid AND srs.role_id = {p})");
-            compile_integer(
-                expr,
-                rule,
-                index,
-                vec![Value::Text(role.role_id.to_string())],
-            )
+            let column = staff_role_column(role.role_id).map_err(|error| error.to_string())?;
+            let expr = format!("{STAFF_METRICS_ALIAS}.{column}");
+            compile_integer(expr, rule, index, Vec::new())
         }
     }
 }
@@ -259,15 +255,8 @@ mod tests {
         .unwrap();
         let compiled = compile_filters(&ast, 2).unwrap();
         assert!(compiled.sql.contains("json_extract"));
-        assert!(compiled.sql.contains("staff_role_scores"));
-        assert_eq!(
-            compiled.params,
-            [
-                Value::Integer(15),
-                Value::Text("coach_fitness".into()),
-                Value::Integer(70)
-            ]
-        );
+        assert!(compiled.sql.contains("staff_metrics.coach_fitness"));
+        assert_eq!(compiled.params, [Value::Integer(15), Value::Integer(70)]);
     }
     #[test]
     fn enforces_limit_and_rejects_unknown_or_injection_shaped_fields() {

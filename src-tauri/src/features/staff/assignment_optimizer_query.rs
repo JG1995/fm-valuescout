@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::features::managed_club::service::selected_club;
+use crate::features::staff::scoring::{
+    assert_read_models_complete, staff_role_column, STAFF_METRICS_ALIAS,
+};
 
 use super::assignment_optimizer::{
     allocate_staff_assignments, preferred_job_classification, StaffAssignmentAllocation,
@@ -269,94 +272,65 @@ pub(super) fn load_candidates(
     snapshot_id: i64,
     managed_club: &str,
 ) -> Result<Vec<StaffAssignmentCandidate>, String> {
-    let mut statement = conn
-        .prepare(
-            "SELECT staff.uid, staff.name, staff.club, shortlist.preferred_job,
-                    scores.role_id, scores.score
-             FROM staff
-             INNER JOIN staff_shortlist_entries shortlist
-                 ON shortlist.save_id = ?1 AND shortlist.staff_uid = staff.uid
-             LEFT JOIN staff_role_scores scores
-                 ON scores.snapshot_id = staff.snapshot_id
-                AND scores.uid = staff.uid
-                AND scores.role_id IN (?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                                       ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
-                                       ?23)
-             WHERE staff.snapshot_id = ?2
-             ORDER BY staff.uid ASC, scores.role_id ASC",
-        )
-        .map_err(|error| error.to_string())?;
+    // Every candidate read requires the compact staff snapshot to be complete
+    // with the checked-in model version; a missing or wrong-version row must
+    // fail the read rather than returning partial nulls.
+    assert_read_models_complete(conn, snapshot_id)?;
+    let metric_columns = SCORE_ROLE_IDS
+        .iter()
+        .map(|role_id| {
+            let column = staff_role_column(role_id)?;
+            Ok(format!("{STAFF_METRICS_ALIAS}.{column}"))
+        })
+        .collect::<Result<Vec<_>, String>>()?
+        .join(", ");
+    let sql = format!(
+        "SELECT staff.uid, staff.name, staff.club, shortlist.preferred_job, {metric_columns}
+         FROM staff
+         INNER JOIN staff_shortlist_entries shortlist
+             ON shortlist.save_id = ?1 AND shortlist.staff_uid = staff.uid
+         LEFT JOIN staff_role_metrics {STAFF_METRICS_ALIAS}
+             ON {STAFF_METRICS_ALIAS}.snapshot_id = staff.snapshot_id
+            AND {STAFF_METRICS_ALIAS}.uid = staff.uid
+            AND {STAFF_METRICS_ALIAS}.score_model_version = 1
+         WHERE staff.snapshot_id = ?2
+         ORDER BY staff.uid ASC"
+    );
+    let mut statement = conn.prepare(&sql).map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map(
-            params![
-                save_id,
-                snapshot_id,
-                SCORE_ROLE_IDS[0],
-                SCORE_ROLE_IDS[1],
-                SCORE_ROLE_IDS[2],
-                SCORE_ROLE_IDS[3],
-                SCORE_ROLE_IDS[4],
-                SCORE_ROLE_IDS[5],
-                SCORE_ROLE_IDS[6],
-                SCORE_ROLE_IDS[7],
-                SCORE_ROLE_IDS[8],
-                SCORE_ROLE_IDS[9],
-                SCORE_ROLE_IDS[10],
-                SCORE_ROLE_IDS[11],
-                SCORE_ROLE_IDS[12],
-                SCORE_ROLE_IDS[13],
-                SCORE_ROLE_IDS[14],
-                SCORE_ROLE_IDS[15],
-                SCORE_ROLE_IDS[16],
-                SCORE_ROLE_IDS[17],
-                SCORE_ROLE_IDS[18],
-                SCORE_ROLE_IDS[19],
-                SCORE_ROLE_IDS[20],
-            ],
-            |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<i64>>(5)?,
-                ))
-            },
-        )
+        .query_map(params![save_id, snapshot_id], |row| {
+            let uid: i64 = row.get(0)?;
+            let name: Option<String> = row.get(1)?;
+            let club: Option<String> = row.get(2)?;
+            let preferred_job: String = row.get(3)?;
+            let scores: Vec<Option<i64>> = (0..SCORE_ROLE_IDS.len())
+                .map(|index| row.get::<_, Option<i64>>(4 + index))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((uid, name, club, preferred_job, scores))
+        })
         .map_err(|error| error.to_string())?;
     let mut candidates = Vec::new();
     for row in rows {
-        let (uid, name, club, preferred_job, role_id, score) =
-            row.map_err(|error| error.to_string())?;
-        if candidates
-            .last()
-            .map_or(true, |candidate: &StaffAssignmentCandidate| {
-                candidate.uid != uid
-            })
-        {
-            candidates.push(StaffAssignmentCandidate {
-                uid,
-                name,
-                preferred_job,
-                classification: if club.as_deref() == Some(managed_club) {
-                    StaffAssignmentClassification::CurrentStaff
-                } else {
-                    StaffAssignmentClassification::Recruitment
-                },
-                scores: StaffAssignmentScoreSet::default(),
-            });
-        }
-        if let Some(role_id) = role_id {
+        let (uid, name, club, preferred_job, scores) = row.map_err(|error| error.to_string())?;
+        let mut score_set = StaffAssignmentScoreSet::default();
+        for (role_id, score) in SCORE_ROLE_IDS.iter().zip(scores) {
             set_score(
-                &mut candidates
-                    .last_mut()
-                    .expect("candidate was inserted for every joined row")
-                    .scores,
-                &role_id,
+                &mut score_set,
+                role_id,
                 score.and_then(|value| u8::try_from(value).ok()),
             );
         }
+        candidates.push(StaffAssignmentCandidate {
+            uid,
+            name,
+            preferred_job,
+            classification: if club.as_deref() == Some(managed_club) {
+                StaffAssignmentClassification::CurrentStaff
+            } else {
+                StaffAssignmentClassification::Recruitment
+            },
+            scores: score_set,
+        });
     }
     Ok(candidates)
 }

@@ -1,7 +1,8 @@
-use rusqlite::{params, Connection};
+use rusqlite::{params, types::Value, Connection};
 
 use crate::db::migrations;
 use crate::features::managed_club::service as managed_club_service;
+use crate::features::player_metrics::compact::{player_current_column, player_potential_column};
 use crate::features::snapshot;
 
 use super::depth::{PlannerDepth, PlannerString, PlannerTeam};
@@ -63,13 +64,15 @@ pub(super) fn set_right_winger_scores(
     score: Option<u8>,
 ) {
     let snapshot_id = current_snapshot_id(conn, save_id);
+    let winger_ip = player_current_column("winger_ip").expect("winger ip column");
+    let tracking = player_current_column("tracking_wide_midfielder_oop").expect("tracking column");
     conn.execute(
-        "UPDATE player_role_scores
-         SET score = ?1
-         WHERE snapshot_id = ?2
-           AND uid = ?3
-           AND role_id IN ('winger_ip', 'tracking_wide_midfielder_oop')",
-        params![score, snapshot_id, player_uid],
+        &format!(
+            "UPDATE player_role_metrics
+             SET {winger_ip} = ?1, {tracking} = ?2
+             WHERE snapshot_id = ?3 AND uid = ?4"
+        ),
+        params![score, score, snapshot_id, player_uid],
     )
     .expect("set right-winger scores");
 }
@@ -81,18 +84,74 @@ pub(super) fn set_role_score(
     role_id: &str,
     score: Option<u8>,
 ) {
+    let snapshot_id = current_snapshot_id(conn, save_id);
+    let column = player_current_column(role_id).expect("current role column");
     conn.execute(
-        "UPDATE player_role_scores
-         SET score = ?1
-         WHERE snapshot_id = ?2 AND uid = ?3 AND role_id = ?4",
-        params![
-            score,
-            current_snapshot_id(conn, save_id),
-            player_uid,
-            role_id
-        ],
+        &format!(
+            "UPDATE player_role_metrics
+             SET {column} = ?1
+             WHERE snapshot_id = ?2 AND uid = ?3"
+        ),
+        params![score, snapshot_id, player_uid],
     )
     .expect("set role score");
+}
+
+pub(super) fn set_potential_role_score(
+    conn: &Connection,
+    save_id: i64,
+    player_uid: i64,
+    role_id: &str,
+    score: Option<u8>,
+) {
+    let snapshot_id = current_snapshot_id(conn, save_id);
+    let column = player_potential_column(role_id).expect("potential role column");
+    conn.execute(
+        &format!(
+            "UPDATE player_role_metrics
+             SET {column} = ?1
+             WHERE snapshot_id = ?2 AND uid = ?3"
+        ),
+        params![score, snapshot_id, player_uid],
+    )
+    .expect("set potential role score");
+}
+
+/// Nulls every compact current column except `keep_roles` for the players.
+pub(super) fn clear_current_scores_except(
+    conn: &Connection,
+    save_id: i64,
+    player_uids: &[i64],
+    keep_roles: &[&str],
+) {
+    let snapshot_id = current_snapshot_id(conn, save_id);
+    let columns = crate::features::scoring::catalog::all_roles()
+        .iter()
+        .filter(|role| !keep_roles.contains(&role.role_id))
+        .map(|role| {
+            player_current_column(role.role_id)
+                .expect("current role column")
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    let uid_placeholders = (0..player_uids.len())
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "UPDATE player_role_metrics
+         SET {}
+         WHERE snapshot_id = ?1 AND uid IN ({uid_placeholders})",
+        columns
+            .iter()
+            .map(|column| format!("{column} = NULL"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    let mut values = vec![Value::Integer(snapshot_id)];
+    values.extend(player_uids.iter().map(|uid| Value::Integer(*uid)));
+    conn.execute(&sql, rusqlite::params_from_iter(values.iter()))
+        .expect("clear non-lane current scores");
 }
 
 pub(super) fn set_player_age(conn: &Connection, save_id: i64, player_uid: i64, age: Option<i64>) {
@@ -160,7 +219,10 @@ pub(super) struct PlannerPotentialState {
     pub(super) strings: Vec<(i64, String, i64)>,
     pub(super) assignments: Vec<(i64, i64, String, i64, String, String)>,
     pub(super) projections: Vec<(i64, Option<String>, Option<i64>)>,
-    pub(super) potential_scores: Vec<(i64, String, Option<u8>, i64)>,
+    pub(super) compact_rows: Vec<(
+        i64,
+        Option<crate::features::player_metrics::compact::test_support::CompactRowShape>,
+    )>,
 }
 
 pub(super) fn planner_potential_state(
@@ -216,24 +278,31 @@ pub(super) fn planner_potential_state(
         .expect("query projections")
         .collect::<Result<Vec<_>, _>>()
         .expect("collect projections");
-    let potential_scores = conn
-        .prepare(
-            "SELECT uid, role_id, score, projection_model_version
-             FROM player_potential_role_scores WHERE snapshot_id = ?1 ORDER BY uid, role_id",
-        )
-        .expect("prepare potential scores")
-        .query_map([snapshot_id], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-        })
-        .expect("query potential scores")
+    let compact_rows = conn
+        .prepare("SELECT uid FROM players WHERE snapshot_id = ?1 ORDER BY uid")
+        .expect("prepare current player uids")
+        .query_map([snapshot_id], |row| row.get::<_, i64>(0))
+        .expect("query current player uids")
         .collect::<Result<Vec<_>, _>>()
-        .expect("collect potential scores");
+        .expect("read current player uids")
+        .into_iter()
+        .map(|uid| {
+            (
+                uid,
+                crate::features::player_metrics::compact::test_support::read_row(
+                    conn,
+                    snapshot_id,
+                    uid,
+                ),
+            )
+        })
+        .collect();
     PlannerPotentialState {
         teams,
         strings,
         assignments,
         projections,
-        potential_scores,
+        compact_rows,
     }
 }
 
@@ -241,20 +310,18 @@ pub(super) fn deny_potential_writes(conn: &Connection) {
     conn.execute_batch(
         "CREATE TRIGGER deny_potential_player_update
          BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
-         BEGIN SELECT RAISE(ABORT, 'potential writes are forbidden'); END",
+         BEGIN SELECT RAISE(ABORT, 'potential writes are forbidden'); END;
+         CREATE TRIGGER deny_compact_role_inserts
+         BEFORE INSERT ON player_role_metrics
+         BEGIN SELECT RAISE(ABORT, 'compact role writes are forbidden'); END;
+         CREATE TRIGGER deny_compact_role_updates
+         BEFORE UPDATE ON player_role_metrics
+         BEGIN SELECT RAISE(ABORT, 'compact role writes are forbidden'); END;
+         CREATE TRIGGER deny_compact_role_deletes
+         BEFORE DELETE ON player_role_metrics
+         BEGIN SELECT RAISE(ABORT, 'compact role writes are forbidden'); END;",
     )
-    .expect("create potential player write trigger");
-    for (name, operation) in [
-        ("deny_potential_insert", "INSERT"),
-        ("deny_potential_update", "UPDATE"),
-        ("deny_potential_delete", "DELETE"),
-    ] {
-        conn.execute_batch(&format!(
-            "CREATE TRIGGER {name} BEFORE {operation} ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential writes are forbidden'); END"
-        ))
-        .expect("create potential score write trigger");
-    }
+    .expect("deny potential writes");
 }
 
 pub(super) fn assigned_player_uid(

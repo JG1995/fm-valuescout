@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-0028](./0028-compact-current-snapshot-metrics.md).
 
-Implementation status: Implemented by [Ingest-Time Potential Scoring](../features/completed/ingest-potential-scores.md). The current system uses eager current-snapshot persistence and no longer follows superseded [ADR-0019](./0019-lazy-potential-role-score-cache.md). [ADR-0027](./0027-scoped-potential-read-validation.md) narrows ordinary read validation while retaining eager ownership and snapshot-wide writer and Planner mutation checks.
+Implementation status: The normalized eager representation was implemented by [Ingest-Time Potential Scoring](../features/completed/ingest-potential-scores.md). ADR-0028 preserves current-only eager ownership, projected attributes on `players`, atomic lifecycle rebuilds, and read-only consumers, but replaces normalized potential score rows and legacy-database backfill with one compact current-player metric row in a fresh database generation. This record remains the history of the prior design.
 
 ## Context
 

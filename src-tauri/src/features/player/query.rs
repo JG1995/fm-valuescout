@@ -5,7 +5,10 @@ use serde_json::Value;
 
 use crate::features::{
     moneyball::role_catalog::builtin_catalog,
-    player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
+    player_metrics::compact::{
+        player_current_column, player_metrics_join, player_potential_column, PLAYER_METRICS_ALIAS,
+        PROJECTION_MODEL_VERSION,
+    },
     scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
 };
 
@@ -252,49 +255,57 @@ fn load_role_scores(
     snapshot_id: i64,
     uid: i64,
 ) -> Result<Vec<PlayerRoleScore>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT role_id, score
-             FROM player_role_scores
-             WHERE snapshot_id = ?1 AND uid = ?2",
-        )
-        .map_err(|error| error.to_string())?;
-
-    let rows = stmt
-        .query_map(params![snapshot_id, uid], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
-        })
-        .map_err(|error| error.to_string())?;
-
-    let mut scores_by_role = HashMap::new();
-    for row in rows {
-        let (role_id, score) = row.map_err(|error| error.to_string())?;
-        scores_by_role.insert(role_id, score);
-    }
-
-    let mut potential_statement = conn
-        .prepare(
-            "SELECT role_id, score
-             FROM player_potential_role_scores
-             WHERE snapshot_id = ?1 AND uid = ?2 AND projection_model_version = ?3",
-        )
-        .map_err(|error| error.to_string())?;
-    let potential_rows = potential_statement
-        .query_map(params![snapshot_id, uid, PROJECTION_MODEL_VERSION], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
-        })
-        .map_err(|error| error.to_string())?;
-    let mut potential_by_role = HashMap::new();
-    for row in potential_rows {
-        let (role_id, score) = row.map_err(|error| error.to_string())?;
-        potential_by_role.insert(role_id, score);
-    }
-    if all_roles()
+    let roles = all_roles();
+    let current_columns = roles
         .iter()
-        .any(|role| !potential_by_role.contains_key(role.role_id))
-    {
+        .map(|role| player_current_column(role.role_id))
+        .collect::<Result<Vec<_>, _>>()?;
+    let potential_columns = roles
+        .iter()
+        .map(|role| player_potential_column(role.role_id))
+        .collect::<Result<Vec<_>, _>>()?;
+    let metric_columns = current_columns
+        .iter()
+        .copied()
+        .chain(potential_columns.iter().map(String::as_str))
+        .map(|column| format!("{PLAYER_METRICS_ALIAS}.{column}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT {PLAYER_METRICS_ALIAS}.score_model_version, {metric_columns}
+         FROM players p{}
+         WHERE p.snapshot_id = ?1 AND p.uid = ?2",
+        player_metrics_join("p", true, true)
+    );
+    let row = conn
+        .query_row(&sql, params![snapshot_id, uid], |row| {
+            let has_compact_row = row.get::<_, Option<i64>>(0)?.is_some();
+            let current = (0..roles.len())
+                .map(|index| row.get::<_, Option<i64>>(index + 1))
+                .collect::<Result<Vec<_>, _>>()?;
+            let potential = (0..roles.len())
+                .map(|index| row.get::<_, Option<i64>>(index + 1 + roles.len()))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((has_compact_row, current, potential))
+        })
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some((has_compact_row, current_scores, potential_scores)) = row else {
+        return Err("Current potential snapshot is incomplete".to_string());
+    };
+    if !has_compact_row {
         return Err("Current potential snapshot is incomplete".to_string());
     }
+    let scores_by_role = roles
+        .iter()
+        .zip(current_scores)
+        .map(|(role, score)| (role.role_id.to_string(), score))
+        .collect::<HashMap<_, _>>();
+    let potential_by_role = roles
+        .iter()
+        .zip(potential_scores)
+        .map(|(role, score)| (role.role_id.to_string(), score))
+        .collect::<HashMap<_, _>>();
     let catalog = builtin_catalog()?;
     let mut role_scores = Vec::with_capacity(catalog.definitions.len());
     for role in &catalog.definitions {
@@ -505,16 +516,61 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("snapshot id");
+        let column = crate::features::player_metrics::compact::player_current_column(role_id)
+            .expect("current role column");
         conn.execute(
-            "UPDATE player_role_scores
-             SET score = ?1
-             WHERE snapshot_id = ?2 AND uid = ?3 AND role_id = ?4",
-            params![score, snapshot_id, uid, role_id],
+            &format!(
+                "UPDATE player_role_metrics
+                 SET {column} = ?1
+                 WHERE snapshot_id = ?2 AND uid = ?3"
+            ),
+            params![score, snapshot_id, uid],
         )
         .expect("update role score");
     }
 
-    type PotentialState = (Option<String>, Option<i64>, Vec<(String, Option<i64>, i64)>);
+    fn set_potential_role_score(conn: &Connection, uid: i64, role_id: &str, score: Option<i64>) {
+        let snapshot_id: i64 = conn
+            .query_row(
+                "SELECT id FROM snapshots WHERE is_current = 1 LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("snapshot id");
+        let column = crate::features::player_metrics::compact::player_potential_column(role_id)
+            .expect("potential role column");
+        conn.execute(
+            &format!(
+                "UPDATE player_role_metrics
+                 SET {column} = ?1
+                 WHERE snapshot_id = ?2 AND uid = ?3"
+            ),
+            params![score, snapshot_id, uid],
+        )
+        .expect("update potential role score");
+    }
+
+    fn read_potential_score(conn: &Connection, uid: i64, role_id: &str) -> Option<i64> {
+        let column = crate::features::player_metrics::compact::player_potential_column(role_id)
+            .expect("potential role column");
+        conn.query_row(
+            &format!(
+                "SELECT {column}
+                 FROM player_role_metrics
+                 WHERE snapshot_id = (SELECT id FROM snapshots WHERE is_current = 1)
+                   AND uid = ?1"
+            ),
+            [uid],
+            |row| row.get(0),
+        )
+        .expect("read persisted potential score")
+    }
+
+    type PotentialState = (
+        Option<String>,
+        Option<i64>,
+        Option<crate::features::player_metrics::compact::test_support::CompactRowShape>,
+    );
 
     fn potential_state(conn: &Connection, uid: i64) -> PotentialState {
         let snapshot_id: i64 = conn
@@ -532,21 +588,12 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .expect("read projected fields");
-        let roles = conn
-            .prepare(
-                "SELECT role_id, score, projection_model_version
-                 FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2
-                 ORDER BY role_id",
-            )
-            .expect("prepare potential rows")
-            .query_map(params![snapshot_id, uid], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })
-            .expect("query potential rows")
-            .collect::<Result<_, _>>()
-            .expect("read potential rows");
-        (fields.0, fields.1, roles)
+        let compact_row = crate::features::player_metrics::compact::test_support::read_row(
+            conn,
+            snapshot_id,
+            uid,
+        );
+        (fields.0, fields.1, compact_row)
     }
 
     fn deny_potential_writes(conn: &Connection) {
@@ -554,15 +601,15 @@ mod tests {
             "CREATE TRIGGER deny_projected_player_updates
              BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
              BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_inserts
-             BEFORE INSERT ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_updates
-             BEFORE UPDATE ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_deletes
-             BEFORE DELETE ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;",
+             CREATE TRIGGER deny_compact_role_inserts
+             BEFORE INSERT ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact role writes are forbidden'); END;
+             CREATE TRIGGER deny_compact_role_updates
+             BEFORE UPDATE ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact role writes are forbidden'); END;
+             CREATE TRIGGER deny_compact_role_deletes
+             BEFORE DELETE ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact role writes are forbidden'); END;",
         )
         .expect("deny potential writes");
     }
@@ -608,7 +655,7 @@ mod tests {
         assert_eq!(
             goalkeeper.score,
             Some(42),
-            "must round-trip score from player_role_scores"
+            "must round-trip score from the compact metrics row"
         );
         assert_eq!(goalkeeper.potential_score, None);
         assert!(player.hidden_information_revealed);
@@ -681,15 +728,7 @@ mod tests {
                 .expect("persisted projected attributes"),
         )
         .expect("parse persisted projected attributes");
-        let stored_potential_score: Option<i64> = conn
-            .query_row(
-                "SELECT score FROM player_potential_role_scores
-                 WHERE snapshot_id = (SELECT id FROM snapshots WHERE is_current = 1)
-                   AND uid = 1 AND role_id = 'centre_forward_ip'",
-                [],
-                |row| row.get(0),
-            )
-            .expect("persisted centre-forward score");
+        let stored_potential_score = read_potential_score(&conn, 1, "centre_forward_ip");
 
         let detail = get_player(&conn, 1)
             .expect("get_player")
@@ -757,12 +796,7 @@ mod tests {
             ],
         )
         .expect("change persisted projected attributes");
-        conn.execute(
-            "UPDATE player_potential_role_scores SET score = 1
-             WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'centre_forward_ip'",
-            params![snapshot_id, 1],
-        )
-        .expect("change persisted potential score");
+        set_potential_role_score(&conn, 1, "centre_forward_ip", Some(1));
 
         let detail = get_player(&conn, 1)
             .expect("get player")
@@ -799,11 +833,11 @@ mod tests {
             )
             .expect("snapshot id");
         conn.execute(
-            "DELETE FROM player_potential_role_scores
-             WHERE snapshot_id = ?1 AND uid = 2 AND role_id = ?2",
-            params![snapshot_id, all_roles()[0].role_id],
+            "DELETE FROM player_role_metrics
+             WHERE snapshot_id = ?1 AND uid = 2",
+            params![snapshot_id],
         )
-        .expect("delete unrelated player role");
+        .expect("delete unrelated player compact row");
         deny_potential_writes(&conn);
 
         let detail = get_player(&conn, 1)
@@ -825,11 +859,11 @@ mod tests {
             )
             .expect("snapshot id");
         conn.execute(
-            "DELETE FROM player_potential_role_scores
-             WHERE snapshot_id = ?1 AND uid = 1 AND role_id = ?2",
-            params![snapshot_id, all_roles()[0].role_id],
+            "DELETE FROM player_role_metrics
+             WHERE snapshot_id = ?1 AND uid = 1",
+            params![snapshot_id],
         )
-        .expect("delete potential role");
+        .expect("delete compact row");
 
         assert_profile_rejects_corrupt_potential_state(&conn, 1);
     }
@@ -850,17 +884,12 @@ mod tests {
             )
             .expect("snapshot id");
         conn.execute(
-            "UPDATE player_potential_role_scores
-             SET projection_model_version = ?3
-             WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = ?4",
-            params![
-                snapshot_id,
-                1,
-                PROJECTION_MODEL_VERSION - 1,
-                all_roles()[0].role_id
-            ],
+            "UPDATE player_role_metrics
+             SET projection_model_version = ?2
+             WHERE snapshot_id = ?1 AND uid = 1",
+            params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
         )
-        .expect("change potential role version");
+        .expect("change compact projection version");
 
         assert_profile_rejects_corrupt_potential_state(&conn, 1);
     }

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -8,7 +6,6 @@ use crate::features::memory_read::service::{
     PlayerBoostOperation, PlayerBoostRequestError, PlayerBoostResult as BridgePlayerBoostResult,
     OPERATION_BOOST_CURRENT_ABILITY, OPERATION_WONDERKID_MENTALITY,
 };
-use crate::features::scoring::{catalog::all_roles, score::score_role};
 
 const MIN_ABILITY: i64 = 1;
 const MAX_ABILITY: i64 = 200;
@@ -708,69 +705,7 @@ fn reconcile_mentality(
     )
     .map_err(database_sync_error)?;
 
-    if verified.previous_determination != verified.determination {
-        replace_role_scores(tx, prepared.snapshot_id, prepared.player_uid, &attributes)?;
-    }
-
     Ok(())
-}
-
-fn replace_role_scores(
-    tx: &Transaction<'_>,
-    snapshot_id: i64,
-    player_uid: u32,
-    attributes: &Map<String, Value>,
-) -> Result<(), PlayerBoostError> {
-    let scoring_attributes = scoring_attributes(attributes).map_err(snapshot_sync_error)?;
-    tx.execute(
-        "DELETE FROM player_role_scores WHERE snapshot_id = ?1 AND uid = ?2",
-        params![snapshot_id, i64::from(player_uid)],
-    )
-    .map_err(database_sync_error)?;
-
-    let mut statement = tx
-        .prepare(
-            "INSERT INTO player_role_scores (snapshot_id, uid, role_id, phase, score)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-        )
-        .map_err(database_sync_error)?;
-    for role in all_roles() {
-        statement
-            .execute(params![
-                snapshot_id,
-                i64::from(player_uid),
-                role.role_id,
-                role.phase.as_db_str(),
-                score_role(&scoring_attributes, role).map(i64::from),
-            ])
-            .map_err(database_sync_error)?;
-    }
-
-    Ok(())
-}
-
-fn scoring_attributes(
-    attributes: &Map<String, Value>,
-) -> Result<HashMap<String, Option<u8>>, String> {
-    attributes
-        .iter()
-        .map(|(key, value)| {
-            let value = match value {
-                Value::Null => None,
-                Value::Number(number) => {
-                    let value = number
-                        .as_i64()
-                        .ok_or_else(|| format!("attribute `{key}` must be an integer or null"))?;
-                    Some(
-                        u8::try_from(value)
-                            .map_err(|_| format!("attribute `{key}` is outside the u8 range"))?,
-                    )
-                }
-                _ => return Err(format!("attribute `{key}` must be an integer or null")),
-            };
-            Ok((key.clone(), value))
-        })
-        .collect()
 }
 
 fn parse_json_object(json: &str, label: &str) -> Result<Map<String, Value>, String> {
@@ -904,8 +839,9 @@ mod tests {
         dump_path: PathBuf,
     }
 
-    type PotentialRoleRows = Vec<(String, Option<i64>, i64)>;
+    type PotentialRoleRows = Vec<Option<i64>>;
     type PotentialState = (Option<String>, Option<i64>, PotentialRoleRows);
+    type CompactRow = crate::features::player_metrics::compact::test_support::CompactRowShape;
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -993,8 +929,6 @@ mod tests {
             params![attributes_json, fixture.snapshot_id, PLAYER_UID],
         )
         .expect("set complete source attributes");
-        super::replace_role_scores(&tx, fixture.snapshot_id, PLAYER_UID as u32, &attributes)
-            .expect("replace current role scores");
         crate::features::player_metrics::potential_scores::replace_player(
             &tx,
             fixture.snapshot_id,
@@ -1009,19 +943,27 @@ mod tests {
         conn: &Connection,
         snapshot_id: i64,
     ) -> Vec<(String, String, Option<i64>)> {
-        let mut statement = conn
-            .prepare(
-                "SELECT role_id, phase, score FROM player_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2 ORDER BY role_id, phase",
+        if let Some((_, _, current, _)) =
+            crate::features::player_metrics::compact::test_support::read_row(
+                conn,
+                snapshot_id,
+                PLAYER_UID,
             )
-            .expect("prepare current role-score read");
-        statement
-            .query_map(params![snapshot_id, PLAYER_UID], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })
-            .expect("read current role scores")
-            .collect::<Result<Vec<_>, _>>()
-            .expect("collect current role scores")
+        {
+            crate::features::scoring::catalog::all_roles()
+                .iter()
+                .zip(current)
+                .map(|(role, score)| {
+                    (
+                        role.role_id.to_string(),
+                        role.phase.as_db_str().to_string(),
+                        score,
+                    )
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
     }
 
     fn potential_state(conn: &Connection, snapshot_id: i64) -> PotentialState {
@@ -1033,46 +975,29 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .expect("read potential projection");
-        let mut statement = conn
-            .prepare(
-                "SELECT role_id, score, projection_model_version
-                 FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2 ORDER BY role_id",
-            )
-            .expect("prepare potential role-score read");
-        let roles = statement
-            .query_map(params![snapshot_id, PLAYER_UID], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })
-            .expect("read potential role scores")
-            .collect::<Result<Vec<_>, _>>()
-            .expect("collect potential role scores");
-        (projected.0, projected.1, roles)
+        let compact = crate::features::player_metrics::compact::test_support::read_row(
+            conn,
+            snapshot_id,
+            PLAYER_UID,
+        )
+        .map(|(_, _, _, potential)| potential)
+        .unwrap_or_default();
+        (projected.0, projected.1, compact)
+    }
+
+    fn compact_row(conn: &Connection, snapshot_id: i64) -> Option<CompactRow> {
+        crate::features::player_metrics::compact::test_support::read_row(
+            conn,
+            snapshot_id,
+            PLAYER_UID,
+        )
     }
 
     fn assert_complete_potential_state(state: &PotentialState) {
         assert!(state.0.is_some());
         assert_eq!(state.1, Some(PROJECTION_MODEL_VERSION));
-        assert_eq!(
-            state
-                .2
-                .iter()
-                .map(|(role_id, _, _)| role_id)
-                .collect::<Vec<_>>(),
-            {
-                let mut expected_role_ids = all_roles()
-                    .iter()
-                    .map(|role| role.role_id)
-                    .collect::<Vec<_>>();
-                expected_role_ids.sort_unstable();
-                expected_role_ids
-            }
-        );
-        assert!(state
-            .2
-            .iter()
-            .all(|(_, _, version)| *version == PROJECTION_MODEL_VERSION));
-        assert!(state.2.iter().any(|(_, score, _)| score.is_none()));
+        assert_eq!(state.2.len(), all_roles().len());
+        assert!(state.2.iter().any(|score| score.is_none()));
     }
 
     fn club_dna_state(
@@ -1442,72 +1367,6 @@ mod tests {
     }
 
     #[test]
-    fn successful_player_boost_recomputes_its_club_dna_and_complete_potential_state() {
-        let mut fixture = seeded_complete_player(
-            Some(20),
-            150,
-            170,
-            Mentality {
-                ambition: Some(14),
-                professionalism: Some(14),
-                determination: Some(14),
-            },
-        );
-        let previous_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
-        fixture
-            .conn
-            .execute(
-                "INSERT INTO player_potential_role_scores (
-                    snapshot_id, uid, role_id, score, projection_model_version
-                 ) VALUES (?1, ?2, 'obsolete_potential_role', 80, 1)",
-                params![fixture.snapshot_id, PLAYER_UID],
-            )
-            .expect("seed obsolete potential row");
-        fixture
-            .conn
-            .execute(
-                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
-                 VALUES (?1, '[\"attr.Acceleration\"]')",
-                [fixture.save_id],
-            )
-            .expect("seed Club DNA definition");
-        fixture
-            .conn
-            .execute(
-                "INSERT INTO club_dna_scores (
-                    snapshot_id, uid, definition_version, score_model_version, score
-                 ) VALUES (?1, ?2, 1, 1, 80)",
-                params![fixture.snapshot_id, PLAYER_UID],
-            )
-            .expect("seed Club DNA cache");
-        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
-            .expect("prepare CA boost");
-
-        super::reconcile_verified_boost(
-            &mut fixture.conn,
-            &prepared,
-            verified_ca_result(150, 155, 170),
-        )
-        .expect("reconcile CA boost");
-
-        let recomputed_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
-        assert_complete_potential_state(&recomputed_potential_state);
-        assert_ne!(recomputed_potential_state.0, previous_potential_state.0);
-        assert_ne!(recomputed_potential_state.2, previous_potential_state.2);
-        let club_dna_score: Option<i64> = fixture
-            .conn
-            .query_row(
-                "SELECT score FROM club_dna_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2
-                   AND definition_version = 1 AND score_model_version = 1",
-                params![fixture.snapshot_id, PLAYER_UID],
-                |row| row.get(0),
-            )
-            .expect("read recomputed Club DNA score");
-        assert_eq!(club_dna_score, Some(70));
-    }
-
-    #[test]
     fn player_boost_requires_a_snapshot_bound_to_a_bridge_scan() {
         let fixture = seeded_player(
             Some(21),
@@ -1688,75 +1547,6 @@ mod tests {
             player_mentality(&fixture.conn, fixture.snapshot_id),
             current
         );
-    }
-
-    #[test]
-    fn determination_reconciliation_rewrites_current_and_potential_role_scores() {
-        let mut fixture = seeded_complete_player(
-            Some(19),
-            150,
-            150,
-            Mentality {
-                ambition: Some(11),
-                professionalism: Some(12),
-                determination: Some(1),
-            },
-        );
-        let previous_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
-        fixture
-            .conn
-            .execute(
-                "INSERT INTO player_potential_role_scores (
-                    snapshot_id, uid, role_id, score, projection_model_version
-                 ) VALUES (?1, ?2, 'obsolete_potential_role', 80, 1)",
-                params![fixture.snapshot_id, PLAYER_UID],
-            )
-            .expect("seed obsolete potential row");
-        fixture
-            .conn
-            .execute_batch(&format!(
-                "CREATE TABLE score_rewrites (role_id TEXT NOT NULL);
-                 CREATE TRIGGER record_score_rewrite
-                 AFTER INSERT ON player_role_scores
-                 WHEN NEW.snapshot_id = {}
-                 BEGIN
-                     INSERT INTO score_rewrites (role_id) VALUES (NEW.role_id);
-                 END;",
-                fixture.snapshot_id
-            ))
-            .expect("record role-score rewrites");
-        let prepared = super::prepare_wonderkid_mentality_boost(&fixture.conn, PLAYER_UID)
-            .expect("prepare Wonderkid Mentality");
-        let previous = Mentality {
-            ambition: Some(11),
-            professionalism: Some(12),
-            determination: Some(1),
-        };
-        let current = Mentality {
-            ambition: Some(11),
-            professionalism: Some(12),
-            determination: Some(20),
-        };
-
-        super::reconcile_verified_boost(
-            &mut fixture.conn,
-            &prepared,
-            verified_mentality_result(150, 150, previous, current),
-        )
-        .expect("reconcile determination");
-
-        let rewrites: i64 = fixture
-            .conn
-            .query_row("SELECT COUNT(*) FROM score_rewrites", [], |row| row.get(0))
-            .expect("count role-score rewrites");
-        assert_eq!(rewrites as usize, all_roles().len());
-        assert_eq!(
-            player_mentality(&fixture.conn, fixture.snapshot_id),
-            current
-        );
-        let recomputed_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
-        assert_complete_potential_state(&recomputed_potential_state);
-        assert_ne!(recomputed_potential_state.0, previous_potential_state.0);
     }
 
     #[test]
@@ -1972,8 +1762,199 @@ mod tests {
     }
 
     #[test]
-    fn determination_reconciliation_rolls_back_player_json_when_role_score_write_fails() {
+    fn reconciliation_refuses_an_unverified_bridge_result_without_updating_sqlite() {
         let mut fixture = seeded_player(
+            Some(21),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare CA boost");
+
+        let error = super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_ca_result(150, 156, 170),
+        )
+        .expect_err("unexpected result must not update SQLite");
+
+        assert_snapshot_sync(error);
+        assert_eq!(player_ca(&fixture.conn, fixture.snapshot_id), 150);
+    }
+
+    #[test]
+    fn bridge_errors_keep_live_value_and_uncertain_outcomes_distinct() {
+        assert!(matches!(
+            super::map_bridge_error(PlayerBoostRequestError::Failed(
+                "player values changed in FM; Load Data again".to_string(),
+            )),
+            super::PlayerBoostError::LiveValue { .. }
+        ));
+        assert!(matches!(
+            super::map_bridge_error(PlayerBoostRequestError::Failed(
+                "bridge operation rejected the request".to_string(),
+            )),
+            super::PlayerBoostError::Bridge { .. }
+        ));
+        assert!(matches!(
+            super::map_bridge_error(PlayerBoostRequestError::Unconfirmed(
+                "player boost may have changed FM".to_string(),
+            )),
+            super::PlayerBoostError::SnapshotSync { .. }
+        ));
+    }
+
+    #[test]
+    fn successful_player_boost_recomputes_its_club_dna_and_complete_potential_state() {
+        let mut fixture = seeded_complete_player(
+            Some(20),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+        let previous_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        let previous_compact_row =
+            compact_row(&fixture.conn, fixture.snapshot_id).expect("compact row before boost");
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+                 VALUES (?1, '[\"attr.Acceleration\"]')",
+                [fixture.save_id],
+            )
+            .expect("seed Club DNA definition");
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_scores (
+                    snapshot_id, uid, definition_version, score_model_version, score
+                 ) VALUES (?1, ?2, 1, 1, 80)",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed Club DNA cache");
+        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare CA boost");
+
+        super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_ca_result(150, 155, 170),
+        )
+        .expect("reconcile CA boost");
+
+        let recomputed_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        assert_complete_potential_state(&recomputed_potential_state);
+        assert_ne!(recomputed_potential_state.0, previous_potential_state.0);
+        assert_ne!(recomputed_potential_state.2, previous_potential_state.2);
+        let recomputed_compact_row =
+            compact_row(&fixture.conn, fixture.snapshot_id).expect("compact row after boost");
+        assert_eq!(recomputed_compact_row.0, 1, "score model version");
+        assert_eq!(
+            recomputed_compact_row.1,
+            crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION
+        );
+        assert_eq!(recomputed_compact_row.2, previous_compact_row.2);
+        assert_ne!(recomputed_compact_row.3, previous_compact_row.3);
+        let club_dna_score: Option<i64> = fixture
+            .conn
+            .query_row(
+                "SELECT score FROM club_dna_scores
+                 WHERE snapshot_id = ?1 AND uid = ?2
+                   AND definition_version = 1 AND score_model_version = 1",
+                params![fixture.snapshot_id, PLAYER_UID],
+                |row| row.get(0),
+            )
+            .expect("read recomputed Club DNA score");
+        assert_eq!(club_dna_score, Some(70));
+    }
+
+    #[test]
+    fn determination_reconciliation_recomputes_current_and_potential_metrics() {
+        let mut fixture = seeded_complete_player(
+            Some(19),
+            150,
+            150,
+            Mentality {
+                ambition: Some(11),
+                professionalism: Some(12),
+                determination: Some(1),
+            },
+        );
+        let previous_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        fixture
+            .conn
+            .execute_batch(&format!(
+                "CREATE TABLE score_rewrites (role_id TEXT NOT NULL);
+                 CREATE TRIGGER record_compact_rewrite
+                 AFTER INSERT ON player_role_metrics
+                 WHEN NEW.snapshot_id = {}
+                 BEGIN
+                     INSERT INTO score_rewrites (role_id) VALUES ('compact');
+                 END;",
+                fixture.snapshot_id
+            ))
+            .expect("record compact rewrites");
+        let prepared = super::prepare_wonderkid_mentality_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare Wonderkid Mentality");
+        let previous = Mentality {
+            ambition: Some(11),
+            professionalism: Some(12),
+            determination: Some(1),
+        };
+        let current = Mentality {
+            ambition: Some(11),
+            professionalism: Some(12),
+            determination: Some(20),
+        };
+
+        super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_mentality_result(150, 150, previous, current),
+        )
+        .expect("reconcile determination");
+
+        let rewrites: i64 = fixture
+            .conn
+            .query_row("SELECT COUNT(*) FROM score_rewrites", [], |row| row.get(0))
+            .expect("count compact rewrites");
+        assert_eq!(rewrites, 1);
+        assert_eq!(
+            player_mentality(&fixture.conn, fixture.snapshot_id),
+            current
+        );
+        let recomputed_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        assert_complete_potential_state(&recomputed_potential_state);
+        assert_ne!(recomputed_potential_state.0, previous_potential_state.0);
+        let (score_version, projection_version, current_scores, potential_scores) =
+            compact_row(&fixture.conn, fixture.snapshot_id).expect("recomputed compact row");
+        assert_eq!(score_version, 1);
+        assert_eq!(
+            projection_version,
+            crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION
+        );
+        assert_eq!(potential_scores, recomputed_potential_state.2);
+        assert_eq!(
+            current_scores,
+            current_role_scores(&fixture.conn, fixture.snapshot_id)
+                .into_iter()
+                .map(|(_, _, score)| score)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn determination_reconciliation_rolls_back_player_json_when_compact_write_fails() {
+        let mut fixture = seeded_complete_player(
             Some(19),
             150,
             170,
@@ -1983,18 +1964,20 @@ mod tests {
                 determination: Some(10),
             },
         );
+        let original_mentality = player_mentality(&fixture.conn, fixture.snapshot_id);
+        let original_compact = compact_row(&fixture.conn, fixture.snapshot_id);
         fixture
             .conn
             .execute_batch(&format!(
-                "CREATE TRIGGER fail_role_score_insert
-                 BEFORE INSERT ON player_role_scores
-                 WHEN NEW.snapshot_id = {}
+                "CREATE TRIGGER fail_compact_insert
+                 BEFORE INSERT ON player_role_metrics
+                 WHEN NEW.snapshot_id = {} AND NEW.uid = {}
                  BEGIN
-                     SELECT RAISE(ABORT, 'forced role-score failure');
+                     SELECT RAISE(ABORT, 'forced compact failure');
                  END;",
-                fixture.snapshot_id
+                fixture.snapshot_id, PLAYER_UID
             ))
-            .expect("create failing role-score trigger");
+            .expect("create failing compact trigger");
         let prepared = super::prepare_wonderkid_mentality_boost(&fixture.conn, PLAYER_UID)
             .expect("prepare Wonderkid Mentality");
         let previous = Mentality {
@@ -2013,26 +1996,21 @@ mod tests {
             &prepared,
             verified_mentality_result(150, 170, previous, current),
         )
-        .expect_err("role-score error must roll back the player update");
+        .expect_err("compact error must roll back the player update");
 
         assert_snapshot_sync(error);
         assert_eq!(
             player_mentality(&fixture.conn, fixture.snapshot_id),
-            previous
+            original_mentality
         );
-        let scores: i64 = fixture
-            .conn
-            .query_row(
-                "SELECT COUNT(*) FROM player_role_scores WHERE snapshot_id = ?1 AND uid = ?2",
-                params![fixture.snapshot_id, PLAYER_UID],
-                |row| row.get(0),
-            )
-            .expect("count original role scores");
-        assert_eq!(scores as usize, all_roles().len());
+        assert_eq!(
+            compact_row(&fixture.conn, fixture.snapshot_id),
+            original_compact
+        );
     }
 
     #[test]
-    fn current_ability_potential_row_write_failure_rolls_back_all_reconciliation_state() {
+    fn current_ability_compact_row_write_failure_rolls_back_all_reconciliation_state() {
         let mut fixture = seeded_complete_player(
             Some(20),
             150,
@@ -2063,18 +2041,20 @@ mod tests {
         let original_current_role_scores = current_role_scores(&fixture.conn, fixture.snapshot_id);
         let original_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
         let original_club_dna_state = club_dna_state(&fixture.conn, fixture.snapshot_id);
+        let original_compact_row =
+            compact_row(&fixture.conn, fixture.snapshot_id).expect("compact row before boost");
         fixture
             .conn
             .execute_batch(&format!(
-                "CREATE TRIGGER fail_potential_role_insert
-                 BEFORE INSERT ON player_potential_role_scores
+                "CREATE TRIGGER fail_compact_row_insert
+                 BEFORE INSERT ON player_role_metrics
                  WHEN NEW.snapshot_id = {} AND NEW.uid = {}
                  BEGIN
-                     SELECT RAISE(ABORT, 'forced potential role failure');
+                     SELECT RAISE(ABORT, 'forced compact row failure');
                  END;",
                 fixture.snapshot_id, PLAYER_UID
             ))
-            .expect("create potential role write trigger");
+            .expect("create compact row write trigger");
         let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
             .expect("prepare CA boost");
 
@@ -2083,7 +2063,7 @@ mod tests {
             &prepared,
             verified_ca_result(150, 155, 170),
         )
-        .expect_err("potential role write failure must roll back CA reconciliation");
+        .expect_err("compact row write failure must roll back CA reconciliation");
 
         assert_snapshot_sync(error);
         assert_eq!(player_ca(&fixture.conn, fixture.snapshot_id), 150);
@@ -2098,6 +2078,99 @@ mod tests {
         assert_eq!(
             club_dna_state(&fixture.conn, fixture.snapshot_id),
             original_club_dna_state
+        );
+        assert_eq!(
+            compact_row(&fixture.conn, fixture.snapshot_id),
+            Some(original_compact_row)
+        );
+    }
+
+    #[test]
+    fn current_ability_potential_compact_write_failure_rolls_back_all_reconciliation_state() {
+        let mut fixture = seeded_complete_player(
+            Some(20),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+                 VALUES (?1, '[\"attr.Acceleration\"]')",
+                [fixture.save_id],
+            )
+            .expect("seed Club DNA definition");
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_scores (
+                    snapshot_id, uid, definition_version, score_model_version, score
+                 ) VALUES (?1, ?2, 1, 1, 70)",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed Club DNA row");
+        let original_current_role_scores = current_role_scores(&fixture.conn, fixture.snapshot_id);
+        let original_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        let original_club_dna_state = club_dna_state(&fixture.conn, fixture.snapshot_id);
+        let original_compact =
+            compact_row(&fixture.conn, fixture.snapshot_id).expect("compact before");
+        fixture
+            .conn
+            .execute_batch(&format!(
+                "CREATE TRIGGER fail_compact_update
+                 BEFORE UPDATE ON player_role_metrics
+                 WHEN OLD.snapshot_id = {} AND OLD.uid = {}
+                 BEGIN
+                     SELECT RAISE(ABORT, 'forced compact update failure');
+                 END;",
+                fixture.snapshot_id, PLAYER_UID
+            ))
+            .expect("create compact update trigger");
+        // Also block inserts to cover both current and potential columns in the single compact row
+        fixture
+            .conn
+            .execute_batch(&format!(
+                "CREATE TRIGGER fail_compact_insert2
+                 BEFORE INSERT ON player_role_metrics
+                 WHEN NEW.snapshot_id = {} AND NEW.uid = {}
+                 BEGIN
+                     SELECT RAISE(ABORT, 'forced compact insert failure');
+                 END;",
+                fixture.snapshot_id, PLAYER_UID
+            ))
+            .expect("create second trigger");
+        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare CA boost");
+
+        let error = super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_ca_result(150, 155, 170),
+        )
+        .expect_err("compact write failure must roll back");
+
+        assert_snapshot_sync(error);
+        assert_eq!(player_ca(&fixture.conn, fixture.snapshot_id), 150);
+        assert_eq!(
+            current_role_scores(&fixture.conn, fixture.snapshot_id),
+            original_current_role_scores
+        );
+        assert_eq!(
+            potential_state(&fixture.conn, fixture.snapshot_id),
+            original_potential_state
+        );
+        assert_eq!(
+            club_dna_state(&fixture.conn, fixture.snapshot_id),
+            original_club_dna_state
+        );
+        assert_eq!(
+            compact_row(&fixture.conn, fixture.snapshot_id),
+            Some(original_compact)
         );
     }
 
@@ -2134,6 +2207,7 @@ mod tests {
         let original_current_role_scores = current_role_scores(&fixture.conn, fixture.snapshot_id);
         let original_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
         let original_club_dna_state = club_dna_state(&fixture.conn, fixture.snapshot_id);
+        let original_compact = compact_row(&fixture.conn, fixture.snapshot_id);
         fixture
             .conn
             .execute_batch(&format!(
@@ -2183,11 +2257,15 @@ mod tests {
             club_dna_state(&fixture.conn, fixture.snapshot_id),
             original_club_dna_state
         );
+        assert_eq!(
+            compact_row(&fixture.conn, fixture.snapshot_id),
+            original_compact
+        );
     }
 
     #[test]
     fn current_ability_reconciliation_rolls_back_exact_derived_rows_when_club_dna_upsert_fails() {
-        let mut fixture = seeded_player(
+        let mut fixture = seeded_complete_player(
             Some(20),
             150,
             170,
@@ -2197,15 +2275,6 @@ mod tests {
                 determination: Some(14),
             },
         );
-        fixture
-            .conn
-            .execute(
-                "UPDATE player_potential_role_scores
-                 SET score = 80, projection_model_version = 1
-                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
-                params![fixture.snapshot_id, PLAYER_UID],
-            )
-            .expect("seed potential cache");
         fixture
             .conn
             .execute(
@@ -2223,16 +2292,8 @@ mod tests {
                 params![fixture.snapshot_id, PLAYER_UID],
             )
             .expect("seed Club DNA cache");
-        let original_potential_row: (String, i64, i64) = fixture
-            .conn
-            .query_row(
-                "SELECT role_id, score, projection_model_version
-                 FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
-                params![fixture.snapshot_id, PLAYER_UID],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-            )
-            .expect("read original potential row");
+        let original_compact =
+            compact_row(&fixture.conn, fixture.snapshot_id).expect("original compact");
         let original_club_dna_row: (i64, i64, i64, i64, Option<i64>) = fixture
             .conn
             .query_row(
@@ -2275,17 +2336,8 @@ mod tests {
         assert_snapshot_sync(error);
         assert_eq!(player_ca(&fixture.conn, fixture.snapshot_id), 150);
         assert_eq!(
-            fixture
-                .conn
-                .query_row(
-                    "SELECT role_id, score, projection_model_version
-                     FROM player_potential_role_scores
-                     WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
-                    params![fixture.snapshot_id, PLAYER_UID],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                )
-                .expect("read rolled-back potential row"),
-            original_potential_row
+            compact_row(&fixture.conn, fixture.snapshot_id),
+            Some(original_compact)
         );
         assert_eq!(
             fixture
@@ -2309,7 +2361,7 @@ mod tests {
 
     #[test]
     fn determination_reconciliation_rolls_back_all_rows_when_club_dna_upsert_fails() {
-        let mut fixture = seeded_player(
+        let mut fixture = seeded_complete_player(
             Some(19),
             150,
             170,
@@ -2319,24 +2371,6 @@ mod tests {
                 determination: Some(10),
             },
         );
-        fixture
-            .conn
-            .execute(
-                "UPDATE player_potential_role_scores
-                 SET score = 80, projection_model_version = 1
-                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'goalkeeper_ip'",
-                params![fixture.snapshot_id, PLAYER_UID],
-            )
-            .expect("seed goalkeeper potential row");
-        fixture
-            .conn
-            .execute(
-                "UPDATE player_potential_role_scores
-                 SET score = NULL, projection_model_version = 1
-                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = 'full_back_ip'",
-                params![fixture.snapshot_id, PLAYER_UID],
-            )
-            .expect("seed nullable potential row");
         fixture
             .conn
             .execute_batch(&format!(
@@ -2359,42 +2393,9 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .expect("read original mentality JSON");
-        let original_current_role_scores: Vec<(String, String, Option<i64>)> = {
-            let mut statement = fixture
-                .conn
-                .prepare(
-                    "SELECT role_id, phase, score FROM player_role_scores
-                     WHERE snapshot_id = ?1 AND uid = ?2
-                     ORDER BY role_id, phase",
-                )
-                .expect("prepare current role-score read");
-            statement
-                .query_map(params![fixture.snapshot_id, PLAYER_UID], |row| {
-                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-                })
-                .expect("read current role scores")
-                .collect::<Result<Vec<_>, _>>()
-                .expect("collect current role scores")
-        };
-        assert_eq!(original_current_role_scores.len(), all_roles().len());
-        let original_potential_role_scores: Vec<(String, Option<i64>, i64)> = {
-            let mut statement = fixture
-                .conn
-                .prepare(
-                    "SELECT role_id, score, projection_model_version
-                     FROM player_potential_role_scores
-                     WHERE snapshot_id = ?1 AND uid = ?2
-                     ORDER BY role_id",
-                )
-                .expect("prepare potential role-score read");
-            statement
-                .query_map(params![fixture.snapshot_id, PLAYER_UID], |row| {
-                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-                })
-                .expect("read potential role scores")
-                .collect::<Result<Vec<_>, _>>()
-                .expect("collect potential role scores")
-        };
+        let original_current_role_scores = current_role_scores(&fixture.conn, fixture.snapshot_id);
+        let original_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        let original_compact = compact_row(&fixture.conn, fixture.snapshot_id);
         let original_club_dna_row: (i64, i64, i64, i64, Option<i64>) = fixture
             .conn
             .query_row(
@@ -2457,43 +2458,18 @@ mod tests {
                 .expect("read rolled-back mentality JSON"),
             original_mentality_json
         );
-        let current_role_scores: Vec<(String, String, Option<i64>)> = {
-            let mut statement = fixture
-                .conn
-                .prepare(
-                    "SELECT role_id, phase, score FROM player_role_scores
-                     WHERE snapshot_id = ?1 AND uid = ?2
-                     ORDER BY role_id, phase",
-                )
-                .expect("prepare rolled-back current role-score read");
-            statement
-                .query_map(params![fixture.snapshot_id, PLAYER_UID], |row| {
-                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-                })
-                .expect("read rolled-back current role scores")
-                .collect::<Result<Vec<_>, _>>()
-                .expect("collect rolled-back current role scores")
-        };
-        assert_eq!(current_role_scores, original_current_role_scores);
-        let potential_role_scores: Vec<(String, Option<i64>, i64)> = {
-            let mut statement = fixture
-                .conn
-                .prepare(
-                    "SELECT role_id, score, projection_model_version
-                     FROM player_potential_role_scores
-                     WHERE snapshot_id = ?1 AND uid = ?2
-                     ORDER BY role_id",
-                )
-                .expect("prepare rolled-back potential role-score read");
-            statement
-                .query_map(params![fixture.snapshot_id, PLAYER_UID], |row| {
-                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-                })
-                .expect("read rolled-back potential role scores")
-                .collect::<Result<Vec<_>, _>>()
-                .expect("collect rolled-back potential role scores")
-        };
-        assert_eq!(potential_role_scores, original_potential_role_scores);
+        assert_eq!(
+            current_role_scores(&fixture.conn, fixture.snapshot_id),
+            original_current_role_scores
+        );
+        assert_eq!(
+            potential_state(&fixture.conn, fixture.snapshot_id),
+            original_potential_state
+        );
+        assert_eq!(
+            compact_row(&fixture.conn, fixture.snapshot_id),
+            original_compact
+        );
         assert_eq!(
             fixture
                 .conn
@@ -2506,59 +2482,11 @@ mod tests {
                         row.get(1)?,
                         row.get(2)?,
                         row.get(3)?,
-                        row.get(4)?,
+                        row.get(4)?
                     )),
                 )
                 .expect("read rolled-back Club DNA row"),
             original_club_dna_row
         );
-    }
-
-    #[test]
-    fn reconciliation_refuses_an_unverified_bridge_result_without_updating_sqlite() {
-        let mut fixture = seeded_player(
-            Some(21),
-            150,
-            170,
-            Mentality {
-                ambition: Some(14),
-                professionalism: Some(14),
-                determination: Some(14),
-            },
-        );
-        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
-            .expect("prepare CA boost");
-
-        let error = super::reconcile_verified_boost(
-            &mut fixture.conn,
-            &prepared,
-            verified_ca_result(150, 156, 170),
-        )
-        .expect_err("unexpected result must not update SQLite");
-
-        assert_snapshot_sync(error);
-        assert_eq!(player_ca(&fixture.conn, fixture.snapshot_id), 150);
-    }
-
-    #[test]
-    fn bridge_errors_keep_live_value_and_uncertain_outcomes_distinct() {
-        assert!(matches!(
-            super::map_bridge_error(PlayerBoostRequestError::Failed(
-                "player values changed in FM; Load Data again".to_string(),
-            )),
-            super::PlayerBoostError::LiveValue { .. }
-        ));
-        assert!(matches!(
-            super::map_bridge_error(PlayerBoostRequestError::Failed(
-                "bridge operation rejected the request".to_string(),
-            )),
-            super::PlayerBoostError::Bridge { .. }
-        ));
-        assert!(matches!(
-            super::map_bridge_error(PlayerBoostRequestError::Unconfirmed(
-                "player boost may have changed FM".to_string(),
-            )),
-            super::PlayerBoostError::SnapshotSync { .. }
-        ));
     }
 }

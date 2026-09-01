@@ -7,7 +7,7 @@ use super::tactic;
 use super::test_support::{
     add_picker_candidates, current_snapshot_id, deny_potential_writes, open_with_snapshot,
     planner_potential_state, set_player_attributes, set_player_positions,
-    set_player_preferred_foot, set_right_winger_scores, set_role_score,
+    set_player_preferred_foot, set_potential_role_score, set_right_winger_scores, set_role_score,
 };
 
 fn seeded_snapshot() -> (tempfile::TempDir, rusqlite::Connection, i64) {
@@ -17,9 +17,20 @@ fn seeded_snapshot() -> (tempfile::TempDir, rusqlite::Connection, i64) {
 }
 
 fn clear_current_scores(conn: &rusqlite::Connection, save_id: i64) {
+    let snapshot_id = current_snapshot_id(conn, save_id);
+    let columns = crate::features::scoring::catalog::all_roles()
+        .iter()
+        .map(|role| {
+            crate::features::player_metrics::compact::player_current_column(role.role_id)
+                .expect("current role column")
+                .to_string()
+        })
+        .map(|column| format!("{column} = NULL"))
+        .collect::<Vec<_>>()
+        .join(", ");
     conn.execute(
-        "UPDATE player_role_scores SET score = NULL WHERE snapshot_id = ?1",
-        [current_snapshot_id(conn, save_id)],
+        &format!("UPDATE player_role_metrics SET {columns} WHERE snapshot_id = ?1"),
+        [snapshot_id],
     )
     .expect("clear current scores");
 }
@@ -177,17 +188,8 @@ fn selected_basis_changes_the_best_lane_and_keeps_both_persisted_scores_for_that
     tactic::save_tactic(&conn, save_id, &changed_tactic).expect("save role comparison tactic");
     set_role_score(&conn, save_id, 77, "inside_winger_ip", Some(10));
     set_role_score(&conn, save_id, 77, "winger_ip", Some(90));
-    conn.execute(
-        "UPDATE player_potential_role_scores
-         SET score = CASE role_id
-             WHEN 'inside_winger_ip' THEN 90
-             WHEN 'winger_ip' THEN 10
-             ELSE score
-         END
-         WHERE snapshot_id = ?1 AND uid = 77",
-        params![snapshot_id],
-    )
-    .expect("set persisted potential role scores");
+    set_potential_role_score(&conn, save_id, 77, "inside_winger_ip", Some(90));
+    set_potential_role_score(&conn, save_id, 77, "winger_ip", Some(10));
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
@@ -223,11 +225,11 @@ fn role_reference_rejects_missing_potential_role_for_both_bases_without_writes()
     let (_temp_dir, conn, save_id) = seeded_snapshot();
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "DELETE FROM player_potential_role_scores
-         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'winger_ip'",
+        "DELETE FROM player_role_metrics
+         WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
-    .expect("remove persisted potential role");
+    .expect("remove compact row");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
@@ -244,12 +246,12 @@ fn role_reference_rejects_wrong_version_potential_role_for_both_bases_without_wr
     let (_temp_dir, conn, save_id) = seeded_snapshot();
     let snapshot_id = current_snapshot_id(&conn, save_id);
     conn.execute(
-        "UPDATE player_potential_role_scores
+        "UPDATE player_role_metrics
          SET projection_model_version = 999
-         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'winger_ip'",
+         WHERE snapshot_id = ?1 AND uid = 77",
         params![snapshot_id],
     )
-    .expect("set stale potential role version");
+    .expect("set stale compact projection version");
     let before = planner_potential_state(&conn, save_id, snapshot_id);
     deny_potential_writes(&conn);
 
@@ -327,17 +329,10 @@ fn equal_scores_keep_the_first_lane_in_persisted_tactic_order() {
 #[test]
 fn missing_current_basis_marks_the_player_unavailable_while_persisted_potential_is_eligible() {
     let (_temp_dir, conn, save_id) = seeded_snapshot();
-    let snapshot_id = current_snapshot_id(&conn, save_id);
     set_player_positions(&conn, save_id, 77, r#"{"AMR":20}"#);
     clear_current_scores(&conn, save_id);
     set_player_attributes(&conn, save_id, 77, &full_attributes(20));
-    conn.execute(
-        "UPDATE player_potential_role_scores
-         SET score = 100
-         WHERE snapshot_id = ?1 AND uid = 77 AND role_id = 'winger_ip'",
-        params![snapshot_id],
-    )
-    .expect("set persisted potential winger score");
+    set_potential_role_score(&conn, save_id, 77, "winger_ip", Some(100));
 
     let reference = get_role_reference(
         &conn,

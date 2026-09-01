@@ -4,7 +4,10 @@ use rusqlite::{params_from_iter, types::Value, Connection, OptionalExtension, Ro
 
 use super::filter::{compile_filters, FilterAst};
 use super::metrics::{parse_requested_fields, MetricField};
-use super::scoring::all_staff_roles;
+use super::scoring::{
+    all_staff_roles, assert_read_models_complete, staff_metrics_join, staff_role_column,
+    STAFF_METRICS_ALIAS,
+};
 
 pub const DEFAULT_PAGE_LIMIT: usize = 50;
 pub const MAX_PAGE_LIMIT: usize = 200;
@@ -254,7 +257,10 @@ pub fn get_staff(conn: &Connection, uid: i64) -> Result<Option<StaffDetail>, Str
     let Some(mut staff) = staff else {
         return Ok(None);
     };
-    staff.role_scores = load_staff_role_scores(conn, snapshot_id, uid)?;
+    // Profile must reject missing or wrong-version compact state rather than
+    // returning partial nulls.
+    assert_read_models_complete(conn, snapshot_id)?;
+    staff.role_scores = load_compact_staff_scores(conn, snapshot_id, uid)?;
     Ok(Some(staff))
 }
 
@@ -299,31 +305,49 @@ fn map_staff_detail(
     })
 }
 
-fn load_staff_role_scores(
+fn load_compact_staff_scores(
     conn: &Connection,
     snapshot_id: i64,
     uid: i64,
 ) -> Result<Vec<StaffRoleScore>, String> {
-    let mut statement = conn
-        .prepare(
-            "SELECT role_id, score FROM staff_role_scores
-             WHERE snapshot_id = ?1 AND uid = ?2",
-        )
-        .map_err(|error| error.to_string())?;
-    let stored = statement
-        .query_map(rusqlite::params![snapshot_id, uid], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
-        })
-        .map_err(|error| error.to_string())?
-        .collect::<Result<BTreeMap<_, _>, _>>()
-        .map_err(|error| error.to_string())?;
-
-    Ok(all_staff_roles()
+    let roles = all_staff_roles();
+    let columns = roles
         .iter()
-        .map(|role| StaffRoleScore {
+        .map(|role| staff_role_column(role.role_id))
+        .collect::<Result<Vec<_>, _>>()?;
+    let metric_columns = columns
+        .iter()
+        .map(|column| format!("{STAFF_METRICS_ALIAS}.{column}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT {STAFF_METRICS_ALIAS}.score_model_version, {metric_columns}
+         FROM staff s{} WHERE s.snapshot_id = ?1 AND s.uid = ?2",
+        staff_metrics_join("s")
+    );
+    let row = conn
+        .query_row(&sql, rusqlite::params![snapshot_id, uid], |row| {
+            let has_row = row.get::<_, Option<i64>>(0)?.is_some();
+            let scores = (0..roles.len())
+                .map(|index| row.get::<_, Option<i64>>(index + 1))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((has_row, scores))
+        })
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some((has_row, scores)) = row else {
+        return Err("Current compact staff snapshot is incomplete".to_string());
+    };
+    if !has_row {
+        return Err("Current compact staff snapshot is incomplete".to_string());
+    }
+    Ok(roles
+        .iter()
+        .zip(scores)
+        .map(|(role, score)| StaffRoleScore {
             role_id: role.role_id.to_string(),
             display_name: role.display_name.to_string(),
-            score: stored.get(role.role_id).copied().flatten(),
+            score,
         })
         .collect())
 }
@@ -410,6 +434,18 @@ fn list_staff_with_shortlist(
     let Some((snapshot_id, save_id)) = context else {
         return Ok(empty(StaffPageState::NoCurrentSnapshot));
     };
+    let has_role_field = dynamic_fields
+        .iter()
+        .any(|field| matches!(field, MetricField::Role(_)));
+    let sort_needs_metrics = matches!(sort, SortField::Dynamic(MetricField::Role(_)));
+    let filter_needs_metrics =
+        filters.is_some_and(|ast| ast.rules.iter().any(|rule| rule.field.starts_with("role.")));
+    let needs_metrics = has_role_field || sort_needs_metrics || filter_needs_metrics;
+    // Every staff table read requires a complete compact snapshot: a missing or
+    // wrong-version `staff_role_metrics` row for the effective current snapshot
+    // must surface as an error instead of silently returning raw staff rows,
+    // regardless of which fields, filters, or sorts the page requested.
+    assert_read_models_complete(conn, snapshot_id)?;
 
     if scope == StaffScope::MyStaff {
         let configured: bool = conn
@@ -427,6 +463,9 @@ fn list_staff_with_shortlist(
     let mut binds = vec![Value::Integer(snapshot_id)];
     let mut where_sql = "staff.snapshot_id = ?1".to_string();
     let mut from_sql = "staff".to_string();
+    if needs_metrics {
+        from_sql.push_str(&staff_metrics_join("staff"));
+    }
     if scope == StaffScope::MyStaff {
         binds.push(Value::Integer(save_id));
         where_sql.push_str(
@@ -593,7 +632,7 @@ mod tests {
         conn
     }
     fn seed(conn: &Connection, managed_club: bool) {
-        conn.execute_batch("INSERT INTO saves (id,name,is_active) VALUES (1,'Save',1); INSERT INTO snapshots (id,save_id,is_current,schema_version,generated_at_utc,game_version,supported_game_version,bridge_version,protocol_version,game_date_source,scan_truncated,player_count) VALUES (1,1,1,8,'now','26.3','26.3','0.4',1,'unknown',0,0),(2,1,0,8,'old','26.3','26.3','0.4',1,'unknown',0,0); INSERT INTO staff (snapshot_id,uid,name,age,nationalities_json,gender,ca,pa,staff_attributes_json,club) VALUES (1,1,'Alpha',40,'[\"DEN\"]','male',100,120,'{\"Authority\":18}','Club A'),(1,2,'Beta',41,'[\"SWE\"]','female',110,130,'{\"Authority\":15}','Club B'),(1,3,'Gamma',42,'[]','unknown',90,100,'{\"Authority\":null}','Other'),(2,9,'Old',50,'[]','unknown',200,200,'{}','Club A'); INSERT INTO staff_role_scores (snapshot_id,uid,role_id,score) VALUES (1,1,'coach_fitness',80),(1,2,'coach_fitness',70);").unwrap();
+        conn.execute_batch("INSERT INTO saves (id,name,is_active) VALUES (1,'Save',1); INSERT INTO snapshots (id,save_id,is_current,schema_version,generated_at_utc,game_version,supported_game_version,bridge_version,protocol_version,game_date_source,scan_truncated,player_count) VALUES (1,1,1,8,'now','26.3','26.3','0.4',1,'unknown',0,0),(2,1,0,8,'old','26.3','26.3','0.4',1,'unknown',0,0); INSERT INTO staff (snapshot_id,uid,name,age,nationalities_json,gender,ca,pa,staff_attributes_json,club) VALUES (1,1,'Alpha',40,'[\"DEN\"]','male',100,120,'{\"Authority\":18}','Club A'),(1,2,'Beta',41,'[\"SWE\"]','female',110,130,'{\"Authority\":15}','Club B'),(1,3,'Gamma',42,'[]','unknown',90,100,'{\"Authority\":null}','Other'),(2,9,'Old',50,'[]','unknown',200,200,'{}','Club A'); INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_fitness) VALUES (1, 1, 1, 80), (1, 2, 1, 70), (1, 3, 1, NULL);").unwrap();
         if managed_club {
             conn.execute_batch(
                 "INSERT INTO managed_club_settings (save_id,club_name) VALUES (1,'Club A');",
@@ -752,7 +791,9 @@ mod tests {
              INSERT INTO staff (
                 snapshot_id, uid, name, age, nationalities_json, gender, ca, pa,
                 staff_attributes_json, club
-             ) VALUES (2, 1, 'Replacement', 30, '[]', 'unknown', 150, 160, '{}', 'New Club');",
+             ) VALUES (2, 1, 'Replacement', 30, '[]', 'unknown', 150, 160, '{}', 'New Club');
+             INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version)
+             VALUES (2, 1, 1), (2, 9, 1);",
         )
         .expect("replace current snapshot");
 
@@ -795,8 +836,8 @@ mod tests {
              INSERT INTO staff_shortlist_entries (
                 save_id, staff_uid, preferred_job, club_job, coaching_qualifications
              ) VALUES (2, 1, 'Wrong save', '-', 'Wrong qualification');
-             UPDATE staff_role_scores SET score = 70 WHERE snapshot_id = 1 AND uid = 1;
-             UPDATE staff_role_scores SET score = 80 WHERE snapshot_id = 1 AND uid = 2;",
+             UPDATE staff_role_metrics SET coach_fitness = 70 WHERE snapshot_id = 1 AND uid = 1;
+             UPDATE staff_role_metrics SET coach_fitness = 80 WHERE snapshot_id = 1 AND uid = 2;",
         )
         .expect("seed shortlist");
         for sort in [
@@ -1155,13 +1196,77 @@ mod tests {
         assert_eq!(page.staff[0].uid, 1);
     }
     #[test]
-    fn query_plan_uses_staff_score_owner_index() {
+    fn compact_profile_rejects_missing_and_wrong_version_without_row_multiplication() {
         let conn = open();
         seed(&conn, true);
-        let plan:String=conn.query_row("EXPLAIN QUERY PLAN SELECT score FROM staff_role_scores WHERE snapshot_id=1 AND uid=1 AND role_id='coach_fitness'",[],|row|row.get(3)).unwrap();
-        assert!(
-            plan.contains("sqlite_autoindex_staff_role_scores_1") || plan.contains("INDEX"),
-            "{plan}"
+        // Missing compact row must fail the read.
+        conn.execute(
+            "DELETE FROM staff_role_metrics WHERE snapshot_id = 1 AND uid = 1",
+            [],
+        )
+        .expect("delete compact row");
+        assert_eq!(
+            get_staff(&conn, 1).unwrap_err(),
+            "Current compact staff snapshot is incomplete"
         );
+        // Wrong version must also fail.
+        conn.execute(
+            "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_fitness) VALUES (1, 1, 999, 80)",
+            [],
+        )
+        .expect("insert wrong version");
+        assert_eq!(
+            get_staff(&conn, 1).unwrap_err(),
+            "Current compact staff snapshot is incomplete"
+        );
+        // List with a role filter must reject the incomplete snapshot.
+        let ast = parse_filter_ast(
+            vec![FilterRule {
+                field: "role.coach_fitness".into(),
+                op: "gt".into(),
+                value: FilterValue::Integer(10),
+            }],
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            list_staff(
+                &conn,
+                StaffScope::Search,
+                0,
+                50,
+                SortField::Ca,
+                SortDir::Desc,
+                Some(&ast),
+                &[]
+            )
+            .unwrap_err(),
+            "Current compact staff snapshot is incomplete"
+        );
+        // Scalar-only table reads (no role field, filter, or sort) must reject
+        // the same incomplete state instead of returning raw staff rows.
+        assert_eq!(
+            list_staff(
+                &conn,
+                StaffScope::Search,
+                0,
+                50,
+                SortField::Ca,
+                SortDir::Desc,
+                None,
+                &[]
+            )
+            .unwrap_err(),
+            "Current compact staff snapshot is incomplete"
+        );
+        // One row per staff: compact join must not multiply rows.
+        let total: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM staff s LEFT JOIN staff_role_metrics m ON m.snapshot_id = s.snapshot_id AND m.uid = s.uid AND m.score_model_version = 1 WHERE s.snapshot_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count compact join");
+        assert_eq!(total, 3);
     }
 }

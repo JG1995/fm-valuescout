@@ -1,22 +1,9 @@
-use rusqlite::{Connection, Transaction};
-
-use crate::features::player_metrics::potential_scores;
-
-type MigrationHook = for<'a> fn(&Transaction<'a>) -> Result<(), String>;
+use rusqlite::Connection;
 
 pub struct Migration {
     pub version: i32,
     pub description: &'static str,
     pub sql: &'static str,
-}
-
-impl Migration {
-    fn hook(&self) -> Option<MigrationHook> {
-        match self.version {
-            34 => Some(potential_scores::backfill_current_snapshots),
-            _ => None,
-        }
-    }
 }
 
 pub const INITIAL_DEMO_VALUE_SQL: &str = "
@@ -810,6 +797,188 @@ CREATE INDEX idx_players_snapshot_current_club_uid
     ON players(snapshot_id, current_club, uid);
 ";
 
+pub const COMPACT_ROLE_METRICS_V38_SQL: &str = "
+CREATE TABLE player_role_metrics (
+    snapshot_id INTEGER NOT NULL,
+    uid INTEGER NOT NULL,
+    score_model_version INTEGER NOT NULL CHECK (score_model_version > 0),
+    projection_model_version INTEGER NOT NULL CHECK (projection_model_version > 0),
+    goalkeeper_ip INTEGER CHECK (goalkeeper_ip IS NULL OR (goalkeeper_ip >= 0 AND goalkeeper_ip <= 100)),
+    ball_playing_goalkeeper_ip INTEGER CHECK (ball_playing_goalkeeper_ip IS NULL OR (ball_playing_goalkeeper_ip >= 0 AND ball_playing_goalkeeper_ip <= 100)),
+    no_nonsense_goalkeeper_ip INTEGER CHECK (no_nonsense_goalkeeper_ip IS NULL OR (no_nonsense_goalkeeper_ip >= 0 AND no_nonsense_goalkeeper_ip <= 100)),
+    line_holding_keeper_oop INTEGER CHECK (line_holding_keeper_oop IS NULL OR (line_holding_keeper_oop >= 0 AND line_holding_keeper_oop <= 100)),
+    sweeper_keeper_oop INTEGER CHECK (sweeper_keeper_oop IS NULL OR (sweeper_keeper_oop >= 0 AND sweeper_keeper_oop <= 100)),
+    centre_back_ip INTEGER CHECK (centre_back_ip IS NULL OR (centre_back_ip >= 0 AND centre_back_ip <= 100)),
+    ball_playing_centre_back_ip INTEGER CHECK (ball_playing_centre_back_ip IS NULL OR (ball_playing_centre_back_ip >= 0 AND ball_playing_centre_back_ip <= 100)),
+    no_nonsense_centre_back_ip INTEGER CHECK (no_nonsense_centre_back_ip IS NULL OR (no_nonsense_centre_back_ip >= 0 AND no_nonsense_centre_back_ip <= 100)),
+    wide_centre_back_ip INTEGER CHECK (wide_centre_back_ip IS NULL OR (wide_centre_back_ip >= 0 AND wide_centre_back_ip <= 100)),
+    advanced_centre_back_ip INTEGER CHECK (advanced_centre_back_ip IS NULL OR (advanced_centre_back_ip >= 0 AND advanced_centre_back_ip <= 100)),
+    overlapping_centre_back_ip INTEGER CHECK (overlapping_centre_back_ip IS NULL OR (overlapping_centre_back_ip >= 0 AND overlapping_centre_back_ip <= 100)),
+    covering_centre_back_oop INTEGER CHECK (covering_centre_back_oop IS NULL OR (covering_centre_back_oop >= 0 AND covering_centre_back_oop <= 100)),
+    stopping_centre_back_oop INTEGER CHECK (stopping_centre_back_oop IS NULL OR (stopping_centre_back_oop >= 0 AND stopping_centre_back_oop <= 100)),
+    covering_wide_centre_back_oop INTEGER CHECK (covering_wide_centre_back_oop IS NULL OR (covering_wide_centre_back_oop >= 0 AND covering_wide_centre_back_oop <= 100)),
+    stopping_wide_centre_back_oop INTEGER CHECK (stopping_wide_centre_back_oop IS NULL OR (stopping_wide_centre_back_oop >= 0 AND stopping_wide_centre_back_oop <= 100)),
+    full_back_ip INTEGER CHECK (full_back_ip IS NULL OR (full_back_ip >= 0 AND full_back_ip <= 100)),
+    inside_full_back_ip INTEGER CHECK (inside_full_back_ip IS NULL OR (inside_full_back_ip >= 0 AND inside_full_back_ip <= 100)),
+    holding_full_back_oop INTEGER CHECK (holding_full_back_oop IS NULL OR (holding_full_back_oop >= 0 AND holding_full_back_oop <= 100)),
+    pressing_full_back_oop INTEGER CHECK (pressing_full_back_oop IS NULL OR (pressing_full_back_oop >= 0 AND pressing_full_back_oop <= 100)),
+    inside_wing_back_ip INTEGER CHECK (inside_wing_back_ip IS NULL OR (inside_wing_back_ip >= 0 AND inside_wing_back_ip <= 100)),
+    playmaking_wing_back_ip INTEGER CHECK (playmaking_wing_back_ip IS NULL OR (playmaking_wing_back_ip >= 0 AND playmaking_wing_back_ip <= 100)),
+    wing_back_ip INTEGER CHECK (wing_back_ip IS NULL OR (wing_back_ip >= 0 AND wing_back_ip <= 100)),
+    advanced_wing_back_ip INTEGER CHECK (advanced_wing_back_ip IS NULL OR (advanced_wing_back_ip >= 0 AND advanced_wing_back_ip <= 100)),
+    holding_wing_back_oop INTEGER CHECK (holding_wing_back_oop IS NULL OR (holding_wing_back_oop >= 0 AND holding_wing_back_oop <= 100)),
+    pressing_wing_back_oop INTEGER CHECK (pressing_wing_back_oop IS NULL OR (pressing_wing_back_oop >= 0 AND pressing_wing_back_oop <= 100)),
+    defensive_midfielder_ip INTEGER CHECK (defensive_midfielder_ip IS NULL OR (defensive_midfielder_ip >= 0 AND defensive_midfielder_ip <= 100)),
+    box_to_box_midfielder_ip INTEGER CHECK (box_to_box_midfielder_ip IS NULL OR (box_to_box_midfielder_ip >= 0 AND box_to_box_midfielder_ip <= 100)),
+    box_to_box_playmaker_ip INTEGER CHECK (box_to_box_playmaker_ip IS NULL OR (box_to_box_playmaker_ip >= 0 AND box_to_box_playmaker_ip <= 100)),
+    deep_lying_playmaker_ip INTEGER CHECK (deep_lying_playmaker_ip IS NULL OR (deep_lying_playmaker_ip >= 0 AND deep_lying_playmaker_ip <= 100)),
+    half_back_ip INTEGER CHECK (half_back_ip IS NULL OR (half_back_ip >= 0 AND half_back_ip <= 100)),
+    dropping_defensive_midfielder_oop INTEGER CHECK (dropping_defensive_midfielder_oop IS NULL OR (dropping_defensive_midfielder_oop >= 0 AND dropping_defensive_midfielder_oop <= 100)),
+    pressing_defensive_midfielder_oop INTEGER CHECK (pressing_defensive_midfielder_oop IS NULL OR (pressing_defensive_midfielder_oop >= 0 AND pressing_defensive_midfielder_oop <= 100)),
+    screening_defensive_midfielder_oop INTEGER CHECK (screening_defensive_midfielder_oop IS NULL OR (screening_defensive_midfielder_oop >= 0 AND screening_defensive_midfielder_oop <= 100)),
+    wide_covering_defensive_midfielder_oop INTEGER CHECK (wide_covering_defensive_midfielder_oop IS NULL OR (wide_covering_defensive_midfielder_oop >= 0 AND wide_covering_defensive_midfielder_oop <= 100)),
+    central_midfielder_ip INTEGER CHECK (central_midfielder_ip IS NULL OR (central_midfielder_ip >= 0 AND central_midfielder_ip <= 100)),
+    advanced_playmaker_ip INTEGER CHECK (advanced_playmaker_ip IS NULL OR (advanced_playmaker_ip >= 0 AND advanced_playmaker_ip <= 100)),
+    midfield_playmaker_ip INTEGER CHECK (midfield_playmaker_ip IS NULL OR (midfield_playmaker_ip >= 0 AND midfield_playmaker_ip <= 100)),
+    wide_central_midfielder_ip INTEGER CHECK (wide_central_midfielder_ip IS NULL OR (wide_central_midfielder_ip >= 0 AND wide_central_midfielder_ip <= 100)),
+    pressing_central_midfielder_oop INTEGER CHECK (pressing_central_midfielder_oop IS NULL OR (pressing_central_midfielder_oop >= 0 AND pressing_central_midfielder_oop <= 100)),
+    screening_central_midfielder_oop INTEGER CHECK (screening_central_midfielder_oop IS NULL OR (screening_central_midfielder_oop >= 0 AND screening_central_midfielder_oop <= 100)),
+    wide_covering_central_midfielder_oop INTEGER CHECK (wide_covering_central_midfielder_oop IS NULL OR (wide_covering_central_midfielder_oop >= 0 AND wide_covering_central_midfielder_oop <= 100)),
+    wide_midfielder_ip INTEGER CHECK (wide_midfielder_ip IS NULL OR (wide_midfielder_ip >= 0 AND wide_midfielder_ip <= 100)),
+    tracking_wide_midfielder_oop INTEGER CHECK (tracking_wide_midfielder_oop IS NULL OR (tracking_wide_midfielder_oop >= 0 AND tracking_wide_midfielder_oop <= 100)),
+    wide_outlet_wide_midfielder_oop INTEGER CHECK (wide_outlet_wide_midfielder_oop IS NULL OR (wide_outlet_wide_midfielder_oop >= 0 AND wide_outlet_wide_midfielder_oop <= 100)),
+    inside_winger_ip INTEGER CHECK (inside_winger_ip IS NULL OR (inside_winger_ip >= 0 AND inside_winger_ip <= 100)),
+    playmaking_winger_ip INTEGER CHECK (playmaking_winger_ip IS NULL OR (playmaking_winger_ip >= 0 AND playmaking_winger_ip <= 100)),
+    winger_ip INTEGER CHECK (winger_ip IS NULL OR (winger_ip >= 0 AND winger_ip <= 100)),
+    attacking_midfielder_ip INTEGER CHECK (attacking_midfielder_ip IS NULL OR (attacking_midfielder_ip >= 0 AND attacking_midfielder_ip <= 100)),
+    channel_midfielder_ip INTEGER CHECK (channel_midfielder_ip IS NULL OR (channel_midfielder_ip >= 0 AND channel_midfielder_ip <= 100)),
+    free_role_ip INTEGER CHECK (free_role_ip IS NULL OR (free_role_ip >= 0 AND free_role_ip <= 100)),
+    second_striker_ip INTEGER CHECK (second_striker_ip IS NULL OR (second_striker_ip >= 0 AND second_striker_ip <= 100)),
+    central_outlet_attacking_midfielder_oop INTEGER CHECK (central_outlet_attacking_midfielder_oop IS NULL OR (central_outlet_attacking_midfielder_oop >= 0 AND central_outlet_attacking_midfielder_oop <= 100)),
+    splitting_outlet_attacking_midfielder_oop INTEGER CHECK (splitting_outlet_attacking_midfielder_oop IS NULL OR (splitting_outlet_attacking_midfielder_oop >= 0 AND splitting_outlet_attacking_midfielder_oop <= 100)),
+    tracking_attacking_midfielder_oop INTEGER CHECK (tracking_attacking_midfielder_oop IS NULL OR (tracking_attacking_midfielder_oop >= 0 AND tracking_attacking_midfielder_oop <= 100)),
+    wide_forward_ip INTEGER CHECK (wide_forward_ip IS NULL OR (wide_forward_ip >= 0 AND wide_forward_ip <= 100)),
+    inside_forward_ip INTEGER CHECK (inside_forward_ip IS NULL OR (inside_forward_ip >= 0 AND inside_forward_ip <= 100)),
+    inside_outlet_winger_oop INTEGER CHECK (inside_outlet_winger_oop IS NULL OR (inside_outlet_winger_oop >= 0 AND inside_outlet_winger_oop <= 100)),
+    tracking_winger_oop INTEGER CHECK (tracking_winger_oop IS NULL OR (tracking_winger_oop >= 0 AND tracking_winger_oop <= 100)),
+    wide_outlet_winger_oop INTEGER CHECK (wide_outlet_winger_oop IS NULL OR (wide_outlet_winger_oop >= 0 AND wide_outlet_winger_oop <= 100)),
+    centre_forward_ip INTEGER CHECK (centre_forward_ip IS NULL OR (centre_forward_ip >= 0 AND centre_forward_ip <= 100)),
+    channel_forward_ip INTEGER CHECK (channel_forward_ip IS NULL OR (channel_forward_ip >= 0 AND channel_forward_ip <= 100)),
+    deep_lying_forward_ip INTEGER CHECK (deep_lying_forward_ip IS NULL OR (deep_lying_forward_ip >= 0 AND deep_lying_forward_ip <= 100)),
+    false_nine_ip INTEGER CHECK (false_nine_ip IS NULL OR (false_nine_ip >= 0 AND false_nine_ip <= 100)),
+    poacher_ip INTEGER CHECK (poacher_ip IS NULL OR (poacher_ip >= 0 AND poacher_ip <= 100)),
+    target_forward_ip INTEGER CHECK (target_forward_ip IS NULL OR (target_forward_ip >= 0 AND target_forward_ip <= 100)),
+    central_outlet_centre_forward_oop INTEGER CHECK (central_outlet_centre_forward_oop IS NULL OR (central_outlet_centre_forward_oop >= 0 AND central_outlet_centre_forward_oop <= 100)),
+    splitting_outlet_centre_forward_oop INTEGER CHECK (splitting_outlet_centre_forward_oop IS NULL OR (splitting_outlet_centre_forward_oop >= 0 AND splitting_outlet_centre_forward_oop <= 100)),
+    tracking_centre_forward_oop INTEGER CHECK (tracking_centre_forward_oop IS NULL OR (tracking_centre_forward_oop >= 0 AND tracking_centre_forward_oop <= 100)),
+    potential_goalkeeper_ip INTEGER CHECK (potential_goalkeeper_ip IS NULL OR (potential_goalkeeper_ip >= 0 AND potential_goalkeeper_ip <= 100)),
+    potential_ball_playing_goalkeeper_ip INTEGER CHECK (potential_ball_playing_goalkeeper_ip IS NULL OR (potential_ball_playing_goalkeeper_ip >= 0 AND potential_ball_playing_goalkeeper_ip <= 100)),
+    potential_no_nonsense_goalkeeper_ip INTEGER CHECK (potential_no_nonsense_goalkeeper_ip IS NULL OR (potential_no_nonsense_goalkeeper_ip >= 0 AND potential_no_nonsense_goalkeeper_ip <= 100)),
+    potential_line_holding_keeper_oop INTEGER CHECK (potential_line_holding_keeper_oop IS NULL OR (potential_line_holding_keeper_oop >= 0 AND potential_line_holding_keeper_oop <= 100)),
+    potential_sweeper_keeper_oop INTEGER CHECK (potential_sweeper_keeper_oop IS NULL OR (potential_sweeper_keeper_oop >= 0 AND potential_sweeper_keeper_oop <= 100)),
+    potential_centre_back_ip INTEGER CHECK (potential_centre_back_ip IS NULL OR (potential_centre_back_ip >= 0 AND potential_centre_back_ip <= 100)),
+    potential_ball_playing_centre_back_ip INTEGER CHECK (potential_ball_playing_centre_back_ip IS NULL OR (potential_ball_playing_centre_back_ip >= 0 AND potential_ball_playing_centre_back_ip <= 100)),
+    potential_no_nonsense_centre_back_ip INTEGER CHECK (potential_no_nonsense_centre_back_ip IS NULL OR (potential_no_nonsense_centre_back_ip >= 0 AND potential_no_nonsense_centre_back_ip <= 100)),
+    potential_wide_centre_back_ip INTEGER CHECK (potential_wide_centre_back_ip IS NULL OR (potential_wide_centre_back_ip >= 0 AND potential_wide_centre_back_ip <= 100)),
+    potential_advanced_centre_back_ip INTEGER CHECK (potential_advanced_centre_back_ip IS NULL OR (potential_advanced_centre_back_ip >= 0 AND potential_advanced_centre_back_ip <= 100)),
+    potential_overlapping_centre_back_ip INTEGER CHECK (potential_overlapping_centre_back_ip IS NULL OR (potential_overlapping_centre_back_ip >= 0 AND potential_overlapping_centre_back_ip <= 100)),
+    potential_covering_centre_back_oop INTEGER CHECK (potential_covering_centre_back_oop IS NULL OR (potential_covering_centre_back_oop >= 0 AND potential_covering_centre_back_oop <= 100)),
+    potential_stopping_centre_back_oop INTEGER CHECK (potential_stopping_centre_back_oop IS NULL OR (potential_stopping_centre_back_oop >= 0 AND potential_stopping_centre_back_oop <= 100)),
+    potential_covering_wide_centre_back_oop INTEGER CHECK (potential_covering_wide_centre_back_oop IS NULL OR (potential_covering_wide_centre_back_oop >= 0 AND potential_covering_wide_centre_back_oop <= 100)),
+    potential_stopping_wide_centre_back_oop INTEGER CHECK (potential_stopping_wide_centre_back_oop IS NULL OR (potential_stopping_wide_centre_back_oop >= 0 AND potential_stopping_wide_centre_back_oop <= 100)),
+    potential_full_back_ip INTEGER CHECK (potential_full_back_ip IS NULL OR (potential_full_back_ip >= 0 AND potential_full_back_ip <= 100)),
+    potential_inside_full_back_ip INTEGER CHECK (potential_inside_full_back_ip IS NULL OR (potential_inside_full_back_ip >= 0 AND potential_inside_full_back_ip <= 100)),
+    potential_holding_full_back_oop INTEGER CHECK (potential_holding_full_back_oop IS NULL OR (potential_holding_full_back_oop >= 0 AND potential_holding_full_back_oop <= 100)),
+    potential_pressing_full_back_oop INTEGER CHECK (potential_pressing_full_back_oop IS NULL OR (potential_pressing_full_back_oop >= 0 AND potential_pressing_full_back_oop <= 100)),
+    potential_inside_wing_back_ip INTEGER CHECK (potential_inside_wing_back_ip IS NULL OR (potential_inside_wing_back_ip >= 0 AND potential_inside_wing_back_ip <= 100)),
+    potential_playmaking_wing_back_ip INTEGER CHECK (potential_playmaking_wing_back_ip IS NULL OR (potential_playmaking_wing_back_ip >= 0 AND potential_playmaking_wing_back_ip <= 100)),
+    potential_wing_back_ip INTEGER CHECK (potential_wing_back_ip IS NULL OR (potential_wing_back_ip >= 0 AND potential_wing_back_ip <= 100)),
+    potential_advanced_wing_back_ip INTEGER CHECK (potential_advanced_wing_back_ip IS NULL OR (potential_advanced_wing_back_ip >= 0 AND potential_advanced_wing_back_ip <= 100)),
+    potential_holding_wing_back_oop INTEGER CHECK (potential_holding_wing_back_oop IS NULL OR (potential_holding_wing_back_oop >= 0 AND potential_holding_wing_back_oop <= 100)),
+    potential_pressing_wing_back_oop INTEGER CHECK (potential_pressing_wing_back_oop IS NULL OR (potential_pressing_wing_back_oop >= 0 AND potential_pressing_wing_back_oop <= 100)),
+    potential_defensive_midfielder_ip INTEGER CHECK (potential_defensive_midfielder_ip IS NULL OR (potential_defensive_midfielder_ip >= 0 AND potential_defensive_midfielder_ip <= 100)),
+    potential_box_to_box_midfielder_ip INTEGER CHECK (potential_box_to_box_midfielder_ip IS NULL OR (potential_box_to_box_midfielder_ip >= 0 AND potential_box_to_box_midfielder_ip <= 100)),
+    potential_box_to_box_playmaker_ip INTEGER CHECK (potential_box_to_box_playmaker_ip IS NULL OR (potential_box_to_box_playmaker_ip >= 0 AND potential_box_to_box_playmaker_ip <= 100)),
+    potential_deep_lying_playmaker_ip INTEGER CHECK (potential_deep_lying_playmaker_ip IS NULL OR (potential_deep_lying_playmaker_ip >= 0 AND potential_deep_lying_playmaker_ip <= 100)),
+    potential_half_back_ip INTEGER CHECK (potential_half_back_ip IS NULL OR (potential_half_back_ip >= 0 AND potential_half_back_ip <= 100)),
+    potential_dropping_defensive_midfielder_oop INTEGER CHECK (potential_dropping_defensive_midfielder_oop IS NULL OR (potential_dropping_defensive_midfielder_oop >= 0 AND potential_dropping_defensive_midfielder_oop <= 100)),
+    potential_pressing_defensive_midfielder_oop INTEGER CHECK (potential_pressing_defensive_midfielder_oop IS NULL OR (potential_pressing_defensive_midfielder_oop >= 0 AND potential_pressing_defensive_midfielder_oop <= 100)),
+    potential_screening_defensive_midfielder_oop INTEGER CHECK (potential_screening_defensive_midfielder_oop IS NULL OR (potential_screening_defensive_midfielder_oop >= 0 AND potential_screening_defensive_midfielder_oop <= 100)),
+    potential_wide_covering_defensive_midfielder_oop INTEGER CHECK (potential_wide_covering_defensive_midfielder_oop IS NULL OR (potential_wide_covering_defensive_midfielder_oop >= 0 AND potential_wide_covering_defensive_midfielder_oop <= 100)),
+    potential_central_midfielder_ip INTEGER CHECK (potential_central_midfielder_ip IS NULL OR (potential_central_midfielder_ip >= 0 AND potential_central_midfielder_ip <= 100)),
+    potential_advanced_playmaker_ip INTEGER CHECK (potential_advanced_playmaker_ip IS NULL OR (potential_advanced_playmaker_ip >= 0 AND potential_advanced_playmaker_ip <= 100)),
+    potential_midfield_playmaker_ip INTEGER CHECK (potential_midfield_playmaker_ip IS NULL OR (potential_midfield_playmaker_ip >= 0 AND potential_midfield_playmaker_ip <= 100)),
+    potential_wide_central_midfielder_ip INTEGER CHECK (potential_wide_central_midfielder_ip IS NULL OR (potential_wide_central_midfielder_ip >= 0 AND potential_wide_central_midfielder_ip <= 100)),
+    potential_pressing_central_midfielder_oop INTEGER CHECK (potential_pressing_central_midfielder_oop IS NULL OR (potential_pressing_central_midfielder_oop >= 0 AND potential_pressing_central_midfielder_oop <= 100)),
+    potential_screening_central_midfielder_oop INTEGER CHECK (potential_screening_central_midfielder_oop IS NULL OR (potential_screening_central_midfielder_oop >= 0 AND potential_screening_central_midfielder_oop <= 100)),
+    potential_wide_covering_central_midfielder_oop INTEGER CHECK (potential_wide_covering_central_midfielder_oop IS NULL OR (potential_wide_covering_central_midfielder_oop >= 0 AND potential_wide_covering_central_midfielder_oop <= 100)),
+    potential_wide_midfielder_ip INTEGER CHECK (potential_wide_midfielder_ip IS NULL OR (potential_wide_midfielder_ip >= 0 AND potential_wide_midfielder_ip <= 100)),
+    potential_tracking_wide_midfielder_oop INTEGER CHECK (potential_tracking_wide_midfielder_oop IS NULL OR (potential_tracking_wide_midfielder_oop >= 0 AND potential_tracking_wide_midfielder_oop <= 100)),
+    potential_wide_outlet_wide_midfielder_oop INTEGER CHECK (potential_wide_outlet_wide_midfielder_oop IS NULL OR (potential_wide_outlet_wide_midfielder_oop >= 0 AND potential_wide_outlet_wide_midfielder_oop <= 100)),
+    potential_inside_winger_ip INTEGER CHECK (potential_inside_winger_ip IS NULL OR (potential_inside_winger_ip >= 0 AND potential_inside_winger_ip <= 100)),
+    potential_playmaking_winger_ip INTEGER CHECK (potential_playmaking_winger_ip IS NULL OR (potential_playmaking_winger_ip >= 0 AND potential_playmaking_winger_ip <= 100)),
+    potential_winger_ip INTEGER CHECK (potential_winger_ip IS NULL OR (potential_winger_ip >= 0 AND potential_winger_ip <= 100)),
+    potential_attacking_midfielder_ip INTEGER CHECK (potential_attacking_midfielder_ip IS NULL OR (potential_attacking_midfielder_ip >= 0 AND potential_attacking_midfielder_ip <= 100)),
+    potential_channel_midfielder_ip INTEGER CHECK (potential_channel_midfielder_ip IS NULL OR (potential_channel_midfielder_ip >= 0 AND potential_channel_midfielder_ip <= 100)),
+    potential_free_role_ip INTEGER CHECK (potential_free_role_ip IS NULL OR (potential_free_role_ip >= 0 AND potential_free_role_ip <= 100)),
+    potential_second_striker_ip INTEGER CHECK (potential_second_striker_ip IS NULL OR (potential_second_striker_ip >= 0 AND potential_second_striker_ip <= 100)),
+    potential_central_outlet_attacking_midfielder_oop INTEGER CHECK (potential_central_outlet_attacking_midfielder_oop IS NULL OR (potential_central_outlet_attacking_midfielder_oop >= 0 AND potential_central_outlet_attacking_midfielder_oop <= 100)),
+    potential_splitting_outlet_attacking_midfielder_oop INTEGER CHECK (potential_splitting_outlet_attacking_midfielder_oop IS NULL OR (potential_splitting_outlet_attacking_midfielder_oop >= 0 AND potential_splitting_outlet_attacking_midfielder_oop <= 100)),
+    potential_tracking_attacking_midfielder_oop INTEGER CHECK (potential_tracking_attacking_midfielder_oop IS NULL OR (potential_tracking_attacking_midfielder_oop >= 0 AND potential_tracking_attacking_midfielder_oop <= 100)),
+    potential_wide_forward_ip INTEGER CHECK (potential_wide_forward_ip IS NULL OR (potential_wide_forward_ip >= 0 AND potential_wide_forward_ip <= 100)),
+    potential_inside_forward_ip INTEGER CHECK (potential_inside_forward_ip IS NULL OR (potential_inside_forward_ip >= 0 AND potential_inside_forward_ip <= 100)),
+    potential_inside_outlet_winger_oop INTEGER CHECK (potential_inside_outlet_winger_oop IS NULL OR (potential_inside_outlet_winger_oop >= 0 AND potential_inside_outlet_winger_oop <= 100)),
+    potential_tracking_winger_oop INTEGER CHECK (potential_tracking_winger_oop IS NULL OR (potential_tracking_winger_oop >= 0 AND potential_tracking_winger_oop <= 100)),
+    potential_wide_outlet_winger_oop INTEGER CHECK (potential_wide_outlet_winger_oop IS NULL OR (potential_wide_outlet_winger_oop >= 0 AND potential_wide_outlet_winger_oop <= 100)),
+    potential_centre_forward_ip INTEGER CHECK (potential_centre_forward_ip IS NULL OR (potential_centre_forward_ip >= 0 AND potential_centre_forward_ip <= 100)),
+    potential_channel_forward_ip INTEGER CHECK (potential_channel_forward_ip IS NULL OR (potential_channel_forward_ip >= 0 AND potential_channel_forward_ip <= 100)),
+    potential_deep_lying_forward_ip INTEGER CHECK (potential_deep_lying_forward_ip IS NULL OR (potential_deep_lying_forward_ip >= 0 AND potential_deep_lying_forward_ip <= 100)),
+    potential_false_nine_ip INTEGER CHECK (potential_false_nine_ip IS NULL OR (potential_false_nine_ip >= 0 AND potential_false_nine_ip <= 100)),
+    potential_poacher_ip INTEGER CHECK (potential_poacher_ip IS NULL OR (potential_poacher_ip >= 0 AND potential_poacher_ip <= 100)),
+    potential_target_forward_ip INTEGER CHECK (potential_target_forward_ip IS NULL OR (potential_target_forward_ip >= 0 AND potential_target_forward_ip <= 100)),
+    potential_central_outlet_centre_forward_oop INTEGER CHECK (potential_central_outlet_centre_forward_oop IS NULL OR (potential_central_outlet_centre_forward_oop >= 0 AND potential_central_outlet_centre_forward_oop <= 100)),
+    potential_splitting_outlet_centre_forward_oop INTEGER CHECK (potential_splitting_outlet_centre_forward_oop IS NULL OR (potential_splitting_outlet_centre_forward_oop >= 0 AND potential_splitting_outlet_centre_forward_oop <= 100)),
+    potential_tracking_centre_forward_oop INTEGER CHECK (potential_tracking_centre_forward_oop IS NULL OR (potential_tracking_centre_forward_oop >= 0 AND potential_tracking_centre_forward_oop <= 100)),
+    PRIMARY KEY (snapshot_id, uid),
+    FOREIGN KEY (snapshot_id, uid) REFERENCES players(snapshot_id, uid) ON DELETE CASCADE
+);
+
+CREATE TABLE staff_role_metrics (
+    snapshot_id INTEGER NOT NULL,
+    uid INTEGER NOT NULL,
+    score_model_version INTEGER NOT NULL CHECK (score_model_version > 0),
+    assistant_manager INTEGER CHECK (assistant_manager IS NULL OR (assistant_manager >= 0 AND assistant_manager <= 100)),
+    manager INTEGER CHECK (manager IS NULL OR (manager >= 0 AND manager <= 100)),
+    coach_attacking_technical INTEGER CHECK (coach_attacking_technical IS NULL OR (coach_attacking_technical >= 0 AND coach_attacking_technical <= 100)),
+    coach_attacking_tactical INTEGER CHECK (coach_attacking_tactical IS NULL OR (coach_attacking_tactical >= 0 AND coach_attacking_tactical <= 100)),
+    coach_defending_technical INTEGER CHECK (coach_defending_technical IS NULL OR (coach_defending_technical >= 0 AND coach_defending_technical <= 100)),
+    coach_defending_tactical INTEGER CHECK (coach_defending_tactical IS NULL OR (coach_defending_tactical >= 0 AND coach_defending_tactical <= 100)),
+    coach_possession_technical INTEGER CHECK (coach_possession_technical IS NULL OR (coach_possession_technical >= 0 AND coach_possession_technical <= 100)),
+    coach_possession_tactical INTEGER CHECK (coach_possession_tactical IS NULL OR (coach_possession_tactical >= 0 AND coach_possession_tactical <= 100)),
+    coach_fitness INTEGER CHECK (coach_fitness IS NULL OR (coach_fitness >= 0 AND coach_fitness <= 100)),
+    coach_goalkeeping INTEGER CHECK (coach_goalkeeping IS NULL OR (coach_goalkeeping >= 0 AND coach_goalkeeping <= 100)),
+    set_piece_coach INTEGER CHECK (set_piece_coach IS NULL OR (set_piece_coach >= 0 AND set_piece_coach <= 100)),
+    loan_manager INTEGER CHECK (loan_manager IS NULL OR (loan_manager >= 0 AND loan_manager <= 100)),
+    head_of_youth_development INTEGER CHECK (head_of_youth_development IS NULL OR (head_of_youth_development >= 0 AND head_of_youth_development <= 100)),
+    scout INTEGER CHECK (scout IS NULL OR (scout >= 0 AND scout <= 100)),
+    director_of_football INTEGER CHECK (director_of_football IS NULL OR (director_of_football >= 0 AND director_of_football <= 100)),
+    technical_director INTEGER CHECK (technical_director IS NULL OR (technical_director >= 0 AND technical_director <= 100)),
+    recruitment_analyst INTEGER CHECK (recruitment_analyst IS NULL OR (recruitment_analyst >= 0 AND recruitment_analyst <= 100)),
+    head_performance_analyst INTEGER CHECK (head_performance_analyst IS NULL OR (head_performance_analyst >= 0 AND head_performance_analyst <= 100)),
+    performance_analyst INTEGER CHECK (performance_analyst IS NULL OR (performance_analyst >= 0 AND performance_analyst <= 100)),
+    physio INTEGER CHECK (physio IS NULL OR (physio >= 0 AND physio <= 100)),
+    sports_scientist INTEGER CHECK (sports_scientist IS NULL OR (sports_scientist >= 0 AND sports_scientist <= 100)),
+    PRIMARY KEY (snapshot_id, uid),
+    FOREIGN KEY (snapshot_id, uid) REFERENCES staff(snapshot_id, uid) ON DELETE CASCADE
+);
+";
+
+pub const DROP_NORMALIZED_SCORE_TABLES_V39_SQL: &str = "
+DROP TABLE IF EXISTS player_role_scores;
+DROP TABLE IF EXISTS player_potential_role_scores;
+DROP TABLE IF EXISTS staff_role_scores;
+";
+
 pub fn all() -> &'static [Migration] {
     &[
         Migration {
@@ -997,6 +1166,16 @@ pub fn all() -> &'static [Migration] {
             description: "make_set_piece_coach_club_wide",
             sql: CLUB_SET_PIECE_COACH_TARGET_SQL,
         },
+        Migration {
+            version: 38,
+            description: "create_compact_role_metrics",
+            sql: COMPACT_ROLE_METRICS_V38_SQL,
+        },
+        Migration {
+            version: 39,
+            description: "drop_normalized_score_tables",
+            sql: DROP_NORMALIZED_SCORE_TABLES_V39_SQL,
+        },
     ]
 }
 
@@ -1035,9 +1214,6 @@ pub fn apply(conn: &Connection) -> Result<(), String> {
                 .map_err(|error| error.to_string())?;
             tx.execute_batch(migration.sql)
                 .map_err(|error| error.to_string())?;
-            if let Some(hook) = migration.hook() {
-                hook(&tx)?;
-            }
             tx.pragma_update(None, "user_version", migration.version)
                 .map_err(|error| error.to_string())?;
             tx.commit().map_err(|error| error.to_string())
@@ -1325,8 +1501,8 @@ mod tests {
 
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
-                .expect("read v37 version"),
-            37
+                .expect("read v39 version"),
+            39
         );
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
@@ -1366,7 +1542,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         assert_player_sort_index_inventory(&conn);
 
         let demo_value_exists: bool = conn
@@ -1484,7 +1660,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         assert_player_sort_index_inventory(&conn);
         assert_eq!(
             conn.query_row(
@@ -1513,7 +1689,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_v33_current_snapshots_to_complete_potential_scores_only() {
+    fn migrates_v33_without_preserving_normalized_potential_state() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let conn = Connection::open(temp_dir.path().join("potential-scores-v33.db"))
             .expect("open test db");
@@ -1565,229 +1741,30 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         let player_columns = table_columns(&conn, "players");
         assert!(player_columns.contains(&"potential_attributes_json".to_string()));
         assert!(player_columns.contains(&"potential_projection_model_version".to_string()));
-        let tx = conn
-            .unchecked_transaction()
-            .expect("start post-migration assertion transaction");
-        for (snapshot_id, _) in &current_snapshots {
-            potential_scores::assert_current_snapshot_complete(&tx, *snapshot_id)
-                .expect("current snapshot passes the post-migration assertion");
-        }
-        tx.commit()
-            .expect("commit post-migration assertion transaction");
-        for (snapshot_id, uid) in current_snapshots {
-            let (attributes_json, model_version): (Option<String>, Option<i64>) = conn
+        for (snapshot_id, uid) in current_snapshots.iter().chain(retained_snapshots.iter()) {
+            let derived: (Option<String>, Option<i64>) = conn
                 .query_row(
                     "SELECT potential_attributes_json, potential_projection_model_version
                      FROM players WHERE snapshot_id = ?1 AND uid = ?2",
                     params![snapshot_id, uid],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
-                .expect("read current projected attributes");
-            assert!(attributes_json.is_some());
-            assert_eq!(
-                model_version,
-                Some(potential_scores::PROJECTION_MODEL_VERSION)
-            );
-            let rows: Vec<(String, Option<i64>, i64)> = conn
-                .prepare(
-                    "SELECT role_id, score, projection_model_version
-                     FROM player_potential_role_scores
-                     WHERE snapshot_id = ?1 AND uid = ?2 ORDER BY role_id",
-                )
-                .expect("prepare current scores")
-                .query_map(params![snapshot_id, uid], |row| {
-                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-                })
-                .expect("query current scores")
-                .collect::<Result<_, _>>()
-                .expect("read current scores");
-            assert_eq!(
-                rows.len(),
-                crate::features::scoring::catalog::all_roles().len()
-            );
-            assert!(rows
-                .iter()
-                .all(|(_, _, version)| *version == potential_scores::PROJECTION_MODEL_VERSION));
+                .expect("read unmaterialized compact state");
+            assert_eq!(derived, (None, None));
         }
-        for (snapshot_id, uid) in retained_snapshots {
-            let derived: (Option<String>, Option<i64>, i64) = conn
-                .query_row(
-                    "SELECT potential_attributes_json, potential_projection_model_version,
-                            (SELECT COUNT(*) FROM player_potential_role_scores
-                             WHERE snapshot_id = players.snapshot_id AND uid = players.uid)
-                     FROM players WHERE snapshot_id = ?1 AND uid = ?2",
-                    params![snapshot_id, uid],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-                )
-                .expect("read retained potential state");
-            assert_eq!(derived, (None, None, 0));
-        }
-    }
-
-    fn assert_v34_backfill_rolls_back(source_attributes: &str, expected_error: &str) {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let conn = Connection::open(temp_dir.path().join("potential-scores-v34-rollback.db"))
-            .expect("open test db");
-        conn.pragma_update(None, "foreign_keys", true)
-            .expect("enable foreign keys");
-        for migration in all().iter().filter(|migration| migration.version <= 33) {
-            conn.execute_batch(migration.sql)
-                .expect("apply migration through v33");
-            conn.pragma_update(None, "user_version", migration.version)
-                .expect("set v33 version");
-        }
-        conn.execute("INSERT INTO saves (name) VALUES ('Invalid projection')", [])
-            .expect("insert save");
-        let save_id = conn.last_insert_rowid();
-        conn.execute(
-            INSERT_SNAPSHOT_SQL,
-            params![save_id, true, false, Option::<i64>::None],
-        )
-        .expect("insert current snapshot");
-        let snapshot_id = conn.last_insert_rowid();
-        insert_player(&conn, snapshot_id, 42);
-        conn.execute(
-            "UPDATE players
-             SET ca = 100, pa = 140, age = 20, attributes_json = ?2
-             WHERE snapshot_id = ?1 AND uid = 42",
-            params![snapshot_id, source_attributes],
-        )
-        .expect("set v33 player input");
-        conn.execute(
-            "INSERT INTO player_potential_role_scores (
-                snapshot_id, uid, role_id, score, projection_model_version
-             ) VALUES (?1, 42, 'v33_sparse_row', 50, 1)",
-            [snapshot_id],
-        )
-        .expect("insert v33 derived row");
-
-        let error = apply(&conn).expect_err("reject incomplete v34 backfill");
-        assert!(error.contains("migration 34 (persist_current_potential_scores) failed"));
-        assert!(error.contains(expected_error));
-        assert!(!error.contains("Invalid parameter name"));
-
-        let version: i32 = conn
-            .pragma_query_value(None, "user_version", |row| row.get(0))
-            .expect("read rolled-back version");
-        assert_eq!(version, 33);
-        assert!(!table_columns(&conn, "players")
-            .iter()
-            .any(|column| column == "potential_attributes_json"));
-        assert_eq!(
-            conn.query_row(
-                "SELECT attributes_json FROM players WHERE snapshot_id = ?1 AND uid = 42",
-                [snapshot_id],
-                |row| row.get::<_, String>(0),
-            )
-            .expect("read unchanged player source"),
-            source_attributes
-        );
-        assert_eq!(
-            conn.query_row(
-                "SELECT role_id, score, projection_model_version
-                 FROM player_potential_role_scores",
+        // Normalized tables are dropped in v39; end-state must have no normalized rows.
+        let normalized_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'player_potential_role_scores')",
                 [],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, Option<i64>>(1)?,
-                        row.get::<_, i64>(2)?,
-                    ))
-                },
-            )
-            .expect("read unchanged v33 score row"),
-            ("v33_sparse_row".to_string(), Some(50), 1)
-        );
-    }
-
-    #[test]
-    fn rolls_back_v34_when_current_player_projection_input_is_malformed() {
-        assert_v34_backfill_rolls_back("not JSON", "invalid player 42 attributes JSON");
-    }
-
-    #[test]
-    fn migrates_v33_sparse_current_player_attributes_as_nulls() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let conn = Connection::open(temp_dir.path().join("potential-scores-v34-sparse.db"))
-            .expect("open test db");
-        conn.pragma_update(None, "foreign_keys", true)
-            .expect("enable foreign keys");
-        for migration in all().iter().filter(|migration| migration.version <= 33) {
-            conn.execute_batch(migration.sql)
-                .expect("apply migration through v33");
-            conn.pragma_update(None, "user_version", migration.version)
-                .expect("set v33 version");
-        }
-        conn.execute("INSERT INTO saves (name) VALUES ('Sparse projection')", [])
-            .expect("insert save");
-        let save_id = conn.last_insert_rowid();
-        conn.execute(
-            INSERT_SNAPSHOT_SQL,
-            params![save_id, true, false, Option::<i64>::None],
-        )
-        .expect("insert current snapshot");
-        let snapshot_id = conn.last_insert_rowid();
-        insert_player(&conn, snapshot_id, 42);
-        conn.execute(
-            "UPDATE players SET attributes_json = '{}' WHERE snapshot_id = ?1 AND uid = 42",
-            [snapshot_id],
-        )
-        .expect("store sparse v33 attributes");
-        conn.execute(
-            "INSERT INTO player_potential_role_scores (
-                snapshot_id, uid, role_id, score, projection_model_version
-             ) VALUES (?1, 42, 'v33_sparse_row', 50, 1)",
-            [snapshot_id],
-        )
-        .expect("insert v33 sparse row");
-
-        apply(&conn).expect("migrate sparse v33 potential state");
-
-        let projected_json: String = conn
-            .query_row(
-                "SELECT potential_attributes_json FROM players
-                 WHERE snapshot_id = ?1 AND uid = 42",
-                [snapshot_id],
                 |row| row.get(0),
             )
-            .expect("read projected sparse attributes");
-        let projected: HashMap<String, Option<u8>> =
-            serde_json::from_str(&projected_json).expect("parse projected sparse attributes");
-        assert_eq!(
-            projected.len(),
-            crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS.len()
-        );
-        assert!(projected.values().all(Option::is_none));
-        let potential_row_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1 AND uid = 42",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .expect("count complete sparse potential rows");
-        assert_eq!(
-            potential_row_count,
-            crate::features::scoring::catalog::all_roles().len() as i64
-        );
-    }
-
-    #[test]
-    fn rolls_back_v34_when_current_player_projection_input_is_noninteger_or_out_of_u8_range() {
-        assert_v34_backfill_rolls_back("{\"Unknown\":10.5}", "invalid type");
-        assert_v34_backfill_rolls_back("{\"Unknown\":300}", "invalid value");
-    }
-
-    #[test]
-    fn rolls_back_v34_when_current_player_source_attribute_is_outside_the_visible_domain() {
-        assert_v34_backfill_rolls_back(
-            "{\"Acceleration\":0}",
-            "player 42 attribute `Acceleration` must be between 1 and 20",
-        );
+            .expect("check normalized absence");
+        assert!(!normalized_exists);
     }
 
     #[test]
@@ -2296,7 +2273,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         let settings: Vec<(i64, String, String)> = conn
             .prepare(
                 "SELECT save_id, team, display_name
@@ -2523,7 +2500,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         type MoneyballRow = (
             Option<String>,
             Option<i64>,
@@ -2709,7 +2686,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated user version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         let existing: i64 = conn
             .query_row("SELECT reveal_hidden_information FROM saves", [], |row| {
                 row.get(0)
@@ -2812,7 +2789,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         let demo_value_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -2887,24 +2864,25 @@ mod tests {
             conn.pragma_update(None, "user_version", migration.version)
                 .expect("set migration version");
         }
-
         apply(&conn).expect("migrate v20 cache schema");
 
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 37);
-        assert_eq!(
-            table_columns(&conn, "player_potential_role_scores"),
-            [
-                "snapshot_id",
-                "uid",
-                "role_id",
-                "score",
-                "projection_model_version",
-            ]
-        );
+        assert_eq!(version, 39);
+        // v39 drops normalized tables
+        for table in ["player_role_scores", "player_potential_role_scores"] {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                    [table],
+                    |row| row.get(0),
+                )
+                .expect("check post-upgrade absence");
+            assert!(!exists, "{table} must be absent after v39");
+        }
 
+        // Verify upgrade preserved cascade semantics via compact
         conn.execute(
             "INSERT INTO saves (name, is_active) VALUES ('Cache save', 1)",
             [],
@@ -2918,27 +2896,31 @@ mod tests {
         .expect("insert snapshot");
         let snapshot_id = conn.last_insert_rowid();
         insert_player(&conn, snapshot_id, 42);
-        conn.execute(
-            "INSERT INTO player_potential_role_scores (
-                snapshot_id, uid, role_id, score, projection_model_version
-             ) VALUES (?1, ?2, 'goalkeeper_ip', 80, 1)",
-            params![snapshot_id, 42],
-        )
-        .expect("insert derived cache row");
-
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start compact materialization");
+        crate::features::player_metrics::potential_scores::rebuild_snapshot(&tx, snapshot_id)
+            .expect("materialize compact after v20 upgrade");
+        tx.commit().expect("commit compact");
+        let before: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM player_role_metrics WHERE snapshot_id = ?1",
+                [snapshot_id],
+                |row| row.get(0),
+            )
+            .expect("count compact before delete");
+        assert_eq!(before, 1);
         conn.execute(
             "DELETE FROM players WHERE snapshot_id = ?1 AND uid = ?2",
             params![snapshot_id, 42],
         )
         .expect("delete player");
-        let cache_rows: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM player_potential_role_scores",
-                [],
-                |row| row.get(0),
-            )
-            .expect("count cascaded cache rows");
-        assert_eq!(cache_rows, 0);
+        let after: i64 = conn
+            .query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| {
+                row.get(0)
+            })
+            .expect("count cascaded compact rows");
+        assert_eq!(after, 0);
     }
 
     #[test]
@@ -3446,7 +3428,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         let (save_name, is_current, primary_club): (String, i32, String) = conn
             .query_row(
                 "SELECT saves.name, snapshots.is_current, managed_club_settings.club_name
@@ -3517,7 +3499,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         let rows: Vec<LegacyMoneyballRow> = conn
             .prepare(
                 "SELECT save_id, player_uid, asking_price_kind, asking_price_lower_eur,
@@ -3704,7 +3686,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         let primary_club: String = conn
             .query_row(
                 "SELECT club_name FROM managed_club_settings WHERE save_id = ?1",
@@ -3752,7 +3734,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         assert_eq!(
             table_columns(&conn, "academy_classes"),
             ["id", "save_id", "class_year", "is_automatic"]
@@ -3993,7 +3975,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         let tactic_table_exists: bool = conn
             .query_row(
                 "SELECT EXISTS(
@@ -4091,93 +4073,43 @@ mod tests {
     }
 
     #[test]
-    fn opening_fresh_db_applies_version_3_and_creates_player_role_scores() {
+    fn fresh_db_has_no_normalized_score_tables_or_indexes() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let db_path = temp_dir.path().join("role-scores-migration-test.db");
-        let conn = open_migrated(&db_path);
+        let conn = open_migrated(&temp_dir.path().join("no-normalized.db"));
 
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
 
-        let table_name: String = conn
-            .query_row(
-                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'player_role_scores'",
-                [],
-                |row| row.get(0),
-            )
-            .expect("read player_role_scores from sqlite_master");
-        assert_eq!(table_name, "player_role_scores");
-
-        assert_eq!(
-            table_columns(&conn, "player_role_scores"),
-            ["snapshot_id", "uid", "role_id", "phase", "score"]
-        );
-    }
-
-    #[test]
-    fn staff_role_scores_are_snapshot_scoped_constrained_and_cascade_with_staff() {
-        let temp_dir = tempfile::tempdir().expect("temp dir");
-        let conn = open_migrated(&temp_dir.path().join("staff-role-scores.db"));
-
-        conn.execute_batch(
-            "INSERT INTO saves (id, name, is_active) VALUES (1, 'Save', 1);
-             INSERT INTO snapshots (
-                 id, save_id, is_current, schema_version, generated_at_utc, game_version,
-                 supported_game_version, bridge_version, protocol_version, game_date,
-                 game_date_source, scan_truncated, max_accepted, player_count
-             ) VALUES (
-                 1, 1, 1, 8, '2026-08-16T00:00:00Z', '26.3', '26.3', '0.4.0', 1,
-                 NULL, 'unavailable', 0, NULL, 0
-             );
-             INSERT INTO staff (
-                 snapshot_id, uid, name, birth_year, birth_day_of_year, age,
-                 nationalities_json, nation_uid, gender, ca, pa, staff_attributes_json,
-                 job_id, weekly_wage_gbp, contract_expiry_year, contract_expiry_day_of_year,
-                 club, division
-             ) VALUES (
-                 1, 88, 'Staff', 1980, 1, 46, '[\"DEN\"]', 208, 'male', 120, 150,
-                 '{}', 1, NULL, NULL, NULL, 'Club', 'Division'
-             );",
-        )
-        .expect("seed staff owner");
-
-        conn.execute(
-            "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
-             VALUES (1, 88, 'physio', 85)",
-            [],
-        )
-        .expect("insert valid staff score");
-        conn.execute(
-            "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
-             VALUES (1, 88, 'unavailable', NULL)",
-            [],
-        )
-        .expect("insert nullable staff score");
-        assert!(conn
-            .execute(
-                "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
-                 VALUES (1, 88, 'invalid', 101)",
-                [],
-            )
-            .is_err());
-        assert!(conn
-            .execute(
-                "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
-                 VALUES (1, 999, 'physio', 50)",
-                [],
-            )
-            .is_err());
-
-        conn.execute("DELETE FROM staff WHERE snapshot_id = 1 AND uid = 88", [])
-            .expect("delete staff owner");
-        let score_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM staff_role_scores", [], |row| {
-                row.get(0)
-            })
-            .expect("count cascaded staff scores");
-        assert_eq!(score_count, 0);
+        for table in [
+            "player_role_scores",
+            "player_potential_role_scores",
+            "staff_role_scores",
+        ] {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                    [table],
+                    |row| row.get(0),
+                )
+                .expect("check table absence");
+            assert!(!exists, "{table} must be absent after v39");
+        }
+        for index in [
+            "idx_player_role_scores_snapshot_role",
+            "idx_player_potential_role_scores_snapshot_role_score",
+            "idx_staff_role_scores_snapshot_role",
+        ] {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1)",
+                    [index],
+                    |row| row.get(0),
+                )
+                .expect("check index absence");
+            assert!(!exists, "{index} must be absent after v39");
+        }
     }
 
     #[test]
@@ -4334,7 +4266,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read migrated version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM saves", [], |row| row.get::<_, i64>(0))
                 .expect("count retained saves"),
@@ -4393,14 +4325,16 @@ mod tests {
         let staff_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM staff", [], |row| row.get(0))
             .expect("count retained staff");
-        let score_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM staff_role_scores", [], |row| {
-                row.get(0)
-            })
-            .expect("count absent backfill");
-        assert_eq!(version, 37);
+        let normalized_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'staff_role_scores')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("check normalized absence");
+        assert_eq!(version, 39);
         assert_eq!(staff_count, 1);
-        assert_eq!(score_count, 0);
+        assert!(!normalized_exists);
     }
 
     #[test]
@@ -4549,8 +4483,6 @@ mod tests {
                 "idx_planner_tactic_lanes_save_importance_rank",
                 "idx_planner_tactic_lanes_save_order",
                 "idx_planner_teams_save_team",
-                "idx_player_potential_role_scores_snapshot_role_score",
-                "idx_player_role_scores_snapshot_role",
                 "idx_players_snapshot_age_asc_uid",
                 "idx_players_snapshot_age_desc_uid",
                 "idx_players_snapshot_ca",
@@ -4565,7 +4497,6 @@ mod tests {
                 "idx_snapshots_context_token",
                 "idx_snapshots_one_current_per_save",
                 "idx_staff_assignment_targets_save_scope",
-                "idx_staff_role_scores_snapshot_role",
                 "idx_staff_shortlist_entries_save_preferred_job",
             ]
         );
@@ -4654,7 +4585,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user_version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
     }
 
     #[test]
@@ -4688,7 +4619,7 @@ mod tests {
         let version: i32 = conn
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .expect("read user version");
-        assert_eq!(version, 37);
+        assert_eq!(version, 39);
         let (source_request_id, is_current): (Option<String>, i32) = conn
             .query_row(
                 "SELECT bridge_source_request_id, is_current FROM snapshots WHERE id = ?1",
@@ -4728,7 +4659,7 @@ mod tests {
             let version: i32 = conn
                 .pragma_query_value(None, "user_version", |row| row.get(0))
                 .expect("read user version");
-            assert_eq!(version, 37, "legacy version {legacy_version}");
+            assert_eq!(version, 39, "legacy version {legacy_version}");
             assert_eq!(
                 table_columns(&conn, "staff").first().map(String::as_str),
                 Some("snapshot_id"),
@@ -4741,7 +4672,7 @@ mod tests {
     fn registers_monotonic_migrations() {
         let migrations = all();
 
-        assert_eq!(migrations.len(), 37);
+        assert_eq!(migrations.len(), 39);
         assert_eq!(migrations[0].version, 1);
         assert_eq!(migrations[0].description, "create_demo_value_table");
         assert_eq!(migrations[0].sql, INITIAL_DEMO_VALUE_SQL);
@@ -4899,6 +4830,12 @@ mod tests {
         assert_eq!(migrations[36].version, 37);
         assert_eq!(migrations[36].description, "make_set_piece_coach_club_wide");
         assert_eq!(migrations[36].sql, CLUB_SET_PIECE_COACH_TARGET_SQL);
+        assert_eq!(migrations[37].version, 38);
+        assert_eq!(migrations[37].description, "create_compact_role_metrics");
+        assert_eq!(migrations[37].sql, COMPACT_ROLE_METRICS_V38_SQL);
+        assert_eq!(migrations[38].version, 39);
+        assert_eq!(migrations[38].description, "drop_normalized_score_tables");
+        assert_eq!(migrations[38].sql, DROP_NORMALIZED_SCORE_TABLES_V39_SQL);
     }
 
     #[test]
@@ -4931,8 +4868,8 @@ mod tests {
 
         assert_eq!(
             conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
-                .expect("read v37 version"),
-            37
+                .expect("read v39 version"),
+            39
         );
         let targets = conn
             .prepare(
@@ -5061,6 +4998,351 @@ mod tests {
                 "last_known_name",
                 "provenance"
             ]
+        );
+    }
+
+    #[test]
+    fn opening_fresh_db_creates_the_exact_compact_player_role_metrics_inventory() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("compact-player-metrics.db"));
+
+        assert_eq!(
+            table_columns(&conn, "player_role_metrics"),
+            [
+                "snapshot_id",
+                "uid",
+                "score_model_version",
+                "projection_model_version",
+                "goalkeeper_ip",
+                "ball_playing_goalkeeper_ip",
+                "no_nonsense_goalkeeper_ip",
+                "line_holding_keeper_oop",
+                "sweeper_keeper_oop",
+                "centre_back_ip",
+                "ball_playing_centre_back_ip",
+                "no_nonsense_centre_back_ip",
+                "wide_centre_back_ip",
+                "advanced_centre_back_ip",
+                "overlapping_centre_back_ip",
+                "covering_centre_back_oop",
+                "stopping_centre_back_oop",
+                "covering_wide_centre_back_oop",
+                "stopping_wide_centre_back_oop",
+                "full_back_ip",
+                "inside_full_back_ip",
+                "holding_full_back_oop",
+                "pressing_full_back_oop",
+                "inside_wing_back_ip",
+                "playmaking_wing_back_ip",
+                "wing_back_ip",
+                "advanced_wing_back_ip",
+                "holding_wing_back_oop",
+                "pressing_wing_back_oop",
+                "defensive_midfielder_ip",
+                "box_to_box_midfielder_ip",
+                "box_to_box_playmaker_ip",
+                "deep_lying_playmaker_ip",
+                "half_back_ip",
+                "dropping_defensive_midfielder_oop",
+                "pressing_defensive_midfielder_oop",
+                "screening_defensive_midfielder_oop",
+                "wide_covering_defensive_midfielder_oop",
+                "central_midfielder_ip",
+                "advanced_playmaker_ip",
+                "midfield_playmaker_ip",
+                "wide_central_midfielder_ip",
+                "pressing_central_midfielder_oop",
+                "screening_central_midfielder_oop",
+                "wide_covering_central_midfielder_oop",
+                "wide_midfielder_ip",
+                "tracking_wide_midfielder_oop",
+                "wide_outlet_wide_midfielder_oop",
+                "inside_winger_ip",
+                "playmaking_winger_ip",
+                "winger_ip",
+                "attacking_midfielder_ip",
+                "channel_midfielder_ip",
+                "free_role_ip",
+                "second_striker_ip",
+                "central_outlet_attacking_midfielder_oop",
+                "splitting_outlet_attacking_midfielder_oop",
+                "tracking_attacking_midfielder_oop",
+                "wide_forward_ip",
+                "inside_forward_ip",
+                "inside_outlet_winger_oop",
+                "tracking_winger_oop",
+                "wide_outlet_winger_oop",
+                "centre_forward_ip",
+                "channel_forward_ip",
+                "deep_lying_forward_ip",
+                "false_nine_ip",
+                "poacher_ip",
+                "target_forward_ip",
+                "central_outlet_centre_forward_oop",
+                "splitting_outlet_centre_forward_oop",
+                "tracking_centre_forward_oop",
+                "potential_goalkeeper_ip",
+                "potential_ball_playing_goalkeeper_ip",
+                "potential_no_nonsense_goalkeeper_ip",
+                "potential_line_holding_keeper_oop",
+                "potential_sweeper_keeper_oop",
+                "potential_centre_back_ip",
+                "potential_ball_playing_centre_back_ip",
+                "potential_no_nonsense_centre_back_ip",
+                "potential_wide_centre_back_ip",
+                "potential_advanced_centre_back_ip",
+                "potential_overlapping_centre_back_ip",
+                "potential_covering_centre_back_oop",
+                "potential_stopping_centre_back_oop",
+                "potential_covering_wide_centre_back_oop",
+                "potential_stopping_wide_centre_back_oop",
+                "potential_full_back_ip",
+                "potential_inside_full_back_ip",
+                "potential_holding_full_back_oop",
+                "potential_pressing_full_back_oop",
+                "potential_inside_wing_back_ip",
+                "potential_playmaking_wing_back_ip",
+                "potential_wing_back_ip",
+                "potential_advanced_wing_back_ip",
+                "potential_holding_wing_back_oop",
+                "potential_pressing_wing_back_oop",
+                "potential_defensive_midfielder_ip",
+                "potential_box_to_box_midfielder_ip",
+                "potential_box_to_box_playmaker_ip",
+                "potential_deep_lying_playmaker_ip",
+                "potential_half_back_ip",
+                "potential_dropping_defensive_midfielder_oop",
+                "potential_pressing_defensive_midfielder_oop",
+                "potential_screening_defensive_midfielder_oop",
+                "potential_wide_covering_defensive_midfielder_oop",
+                "potential_central_midfielder_ip",
+                "potential_advanced_playmaker_ip",
+                "potential_midfield_playmaker_ip",
+                "potential_wide_central_midfielder_ip",
+                "potential_pressing_central_midfielder_oop",
+                "potential_screening_central_midfielder_oop",
+                "potential_wide_covering_central_midfielder_oop",
+                "potential_wide_midfielder_ip",
+                "potential_tracking_wide_midfielder_oop",
+                "potential_wide_outlet_wide_midfielder_oop",
+                "potential_inside_winger_ip",
+                "potential_playmaking_winger_ip",
+                "potential_winger_ip",
+                "potential_attacking_midfielder_ip",
+                "potential_channel_midfielder_ip",
+                "potential_free_role_ip",
+                "potential_second_striker_ip",
+                "potential_central_outlet_attacking_midfielder_oop",
+                "potential_splitting_outlet_attacking_midfielder_oop",
+                "potential_tracking_attacking_midfielder_oop",
+                "potential_wide_forward_ip",
+                "potential_inside_forward_ip",
+                "potential_inside_outlet_winger_oop",
+                "potential_tracking_winger_oop",
+                "potential_wide_outlet_winger_oop",
+                "potential_centre_forward_ip",
+                "potential_channel_forward_ip",
+                "potential_deep_lying_forward_ip",
+                "potential_false_nine_ip",
+                "potential_poacher_ip",
+                "potential_target_forward_ip",
+                "potential_central_outlet_centre_forward_oop",
+                "potential_splitting_outlet_centre_forward_oop",
+                "potential_tracking_centre_forward_oop",
+            ]
+        );
+        assert_eq!(table_columns(&conn, "player_role_metrics").len(), 140);
+    }
+
+    #[test]
+    fn opening_fresh_db_creates_the_exact_compact_staff_role_metrics_inventory() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("compact-staff-metrics.db"));
+
+        assert_eq!(
+            table_columns(&conn, "staff_role_metrics"),
+            [
+                "snapshot_id",
+                "uid",
+                "score_model_version",
+                "assistant_manager",
+                "manager",
+                "coach_attacking_technical",
+                "coach_attacking_tactical",
+                "coach_defending_technical",
+                "coach_defending_tactical",
+                "coach_possession_technical",
+                "coach_possession_tactical",
+                "coach_fitness",
+                "coach_goalkeeping",
+                "set_piece_coach",
+                "loan_manager",
+                "head_of_youth_development",
+                "scout",
+                "director_of_football",
+                "technical_director",
+                "recruitment_analyst",
+                "head_performance_analyst",
+                "performance_analyst",
+                "physio",
+                "sports_scientist",
+            ]
+        );
+        assert_eq!(table_columns(&conn, "staff_role_metrics").len(), 24);
+    }
+
+    #[test]
+    fn compact_role_metrics_enforce_identity_model_score_constraints_and_cascades() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("compact-constraints.db"));
+
+        conn.execute_batch(
+            "INSERT INTO saves (id, name, is_active) VALUES (1, 'Save', 1);
+             INSERT INTO snapshots (
+                 id, save_id, is_current, schema_version, generated_at_utc, game_version,
+                 supported_game_version, bridge_version, protocol_version, game_date,
+                 game_date_source, scan_truncated, max_accepted, player_count
+             ) VALUES (
+                 1, 1, 1, 8, '2026-08-16T00:00:00Z', '26.3', '26.3', '0.4.0', 1,
+                 NULL, 'unavailable', 0, NULL, 0
+             );",
+        )
+        .expect("seed compact owners");
+        insert_player(&conn, 1, 1);
+        insert_player(&conn, 1, 2);
+        let insert_staff = "INSERT INTO staff (
+             snapshot_id, uid, name, birth_year, birth_day_of_year, age,
+             nationalities_json, nation_uid, gender, ca, pa, staff_attributes_json,
+             job_id, weekly_wage_gbp, contract_expiry_year, contract_expiry_day_of_year,
+             club, division
+         ) VALUES (1, ?1, 'Staff', 1980, 1, 46, '[]', 208, 'male', 120, 150,
+             '{}', 1, NULL, NULL, NULL, 'Club', 'Division')";
+        conn.execute(insert_staff, [88]).expect("seed staff owner");
+        conn.execute(insert_staff, [77])
+            .expect("seed second staff owner");
+
+        conn.execute(
+            "INSERT INTO player_role_metrics (
+                snapshot_id, uid, score_model_version, projection_model_version,
+                goalkeeper_ip, potential_goalkeeper_ip
+             ) VALUES (1, 1, 1, 2, NULL, 90)",
+            [],
+        )
+        .expect("insert nullable compact player row");
+        assert!(conn
+            .execute(
+                "INSERT INTO player_role_metrics (
+                    snapshot_id, uid, score_model_version, projection_model_version
+                 ) VALUES (1, 1, 1, 2)",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "INSERT INTO player_role_metrics (
+                    snapshot_id, uid, score_model_version, projection_model_version
+                 ) VALUES (1, 2, 0, 2)",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "INSERT INTO player_role_metrics (
+                    snapshot_id, uid, score_model_version, projection_model_version
+                 ) VALUES (1, 2, 1, 0)",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "INSERT INTO player_role_metrics (
+                    snapshot_id, uid, score_model_version, projection_model_version, goalkeeper_ip
+                 ) VALUES (1, 2, 1, 2, 101)",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "INSERT INTO player_role_metrics (
+                    snapshot_id, uid, score_model_version, projection_model_version, goalkeeper_ip
+                 ) VALUES (1, 2, 1, 2, -1)",
+                [],
+            )
+            .is_err());
+
+        conn.execute(
+            "INSERT INTO staff_role_metrics (
+                snapshot_id, uid, score_model_version, physio
+             ) VALUES (1, 88, 1, NULL)",
+            [],
+        )
+        .expect("insert nullable compact staff row");
+        assert!(conn
+            .execute(
+                "INSERT INTO staff_role_metrics (
+                    snapshot_id, uid, score_model_version
+                 ) VALUES (1, 88, 1)",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "INSERT INTO staff_role_metrics (
+                    snapshot_id, uid, score_model_version, manager
+                 ) VALUES (1, 77, 1, 101)",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "INSERT INTO staff_role_metrics (
+                    snapshot_id, uid, score_model_version
+                 ) VALUES (1, 77, 0)",
+                [],
+            )
+            .is_err());
+
+        conn.execute("DELETE FROM players WHERE snapshot_id = 1 AND uid = 1", [])
+            .expect("delete player owner");
+        let player_rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| {
+                row.get(0)
+            })
+            .expect("count cascaded player metrics");
+        assert_eq!(player_rows, 0);
+
+        conn.execute("DELETE FROM staff WHERE snapshot_id = 1 AND uid = 88", [])
+            .expect("delete staff owner");
+        let staff_rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM staff_role_metrics", [], |row| {
+                row.get(0)
+            })
+            .expect("count cascaded staff metrics");
+        assert_eq!(staff_rows, 0);
+    }
+
+    #[test]
+    fn compact_role_metrics_add_no_per_role_indexes() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = open_migrated(&temp_dir.path().join("compact-no-index.db"));
+
+        let explicit_indexes = conn
+            .prepare(
+                "SELECT name FROM sqlite_master
+                 WHERE type = 'index'
+                   AND tbl_name IN ('player_role_metrics', 'staff_role_metrics')
+                   AND name NOT LIKE 'sqlite_autoindex%'
+                 ORDER BY name",
+            )
+            .expect("prepare compact index inventory")
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("query compact index inventory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("read compact index inventory");
+
+        assert!(
+            explicit_indexes.is_empty(),
+            "unexpected compact indexes: {explicit_indexes:?}"
         );
     }
 }

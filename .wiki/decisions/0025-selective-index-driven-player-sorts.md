@@ -6,6 +6,8 @@ Accepted
 
 Implementation status: Implemented and completed in [Player Table Sort Performance](../features/completed/player-table-sort-performance.md).
 
+Amendment: [ADR-0028](./0028-compact-current-snapshot-metrics.md) replaces normalized player and staff score relations with directly sortable compact current-snapshot rows. This ADR continues to own result replacement, selective scalar indexes, and the rule against unmeasured per-role indexes; its normalized score-relation details no longer govern the compact metric representation.
+
 ## Context
 
 Search and Squad expose a broad sortable metric catalog over bounded IPC pages. Common scalar sorts lack suitable indexes, managed-club membership lacks a player index, and persisted score sorts use correlated probes. The application also serializes commands through one `rusqlite` connection, so duplicate or inefficient reads queue.

@@ -184,13 +184,13 @@ fn loads_fm26_candidate_scores_from_current_shortlist_only() {
              snapshot_id, uid, name, age, nationalities_json, gender, ca, pa,
              staff_attributes_json, club
          ) VALUES (2, 5, 'Wrong snapshot', 40, '[]', 'unknown', 100, 120, '{}', 'Club A');
-         INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score) VALUES
-             (1, 1, 'coach_fitness', 71),
-             (1, 2, 'coach_goalkeeping', 72),
-             (1, 3, 'recruitment_analyst', 83),
-             (1, 4, 'coach_fitness', 99),
-             (1, 6, 'coach_fitness', NULL),
-             (2, 5, 'recruitment_analyst', 99);",
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_fitness, coach_goalkeeping, recruitment_analyst) VALUES
+             (1, 1, 1, 71, NULL, NULL),
+             (1, 2, 1, NULL, 72, NULL),
+             (1, 3, 1, NULL, NULL, 83),
+             (1, 4, 1, 99, NULL, NULL),
+             (1, 6, 1, NULL, NULL, NULL),
+             (2, 5, 1, NULL, NULL, 99);"
     )
     .expect("insert score fixtures");
 
@@ -253,14 +253,11 @@ fn joins_only_current_shortlist_staff_and_preserves_scores_and_classification() 
     shortlist(&conn, 10, "Head of Sports Science", "-");
     shortlist(&conn, 11, "Assistant Manager", "-");
     conn.execute_batch(
-        "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score) VALUES
-             (1, 1, 'assistant_manager', 72),
-             (1, 2, 'assistant_manager', 99),
-             (1, 4, 'coach_attacking_technical', 80),
-             (1, 4, 'coach_possession_tactical', 90),
-             (1, 6, 'coach_attacking_technical', NULL),
-             (1, 8, 'manager', 81),
-             (1, 11, 'assistant_manager', 73);",
+        "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, assistant_manager) VALUES (1, 1, 1, 72), (1, 2, 1, 99), (1, 11, 1, 73);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, manager) VALUES (1, 8, 1, 81);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_attacking_technical, coach_possession_tactical) VALUES (1, 4, 1, 80, 90);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_attacking_technical) VALUES (1, 6, 1, NULL);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version) VALUES (1, 3, 1), (1, 5, 1), (1, 7, 1), (1, 9, 1), (1, 10, 1);",
     )
     .expect("insert persisted scores");
 
@@ -347,18 +344,11 @@ fn allocates_leads_and_recruitment_analyst_from_persisted_scores() {
         shortlist(&conn, uid, preferred_job, "-");
     }
     conn.execute_batch(
-        "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score) VALUES
-             (1, 1, 'head_performance_analyst', 95),
-             (1, 1, 'performance_analyst', 60),
-             (1, 2, 'head_performance_analyst', 80),
-             (1, 2, 'performance_analyst', 90),
-             (1, 3, 'scout', 85),
-             (1, 4, 'scout', 70),
-             (1, 5, 'physio', 85),
-             (1, 6, 'physio', 70),
-             (1, 7, 'sports_scientist', 85),
-             (1, 8, 'sports_scientist', 70),
-             (1, 9, 'recruitment_analyst', 99);",
+        "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, head_performance_analyst, performance_analyst) VALUES (1, 1, 1, 95, 60), (1, 2, 1, 80, 90);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, scout) VALUES (1, 3, 1, 85), (1, 4, 1, 70);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, physio) VALUES (1, 5, 1, 85), (1, 6, 1, 70);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, sports_scientist) VALUES (1, 7, 1, 85), (1, 8, 1, 70);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, recruitment_analyst) VALUES (1, 9, 1, 99);",
     )
     .expect("insert persisted scores");
 
@@ -441,17 +431,14 @@ fn allocates_persisted_fitness_and_goalkeeping_scores_with_exact_vacancy_evidenc
         shortlist(&conn, uid, preferred_job, "-");
     }
     conn.execute_batch(
-        "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score) VALUES
-             (1, 1, 'coach_attacking_technical', 80),
-             (1, 2, 'coach_attacking_tactical', 80),
-             (1, 3, 'coach_defending_technical', 80),
-             (1, 4, 'coach_defending_tactical', 80),
-             (1, 5, 'coach_possession_technical', 80),
-             (1, 6, 'coach_possession_tactical', 80),
-             (1, 7, 'coach_fitness', 75),
-             (1, 8, 'coach_fitness', NULL),
-             (1, 9, 'coach_goalkeeping', 76),
-             (1, 10, 'coach_goalkeeping', NULL);",
+        "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_attacking_technical) VALUES (1, 1, 1, 80);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_attacking_tactical) VALUES (1, 2, 1, 80);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_defending_technical) VALUES (1, 3, 1, 80);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_defending_tactical) VALUES (1, 4, 1, 80);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_possession_technical) VALUES (1, 5, 1, 80);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_possession_tactical) VALUES (1, 6, 1, 80);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_fitness) VALUES (1, 7, 1, 75), (1, 8, 1, NULL);
+         INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version, coach_goalkeeping) VALUES (1, 9, 1, 76), (1, 10, 1, NULL);",
     )
     .expect("insert persisted scores");
 
@@ -505,6 +492,11 @@ fn places_standalone_club_results_after_enabled_squads_without_senior() {
     .expect("configure targets");
     insert_staff(&conn, 1, "Unsupported", Some("Club A"));
     shortlist(&conn, 1, "Kit Manager", "-");
+    conn.execute(
+        "INSERT INTO staff_role_metrics (snapshot_id, uid, score_model_version) VALUES (1, 1, 1)",
+        [],
+    )
+    .expect("insert compact row");
 
     let result = optimize_staff_assignments(&conn, &save_token, &snapshot_token)
         .expect("optimize without senior");

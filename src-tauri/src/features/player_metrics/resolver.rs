@@ -5,7 +5,10 @@ use rusqlite::Row;
 use crate::features::moneyball::{is_moneyball_statistic_key, role_catalog::builtin_catalog};
 use crate::features::scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS};
 
-use super::{club_dna::SCORE_MODEL_VERSION, potential_scores::PROJECTION_MODEL_VERSION};
+use super::{
+    club_dna::SCORE_MODEL_VERSION,
+    compact::{player_current_column, player_potential_column, PLAYER_METRICS_ALIAS},
+};
 
 /// FM26 dump position keys (bridge `PositionEntries`).
 pub const POSITION_KEYS: &[&str] = &[
@@ -44,13 +47,6 @@ pub enum MetricValueKind {
     Text,
 }
 
-/// Exact cache identity for one validated potential-role sort.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PotentialRoleSortIdentity {
-    pub role_id: &'static str,
-    pub projection_model_version: i64,
-}
-
 /// Exact persisted Club DNA score identity for one validated sort.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ClubDnaSortIdentity {
@@ -61,20 +57,35 @@ pub struct ClubDnaSortIdentity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MetricSource {
     Column(&'static str),
-    JsonInteger { column: &'static str, key: String },
-    MoneyballContext { column: &'static str },
-    MoneyballStatistic { key: String },
-    MoneyballRole { role_id: String },
+    JsonInteger {
+        column: &'static str,
+        key: String,
+    },
+    MoneyballContext {
+        column: &'static str,
+    },
+    MoneyballStatistic {
+        key: String,
+    },
+    MoneyballRole {
+        role_id: String,
+    },
     Position,
-    CurrentRole { role_id: &'static str },
-    PotentialRole { role_id: &'static str },
+    CurrentRole {
+        role_id: &'static str,
+        column: String,
+    },
+    PotentialRole {
+        role_id: &'static str,
+        column: String,
+    },
     ClubDna,
 }
 
 impl MetricSource {
     fn current_role_id(&self) -> Option<&'static str> {
         match self {
-            Self::CurrentRole { role_id } => Some(role_id),
+            Self::CurrentRole { role_id, .. } => Some(role_id),
             _ => None,
         }
     }
@@ -184,21 +195,21 @@ impl MetricField {
             });
         }
         if let Some(role_id) = field.strip_prefix("role.") {
+            let role_id = catalog_role_id(role_id)?;
+            let column = player_current_column(role_id)?.to_string();
             return Ok(Self {
                 id: field.to_string(),
                 kind: MetricValueKind::Integer,
-                source: MetricSource::CurrentRole {
-                    role_id: catalog_role_id(role_id)?,
-                },
+                source: MetricSource::CurrentRole { role_id, column },
             });
         }
         if let Some(role_id) = field.strip_prefix("potential_role.") {
+            let role_id = catalog_role_id(role_id)?;
+            let column = player_potential_column(role_id)?;
             return Ok(Self {
                 id: field.to_string(),
                 kind: MetricValueKind::Integer,
-                source: MetricSource::PotentialRole {
-                    role_id: catalog_role_id(role_id)?,
-                },
+                source: MetricSource::PotentialRole { role_id, column },
             });
         }
         if moneyball {
@@ -245,17 +256,9 @@ impl MetricField {
 
     pub fn potential_role_id(&self) -> Option<&'static str> {
         match self.source {
-            MetricSource::PotentialRole { role_id } => Some(role_id),
+            MetricSource::PotentialRole { role_id, .. } => Some(role_id),
             _ => None,
         }
-    }
-
-    pub fn potential_role_sort_identity(&self) -> Option<PotentialRoleSortIdentity> {
-        self.potential_role_id()
-            .map(|role_id| PotentialRoleSortIdentity {
-                role_id,
-                projection_model_version: PROJECTION_MODEL_VERSION,
-            })
     }
 
     pub fn current_role_id(&self) -> Option<&'static str> {
@@ -314,12 +317,9 @@ impl MetricField {
             MetricSource::Position => format!(
                 "COALESCE((SELECT group_concat(position_key, ', ') FROM (SELECT entry.key AS position_key FROM json_each({player_alias}.positions_json) AS entry WHERE entry.type = 'integer' AND entry.value > 0 ORDER BY entry.value DESC, {POSITION_DISPLAY_ORDER_SQL}, entry.key ASC)), '')"
             ),
-            MetricSource::CurrentRole { role_id } => format!(
-                "(SELECT prs.score FROM player_role_scores prs WHERE prs.snapshot_id = {player_alias}.snapshot_id AND prs.uid = {player_alias}.uid AND prs.role_id = '{role_id}')"
-            ),
-            MetricSource::PotentialRole { role_id } => format!(
-                "(SELECT pprs.score FROM player_potential_role_scores pprs WHERE pprs.snapshot_id = {player_alias}.snapshot_id AND pprs.uid = {player_alias}.uid AND pprs.role_id = '{role_id}' AND pprs.projection_model_version = {PROJECTION_MODEL_VERSION})"
-            ),
+            MetricSource::CurrentRole { column, .. } | MetricSource::PotentialRole { column, .. } => {
+                format!("{PLAYER_METRICS_ALIAS}.{column}")
+            }
             MetricSource::ClubDna => club_dna_bindings
                 .map(|bindings| bindings.score_expression(player_alias))
                 .unwrap_or_else(|| "NULL".to_string()),
@@ -544,20 +544,27 @@ mod tests {
     }
 
     #[test]
-    fn exposes_validated_potential_role_sort_identity() {
-        let metric = MetricField::parse("potential_role.line_holding_keeper_oop")
+    fn resolves_validated_role_metrics_to_trusted_compact_columns() {
+        let current =
+            MetricField::parse("role.deep_lying_playmaker_ip").expect("parse current role metric");
+        let potential = MetricField::parse("potential_role.line_holding_keeper_oop")
             .expect("parse potential role metric");
 
         assert_eq!(
-            metric.potential_role_sort_identity(),
-            Some(PotentialRoleSortIdentity {
-                role_id: "line_holding_keeper_oop",
-                projection_model_version: PROJECTION_MODEL_VERSION,
-            })
+            current.sql_expression("players"),
+            "player_metrics.deep_lying_playmaker_ip"
+        );
+        assert_eq!(
+            potential.sql_expression("players"),
+            "player_metrics.potential_line_holding_keeper_oop"
+        );
+        assert_eq!(
+            potential.potential_role_id(),
+            Some("line_holding_keeper_oop")
         );
         assert!(MetricField::parse("ca")
             .expect("parse scalar metric")
-            .potential_role_sort_identity()
+            .potential_role_id()
             .is_none());
     }
 

@@ -1,6 +1,9 @@
 use rusqlite::{params, Connection, OptionalExtension, Row, Transaction};
 
-use crate::features::{academy::service as academy_service, player_metrics::potential_scores};
+use crate::features::{
+    academy::service as academy_service, player_metrics::potential_scores,
+    staff::scoring as staff_scoring,
+};
 
 use super::query::get_snapshot_metadata;
 
@@ -432,6 +435,12 @@ pub(crate) fn select_current_snapshot(
         previous_snapshot_id,
         current_snapshot_id,
     )?;
+    staff_scoring::reconcile_current_selection(
+        tx,
+        save_id,
+        previous_snapshot_id,
+        current_snapshot_id,
+    )?;
 
     Ok(current_snapshot_id)
 }
@@ -498,7 +507,7 @@ mod tests {
     use crate::db::migrations;
     use crate::features::{
         player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
-        scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
+        scoring::catalog::DUMP_ATTRIBUTE_KEYS,
     };
     use rusqlite::params;
     use std::path::Path;
@@ -559,6 +568,26 @@ mod tests {
         .expect("insert player");
     }
 
+    fn insert_staff_record(conn: &Connection, snapshot_id: i64, uid: i64) {
+        conn.execute(
+            "INSERT INTO staff (
+                snapshot_id, uid, name, birth_year, birth_day_of_year, age,
+                nationalities_json, nation_uid, gender, ca, pa, staff_attributes_json,
+                job_id, weekly_wage_gbp, contract_expiry_year, contract_expiry_day_of_year,
+                club, division
+             ) VALUES (
+                ?1, ?2, 'Compact staff', 1990, 1, 35, '[]', NULL, 'unknown', 100, 140, ?3,
+                NULL, NULL, NULL, NULL, NULL, NULL
+             )",
+            params![
+                snapshot_id,
+                uid,
+                crate::features::staff::scoring::test_support::all_ten_attributes_json()
+            ],
+        )
+        .expect("insert staff record");
+    }
+
     fn potential_state(conn: &Connection, snapshot_id: i64) -> (Option<String>, Option<i64>, i64) {
         let fields = conn
             .query_row(
@@ -568,25 +597,36 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .expect("read projected player fields");
-        let score_count = conn
-            .query_row(
-                "SELECT COUNT(*) FROM player_potential_role_scores WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .expect("count potential score rows");
-        (fields.0, fields.1, score_count)
+        let compact_count =
+            crate::features::player_metrics::compact::test_support::count_rows(conn, snapshot_id);
+        (fields.0, fields.1, compact_count)
     }
 
     fn assert_complete_potential_state(conn: &Connection, snapshot_id: i64) {
         let state = potential_state(conn, snapshot_id);
         assert!(state.0.is_some());
         assert_eq!(state.1, Some(PROJECTION_MODEL_VERSION));
-        assert_eq!(state.2, all_roles().len() as i64);
+        assert_eq!(state.2, 1);
     }
 
     fn assert_empty_potential_state(conn: &Connection, snapshot_id: i64) {
         assert_eq!(potential_state(conn, snapshot_id), (None, None, 0));
+    }
+
+    fn compact_row_count(conn: &Connection, snapshot_id: i64) -> i64 {
+        crate::features::player_metrics::compact::test_support::count_rows(conn, snapshot_id)
+    }
+
+    fn staff_compact_row(
+        conn: &Connection,
+        snapshot_id: i64,
+        uid: i64,
+    ) -> Option<crate::features::staff::scoring::test_support::CompactStaffRowShape> {
+        crate::features::staff::scoring::test_support::read_row(conn, snapshot_id, uid)
+    }
+
+    fn staff_compact_row_count(conn: &Connection, snapshot_id: i64) -> i64 {
+        crate::features::staff::scoring::test_support::count_rows(conn, snapshot_id)
     }
 
     fn deny_potential_writes(conn: &Connection) {
@@ -594,12 +634,18 @@ mod tests {
             "CREATE TRIGGER deny_projected_player_updates
              BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
              BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_inserts
-             BEFORE INSERT ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_deletes
-             BEFORE DELETE ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;",
+             CREATE TRIGGER deny_compact_row_inserts
+             BEFORE INSERT ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact row writes are forbidden'); END;
+             CREATE TRIGGER deny_compact_row_deletes
+             BEFORE DELETE ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact row writes are forbidden'); END;
+             CREATE TRIGGER deny_staff_compact_row_inserts
+             BEFORE INSERT ON staff_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'staff compact row writes are forbidden'); END;
+             CREATE TRIGGER deny_staff_compact_row_deletes
+             BEFORE DELETE ON staff_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'staff compact row writes are forbidden'); END;",
         )
         .expect("deny potential writes");
     }
@@ -880,6 +926,8 @@ mod tests {
         );
         insert_player(&conn, historical, 77);
         insert_player(&conn, current, 77);
+        insert_staff_record(&conn, historical, 77);
+        insert_staff_record(&conn, current, 77);
         conn.execute(
             "INSERT INTO player_moneyball_stats (snapshot_id, player_uid, statistics_json)
              VALUES (?1, 77, '{}')",
@@ -907,6 +955,10 @@ mod tests {
         select_current_snapshot_for_test(&mut conn, save.id);
         assert_empty_potential_state(&conn, historical);
         assert_complete_potential_state(&conn, current);
+        assert_eq!(compact_row_count(&conn, historical), 0);
+        assert_eq!(compact_row_count(&conn, current), 1);
+        assert_eq!(staff_compact_row_count(&conn, historical), 0);
+        assert_eq!(staff_compact_row_count(&conn, current), 1);
         let current_potential_state = potential_state(&conn, current);
         deny_potential_writes(&conn);
 
@@ -917,6 +969,10 @@ mod tests {
         assert_eq!(result.current_snapshot_id, Some(current));
         assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
         assert_eq!(potential_state(&conn, current), current_potential_state);
+        assert_eq!(compact_row_count(&conn, current), 1);
+        assert_eq!(compact_row_count(&conn, historical), 0);
+        assert_eq!(staff_compact_row_count(&conn, current), 1);
+        assert_eq!(staff_compact_row_count(&conn, historical), 0);
         assert_eq!(
             conn.query_row(
                 "SELECT COUNT(*) FROM players WHERE snapshot_id = ?1",
@@ -993,6 +1049,8 @@ mod tests {
         );
         insert_player(&conn, promoted, 77);
         insert_player(&conn, current, 77);
+        insert_staff_record(&conn, promoted, 88);
+        insert_staff_record(&conn, current, 88);
         conn.execute(
             "INSERT INTO club_dna_scores (
                 snapshot_id, uid, definition_version, score_model_version, score
@@ -1003,6 +1061,10 @@ mod tests {
         select_current_snapshot_for_test(&mut conn, save.id);
         assert_empty_potential_state(&conn, promoted);
         assert_complete_potential_state(&conn, current);
+        assert_eq!(compact_row_count(&conn, promoted), 0);
+        assert_eq!(compact_row_count(&conn, current), 1);
+        assert_eq!(staff_compact_row_count(&conn, promoted), 0);
+        assert_eq!(staff_compact_row_count(&conn, current), 1);
         conn.execute_batch(
             "CREATE TRIGGER reject_club_dna_backfill
              BEFORE INSERT ON club_dna_scores
@@ -1023,6 +1085,19 @@ mod tests {
         assert_eq!(promoted_result.current_snapshot_id, Some(promoted));
         assert_eq!(current_snapshot_id(&conn, save.id), Some(promoted));
         assert_complete_potential_state(&conn, promoted);
+        assert_eq!(compact_row_count(&conn, promoted), 1);
+        assert_eq!(staff_compact_row_count(&conn, promoted), 1);
+        let (staff_version, staff_scores) =
+            staff_compact_row(&conn, promoted, 88).expect("promoted staff compact row");
+        assert_eq!(
+            staff_version,
+            crate::features::staff::scoring::SCORE_MODEL_VERSION
+        );
+        assert_eq!(staff_scores.len(), 21);
+        assert!(
+            staff_scores.iter().all(|score| *score == Some(50)),
+            "promotion recalculates every role from the retained attributes"
+        );
         assert_eq!(
             conn.query_row(
                 "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1",
@@ -1063,14 +1138,163 @@ mod tests {
             delete_snapshot(&mut conn, promoted, &promoted_token).expect("delete final snapshot");
         assert_eq!(final_result.current_snapshot_id, None);
         assert_eq!(current_snapshot_id(&conn, save.id), None);
+
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| row
+                .get::<_, i64>(0),)
+                .expect("count final compact rows"),
+            0
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM staff_role_metrics", [], |row| row
+                .get::<_, i64>(0),)
+                .expect("count final staff compact rows"),
+            0
+        );
+    }
+
+    #[test]
+    fn promoted_snapshot_compact_materialization_failure_rolls_back_current_deletion() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("promote-compact-rollback.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let promoted = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-05-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        let current = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2027-05-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        insert_player(&conn, promoted, 77);
+        insert_player(&conn, current, 77);
+        select_current_snapshot_for_test(&mut conn, save.id);
+        assert_eq!(compact_row_count(&conn, current), 1);
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER reject_promoted_compact_rows
+             BEFORE INSERT ON player_role_metrics
+             WHEN NEW.snapshot_id = {promoted}
+             BEGIN SELECT RAISE(ABORT, 'promoted compact writes fail'); END;",
+            promoted = promoted
+        ))
+        .expect("reject promoted compact rows");
+
+        let current_token = snapshot_token(&conn, current);
+        assert!(delete_snapshot(&mut conn, current, &current_token)
+            .expect_err("roll back promoted compact materialization")
+            .contains("promoted compact writes fail"));
+
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+        assert_eq!(compact_row_count(&conn, current), 1);
+        assert_eq!(compact_row_count(&conn, promoted), 0);
+        assert!(!snapshot_token(&conn, promoted).is_empty());
+        assert!(!snapshot_token(&conn, current).is_empty());
+    }
+
+    #[test]
+    fn promoted_snapshot_staff_compact_materialization_failure_rolls_back_current_deletion() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("promote-staff-compact-rollback.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let promoted = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-05-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        let current = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2027-05-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        insert_staff_record(&conn, promoted, 88);
+        insert_staff_record(&conn, current, 99);
+        select_current_snapshot_for_test(&mut conn, save.id);
+        assert_eq!(staff_compact_row_count(&conn, current), 1);
+        assert_eq!(staff_compact_row_count(&conn, promoted), 0);
+        let prior_current_row = staff_compact_row(&conn, current, 99).expect("current compact row");
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER reject_promoted_staff_compact_rows
+             BEFORE INSERT ON staff_role_metrics
+             WHEN NEW.snapshot_id = {promoted}
+             BEGIN SELECT RAISE(ABORT, 'promoted staff compact writes fail'); END;",
+            promoted = promoted
+        ))
+        .expect("reject promoted staff compact rows");
+
+        let current_token = snapshot_token(&conn, current);
+        assert!(delete_snapshot(&mut conn, current, &current_token)
+            .expect_err("roll back promoted staff compact materialization")
+            .contains("promoted staff compact writes fail"));
+
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+        assert_eq!(
+            staff_compact_row(&conn, current, 99),
+            Some(prior_current_row),
+            "the previously visible current compact row must survive byte-for-byte"
+        );
+        assert_eq!(staff_compact_row_count(&conn, promoted), 0);
+        assert!(!snapshot_token(&conn, promoted).is_empty());
+        assert!(!snapshot_token(&conn, current).is_empty());
+    }
+
+    #[test]
+    fn wrong_staff_compact_model_version_is_rejected_without_writes() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("staff-compact-wrong-version.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let current = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2027-05-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        insert_staff_record(&conn, current, 99);
+        select_current_snapshot_for_test(&mut conn, save.id);
+        assert_eq!(
+            staff_compact_row(&conn, current, 99)
+                .expect("compact row")
+                .0,
+            crate::features::staff::scoring::SCORE_MODEL_VERSION
+        );
+        conn.execute(
+            "UPDATE staff_role_metrics SET score_model_version = 2
+             WHERE snapshot_id = ?1",
+            [current],
+        )
+        .expect("corrupt the model version");
+
+        let error = crate::features::staff::scoring::assert_snapshot_complete(&conn, current)
+            .expect_err("wrong score model version must be rejected");
+        assert!(error.contains("incomplete"));
+        // The corrupted row is still there untouched: the rejection is a
+        // read-side guard, not a repair run.
         assert_eq!(
             conn.query_row(
-                "SELECT COUNT(*) FROM player_potential_role_scores",
-                [],
+                "SELECT score_model_version FROM staff_role_metrics
+                 WHERE snapshot_id = ?1",
+                [current],
                 |row| row.get::<_, i64>(0),
             )
-            .expect("count final potential rows"),
-            0
+            .expect("read corrupted version"),
+            crate::features::staff::scoring::SCORE_MODEL_VERSION + 1
         );
     }
 
@@ -1100,16 +1324,16 @@ mod tests {
         select_current_snapshot_for_test(&mut conn, save.id);
         let current_potential_state = potential_state(&conn, current);
         conn.execute_batch(
-            "CREATE TRIGGER reject_promoted_potential_rows
-             BEFORE INSERT ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'promoted potential writes fail'); END;",
+            "CREATE TRIGGER reject_promoted_compact_rows
+             BEFORE INSERT ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'promoted compact writes fail'); END;",
         )
         .expect("reject promoted potential rows");
 
         let current_token = snapshot_token(&conn, current);
         assert!(delete_snapshot(&mut conn, current, &current_token)
             .expect_err("roll back promoted snapshot materialization")
-            .contains("promoted potential writes fail"));
+            .contains("promoted compact writes fail"));
 
         assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
         assert_eq!(potential_state(&conn, current), current_potential_state);
@@ -1141,10 +1365,16 @@ mod tests {
         );
         insert_player(&conn, first_snapshot, 77);
         insert_player(&conn, second_snapshot, 88);
+        insert_staff_record(&conn, first_snapshot, 77);
+        insert_staff_record(&conn, second_snapshot, 88);
         select_current_snapshot_for_test(&mut conn, first_save.id);
         select_current_snapshot_for_test(&mut conn, second_save.id);
         assert_complete_potential_state(&conn, first_snapshot);
         assert_complete_potential_state(&conn, second_snapshot);
+        assert_eq!(compact_row_count(&conn, first_snapshot), 1);
+        assert_eq!(compact_row_count(&conn, second_snapshot), 1);
+        assert_eq!(staff_compact_row_count(&conn, first_snapshot), 1);
+        assert_eq!(staff_compact_row_count(&conn, second_snapshot), 1);
         deny_potential_writes(&conn);
 
         let switched = set_active_save(&mut conn, second_save.id).expect("switch saves");
@@ -1158,6 +1388,10 @@ mod tests {
             current_snapshot_id(&conn, second_save.id),
             Some(second_snapshot)
         );
+        assert_eq!(compact_row_count(&conn, first_snapshot), 1);
+        assert_eq!(compact_row_count(&conn, second_snapshot), 1);
+        assert_eq!(staff_compact_row_count(&conn, first_snapshot), 1);
+        assert_eq!(staff_compact_row_count(&conn, second_snapshot), 1);
     }
 
     #[test]
@@ -1319,6 +1553,7 @@ mod tests {
             save
         );
         assert_eq!(current_snapshot_id(&conn, save.id), Some(snapshot));
+        assert_eq!(compact_row_count(&conn, snapshot), 1);
         let retained_player_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM players", [], |row| row.get(0))
             .expect("count retained players");
