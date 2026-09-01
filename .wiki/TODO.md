@@ -52,6 +52,8 @@ Items that are not actively planned but worth remembering belong in [BACKLOG.md]
 
 ## Active
 
+- [Compact Snapshot Metrics and Load Progress](./features/active/compact-snapshot-metrics.md) — replace normalized role-score rows with compact current-snapshot player and staff metrics in a fresh database generation, then add truthful command-scoped Load Data progress and detailed timings.
+
 ## Next
 
 - **Player gender data integrity and filtering** — investigate the memory-reader request and the bridge, dump, and ingest path to determine why representative stored rows contain only `gender = 'unknown'`. Plan a permanent Men / Women / Both Search filter only after representative snapshots contain trustworthy values.

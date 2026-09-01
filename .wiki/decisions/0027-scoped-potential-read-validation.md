@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded where [ADR-0028](./0028-compact-current-snapshot-metrics.md) retires normalized potential-role rows and their per-role completeness counts. Its principle remains: ordinary reads validate only the compact model/version and values they consume, while lifecycle writers own complete current-snapshot postconditions.
 
 ## Context
 

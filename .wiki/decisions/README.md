@@ -38,9 +38,10 @@ Use a short, numbered filename such as `0001-decision-title.md`.
 | [0022](./0022-explicit-release-preparation.md) | Explicit release preparation |
 | [0023](./0023-lazy-club-dna-score-cache.md) | Lazy persistent Club DNA score cache (superseded by ADR-0024) |
 | [0024](./0024-eager-persisted-club-dna-scores.md) | Eager persisted Club DNA scores |
-| [0025](./0025-selective-index-driven-player-sorts.md) | Selective index-driven player table sorts |
-| [0026](./0026-eager-current-potential-scoring.md) | Eager current-snapshot potential scoring |
-| [0027](./0027-scoped-potential-read-validation.md) | Scoped potential read validation |
+| [0025](./0025-selective-index-driven-player-sorts.md) | Selective index-driven player table sorts (score-relation representation amended by ADR-0028) |
+| [0026](./0026-eager-current-potential-scoring.md) | Eager current-snapshot potential scoring (superseded by ADR-0028) |
+| [0027](./0027-scoped-potential-read-validation.md) | Scoped potential read validation (normalized-row scope superseded by ADR-0028) |
+| [0028](./0028-compact-current-snapshot-metrics.md) | Compact current-snapshot player and staff metrics with a fresh database generation |
 
 ## ADR format
 
