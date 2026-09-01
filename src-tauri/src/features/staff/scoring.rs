@@ -199,6 +199,37 @@ pub fn all_staff_roles() -> &'static [StaffRoleDefinition] {
     STAFF_ROLES
 }
 
+/// Model version of the checked-in staff per-role score formula
+/// (`score_staff_role`).
+#[cfg_attr(not(test), allow(dead_code))]
+pub const SCORE_MODEL_VERSION: i64 = 1;
+
+/// Returns the compact `staff_role_metrics` column for a closed-catalog staff
+/// role. The column name is the verified role id; identifiers never come from
+/// WebView input.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn staff_role_column(role_id: &str) -> Result<&'static str, String> {
+    let role = all_staff_roles()
+        .iter()
+        .find(|role| role.role_id == role_id)
+        .ok_or_else(|| format!("unknown staff role: {role_id}"))?;
+    require_safe_snake_case(role.role_id)
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+fn require_safe_snake_case(identifier: &'static str) -> Result<&'static str, String> {
+    let safe = !identifier.is_empty()
+        && identifier.as_bytes()[0].is_ascii_lowercase()
+        && identifier
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_');
+    if safe {
+        Ok(identifier)
+    } else {
+        Err(format!("unsafe role identifier: {identifier}"))
+    }
+}
+
 pub fn score_staff_role(
     attributes: &HashMap<String, Option<u8>>,
     role: &StaffRoleDefinition,
@@ -484,5 +515,67 @@ mod tests {
             score_staff_role(&attrs(&[("Physiotherapy", Some(21))]), role("physio")),
             None
         );
+    }
+
+    #[test]
+    fn runtime_staff_catalog_maps_once_to_the_checked_in_compact_staff_schema() {
+        let roles = all_staff_roles();
+        assert_eq!(roles.len(), 21);
+        let columns = roles
+            .iter()
+            .map(|role| staff_role_column(role.role_id))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("map staff columns");
+        assert_eq!(
+            columns
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            21,
+            "staff columns must be unique per role"
+        );
+
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let conn = rusqlite::Connection::open(temp_dir.path().join("compact-staff-contract.db"))
+            .expect("open contract test db");
+        crate::db::migrations::apply(&conn).expect("apply migrations");
+        let mut statement = conn
+            .prepare("SELECT name FROM pragma_table_info(?1) ORDER BY cid")
+            .expect("prepare table info query");
+        let schema = statement
+            .query_map(["staff_role_metrics"], |row| row.get(0))
+            .expect("query table info")
+            .collect::<Result<Vec<String>, _>>()
+            .expect("read table columns");
+
+        let expected = ["snapshot_id", "uid", "score_model_version"]
+            .into_iter()
+            .map(str::to_string)
+            .chain(columns.into_iter().map(str::to_string))
+            .collect::<Vec<_>>();
+        assert_eq!(schema.len(), 24);
+        assert_eq!(schema, expected);
+
+        // The version column rejects zero; writers persist exactly this
+        // checked-in score model version into it.
+        assert!([SCORE_MODEL_VERSION].iter().all(|version| *version > 0));
+    }
+
+    #[test]
+    fn rejects_unknown_or_unsafe_staff_role_identifiers() {
+        for id in [
+            "physiotherapist",
+            "Physio",
+            "Manager",
+            "set-piece-coach",
+            "1st_coach",
+            "",
+            "with space",
+            "coach!",
+            "camelCase",
+            "_leading_underscore",
+        ] {
+            assert!(staff_role_column(id).is_err(), "{id}");
+        }
     }
 }

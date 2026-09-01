@@ -152,7 +152,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 1 — Record the approved feature plan
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `docs(scoring): record compact metrics feature plan`
 
@@ -214,7 +214,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 2 — Create the fresh compact metric schema
 
-**Status:** Pending
+**Status:** Completed
 
 **Provisional commit:** `feat(db): create fresh compact metric schema`
 
@@ -273,7 +273,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 3 — Materialize current player metrics atomically
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(scoring): materialize current player metrics`
 
@@ -876,19 +876,19 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 **PR:** PR 1 — Compact active snapshot metrics
 
-**Commit:** Commit 1 — Record the approved feature plan
+**Commit:** Commit 3 — Materialize current player metrics atomically
 
 ### RED or removal proof
 
-Not applicable — independently reviewed planning documents only. `ledger_state.py`, `delivery_state.py` with the reviewed recorded fingerprint, `git diff --check` for the exact eight planning paths, and complete diff inspection prove the planning structure before checkpoint review.
+RED lifecycle tests for winner, non-winner, replacement, deletion promotion, exact null columns, model versions, and rollback fail while the recent compact schema and mapping exist but no writer routes to them yet.
 
 ### Expected outcome
 
-The eight approved planning paths contain one coherent schema 2 ledger, active TODO pointer, narrowed backlog item, and accepted ADR supersession. No implementation, test, configuration, Git, or GitHub state changes.
+Ingest, current-snapshot selection, deletion promotion, and supported player boost reconciliation maintain exactly one compact `player_role_metrics` row per current player with exact nulls and model versions; non-winning and historical snapshots keep no derived state; raw historical rows stay immutable; normalized writers remain as the temporary dual-write seam for unread consumers; `./scripts/dev check-rust` and `./scripts/dev check` pass.
 
 ### Explicit exclusions
 
-Implementation, tests, executable configuration, generated files, branches beyond separately authorized activation, staging before checkpoint, commits, GitHub, and unrelated documentation.
+Player reader cutover, staff metrics, final normalized cleanup, preparation outside the mutex, progress, and any changed scoring formula.
 
 ## Discoveries and replanning
 
@@ -900,6 +900,8 @@ Implementation, tests, executable configuration, generated files, branches beyon
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| PR 1 — Compact active snapshot metrics | Commit 1 — Record the approved feature plan | 43ade8c1e63640158b7b42f2b1e3b8c2bd9d852f | Recorded the reviewed schema 2 ledger, active TODO pointer, narrowed backlog item, and ADR supersession on the authorized branch. | `ledger_state.py` runnable, `delivery_state.py` runnable with recorded fingerprint ffd74f8f3bc4d94484b753ac12a5d35874bc547e34fd9f1362ab6ba1d575dfaf, `git diff --check` clean on the eight planning paths, independent blank-slate plan review clear, checkpoint review clear. | Not applicable | Clear | 0 | None |
+| PR 1 — Compact active snapshot metrics | Commit 2 — Create the fresh compact metric schema | Pending record | Fresh `app-v2.db` filename with never-touches-`app.db` proof, immutable checked-in compact migration v38 with the exact 68/68/21 column inventory plus row/model/check/foreign-key constraints and no per-role indexes, closed-catalog safe snake_case mapping owners, schema/model contract parity tests, README cleanup guidance, normalized tables retained as the temporary seam. | `./scripts/dev check-rust` passed (694 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check -- README.md` clean, independent review clear, catalog parity cross-checked against the 68-player/21-staff catalogs. | Pass | Clear | 0 | None |
 
 ## Final validation
 

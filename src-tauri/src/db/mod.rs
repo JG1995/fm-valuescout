@@ -7,7 +7,10 @@ use rusqlite::Connection;
 use tauri::{AppHandle, Manager};
 
 /// SQLite filename under `app_data_dir`.
-pub const APP_DB_FILE: &str = "app.db";
+///
+/// The compact-metric generation uses a fresh file so the legacy `app.db` is
+/// never opened, migrated, or converted.
+pub const APP_DB_FILE: &str = "app-v2.db";
 
 /// Shared rusqlite connection for IPC commands.
 pub struct Db(pub Mutex<Connection>);
@@ -48,5 +51,34 @@ mod tests {
             .pragma_query_value(None, "foreign_keys", |row| row.get(0))
             .expect("read foreign_keys");
         assert_eq!(foreign_keys, 1);
+    }
+
+    #[test]
+    fn app_database_filename_targets_only_the_fresh_v2_generation() {
+        assert_eq!(APP_DB_FILE, "app-v2.db");
+        assert_ne!(APP_DB_FILE, "app.db");
+    }
+
+    #[test]
+    fn opening_the_v2_database_applies_the_compact_metrics_schema() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = open(&temp_dir.path().join(APP_DB_FILE)).expect("open fresh v2 database");
+        let conn = db.0.into_inner().expect("unlock db");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("read schema version");
+        assert_eq!(version, migrations::latest_version());
+
+        let compact_tables: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type = 'table'
+                   AND name IN ('player_role_metrics', 'staff_role_metrics')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count compact metric tables");
+        assert_eq!(compact_tables, 2);
     }
 }
