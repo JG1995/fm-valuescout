@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 #[cfg(test)]
 use std::cell::Cell;
@@ -324,57 +324,6 @@ pub(crate) fn assert_current_snapshot_complete(
         Err("Current potential snapshot is incomplete".to_string())
     } else {
         Ok(())
-    }
-}
-
-/// Verifies only the persisted role rows required by a product query.
-pub(crate) fn assert_snapshot_roles_complete(
-    conn: &Connection,
-    snapshot_id: i64,
-    role_ids: &[String],
-) -> Result<(), String> {
-    let role_ids = role_ids.iter().map(String::as_str).collect::<BTreeSet<_>>();
-    if role_ids.is_empty() {
-        return Ok(());
-    }
-
-    let role_placeholders = (3..role_ids.len() + 3)
-        .map(|index| format!("?{index}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let sql = format!(
-        "SELECT
-             (SELECT COUNT(*) FROM players WHERE snapshot_id = ?1),
-             COUNT(*)
-         FROM player_potential_role_scores
-         WHERE snapshot_id = ?1
-           AND projection_model_version = ?2
-           AND role_id IN ({role_placeholders})"
-    );
-    let mut values = vec![
-        Value::Integer(snapshot_id),
-        Value::Integer(PROJECTION_MODEL_VERSION),
-    ];
-    values.extend(
-        role_ids
-            .iter()
-            .map(|role_id| Value::Text((*role_id).to_string())),
-    );
-    let (player_count, score_count): (i64, i64) = conn
-        .query_row(&sql, params_from_iter(values.iter()), |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })
-        .map_err(|error| error.to_string())?;
-    let role_count = i64::try_from(role_ids.len())
-        .map_err(|_| "Potential role count is out of range".to_string())?;
-    let expected_score_count = player_count
-        .checked_mul(role_count)
-        .ok_or_else(|| "Potential score count is out of range".to_string())?;
-
-    if score_count == expected_score_count {
-        Ok(())
-    } else {
-        Err("Current potential snapshot is incomplete".to_string())
     }
 }
 
@@ -1006,26 +955,6 @@ mod tests {
             .expect("start assertion transaction");
         assert_current_snapshot_complete(&tx, snapshot_id).expect("complete current snapshot");
         tx.commit().expect("commit read-only assertion");
-    }
-
-    #[test]
-    fn requested_role_assertion_ignores_other_catalog_roles() {
-        let (conn, snapshot_id) = snapshot_with_persisted_scores();
-        let requested_role = all_roles()[0].role_id.to_string();
-        let missing_role = all_roles()[1].role_id.to_string();
-        conn.execute(
-            "DELETE FROM player_potential_role_scores
-             WHERE snapshot_id = ?1 AND uid = 42 AND role_id = ?2",
-            params![snapshot_id, missing_role],
-        )
-        .expect("delete unrequested role");
-
-        assert_snapshot_roles_complete(&conn, snapshot_id, &[requested_role])
-            .expect("validate only the requested role");
-        assert_eq!(
-            assert_snapshot_roles_complete(&conn, snapshot_id, &[missing_role]),
-            Err("Current potential snapshot is incomplete".to_string())
-        );
     }
 
     #[test]

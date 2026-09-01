@@ -3,6 +3,9 @@ use std::collections::BTreeMap;
 use rusqlite::types::Value;
 
 use crate::features::moneyball::is_moneyball_statistic_key;
+use crate::features::player_metrics::compact::{
+    player_current_column, player_potential_column, PLAYER_METRICS_ALIAS,
+};
 use crate::features::player_metrics::resolver::{
     attribute_key, catalog_role_id, hidden_attribute_key, is_moneyball_search_field,
     moneyball_context_column, parse_moneyball_role_id, personality_key, ClubDnaSqlBindings,
@@ -90,7 +93,7 @@ enum FieldKind {
     },
     /// Positive position familiarity / exact key match against `positions_json`.
     PositionPresence,
-    /// Integer score from `player_role_scores` for a catalog `role_id`.
+    /// Integer score from the one compact `player_role_metrics` row for a catalog `role_id`.
     RoleScore {
         role_id: String,
     },
@@ -113,6 +116,21 @@ pub fn potential_role_ids_from_ast(ast: &FilterAst) -> Result<Vec<String>, Strin
     let mut role_ids = Vec::new();
     for rule in &ast.rules {
         let Some(role_id) = rule.field.strip_prefix("potential_role.") else {
+            continue;
+        };
+        let role_id = catalog_role_id(role_id)?;
+        if !role_ids.iter().any(|existing| existing == role_id) {
+            role_ids.push(role_id.to_string());
+        }
+    }
+    Ok(role_ids)
+}
+
+/// Unique current role ids from an AST, in first-seen order.
+pub fn current_role_ids_from_ast(ast: &FilterAst) -> Result<Vec<String>, String> {
+    let mut role_ids = Vec::new();
+    for rule in &ast.rules {
+        let Some(role_id) = rule.field.strip_prefix("role.") else {
             continue;
         };
         let role_id = catalog_role_id(role_id)?;
@@ -520,15 +538,12 @@ fn compile_role_score_rule(
         "neq" => "!=",
         _ => return Err(format!("invalid integer filter operator: {op}")),
     };
-    let role_placeholder = next_placeholder(next_index);
     let score_placeholder = next_placeholder(next_index);
+    let column = player_current_column(role_id)?;
     let clause = format!(
-        "EXISTS (SELECT 1 FROM player_role_scores prs WHERE prs.snapshot_id = players.snapshot_id AND prs.uid = players.uid AND prs.role_id = {role_placeholder} AND prs.score IS NOT NULL AND prs.score {compare} {score_placeholder})"
+        "({PLAYER_METRICS_ALIAS}.{column} {compare} {score_placeholder} AND {PLAYER_METRICS_ALIAS}.{column} IS NOT NULL)"
     );
-    Ok((
-        clause,
-        vec![Value::Text(role_id.to_string()), Value::Integer(number)],
-    ))
+    Ok((clause, vec![Value::Integer(number)]))
 }
 
 fn compile_club_dna_score_rule(
@@ -567,16 +582,12 @@ fn compile_potential_role_score_rule(
         "neq" => "!=",
         _ => return Err(format!("invalid integer filter operator: {op}")),
     };
-    let role_placeholder = next_placeholder(next_index);
     let score_placeholder = next_placeholder(next_index);
+    let column = player_potential_column(role_id)?;
     let clause = format!(
-        "EXISTS (SELECT 1 FROM player_potential_role_scores pprs WHERE pprs.snapshot_id = players.snapshot_id AND pprs.uid = players.uid AND pprs.role_id = {role_placeholder} AND pprs.projection_model_version = {} AND pprs.score IS NOT NULL AND pprs.score {compare} {score_placeholder})",
-        crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
+        "({PLAYER_METRICS_ALIAS}.{column} {compare} {score_placeholder} AND {PLAYER_METRICS_ALIAS}.{column} IS NOT NULL)"
     );
-    Ok((
-        clause,
-        vec![Value::Text(role_id.to_string()), Value::Integer(number)],
-    ))
+    Ok((clause, vec![Value::Integer(number)]))
 }
 
 fn json_extract_expr(column: &str, key: &str) -> String {
@@ -1287,7 +1298,7 @@ mod tests {
     }
 
     #[test]
-    fn compiles_role_score_filter_via_player_role_scores() {
+    fn compiles_role_score_filter_via_the_compact_metrics_join() {
         let ast = parse_filter_ast(
             vec![rule(
                 "role.deep_lying_playmaker_ip",
@@ -1299,23 +1310,14 @@ mod tests {
         .expect("parse ast");
 
         let compiled = compile_filters(&ast, 2).expect("compile role score");
-        assert!(
-            compiled.sql.contains("player_role_scores"),
-            "expected role-score join/subquery, got {}",
-            compiled.sql
-        );
-        assert!(
-            compiled.sql.contains("prs.role_id = ?2"),
-            "expected bound role_id placeholder, got {}",
-            compiled.sql
-        );
-        assert!(compiled.sql.contains("IS NOT NULL"));
         assert_eq!(
-            compiled.params,
-            vec![
-                Value::Text("deep_lying_playmaker_ip".to_string()),
-                Value::Integer(70),
-            ]
+            compiled.sql,
+            "((player_metrics.deep_lying_playmaker_ip > ?2 AND player_metrics.deep_lying_playmaker_ip IS NOT NULL))"
+        );
+        assert_eq!(compiled.params, vec![Value::Integer(70)]);
+        assert_eq!(
+            current_role_ids_from_ast(&ast).expect("extract roles"),
+            ["deep_lying_playmaker_ip"]
         );
     }
 
@@ -1337,7 +1339,7 @@ mod tests {
     }
 
     #[test]
-    fn compiles_potential_role_score_filter_via_versioned_rows() {
+    fn compiles_potential_role_score_filter_via_the_compact_metrics_join() {
         let ast = parse_filter_ast(
             vec![rule(
                 "potential_role.goalkeeper_ip",
@@ -1349,16 +1351,11 @@ mod tests {
         .expect("parse ast");
 
         let compiled = compile_filters(&ast, 2).expect("compile");
-        assert!(
-            compiled.sql.contains("player_potential_role_scores"),
-            "expected potential score SQL, got {}",
-            compiled.sql
-        );
-        assert!(compiled.sql.contains("projection_model_version = 2"));
         assert_eq!(
-            compiled.params,
-            vec![Value::Text("goalkeeper_ip".to_string()), Value::Integer(70),]
+            compiled.sql,
+            "((player_metrics.potential_goalkeeper_ip > ?2 AND player_metrics.potential_goalkeeper_ip IS NOT NULL))"
         );
+        assert_eq!(compiled.params, vec![Value::Integer(70)]);
         assert_eq!(
             potential_role_ids_from_ast(&ast).expect("extract roles"),
             ["goalkeeper_ip"]

@@ -32,6 +32,90 @@ pub fn player_potential_column(role_id: &str) -> Result<String, String> {
     Ok(format!("potential_{}", validated_player_role(role_id)?))
 }
 
+/// Fixed SQL alias of the one compact player metric row joined per current
+/// player when a query reads role metrics.
+pub const PLAYER_METRICS_ALIAS: &str = "player_metrics";
+
+/// Builds the one-to-one compact player metrics join for the role kinds a
+/// read consumes. Model-version predicates make only rows with the exact
+/// checked-in versions readable, so a wrong-version row never contributes a
+/// value; a missing row stays NULL through the LEFT JOIN.
+pub fn player_metrics_join(
+    player_alias: &str,
+    require_score_model: bool,
+    require_projection_model: bool,
+) -> String {
+    let mut predicates = vec![
+        format!("{PLAYER_METRICS_ALIAS}.snapshot_id = {player_alias}.snapshot_id"),
+        format!("{PLAYER_METRICS_ALIAS}.uid = {player_alias}.uid"),
+    ];
+    if require_score_model {
+        predicates.push(format!(
+            "{PLAYER_METRICS_ALIAS}.score_model_version = {SCORE_MODEL_VERSION}"
+        ));
+    }
+    if require_projection_model {
+        predicates.push(format!(
+            "{PLAYER_METRICS_ALIAS}.projection_model_version = {PROJECTION_MODEL_VERSION}"
+        ));
+    }
+    format!(
+        " LEFT JOIN player_role_metrics {PLAYER_METRICS_ALIAS} ON {}",
+        predicates.join(" AND ")
+    )
+}
+
+/// Scoped read validation: every current player must have one compact row
+/// carrying each model version a read consumes — the checked-in score model
+/// for current role requests and the checked-in projection model for
+/// potential role requests. Missing or wrong-version state fails before
+/// values are read; a read never writes or repairs.
+pub(crate) fn assert_read_models_complete(
+    conn: &Connection,
+    snapshot_id: i64,
+    require_score_model: bool,
+    require_projection_model: bool,
+) -> Result<(), String> {
+    if !require_score_model && !require_projection_model {
+        return Ok(());
+    }
+    let mut model_predicates = Vec::new();
+    if require_score_model {
+        model_predicates.push(format!(
+            "{PLAYER_METRICS_ALIAS}.score_model_version = {SCORE_MODEL_VERSION}"
+        ));
+    }
+    if require_projection_model {
+        model_predicates.push(format!(
+            "{PLAYER_METRICS_ALIAS}.projection_model_version = {PROJECTION_MODEL_VERSION}"
+        ));
+    }
+    let sql = format!(
+        "SELECT EXISTS(
+             SELECT 1
+             FROM players p
+             LEFT JOIN player_role_metrics {PLAYER_METRICS_ALIAS}
+               ON {PLAYER_METRICS_ALIAS}.snapshot_id = p.snapshot_id
+              AND {PLAYER_METRICS_ALIAS}.uid = p.uid
+              AND {}
+             WHERE p.snapshot_id = ?1 AND {PLAYER_METRICS_ALIAS}.snapshot_id IS NULL
+         )",
+        model_predicates.join(" AND ")
+    );
+    let incomplete: bool = conn
+        .query_row(&sql, [snapshot_id], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    if incomplete {
+        Err(if require_projection_model {
+            "Current potential snapshot is incomplete".to_string()
+        } else {
+            "Current compact player snapshot is incomplete".to_string()
+        })
+    } else {
+        Ok(())
+    }
+}
+
 /// One catalog-ordered compact row to persist for a player: the 68 current
 /// scores in `all_roles()` order followed by the 68 potential scores in the
 /// same order. Values are SQL null when a required source attribute is missing.
@@ -298,6 +382,27 @@ mod tests {
         // checked-in model versions into them.
         let model_versions = [SCORE_MODEL_VERSION, PROJECTION_MODEL_VERSION];
         assert!(model_versions.iter().all(|version| *version > 0));
+    }
+
+    #[test]
+    fn player_metrics_join_uses_a_missing_preserving_one_to_one_relation_with_kind_versions() {
+        let current_only = player_metrics_join("players", true, false);
+        assert!(current_only.contains(" LEFT JOIN player_role_metrics player_metrics ON "));
+        assert!(current_only.contains("player_metrics.snapshot_id = players.snapshot_id"));
+        assert!(current_only.contains("player_metrics.uid = players.uid"));
+        assert!(current_only.contains("player_metrics.score_model_version = 1"));
+        assert!(!current_only.contains("projection_model_version"));
+
+        let potential_only = player_metrics_join("players", false, true);
+        assert!(potential_only.contains("player_metrics.snapshot_id = players.snapshot_id"));
+        assert!(potential_only.contains("player_metrics.projection_model_version = 2"));
+        assert!(!potential_only.contains("score_model_version"));
+
+        let both = player_metrics_join("players", true, true);
+        assert!(both.contains("player_metrics.score_model_version = 1"));
+        assert!(both.contains("player_metrics.projection_model_version = 2"));
+        assert!(!both.contains("LEFT JOIN player_role_scores"));
+        assert!(!both.contains("LEFT JOIN player_potential_role_scores"));
     }
 
     #[test]
