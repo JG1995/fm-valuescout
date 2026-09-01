@@ -7,6 +7,7 @@ use rusqlite::{
     params, params_from_iter, types::Value, Connection, OptionalExtension, Transaction,
 };
 
+use crate::features::player_metrics::compact;
 use crate::features::scoring::{
     catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
     projection::project_attributes,
@@ -39,16 +40,21 @@ fn project_attributes_call_count() -> usize {
     PROJECT_ATTRIBUTES_CALLS.with(Cell::get)
 }
 
-/// Rebuilds every potential-derived value for one snapshot.
+/// Rebuilds every potential-derived value for one snapshot: the current-only
+/// compact rows, the projected player attributes, and the temporary normalized
+/// potential rows that uncut readers still consume.
 pub(crate) fn rebuild_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
     require_current_snapshot(tx, snapshot_id)?;
     clear_snapshot(tx, snapshot_id)?;
     let players = load_players(tx, snapshot_id)?;
-    persist_players(tx, snapshot_id, &players)?;
+    let compact_rows = persist_players(tx, snapshot_id, &players)?;
+    compact::persist_rows(tx, snapshot_id, &compact_rows)?;
+    compact::assert_snapshot_complete(tx, snapshot_id)?;
     assert_current_snapshot_complete(tx, snapshot_id)
 }
 
-/// Replaces one player's potential-derived values after a source-player change.
+/// Replaces one player's compact row, projected attributes, and normalized
+/// potential rows after a source-player change.
 pub(crate) fn replace_player(
     tx: &Transaction<'_>,
     snapshot_id: i64,
@@ -69,12 +75,15 @@ pub(crate) fn replace_player(
         params![snapshot_id, player_uid],
     )
     .map_err(|error| error.to_string())?;
-    persist_players(tx, snapshot_id, &[player])?;
+    let compact_rows = persist_players(tx, snapshot_id, &[player])?;
+    compact::persist_rows(tx, snapshot_id, &compact_rows)?;
+    compact::assert_snapshot_complete(tx, snapshot_id)?;
     assert_current_snapshot_complete(tx, snapshot_id)
 }
 
-/// Clears potential-derived state for one snapshot.
+/// Clears compact rows and normalized potential-derived state for one snapshot.
 pub(crate) fn clear_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
+    compact::clear_snapshot(tx, snapshot_id)?;
     tx.execute(
         "DELETE FROM player_potential_role_scores WHERE snapshot_id = ?1",
         [snapshot_id],
@@ -90,11 +99,14 @@ pub(crate) fn clear_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(
     Ok(())
 }
 
-/// Clears potential-derived state from every retained snapshot in one save.
+/// Clears compact rows and normalized potential-derived state from every
+/// non-current snapshot of one save, so only the effective current snapshot
+/// keeps derived player state.
 pub(crate) fn clear_non_current_snapshots(
     tx: &Transaction<'_>,
     save_id: i64,
 ) -> Result<(), String> {
+    compact::clear_non_current_snapshots(tx, save_id)?;
     tx.execute(
         "DELETE FROM player_potential_role_scores
          WHERE snapshot_id IN (
@@ -131,7 +143,12 @@ pub(crate) fn reconcile_current_selection(
     Ok(())
 }
 
-/// Deletes the disposable cache and materializes each existing effective current snapshot.
+/// Legacy migration-34 hook that materializes normalized potential state for
+/// each existing effective current snapshot.
+///
+/// This path is deliberately seam-only: the compact table does not exist until
+/// migration 38, so a legacy upgrade cannot write compact rows here. Commit 8
+/// removes the hook together with the rest of the normalized seam.
 pub(crate) fn backfill_current_snapshots(tx: &Transaction<'_>) -> Result<(), String> {
     let save_ids = tx
         .prepare("SELECT id FROM saves ORDER BY id")
@@ -142,7 +159,7 @@ pub(crate) fn backfill_current_snapshots(tx: &Transaction<'_>) -> Result<(), Str
         .map_err(|error| error.to_string())?;
 
     for save_id in save_ids {
-        clear_non_current_snapshots(tx, save_id)?;
+        clear_seam_non_current_snapshots(tx, save_id)?;
         let current_snapshot_id = tx
             .query_row(
                 "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
@@ -152,10 +169,52 @@ pub(crate) fn backfill_current_snapshots(tx: &Transaction<'_>) -> Result<(), Str
             .optional()
             .map_err(|error| error.to_string())?;
         if let Some(snapshot_id) = current_snapshot_id {
-            rebuild_snapshot(tx, snapshot_id)?;
+            rebuild_seam_snapshot(tx, snapshot_id)?;
         }
     }
     Ok(())
+}
+
+fn clear_seam_non_current_snapshots(tx: &Transaction<'_>, save_id: i64) -> Result<(), String> {
+    tx.execute(
+        "DELETE FROM player_potential_role_scores
+         WHERE snapshot_id IN (
+             SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0
+         )",
+        [save_id],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE players
+         SET potential_attributes_json = NULL, potential_projection_model_version = NULL
+         WHERE snapshot_id IN (
+             SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0
+         )",
+        [save_id],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+/// Normalized-only materialization for one snapshot, used by the migration-34
+/// hook before the compact table exists (see `backfill_current_snapshots`).
+fn rebuild_seam_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
+    require_current_snapshot(tx, snapshot_id)?;
+    tx.execute(
+        "DELETE FROM player_potential_role_scores WHERE snapshot_id = ?1",
+        [snapshot_id],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE players
+         SET potential_attributes_json = NULL, potential_projection_model_version = NULL
+         WHERE snapshot_id = ?1",
+        [snapshot_id],
+    )
+    .map_err(|error| error.to_string())?;
+    let players = load_players(tx, snapshot_id)?;
+    persist_players(tx, snapshot_id, &players)?;
+    assert_current_snapshot_complete(tx, snapshot_id)
 }
 
 /// Verifies that an already-resolved current snapshot has complete persisted potential state.
@@ -381,7 +440,7 @@ fn persist_players(
     tx: &Transaction<'_>,
     snapshot_id: i64,
     players: &[PlayerForProjection],
-) -> Result<(), String> {
+) -> Result<Vec<compact::CompactPlayerRow>, String> {
     let mut attributes_statement = tx
         .prepare(
             "UPDATE players
@@ -396,6 +455,7 @@ fn persist_players(
              ) VALUES (?1, ?2, ?3, ?4, ?5)",
         )
         .map_err(|error| error.to_string())?;
+    let mut compact_rows = Vec::with_capacity(players.len());
 
     for player in players {
         let source_attributes = serde_json::from_str::<HashMap<String, Option<u8>>>(
@@ -450,19 +510,29 @@ fn persist_players(
                 PROJECTION_MODEL_VERSION,
             ])
             .map_err(|error| error.to_string())?;
+        let mut current_scores = Vec::with_capacity(all_roles().len());
+        let mut potential_scores = Vec::with_capacity(all_roles().len());
         for role in all_roles() {
+            let potential_score = score_role(&projected, role).map(i64::from);
             scores_statement
                 .execute(params![
                     snapshot_id,
                     player.uid,
                     role.role_id,
-                    score_role(&projected, role).map(i64::from),
+                    potential_score,
                     PROJECTION_MODEL_VERSION,
                 ])
                 .map_err(|error| error.to_string())?;
+            potential_scores.push(potential_score);
+            current_scores.push(score_role(&attributes, role).map(i64::from));
         }
+        compact_rows.push(compact::CompactPlayerRow {
+            uid: player.uid,
+            current_scores,
+            potential_scores,
+        });
     }
-    Ok(())
+    Ok(compact_rows)
 }
 
 #[cfg(test)]
@@ -530,6 +600,18 @@ mod tests {
         rebuild_snapshot(&tx, snapshot_id).expect("persist potential scores");
         tx.commit().expect("commit potential scores");
         (conn, snapshot_id)
+    }
+
+    fn compact_row(
+        conn: &Connection,
+        snapshot_id: i64,
+        uid: i64,
+    ) -> Option<crate::features::player_metrics::compact::test_support::CompactRowShape> {
+        crate::features::player_metrics::compact::test_support::read_row(conn, snapshot_id, uid)
+    }
+
+    fn compact_row_count(conn: &Connection, snapshot_id: i64) -> i64 {
+        crate::features::player_metrics::compact::test_support::count_rows(conn, snapshot_id)
     }
 
     type DerivedState = (Option<String>, Option<i64>, Vec<(String, Option<i64>, i64)>);
@@ -637,6 +719,139 @@ mod tests {
 
             assert_eq!(project_attributes_call_count(), expected_calls);
         }
+    }
+
+    #[test]
+    fn rebuild_writes_one_compact_row_per_player_with_exact_versions_and_values() {
+        let (conn, snapshot_id) = snapshot_with_persisted_scores();
+
+        assert_eq!(compact_row_count(&conn, snapshot_id), 1);
+        let state = derived_state(&conn, snapshot_id);
+        let projected = serde_json::from_str::<HashMap<String, Option<u8>>>(
+            state.0.as_deref().expect("persisted projected attributes"),
+        )
+        .expect("parse persisted projected attributes");
+        let raw_attributes = DUMP_ATTRIBUTE_KEYS
+            .iter()
+            .map(|key| ((*key).to_string(), Some(10_u8)))
+            .collect::<HashMap<_, _>>();
+
+        let (score_version, projection_version, current, potential) =
+            compact_row(&conn, snapshot_id, 42).expect("compact row for the materialized player");
+        assert_eq!(
+            score_version,
+            crate::features::player_metrics::compact::SCORE_MODEL_VERSION
+        );
+        assert_eq!(projection_version, PROJECTION_MODEL_VERSION);
+        for (index, role) in all_roles().iter().enumerate() {
+            assert_eq!(
+                current[index],
+                score_role(&raw_attributes, role).map(i64::from),
+                "current compact score for {}",
+                role.role_id
+            );
+            assert_eq!(
+                potential[index],
+                score_role(&projected, role).map(i64::from),
+                "potential compact score for {}",
+                role.role_id
+            );
+        }
+    }
+
+    #[test]
+    fn rebuild_persists_nullable_compact_scores_as_sql_null() {
+        let (conn, snapshot_id) = snapshot_with_players(&[42]);
+        let mut attributes =
+            serde_json::from_str::<HashMap<String, Option<u8>>>(&complete_attributes())
+                .expect("parse complete attributes");
+        attributes.insert("Composure".to_string(), None);
+        conn.execute(
+            "UPDATE players SET attributes_json = ?3 WHERE snapshot_id = ?1 AND uid = ?2",
+            params![
+                snapshot_id,
+                42,
+                serde_json::to_string(&attributes).expect("serialize nullable attributes")
+            ],
+        )
+        .expect("store nullable source attribute");
+
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start writer transaction");
+        rebuild_snapshot(&tx, snapshot_id).expect("persist potential and compact scores");
+        tx.commit().expect("commit potential scores");
+
+        let (score_version, projection_version, current, potential) =
+            compact_row(&conn, snapshot_id, 42).expect("compact row");
+        assert_eq!(
+            (score_version, projection_version),
+            (
+                crate::features::player_metrics::compact::SCORE_MODEL_VERSION,
+                PROJECTION_MODEL_VERSION
+            )
+        );
+        let affected_role = all_roles()
+            .iter()
+            .position(|role| role.role_id == "ball_playing_goalkeeper_ip")
+            .expect("role requiring Composure");
+        assert_eq!(potential[affected_role], None);
+        assert_eq!(current[affected_role], None);
+        let goalkeeper_role = all_roles()
+            .iter()
+            .position(|role| role.role_id == "goalkeeper_ip")
+            .expect("fully satisfied role");
+        assert_eq!(current[goalkeeper_role], Some(50));
+    }
+
+    #[test]
+    fn replace_player_replaces_only_that_players_compact_row() {
+        let (conn, snapshot_id) = snapshot_with_players(&[42, 43]);
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start writer transaction");
+        rebuild_snapshot(&tx, snapshot_id).expect("persist compact rows");
+        tx.commit().expect("commit initial materialization");
+
+        let other_before = compact_row(&conn, snapshot_id, 43).expect("row for unchanged player");
+        let upgraded_attributes = DUMP_ATTRIBUTE_KEYS
+            .iter()
+            .map(|key| ((*key).to_string(), Some(20_u8)))
+            .collect::<HashMap<_, _>>();
+        conn.execute(
+            "UPDATE players SET attributes_json = ?3 WHERE snapshot_id = ?1 AND uid = ?2",
+            params![
+                snapshot_id,
+                42,
+                serde_json::to_string(&upgraded_attributes).expect("serialize upgraded attributes")
+            ],
+        )
+        .expect("store upgraded source attributes");
+
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start replacement transaction");
+        replace_player(&tx, snapshot_id, 42).expect("replace one player compact row");
+        tx.commit().expect("commit player replacement");
+
+        assert_eq!(compact_row_count(&conn, snapshot_id), 2);
+        let (score_version, projection_version, current, _potential) =
+            compact_row(&conn, snapshot_id, 42).expect("replaced compact row");
+        assert_eq!(
+            (score_version, projection_version),
+            (
+                crate::features::player_metrics::compact::SCORE_MODEL_VERSION,
+                PROJECTION_MODEL_VERSION
+            )
+        );
+        assert!(
+            current.iter().all(|score| *score == Some(100)),
+            "upgraded player scores every role"
+        );
+        assert_eq!(
+            compact_row(&conn, snapshot_id, 43).as_ref(),
+            Some(&other_before)
+        );
     }
 
     #[test]

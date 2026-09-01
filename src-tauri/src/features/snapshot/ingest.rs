@@ -142,6 +142,9 @@ fn ingest_dump_json_for_save(
     let snapshot_id = insert_snapshot(&tx, save_id, object, bridge_source_request_id)?;
     insert_players(&tx, snapshot_id, object)?;
     insert_staff(&tx, snapshot_id, object)?;
+    // Temporary normalized current-score rows keep the uncut Search/Planner/
+    // Profile readers working until they move to compact columns (Commit 8
+    // removes this dual-write seam and the player_role_scores table).
     // ponytail: score every catalog role synchronously during ingest (one INSERT per role × player)
     // Upgrade to lazy/on-demand or batched scoring if ingest scoring time dominates Load Data
     insert_role_scores(&tx, snapshot_id, object)?;
@@ -720,6 +723,52 @@ mod tests {
             )
             .expect("count potential role rows");
         (fields.0, fields.1, score_count)
+    }
+
+    fn compact_row(
+        conn: &Connection,
+        snapshot_id: i64,
+        uid: i64,
+    ) -> Option<crate::features::player_metrics::compact::test_support::CompactRowShape> {
+        crate::features::player_metrics::compact::test_support::read_row(conn, snapshot_id, uid)
+    }
+
+    fn compact_row_count(conn: &Connection, snapshot_id: i64) -> i64 {
+        crate::features::player_metrics::compact::test_support::count_rows(conn, snapshot_id)
+    }
+
+    fn assert_uniform_compact_values(conn: &Connection, snapshot_id: i64, uid: i64) {
+        use crate::features::player_metrics::compact::SCORE_MODEL_VERSION;
+        use std::collections::HashMap;
+
+        let (score_version, projection_version, current, potential) =
+            compact_row(conn, snapshot_id, uid).expect("compact row");
+        assert_eq!(
+            (score_version, projection_version),
+            (
+                SCORE_MODEL_VERSION,
+                crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION
+            )
+        );
+        assert!(current.iter().all(|score| *score == Some(50)));
+        let projected_json: String = conn
+            .query_row(
+                "SELECT potential_attributes_json
+                 FROM players WHERE snapshot_id = ?1 AND uid = ?2",
+                params![snapshot_id, uid],
+                |row| row.get(0),
+            )
+            .expect("read projected attributes");
+        let projected = serde_json::from_str::<HashMap<String, Option<u8>>>(&projected_json)
+            .expect("parse projected attributes");
+        for (index, role) in all_roles().iter().enumerate() {
+            assert_eq!(
+                potential[index],
+                score_role(&projected, role).map(i64::from),
+                "potential compact score for {}",
+                role.role_id
+            );
+        }
     }
 
     fn assert_complete_potential_state(conn: &Connection, snapshot_id: i64) {
@@ -1390,6 +1439,75 @@ mod tests {
     }
 
     #[test]
+    fn winning_ingest_materializes_exact_compact_scores_from_one_projection() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-compact-values.db"));
+        list_saves(&conn).expect("seed default save");
+
+        let dump_path = write_dump(&temp_dir, "uniform.json", &dump_with_uniform_attributes(10));
+        let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest uniform dump");
+
+        assert_eq!(compact_row_count(&conn, snapshot.id), 1);
+        assert_uniform_compact_values(&conn, snapshot.id, 77);
+    }
+
+    #[test]
+    fn winning_ingest_materializes_null_compact_scores_for_missing_attributes() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-compact-null.db"));
+        list_saves(&conn).expect("seed default save");
+
+        let dump_path = write_dump(&temp_dir, "sparse.json", GOLDEN_FIXTURE);
+        let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest sparse dump");
+
+        assert_eq!(compact_row_count(&conn, snapshot.id), 1);
+        let (score_version, projection_version, current, potential) =
+            compact_row(&conn, snapshot.id, 77).expect("compact row for the sparse player");
+        assert_eq!(
+            (score_version, projection_version),
+            (
+                crate::features::player_metrics::compact::SCORE_MODEL_VERSION,
+                crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION
+            )
+        );
+        assert!(current.iter().all(|score| score.is_none()));
+        assert!(potential.iter().all(|score| score.is_none()));
+    }
+
+    #[test]
+    fn failed_compact_materialization_rolls_back_ingest_and_keeps_prior_current_visible() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-compact-rollback.db"));
+        let first_path = write_dump(
+            &temp_dir,
+            "first.json",
+            &dump_with_game_date(Some("2026-08-14"), "Earlier player"),
+        );
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let prior_compact = compact_row(&conn, first.id, 77).expect("prior compact row");
+        conn.execute_batch(
+            "CREATE TRIGGER reject_compact_rows
+             BEFORE INSERT ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact row failure'); END;",
+        )
+        .expect("reject compact rows");
+        let later_path = write_dump(
+            &temp_dir,
+            "later.json",
+            &dump_with_game_date(Some("2027-08-16"), "Later player"),
+        );
+
+        assert!(ingest_dump_file(&mut conn, &later_path)
+            .expect_err("roll back winning compact materialization")
+            .contains("compact row failure"));
+
+        assert_eq!(snapshot_count(&conn, first.save_id), 1);
+        assert_eq!(current_snapshot_id(&conn, first.save_id), Some(first.id));
+        assert_eq!(compact_row_count(&conn, first.id), 1);
+        assert_eq!(compact_row(&conn, first.id, 77), Some(prior_compact));
+    }
+
+    #[test]
     fn later_snapshot_stays_current_when_an_earlier_snapshot_is_retained() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("ingest-replace.db"));
@@ -1412,6 +1530,8 @@ mod tests {
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
         assert_complete_potential_state(&conn, first.id);
         assert_empty_potential_state(&conn, second.id);
+        assert_eq!(compact_row_count(&conn, first.id), 1);
+        assert_eq!(compact_row_count(&conn, second.id), 0);
         assert!(snapshot_row_exists(&conn, first.id));
         assert_eq!(snapshot_count(&conn, active_save.id), 2);
         assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
@@ -1468,6 +1588,8 @@ mod tests {
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(later.id));
         assert_empty_potential_state(&conn, earlier.id);
         assert_complete_potential_state(&conn, later.id);
+        assert_eq!(compact_row_count(&conn, earlier.id), 0);
+        assert_eq!(compact_row_count(&conn, later.id), 1);
         assert_eq!(snapshot_count(&conn, active_save.id), 2);
         assert!(snapshot_row_exists(&conn, earlier.id));
         assert_eq!(
@@ -1501,6 +1623,8 @@ mod tests {
 
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(second.id));
         assert!(snapshot_row_exists(&conn, first.id));
+        assert_eq!(compact_row_count(&conn, first.id), 0);
+        assert_eq!(compact_row_count(&conn, second.id), 1);
         assert_eq!(snapshot_count(&conn, active_save.id), 2);
     }
 
@@ -1620,6 +1744,8 @@ mod tests {
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(dated.id));
         assert_complete_potential_state(&conn, dated.id);
         assert_empty_potential_state(&conn, undated.id);
+        assert_eq!(compact_row_count(&conn, dated.id), 1);
+        assert_eq!(compact_row_count(&conn, undated.id), 0);
         assert!(snapshot_row_exists(&conn, undated.id));
         assert_eq!(
             automatic_class_years(&conn, active_save.id),

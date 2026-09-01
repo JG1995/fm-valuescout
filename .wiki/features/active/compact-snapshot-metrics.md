@@ -273,7 +273,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 3 — Materialize current player metrics atomically
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(scoring): materialize current player metrics`
 
@@ -331,7 +331,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 4 — Cut Search and Squad over to compact player metrics
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(search): query compact role metrics`
 
@@ -876,19 +876,19 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 **PR:** PR 1 — Compact active snapshot metrics
 
-**Commit:** Commit 3 — Materialize current player metrics atomically
+**Commit:** Commit 4 — Cut Search and Squad over to compact player metrics
 
 ### RED or removal proof
 
-RED lifecycle tests for winner, non-winner, replacement, deletion promotion, exact null columns, model versions, and rollback fail while the recent compact schema and mapping exist but no writer routes to them yet.
+RED query tests that seed only compact rows and exercise arbitrary current/potential display, filter, ascending/descending sort, nulls, totals, and paging fail while Search and Squad still join the normalized relations.
 
 ### Expected outcome
 
-Ingest, current-snapshot selection, deletion promotion, and supported player boost reconciliation maintain exactly one compact `player_role_metrics` row per current player with exact nulls and model versions; non-winning and historical snapshots keep no derived state; raw historical rows stay immutable; normalized writers remain as the temporary dual-write seam for unread consumers; `./scripts/dev check-rust` and `./scripts/dev check` pass.
+Search and Squad validate metric IDs through the closed catalog, join the current player's compact row once, read named nullable columns, and order/filter in SQLite; potential requests require the expected projection model and current requests require the expected score model; all 136 player metrics, totals, paging, Club DNA, Moneyball, and read-only semantics preserved; Profile and Planner consumers remain on the normalized seam; `./scripts/dev check-rust` and `./scripts/dev check` pass.
 
 ### Explicit exclusions
 
-Player reader cutover, staff metrics, final normalized cleanup, preparation outside the mutex, progress, and any changed scoring formula.
+Profile, Planner, staff, normalized-table deletion, UI behavior, and new indexes.
 
 ## Discoveries and replanning
 
@@ -901,7 +901,8 @@ Player reader cutover, staff metrics, final normalized cleanup, preparation outs
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | PR 1 — Compact active snapshot metrics | Commit 1 — Record the approved feature plan | 43ade8c1e63640158b7b42f2b1e3b8c2bd9d852f | Recorded the reviewed schema 2 ledger, active TODO pointer, narrowed backlog item, and ADR supersession on the authorized branch. | `ledger_state.py` runnable, `delivery_state.py` runnable with recorded fingerprint ffd74f8f3bc4d94484b753ac12a5d35874bc547e34fd9f1362ab6ba1d575dfaf, `git diff --check` clean on the eight planning paths, independent blank-slate plan review clear, checkpoint review clear. | Not applicable | Clear | 0 | None |
-| PR 1 — Compact active snapshot metrics | Commit 2 — Create the fresh compact metric schema | Pending record | Fresh `app-v2.db` filename with never-touches-`app.db` proof, immutable checked-in compact migration v38 with the exact 68/68/21 column inventory plus row/model/check/foreign-key constraints and no per-role indexes, closed-catalog safe snake_case mapping owners, schema/model contract parity tests, README cleanup guidance, normalized tables retained as the temporary seam. | `./scripts/dev check-rust` passed (694 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check -- README.md` clean, independent review clear, catalog parity cross-checked against the 68-player/21-staff catalogs. | Pass | Clear | 0 | None |
+| PR 1 — Compact active snapshot metrics | Commit 2 — Create the fresh compact metric schema | f15ce7989b9e4354435099292fc100b6c4202831 | Fresh `app-v2.db` filename with never-touches-`app.db` proof, immutable checked-in compact migration v38 with the exact 68/68/21 column inventory plus row/model/check/foreign-key constraints and no per-role indexes, closed-catalog safe snake_case mapping owners, schema/model contract parity tests, README cleanup guidance, normalized tables retained as the temporary seam. | `./scripts/dev check-rust` passed (694 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check -- README.md` clean, independent review clear, catalog parity cross-checked against the 68-player/21-staff catalogs. | Pass | Clear | 0 | None |
+| PR 1 — Compact active snapshot metrics | Commit 3 — Materialize current player metrics atomically | Pending record | Compact one-row player writer (`persist_rows`/`clear_snapshot`/`clear_non_current_snapshots`/`assert_snapshot_complete`), winner/non-winner/promotion/boost lifecycle integrated into ingest, selection, deletion promotion, and per-player boost reconciliation with exact nulls and model versions, normalized dual-write seam retained and marked for Commit 8 removal, migration-34 hook kept seam-only. | `./scripts/dev check-rust` passed (702 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear (one NITPICK noted: two boost test asserts hardcode model version literal 1 instead of the constant; no functional finding). | Pass | Clear | 0 | None |
 
 ## Final validation
 

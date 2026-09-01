@@ -721,6 +721,10 @@ fn replace_role_scores(
     player_uid: u32,
     attributes: &Map<String, Value>,
 ) -> Result<(), PlayerBoostError> {
+    // Temporary normalized current-score seam: uncut readers still query
+    // player_role_scores. The compact row is refreshed together with the
+    // projected attributes by `potential_scores::replace_player` in the same
+    // transaction. Commit 8 removes this function with the normalized table.
     let scoring_attributes = scoring_attributes(attributes).map_err(snapshot_sync_error)?;
     tx.execute(
         "DELETE FROM player_role_scores WHERE snapshot_id = ?1 AND uid = ?2",
@@ -906,6 +910,7 @@ mod tests {
 
     type PotentialRoleRows = Vec<(String, Option<i64>, i64)>;
     type PotentialState = (Option<String>, Option<i64>, PotentialRoleRows);
+    type CompactRow = crate::features::player_metrics::compact::test_support::CompactRowShape;
 
     fn open_migrated(db_path: &Path) -> Connection {
         let conn = Connection::open(db_path).expect("open test db");
@@ -1048,6 +1053,14 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .expect("collect potential role scores");
         (projected.0, projected.1, roles)
+    }
+
+    fn compact_row(conn: &Connection, snapshot_id: i64) -> Option<CompactRow> {
+        crate::features::player_metrics::compact::test_support::read_row(
+            conn,
+            snapshot_id,
+            PLAYER_UID,
+        )
     }
 
     fn assert_complete_potential_state(state: &PotentialState) {
@@ -1454,6 +1467,8 @@ mod tests {
             },
         );
         let previous_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        let previous_compact_row =
+            compact_row(&fixture.conn, fixture.snapshot_id).expect("compact row before boost");
         fixture
             .conn
             .execute(
@@ -1494,6 +1509,15 @@ mod tests {
         assert_complete_potential_state(&recomputed_potential_state);
         assert_ne!(recomputed_potential_state.0, previous_potential_state.0);
         assert_ne!(recomputed_potential_state.2, previous_potential_state.2);
+        let recomputed_compact_row =
+            compact_row(&fixture.conn, fixture.snapshot_id).expect("compact row after boost");
+        assert_eq!(recomputed_compact_row.0, 1, "score model version");
+        assert_eq!(
+            recomputed_compact_row.1,
+            crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION
+        );
+        assert_eq!(recomputed_compact_row.2, previous_compact_row.2);
+        assert_ne!(recomputed_compact_row.3, previous_compact_row.3);
         let club_dna_score: Option<i64> = fixture
             .conn
             .query_row(
@@ -1757,6 +1781,34 @@ mod tests {
         let recomputed_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
         assert_complete_potential_state(&recomputed_potential_state);
         assert_ne!(recomputed_potential_state.0, previous_potential_state.0);
+        let (score_version, projection_version, current, potential) =
+            compact_row(&fixture.conn, fixture.snapshot_id).expect("recomputed compact row");
+        assert_eq!(score_version, 1);
+        assert_eq!(
+            projection_version,
+            crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION
+        );
+        for (index, role) in all_roles().iter().enumerate() {
+            assert_eq!(
+                potential[index],
+                recomputed_potential_state
+                    .2
+                    .iter()
+                    .find(|(role_id, _, _)| role_id == role.role_id)
+                    .and_then(|(_, score, _)| *score),
+                "potential compact score for {}",
+                role.role_id
+            );
+            assert_eq!(
+                current[index],
+                current_role_scores(&fixture.conn, fixture.snapshot_id)
+                    .iter()
+                    .find(|(role_id, _, _)| role_id == role.role_id)
+                    .and_then(|(_, _, score)| *score),
+                "current compact score for {}",
+                role.role_id
+            );
+        }
     }
 
     #[test]
@@ -2098,6 +2150,82 @@ mod tests {
         assert_eq!(
             club_dna_state(&fixture.conn, fixture.snapshot_id),
             original_club_dna_state
+        );
+    }
+
+    #[test]
+    fn current_ability_compact_row_write_failure_rolls_back_all_reconciliation_state() {
+        let mut fixture = seeded_complete_player(
+            Some(20),
+            150,
+            170,
+            Mentality {
+                ambition: Some(14),
+                professionalism: Some(14),
+                determination: Some(14),
+            },
+        );
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_definitions (save_id, attribute_ids_json)
+                 VALUES (?1, '[\"attr.Acceleration\"]')",
+                [fixture.save_id],
+            )
+            .expect("seed Club DNA definition");
+        fixture
+            .conn
+            .execute(
+                "INSERT INTO club_dna_scores (
+                    snapshot_id, uid, definition_version, score_model_version, score
+                 ) VALUES (?1, ?2, 1, 1, 70)",
+                params![fixture.snapshot_id, PLAYER_UID],
+            )
+            .expect("seed Club DNA row");
+        let original_current_role_scores = current_role_scores(&fixture.conn, fixture.snapshot_id);
+        let original_potential_state = potential_state(&fixture.conn, fixture.snapshot_id);
+        let original_club_dna_state = club_dna_state(&fixture.conn, fixture.snapshot_id);
+        let original_compact_row =
+            compact_row(&fixture.conn, fixture.snapshot_id).expect("compact row before boost");
+        fixture
+            .conn
+            .execute_batch(&format!(
+                "CREATE TRIGGER fail_compact_row_insert
+                 BEFORE INSERT ON player_role_metrics
+                 WHEN NEW.snapshot_id = {} AND NEW.uid = {}
+                 BEGIN
+                     SELECT RAISE(ABORT, 'forced compact row failure');
+                 END;",
+                fixture.snapshot_id, PLAYER_UID
+            ))
+            .expect("create compact row write trigger");
+        let prepared = super::prepare_current_ability_boost(&fixture.conn, PLAYER_UID)
+            .expect("prepare CA boost");
+
+        let error = super::reconcile_verified_boost(
+            &mut fixture.conn,
+            &prepared,
+            verified_ca_result(150, 155, 170),
+        )
+        .expect_err("compact row write failure must roll back CA reconciliation");
+
+        assert_snapshot_sync(error);
+        assert_eq!(player_ca(&fixture.conn, fixture.snapshot_id), 150);
+        assert_eq!(
+            current_role_scores(&fixture.conn, fixture.snapshot_id),
+            original_current_role_scores
+        );
+        assert_eq!(
+            potential_state(&fixture.conn, fixture.snapshot_id),
+            original_potential_state
+        );
+        assert_eq!(
+            club_dna_state(&fixture.conn, fixture.snapshot_id),
+            original_club_dna_state
+        );
+        assert_eq!(
+            compact_row(&fixture.conn, fixture.snapshot_id),
+            Some(original_compact_row)
         );
     }
 

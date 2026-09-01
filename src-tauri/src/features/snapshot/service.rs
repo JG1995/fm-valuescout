@@ -589,6 +589,10 @@ mod tests {
         assert_eq!(potential_state(conn, snapshot_id), (None, None, 0));
     }
 
+    fn compact_row_count(conn: &Connection, snapshot_id: i64) -> i64 {
+        crate::features::player_metrics::compact::test_support::count_rows(conn, snapshot_id)
+    }
+
     fn deny_potential_writes(conn: &Connection) {
         conn.execute_batch(
             "CREATE TRIGGER deny_projected_player_updates
@@ -597,9 +601,18 @@ mod tests {
              CREATE TRIGGER deny_potential_score_inserts
              BEFORE INSERT ON player_potential_role_scores
              BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
+             CREATE TRIGGER deny_potential_score_updates
+             BEFORE UPDATE ON player_potential_role_scores
+             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
              CREATE TRIGGER deny_potential_score_deletes
              BEFORE DELETE ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;",
+             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
+             CREATE TRIGGER deny_compact_row_inserts
+             BEFORE INSERT ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact row writes are forbidden'); END;
+             CREATE TRIGGER deny_compact_row_deletes
+             BEFORE DELETE ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'compact row writes are forbidden'); END;",
         )
         .expect("deny potential writes");
     }
@@ -907,6 +920,8 @@ mod tests {
         select_current_snapshot_for_test(&mut conn, save.id);
         assert_empty_potential_state(&conn, historical);
         assert_complete_potential_state(&conn, current);
+        assert_eq!(compact_row_count(&conn, historical), 0);
+        assert_eq!(compact_row_count(&conn, current), 1);
         let current_potential_state = potential_state(&conn, current);
         deny_potential_writes(&conn);
 
@@ -917,6 +932,8 @@ mod tests {
         assert_eq!(result.current_snapshot_id, Some(current));
         assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
         assert_eq!(potential_state(&conn, current), current_potential_state);
+        assert_eq!(compact_row_count(&conn, current), 1);
+        assert_eq!(compact_row_count(&conn, historical), 0);
         assert_eq!(
             conn.query_row(
                 "SELECT COUNT(*) FROM players WHERE snapshot_id = ?1",
@@ -1003,6 +1020,8 @@ mod tests {
         select_current_snapshot_for_test(&mut conn, save.id);
         assert_empty_potential_state(&conn, promoted);
         assert_complete_potential_state(&conn, current);
+        assert_eq!(compact_row_count(&conn, promoted), 0);
+        assert_eq!(compact_row_count(&conn, current), 1);
         conn.execute_batch(
             "CREATE TRIGGER reject_club_dna_backfill
              BEFORE INSERT ON club_dna_scores
@@ -1023,6 +1042,7 @@ mod tests {
         assert_eq!(promoted_result.current_snapshot_id, Some(promoted));
         assert_eq!(current_snapshot_id(&conn, save.id), Some(promoted));
         assert_complete_potential_state(&conn, promoted);
+        assert_eq!(compact_row_count(&conn, promoted), 1);
         assert_eq!(
             conn.query_row(
                 "SELECT COUNT(*) FROM club_dna_scores WHERE snapshot_id = ?1",
@@ -1072,6 +1092,58 @@ mod tests {
             .expect("count final potential rows"),
             0
         );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| row
+                .get::<_, i64>(0),)
+                .expect("count final compact rows"),
+            0
+        );
+    }
+
+    #[test]
+    fn promoted_snapshot_compact_materialization_failure_rolls_back_current_deletion() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("promote-compact-rollback.db"));
+        let save = list_saves(&conn)
+            .expect("seed default save")
+            .into_iter()
+            .find(|save| save.is_active)
+            .expect("active save");
+        let promoted = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2026-05-01"),
+            "2026-08-11T10:00:00.000Z",
+        );
+        let current = insert_snapshot(
+            &conn,
+            save.id,
+            Some("2027-05-01"),
+            "2026-08-11T11:00:00.000Z",
+        );
+        insert_player(&conn, promoted, 77);
+        insert_player(&conn, current, 77);
+        select_current_snapshot_for_test(&mut conn, save.id);
+        assert_eq!(compact_row_count(&conn, current), 1);
+        conn.execute_batch(&format!(
+            "CREATE TRIGGER reject_promoted_compact_rows
+             BEFORE INSERT ON player_role_metrics
+             WHEN NEW.snapshot_id = {promoted}
+             BEGIN SELECT RAISE(ABORT, 'promoted compact writes fail'); END;",
+            promoted = promoted
+        ))
+        .expect("reject promoted compact rows");
+
+        let current_token = snapshot_token(&conn, current);
+        assert!(delete_snapshot(&mut conn, current, &current_token)
+            .expect_err("roll back promoted compact materialization")
+            .contains("promoted compact writes fail"));
+
+        assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
+        assert_eq!(compact_row_count(&conn, current), 1);
+        assert_eq!(compact_row_count(&conn, promoted), 0);
+        assert!(!snapshot_token(&conn, promoted).is_empty());
+        assert!(!snapshot_token(&conn, current).is_empty());
     }
 
     #[test]
@@ -1145,6 +1217,8 @@ mod tests {
         select_current_snapshot_for_test(&mut conn, second_save.id);
         assert_complete_potential_state(&conn, first_snapshot);
         assert_complete_potential_state(&conn, second_snapshot);
+        assert_eq!(compact_row_count(&conn, first_snapshot), 1);
+        assert_eq!(compact_row_count(&conn, second_snapshot), 1);
         deny_potential_writes(&conn);
 
         let switched = set_active_save(&mut conn, second_save.id).expect("switch saves");
@@ -1158,6 +1232,8 @@ mod tests {
             current_snapshot_id(&conn, second_save.id),
             Some(second_snapshot)
         );
+        assert_eq!(compact_row_count(&conn, first_snapshot), 1);
+        assert_eq!(compact_row_count(&conn, second_snapshot), 1);
     }
 
     #[test]
@@ -1319,6 +1395,7 @@ mod tests {
             save
         );
         assert_eq!(current_snapshot_id(&conn, save.id), Some(snapshot));
+        assert_eq!(compact_row_count(&conn, snapshot), 1);
         let retained_player_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM players", [], |row| row.get(0))
             .expect("count retained players");
