@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use rusqlite::{params, params_from_iter, types::Value, Connection, Transaction};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StaffRoleDefinition {
     pub role_id: &'static str,
@@ -201,13 +203,11 @@ pub fn all_staff_roles() -> &'static [StaffRoleDefinition] {
 
 /// Model version of the checked-in staff per-role score formula
 /// (`score_staff_role`).
-#[cfg_attr(not(test), allow(dead_code))]
 pub const SCORE_MODEL_VERSION: i64 = 1;
 
 /// Returns the compact `staff_role_metrics` column for a closed-catalog staff
 /// role. The column name is the verified role id; identifiers never come from
 /// WebView input.
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn staff_role_column(role_id: &str) -> Result<&'static str, String> {
     let role = all_staff_roles()
         .iter()
@@ -243,6 +243,265 @@ pub fn score_staff_role(
     })?;
     let mean = f64::from(sum) / role.attributes.len() as f64;
     Some((mean * 5.0).round() as u8)
+}
+
+/// One catalog-ordered compact row to persist for a staff member: the 21
+/// role scores in `all_staff_roles()` order. Values are SQL null when a
+/// required source attribute is missing.
+pub(crate) struct CompactStaffRow {
+    pub(crate) uid: i64,
+    pub(crate) scores: Vec<Option<i64>>,
+}
+
+/// Scores every closed-catalog staff role in `all_staff_roles()` order.
+/// A role whose source attributes are missing, null, or out of range scores
+/// SQL null.
+pub(crate) fn score_all_staff_roles(attributes: &HashMap<String, Option<u8>>) -> Vec<Option<i64>> {
+    all_staff_roles()
+        .iter()
+        .map(|role| score_staff_role(attributes, role).map(i64::from))
+        .collect()
+}
+
+/// Inserts or replaces one compact row per staff member for one snapshot,
+/// with the exact checked-in score model version. The SQL column list comes
+/// only from the closed catalog via `staff_role_column`, never from WebView
+/// input.
+pub(crate) fn persist_rows(
+    tx: &Transaction<'_>,
+    snapshot_id: i64,
+    rows: &[CompactStaffRow],
+) -> Result<(), String> {
+    let roles = all_staff_roles();
+    let columns = roles
+        .iter()
+        .map(|role| staff_role_column(role.role_id).map(str::to_string))
+        .collect::<Result<Vec<_>, _>>()?;
+    let placeholders = (0..columns.len() + 3)
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "INSERT OR REPLACE INTO staff_role_metrics (
+            snapshot_id, uid, score_model_version, {}
+         ) VALUES ({placeholders})",
+        columns.join(", ")
+    );
+    let mut statement = tx.prepare(&sql).map_err(|error| error.to_string())?;
+
+    for row in rows {
+        if row.scores.len() != roles.len() {
+            return Err("Compact staff row has the wrong role count".to_string());
+        }
+        let mut values = Vec::with_capacity(columns.len() + 3);
+        values.push(Value::Integer(snapshot_id));
+        values.push(Value::Integer(row.uid));
+        values.push(Value::Integer(SCORE_MODEL_VERSION));
+        values.extend(
+            row.scores
+                .iter()
+                .map(|score| score.map_or(Value::Null, Value::Integer)),
+        );
+        statement
+            .execute(params_from_iter(values.iter()))
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+/// Deletes every compact staff row for one snapshot.
+pub(crate) fn clear_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
+    tx.execute(
+        "DELETE FROM staff_role_metrics WHERE snapshot_id = ?1",
+        [snapshot_id],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+/// Deletes compact staff rows from every non-current snapshot of one save,
+/// so only the effective current snapshot keeps compact staff metrics.
+pub(crate) fn clear_non_current_snapshots(
+    tx: &Transaction<'_>,
+    save_id: i64,
+) -> Result<(), String> {
+    tx.execute(
+        "DELETE FROM staff_role_metrics
+         WHERE snapshot_id IN (
+             SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0
+         )",
+        [save_id],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+/// Verifies that every staff member of an effective current snapshot has
+/// exactly one compact row with the checked-in score model version. The
+/// `(snapshot_id, uid)` primary key makes a second row per member impossible.
+pub(crate) fn assert_snapshot_complete(conn: &Connection, snapshot_id: i64) -> Result<(), String> {
+    let incomplete: bool = conn
+        .query_row(
+            "SELECT
+                 NOT EXISTS(SELECT 1 FROM snapshots WHERE id = ?1 AND is_current = 1)
+                 OR EXISTS(
+                     SELECT 1
+                     FROM staff s
+                     LEFT JOIN staff_role_metrics m
+                       ON m.snapshot_id = s.snapshot_id AND m.uid = s.uid
+                     WHERE s.snapshot_id = ?1
+                       AND (
+                           m.snapshot_id IS NULL
+                           OR m.score_model_version <> ?2
+                       )
+                 )",
+            params![snapshot_id, SCORE_MODEL_VERSION],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if incomplete {
+        Err("Current compact staff snapshot is incomplete".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+/// Rebuilds every current-only compact staff row for one snapshot from the
+/// retained raw `staff_attributes_json` facts.
+pub(crate) fn rebuild_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
+    require_current_snapshot(tx, snapshot_id)?;
+    clear_snapshot(tx, snapshot_id)?;
+    let mut rows = Vec::with_capacity(1);
+    for member in load_staff(tx, snapshot_id)? {
+        let attributes =
+            serde_json::from_str::<HashMap<String, Option<u8>>>(&member.staff_attributes_json)
+                .map_err(|error| {
+                    format!("invalid staff {} attributes JSON: {error}", member.uid)
+                })?;
+        rows.push(CompactStaffRow {
+            uid: member.uid,
+            scores: score_all_staff_roles(&attributes),
+        });
+    }
+    persist_rows(tx, snapshot_id, &rows)?;
+    assert_snapshot_complete(tx, snapshot_id)
+}
+
+/// Clears compact staff rows from every non-current snapshot and rebuilds a
+/// newly selected current snapshot from raw staff facts, mirroring the player
+/// compact lifecycle from Commit 3.
+pub(crate) fn reconcile_current_selection(
+    tx: &Transaction<'_>,
+    save_id: i64,
+    previous_snapshot_id: Option<i64>,
+    current_snapshot_id: Option<i64>,
+) -> Result<(), String> {
+    clear_non_current_snapshots(tx, save_id)?;
+    if current_snapshot_id != previous_snapshot_id {
+        if let Some(snapshot_id) = current_snapshot_id {
+            rebuild_snapshot(tx, snapshot_id)?;
+        }
+    }
+    Ok(())
+}
+
+struct StaffForMetrics {
+    uid: i64,
+    staff_attributes_json: String,
+}
+
+fn require_current_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
+    let is_current: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM snapshots WHERE id = ?1 AND is_current = 1)",
+            [snapshot_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if is_current {
+        Ok(())
+    } else {
+        Err("Staff role metrics require a current snapshot".to_string())
+    }
+}
+
+fn load_staff(tx: &Transaction<'_>, snapshot_id: i64) -> Result<Vec<StaffForMetrics>, String> {
+    let mut statement = tx
+        .prepare(
+            "SELECT uid, staff_attributes_json
+             FROM staff WHERE snapshot_id = ?1 ORDER BY uid",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([snapshot_id], |row| {
+            Ok(StaffForMetrics {
+                uid: row.get(0)?,
+                staff_attributes_json: row.get(1)?,
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+    use rusqlite::{params, Connection, OptionalExtension};
+
+    /// A compact staff row read back for assertions: `(score_model_version,
+    /// scores)` where scores are the 21 role values in catalog order.
+    pub(crate) type CompactStaffRowShape = (i64, Vec<Option<i64>>);
+
+    pub(crate) fn count_rows(conn: &Connection, snapshot_id: i64) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM staff_role_metrics WHERE snapshot_id = ?1",
+            [snapshot_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .expect("count staff compact rows")
+    }
+
+    /// Reads one staff member's compact row, or `None` when no compact row
+    /// exists for that `(snapshot_id, uid)`.
+    pub(crate) fn read_row(
+        conn: &Connection,
+        snapshot_id: i64,
+        uid: i64,
+    ) -> Option<CompactStaffRowShape> {
+        let roles = all_staff_roles();
+        let columns = roles
+            .iter()
+            .map(|role| {
+                staff_role_column(role.role_id)
+                    .expect("staff column")
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        let sql = format!(
+            "SELECT score_model_version, {}
+             FROM staff_role_metrics WHERE snapshot_id = ?1 AND uid = ?2",
+            columns.join(", ")
+        );
+        conn.query_row(&sql, params![snapshot_id, uid], |row| {
+            let scores = (0..roles.len())
+                .map(|index| row.get::<_, Option<i64>>(index + 1))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((row.get(0)?, scores))
+        })
+        .optional()
+        .expect("read staff compact row")
+    }
+
+    /// JSON attributes for a staff member with every staff attribute key set
+    /// to 10, so every closed-catalog role scores 50.
+    pub(crate) fn all_ten_attributes_json() -> String {
+        let attributes = super::super::metrics::STAFF_ATTRIBUTE_KEYS
+            .iter()
+            .map(|key| ((*key).to_string(), serde_json::Value::from(10)))
+            .collect::<serde_json::Map<_, _>>();
+        serde_json::to_string(&attributes).expect("serialize staff attributes")
+    }
 }
 
 #[cfg(test)]

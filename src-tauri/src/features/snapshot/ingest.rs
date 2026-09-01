@@ -12,7 +12,9 @@ use crate::features::memory_read::dump_validation::parse_and_validate_dump;
 use crate::features::player_metrics::club_dna as club_dna_scores;
 use crate::features::scoring::catalog::all_roles;
 use crate::features::scoring::score::score_role;
-use crate::features::staff::scoring::{all_staff_roles, score_staff_role};
+use crate::features::staff::scoring::{
+    all_staff_roles, persist_rows as persist_staff_rows, score_all_staff_roles, CompactStaffRow,
+};
 
 use super::service::{self, SaveContext};
 
@@ -385,12 +387,16 @@ fn insert_staff(
             )",
         )
         .map_err(|error| error.to_string())?;
+    // Temporary normalized staff score rows keep the uncut staff readers
+    // working until they move to compact columns (Commit 8 removes this
+    // dual-write seam and the staff_role_scores table).
     let mut score_stmt = tx
         .prepare(
             "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
              VALUES (?1, ?2, ?3, ?4)",
         )
         .map_err(|error| error.to_string())?;
+    let mut compact_rows = Vec::with_capacity(staff.len());
 
     for staff_record in staff {
         let staff_record = staff_record
@@ -423,14 +429,22 @@ fn insert_staff(
             ])
             .map_err(|error| error.to_string())?;
 
-        for role in all_staff_roles() {
-            if let Some(score) = score_staff_role(&attributes, role) {
+        // One compact row per staff member carries all 21 role scores in
+        // catalog order; unavailable roles stay SQL null. Selection
+        // reconciliation (Commit 3 pattern) later removes these rows from every
+        // non-winning snapshot and rebuilds a promoted one from raw facts.
+        let scores = score_all_staff_roles(&attributes);
+        for (role, score) in all_staff_roles().iter().zip(&scores) {
+            if let Some(score) = score {
                 score_stmt
-                    .execute(params![snapshot_id, uid, role.role_id, i64::from(score)])
+                    .execute(params![snapshot_id, uid, role.role_id, score])
                     .map_err(|error| error.to_string())?;
             }
         }
+        compact_rows.push(CompactStaffRow { uid, scores });
     }
+
+    persist_staff_rows(tx, snapshot_id, &compact_rows)?;
 
     Ok(())
 }
@@ -845,6 +859,18 @@ mod tests {
             .expect("read staff role scores")
     }
 
+    fn staff_compact_row(
+        conn: &Connection,
+        snapshot_id: i64,
+        uid: i64,
+    ) -> Option<crate::features::staff::scoring::test_support::CompactStaffRowShape> {
+        crate::features::staff::scoring::test_support::read_row(conn, snapshot_id, uid)
+    }
+
+    fn staff_compact_row_count(conn: &Connection, snapshot_id: i64) -> i64 {
+        crate::features::staff::scoring::test_support::count_rows(conn, snapshot_id)
+    }
+
     fn dump_with_uniform_attributes(value: u8) -> String {
         use crate::features::scoring::catalog::DUMP_ATTRIBUTE_KEYS;
 
@@ -1112,15 +1138,17 @@ mod tests {
     }
 
     #[test]
-    fn ingest_persists_only_calculable_staff_role_scores() {
+    fn ingest_writes_one_compact_staff_row_with_nulls_for_unavailable_roles() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
-        let mut conn = open_migrated(&temp_dir.path().join("ingest-staff-role-scores.db"));
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-staff-compact.db"));
         list_saves(&conn).expect("seed default save");
 
         let dump_path = write_dump(&temp_dir, "staff-scores.json", GOLDEN_FIXTURE);
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest staff scores");
-        let scores = staff_role_scores(&conn, snapshot.id, 88);
 
+        // The temporary normalized dual-write seam still stores calculable
+        // rows only (six roles have unavailable dependencies in the fixture).
+        let scores = staff_role_scores(&conn, snapshot.id, 88);
         assert_eq!(scores.len(), 15, "six roles have unavailable dependencies");
         assert_eq!(
             scores
@@ -1132,6 +1160,86 @@ mod tests {
         assert!(scores
             .iter()
             .all(|(role_id, _)| role_id != "performance_analyst"));
+
+        // The compact current row carries all 21 named values; unavailable
+        // roles stay SQL null instead of dropping the row.
+        assert_eq!(staff_compact_row_count(&conn, snapshot.id), 1);
+        let (version, compact) = staff_compact_row(&conn, snapshot.id, 88).expect("compact row");
+        assert_eq!(
+            version,
+            crate::features::staff::scoring::SCORE_MODEL_VERSION
+        );
+        let roles = all_staff_roles();
+        assert_eq!(compact.len(), roles.len());
+        assert_eq!(
+            compact.iter().filter(|score| score.is_some()).count(),
+            15,
+            "only calculable roles persist a value"
+        );
+        let physio = roles
+            .iter()
+            .position(|role| role.role_id == "physio")
+            .expect("physio role");
+        let analyst = roles
+            .iter()
+            .position(|role| role.role_id == "performance_analyst")
+            .expect("analyst role");
+        assert_eq!(compact[physio], Some(60));
+        assert_eq!(compact[analyst], None);
+    }
+
+    #[test]
+    fn winning_ingest_writes_one_compact_staff_row_even_when_every_metric_is_null() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-staff-compact-all-null.db"));
+        list_saves(&conn).expect("seed default save");
+
+        let mut root: Value = serde_json::from_str(GOLDEN_FIXTURE).expect("parse fixture");
+        for value in root["staff"][0]["attributes"]
+            .as_object_mut()
+            .expect("staff attributes")
+            .values_mut()
+        {
+            *value = Value::Null;
+        }
+        let dump_path = write_dump(&temp_dir, "all-null-staff.json", &root.to_string());
+        let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest all-null staff");
+
+        assert_eq!(staff_compact_row_count(&conn, snapshot.id), 1);
+        let (version, compact) =
+            staff_compact_row(&conn, snapshot.id, 88).expect("compact row for the all-null staff");
+        assert_eq!(
+            version,
+            crate::features::staff::scoring::SCORE_MODEL_VERSION
+        );
+        assert_eq!(compact.len(), all_staff_roles().len());
+        assert!(compact.iter().all(|score| score.is_none()));
+        assert!(staff_role_scores(&conn, snapshot.id, 88).is_empty());
+    }
+
+    #[test]
+    fn failed_compact_staff_materialization_rolls_back_ingest_and_keeps_prior_current_visible() {
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let mut conn = open_migrated(&temp_dir.path().join("ingest-staff-compact-rollback.db"));
+        let first_path = write_dump(&temp_dir, "first.json", GOLDEN_FIXTURE);
+        let first = ingest_dump_file(&mut conn, &first_path).expect("first ingest");
+        let prior_compact = staff_compact_row(&conn, first.id, 88).expect("prior compact row");
+        conn.execute_batch(
+            "CREATE TRIGGER reject_staff_compact_rows
+             BEFORE INSERT ON staff_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'staff compact row failure'); END;",
+        )
+        .expect("reject staff compact rows");
+        let later_path = write_dump(&temp_dir, "later.json", GOLDEN_FIXTURE);
+
+        assert!(ingest_dump_file(&mut conn, &later_path)
+            .expect_err("roll back winning staff compact materialization")
+            .contains("staff compact row failure"));
+
+        assert_eq!(snapshot_count(&conn, first.save_id), 1);
+        assert_eq!(current_snapshot_id(&conn, first.save_id), Some(first.id));
+        assert_eq!(staff_compact_row_count(&conn, first.id), 1);
+        assert_eq!(staff_compact_row(&conn, first.id, 88), Some(prior_compact));
     }
 
     #[test]
@@ -1162,6 +1270,7 @@ mod tests {
         assert!(error.contains("staff score failure"));
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
         assert_eq!(staff_role_scores(&conn, first.id, 88), prior_scores);
+        assert_eq!(staff_compact_row_count(&conn, first.id), 1);
         assert_eq!(snapshot_count(&conn, active_save.id), 1);
     }
 
@@ -1204,6 +1313,23 @@ mod tests {
                 .find(|(role_id, _)| role_id == "physio")
                 .map(|(_, score)| *score),
             Some(100)
+        );
+        // The displaced first snapshot is historical: raw staff only, no
+        // compact rows. The second snapshot stays current with one row.
+        assert_eq!(staff_compact_row_count(&conn, first.id), 0);
+        assert_eq!(staff_compact_row_count(&conn, second.id), 1);
+        let (version, second_compact) =
+            staff_compact_row(&conn, second.id, 88).expect("second compact row");
+        assert_eq!(
+            version,
+            crate::features::staff::scoring::SCORE_MODEL_VERSION
+        );
+        assert_eq!(
+            second_compact
+                .iter()
+                .filter(|score| score.is_some())
+                .count(),
+            21
         );
     }
 
@@ -1532,6 +1658,8 @@ mod tests {
         assert_empty_potential_state(&conn, second.id);
         assert_eq!(compact_row_count(&conn, first.id), 1);
         assert_eq!(compact_row_count(&conn, second.id), 0);
+        assert_eq!(staff_compact_row_count(&conn, first.id), 1);
+        assert_eq!(staff_compact_row_count(&conn, second.id), 0);
         assert!(snapshot_row_exists(&conn, first.id));
         assert_eq!(snapshot_count(&conn, active_save.id), 2);
         assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
@@ -2110,9 +2238,17 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("count generated staff scores");
+        let compact_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM staff_role_metrics WHERE snapshot_id = ?1",
+                [snapshot.id],
+                |row| row.get(0),
+            )
+            .expect("count generated staff compact rows");
 
         assert_eq!(staff_count_for_snapshot(&conn, snapshot.id), 2_000);
         assert_eq!(score_count, (2_000 * all_staff_roles().len()) as i64);
+        assert_eq!(compact_count, 2_000);
         assert_ingest_timings(&timings);
         eprintln!(
             "generated staff ingest staff_count=2000 validation_ms={} insert_ms={} total_ms={}",

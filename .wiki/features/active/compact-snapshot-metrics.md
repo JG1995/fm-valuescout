@@ -445,7 +445,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 6 — Materialize current staff metrics atomically
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(staff): materialize current staff metrics`
 
@@ -501,7 +501,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 7 — Cut staff consumers over to compact metrics
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `refactor(staff): query compact role metrics`
 
@@ -876,15 +876,15 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 **PR:** PR 1 — Compact active snapshot metrics
 
-**Commit:** Commit 6 — Materialize current staff metrics atomically
+**Commit:** Commit 7 — Cut staff consumers over to compact metrics
 
 ### RED or removal proof
 
-RED tests for one row per current staff member, 21 named nullable values, no historical rows, and rollback fail while staff publication still writes only normalizable normalized rows.
+RED compact-only staff consumer and reader tests fail while staff consumers still join the normalized staff relations.
 
 ### Expected outcome
 
-A winning snapshot calculates all 21 staff roles and writes one `staff_role_metrics` row per current staff member even when every metric is null; historical snapshots retain raw staff only; deletion promotion rebuilds from retained `staff_attributes_json` before commit; wrong-model writes fail; failed compact staff writes roll back the snapshot; normalized staff writes remain only as the temporary dual-write seam; `./scripts/dev check-rust` and `./scripts/dev check` pass.
+Staff leaderboards, ratings/summary, comparison, search, history, and positions consumers read compact columns from one current row with read-model validation; normalized staff rows remain only as the temporary dual-write seam; `./scripts/dev check-rust` and `./scripts/dev check` pass.
 
 ### Explicit exclusions
 
@@ -904,7 +904,8 @@ Staff reader cutover, player work, final normalized cleanup, progress, and staff
 | PR 1 — Compact active snapshot metrics | Commit 2 — Create the fresh compact metric schema | f15ce7989b9e4354435099292fc100b6c4202831 | Fresh `app-v2.db` filename with never-touches-`app.db` proof, immutable checked-in compact migration v38 with the exact 68/68/21 column inventory plus row/model/check/foreign-key constraints and no per-role indexes, closed-catalog safe snake_case mapping owners, schema/model contract parity tests, README cleanup guidance, normalized tables retained as the temporary seam. | `./scripts/dev check-rust` passed (694 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check -- README.md` clean, independent review clear, catalog parity cross-checked against the 68-player/21-staff catalogs. | Pass | Clear | 0 | None |
 | PR 1 — Compact active snapshot metrics | Commit 3 — Materialize current player metrics atomically | fb09740e86ec29c027aba4e842e9cbb5431e2e1c | Compact one-row player writer (`persist_rows`/`clear_snapshot`/`clear_non_current_snapshots`/`assert_snapshot_complete`), winner/non-winner/promotion/boost lifecycle integrated into ingest, selection, deletion promotion, and per-player boost reconciliation with exact nulls and model versions, normalized dual-write seam retained and marked for Commit 8 removal, migration-34 hook kept seam-only. | `./scripts/dev check-rust` passed (702 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear (one NITPICK noted: two boost test asserts hardcode model version literal 1 instead of the constant; no functional finding). | Pass | Clear | 0 | None |
 | PR 1 — Compact active snapshot metrics | Commit 4 — Cut Search and Squad over to compact player metrics | 192d0f1f8cc582981f8c7e338ef4a1cbbf9f7add | Search and Squad queries read role metrics directly from the one `player_role_metrics` row via the closed-catalog validated mapping: `player_metrics_join` one-to-one compact join with kind-version predicates, `assert_read_models_complete` scoped read validation, simplified filter clauses with single numeric params, shared generic ORDER BY branch preserving null/tie semantics, obsolete requested-role row-count helper removed. | `./scripts/dev check-rust` passed (698 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear, source search confirms no normalized-relation reference in production search/squad/resolver paths. | Pass | Clear | 0 | None |
-| PR 1 — Compact active snapshot metrics | Commit 5 — Cut Profile and Planner over to compact player metrics | Pending record | Player Profile loads all 68 current/potential role scores from one compact row with preserved projected JSON validation; Planner depth, optimizer (both bases), and role reference select catalog-lane columns from compact rows keeping combine/fit/allocation in Rust; mutation preflight now uses `assert_read_models_complete` so corrupt/missing/wrong-version state blocks every mutation before writes; shared fixtures seed/corrupt compact columns; normalized writers remain as the temporary seam. | `./scripts/dev check-rust` passed (698 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear, source search confirms no normalized-relation reference in production player-query or planner reader paths. | Pass | Clear | 0 | None |
+| PR 1 — Compact active snapshot metrics | Commit 5 — Cut Profile and Planner over to compact player metrics | 628b478c897dd5ba51b575cebdd7e593d8bf3af6 | Player Profile loads all 68 current/potential role scores from one compact row with preserved projected JSON validation; Planner depth, optimizer (both bases), and role reference select catalog-lane columns from compact rows keeping combine/fit/allocation in Rust; mutation preflight now uses `assert_read_models_complete` so corrupt/missing/wrong-version state blocks every mutation before writes; shared fixtures seed/corrupt compact columns; normalized writers remain as the temporary seam. | `./scripts/dev check-rust` passed (698 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear, source search confirms no normalized-relation reference in production player-query or planner reader paths. | Pass | Clear | 0 | None |
+| PR 1 — Compact active snapshot metrics | Commit 6 — Materialize current staff metrics atomically | Pending record | One compact `staff_role_metrics` row per current staff member written at ingest (`score_all_staff_roles` catalog order, null on unavailable/out-of-range) with `SCORE_MODEL_VERSION = 1`; normalized staff writes retained as the marked temporary dual-write seam; `reconcile_current_selection` (mirroring the Commit 3 player pattern) clears non-current snapshots and rebuilds a newly selected current snapshot from retained `staff_attributes_json` before commit; staff CA boost untouched; failed compact staff writes roll back the whole ingest keeping the prior current visible; promotion rebuild failure rolls back the current-snapshot deletion. | `./scripts/dev check-rust` passed (702 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear after two corrections (wrong-version rejection proof, byte-for-byte promotion rollback preservation), targeted wrong-version and promotion tests pass and fail RED against a broken version predicate. | Pass | Clear | 2 | HIGH wrong-staff-model-version rejection lacked a regression proof; MEDIUM promotion-rollback test compared row presence not exact preserved content — both resolved with new/strengthened tests. |
 
 ## Final validation
 
