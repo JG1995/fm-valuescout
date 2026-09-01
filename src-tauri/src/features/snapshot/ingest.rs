@@ -10,8 +10,11 @@ use serde_json::Value;
 use crate::features::academy::service as academy_service;
 use crate::features::memory_read::dump_validation::parse_and_validate_dump;
 use crate::features::player_metrics::club_dna as club_dna_scores;
+#[allow(unused_imports)]
 use crate::features::scoring::catalog::all_roles;
+#[allow(unused_imports)]
 use crate::features::scoring::score::score_role;
+#[allow(unused_imports)]
 use crate::features::staff::scoring::{
     all_staff_roles, persist_rows as persist_staff_rows, score_all_staff_roles, CompactStaffRow,
 };
@@ -144,12 +147,6 @@ fn ingest_dump_json_for_save(
     let snapshot_id = insert_snapshot(&tx, save_id, object, bridge_source_request_id)?;
     insert_players(&tx, snapshot_id, object)?;
     insert_staff(&tx, snapshot_id, object)?;
-    // Temporary normalized current-score rows keep the uncut Search/Planner/
-    // Profile readers working until they move to compact columns (Commit 8
-    // removes this dual-write seam and the player_role_scores table).
-    // ponytail: score every catalog role synchronously during ingest (one INSERT per role × player)
-    // Upgrade to lazy/on-demand or batched scoring if ingest scoring time dominates Load Data
-    insert_role_scores(&tx, snapshot_id, object)?;
     if let Some(definition) = club_dna_scores::definition_for_save(&tx, save_id)? {
         club_dna_scores::persist_snapshot_scores(&tx, snapshot_id, &definition)?;
     }
@@ -387,15 +384,6 @@ fn insert_staff(
             )",
         )
         .map_err(|error| error.to_string())?;
-    // Temporary normalized staff score rows keep the uncut staff readers
-    // working until they move to compact columns (Commit 8 removes this
-    // dual-write seam and the staff_role_scores table).
-    let mut score_stmt = tx
-        .prepare(
-            "INSERT INTO staff_role_scores (snapshot_id, uid, role_id, score)
-             VALUES (?1, ?2, ?3, ?4)",
-        )
-        .map_err(|error| error.to_string())?;
     let mut compact_rows = Vec::with_capacity(staff.len());
 
     for staff_record in staff {
@@ -429,63 +417,11 @@ fn insert_staff(
             ])
             .map_err(|error| error.to_string())?;
 
-        // One compact row per staff member carries all 21 role scores in
-        // catalog order; unavailable roles stay SQL null. Selection
-        // reconciliation (Commit 3 pattern) later removes these rows from every
-        // non-winning snapshot and rebuilds a promoted one from raw facts.
         let scores = score_all_staff_roles(&attributes);
-        for (role, score) in all_staff_roles().iter().zip(&scores) {
-            if let Some(score) = score {
-                score_stmt
-                    .execute(params![snapshot_id, uid, role.role_id, score])
-                    .map_err(|error| error.to_string())?;
-            }
-        }
         compact_rows.push(CompactStaffRow { uid, scores });
     }
 
     persist_staff_rows(tx, snapshot_id, &compact_rows)?;
-
-    Ok(())
-}
-
-fn insert_role_scores(
-    tx: &Transaction<'_>,
-    snapshot_id: i64,
-    object: &serde_json::Map<String, Value>,
-) -> Result<(), String> {
-    let players = object
-        .get("players")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "dump players must be an array".to_string())?;
-
-    let mut stmt = tx
-        .prepare(
-            "INSERT INTO player_role_scores (snapshot_id, uid, role_id, phase, score)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-        )
-        .map_err(|error| error.to_string())?;
-
-    let roles = all_roles();
-    for player in players {
-        let player = player
-            .as_object()
-            .ok_or_else(|| "each player must be a JSON object".to_string())?;
-        let uid = require_u64(player, "uid")? as i64;
-        let attributes = attributes_map(required_value(player, "attributes")?)?;
-
-        for role in roles {
-            let score = score_role(&attributes, role).map(i64::from);
-            stmt.execute(params![
-                snapshot_id,
-                uid,
-                role.role_id,
-                role.phase.as_db_str(),
-                score,
-            ])
-            .map_err(|error| error.to_string())?;
-        }
-    }
 
     Ok(())
 }
@@ -712,12 +648,7 @@ mod tests {
     }
 
     fn role_score_count_for_snapshot(conn: &Connection, snapshot_id: i64) -> i64 {
-        conn.query_row(
-            "SELECT COUNT(*) FROM player_role_scores WHERE snapshot_id = ?1",
-            params![snapshot_id],
-            |row| row.get(0),
-        )
-        .expect("count role scores")
+        crate::features::player_metrics::compact::test_support::count_rows(conn, snapshot_id)
     }
 
     fn potential_state(conn: &Connection, snapshot_id: i64) -> (Option<String>, Option<i64>, i64) {
@@ -729,14 +660,9 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .expect("read projected player fields");
-        let score_count = conn
-            .query_row(
-                "SELECT COUNT(*) FROM player_potential_role_scores WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .expect("count potential role rows");
-        (fields.0, fields.1, score_count)
+        let compact_count =
+            crate::features::player_metrics::compact::test_support::count_rows(conn, snapshot_id);
+        (fields.0, fields.1, compact_count)
     }
 
     fn compact_row(
@@ -792,7 +718,7 @@ mod tests {
             state.1,
             Some(crate::features::player_metrics::potential_scores::PROJECTION_MODEL_VERSION)
         );
-        assert_eq!(state.2, all_roles().len() as i64);
+        assert_eq!(state.2, 1);
     }
 
     fn assert_empty_potential_state(conn: &Connection, snapshot_id: i64) {
@@ -824,39 +750,37 @@ mod tests {
         snapshot_id: i64,
         uid: i64,
     ) -> Vec<(String, String, Option<i64>)> {
-        let mut statement = conn
-            .prepare(
-                "SELECT role_id, phase, score
-                 FROM player_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2
-                 ORDER BY role_id",
-            )
-            .expect("prepare role score query");
-        statement
-            .query_map(params![snapshot_id, uid], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })
-            .expect("query role scores")
-            .collect::<Result<Vec<_>, _>>()
-            .expect("read role scores")
+        if let Some((_, _, current, _)) =
+            crate::features::player_metrics::compact::test_support::read_row(conn, snapshot_id, uid)
+        {
+            crate::features::scoring::catalog::all_roles()
+                .iter()
+                .zip(current)
+                .map(|(role, score)| {
+                    (
+                        role.role_id.to_string(),
+                        role.phase.as_db_str().to_string(),
+                        score,
+                    )
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
     }
 
-    fn staff_role_scores(conn: &Connection, snapshot_id: i64, uid: i64) -> Vec<(String, i64)> {
-        let mut statement = conn
-            .prepare(
-                "SELECT role_id, score
-                 FROM staff_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2
-                 ORDER BY role_id",
-            )
-            .expect("prepare staff role score query");
-        statement
-            .query_map(params![snapshot_id, uid], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })
-            .expect("query staff role scores")
-            .collect::<Result<Vec<_>, _>>()
-            .expect("read staff role scores")
+    fn compact_staff_scores(conn: &Connection, snapshot_id: i64, uid: i64) -> Vec<(String, i64)> {
+        if let Some((_, scores)) =
+            crate::features::staff::scoring::test_support::read_row(conn, snapshot_id, uid)
+        {
+            crate::features::staff::scoring::all_staff_roles()
+                .iter()
+                .zip(scores)
+                .filter_map(|(role, score)| score.map(|s| (role.role_id.to_string(), s)))
+                .collect()
+        } else {
+            Vec::new()
+        }
     }
 
     fn staff_compact_row(
@@ -1034,10 +958,7 @@ mod tests {
         assert_eq!(current_snapshot_id(&conn, save.id), Some(first.id));
         assert_eq!(snapshot_count(&conn, save.id), 1);
         assert_eq!(player_count_for_snapshot(&conn, first.id), 1);
-        assert_eq!(
-            role_score_count_for_snapshot(&conn, first.id),
-            all_roles().len() as i64
-        );
+        assert_eq!(role_score_count_for_snapshot(&conn, first.id), 1);
         assert_eq!(club_dna_score_rows(&conn, first.id), prior_score_rows);
     }
 
@@ -1078,10 +999,10 @@ mod tests {
             0
         );
         assert_eq!(
-            conn.query_row("SELECT COUNT(*) FROM player_role_scores", [], |row| {
+            conn.query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| {
                 row.get::<_, i64>(0)
             })
-            .expect("count rolled-back role scores"),
+            .expect("count rolled-back compact rows"),
             0
         );
     }
@@ -1097,11 +1018,7 @@ mod tests {
         let dump_path = write_dump(&temp_dir, "sparse.json", GOLDEN_FIXTURE);
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest sparse dump");
 
-        let expected_roles = all_roles().len() as i64;
-        assert_eq!(
-            role_score_count_for_snapshot(&conn, snapshot.id),
-            expected_roles
-        );
+        assert_eq!(role_score_count_for_snapshot(&conn, snapshot.id), 1);
 
         let scores = role_scores_for_player(&conn, snapshot.id, 77);
         assert_eq!(scores.len(), all_roles().len());
@@ -1146,9 +1063,9 @@ mod tests {
         let dump_path = write_dump(&temp_dir, "staff-scores.json", GOLDEN_FIXTURE);
         let snapshot = ingest_dump_file(&mut conn, &dump_path).expect("ingest staff scores");
 
-        // The temporary normalized dual-write seam still stores calculable
-        // rows only (six roles have unavailable dependencies in the fixture).
-        let scores = staff_role_scores(&conn, snapshot.id, 88);
+        // The compact row has calculable values for 15 roles; six roles have
+        // unavailable dependencies in the fixture and remain null.
+        let scores = compact_staff_scores(&conn, snapshot.id, 88);
         assert_eq!(scores.len(), 15, "six roles have unavailable dependencies");
         assert_eq!(
             scores
@@ -1214,7 +1131,7 @@ mod tests {
         );
         assert_eq!(compact.len(), all_staff_roles().len());
         assert!(compact.iter().all(|score| score.is_none()));
-        assert!(staff_role_scores(&conn, snapshot.id, 88).is_empty());
+        assert!(compact_staff_scores(&conn, snapshot.id, 88).is_empty());
     }
 
     #[test]
@@ -1253,12 +1170,12 @@ mod tests {
             .expect("active save");
         let good_path = write_dump(&temp_dir, "good.json", GOLDEN_FIXTURE);
         let first = ingest_dump_file(&mut conn, &good_path).expect("first ingest");
-        let prior_scores = staff_role_scores(&conn, first.id, 88);
+        let prior_scores = compact_staff_scores(&conn, first.id, 88);
         assert!(!prior_scores.is_empty());
 
         conn.execute_batch(
             "CREATE TRIGGER reject_staff_score
-             BEFORE INSERT ON staff_role_scores
+             BEFORE INSERT ON staff_role_metrics
              BEGIN
                  SELECT RAISE(FAIL, 'staff score failure');
              END;",
@@ -1269,13 +1186,13 @@ mod tests {
 
         assert!(error.contains("staff score failure"));
         assert_eq!(current_snapshot_id(&conn, active_save.id), Some(first.id));
-        assert_eq!(staff_role_scores(&conn, first.id, 88), prior_scores);
+        assert_eq!(compact_staff_scores(&conn, first.id, 88), prior_scores);
         assert_eq!(staff_compact_row_count(&conn, first.id), 1);
         assert_eq!(snapshot_count(&conn, active_save.id), 1);
     }
 
     #[test]
-    fn second_ingest_retains_each_snapshots_staff_role_scores() {
+    fn second_ingest_retains_each_snapshots_staff_metrics() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("staff-score-replacement.db"));
         list_saves(&conn).expect("seed default save");
@@ -1296,17 +1213,10 @@ mod tests {
         let second_path = write_dump(&temp_dir, "second.json", &second_root.to_string());
         let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
 
-        let first_scores = staff_role_scores(&conn, first.id, 88);
-        let second_scores = staff_role_scores(&conn, second.id, 88);
-        assert_eq!(first_scores.len(), 15);
+        let first_scores = compact_staff_scores(&conn, first.id, 88);
+        let second_scores = compact_staff_scores(&conn, second.id, 88);
+        assert_eq!(first_scores.len(), 0);
         assert_eq!(second_scores.len(), 21);
-        assert_eq!(
-            first_scores
-                .iter()
-                .find(|(role_id, _)| role_id == "physio")
-                .map(|(_, score)| *score),
-            Some(60)
-        );
         assert_eq!(
             second_scores
                 .iter()
@@ -1347,8 +1257,7 @@ mod tests {
         let second = ingest_dump_file(&mut conn, &second_path).expect("second ingest");
 
         let first_scores = role_scores_for_player(&conn, first.id, 77);
-        assert!(!first_scores.is_empty());
-        assert!(first_scores.iter().all(|(_, _, score)| *score == Some(50)));
+        assert!(first_scores.is_empty());
         let scores = role_scores_for_player(&conn, second.id, 77);
         assert!(!scores.is_empty());
         assert!(scores.iter().all(|(_, _, score)| *score == Some(100)));
@@ -1894,7 +1803,7 @@ mod tests {
         let first_potential_state = potential_state(&conn, first.id);
         conn.execute_batch(
             "CREATE TRIGGER reject_winning_potential_rows
-             BEFORE INSERT ON player_potential_role_scores
+             BEFORE INSERT ON player_role_metrics
              BEGIN SELECT RAISE(ABORT, 'winning potential writes fail'); END;",
         )
         .expect("reject winning potential rows");
@@ -2197,6 +2106,7 @@ mod tests {
 
     #[test]
     fn ingest_completes_generated_2k_staff_with_role_scores_and_timings() {
+        #[allow(unused_imports)]
         use crate::features::staff::scoring::all_staff_roles;
 
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -2231,13 +2141,6 @@ mod tests {
         let (snapshot, timings) =
             ingest_dump_file_for_save_timed(&mut conn, active_save.id, &dump_path)
                 .expect("large staff ingest");
-        let score_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM staff_role_scores WHERE snapshot_id = ?1",
-                [snapshot.id],
-                |row| row.get(0),
-            )
-            .expect("count generated staff scores");
         let compact_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM staff_role_metrics WHERE snapshot_id = ?1",
@@ -2247,7 +2150,6 @@ mod tests {
             .expect("count generated staff compact rows");
 
         assert_eq!(staff_count_for_snapshot(&conn, snapshot.id), 2_000);
-        assert_eq!(score_count, (2_000 * all_staff_roles().len()) as i64);
         assert_eq!(compact_count, 2_000);
         assert_ingest_timings(&timings);
         eprintln!(
@@ -2256,10 +2158,10 @@ mod tests {
         );
     }
 
-    /// Scale check — role-score matrix (~68 rows/player) is too heavy for the default gate.
+    /// Scale check — a representative 184k-player ingest is too heavy for the default gate.
     /// Run: `cargo test ingest_completes_generated_184k_players_with_timings -- --ignored`
     #[test]
-    #[ignore = "role-score matrix at 184k players is too heavy for the default gate"]
+    #[ignore = "184k-player ingest is too heavy for the default gate"]
     fn ingest_completes_generated_184k_players_with_timings() {
         run_generated_large_ingest(184_000);
     }
@@ -2273,6 +2175,7 @@ mod tests {
     }
 
     fn run_generated_large_ingest(player_count: usize) {
+        #[allow(unused_imports)]
         use crate::features::scoring::catalog::all_roles;
 
         let temp_dir = tempfile::tempdir().expect("temp dir");
@@ -2297,7 +2200,7 @@ mod tests {
         );
         assert_eq!(
             role_score_count_for_snapshot(&conn, snapshot.id),
-            (player_count * all_roles().len()) as i64
+            player_count as i64
         );
         assert_ingest_timings(&timings);
         assert!(

@@ -401,8 +401,7 @@ mod tests {
         let both = player_metrics_join("players", true, true);
         assert!(both.contains("player_metrics.score_model_version = 1"));
         assert!(both.contains("player_metrics.projection_model_version = 2"));
-        assert!(!both.contains("LEFT JOIN player_role_scores"));
-        assert!(!both.contains("LEFT JOIN player_potential_role_scores"));
+        assert!(both.contains(" LEFT JOIN player_role_metrics "));
     }
 
     #[test]

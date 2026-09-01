@@ -41,8 +41,7 @@ fn project_attributes_call_count() -> usize {
 }
 
 /// Rebuilds every potential-derived value for one snapshot: the current-only
-/// compact rows, the projected player attributes, and the temporary normalized
-/// potential rows that uncut readers still consume.
+/// compact rows and the projected player attributes.
 pub(crate) fn rebuild_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
     require_current_snapshot(tx, snapshot_id)?;
     clear_snapshot(tx, snapshot_id)?;
@@ -53,8 +52,7 @@ pub(crate) fn rebuild_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result
     assert_current_snapshot_complete(tx, snapshot_id)
 }
 
-/// Replaces one player's compact row, projected attributes, and normalized
-/// potential rows after a source-player change.
+/// Replaces one player's compact row and projected attributes after a source-player change.
 pub(crate) fn replace_player(
     tx: &Transaction<'_>,
     snapshot_id: i64,
@@ -63,11 +61,6 @@ pub(crate) fn replace_player(
     require_current_snapshot(tx, snapshot_id)?;
     let player = load_player(tx, snapshot_id, player_uid)?
         .ok_or_else(|| "Potential-score player does not exist".to_string())?;
-    tx.execute(
-        "DELETE FROM player_potential_role_scores WHERE snapshot_id = ?1 AND uid = ?2",
-        params![snapshot_id, player_uid],
-    )
-    .map_err(|error| error.to_string())?;
     tx.execute(
         "UPDATE players
          SET potential_attributes_json = NULL, potential_projection_model_version = NULL
@@ -81,14 +74,9 @@ pub(crate) fn replace_player(
     assert_current_snapshot_complete(tx, snapshot_id)
 }
 
-/// Clears compact rows and normalized potential-derived state for one snapshot.
+/// Clears compact rows and potential-derived state for one snapshot.
 pub(crate) fn clear_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
     compact::clear_snapshot(tx, snapshot_id)?;
-    tx.execute(
-        "DELETE FROM player_potential_role_scores WHERE snapshot_id = ?1",
-        [snapshot_id],
-    )
-    .map_err(|error| error.to_string())?;
     tx.execute(
         "UPDATE players
          SET potential_attributes_json = NULL, potential_projection_model_version = NULL
@@ -99,7 +87,7 @@ pub(crate) fn clear_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(
     Ok(())
 }
 
-/// Clears compact rows and normalized potential-derived state from every
+/// Clears compact rows and potential-derived state from every
 /// non-current snapshot of one save, so only the effective current snapshot
 /// keeps derived player state.
 pub(crate) fn clear_non_current_snapshots(
@@ -107,14 +95,6 @@ pub(crate) fn clear_non_current_snapshots(
     save_id: i64,
 ) -> Result<(), String> {
     compact::clear_non_current_snapshots(tx, save_id)?;
-    tx.execute(
-        "DELETE FROM player_potential_role_scores
-         WHERE snapshot_id IN (
-             SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0
-         )",
-        [save_id],
-    )
-    .map_err(|error| error.to_string())?;
     tx.execute(
         "UPDATE players
          SET potential_attributes_json = NULL, potential_projection_model_version = NULL
@@ -143,99 +123,19 @@ pub(crate) fn reconcile_current_selection(
     Ok(())
 }
 
-/// Legacy migration-34 hook that materializes normalized potential state for
-/// each existing effective current snapshot.
-///
-/// This path is deliberately seam-only: the compact table does not exist until
-/// migration 38, so a legacy upgrade cannot write compact rows here. Commit 8
-/// removes the hook together with the rest of the normalized seam.
-pub(crate) fn backfill_current_snapshots(tx: &Transaction<'_>) -> Result<(), String> {
-    let save_ids = tx
-        .prepare("SELECT id FROM saves ORDER BY id")
-        .map_err(|error| error.to_string())?
-        .query_map([], |row| row.get::<_, i64>(0))
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-
-    for save_id in save_ids {
-        clear_seam_non_current_snapshots(tx, save_id)?;
-        let current_snapshot_id = tx
-            .query_row(
-                "SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 1",
-                [save_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|error| error.to_string())?;
-        if let Some(snapshot_id) = current_snapshot_id {
-            rebuild_seam_snapshot(tx, snapshot_id)?;
-        }
-    }
-    Ok(())
-}
-
-fn clear_seam_non_current_snapshots(tx: &Transaction<'_>, save_id: i64) -> Result<(), String> {
-    tx.execute(
-        "DELETE FROM player_potential_role_scores
-         WHERE snapshot_id IN (
-             SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0
-         )",
-        [save_id],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE players
-         SET potential_attributes_json = NULL, potential_projection_model_version = NULL
-         WHERE snapshot_id IN (
-             SELECT id FROM snapshots WHERE save_id = ?1 AND is_current = 0
-         )",
-        [save_id],
-    )
-    .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-/// Normalized-only materialization for one snapshot, used by the migration-34
-/// hook before the compact table exists (see `backfill_current_snapshots`).
-fn rebuild_seam_snapshot(tx: &Transaction<'_>, snapshot_id: i64) -> Result<(), String> {
-    require_current_snapshot(tx, snapshot_id)?;
-    tx.execute(
-        "DELETE FROM player_potential_role_scores WHERE snapshot_id = ?1",
-        [snapshot_id],
-    )
-    .map_err(|error| error.to_string())?;
-    tx.execute(
-        "UPDATE players
-         SET potential_attributes_json = NULL, potential_projection_model_version = NULL
-         WHERE snapshot_id = ?1",
-        [snapshot_id],
-    )
-    .map_err(|error| error.to_string())?;
-    let players = load_players(tx, snapshot_id)?;
-    persist_players(tx, snapshot_id, &players)?;
-    assert_current_snapshot_complete(tx, snapshot_id)
-}
-
 /// Verifies that an already-resolved current snapshot has complete persisted potential state.
 pub(crate) fn assert_current_snapshot_complete(
     conn: &Connection,
     snapshot_id: i64,
 ) -> Result<(), String> {
-    let roles = all_roles();
-    let role_placeholders = (1..=roles.len())
+    let attribute_placeholders = (1..=DUMP_ATTRIBUTE_KEYS.len())
         .map(|index| format!("(?{index})"))
         .collect::<Vec<_>>()
         .join(", ");
-    let attribute_placeholders = (roles.len() + 1..=roles.len() + DUMP_ATTRIBUTE_KEYS.len())
-        .map(|index| format!("(?{index})"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let snapshot_parameter = roles.len() + DUMP_ATTRIBUTE_KEYS.len() + 1;
+    let snapshot_parameter = DUMP_ATTRIBUTE_KEYS.len() + 1;
     let version_parameter = snapshot_parameter + 1;
     let sql = format!(
-        "WITH expected_roles(role_id) AS (VALUES {role_placeholders}),
-              expected_attributes(attribute_key) AS (VALUES {attribute_placeholders})
+        "WITH expected_attributes(attribute_key) AS (VALUES {attribute_placeholders})
          SELECT
              NOT EXISTS(
                  SELECT 1 FROM snapshots WHERE id = ?{snapshot_parameter} AND is_current = 1
@@ -291,30 +191,13 @@ pub(crate) fn assert_current_snapshot_complete(
                            )
                        )
                        OR p.potential_projection_model_version IS NOT ?{version_parameter}
-                       OR EXISTS(
-                           SELECT 1
-                           FROM expected_roles role
-                           WHERE NOT EXISTS(
-                               SELECT 1
-                               FROM player_potential_role_scores score
-                               WHERE score.snapshot_id = p.snapshot_id
-                                 AND score.uid = p.uid
-                                 AND score.role_id = role.role_id
-                                 AND score.projection_model_version = ?{version_parameter}
-                           )
-                       )
                    )
              )",
     );
-    let mut values = roles
+    let mut values = DUMP_ATTRIBUTE_KEYS
         .iter()
-        .map(|role| Value::Text(role.role_id.to_string()))
+        .map(|key| Value::Text((*key).to_string()))
         .collect::<Vec<_>>();
-    values.extend(
-        DUMP_ATTRIBUTE_KEYS
-            .iter()
-            .map(|key| Value::Text((*key).to_string())),
-    );
     values.push(Value::Integer(snapshot_id));
     values.push(Value::Integer(PROJECTION_MODEL_VERSION));
     let incomplete: bool = conn
@@ -397,13 +280,6 @@ fn persist_players(
              WHERE snapshot_id = ?1 AND uid = ?2",
         )
         .map_err(|error| error.to_string())?;
-    let mut scores_statement = tx
-        .prepare(
-            "INSERT INTO player_potential_role_scores (
-                snapshot_id, uid, role_id, score, projection_model_version
-             ) VALUES (?1, ?2, ?3, ?4, ?5)",
-        )
-        .map_err(|error| error.to_string())?;
     let mut compact_rows = Vec::with_capacity(players.len());
 
     for player in players {
@@ -462,17 +338,7 @@ fn persist_players(
         let mut current_scores = Vec::with_capacity(all_roles().len());
         let mut potential_scores = Vec::with_capacity(all_roles().len());
         for role in all_roles() {
-            let potential_score = score_role(&projected, role).map(i64::from);
-            scores_statement
-                .execute(params![
-                    snapshot_id,
-                    player.uid,
-                    role.role_id,
-                    potential_score,
-                    PROJECTION_MODEL_VERSION,
-                ])
-                .map_err(|error| error.to_string())?;
-            potential_scores.push(potential_score);
+            potential_scores.push(score_role(&projected, role).map(i64::from));
             current_scores.push(score_role(&attributes, role).map(i64::from));
         }
         compact_rows.push(compact::CompactPlayerRow {
@@ -563,7 +429,11 @@ mod tests {
         crate::features::player_metrics::compact::test_support::count_rows(conn, snapshot_id)
     }
 
-    type DerivedState = (Option<String>, Option<i64>, Vec<(String, Option<i64>, i64)>);
+    type DerivedState = (
+        Option<String>,
+        Option<i64>,
+        Option<crate::features::player_metrics::compact::test_support::CompactRowShape>,
+    );
 
     fn derived_state(conn: &Connection, snapshot_id: i64) -> DerivedState {
         let fields = conn
@@ -574,20 +444,9 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .expect("read projected fields");
-        let rows = conn
-            .prepare(
-                "SELECT role_id, score, projection_model_version
-                 FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1 AND uid = 42 ORDER BY role_id",
-            )
-            .expect("prepare derived rows")
-            .query_map([snapshot_id], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-            })
-            .expect("query derived rows")
-            .collect::<Result<_, _>>()
-            .expect("read derived rows");
-        (fields.0, fields.1, rows)
+        let compact =
+            crate::features::player_metrics::compact::test_support::read_row(conn, snapshot_id, 42);
+        (fields.0, fields.1, compact)
     }
 
     fn deny_derived_writes(conn: &Connection) {
@@ -595,14 +454,14 @@ mod tests {
             "CREATE TRIGGER deny_projected_player_updates
              BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
              BEGIN SELECT RAISE(ABORT, 'derived player writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_inserts
-             BEFORE INSERT ON player_potential_role_scores
+             CREATE TRIGGER deny_compact_inserts
+             BEFORE INSERT ON player_role_metrics
              BEGIN SELECT RAISE(ABORT, 'derived score writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_updates
-             BEFORE UPDATE ON player_potential_role_scores
+             CREATE TRIGGER deny_compact_updates
+             BEFORE UPDATE ON player_role_metrics
              BEGIN SELECT RAISE(ABORT, 'derived score writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_deletes
-             BEFORE DELETE ON player_potential_role_scores
+             CREATE TRIGGER deny_compact_deletes
+             BEFORE DELETE ON player_role_metrics
              BEGIN SELECT RAISE(ABORT, 'derived score writes are forbidden'); END;",
         )
         .expect("deny derived writes");
@@ -804,63 +663,6 @@ mod tests {
     }
 
     #[test]
-    fn rebuild_scores_every_role_from_the_one_persisted_projection_map() {
-        let (conn, snapshot_id) = snapshot_with_persisted_scores();
-        let state = derived_state(&conn, snapshot_id);
-        let projected = serde_json::from_str::<HashMap<String, Option<u8>>>(
-            state.0.as_deref().expect("persisted projected attributes"),
-        )
-        .expect("parse persisted projected attributes");
-
-        assert_eq!(state.1, Some(PROJECTION_MODEL_VERSION));
-        assert_eq!(state.2.len(), all_roles().len());
-        for (role_id, score, version) in state.2 {
-            let role = all_roles()
-                .iter()
-                .find(|role| role.role_id == role_id)
-                .expect("catalog role");
-            assert_eq!(score, score_role(&projected, role).map(i64::from));
-            assert_eq!(version, PROJECTION_MODEL_VERSION);
-        }
-
-        let tx = conn
-            .unchecked_transaction()
-            .expect("start replacement transaction");
-        replace_player(&tx, snapshot_id, 42).expect("replace one player");
-        tx.commit().expect("commit player replacement");
-        assert_eq!(derived_state(&conn, snapshot_id).2.len(), all_roles().len());
-    }
-
-    #[test]
-    fn rebuild_normalizes_omitted_attributes_to_null() {
-        let (conn, snapshot_id) = snapshot_with_players(&[42]);
-        conn.execute(
-            "UPDATE players SET attributes_json = '{\"Acceleration\":10,\"Unknown\":20}'
-             WHERE snapshot_id = ?1 AND uid = 42",
-            [snapshot_id],
-        )
-        .expect("store sparse source attributes");
-
-        let tx = conn
-            .unchecked_transaction()
-            .expect("start writer transaction");
-        rebuild_snapshot(&tx, snapshot_id).expect("persist potential scores");
-        tx.commit().expect("commit potential scores");
-
-        let projected = serde_json::from_str::<HashMap<String, Option<u8>>>(
-            derived_state(&conn, snapshot_id)
-                .0
-                .as_deref()
-                .expect("persisted projected attributes"),
-        )
-        .expect("parse persisted projected attributes");
-        assert_eq!(projected.len(), DUMP_ATTRIBUTE_KEYS.len());
-        assert_eq!(projected.get("Acceleration"), Some(&Some(11)));
-        assert_eq!(projected.get("Pace"), Some(&None));
-        assert!(!projected.contains_key("Unknown"));
-    }
-
-    #[test]
     fn rebuild_rejects_out_of_domain_catalog_attributes_before_projection() {
         let (conn, snapshot_id) = snapshot_with_players(&[42]);
         let initial_tx = conn
@@ -892,62 +694,6 @@ mod tests {
     }
 
     #[test]
-    fn rebuild_persists_nullable_scores_as_sql_null() {
-        let (conn, snapshot_id) = snapshot_with_players(&[42]);
-        let mut attributes =
-            serde_json::from_str::<HashMap<String, Option<u8>>>(&complete_attributes())
-                .expect("parse complete attributes");
-        attributes.insert("Composure".to_string(), None);
-        conn.execute(
-            "UPDATE players SET attributes_json = ?3 WHERE snapshot_id = ?1 AND uid = ?2",
-            params![
-                snapshot_id,
-                42,
-                serde_json::to_string(&attributes).expect("serialize nullable attributes")
-            ],
-        )
-        .expect("store nullable source attribute");
-
-        let tx = conn
-            .unchecked_transaction()
-            .expect("start writer transaction");
-        rebuild_snapshot(&tx, snapshot_id).expect("persist potential scores");
-        assert_current_snapshot_complete(&tx, snapshot_id)
-            .expect("complete snapshot accepts nullable score rows");
-        tx.commit().expect("commit potential scores");
-
-        let state = derived_state(&conn, snapshot_id);
-        let projected = serde_json::from_str::<HashMap<String, Option<u8>>>(
-            state.0.as_deref().expect("persisted projected attributes"),
-        )
-        .expect("parse persisted projected attributes");
-        assert_eq!(projected.get("Composure"), Some(&None));
-        assert_eq!(state.2.len(), all_roles().len());
-        for (role_id, score, _) in state.2 {
-            let role = all_roles()
-                .iter()
-                .find(|role| role.role_id == role_id)
-                .expect("catalog role");
-            assert_eq!(score, score_role(&projected, role).map(i64::from));
-        }
-
-        let affected_role = all_roles()
-            .iter()
-            .find(|role| role.role_id == "ball_playing_goalkeeper_ip")
-            .expect("role requiring Composure");
-        assert!(affected_role.secondary.contains(&"Composure"));
-        let affected_score: Option<i64> = conn
-            .query_row(
-                "SELECT score FROM player_potential_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2 AND role_id = ?3",
-                params![snapshot_id, 42, affected_role.role_id],
-                |row| row.get(0),
-            )
-            .expect("read nullable score");
-        assert_eq!(affected_score, None);
-    }
-
-    #[test]
     fn complete_current_snapshot_passes_the_read_only_assertion() {
         let (conn, snapshot_id) = snapshot_with_persisted_scores();
         let tx = conn
@@ -955,40 +701,6 @@ mod tests {
             .expect("start assertion transaction");
         assert_current_snapshot_complete(&tx, snapshot_id).expect("complete current snapshot");
         tx.commit().expect("commit read-only assertion");
-    }
-
-    #[test]
-    fn assertion_rejects_missing_or_wrong_version_roles_without_writes() {
-        let (conn, snapshot_id) = snapshot_with_persisted_scores();
-        let missing_role_id = all_roles()[0].role_id;
-        conn.execute(
-            "DELETE FROM player_potential_role_scores
-             WHERE snapshot_id = ?1 AND uid = 42 AND role_id = ?2",
-            params![snapshot_id, missing_role_id],
-        )
-        .expect("delete expected role");
-        conn.execute(
-            "INSERT INTO player_potential_role_scores (
-                snapshot_id, uid, role_id, score, projection_model_version
-             ) VALUES (?1, 42, 'obsolete_role', 99, ?2)",
-            params![snapshot_id, PROJECTION_MODEL_VERSION],
-        )
-        .expect("add extra role that preserves the total row count");
-        assert_rejected_without_writes(&conn, snapshot_id);
-
-        let (conn, snapshot_id) = snapshot_with_persisted_scores();
-        conn.execute(
-            "UPDATE player_potential_role_scores
-             SET projection_model_version = ?3
-             WHERE snapshot_id = ?1 AND uid = 42 AND role_id = ?2",
-            params![
-                snapshot_id,
-                all_roles()[0].role_id,
-                PROJECTION_MODEL_VERSION - 1
-            ],
-        )
-        .expect("make role stale");
-        assert_rejected_without_writes(&conn, snapshot_id);
     }
 
     #[test]
@@ -1034,5 +746,178 @@ mod tests {
         )
         .expect("corrupt current marker");
         assert_rejected_without_writes(&conn, snapshot_id);
+    }
+
+    fn assert_compact_rejected_without_writes(conn: &Connection, snapshot_id: i64) {
+        let before = derived_state(conn, snapshot_id);
+        deny_derived_writes(conn);
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start assertion transaction");
+        assert_eq!(
+            crate::features::player_metrics::compact::assert_snapshot_complete(&tx, snapshot_id),
+            Err("Current compact player snapshot is incomplete".to_string())
+        );
+        tx.commit().expect("commit read-only assertion");
+        assert_eq!(derived_state(conn, snapshot_id), before);
+    }
+
+    #[test]
+    fn rebuild_scores_every_role_from_the_one_persisted_projection_map() {
+        let (conn, snapshot_id) = snapshot_with_persisted_scores();
+        let state = derived_state(&conn, snapshot_id);
+        let projected = serde_json::from_str::<HashMap<String, Option<u8>>>(
+            state.0.as_deref().expect("persisted projected attributes"),
+        )
+        .expect("parse persisted projected attributes");
+
+        assert_eq!(state.1, Some(PROJECTION_MODEL_VERSION));
+        let compact = state.2.as_ref().expect("compact row");
+        assert_eq!(compact.2.len(), all_roles().len());
+        assert_eq!(compact.3.len(), all_roles().len());
+        assert_eq!(
+            compact.0,
+            crate::features::player_metrics::compact::SCORE_MODEL_VERSION
+        );
+        assert_eq!(compact.1, PROJECTION_MODEL_VERSION);
+        for (index, role) in all_roles().iter().enumerate() {
+            assert_eq!(
+                compact.3[index],
+                score_role(&projected, role).map(i64::from),
+                "potential compact score for {}",
+                role.role_id
+            );
+        }
+
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start replacement transaction");
+        replace_player(&tx, snapshot_id, 42).expect("replace one player");
+        tx.commit().expect("commit player replacement");
+        let after = derived_state(&conn, snapshot_id)
+            .2
+            .expect("compact after replace");
+        assert_eq!(after.3.len(), all_roles().len());
+    }
+
+    #[test]
+    fn rebuild_normalizes_omitted_attributes_to_null() {
+        let (conn, snapshot_id) = snapshot_with_players(&[42]);
+        conn.execute(
+            "UPDATE players SET attributes_json = '{\"Acceleration\":10,\"Unknown\":20}'
+             WHERE snapshot_id = ?1 AND uid = 42",
+            [snapshot_id],
+        )
+        .expect("store sparse source attributes");
+
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start writer transaction");
+        rebuild_snapshot(&tx, snapshot_id).expect("persist potential scores");
+        tx.commit().expect("commit potential scores");
+
+        let projected = serde_json::from_str::<HashMap<String, Option<u8>>>(
+            derived_state(&conn, snapshot_id)
+                .0
+                .as_deref()
+                .expect("persisted projected attributes"),
+        )
+        .expect("parse persisted projected attributes");
+        assert_eq!(projected.len(), DUMP_ATTRIBUTE_KEYS.len());
+        assert_eq!(projected.get("Acceleration"), Some(&Some(11)));
+        assert_eq!(projected.get("Pace"), Some(&None));
+        assert!(!projected.contains_key("Unknown"));
+        let compact = derived_state(&conn, snapshot_id).2.expect("compact row");
+        assert_eq!(compact.2.len(), all_roles().len());
+        assert_eq!(compact.3.len(), all_roles().len());
+    }
+
+    #[test]
+    fn rebuild_persists_nullable_scores_as_sql_null() {
+        let (conn, snapshot_id) = snapshot_with_players(&[42]);
+        let mut attributes =
+            serde_json::from_str::<HashMap<String, Option<u8>>>(&complete_attributes())
+                .expect("parse complete attributes");
+        attributes.insert("Composure".to_string(), None);
+        conn.execute(
+            "UPDATE players SET attributes_json = ?3 WHERE snapshot_id = ?1 AND uid = ?2",
+            params![
+                snapshot_id,
+                42,
+                serde_json::to_string(&attributes).expect("serialize nullable attributes")
+            ],
+        )
+        .expect("store nullable source attribute");
+
+        let tx = conn
+            .unchecked_transaction()
+            .expect("start writer transaction");
+        rebuild_snapshot(&tx, snapshot_id).expect("persist potential scores");
+        assert_current_snapshot_complete(&tx, snapshot_id)
+            .expect("complete snapshot accepts nullable score rows");
+        tx.commit().expect("commit potential scores");
+
+        let state = derived_state(&conn, snapshot_id);
+        let projected = serde_json::from_str::<HashMap<String, Option<u8>>>(
+            state.0.as_deref().expect("persisted projected attributes"),
+        )
+        .expect("parse persisted projected attributes");
+        assert_eq!(projected.get("Composure"), Some(&None));
+        let compact = state.2.expect("compact row");
+        assert_eq!(compact.3.len(), all_roles().len());
+        for (index, role) in all_roles().iter().enumerate() {
+            assert_eq!(
+                compact.3[index],
+                score_role(&projected, role).map(i64::from),
+                "potential score for {}",
+                role.role_id
+            );
+        }
+
+        let affected_role = all_roles()
+            .iter()
+            .find(|role| role.role_id == "ball_playing_goalkeeper_ip")
+            .expect("role requiring Composure");
+        assert!(affected_role.secondary.contains(&"Composure"));
+        let col = crate::features::player_metrics::compact::player_potential_column(
+            affected_role.role_id,
+        )
+        .expect("potential column");
+        let sql =
+            format!("SELECT {col} FROM player_role_metrics WHERE snapshot_id = ?1 AND uid = ?2");
+        let affected_score: Option<i64> = conn
+            .query_row(&sql, params![snapshot_id, 42], |row| row.get(0))
+            .expect("read nullable compact score");
+        assert_eq!(affected_score, None);
+    }
+
+    #[test]
+    fn assertion_rejects_missing_or_wrong_version_compact_rows_without_writes() {
+        let (conn, snapshot_id) = snapshot_with_persisted_scores();
+        conn.execute(
+            "DELETE FROM player_role_metrics WHERE snapshot_id = ?1 AND uid = 42",
+            [snapshot_id],
+        )
+        .expect("delete compact row");
+        assert_compact_rejected_without_writes(&conn, snapshot_id);
+
+        let (conn, snapshot_id) = snapshot_with_persisted_scores();
+        conn.execute(
+            "UPDATE player_role_metrics SET projection_model_version = ?2 WHERE snapshot_id = ?1 AND uid = 42",
+            params![snapshot_id, PROJECTION_MODEL_VERSION - 1],
+        )
+        .expect("make compact row stale");
+        assert_compact_rejected_without_writes(&conn, snapshot_id);
+
+        let (conn, snapshot_id) = snapshot_with_persisted_scores();
+        conn.execute(
+            "UPDATE player_role_metrics SET score_model_version = ?2 WHERE snapshot_id = ?1 AND uid = 42",
+            params![
+                snapshot_id,
+                crate::features::player_metrics::compact::SCORE_MODEL_VERSION + 99
+            ],
+        )
+        .expect("make compact score version stale");
+        assert_compact_rejected_without_writes(&conn, snapshot_id);
     }
 }

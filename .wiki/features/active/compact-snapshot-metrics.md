@@ -122,7 +122,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 ### PR 1 — Compact active snapshot metrics
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -556,7 +556,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 8 — Remove normalized score persistence
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `refactor(scoring): remove normalized score rows`
 
@@ -874,21 +874,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 ## Active work
 
-**PR:** PR 1 — Compact active snapshot metrics
-
-**Commit:** Commit 8 — Remove normalized score persistence
-
-### RED or removal proof
-
-Absence tests fail when any production path still reads or writes normalized score rows, or a consumer misses the compact-read contract.
-
-### Expected outcome
-
-All normalized `player_role_scores`, `player_potential_role_scores`, and `staff_role_scores` writer and test-fixture code is removed; no production path reads or writes them; the migration retains the tables as an inert seam only if needed for reversible rollback; `./scripts/dev check-rust` and `./scripts/dev check` pass.
-
-### Explicit exclusions
-
-Staff reader cutover, player work, final normalized cleanup, progress, and staff formula changes.
+PR 1 implementation is complete and independently reviewed. Run PR-level validation and the recorded acceptance proof, then publish and merge PR 1 before activating PR 2.
 
 ## Discoveries and replanning
 
@@ -906,7 +892,8 @@ Staff reader cutover, player work, final normalized cleanup, progress, and staff
 | PR 1 — Compact active snapshot metrics | Commit 4 — Cut Search and Squad over to compact player metrics | 192d0f1f8cc582981f8c7e338ef4a1cbbf9f7add | Search and Squad queries read role metrics directly from the one `player_role_metrics` row via the closed-catalog validated mapping: `player_metrics_join` one-to-one compact join with kind-version predicates, `assert_read_models_complete` scoped read validation, simplified filter clauses with single numeric params, shared generic ORDER BY branch preserving null/tie semantics, obsolete requested-role row-count helper removed. | `./scripts/dev check-rust` passed (698 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear, source search confirms no normalized-relation reference in production search/squad/resolver paths. | Pass | Clear | 0 | None |
 | PR 1 — Compact active snapshot metrics | Commit 5 — Cut Profile and Planner over to compact player metrics | 628b478c897dd5ba51b575cebdd7e593d8bf3af6 | Player Profile loads all 68 current/potential role scores from one compact row with preserved projected JSON validation; Planner depth, optimizer (both bases), and role reference select catalog-lane columns from compact rows keeping combine/fit/allocation in Rust; mutation preflight now uses `assert_read_models_complete` so corrupt/missing/wrong-version state blocks every mutation before writes; shared fixtures seed/corrupt compact columns; normalized writers remain as the temporary seam. | `./scripts/dev check-rust` passed (698 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear, source search confirms no normalized-relation reference in production player-query or planner reader paths. | Pass | Clear | 0 | None |
 | PR 1 — Compact active snapshot metrics | Commit 6 — Materialize current staff metrics atomically | 7de6e6287f9474d8e475dffd0fef48e0e0d0a9db | One compact `staff_role_metrics` row per current staff member written at ingest (`score_all_staff_roles` catalog order, null on unavailable/out-of-range) with `SCORE_MODEL_VERSION = 1`; normalized staff writes retained as the marked temporary dual-write seam; `reconcile_current_selection` (mirroring the Commit 3 player pattern) clears non-current snapshots and rebuilds a newly selected current snapshot from retained `staff_attributes_json` before commit; staff CA boost untouched; failed compact staff writes roll back the whole ingest keeping the prior current visible; promotion rebuild failure rolls back the current-snapshot deletion. | `./scripts/dev check-rust` passed (702 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear after two corrections (wrong-version rejection proof, byte-for-byte promotion rollback preservation), targeted wrong-version and promotion tests pass and fail RED against a broken version predicate. | Pass | Clear | 2 | HIGH wrong-staff-model-version rejection lacked a regression proof; MEDIUM promotion-rollback test compared row presence not exact preserved content — both resolved with new/strengthened tests. |
-| PR 1 — Compact active snapshot metrics | Commit 7 — Cut staff consumers over to compact metrics | Pending record | All staff table, Profile, shortlist, filter, and assignment-optimization reads now use compact columns: `MetricField::Role` and Role filters/sorts compile to `staff_role_metrics` columns via the closed-catalog `staff_role_column` (no role-id IN binds); Profile emits all 21 catalog entries in order with nulls; `assert_read_models_complete` runs unconditionally for every table read (Profile, Search, My Staff, Shortlist) so missing/wrong-version state fails before any raw staff row loads; `load_candidates` reads one compact row per candidate (single LEFT JOIN, 21 `SCORE_ROLE_IDS` columns, `staff.uid ASC`) with no row multiplication; normalized `staff_role_scores` remain only in the ingest dual-write seam and tests. | `./scripts/dev check-rust` passed (702 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear after one correction (scalar table reads now gate on read-model completeness; new scalar missing/wrong-version assertion + promoted-snapshot fixture compact rows), scalar gate fails RED when made conditional again. | Pass | Clear | 1 | HIGH scalar-only staff table reads skipped `assert_read_models_complete` leaving incomplete snapshots visible as raw rows — resolved by running the completeness gate unconditionally on all staff table reads plus a scalar rejection test. |
+| PR 1 — Compact active snapshot metrics | Commit 7 — Cut staff consumers over to compact metrics | 52b84120277764cae47efeb126bcda052b0e5c77 | All staff table, Profile, shortlist, filter, and assignment-optimization reads now use compact columns: `MetricField::Role` and Role filters/sorts compile to `staff_role_metrics` columns via the closed-catalog `staff_role_column` (no role-id IN binds); Profile emits all 21 catalog entries in order with nulls; `assert_read_models_complete` runs unconditionally for every table read (Profile, Search, My Staff, Shortlist) so missing/wrong-version state fails before any raw staff row loads; `load_candidates` reads one compact row per candidate (single LEFT JOIN, 21 `SCORE_ROLE_IDS` columns, `staff.uid ASC`) with no row multiplication; normalized `staff_role_scores` remain only in the ingest dual-write seam and tests. | `./scripts/dev check-rust` passed (702 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, independent review clear after one correction (scalar table reads now gate on read-model completeness; new scalar missing/wrong-version assertion + promoted-snapshot fixture compact rows), scalar gate fails RED when made conditional again. | Pass | Clear | 1 | HIGH scalar-only staff table reads skipped `assert_read_models_complete` leaving incomplete snapshots visible as raw rows — resolved by running the completeness gate unconditionally on all staff table reads plus a scalar rejection test. |
+| PR 1 — Compact active snapshot metrics | Commit 8 — Remove normalized score persistence | Pending record | Added append-only migration v39 to drop the three normalized player/potential/staff score tables and their indexes; removed the v34 normalized backfill hook, runtime dual writes, normalized helpers, fixtures, and compatibility assertions; current and projected player values plus staff values now persist only in compact rows while raw facts remain authoritative; current compact boost, rollback, projection, null, completeness, promotion, Planner, Search, Profile, and Staff behavior proofs remain. | `./scripts/dev check-rust` passed (697 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, source search confirms zero normalized-table references under `src-tauri/src/features`, fresh schema absence test proves all three tables and indexes absent, independent review clear with stale comments corrected. | Pass | Clear | 2 | Initial worker attempt deleted unrelated behavior tests and was rejected; corrected implementation restored/adapted compact behavior coverage. Reviewer found one stale dual-write comment and one obsolete ignored-test reason; both were corrected. |
 
 ## Final validation
 

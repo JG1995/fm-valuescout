@@ -507,7 +507,7 @@ mod tests {
     use crate::db::migrations;
     use crate::features::{
         player_metrics::potential_scores::PROJECTION_MODEL_VERSION,
-        scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS},
+        scoring::catalog::DUMP_ATTRIBUTE_KEYS,
     };
     use rusqlite::params;
     use std::path::Path;
@@ -597,21 +597,16 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .expect("read projected player fields");
-        let score_count = conn
-            .query_row(
-                "SELECT COUNT(*) FROM player_potential_role_scores WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .expect("count potential score rows");
-        (fields.0, fields.1, score_count)
+        let compact_count =
+            crate::features::player_metrics::compact::test_support::count_rows(conn, snapshot_id);
+        (fields.0, fields.1, compact_count)
     }
 
     fn assert_complete_potential_state(conn: &Connection, snapshot_id: i64) {
         let state = potential_state(conn, snapshot_id);
         assert!(state.0.is_some());
         assert_eq!(state.1, Some(PROJECTION_MODEL_VERSION));
-        assert_eq!(state.2, all_roles().len() as i64);
+        assert_eq!(state.2, 1);
     }
 
     fn assert_empty_potential_state(conn: &Connection, snapshot_id: i64) {
@@ -639,15 +634,6 @@ mod tests {
             "CREATE TRIGGER deny_projected_player_updates
              BEFORE UPDATE OF potential_attributes_json, potential_projection_model_version ON players
              BEGIN SELECT RAISE(ABORT, 'potential player writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_inserts
-             BEFORE INSERT ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_updates
-             BEFORE UPDATE ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
-             CREATE TRIGGER deny_potential_score_deletes
-             BEFORE DELETE ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'potential score writes are forbidden'); END;
              CREATE TRIGGER deny_compact_row_inserts
              BEFORE INSERT ON player_role_metrics
              BEGIN SELECT RAISE(ABORT, 'compact row writes are forbidden'); END;
@@ -1152,15 +1138,7 @@ mod tests {
             delete_snapshot(&mut conn, promoted, &promoted_token).expect("delete final snapshot");
         assert_eq!(final_result.current_snapshot_id, None);
         assert_eq!(current_snapshot_id(&conn, save.id), None);
-        assert_eq!(
-            conn.query_row(
-                "SELECT COUNT(*) FROM player_potential_role_scores",
-                [],
-                |row| row.get::<_, i64>(0),
-            )
-            .expect("count final potential rows"),
-            0
-        );
+
         assert_eq!(
             conn.query_row("SELECT COUNT(*) FROM player_role_metrics", [], |row| row
                 .get::<_, i64>(0),)
@@ -1346,16 +1324,16 @@ mod tests {
         select_current_snapshot_for_test(&mut conn, save.id);
         let current_potential_state = potential_state(&conn, current);
         conn.execute_batch(
-            "CREATE TRIGGER reject_promoted_potential_rows
-             BEFORE INSERT ON player_potential_role_scores
-             BEGIN SELECT RAISE(ABORT, 'promoted potential writes fail'); END;",
+            "CREATE TRIGGER reject_promoted_compact_rows
+             BEFORE INSERT ON player_role_metrics
+             BEGIN SELECT RAISE(ABORT, 'promoted compact writes fail'); END;",
         )
         .expect("reject promoted potential rows");
 
         let current_token = snapshot_token(&conn, current);
         assert!(delete_snapshot(&mut conn, current, &current_token)
             .expect_err("roll back promoted snapshot materialization")
-            .contains("promoted potential writes fail"));
+            .contains("promoted compact writes fail"));
 
         assert_eq!(current_snapshot_id(&conn, save.id), Some(current));
         assert_eq!(potential_state(&conn, current), current_potential_state);

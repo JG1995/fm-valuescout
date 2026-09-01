@@ -260,7 +260,7 @@ pub fn get_staff(conn: &Connection, uid: i64) -> Result<Option<StaffDetail>, Str
     // Profile must reject missing or wrong-version compact state rather than
     // returning partial nulls.
     assert_read_models_complete(conn, snapshot_id)?;
-    staff.role_scores = load_staff_role_scores(conn, snapshot_id, uid)?;
+    staff.role_scores = load_compact_staff_scores(conn, snapshot_id, uid)?;
     Ok(Some(staff))
 }
 
@@ -305,7 +305,7 @@ fn map_staff_detail(
     })
 }
 
-fn load_staff_role_scores(
+fn load_compact_staff_scores(
     conn: &Connection,
     snapshot_id: i64,
     uid: i64,

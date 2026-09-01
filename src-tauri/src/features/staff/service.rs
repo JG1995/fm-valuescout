@@ -429,18 +429,12 @@ mod tests {
     fn verified_boost_updates_only_staff_ca_and_keeps_role_scores() {
         let (_temp, mut conn) = seeded_staff(115, 140);
         let prepared = super::prepare_current_ability_boost(&conn, STAFF_UID).expect("prepare");
-        let scores_before: Vec<(String, i64)> = conn
-            .prepare(
-                "SELECT role_id, score FROM staff_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2 ORDER BY role_id",
-            )
-            .expect("prepare scores")
-            .query_map(rusqlite::params![prepared.snapshot_id, STAFF_UID], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })
-            .expect("query scores")
-            .collect::<Result<_, _>>()
-            .expect("collect scores");
+        let scores_before = crate::features::staff::scoring::test_support::read_row(
+            &conn,
+            prepared.snapshot_id,
+            STAFF_UID,
+        )
+        .expect("compact row before boost");
 
         let result = verified(&prepared);
         super::reconcile_verified_boost(&mut conn, &prepared, result).expect("reconcile");
@@ -452,18 +446,12 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("read ca");
-        let scores_after: Vec<(String, i64)> = conn
-            .prepare(
-                "SELECT role_id, score FROM staff_role_scores
-                 WHERE snapshot_id = ?1 AND uid = ?2 ORDER BY role_id",
-            )
-            .expect("prepare scores")
-            .query_map(rusqlite::params![prepared.snapshot_id, STAFF_UID], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })
-            .expect("query scores")
-            .collect::<Result<_, _>>()
-            .expect("collect scores");
+        let scores_after = crate::features::staff::scoring::test_support::read_row(
+            &conn,
+            prepared.snapshot_id,
+            STAFF_UID,
+        )
+        .expect("compact row after boost");
         assert_eq!(ca, 125);
         assert_eq!(scores_after, scores_before);
     }
