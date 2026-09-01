@@ -205,6 +205,48 @@ pub fn all_staff_roles() -> &'static [StaffRoleDefinition] {
 /// (`score_staff_role`).
 pub const SCORE_MODEL_VERSION: i64 = 1;
 
+/// Fixed SQL alias of the one compact staff metric row joined per current
+/// staff member when a query reads role metrics.
+pub const STAFF_METRICS_ALIAS: &str = "staff_metrics";
+
+/// Builds the one-to-one compact staff metrics join for reads. The model
+/// version predicate makes only rows with the exact checked-in version
+/// readable; a missing row stays NULL through the LEFT JOIN.
+pub fn staff_metrics_join(staff_alias: &str) -> String {
+    format!(
+        " LEFT JOIN staff_role_metrics {STAFF_METRICS_ALIAS} ON {STAFF_METRICS_ALIAS}.snapshot_id = {staff_alias}.snapshot_id AND {STAFF_METRICS_ALIAS}.uid = {staff_alias}.uid AND {STAFF_METRICS_ALIAS}.score_model_version = {SCORE_MODEL_VERSION}"
+    )
+}
+
+/// Scoped read validation: every current staff member must have one compact
+/// row carrying the checked-in score model. Missing or wrong-version state
+/// fails before values are read; a read never writes or repairs.
+pub(crate) fn assert_read_models_complete(
+    conn: &Connection,
+    snapshot_id: i64,
+) -> Result<(), String> {
+    let incomplete: bool = conn
+        .query_row(
+            "SELECT EXISTS(
+                 SELECT 1
+                 FROM staff s
+                 LEFT JOIN staff_role_metrics m
+                   ON m.snapshot_id = s.snapshot_id
+                  AND m.uid = s.uid
+                  AND m.score_model_version = ?2
+                 WHERE s.snapshot_id = ?1 AND m.snapshot_id IS NULL
+             )",
+            params![snapshot_id, SCORE_MODEL_VERSION],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if incomplete {
+        Err("Current compact staff snapshot is incomplete".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 /// Returns the compact `staff_role_metrics` column for a closed-catalog staff
 /// role. The column name is the verified role id; identifiers never come from
 /// WebView input.

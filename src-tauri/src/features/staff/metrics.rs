@@ -1,4 +1,6 @@
-use super::scoring::{all_staff_roles, StaffRoleDefinition};
+use super::scoring::{
+    all_staff_roles, staff_role_column, StaffRoleDefinition, STAFF_METRICS_ALIAS,
+};
 
 pub const MAX_REQUESTED_FIELDS: usize = 256;
 
@@ -85,10 +87,10 @@ impl MetricField {
             Self::Attribute(key) => {
                 format!("json_extract({alias}.staff_attributes_json, '$.{key}')")
             }
-            Self::Role(role) => format!(
-                "(SELECT srs.score FROM staff_role_scores srs WHERE srs.snapshot_id = {alias}.snapshot_id AND srs.uid = {alias}.uid AND srs.role_id = '{}')",
-                role.role_id
-            ),
+            Self::Role(role) => {
+                let column = staff_role_column(role.role_id).expect("trusted staff column");
+                format!("{STAFF_METRICS_ALIAS}.{column}")
+            }
         }
     }
 }
