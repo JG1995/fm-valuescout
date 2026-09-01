@@ -117,8 +117,7 @@ pub(super) fn set_potential_role_score(
     .expect("set potential role score");
 }
 
-/// Nulls every compact current column except `keep_roles` for the players,
-/// mirroring the normalized per-role cleanup the optimizer tests used.
+/// Nulls every compact current column except `keep_roles` for the players.
 pub(super) fn clear_current_scores_except(
     conn: &Connection,
     save_id: i64,

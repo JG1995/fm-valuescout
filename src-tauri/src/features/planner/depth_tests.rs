@@ -700,6 +700,47 @@ fn corrupt_potential_state_blocks_assignment_move_before_writes() {
 }
 
 #[test]
+fn slot_candidates_reject_missing_current_compact_row_without_writes() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    get_depth(&conn, save_id).expect("create planner depth");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "DELETE FROM player_role_metrics
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("remove compact row for managed-club candidate");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    let error = get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
+        .expect_err("reject missing compact row");
+    assert_eq!(error, "Current compact player snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
+fn slot_candidates_reject_wrong_current_score_model_version_without_writes() {
+    let (_temp_dir, conn, save_id) = open_with_snapshot();
+    get_depth(&conn, save_id).expect("create planner depth");
+    let snapshot_id = current_snapshot_id(&conn, save_id);
+    conn.execute(
+        "UPDATE player_role_metrics
+         SET score_model_version = 999
+         WHERE snapshot_id = ?1 AND uid = 77",
+        params![snapshot_id],
+    )
+    .expect("stale compact current version for managed-club candidate");
+    let before = planner_potential_state(&conn, save_id, snapshot_id);
+    deny_potential_writes(&conn);
+
+    let error = get_slot_candidates(&conn, save_id, PlannerTeam::Senior, "goalkeeper", "")
+        .expect_err("reject stale compact current state");
+    assert_eq!(error, "Current compact player snapshot is incomplete");
+    assert_eq!(planner_potential_state(&conn, save_id, snapshot_id), before);
+}
+
+#[test]
 fn assignment_uses_persisted_potential_scores_instead_of_source_projection() {
     let (_temp_dir, conn, save_id) = open_with_snapshot();
     let depth = get_depth(&conn, save_id).expect("create planner depth");

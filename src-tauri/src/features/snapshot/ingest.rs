@@ -1192,7 +1192,7 @@ mod tests {
     }
 
     #[test]
-    fn second_ingest_retains_each_snapshots_staff_metrics() {
+    fn second_ingest_leaves_historical_staff_snapshot_raw_without_compact_rows() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("staff-score-replacement.db"));
         list_saves(&conn).expect("seed default save");
@@ -1244,7 +1244,7 @@ mod tests {
     }
 
     #[test]
-    fn second_ingest_retains_prior_role_scores_with_its_snapshot() {
+    fn second_ingest_leaves_historical_snapshot_raw_without_compact_rows() {
         let temp_dir = tempfile::tempdir().expect("temp dir");
         let mut conn = open_migrated(&temp_dir.path().join("ingest-role-scores-replace.db"));
         list_saves(&conn).expect("seed default save");

@@ -199,6 +199,7 @@ pub fn get_slot_candidates(
     let lane = find_lane(&tactic, lane_id)?;
     let snapshot_id = current_snapshot_id(conn, save_id)?
         .ok_or_else(|| "No current snapshot loaded for this save".to_string())?;
+    assert_read_models_complete(conn, snapshot_id, true, false)?;
     let ip_column = player_current_column(&lane.ip_role_id)?;
     let oop_column = player_current_column(&lane.oop_role_id)?;
     let mut statement = conn
