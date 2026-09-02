@@ -100,7 +100,15 @@ export function useLoadData(options: UseLoadDataOptions) {
         setProgress(event);
       };
 
-      return loadData(maxAccepted, onProgress);
+      if (!captured) {
+        throw new Error("Save context is not available");
+      }
+      return loadData(
+        maxAccepted,
+        captured.id,
+        captured.contextToken,
+        onProgress,
+      );
     },
     onSuccess: async (data, _variables, context) => {
       const ctx =

@@ -88,6 +88,7 @@ export function AppTopBar() {
     { id: number; contextToken: string } | undefined
   >();
   const stale =
+    isContextMutating ||
     !loadedSave ||
     loadedSave.id !== activeSave?.id ||
     loadedSave.contextToken !== activeSave?.contextToken;
@@ -183,16 +184,22 @@ export function AppTopBar() {
             icon={RefreshCw}
             loading={load.isCommandPending}
             loadingLabel={
-              load.isPending && load.progress
-                ? loadDataPhaseLabels[load.progress.phase]
-                : load.isPending
-                  ? "Scanning…"
-                  : load.isCommandPending
-                    ? "Loading…"
-                    : undefined
+              isContextMutating && load.isCommandPending
+                ? "Loading…"
+                : load.isPending && load.progress
+                  ? loadDataPhaseLabels[load.progress.phase]
+                  : load.isPending
+                    ? "Scanning…"
+                    : load.isCommandPending
+                      ? "Loading…"
+                      : undefined
             }
             className="min-w-36"
-            disabled={(playerCapEnabled && !capValid) || isContextMutating}
+            disabled={
+              !activeSave ||
+              (playerCapEnabled && !capValid) ||
+              isContextMutating
+            }
             onClick={() => {
               setLoadedSave(
                 activeSave

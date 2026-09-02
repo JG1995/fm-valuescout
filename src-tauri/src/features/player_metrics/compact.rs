@@ -182,13 +182,17 @@ pub(crate) fn prepare_player_derived(
     Ok((projected_json, current_scores, potential_scores))
 }
 
-/// Inserts or replaces one compact row per prepared player for one snapshot,
-/// with the exact checked-in score and projection model versions.
-pub(crate) fn persist_rows(
+/// Borrowed persistence implementation: inserts or replaces one compact row per player
+/// without cloning the 136-value score vectors. Accepts any iterator over borrowed
+/// slices directly from `PreparedPlayer`.
+pub(crate) fn persist_rows_borrowed<'a, I>(
     tx: &Transaction<'_>,
     snapshot_id: i64,
-    rows: &[CompactPlayerRow],
-) -> Result<(), String> {
+    rows: I,
+) -> Result<(), String>
+where
+    I: IntoIterator<Item = (i64, &'a [Option<i64>], &'a [Option<i64>])>,
+{
     let roles = all_roles();
     let mut columns = roles
         .iter()
@@ -212,22 +216,22 @@ pub(crate) fn persist_rows(
     );
     let mut statement = tx.prepare(&sql).map_err(|error| error.to_string())?;
 
-    for row in rows {
-        if row.current_scores.len() != roles.len() || row.potential_scores.len() != roles.len() {
+    for (uid, current_scores, potential_scores) in rows {
+        if current_scores.len() != roles.len() || potential_scores.len() != roles.len() {
             return Err("Compact player row has the wrong role count".to_string());
         }
         let mut values = Vec::with_capacity(columns.len() + 4);
         values.push(Value::Integer(snapshot_id));
-        values.push(Value::Integer(row.uid));
+        values.push(Value::Integer(uid));
         values.push(Value::Integer(SCORE_MODEL_VERSION));
         values.push(Value::Integer(PROJECTION_MODEL_VERSION));
         values.extend(
-            row.current_scores
+            current_scores
                 .iter()
                 .map(|score| score.map_or(Value::Null, Value::Integer)),
         );
         values.extend(
-            row.potential_scores
+            potential_scores
                 .iter()
                 .map(|score| score.map_or(Value::Null, Value::Integer)),
         );
@@ -236,6 +240,26 @@ pub(crate) fn persist_rows(
             .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+/// Inserts or replaces one compact row per prepared player for one snapshot,
+/// with the exact checked-in score and projection model versions.
+pub(crate) fn persist_rows(
+    tx: &Transaction<'_>,
+    snapshot_id: i64,
+    rows: &[CompactPlayerRow],
+) -> Result<(), String> {
+    persist_rows_borrowed(
+        tx,
+        snapshot_id,
+        rows.iter().map(|row| {
+            (
+                row.uid,
+                row.current_scores.as_slice(),
+                row.potential_scores.as_slice(),
+            )
+        }),
+    )
 }
 
 /// Deletes every compact row for one snapshot.

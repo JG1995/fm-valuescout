@@ -25,11 +25,13 @@ describe("loadData API", () => {
 
     const onProgress = vi.fn();
 
-    await loadData(123, onProgress);
+    await loadData(123, 42, "tok-abc", onProgress);
 
     expect(invokeMock).toHaveBeenCalledWith(
       "load_data",
       expect.objectContaining({
+        saveId: 42,
+        contextToken: "tok-abc",
         maxAccepted: 123,
         onProgress: expect.objectContaining({
           onmessage: onProgress,
@@ -88,11 +90,13 @@ describe("loadData API", () => {
     const invokeMock = vi.mocked(tauriClient.invokeCommand);
     invokeMock.mockResolvedValue({} as never);
 
-    await loadData(null, vi.fn());
+    await loadData(null, 1, "save-token-1", vi.fn());
 
     expect(invokeMock).toHaveBeenCalledWith(
       "load_data",
       expect.objectContaining({
+        saveId: 1,
+        contextToken: "save-token-1",
         maxAccepted: null,
         onProgress: expect.any(Object),
       }),

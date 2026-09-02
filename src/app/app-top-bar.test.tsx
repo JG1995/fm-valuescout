@@ -97,6 +97,15 @@ describe("app top bar", () => {
     expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();
   });
 
+  it("does not expose Load Data before the active save context is available", async () => {
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    expect(screen.queryByRole("button", { name: "Load Data" })).toBeNull();
+    expect(
+      await screen.findByRole("button", { name: "Load Data" }),
+    ).toBeEnabled();
+  });
+
   it("tracks history traversal and truncates Forward after a branch", async () => {
     const user = userEvent.setup();
     const { router } = renderWithProviders();
@@ -866,10 +875,12 @@ describe("app top bar", () => {
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
-  it("suppresses stale progress and keeps generic busy label after save switch", async () => {
+  it("suppresses stale progress and keeps generic busy until the switched context refetches", async () => {
     setLoadDataIpcMockMode("busy");
     const user = userEvent.setup();
-    renderWithProviders({ initialEntries: ["/settings"] });
+    const { queryClient } = renderWithProviders({
+      initialEntries: ["/settings"],
+    });
 
     await user.click(await screen.findByRole("button", { name: "Load Data" }));
     await act(async () => {
@@ -888,13 +899,28 @@ describe("app top bar", () => {
 
     await user.type(await screen.findByLabelText("New save"), "Second");
     await user.click(screen.getByRole("button", { name: "Create save" }));
-    await user.selectOptions(
-      await screen.findByRole("combobox", { name: "Active save" }),
-      "2",
+    const saveSelect = await screen.findByRole("combobox", {
+      name: "Active save",
+    });
+    await screen.findByRole("option", { name: "Second" });
+
+    const invalidate = queryClient.invalidateQueries.bind(queryClient);
+    let releaseRefetch: () => void = () => {};
+    const refetchGate = new Promise<void>((resolve) => {
+      releaseRefetch = resolve;
+    });
+    vi.spyOn(queryClient, "invalidateQueries").mockImplementation(
+      async (filters, options) => {
+        if (filters?.queryKey?.[0] === "snapshot") await refetchGate;
+        return invalidate(filters, options);
+      },
     );
+
+    await user.selectOptions(saveSelect, "2");
     expect(
       await screen.findByRole("button", { name: "Loading…" }),
     ).toBeDisabled();
+    expect(saveSelect).toHaveValue("1");
     expect(screen.queryByRole("progressbar", { name: "Scanning…" })).toBeNull();
     expect(screen.queryByText("Scanning…")).toBeNull();
 
@@ -907,10 +933,12 @@ describe("app top bar", () => {
         total: 10,
       });
     });
-    expect(
-      screen.getByRole("button", { name: "Loading…" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
     expect(screen.queryByRole("progressbar")).toBeNull();
+
+    await act(async () => releaseRefetch());
+    await waitFor(() => expect(saveSelect).toHaveValue("2"));
+    expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
   });
 
   it("disables Load Data while active-save selection is pending and captures B after settle", async () => {

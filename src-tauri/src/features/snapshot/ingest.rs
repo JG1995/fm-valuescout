@@ -10,21 +10,15 @@ use serde_json::Value;
 use crate::features::academy::service as academy_service;
 use crate::features::memory_read::dump_validation::parse_and_validate_dump;
 use crate::features::player_metrics::club_dna as club_dna_scores;
-#[allow(unused_imports)]
 use crate::features::player_metrics::compact as player_compact;
-#[allow(unused_imports)]
 use crate::features::player_metrics::potential_scores;
-#[allow(unused_imports)]
-use crate::features::scoring::catalog::{all_roles, DUMP_ATTRIBUTE_KEYS};
-#[allow(unused_imports)]
-use crate::features::scoring::projection::project_attributes;
+#[cfg(test)]
+use crate::features::scoring::catalog::all_roles;
 #[cfg(test)]
 use crate::features::scoring::score::score_role;
 #[cfg(test)]
 use crate::features::staff::scoring::all_staff_roles;
-use crate::features::staff::scoring::{
-    persist_rows as persist_staff_rows, score_all_staff_roles, CompactStaffRow,
-};
+use crate::features::staff::scoring::score_all_staff_roles;
 
 use super::service::{self, SaveContext};
 
@@ -607,6 +601,7 @@ pub fn prepare_dump_file(path: &Path) -> Result<PreparedSnapshot, String> {
 /// This is the single implementation; all callers delegate here.
 /// `now_ms` is monotonic; `on_save_boundary` is invoked after raw persistence
 /// (save complete / finalizing start) and is non-cancelling.
+#[allow(clippy::type_complexity)]
 pub(crate) fn publish_prepared_snapshot_canonical(
     conn: &mut Connection,
     save_context: &SaveContext,
@@ -669,27 +664,27 @@ pub(crate) fn publish_prepared_snapshot_canonical(
                     )
                     .map_err(|e| e.to_string())?;
                 }
-                let compact_rows: Vec<player_compact::CompactPlayerRow> = prepared
-                    .players
-                    .iter()
-                    .map(|p| player_compact::CompactPlayerRow {
-                        uid: p.uid,
-                        current_scores: p.compact_current.clone(),
-                        potential_scores: p.compact_potential.clone(),
-                    })
-                    .collect();
-                player_compact::persist_rows(&tx, snapshot_id, &compact_rows)?;
+                player_compact::persist_rows_borrowed(
+                    &tx,
+                    snapshot_id,
+                    prepared.players.iter().map(|p| {
+                        (
+                            p.uid,
+                            p.compact_current.as_slice(),
+                            p.compact_potential.as_slice(),
+                        )
+                    }),
+                )?;
                 player_compact::assert_snapshot_complete(&tx, snapshot_id)?;
                 potential_scores::assert_current_snapshot_complete(&tx, snapshot_id)?;
-                let staff_rows: Vec<CompactStaffRow> = prepared
-                    .staff
-                    .iter()
-                    .map(|s| CompactStaffRow {
-                        uid: s.uid,
-                        scores: s.compact_scores.clone(),
-                    })
-                    .collect();
-                persist_staff_rows(&tx, snapshot_id, &staff_rows)?;
+                crate::features::staff::scoring::persist_rows_borrowed(
+                    &tx,
+                    snapshot_id,
+                    prepared
+                        .staff
+                        .iter()
+                        .map(|s| (s.uid, s.compact_scores.as_slice())),
+                )?;
                 crate::features::staff::scoring::assert_snapshot_complete(&tx, snapshot_id)?;
                 academy_service::ensure_class_for_game_date(
                     &tx,

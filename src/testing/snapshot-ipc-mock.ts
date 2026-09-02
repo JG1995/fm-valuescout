@@ -671,11 +671,54 @@ export function resolveLoadDataIpcMock(
         resolve = res;
         reject = rej;
       });
+      const parsedSaveId =
+        typeof args === "object" &&
+        args !== null &&
+        "saveId" in args &&
+        typeof (args as Record<string, unknown>).saveId === "number"
+          ? Number((args as Record<string, unknown>).saveId)
+          : typeof args === "object" &&
+              args !== null &&
+              "save_id" in args &&
+              typeof (args as Record<string, unknown>).save_id === "number"
+            ? Number((args as Record<string, unknown>).save_id)
+            : NaN;
+      const parsedToken =
+        typeof args === "object" &&
+        args !== null &&
+        "contextToken" in args &&
+        typeof (args as Record<string, unknown>).contextToken === "string"
+          ? String((args as Record<string, unknown>).contextToken)
+          : typeof args === "object" &&
+              args !== null &&
+              "context_token" in args &&
+              typeof (args as Record<string, unknown>).context_token ===
+                "string"
+            ? String((args as Record<string, unknown>).context_token)
+            : "";
+      if (Number.isNaN(parsedSaveId) || !parsedToken) {
+        throw new Error(
+          "busy Load Data mock requires saveId and contextToken identity",
+        );
+      }
+      const existing = saves.find(
+        (s) => s.id === parsedSaveId && s.contextToken === parsedToken,
+      );
+      const capturedSave: SaveSummary = existing
+        ? { ...existing }
+        : {
+            id: parsedSaveId,
+            contextToken: parsedToken,
+            name: "Captured save",
+            isActive: true,
+            createdAtUtc: "2026-07-28T12:00:00.000Z",
+            updatedAtUtc: "2026-07-28T12:00:00.000Z",
+          };
       busyDeferred = {
         promise,
         resolve,
         reject,
-        capturedSave: { ...activeSave() },
+        capturedSave,
         capturedNextSnapshotId: nextSnapshotId,
       };
     }

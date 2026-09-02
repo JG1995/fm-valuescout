@@ -141,7 +141,7 @@ pub fn set_active_save(save_id: i64, db: State<'_, Db>) -> Result<SaveSummaryDto
 }
 
 pub(crate) fn set_active_save_for_command(db: &Db, save_id: i64) -> Result<SaveSummary, String> {
-    let _boost_guard = boost_gate::acquire_boost_gate()?;
+    let _context_guard = boost_gate::acquire_context_gate()?;
     let mut conn =
         db.0.lock()
             .map_err(|_| "database lock poisoned".to_string())?;
@@ -382,6 +382,7 @@ fn ch_send_best_effort(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn execute_load_data_with<S, R, Sc, P, Pr>(
     db: &Db,
+    requested: service::SaveContext,
     max_accepted: Option<i32>,
     scan: S,
     prepare_raw: R,
@@ -404,21 +405,35 @@ where
     ) -> Result<(load_data::LoadDataResult, u64, u64), LoadDataError>,
     Pr: FnMut(LoadDataProgressDto) -> Result<(), ()>,
 {
-    let _boost_guard = boost_gate::acquire_boost_gate().map_err(|message| LoadDataError::Scan {
+    let _load_guard = boost_gate::acquire_load_gate().map_err(|message| LoadDataError::Scan {
         kind: "inProgress".to_string(),
         message,
     })?;
     let total_started = now_ms();
-    let save_context = {
+    let save_context = requested;
+    // Verify requested context still exists with token and is still active, before scan.
+    {
         let conn = db.0.lock().map_err(|_| LoadDataError::Scan {
             kind: "internal".to_string(),
             message: "database lock poisoned".to_string(),
         })?;
-        service::capture_active_save_context(&conn).map_err(|message| LoadDataError::Scan {
-            kind: "internal".to_string(),
-            message,
-        })?
-    };
+        let is_active: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM saves WHERE id = ?1 AND context_token = ?2 AND is_active = 1)",
+                rusqlite::params![save_context.id, save_context.context_token],
+                |row| row.get(0),
+            )
+            .map_err(|error| LoadDataError::Scan {
+                kind: "internal".to_string(),
+                message: error.to_string(),
+            })?;
+        if !is_active {
+            return Err(LoadDataError::Scan {
+                kind: "saveChanged".to_string(),
+                message: "Save changed or no longer exists".to_string(),
+            });
+        }
+    }
     // Scan start indeterminate
     let _ = on_progress(LoadDataProgressDto::indeterminate(
         save_context.id,
@@ -473,10 +488,28 @@ where
         0,
         total_entities,
     ));
+    // Re-verify still active immediately before publishing, under the publishing lock.
+    // This captures a context switch that succeeded while the load held its lease.
     let mut conn = db.0.lock().map_err(|_| LoadDataError::Scan {
         kind: "internal".to_string(),
         message: "database lock poisoned".to_string(),
     })?;
+    {
+        let is_active: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM saves WHERE id = ?1 AND context_token = ?2 AND is_active = 1)",
+                rusqlite::params![save_context.id, save_context.context_token],
+                |row| row.get(0),
+            )
+            .map_err(|error| LoadDataError::Ingest {
+                message: error.to_string(),
+            })?;
+        if !is_active {
+            return Err(LoadDataError::Ingest {
+                message: "Save changed or no longer exists".to_string(),
+            });
+        }
+    }
     let save_id = save_context.id;
     let context_token = save_context.context_token.clone();
     let mut boundary = || {
@@ -526,6 +559,8 @@ where
 
 #[tauri::command]
 pub fn load_data(
+    save_id: i64,
+    context_token: String,
     max_accepted: Option<i32>,
     db: State<'_, Db>,
     on_progress: tauri::ipc::Channel<LoadDataProgressDto>,
@@ -535,8 +570,13 @@ pub fn load_data(
     let mut on_progress_cb = move |dto: LoadDataProgressDto| -> Result<(), ()> {
         ch_send_best_effort(&on_progress, dto)
     };
+    let requested = service::SaveContext {
+        id: save_id,
+        context_token,
+    };
     execute_load_data_with(
         db.inner(),
+        requested,
         max_accepted,
         |limit| load_data::scan_dump_from_local_app_data(DumpWaitConfig::default(), limit),
         load_data::prepare_raw_for_publish,
@@ -579,6 +619,58 @@ mod tests {
             .expect("enable foreign keys");
         migrations::apply(&conn).expect("apply migrations");
         Db(Mutex::new(conn))
+    }
+
+    fn active_save_context(db: &Db) -> service::SaveContext {
+        let guard = db.0.lock().expect("lock");
+        let save = service::list_saves(&guard)
+            .expect("list saves")
+            .into_iter()
+            .find(|s| s.is_active)
+            .expect("active save");
+        service::SaveContext {
+            id: save.id,
+            context_token: save.context_token,
+        }
+    }
+
+    fn assert_load_rejected_before_scan(db: &Db, requested: service::SaveContext) {
+        let scan_called = Cell::new(false);
+        let mut events = Vec::new();
+        let mut now_ms = || 0u64;
+        let error = execute_load_data_with(
+            db,
+            requested,
+            None,
+            |_| -> Result<(TempPath, DumpRequestResult), LoadDataError> {
+                scan_called.set(true);
+                unreachable!("stale context must fail before scan")
+            },
+            |_: &Path| -> Result<ingest::RawPreparedSnapshot, LoadDataError> {
+                unreachable!("stale context must fail before preparation")
+            },
+            |_: ingest::RawPreparedSnapshot| -> Result<ingest::PreparedSnapshot, LoadDataError> {
+                unreachable!("stale context must fail before scoring")
+            },
+            |_: &mut rusqlite::Connection,
+             _: &service::SaveContext,
+             _: ingest::PreparedSnapshot,
+             _: &DumpRequestResult,
+             _: &mut dyn FnMut() -> u64,
+             _: &mut dyn FnMut()| {
+                unreachable!("stale context must fail before publication")
+            },
+            &mut now_ms,
+            |event| {
+                events.push(event);
+                Ok(())
+            },
+        )
+        .expect_err("stale context must fail");
+
+        assert!(matches!(error, LoadDataError::Scan { kind, .. } if kind == "saveChanged"));
+        assert!(!scan_called.get());
+        assert!(events.is_empty());
     }
 
     #[test]
@@ -713,8 +805,11 @@ mod tests {
             events.push(dto);
             Ok(())
         };
+        let requested = active_save_context(&db);
+
         let result = execute_load_data_with(
             &db,
+            requested,
             None,
             scan,
             prepare_raw,
@@ -869,8 +964,11 @@ mod tests {
             )
         };
         let on_progress = |_: LoadDataProgressDto| Ok(());
+        let requested = active_save_context(&db);
+
         let result = execute_load_data_with(
             &db,
+            requested,
             None,
             scan,
             prepare_raw,
@@ -927,8 +1025,11 @@ mod tests {
             attempts_clone.set(attempts_clone.get() + 1);
             Err(())
         };
+        let requested = active_save_context(&db);
+
         let result = execute_load_data_with(
             &db,
+            requested,
             None,
             scan,
             prepare_raw,
@@ -973,8 +1074,11 @@ mod tests {
                        _: &mut dyn FnMut() -> u64,
                        _: &mut dyn FnMut()| unreachable!();
         let mut events = Vec::new();
+        let requested = active_save_context(&db);
+
         let err = execute_load_data_with(
             &db,
+            requested,
             None,
             scan,
             prepare_raw,
@@ -1029,8 +1133,11 @@ mod tests {
                        _: &mut dyn FnMut() -> u64,
                        _: &mut dyn FnMut()| unreachable!();
         let mut events = Vec::new();
+        let requested = active_save_context(&db);
+
         let err = execute_load_data_with(
             &db,
+            requested,
             None,
             scan,
             prepare_raw,
@@ -1093,8 +1200,11 @@ mod tests {
                        _: &mut dyn FnMut() -> u64,
                        _: &mut dyn FnMut()| unreachable!();
         let mut events = Vec::new();
+        let requested = active_save_context(&db);
+
         let err = execute_load_data_with(
             &db,
+            requested,
             None,
             scan,
             prepare_raw,
@@ -1155,8 +1265,11 @@ mod tests {
             })
         };
         let mut events = Vec::new();
+        let requested = active_save_context(&db);
+
         let err = execute_load_data_with(
             &db,
+            requested,
             None,
             scan,
             prepare_raw,
@@ -1236,8 +1349,11 @@ mod tests {
             )
         };
         let mut events = Vec::new();
+        let requested = active_save_context(&db);
+
         let err = execute_load_data_with(
             &db,
+            requested,
             None,
             scan,
             prepare_raw,
@@ -1317,8 +1433,11 @@ mod tests {
             )
         };
         let mut events = Vec::new();
+        let requested = active_save_context(&db);
+
         let err = execute_load_data_with(
             &db,
+            requested,
             None,
             scan,
             prepare_raw,
@@ -1442,6 +1561,263 @@ mod tests {
         assert_eq!(load_data["timings"]["finalizeMs"], 1);
         assert_eq!(load_data["timings"]["totalMs"], 6);
         assert_eq!(load_data["timings"]["ingestMs"], 2);
+    }
+
+    #[test]
+    fn stale_frontend_context_fails_before_scan_and_never_publishes() {
+        let _guard = crate::features::player::boost_gate::BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = migrated_db(&temp_dir.path().join("stale-context.db"));
+        {
+            let guard = db.0.lock().expect("lock");
+            crate::features::snapshot::service::list_saves(&guard).expect("seed");
+        }
+        let default_save = {
+            let guard = db.0.lock().expect("lock");
+            crate::features::snapshot::service::list_saves(&guard)
+                .unwrap()
+                .into_iter()
+                .find(|s| s.name == "Default save")
+                .unwrap()
+        };
+        let second_save = {
+            let guard = db.0.lock().expect("lock");
+            crate::features::snapshot::service::create_save(&guard, "Second")
+                .expect("create second")
+        };
+        {
+            let mut conn = db.0.lock().expect("lock");
+            crate::features::snapshot::service::set_active_save(&mut conn, second_save.id)
+                .expect("switch");
+        }
+        let stale_requested = service::SaveContext {
+            id: default_save.id,
+            context_token: default_save.context_token.clone(),
+        };
+        let mut now_ms = || 0u64;
+        let scan_called = std::cell::Cell::new(false);
+        let scan = |_: Option<i32>| {
+            scan_called.set(true);
+            let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
+            std::io::Write::write_all(&mut tmp, GOLDEN_FIXTURE.as_bytes()).expect("write");
+            tmp.flush().expect("flush");
+            let path = tmp.into_temp_path();
+            let dump_result = DumpRequestResult {
+                request_id: "req-stale".to_string(),
+                state: "ready".to_string(),
+                players_found: Some(1),
+                dump_present: true,
+                error: None,
+                scan_truncated: Some(false),
+                max_accepted: None,
+            };
+            Ok((path, dump_result))
+        };
+        let prepare_raw = |path: &Path| load_data::prepare_raw_for_publish(path);
+        let score = |raw| load_data::score_raw_for_publish(raw);
+        let publish = |conn: &mut rusqlite::Connection,
+                       ctx: &service::SaveContext,
+                       prepared: ingest::PreparedSnapshot,
+                       dump_result: &DumpRequestResult,
+                       now_ms: &mut dyn FnMut() -> u64,
+                       boundary: &mut dyn FnMut()| {
+            load_data::publish_prepared_with_progress(
+                conn,
+                ctx,
+                prepared,
+                dump_result,
+                now_ms,
+                boundary,
+            )
+        };
+        let mut events = Vec::new();
+        let err = execute_load_data_with(
+            &db,
+            stale_requested,
+            None,
+            scan,
+            prepare_raw,
+            score,
+            publish,
+            &mut now_ms,
+            |dto| {
+                events.push(dto);
+                Ok(())
+            },
+        )
+        .expect_err("stale A vs active B must fail before scan");
+        assert!(matches!(err, LoadDataError::Scan { kind, .. } if kind == "saveChanged"));
+        assert!(!scan_called.get(), "must fail before bridge scan");
+        assert!(
+            events.is_empty(),
+            "must emit no progress when stale before scan"
+        );
+        {
+            let guard = db.0.lock().expect("lock");
+            let count: i64 = guard
+                .query_row("SELECT COUNT(*) FROM snapshots", [], |row| row.get(0))
+                .expect("count");
+            assert_eq!(count, 0, "stale request must never publish");
+        }
+    }
+
+    #[test]
+    fn replaced_active_save_token_fails_before_scan() {
+        let _guard = crate::features::player::boost_gate::BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = migrated_db(&temp_dir.path().join("replaced-token.db"));
+        let requested = active_save_context(&db);
+        {
+            let conn = db.0.lock().expect("lock");
+            conn.execute("DELETE FROM saves WHERE id = ?1", [requested.id])
+                .expect("delete captured save");
+            conn.execute(
+                "INSERT INTO saves (id, name, is_active, context_token)
+                 VALUES (?1, 'Replacement save', 1, 'replacement-token')",
+                [requested.id],
+            )
+            .expect("reuse active save id with a new token");
+        }
+
+        assert_load_rejected_before_scan(&db, requested);
+    }
+
+    #[test]
+    fn mid_flight_context_switch_during_prepare_fails_at_pre_publish_without_snapshots_and_leaves_b_active(
+    ) {
+        let _guard = crate::features::player::boost_gate::BOOST_TEST_GATE
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let db = migrated_db(&temp_dir.path().join("mid-flight.db"));
+        {
+            let guard = db.0.lock().expect("lock");
+            crate::features::snapshot::service::list_saves(&guard).expect("seed");
+        }
+        let default_save = {
+            let guard = db.0.lock().expect("lock");
+            crate::features::snapshot::service::list_saves(&guard)
+                .unwrap()
+                .into_iter()
+                .find(|s| s.name == "Default save")
+                .unwrap()
+        };
+        let second_save = {
+            let guard = db.0.lock().expect("lock");
+            crate::features::snapshot::service::create_save(&guard, "Second")
+                .expect("create second")
+        };
+        // A is still active; request captures A with token
+        let requested = service::SaveContext {
+            id: default_save.id,
+            context_token: default_save.context_token.clone(),
+        };
+        let mut now_ms = || 0u64;
+        let publish_called = Rc::new(Cell::new(false));
+        let publish_called_clone = Rc::clone(&publish_called);
+        let second_id = second_save.id;
+        let scan = |_: Option<i32>| {
+            let mut tmp = tempfile::NamedTempFile::new().expect("tmp");
+            std::io::Write::write_all(&mut tmp, GOLDEN_FIXTURE.as_bytes()).expect("write");
+            tmp.flush().expect("flush");
+            let path = tmp.into_temp_path();
+            let dump_result = DumpRequestResult {
+                request_id: "req-mid-flight".to_string(),
+                state: "ready".to_string(),
+                players_found: Some(1),
+                dump_present: true,
+                error: None,
+                scan_truncated: Some(false),
+                max_accepted: None,
+            };
+            Ok((path, dump_result))
+        };
+        let prepare_raw = |path: &Path| {
+            // Real A→B switch while load lease held must succeed (context gate coexists with load gate).
+            let switched =
+                crate::features::snapshot::commands::set_active_save_for_command(&db, second_id)
+                    .expect("context switch must succeed while load lease held");
+            assert_eq!(switched.id, second_id);
+            {
+                let guard = db.0.lock().expect("lock");
+                let active = crate::features::snapshot::service::list_saves(&guard)
+                    .unwrap()
+                    .into_iter()
+                    .find(|s| s.is_active)
+                    .unwrap();
+                assert_eq!(
+                    active.id, second_id,
+                    "B must be active after mid-flight switch"
+                );
+            }
+            load_data::prepare_raw_for_publish(path)
+        };
+        let score = |raw| load_data::score_raw_for_publish(raw);
+        let publish = move |conn: &mut rusqlite::Connection,
+                            ctx: &service::SaveContext,
+                            prepared: ingest::PreparedSnapshot,
+                            dump_result: &DumpRequestResult,
+                            now_ms: &mut dyn FnMut() -> u64,
+                            boundary: &mut dyn FnMut()| {
+            publish_called_clone.set(true);
+            load_data::publish_prepared_with_progress(
+                conn,
+                ctx,
+                prepared,
+                dump_result,
+                now_ms,
+                boundary,
+            )
+        };
+        let mut events = Vec::new();
+        let err = execute_load_data_with(
+            &db,
+            requested,
+            None,
+            scan,
+            prepare_raw,
+            score,
+            publish,
+            &mut now_ms,
+            |dto| {
+                events.push(dto);
+                Ok(())
+            },
+        )
+        .expect_err("mid-flight A→B must fail at pre-publication revalidation");
+        assert!(
+            matches!(err, LoadDataError::Ingest { .. }) && err.to_string().contains("Save changed"),
+            "must fail at pre-publish revalidation with Save changed, got: {err:?}"
+        );
+        assert!(
+            !publish_called.get(),
+            "publish callback must never be invoked when pre-publish revalidation fails"
+        );
+        // No progress beyond saving start is emitted when publish never runs, but any emitted events carry A.
+        for ev in &events {
+            assert_eq!(ev.save_id, default_save.id);
+            assert_eq!(ev.context_token, default_save.context_token);
+        }
+        {
+            let guard = db.0.lock().expect("lock");
+            let count: i64 = guard
+                .query_row("SELECT COUNT(*) FROM snapshots", [], |row| row.get(0))
+                .expect("count");
+            assert_eq!(count, 0, "mid-flight switch must never write snapshots");
+            let active = crate::features::snapshot::service::list_saves(&guard)
+                .unwrap()
+                .into_iter()
+                .find(|s| s.is_active)
+                .unwrap();
+            assert_eq!(
+                active.id, second_id,
+                "B must remain active after failed A load"
+            );
+        }
     }
 
     #[test]
