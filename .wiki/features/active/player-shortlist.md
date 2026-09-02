@@ -205,7 +205,7 @@ Load/ingest a current snapshot that has no Moneyball import, open unfiltered Sho
 
 #### Commit 2 — Add Shortlist view and cohort-filtered General query
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(search): add Shortlist view and cohort query`
 
@@ -296,7 +296,7 @@ Load/ingest a current snapshot that has no Moneyball import, open unfiltered Sho
 
 #### Commit 3 — Wire Shortlist tab, layout, empty state, and profile mapping
 
-**Status:** Pending
+**Status:** Active
 
 **Provisional commit:** `feat(search): wire Shortlist tab and table layout`
 
@@ -400,19 +400,19 @@ Load/ingest a current snapshot that has no Moneyball import, open unfiltered Sho
 
 **PR:** PR 1 — Add Player Shortlist tab to Player Search
 
-**Commit:** Add Shortlist view and cohort-filtered General query
+**Commit:** Wire Shortlist tab, layout, empty state, and profile mapping
 
 ### RED or removal proof
 
-Add command-boundary tests that fail because `shortlist` is not a parsed view, then add temporary-SQLite query tests that fail because `SearchView::Shortlist` and its cohort-restricted General query path do not exist.
+Add focused route, table-store, dynamic-column, and smoke tests that fail because the third view, independent `shortlist` layout, empty-state precedence, keyboard tab order, and General profile mapping do not exist.
 
 ### Expected outcome
 
-Rust accepts `search_view = "shortlist"`, validates it through General sort/filter/requested-field rules, and returns only current-snapshot Moneyball cohort members through a read-only join that does not depend on `percentiles_json`.
+Player Search exposes General, Moneyball, and Shortlist in order; Shortlist uses the backend cohort with General columns and filters, owns its version-6 persisted layout, presents zero results from existing `total` and `filters.length`, and opens rows in General profile view.
 
 ### Explicit exclusions
 
-- Frontend tabs, table layout, empty-state presentation, new persistence or migrations, new IPC commands or DTOs, read-time writes, and Moneyball statistics or role scores in Shortlist.
+- Backend query or schema changes, a new IPC path or DTO, a second upload control, Settings default support, Squad or Staff behavior, and Moneyball metrics or roles in Shortlist.
 
 ## Discoveries and replanning
 
@@ -428,7 +428,8 @@ Rust accepts `search_view = "shortlist"`, validates it through General sort/filt
 
 | PR | Commit | Git ref | Implementation | Validation | Test portfolio | Review | Fix rounds | Deviations |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| PR 1 — Add Player Shortlist tab to Player Search | Commit 1 — Record the approved feature plan | Pending record | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; documentation links and `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Add Player Shortlist tab to Player Search | Commit 1 — Record the approved feature plan | bfb7f15b1586fd636eb6ceef192cfd3ce382dc23 | Recorded the reviewed schema 2 ledger and activated the feature in TODO without changing executable behavior. | `ledger_state.py`: runnable; `delivery_state.py`: runnable; documentation links and `git diff --cached --check`: passed. | Not applicable | Clear | 0 | None. |
+| PR 1 — Add Player Shortlist tab to Player Search | Commit 2 — Add Shortlist view and cohort-filtered General query | Pending record | Added the Shortlist search view, General-family command/query validation, and exact current-snapshot Moneyball cohort join without percentile readiness or new persistence. | `./scripts/dev check-rust`: 729 passed, 0 failed, 2 ignored; `./scripts/dev check`: passed with the same Rust count; primary LSP and `git diff --cached --check`: passed. | Pass | Clear | 1 | None. |
 
 ## Final validation
 

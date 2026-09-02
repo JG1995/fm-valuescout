@@ -133,14 +133,7 @@ pub fn search_players(
         .clamp(1, MAX_PAGE_LIMIT);
     let view = parse_search_view(search_view.as_deref())?;
     let comparison_pool = parse_comparison_pool(comparison_pool.as_deref(), view)?;
-    let sort_by = match (sort_by.as_deref(), view) {
-        (None, SearchView::General) => SortField::DEFAULT,
-        (None, SearchView::Moneyball) => {
-            SortField::parse_for_moneyball("moneyball.average_rating", true)?
-        }
-        (Some(value), SearchView::General) => SortField::parse(value)?,
-        (Some(value), SearchView::Moneyball) => SortField::parse_for_moneyball(value, true)?,
-    };
+    let sort_by = parse_search_sort_for_view(sort_by.as_deref(), view)?;
     let sort_dir = match sort_dir.as_deref() {
         None => SortDir::DEFAULT,
         Some(value) => SortDir::parse(value)?,
@@ -179,13 +172,30 @@ fn parse_search_view(value: Option<&str>) -> Result<SearchView, String> {
     match value.unwrap_or("general") {
         "general" => Ok(SearchView::General),
         "moneyball" => Ok(SearchView::Moneyball),
+        "shortlist" => Ok(SearchView::Shortlist),
         other => Err(format!("unknown search view: {other}")),
+    }
+}
+
+fn parse_search_sort_for_view(
+    sort_by: Option<&str>,
+    view: SearchView,
+) -> Result<SortField, String> {
+    match (sort_by, view) {
+        (None, SearchView::General) => Ok(SortField::DEFAULT),
+        (None, SearchView::Shortlist) => Ok(SortField::DEFAULT),
+        (None, SearchView::Moneyball) => {
+            SortField::parse_for_moneyball("moneyball.average_rating", true)
+        }
+        (Some(value), SearchView::General) => SortField::parse(value),
+        (Some(value), SearchView::Shortlist) => SortField::parse(value),
+        (Some(value), SearchView::Moneyball) => SortField::parse_for_moneyball(value, true),
     }
 }
 
 fn parse_comparison_pool(value: Option<&str>, view: SearchView) -> Result<ComparisonPool, String> {
     match value.unwrap_or(match view {
-        SearchView::General => "fullCsv",
+        SearchView::General | SearchView::Shortlist => "fullCsv",
         SearchView::Moneyball => "filtered",
     }) {
         "fullCsv" => Ok(ComparisonPool::FullCsv),
@@ -242,6 +252,10 @@ mod tests {
             parse_search_view(Some("moneyball")),
             Ok(SearchView::Moneyball)
         );
+        assert_eq!(
+            parse_search_view(Some("shortlist")),
+            Ok(SearchView::Shortlist)
+        );
         assert!(parse_search_view(Some("history")).is_err());
 
         assert_eq!(
@@ -253,6 +267,64 @@ mod tests {
             Ok(ComparisonPool::FullCsv)
         );
         assert!(parse_comparison_pool(Some("allPlayers"), SearchView::Moneyball).is_err());
+        assert_eq!(
+            parse_comparison_pool(None, SearchView::Shortlist),
+            Ok(ComparisonPool::FullCsv)
+        );
+        assert_eq!(
+            parse_comparison_pool(Some("filtered"), SearchView::Shortlist),
+            Ok(ComparisonPool::Filtered)
+        );
+        assert_eq!(
+            parse_comparison_pool(None, SearchView::General),
+            Ok(ComparisonPool::FullCsv)
+        );
+    }
+
+    #[test]
+    fn shortlist_sort_helper_defaults_and_validates_through_general_path() {
+        assert_eq!(
+            parse_search_sort_for_view(None, SearchView::Shortlist),
+            Ok(SortField::DEFAULT)
+        );
+        assert_eq!(
+            parse_search_sort_for_view(None, SearchView::General),
+            Ok(SortField::DEFAULT)
+        );
+        assert_eq!(SortField::DEFAULT, SortField::Ca);
+
+        assert_eq!(
+            parse_search_sort_for_view(Some("pa"), SearchView::Shortlist),
+            Ok(SortField::Pa)
+        );
+        assert_eq!(
+            parse_search_sort_for_view(Some("role.deep_lying_playmaker_ip"), SearchView::Shortlist),
+            SortField::parse("role.deep_lying_playmaker_ip")
+        );
+        assert!(
+            parse_search_sort_for_view(Some("attr.Acceleration"), SearchView::Shortlist).is_ok()
+        );
+        assert!(parse_search_sort_for_view(
+            Some("potential_role.goalkeeper_ip"),
+            SearchView::Shortlist
+        )
+        .is_ok());
+        assert!(parse_search_sort_for_view(Some("club_dna"), SearchView::Shortlist).is_ok());
+
+        let moneyball_err = SortField::parse("moneyball.goals").unwrap_err();
+        assert_eq!(
+            parse_search_sort_for_view(Some("moneyball.goals"), SearchView::Shortlist).unwrap_err(),
+            moneyball_err
+        );
+        let role_err = SortField::parse("moneyball_role.wbl_wbr_wing_back_ip").unwrap_err();
+        assert_eq!(
+            parse_search_sort_for_view(
+                Some("moneyball_role.wbl_wbr_wing_back_ip"),
+                SearchView::Shortlist
+            )
+            .unwrap_err(),
+            role_err
+        );
     }
 
     #[test]
