@@ -8,7 +8,10 @@ import { fieldClasses } from "@/components/ui/field/field-styles";
 import { academyKeys } from "@/features/academy/api/academy-keys";
 import { clubDnaKeys } from "@/features/club-dna/api/club-dna-keys";
 import { managedClubKeys } from "@/features/managed-club/api/managed-club-keys";
-import { LoadDataOutcome } from "@/features/memory-read/components/load-data-outcome";
+import {
+  LoadDataOutcome,
+  loadDataPhaseLabels,
+} from "@/features/memory-read/components/load-data-outcome";
 import { useLoadData } from "@/features/memory-read/hooks/use-load-data";
 import { useLoadDataPreferences } from "@/features/memory-read/stores/use-load-data-preferences";
 import { moneyballKeys } from "@/features/moneyball/api/moneyball-keys";
@@ -177,12 +180,15 @@ export function AppTopBar() {
             icon={RefreshCw}
             loading={load.isCommandPending}
             loadingLabel={
-              load.isPending
-                ? "Scanning…"
-                : load.isCommandPending
-                  ? "Loading…"
-                  : undefined
+              load.isPending && load.progress
+                ? loadDataPhaseLabels[load.progress.phase]
+                : load.isPending
+                  ? "Scanning…"
+                  : load.isCommandPending
+                    ? "Loading…"
+                    : undefined
             }
+            className="min-w-36"
             disabled={playerCapEnabled && !capValid}
             onClick={() => {
               setLoadedSave(
@@ -203,6 +209,7 @@ export function AppTopBar() {
       <LoadDataOutcome
         error={stale ? null : load.error}
         result={stale ? undefined : load.data}
+        progress={stale ? null : load.progress}
         onDismiss={load.reset}
       />
     </header>

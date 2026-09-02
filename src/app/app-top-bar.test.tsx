@@ -9,7 +9,7 @@ import {
   RouterContextProvider,
   RouterProvider,
 } from "@tanstack/react-router";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -197,9 +197,14 @@ describe("app top bar", () => {
     expect(
       await screen.findByText(/Loaded 3 players into the database/i),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Scan 1\.2s, ingest 400ms, total 2\.1s/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Scan 1\.2s/i)).toBeInTheDocument();
+    expect(screen.getByText(/preparation 300ms/i)).toBeInTheDocument();
+    expect(screen.getByText(/scoring 400ms/i)).toBeInTheDocument();
+    expect(screen.getByText(/save 200ms/i)).toBeInTheDocument();
+    expect(screen.getByText(/finalization 200ms/i)).toBeInTheDocument();
+    expect(screen.getByText(/total 2\.1s/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ingest 400ms/i)).toBeNull();
+    expect(screen.queryByText(/%/)).toBeNull();
   });
 
   it("sends unlimited maxAccepted when the player cap is off", async () => {
@@ -666,5 +671,243 @@ describe("app top bar", () => {
       });
     });
     expect(screen.queryByText(/Ingest failed/)).not.toBeInTheDocument();
+  });
+
+  it("keeps Load Data button width stable via established token class", async () => {
+    renderWithProviders();
+
+    const button = await screen.findByRole("button", { name: "Load Data" });
+    expect(button.className).toMatch(/min-w-36/);
+  });
+
+  it("shows scan indeterminate progress and each later phase as determinate", async () => {
+    setLoadDataIpcMockMode("busy");
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+
+    // Pending without progress shows Scanning… button and live region empty then scan indeterminate
+    expect(
+      await screen.findByRole("button", { name: "Scanning…" }),
+    ).toBeDisabled();
+
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "scan",
+      });
+    });
+    const liveRegion = document.querySelector(
+      '[aria-live="polite"]',
+    ) as HTMLElement;
+    expect(within(liveRegion).getByText("Scanning…")).toBeInTheDocument();
+    const scanBar = screen.getByRole("progressbar", { name: "Scanning…" });
+    expect(scanBar).not.toHaveAttribute("value");
+    expect(screen.queryByText(/%/)).toBeNull();
+
+    // Preparing 0/10 -> 10/10
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "preparing",
+        completed: 0,
+        total: 10,
+      });
+    });
+    expect(
+      await screen.findByRole("button", { name: "Preparing…" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("progressbar", { name: "Preparing… 0 of 10" }),
+    ).toHaveAttribute("value", "0");
+
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "preparing",
+        completed: 10,
+        total: 10,
+      });
+    });
+    expect(
+      screen.getByRole("progressbar", { name: "Preparing… 10 of 10" }),
+    ).toHaveAttribute("max", "10");
+
+    // Scoring
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "scoring",
+        completed: 0,
+        total: 5,
+      });
+    });
+    expect(
+      await screen.findByRole("button", { name: "Scoring…" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("progressbar", { name: "Scoring… 0 of 5" }),
+    ).toBeInTheDocument();
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "scoring",
+        completed: 5,
+        total: 5,
+      });
+    });
+    expect(
+      screen.getByRole("progressbar", { name: "Scoring… 5 of 5" }),
+    ).toHaveAttribute("value", "5");
+
+    // Saving
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "saving",
+        completed: 0,
+        total: 5,
+      });
+    });
+    expect(
+      await screen.findByRole("button", { name: "Saving…" }),
+    ).toBeDisabled();
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "saving",
+        completed: 5,
+        total: 5,
+      });
+    });
+    expect(
+      screen.getByRole("progressbar", { name: "Saving… 5 of 5" }),
+    ).toBeInTheDocument();
+
+    // Finalizing 0/1 -> 1/1
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "finalizing",
+        completed: 0,
+        total: 1,
+      });
+    });
+    expect(
+      await screen.findByRole("button", { name: "Finalizing…" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("progressbar", { name: "Finalizing… 0 of 1" }),
+    ).toHaveAttribute("value", "0");
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "finalizing",
+        completed: 1,
+        total: 1,
+      });
+    });
+    expect(
+      screen.getByRole("progressbar", { name: "Finalizing… 1 of 1" }),
+    ).toHaveAttribute("value", "1");
+
+    // Only one progressbar visible, ordered replaces
+    expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+    expect(screen.queryByText("Scanning…")).not.toBeInTheDocument();
+    // ensure progressbar is outside live region (no double announcement)
+    expect(scanBar.closest("[aria-live]")).toBeNull();
+    expect(screen.queryByText(/%/)).toBeNull();
+  });
+
+  it("replaces pending progress with success and dismiss handles live region stability", async () => {
+    setLoadDataIpcMockMode("busy");
+    const user = userEvent.setup();
+    renderWithProviders();
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "scan",
+      });
+    });
+    expect(
+      screen.getByRole("progressbar", { name: "Scanning…" }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      resolveBusyLoadDataRequest();
+    });
+    expect(
+      await screen.findByText(/Loaded 3 players into the database/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.getByText(/Scan 1\.2s/i)).toBeInTheDocument();
+    // dismiss preserves live region
+    await user.click(
+      screen.getByRole("button", { name: "Dismiss Load Data outcome" }),
+    );
+    expect(screen.queryByText(/Loaded 3 players/i)).not.toBeInTheDocument();
+    // live region still present empty
+    expect(document.querySelector('[aria-live="polite"]')).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("suppresses stale progress and keeps generic busy label after save switch", async () => {
+    setLoadDataIpcMockMode("busy");
+    const user = userEvent.setup();
+    renderWithProviders({ initialEntries: ["/settings"] });
+
+    await user.click(await screen.findByRole("button", { name: "Load Data" }));
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "scan",
+      });
+    });
+    expect(
+      await screen.findByRole("button", { name: "Scanning…" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("progressbar", { name: "Scanning…" }),
+    ).toBeInTheDocument();
+
+    await user.type(await screen.findByLabelText("New save"), "Second");
+    await user.click(screen.getByRole("button", { name: "Create save" }));
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: "Active save" }),
+      "2",
+    );
+    expect(
+      await screen.findByRole("button", { name: "Loading…" }),
+    ).toBeDisabled();
+    expect(screen.queryByRole("progressbar", { name: "Scanning…" })).toBeNull();
+    expect(screen.queryByText("Scanning…")).toBeNull();
+
+    await act(async () => {
+      emitLoadDataProgress({
+        saveId: 1,
+        contextToken: "save-token-1",
+        phase: "preparing",
+        completed: 5,
+        total: 10,
+      });
+    });
+    expect(
+      screen.getByRole("button", { name: "Loading…" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).toBeNull();
   });
 });

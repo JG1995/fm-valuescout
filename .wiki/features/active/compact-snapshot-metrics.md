@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Validation
 
 **Ledger schema:** 2
 
@@ -616,7 +616,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 ### PR 2 — Phased Load Data progress
 
-**Status:** Active
+**Status:** Ready for publication
 
 **PR ref:** Not published
 
@@ -817,7 +817,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 #### Commit 4 — Show accessible phased Load Data progress
 
-**Status:** Active
+**Status:** Completed
 
 **Provisional commit:** `feat(load-data): show top-bar progress`
 
@@ -874,17 +874,7 @@ PR 1 creates the fresh compact schema, writes one current player row, reads one 
 
 ## Active work
 
-**PR:** PR 2 — Phased Load Data progress
-
-**Commit:** Commit 4 — Show accessible phased Load Data progress
-
-### RED or removal proof
-
-The top bar does not render the command’s local phase events, native progress semantics, determinate counts, or detailed timing buckets, so focused accessibility tests fail against the current outcome-only banner.
-
-### Expected outcome
-
-The existing polite top-bar banner renders exact phase text and native indeterminate/determinate progress, the button mirrors the active phase without stale context leakage, success/error replaces pending content, and the expanded timing copy reports every measured bucket; focused frontend tests, smoke, `./scripts/dev check-app`, and `./scripts/dev check` pass.
+PR 2 implementation is complete and independently reviewed. Run PR-level validation and the recorded acceptance proof, then publish and merge PR 2 before feature close-out.
 
 ## Discoveries and replanning
 
@@ -909,7 +899,8 @@ The existing polite top-bar banner renders exact phase text and native indetermi
 | PR 1 — Compact active snapshot metrics | Commit 8 — Remove normalized score persistence | 6392befe3ee98d92348b8c2f79aea252722e137f | Added append-only migration v39 to drop the three normalized player/potential/staff score tables and their indexes; removed the v34 normalized backfill hook, runtime dual writes, normalized helpers, fixtures, and compatibility assertions; current and projected player values plus staff values now persist only in compact rows while raw facts remain authoritative; current compact boost, rollback, projection, null, completeness, promotion, Planner, Search, Profile, and Staff behavior proofs remain. | `./scripts/dev check-rust` passed (697 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --check` clean, source search confirms zero normalized-table references under `src-tauri/src/features`, fresh schema absence test proves all three tables and indexes absent, independent review clear with stale comments corrected. | Pass | Clear | 3 | Initial worker attempt deleted unrelated behavior tests and was rejected; corrected implementation restored/adapted compact behavior coverage. Reviewer found one stale dual-write comment and one obsolete ignored-test reason; both were corrected. PR-level feature review found Planner slot candidates lacked a compact completeness preflight; correction `121998d` added direct missing/wrong-model proofs and passed correction review. |
 | PR 2 — Phased Load Data progress | Commit 1 — Prepare snapshot data before publication | e68255c82b2babc955bb1f7153e184ac2541daaa | Added bounded owned snapshot preparation outside `Db(Mutex<Connection>)`, including validated raw values, projected player attributes, and all compact player/staff scores; the production command now captures save context briefly, scans and prepares lock-free, then revalidates and publishes through one final transaction while direct test APIs compose the same boundary; duplicate transactional parse/score paths were removed. | `./scripts/dev check-rust` passed (705 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --cached --check` clean, focused command orchestration and 39 ingest tests passed, deterministic clock/lock proof covers production timing placement, independent correction review clear. | Pass | Clear | 1 | Initial review found that lower-level tests could not detect production command lock/timer regression and that a test-only bridge helper compiled in production; resolved with the exact injected production orchestrator, deterministic command-level regression proof, and `cfg(test)` gating. |
 | PR 2 — Phased Load Data progress | Commit 2 — Stream ordered Load Data progress and timings | 1184bedbeb2770bf24fb45b74fb51775688315bc | Added a closed camelCase phase contract and command-scoped best-effort Channel bound to captured save context; the exact production orchestrator emits bounded start/completion events for scan, preparing, scoring, saving, and finalizing; raw preparation and scoring are separate lock-free passes without duplicate parse/score; one canonical transaction reports disjoint raw-save/finalization timings while preserving authoritative result/error and atomic publication. | `./scripts/dev check-rust` passed (715 Rust tests, 0 failures, 2 intended-ignored), `./scripts/dev check` passed, `git diff --cached --check` clean, focused command suite passed 13 tests, exact nonuniform clock proof covers every timing bucket, canonical raw-staff failure proves rollback and prevents premature save completion, independent correction review clear. | Pass | Clear | 2 | The first implementation was rejected before review because it bypassed the injected preparation seam, duplicated publication, emitted late phase labels, and did not model sender failure; the rewrite corrected those issues. Independent review then required exact nonuniform timing assertions and a canonical raw-insert boundary failure proof; both were added and approved. Tauri 2.11.3 rejects `Option<Channel<T>>`, so frontend Channel construction remains the recorded Commit 3 dependency. |
-| PR 2 — Phased Load Data progress | Commit 3 — Preserve visible data until successful replacement | Pending record | Added the typed frontend progress Channel and context-bound local mutation ownership; Load Data no longer uses the neutral context-mutation key or clears before invocation, so established Search and Squad rows remain mounted and interactive during delayed work and failures. Context revisions permanently suppress stale presentation, while successful publications still reconcile truthful cache owners: current replacements clear exact roots only for the matching active save, historical or inactive-save results refresh captured history, and every terminal path refreshes Bridge status. | The full frontend suite passed (680 tests); focused Channel/hook/AppTopBar/Search/My Club/root-guard suites passed; route composition tests exercise readable, sortable, activatable rows through actual delayed top-bar mutation; `./scripts/dev check-app` and `./scripts/dev check` passed (715 Rust tests, 0 failures, 2 intended-ignored); staged diff, LSP, secret, ledger, and delivery checks clean. | Pass | Clear | 2 | Initial review found away-and-back stale revival, missing Bridge refresh, broad historical invalidation, and an unrealistic delayed error mock. Correction added revision ownership, exact terminal invalidation, invocation-captured rejection, and guarded root removal. A second review found stale presentation suppression also skipped authoritative A→B→A reconciliation and exposed contradictory mutation state; final correction separated presentation from reconciliation and added coherent global-busy/context-state semantics. Final independent review clear. |
+| PR 2 — Phased Load Data progress | Commit 3 — Preserve visible data until successful replacement | e159426ad84bd6ed583bb2f655592153cee14a3f | Added the typed frontend progress Channel and context-bound local mutation ownership; Load Data no longer uses the neutral context-mutation key or clears before invocation, so established Search and Squad rows remain mounted and interactive during delayed work and failures. Context revisions permanently suppress stale presentation, while successful publications still reconcile truthful cache owners: current replacements clear exact roots only for the matching active save, historical or inactive-save results refresh captured history, and every terminal path refreshes Bridge status. | The full frontend suite passed (680 tests); focused Channel/hook/AppTopBar/Search/My Club/root-guard suites passed; route composition tests exercise readable, sortable, activatable rows through actual delayed top-bar mutation; `./scripts/dev check-app` and `./scripts/dev check` passed (715 Rust tests, 0 failures, 2 intended-ignored); staged diff, LSP, secret, ledger, and delivery checks clean. | Pass | Clear | 2 | Initial review found away-and-back stale revival, missing Bridge refresh, broad historical invalidation, and an unrealistic delayed error mock. Correction added revision ownership, exact terminal invalidation, invocation-captured rejection, and guarded root removal. A second review found stale presentation suppression also skipped authoritative A→B→A reconciliation and exposed contradictory mutation state; final correction separated presentation from reconciliation and added coherent global-busy/context-state semantics. Final independent review clear. |
+| PR 2 — Phased Load Data progress | Commit 4 — Show accessible phased Load Data progress | Pending record | Extended the existing stable polite top-bar banner with exact scan/preparing/scoring/saving/finalizing text, native indeterminate or truthful determinate progress, phase-matched fixed-width button labels, stale-context generic busy state, and detailed disjoint timing copy. Visible phase/count text is the live region’s sole changing content; the exact-named native progress element is an adjacent sibling to prevent duplicate announcements. | Focused outcome and AppTopBar suites passed (47 tests after accessibility correction); `./scripts/dev check-app` passed; smoke passed 51 tests; `./scripts/dev check` passed (715 Rust tests, 0 failures, 2 intended-ignored); staged diff, LSP, secret, ledger, and delivery checks clean. | Pass | Clear | 1 | Initial review found the visible phase/count and identical progress accessible name inside one polite subtree, which could double-announce every update. Correction kept one stable text-only live region and moved native progress beside it in the same visual row; final independent review clear. |
 
 ## Final validation
 

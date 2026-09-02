@@ -1,10 +1,24 @@
 import type { LucideIcon } from "lucide-react";
-import { CircleAlert, CircleCheck, TriangleAlert, X } from "lucide-react";
+import {
+  CircleAlert,
+  CircleCheck,
+  LoaderCircle,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button/button";
 import { cn } from "@/utils/cn";
 import { formatCount, formatMissable } from "@/utils/format";
-import type { LoadDataResult } from "../types/load-data";
+import type { LoadDataProgress, LoadDataResult } from "../types/load-data";
 import { loadDataErrorCopy } from "./load-data-error";
+
+export const loadDataPhaseLabels: Record<LoadDataProgress["phase"], string> = {
+  scan: "Scanning…",
+  preparing: "Preparing…",
+  scoring: "Scoring…",
+  saving: "Saving…",
+  finalizing: "Finalizing…",
+};
 
 function formatDurationMs(ms: number): string {
   if (ms < 1000) {
@@ -17,13 +31,14 @@ function formatLoadTimings(timings: LoadDataResult["timings"]): string {
   if (timings.totalMs === 0) {
     return "";
   }
-  return ` Scan ${formatDurationMs(timings.scanMs)}, ingest ${formatDurationMs(timings.ingestMs)}, total ${formatDurationMs(timings.totalMs)}.`;
+  return ` Scan ${formatDurationMs(timings.scanMs)}, preparation ${formatDurationMs(timings.prepareMs)}, scoring ${formatDurationMs(timings.scoringMs)}, save ${formatDurationMs(timings.saveMs)}, finalization ${formatDurationMs(timings.finalizeMs)}, total ${formatDurationMs(timings.totalMs)}.`;
 }
 
 type LoadDataOutcomeProps = {
   error: Error | null;
   /** Omitted when the load targeted a save the user has since switched away from. */
   result?: LoadDataResult;
+  progress?: LoadDataProgress | null;
   onDismiss: () => void;
 };
 
@@ -39,6 +54,7 @@ const toneClasses = {
   success: "border-success/40 bg-success-container text-on-success-container",
   warning: "border-warning/40 bg-warning-container text-on-warning-container",
   error: "border-error/40 bg-error-container text-on-error-container",
+  pending: "border-info/40 bg-info-container text-on-info-container",
 };
 
 function resolveBanner({ error, result }: LoadDataOutcomeProps): Banner | null {
@@ -90,39 +106,92 @@ function formatSnapshotDate(gameDate: string | null): string {
 
 export function LoadDataOutcome(props: LoadDataOutcomeProps) {
   const banner = resolveBanner(props);
+  const progress = props.progress ?? null;
+  const hasPending = progress !== null;
+  const hasBanner = banner !== null;
 
-  // The region is always in the DOM, empty when idle: a live region created at
-  // the same moment as its text is usually missed by screen readers.
+  const outerClassName = hasPending
+    ? cn(
+        "flex items-center gap-2 border-t px-4 py-2 text-body-sm",
+        toneClasses.pending,
+      )
+    : hasBanner
+      ? cn(
+          "flex items-center gap-2 border-t px-4 py-2 text-body-sm",
+          banner.tone,
+        )
+      : undefined;
+
+  const progressNode = hasPending ? (
+    progress.completed == null || progress.total == null ? (
+      <progress
+        aria-label={loadDataPhaseLabels[progress.phase]}
+        className="h-2 w-32 shrink-0 accent-primary"
+      />
+    ) : progress.total === 0 ? null : (
+      <progress
+        aria-label={`${loadDataPhaseLabels[progress.phase]} ${progress.completed} of ${progress.total}`}
+        className="h-2 w-32 shrink-0 accent-primary"
+        max={progress.total}
+        value={progress.completed}
+      />
+    )
+  ) : null;
+
+  // Keep the live region mounted while idle. Progress is its sibling so the
+  // visible phase and identical progress name are not announced together.
   return (
-    <div aria-live="polite">
-      {banner ? (
-        <div
-          className={cn(
-            "flex items-center gap-2 border-t px-4 py-2 text-body-sm",
-            banner.tone,
-          )}
-        >
-          <banner.icon
-            aria-hidden="true"
-            size={16}
-            strokeWidth={1.5}
-            className="shrink-0"
-          />
-          <p className="min-w-0 flex-1">
-            {banner.title ? (
-              <span className="text-label-lg">{banner.title}. </span>
-            ) : null}
-            {banner.body}
-          </p>
-          <Button
-            size="icon"
-            icon={X}
-            variant="ghost"
-            aria-label="Dismiss Load Data outcome"
-            className="-my-1 shrink-0"
-            onClick={props.onDismiss}
-          />
-        </div>
+    <div className={outerClassName}>
+      <div
+        aria-live="polite"
+        className={
+          hasPending || hasBanner
+            ? "flex min-w-0 flex-1 items-center gap-2"
+            : undefined
+        }
+      >
+        {hasPending ? (
+          <>
+            <LoaderCircle
+              aria-hidden="true"
+              size={16}
+              strokeWidth={1.5}
+              className="shrink-0"
+            />
+            <p className="min-w-0 flex-1">
+              {loadDataPhaseLabels[progress.phase]}
+              {progress.completed != null && progress.total != null
+                ? ` ${progress.completed} of ${progress.total}`
+                : ""}
+            </p>
+          </>
+        ) : hasBanner ? (
+          <>
+            <banner.icon
+              aria-hidden="true"
+              size={16}
+              strokeWidth={1.5}
+              className="shrink-0"
+            />
+            <p className="min-w-0 flex-1">
+              {banner.title ? (
+                <span className="text-label-lg">{banner.title}. </span>
+              ) : null}
+              {banner.body}
+            </p>
+          </>
+        ) : null}
+      </div>
+      {hasPending ? progressNode : null}
+      {hasBanner ? (
+        <Button
+          size="icon"
+          icon={X}
+          variant="ghost"
+          aria-label="Dismiss Load Data outcome"
+          className="-my-1 shrink-0"
+          onClick={props.onDismiss}
+        />
       ) : null}
     </div>
   );
