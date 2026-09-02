@@ -558,7 +558,7 @@ where
 }
 
 #[tauri::command]
-pub fn load_data(
+pub async fn load_data(
     save_id: i64,
     context_token: String,
     max_accepted: Option<i32>,
