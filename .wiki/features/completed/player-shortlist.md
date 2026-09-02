@@ -116,9 +116,9 @@ Load/ingest a current snapshot that has no Moneyball import, open unfiltered Sho
 
 ### PR 1 — Add Player Shortlist tab to Player Search
 
-**Status:** Ready for publication
+**Status:** Published
 
-**PR ref:** Not published
+**PR ref:** https://github.com/JG1995/fm-valuescout/pull/109
 
 **Merge ref:** Not merged
 
@@ -465,17 +465,17 @@ Reconciliation completed after final review and before publication. `ARCHITECTUR
 | `bfb7f15b1586fd636eb6ceef192cfd3ce382dc23` | `docs(shortlist): record approved feature plan` | Planning record |
 | `4a60ceec1bfa02033551e6cd2ef5b7f8157356ce` | `feat(search): add Shortlist view and cohort query` | Cohort-filtered General query |
 | `68377bac655075beff9eeb40ae6d07c4f5813a80` | `feat(search): wire Shortlist tab and table layout` | Tab, layout, empty state, and profile mapping |
-| `Pending record` | `docs(shortlist): reconcile documentation` | Documentation reconciliation |
+| `a5b27ba7de9afa7d0b8e7b547de347315f92d296` | `docs(shortlist): reconcile documentation` | Documentation reconciliation |
 
-No correction commit was needed after final review. The close-out documentation commit is `Pending record` until this reconciliation is committed.
+No correction commit was needed after final review. The close-out documentation commit is `a5b27ba7de9afa7d0b8e7b547de347315f92d296`.
 
 ## Final publication
 
 ```yaml
-status: ready_for_publication
-pr_status: not_published
+status: published
+pr_status: open
 merge_status: not_merged
-pr_ref: "Not published"
+pr_ref: "https://github.com/JG1995/fm-valuescout/pull/109"
 merge_ref: "Not merged"
 branch: feature/player-shortlist
 base_branch: main
@@ -503,13 +503,14 @@ final_pr_commit_set:
   - bfb7f15b1586fd636eb6ceef192cfd3ce382dc23
   - 4a60ceec1bfa02033551e6cd2ef5b7f8157356ce
   - 68377bac655075beff9eeb40ae6d07c4f5813a80
+  - a5b27ba7de9afa7d0b8e7b547de347315f92d296
 correction_ref: none
-close_out_documentation_ref: Pending record
+close_out_documentation_ref: a5b27ba7de9afa7d0b8e7b547de347315f92d296
 delivery_fingerprint: d21c4902558e323535302f7bd43f8ba0c209a7b0f72c211082b559c40db1a63e
 ```
 
 ## Feature close-out
 
-**State:** Current. The exact implementation set passed final validation, feature review (no CRITICAL/HIGH/MEDIUM/NITPICK findings; Test portfolio Pass; Architecture and Project fit Conform), and documentation reconciliation. The final PR remains not published and not merged; branch `feature/player-shortlist` from `main` is ready for publication with strict required status `check` and squash merge.
+**State:** Current. The exact implementation set passed final validation, feature review (no CRITICAL/HIGH/MEDIUM/NITPICK findings; Test portfolio Pass; Architecture and Project fit Conform), and documentation reconciliation. PR [#109](https://github.com/JG1995/fm-valuescout/pull/109) is published and open but not merged; it still requires strict status `check` and a squash merge.
 
 Accepted validation gap: Native Windows Tauri at 1280×800 and 1600×900 with representative real FM export was unavailable, so native WebView focus, packaged IPC, real-file import persistence, and overlapping cumulative-import Shortlist membership remain unobserved. Stub browser and temporary-SQLite evidence are not substitutes.
